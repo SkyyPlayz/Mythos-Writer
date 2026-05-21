@@ -1,0 +1,19 @@
+{
+  "name": "@mythos-writer/electron-main",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "electron-vite": "^2.3.0"
+  }
+}

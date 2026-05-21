@@ -1,0 +1,33 @@
+{
+  "appId": "com.mythoswriter.app",
+  "productName": "Mythos Writer",
+  "directories": {
+    "output": "dist/releases"
+  },
+  "files": [
+    "electron-main/dist/**/*",
+    "frontend/dist/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "build/icon.ico",
+    "artifactName": "${productName}-${version}-Setup.exe"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  },
+  "electronUpdater": {
+    "provider": "generic",
+    "url": "https://update.mythoswriter.com/releases",
+    "channel": "latest"
+  }
+}
