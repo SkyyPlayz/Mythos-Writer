@@ -1,6 +1,24 @@
 import { useState, useRef } from 'react';
 import './App.css';
 
+declare global {
+  interface Window {
+    mythosIPC: {
+      generateStory: (payload: { prompt: string; genre?: string; length?: string }) => Promise<unknown>;
+      abortStory: () => Promise<unknown>;
+      getStoryStatus: () => Promise<unknown>;
+      readVaultFile: (path: string) => Promise<unknown>;
+      writeVaultFile: (path: string, content: string) => Promise<unknown>;
+      listVaultFiles: (root?: string) => Promise<unknown>;
+      deleteVaultFile: (path: string) => Promise<unknown>;
+      readManifest: () => Promise<unknown>;
+      writeManifest: (manifest: unknown) => Promise<unknown>;
+      getAppInfo: () => Promise<unknown>;
+      getSystemInfo: () => Promise<unknown>;
+    };
+  }
+}
+
 const GENRES = [
   { value: '', label: 'No specific genre' },
   { value: 'fantasy', label: 'Fantasy' },
@@ -43,56 +61,22 @@ function App() {
     setStory('');
 
     try {
-      const res = await fetch('/api/stories/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: prompt.trim(),
-          genre: genre || undefined,
-          length,
-        }),
-        signal: controller.signal,
+      const result = await window.mythosIPC.generateStory({
+        prompt: prompt.trim(),
+        genre: genre || undefined,
+        length,
       });
 
-      if (!res.ok) {
-        const errData = await res
-          .json()
-          .catch(() => ({ error: `Server error: ${res.status}` }));
-        throw new Error(
-          (errData as { error?: string }).error ?? `Server error: ${res.status}`
-        );
-      }
-
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const payload = line.slice(6);
-          if (payload === '[DONE]') {
+      // Handle streaming response from IPC
+      if (result && typeof result === 'object') {
+        // The IPC handler returns an AsyncGenerator — iterate through chunks
+        for await (const chunk of result as AsyncGenerator<{ chunk?: string; done?: boolean; error?: string }>) {
+          if (controller.signal.aborted) break;
+          if (chunk.error) throw new Error(chunk.error);
+          if (chunk.chunk) setStory((prev) => prev + chunk.chunk);
+          if (chunk.done) {
             setUiState('done');
             return;
-          }
-          try {
-            const parsed = JSON.parse(payload) as {
-              chunk?: string;
-              error?: string;
-            };
-            if (parsed.error) throw new Error(parsed.error);
-            if (parsed.chunk) setStory((prev) => prev + parsed.chunk);
-          } catch (e) {
-            if (e instanceof SyntaxError) continue;
-            throw e;
           }
         }
       }
@@ -114,6 +98,7 @@ function App() {
 
   const handleStartOver = () => {
     abortRef.current?.abort();
+    window.mythosIPC.abortStory();
     setPrompt('');
     setGenre('');
     setLength('medium');

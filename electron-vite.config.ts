@@ -23,5 +23,10 @@ export default defineConfig({
   },
   renderer: {
     root: '../frontend',
+    build: {
+      rollupOptions: {
+        input: '../frontend/index.html',
+      },
+    },
   },
 });
