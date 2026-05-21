@@ -3,6 +3,9 @@ import { defineConfig } from 'electron-vite';
 export default defineConfig({
   main: {
     build: {
+      lib: {
+        entry: 'src/main.ts',
+      },
       rollupOptions: {
         external: ['electron'],
       },
@@ -10,6 +13,9 @@ export default defineConfig({
   },
   preload: {
     build: {
+      lib: {
+        entry: 'src/preload.ts',
+      },
       rollupOptions: {
         external: ['electron'],
       },
