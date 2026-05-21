@@ -15,7 +15,7 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'mythos-writer-backend' });
 });
 
-app.use('/api/story', storyRouter);
+app.use('/api/stories', storyRouter);
 
 app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT}`);
