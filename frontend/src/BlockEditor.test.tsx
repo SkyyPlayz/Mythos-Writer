@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
+import { WikiLink } from './WikiLinkExtension';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -11,7 +12,7 @@ import { Markdown } from 'tiptap-markdown';
 
 function roundTrip(markdown: string): string {
   const editor = new Editor({
-    extensions: [StarterKit, Markdown],
+    extensions: [StarterKit, WikiLink, Markdown],
     content: markdown,
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,13 +24,14 @@ function roundTrip(markdown: string): string {
 /** roundTrip without trimming — used for trailing-newline assertions. */
 function roundTripRaw(markdown: string): string {
   const editor = new Editor({
-    extensions: [StarterKit, Markdown],
+    extensions: [StarterKit, WikiLink, Markdown],
     content: markdown,
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = (editor.storage as any).markdown.getMarkdown() as string;
+  const raw = (editor.storage as any).markdown.getMarkdown() as string;
   editor.destroy();
-  return result;
+  // Mirror the post-processing in BlockEditor.tsx: ensure trailing newline.
+  return raw.endsWith('\n') ? raw : `${raw}\n`;
 }
 
 function fixture(name: string): string {
@@ -273,20 +275,19 @@ describe('BlockEditor markdown round-trip — extended regression (MYT-131)', ()
   // behaviour so any fix will surface as a clean diff.
 
   describe('wiki-link tokens', () => {
-    it('[[wiki-link]] — GAP: currently escaped to \\[\\[...\\]\\] (see MYT-138)', () => {
+    it('[[wiki-link]] tokens are preserved verbatim on round-trip', () => {
       const md = 'See [[Elara]] for details.';
       const out = roundTrip(md);
-      // Document the gap: brackets are escaped, not preserved
-      expect(out).toContain('\\[\\[Elara\\]\\]');
-      // Once MYT-138 is fixed, replace the above with:
-      // expect(out).toContain('[[Elara]]');
+      expect(out).toContain('[[Elara]]');
+      expect(out).not.toContain('\\[\\[');
     });
 
-    it('wiki-link fixture — GAP: all tokens are escaped (see MYT-138)', () => {
+    it('wiki-link fixture — all tokens survive round-trip unescaped', () => {
       const src = fixture('wiki-link.md').trim();
       const out = roundTrip(src);
-      expect(out).toContain('\\[\\[Elara\\]\\]');
-      expect(out).toContain('\\[\\[The Shadow Realm\\]\\]');
+      expect(out).toContain('[[Elara]]');
+      expect(out).toContain('[[The Shadow Realm]]');
+      expect(out).not.toContain('\\[\\[');
     });
   });
 
@@ -330,11 +331,9 @@ describe('BlockEditor markdown round-trip — extended regression (MYT-131)', ()
   // Test documents current behaviour; update when the gap is resolved.
 
   describe('trailing newline', () => {
-    it('output — GAP: no trailing newline in tiptap-markdown v0.9 (see MYT-138)', () => {
+    it('output ends with a trailing newline', () => {
       const raw = roundTripRaw('Hello world');
-      // Currently no trailing newline — document the gap
-      expect(raw).not.toMatch(/\n$/);
-      // Once fixed, replace the above with: expect(raw).toMatch(/\n$/);
+      expect(raw).toMatch(/\n$/);
     });
   });
 });
