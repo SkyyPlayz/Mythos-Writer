@@ -211,6 +211,7 @@ export interface SceneEntry {
   chapterId?: string;
   storyId?: string;
   blocks: BlockEntry[];
+  draftState?: 'in-progress' | 'review' | 'final';
   card?: SceneCard;
   timestamp?: SceneTimestamp;
   createdAt: string;
@@ -220,7 +221,7 @@ export interface SceneEntry {
 
 export interface BlockEntry {
   id: string;
-  type: 'prose' | 'dialogue' | 'action' | 'description' | 'note';
+  type: 'prose' | 'heading' | 'dialogue' | 'action' | 'description' | 'note';
   order: number;
   content: string;
   updatedAt: string;

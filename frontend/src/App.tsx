@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import WritingApp from './WritingApp';
 import './App.css';
 
 declare global {
@@ -38,8 +39,9 @@ const LENGTHS = [
 ];
 
 type UIState = 'idle' | 'streaming' | 'done' | 'error';
+type Tab = 'write' | 'generate';
 
-function App() {
+function GeneratorPanel() {
   const [prompt, setPrompt] = useState('');
   const [genre, setGenre] = useState('');
   const [length, setLength] = useState('medium');
@@ -67,9 +69,7 @@ function App() {
         length,
       });
 
-      // Handle streaming response from IPC
       if (result && typeof result === 'object') {
-        // The IPC handler returns an AsyncGenerator — iterate through chunks
         for await (const chunk of result as AsyncGenerator<{ chunk?: string; done?: boolean; error?: string }>) {
           if (controller.signal.aborted) break;
           if (chunk.error) throw new Error(chunk.error);
@@ -198,6 +198,31 @@ function App() {
           </section>
         )}
       </main>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState<Tab>('write');
+
+  return (
+    <div className="root-layout">
+      <div className="top-tabs">
+        <button
+          className={`top-tab${tab === 'write' ? ' active' : ''}`}
+          onClick={() => setTab('write')}
+        >
+          Write
+        </button>
+        <button
+          className={`top-tab${tab === 'generate' ? ' active' : ''}`}
+          onClick={() => setTab('generate')}
+        >
+          Generate
+        </button>
+      </div>
+
+      {tab === 'write' ? <WritingApp /> : <GeneratorPanel />}
     </div>
   );
 }

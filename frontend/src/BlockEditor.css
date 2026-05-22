@@ -1,0 +1,278 @@
+.block-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.block-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.2rem;
+  background: #111;
+  border-bottom: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+
+.scene-name {
+  font-size: 0.95rem;
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+.draft-state-group {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.draft-btn {
+  padding: 0.3rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #3f3f46;
+  background: transparent;
+  color: #71717a;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.draft-btn:hover {
+  border-color: #6d28d9;
+  color: #a78bfa;
+}
+
+.draft-btn.active {
+  border-color: #7c3aed;
+  background: #1e1030;
+  color: #c4b5fd;
+}
+
+.draft-btn.draft-final.active {
+  border-color: #16a34a;
+  background: #052e16;
+  color: #86efac;
+}
+
+.draft-btn.draft-review.active {
+  border-color: #b45309;
+  background: #1c1007;
+  color: #fcd34d;
+}
+
+/* Blocks list */
+
+.blocks-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.block-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+  cursor: grab;
+}
+
+.block-row:hover {
+  border-color: #2a2a2a;
+}
+
+.block-row.block-selected {
+  border-color: #3f2d6a;
+  background: #0d0a1a;
+}
+
+.block-row.block-type-heading {
+  border-left: 3px solid #7c3aed;
+}
+
+.block-row.block-type-dialogue {
+  border-left: 3px solid #0e7490;
+}
+
+.block-row.block-type-action {
+  border-left: 3px solid #b45309;
+}
+
+.block-row.block-type-description {
+  border-left: 3px solid #16a34a;
+}
+
+.block-row.block-type-note {
+  border-left: 3px solid #6b7280;
+}
+
+.block-drag-handle {
+  color: #3f3f46;
+  font-size: 1rem;
+  padding-top: 0.45rem;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  width: 16px;
+}
+
+.block-row:hover .block-drag-handle {
+  color: #71717a;
+}
+
+.block-type-badge {
+  flex-shrink: 0;
+  padding-top: 0.3rem;
+}
+
+.block-type-select {
+  background: transparent;
+  border: none;
+  color: #52525b;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0.15rem 0.2rem;
+  width: 82px;
+  appearance: none;
+}
+
+.block-row:hover .block-type-select,
+.block-row.block-selected .block-type-select {
+  color: #a1a1aa;
+}
+
+.block-type-select:focus {
+  outline: none;
+  color: #c4b5fd;
+}
+
+.block-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #e4e4e7;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.75;
+  resize: none;
+  padding: 0.2rem 0;
+  min-height: 1.75rem;
+  overflow: hidden;
+}
+
+.block-input:focus {
+  outline: none;
+  color: #f4f4f5;
+}
+
+.block-heading-input {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-family: inherit;
+  color: #d8b4fe;
+  line-height: 1.4;
+  padding: 0.1rem 0;
+}
+
+.block-type-dialogue .block-input {
+  color: #67e8f9;
+  font-style: italic;
+}
+
+.block-type-action .block-input {
+  color: #fcd34d;
+}
+
+.block-type-description .block-input {
+  color: #86efac;
+}
+
+.block-type-note .block-input {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+/* Add block button */
+
+.add-block-btn {
+  margin: 0.75rem 2rem 1.5rem;
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed #3f3f46;
+  color: #52525b;
+  border-radius: 6px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.add-block-btn:hover {
+  border-color: #7c3aed;
+  color: #a78bfa;
+}
+
+/* Focus mode */
+
+.focus-mode {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0a0a0a;
+}
+
+.focus-mode-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.focus-exit-btn {
+  background: transparent;
+  border: none;
+  color: #7c3aed;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.3rem 0;
+}
+
+.focus-exit-btn:hover {
+  color: #a78bfa;
+}
+
+.focus-scene-title {
+  color: #52525b;
+  font-size: 0.85rem;
+}
+
+.focus-mode-body {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 3rem 2rem;
+  overflow-y: auto;
+}
+
+.focus-textarea {
+  width: 100%;
+  max-width: 680px;
+  background: transparent;
+  border: none;
+  color: #f4f4f5;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.15rem;
+  line-height: 2;
+  resize: none;
+  min-height: 60vh;
+}
+
+.focus-textarea:focus {
+  outline: none;
+}
