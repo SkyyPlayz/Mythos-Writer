@@ -6,7 +6,9 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3"
@@ -14,6 +16,7 @@
   "devDependencies": {
     "@types/node": "^20.11.5",
     "typescript": "^5.3.3",
-    "electron-vite": "^2.3.0"
+    "electron-vite": "^2.3.0",
+    "vitest": "^1.2.1"
   }
 }

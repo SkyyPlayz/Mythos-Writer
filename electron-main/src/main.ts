@@ -17,7 +17,6 @@ import {
   type VaultWriteResponse,
   type VaultListPayload,
   type VaultListResponse,
-  type VaultListItem,
   type VaultDeletePayload,
   type VaultDeleteResponse,
   type Manifest,
@@ -36,6 +35,7 @@ import {
   type ArchiveResponse,
   type SystemInfo,
 } from './ipc.js';
+import { readVaultFile, writeVaultFile, listVaultFiles, deleteVaultFile } from './vault.js';
 
 const require = createRequire(import.meta.url);
 
@@ -123,45 +123,19 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.STORY_STATUS]: () => storyState,
   [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
     ensureVaultDir();
-    const fullPath = path.join(getVaultRoot(), payload.path);
-    return { content: fs.readFileSync(fullPath, 'utf-8'), path: payload.path };
+    return readVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
-    const fullPath = path.join(getVaultRoot(), payload.path);
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(fullPath, payload.content, 'utf-8');
-    return { path: payload.path, bytes: payload.content.length };
+    return writeVaultFile(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
-    const root = payload.root ? path.join(getVaultRoot(), payload.root) : getVaultRoot();
-    const items: VaultListItem[] = [];
-
-    function walk(dir: string, relativePrefix: string) {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = path.join(dir, entry.name);
-        const relativePath = path.join(relativePrefix, entry.name);
-        items.push({
-          path: relativePath,
-          name: entry.name,
-          isDirectory: entry.isDirectory(),
-          modifiedAt: new Date(fs.statSync(fullPath).mtime).toISOString(),
-        });
-        if (entry.isDirectory()) walk(fullPath, relativePath);
-      }
-    }
-
-    walk(root, '');
-    return { items };
+    return listVaultFiles(getVaultRoot(), payload.root);
   },
   [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureVaultDir();
-    const fullPath = path.join(getVaultRoot(), payload.path);
-    const deleted = fs.existsSync(fullPath);
-    if (deleted) fs.unlinkSync(fullPath);
-    return { path: payload.path, deleted };
+    return deleteVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: () => {
     ensureVaultDir();

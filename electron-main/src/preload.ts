@@ -1,35 +1,61 @@
-// Preload script — exposes IPC bridge to renderer with context isolation
+// Preload script — exposes IPC bridge to renderer with context isolation.
+// Uses ipcRenderer directly (no ipcMain import) — safe in preload context.
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS, ipcCall, type IpcHandlers } from './ipc.js';
 
-contextBridge.exposeInMainWorld('mythosIPC', {
-  // Story generation
-  generateStory: (payload: { prompt: string; genre?: string; length?: string }) =>
-    ipcCall('story:generate', payload),
-  abortStory: () => ipcCall('story:abort', undefined),
-  getStoryStatus: () => ipcCall('story:status', undefined),
-
+// Primary API exposed as window.api
+contextBridge.exposeInMainWorld('api', {
   // Vault / filesystem
-  readVaultFile: (path: string) => ipcCall('vault:read', { path }),
-  writeVaultFile: (path: string, content: string) => ipcCall('vault:write', { path, content }),
-  listVaultFiles: (root?: string) => ipcCall('vault:list', { root }),
-  deleteVaultFile: (path: string) => ipcCall('vault:delete', { path }),
-  readManifest: () => ipcCall('vault:manifest:read', undefined),
-  writeManifest: (manifest: unknown) => ipcCall('vault:manifest:write', { manifest }),
+  readVault: (filePath: string) => ipcRenderer.invoke('vault:read', { path: filePath }),
+  writeVault: (filePath: string, content: string) =>
+    ipcRenderer.invoke('vault:write', { path: filePath, content }),
+  listVault: (root?: string) => ipcRenderer.invoke('vault:list', { root }),
+  deleteVault: (filePath: string) => ipcRenderer.invoke('vault:delete', { path: filePath }),
+  readManifest: () => ipcRenderer.invoke('vault:manifest:read', undefined),
+  writeManifest: (manifest: unknown) => ipcRenderer.invoke('vault:manifest:write', { manifest }),
 
   // Database (stub)
-  dbQuery: (sql: string, params?: unknown[]) => ipcCall('db:query', { sql, params }),
-  dbWrite: (sql: string, params?: unknown[]) => ipcCall('db:write', { sql, params }),
+  dbQuery: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:query', { sql, params }),
+  dbWrite: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:write', { sql, params }),
 
-  // AI agents (stubs)
+  // Story generation
+  generateStory: (payload: { prompt: string; genre?: string; length?: string }) =>
+    ipcRenderer.invoke('story:generate', payload),
+  abortStory: () => ipcRenderer.invoke('story:abort', undefined),
+
+  // AI agents (stubs for Epic 5)
   brainstormer: (topic: string, context?: string) =>
-    ipcCall('ai:brainstormer', { topic, context }),
+    ipcRenderer.invoke('ai:brainstormer', { topic, context }),
   writingAssistant: (manuscript: string, scenePath: string) =>
-    ipcCall('ai:writing-assistant', { manuscript, scenePath }),
+    ipcRenderer.invoke('ai:writing-assistant', { manuscript, scenePath }),
   archive: (manuscript: string, vaultPath: string) =>
-    ipcCall('ai:archive', { manuscript, vaultPath }),
+    ipcRenderer.invoke('ai:archive', { manuscript, vaultPath }),
 
   // System
-  getAppInfo: () => ipcCall('app:ready', undefined),
-  getSystemInfo: () => ipcCall('system:info', undefined),
+  getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
+  getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
+});
+
+// Backward-compat alias — keeps existing App.tsx working
+contextBridge.exposeInMainWorld('mythosIPC', {
+  generateStory: (payload: { prompt: string; genre?: string; length?: string }) =>
+    ipcRenderer.invoke('story:generate', payload),
+  abortStory: () => ipcRenderer.invoke('story:abort', undefined),
+  getStoryStatus: () => ipcRenderer.invoke('story:status', undefined),
+  readVaultFile: (filePath: string) => ipcRenderer.invoke('vault:read', { path: filePath }),
+  writeVaultFile: (filePath: string, content: string) =>
+    ipcRenderer.invoke('vault:write', { path: filePath, content }),
+  listVaultFiles: (root?: string) => ipcRenderer.invoke('vault:list', { root }),
+  deleteVaultFile: (filePath: string) => ipcRenderer.invoke('vault:delete', { path: filePath }),
+  readManifest: () => ipcRenderer.invoke('vault:manifest:read', undefined),
+  writeManifest: (manifest: unknown) => ipcRenderer.invoke('vault:manifest:write', { manifest }),
+  dbQuery: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:query', { sql, params }),
+  dbWrite: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:write', { sql, params }),
+  brainstormer: (topic: string, context?: string) =>
+    ipcRenderer.invoke('ai:brainstormer', { topic, context }),
+  writingAssistant: (manuscript: string, scenePath: string) =>
+    ipcRenderer.invoke('ai:writing-assistant', { manuscript, scenePath }),
+  archive: (manuscript: string, vaultPath: string) =>
+    ipcRenderer.invoke('ai:archive', { manuscript, vaultPath }),
+  getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
+  getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
 });

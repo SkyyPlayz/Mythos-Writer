@@ -2,8 +2,8 @@
   "name": "mythos-writer",
   "version": "0.1.0",
   "private": true,
+  "main": "out/main/main.js",
   "workspaces": [
-    "backend",
     "frontend",
     "electron-main"
   ],
@@ -12,12 +12,11 @@
     "build": "npm run build -w electron-main && npm run build -w frontend && npm run package",
     "package": "electron-builder --win",
     "lint": "npm run lint -w frontend && npm run lint -w electron-main",
-    "test": "npm run test -w frontend && npm run test -w electron-main",
+    "test": "npm run test -w electron-main && npm run test -w frontend",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main",
     "build:electron": "npm run build -w electron-main && npm run build -w frontend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
     "electron": "^33.2.0",
     "electron-vite": "^2.3.0",
     "electron-builder": "^25.1.8",
