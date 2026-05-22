@@ -194,7 +194,6 @@ IPC is the communication boundary: the renderer (frontend) never calls the Claud
 - Obsidian backwards-compat scope for v1: honor Obsidian's `.obsidian/` config (themes, plugins list) or just the file/folder layout, `[[wiki-link]]` syntax, and graph view?
 - Archive Agent continuity check trigger: on save, on-demand, or continuous background scan? Where do flagged inconsistencies surface in the writing UI?
 - Manifest.json schema versioning + migration strategy when fields are added.
-- Scene Crafter board file format: adopt the Obsidian Kanban plugin's markdown format (`## Column` headings + bullet lists of `[[note]]` links) for drop-in compatibility, or define our own simple format? Adopting Obsidian's format means existing Kanban-plugin boards open natively.
 - Story Timeline / Archive Agent: graph layout library (Cytoscape.js vs. React Flow vs. custom SVG)? Does Archive infer chronology from prose, only from explicit timeline markers in vault notes, or both?
 - Persistence engine for suggestions/audit/timeline tables: SQLite (likely) vs. markdown frontmatter only.
 - Distribution: direct GitHub Releases only, or also consider Winget / Homebrew / Linux package repos?
