@@ -159,7 +159,7 @@ export default function RightSidebar({ activeTab, onTabChange, selectedScene, se
   const tabs: { id: Tab; label: string }[] = [
     { id: 'notes', label: 'Notes' },
     { id: 'properties', label: 'Properties' },
-    { id: 'ai', label: 'AI' },
+    { id: 'ai', label: 'Assistant' },
   ];
 
   return (
