@@ -11,11 +11,12 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build && electron-builder --win zip",
     "build:installer": "electron-vite build && electron-builder --win nsis",
+    "build:electron": "electron-vite build",
+    "start": "electron .",
     "package": "electron-builder --win zip",
-    "lint": "npm run lint -w frontend && npm run lint -w electron-main",
+    "lint": "npm run lint -w frontend",
     "test": "npm run test -w electron-main && npm run test -w frontend",
-    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main",
-    "build:electron": "electron-vite build"
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main"
   },
   "devDependencies": {
     "electron": "^33.2.0",
