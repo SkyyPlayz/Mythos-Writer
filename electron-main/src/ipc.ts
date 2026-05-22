@@ -47,6 +47,13 @@ export const IPC_CHANNELS = {
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
+
+  // Entity CRUD
+  ENTITY_CREATE: 'entity:create',
+  ENTITY_READ: 'entity:read',
+  ENTITY_UPDATE: 'entity:update',
+  ENTITY_DELETE: 'entity:delete',
+  ENTITY_LIST: 'entity:list',
 } as const;
 
 // ─── Main process handlers ───
@@ -104,6 +111,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
   [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
   [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => EntityEntry;
+  [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => EntityEntry | null;
+  [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
+  [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => EntityDeleteResponse;
+  [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => EntityListResponse;
 }
 
 // ─── Payload / Response types ───
@@ -248,7 +260,9 @@ export interface EntityEntry {
   path: string;
   aliases?: string[];
   tags?: string[];
+  properties?: Record<string, unknown>;
   createdAt: string;
+  updatedAt: string;
   provenance?: AgentProvenance;
 }
 
@@ -407,4 +421,45 @@ export interface SnapshotRestorePayload {
 export interface SnapshotRestoreResponse {
   restored: SceneSnapshot;
   preRestoreSnapshot: SceneSnapshot;
+}
+
+// ─── Entity IPC payload / response types ───
+
+export interface EntityCreatePayload {
+  name: string;
+  type: EntityEntry['type'];
+  aliases?: string[];
+  tags?: string[];
+  prose?: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface EntityReadPayload {
+  id: string;
+}
+
+export interface EntityUpdatePayload {
+  id: string;
+  name?: string;
+  aliases?: string[];
+  tags?: string[];
+  prose?: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface EntityDeletePayload {
+  id: string;
+}
+
+export interface EntityDeleteResponse {
+  id: string;
+  deleted: boolean;
+}
+
+export interface EntityListPayload {
+  type?: EntityEntry['type'];
+}
+
+export interface EntityListResponse {
+  entities: EntityEntry[];
 }

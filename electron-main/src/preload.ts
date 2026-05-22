@@ -57,6 +57,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('snapshot:get', { sceneId, snapshotId }),
   snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) =>
     ipcRenderer.invoke('snapshot:restore', { sceneId, snapshotId, scenePath }),
+
+  // Entity CRUD
+  entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) =>
+    ipcRenderer.invoke('entity:create', payload),
+  entityRead: (id: string) =>
+    ipcRenderer.invoke('entity:read', { id }),
+  entityUpdate: (payload: { id: string; name?: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) =>
+    ipcRenderer.invoke('entity:update', payload),
+  entityDelete: (id: string) =>
+    ipcRenderer.invoke('entity:delete', { id }),
+  entityList: (type?: string) =>
+    ipcRenderer.invoke('entity:list', { type }),
 });
 
 // Backward-compat alias — keeps existing App.tsx working

@@ -40,6 +40,11 @@ import {
   type SnapshotListPayload,
   type SnapshotGetPayload,
   type SnapshotRestorePayload,
+  type EntityCreatePayload,
+  type EntityReadPayload,
+  type EntityUpdatePayload,
+  type EntityDeletePayload,
+  type EntityListPayload,
 } from './ipc.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import {
@@ -55,6 +60,14 @@ import {
   startVaultWatcher,
   stopVaultWatcher,
 } from './vault.js';
+import {
+  createEntity,
+  readEntity,
+  updateEntity,
+  deleteEntity,
+  listEntities,
+  reindexEntities,
+} from './entities.js';
 
 const require = createRequire(import.meta.url);
 
@@ -318,6 +331,47 @@ const handlers: IpcHandlers = {
     // Write the restored content to vault markdown
     writeVaultFile(getVaultRoot(), payload.scenePath, target.content);
     return { restored: target, preRestoreSnapshot };
+  },
+
+  // ─── Entity CRUD ───
+  [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const entry = createEntity(getVaultRoot(), manifest, payload);
+    writeManifest(getManifestPath(), manifest);
+    return entry;
+  },
+  [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return readEntity(getVaultRoot(), manifest, payload.id);
+  },
+  [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const entry = updateEntity(getVaultRoot(), manifest, payload.id, {
+      name: payload.name,
+      aliases: payload.aliases,
+      tags: payload.tags,
+      prose: payload.prose,
+      properties: payload.properties,
+    });
+    writeManifest(getManifestPath(), manifest);
+    return entry;
+  },
+  [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const result = deleteEntity(getVaultRoot(), manifest, payload.id);
+    writeManifest(getManifestPath(), manifest);
+    return result;
+  },
+  [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    reindexEntities(getVaultRoot(), manifest);
+    writeManifest(getManifestPath(), manifest);
+    return { entities: listEntities(getVaultRoot(), manifest, payload.type) };
   },
 };
 
