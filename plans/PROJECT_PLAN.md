@@ -65,28 +65,30 @@ Three named AI agents assist the author across these surfaces. None of them auto
 ### Phase 2 — Core Writing Experience
 **Status:** Planned
 
-- [ ] Block-based editor component (TipTap-leaning) with markdown round-trip
+- [ ] Block-based editor component built on **TipTap**, with markdown round-trip
 - [ ] Per-chapter / per-scene file layout in the vault
 - [ ] Project/vault browser sidebar
 - [ ] Save/load documents from vault
-- [ ] **Manifest.json schema (v1)** — indexes scenes, entities, suggestions, provenance, and board references (scene cards live as vault notes; the manifest just points at them)
+- [ ] **Manifest.json schema (v1)** — indexes scenes, entities, suggestions, provenance, and board references. Top-level `"schemaVersion": 1`; older manifests trigger a migration script on app start.
 - [ ] Versioned drafts: snapshot on save, history view, one-click rollback
-- [ ] Basic settings panel (API key management, theme, per-agent enable/disable, Writing Assistant heartbeat interval)
+- [ ] Basic settings panel (API key management, theme, per-agent enable/disable, Writing Assistant heartbeat interval, **Archive continuity-check heartbeat** interval)
 
 ### Phase 3 — AI-Augmented Authoring
 **Status:** Planned
 
 The three named agents:
 
-- [ ] **Writing Assistant** — sidebar inside the writing page. Reads current scene/chapter context and posts tips, inline comments, and suggestions on a user-configurable heartbeat. Never edits the manuscript.
-- [ ] **Brainstorm Agent** — separate chat surface. The author talks through their story, world, ideas, goals, and plans; the agent extracts structured information and writes/updates vault notes (entities, locations, lore), recording provenance. Does not author Scene Crafter cards.
-- [ ] **Archive Agent** — indexes the entire vault. (1) Continuity-checks the manuscript against vault contents and surfaces inconsistencies; (2) suggests and inserts `[[wiki-link]]` references from manuscript to vault pages; (3) in Phase 5, owns the Story Timeline (infers chronology, marks unwritten beats, detects overlaps). Read-only on the manuscript.
+- [ ] **Writing Assistant** — sidebar inside the writing page. Reads current scene/chapter context and posts tips, inline comments, and suggestions on a user-configurable heartbeat. Supports **voice input** so the author can speak to it instead of typing. Streams responses token-by-token. Never edits the manuscript.
+- [ ] **Brainstorm Agent** — separate chat surface. The author talks through their story, world, ideas, goals, and plans (typed or **spoken**); the agent extracts structured information and writes/updates vault notes (entities, locations, lore), recording provenance. Streams responses token-by-token. Does not author Scene Crafter cards.
+- [ ] **Archive Agent** — indexes the entire vault. (1) Continuity-checks the manuscript against vault contents and surfaces inconsistencies — runs on save by default, with a configurable heartbeat for periodic re-scans; flagged issues appear in a sidebar list with click-to-jump-to-line. (2) Suggests and inserts `[[wiki-link]]` references from manuscript to vault pages. (3) In Phase 5, owns the Story Timeline (infers chronology from both prose and explicit vault markers with a confidence score; marks unwritten beats; detects overlaps). Read-only on the manuscript.
+- [ ] **Voice IO subsystem** for Brainstorm + Writing Assistant: speech-to-text (and optional text-to-speech for replies). Local-first where possible; allow opt-in cloud STT if local quality is insufficient.
 
 Supporting work:
-- [ ] **Suggestion store + audit log** (DB tables for suggestions, audits, provenance, and timeline entries).
+- [ ] **Suggestion store + audit log** in **SQLite** (tables for suggestions, audits, provenance, and timeline entries).
 - [ ] **Agent API contract** — suggestion payload schema, apply/reject endpoints, auto-apply policy controls, per-agent budget controls.
+- [ ] Token-streaming infrastructure (IPC stream channel + cancellation).
 - [ ] Prompt history and generation log.
-- [ ] User-facing settings: per-agent enable, per-agent model selection, per-agent auto-apply thresholds and budgets.
+- [ ] User-facing settings: per-agent enable, per-agent model selection, per-agent auto-apply thresholds and budgets, voice on/off + mic selection.
 
 ### Phase 4 — Polish & Distribution
 **Status:** Future
@@ -103,7 +105,7 @@ Supporting work:
 
 - [ ] **Scene Crafter (Kanban)** — per-story board, Obsidian-Kanban-plugin style. Author drags existing vault notes onto columns; cards *are* vault notes. Board persisted as a markdown file in the vault so Obsidian users can open it natively. Columns: Idea → Drafted → Written → Cut (configurable).
 - [ ] **Vault Graph View** — Obsidian-compatible graph of vault notes and links.
-- [ ] **Story Timeline (Automatic Timeline Builder)** — per-story graph/timeline view. Archive-driven scene-time inference with confidence; visual placement; overlap detection; greyed-out planned beats. Target: confirmed placement within 5s.
+- [ ] **Story Timeline (Automatic Timeline Builder)** — per-story graph/timeline view built on **React Flow**. Archive-driven scene-time inference with confidence (uses both explicit vault markers and prose-derived cues); visual placement; overlap detection; greyed-out planned beats. Target: confirmed placement within 5s.
 - [ ] Archive confirmation dialog with the three action verbs: **Match Archive to Story**, **Suggest Story Change**, **Ignore**.
 
 ---
@@ -123,16 +125,20 @@ This applies to all agents that can modify vault content or propose changes.
 
 ## Tech Stack
 
-| Layer       | Technology                                  |
-|-------------|---------------------------------------------|
-| Shell       | Electron 33 (desktop runtime)               |
-| Frontend    | React 18, Vite, TypeScript                  |
-| Main process| Node.js, TypeScript (electron-main package) |
-| AI          | Anthropic Claude API (`@anthropic-ai/sdk`)  |
-| Storage     | Local markdown vault (Obsidian-compatible) + `manifest.json` index |
-| Persistence | Suggestion/audit/timeline tables (SQLite — TBD)            |
-| Build       | electron-vite, electron-builder             |
-| Tooling     | ESLint, Prettier, Vitest, GitHub Actions    |
+| Layer        | Technology                                  |
+|--------------|---------------------------------------------|
+| Shell        | Electron 33 (desktop runtime)               |
+| Frontend     | React 18, Vite, TypeScript                  |
+| Main process | Node.js, TypeScript (electron-main package) |
+| Editor       | **TipTap** (Word-like block engine, markdown round-trip) |
+| AI           | Anthropic Claude API (`@anthropic-ai/sdk`); streaming responses |
+| Voice IO     | Speech-to-text (local-first; opt-in cloud STT fallback); optional TTS for replies |
+| Timeline UI  | **React Flow** (graph layout for Story Timeline) |
+| Storage      | Local markdown vault (Obsidian-compatible, light scope) + `manifest.json` index (versioned via `schemaVersion`) |
+| Persistence  | **SQLite** — suggestion / audit / timeline tables |
+| Distribution | GitHub Releases (v1); Winget/Homebrew/Linux repos post-v1 if there's demand |
+| Build        | electron-vite, electron-builder             |
+| Tooling      | ESLint, Prettier, Vitest, GitHub Actions    |
 
 ---
 
@@ -178,8 +184,8 @@ IPC is the communication boundary: the renderer (frontend) never calls the Claud
 | Writing page         | The author's manuscript — Word-like block editor for stories, chapters, scenes; per-scene files + versioning| MS Word    |
 | Vault                | Notes app for worldbuilding, characters, lore, scene cards, plans; Obsidian-compatible                      | Obsidian   |
 | Vault Graph View     | Obsidian-style graph of vault notes and links                                                               | Obsidian   |
-| Writing Assistant    | Sidebar on the writing page; scans on heartbeat; tips & inline comments                                     | —          |
-| Brainstorm Agent     | Separate chat; author talks through story/world/ideas; agent fills vault notes from the conversation        | —          |
+| Writing Assistant    | Sidebar on the writing page; scans on heartbeat; tips & inline comments; voice input + streaming replies    | —          |
+| Brainstorm Agent     | Separate chat; talk through story/world/ideas (typed or spoken); agent fills vault notes; streaming replies | —          |
 | Archive Agent        | Indexer & timeline: checks story against vault, manages `[[wiki-links]]`, builds Story Timeline             | —          |
 | Scene Crafter        | Per-story Kanban (Obsidian-Kanban-plugin style); drag vault notes onto columns; board is a vault markdown   | Obsidian Kanban |
 | Story Timeline       | Per-story timeline/graph view; greyed-out planned beats; overlap detection                                  | —          |
@@ -187,13 +193,19 @@ IPC is the communication boundary: the renderer (frontend) never calls the Claud
 
 ---
 
+## Decisions Log
+
+Resolved in the MYT-107 review (2026-05-22):
+
+1. **Editor library:** TipTap — Word-like block engine, markdown round-trip.
+2. **Obsidian compatibility scope:** Light. We honor `.md` files, folder layout, `[[wiki-links]]`, and graph view. We ignore `.obsidian/` (themes, plugin config).
+3. **Archive continuity-check trigger:** On save by default, with a user-configurable heartbeat interval for periodic re-scans. Flagged issues surface in a sidebar list with click-to-jump-to-line.
+4. **Persistence engine:** SQLite for suggestions, audit log, and timeline entries.
+5. **Manifest versioning:** `"schemaVersion"` field at the top of `manifest.json`; older manifests trigger a migration script on app start.
+6. **AI response delivery:** Streaming (token-by-token) for Writing Assistant and Brainstorm Agent. **Plus: voice input** for both agents — author can speak instead of typing. Optional text-to-speech for replies.
+7. **Story Timeline:** React Flow for the graph view. Archive infers scene chronology from **both** explicit vault markers (e.g. frontmatter `date:`) and prose-derived cues, with a confidence score on each placement.
+8. **Distribution:** GitHub Releases for v1. Winget / Homebrew / Linux package repos are post-v1 if there's demand.
+
 ## Open Questions / Decisions Needed
 
-- Editor library choice: TipTap (rich-text, Word-like, block engine) is the leading candidate; CodeMirror is a fallback if we keep the editor plain-markdown.
-- Streaming UI for the Writing Assistant and Brainstorm Agent: stream tokens or wait for full response?
-- Obsidian backwards-compat scope for v1: honor Obsidian's `.obsidian/` config (themes, plugins list) or just the file/folder layout, `[[wiki-link]]` syntax, and graph view?
-- Archive Agent continuity check trigger: on save, on-demand, or continuous background scan? Where do flagged inconsistencies surface in the writing UI?
-- Manifest.json schema versioning + migration strategy when fields are added.
-- Story Timeline / Archive Agent: graph layout library (Cytoscape.js vs. React Flow vs. custom SVG)? Does Archive infer chronology from prose, only from explicit timeline markers in vault notes, or both?
-- Persistence engine for suggestions/audit/timeline tables: SQLite (likely) vs. markdown frontmatter only.
-- Distribution: direct GitHub Releases only, or also consider Winget / Homebrew / Linux package repos?
+*None currently. New questions will accumulate here as they come up.*
