@@ -40,6 +40,7 @@ interface Window {
     brainstormer: (topic: string, context?: string) => Promise<unknown>;
     writingAssistant: (manuscript: string, scenePath: string) => Promise<unknown>;
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;
+    agentBrainstorm: (prompt: string, context?: string) => Promise<{ text: string }>;
     getAppInfo: () => Promise<{ platform: string; electronVersion: string; appVersion: string }>;
     getSystemInfo: () => Promise<{ platform: string; electronVersion: string; nodeVersion: string }>;
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;

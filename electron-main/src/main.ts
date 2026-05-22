@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
+import Anthropic from '@anthropic-ai/sdk';
 import {
   setupIpcMain,
   IPC_CHANNELS,
@@ -41,6 +42,8 @@ import {
   type EntityUpdatePayload,
   type EntityDeletePayload,
   type EntityListPayload,
+  type AgentBrainstormPayload,
+  type AgentBrainstormResponse,
 } from './ipc.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import {
@@ -224,9 +227,9 @@ const handlers: IpcHandlers = {
   }),
   [IPC_CHANNELS.APP_QUIT]: () => app.quit(),
   [IPC_CHANNELS.AI_BRAINSTORMER]: (payload: BrainstormerPayload): BrainstormerResponse => {
-    // Stub — will be fully implemented in Epic 5
+    // Legacy stub — new code uses AGENT_BRAINSTORM channel
     return {
-      suggestions: [`Brainstormer: ideas for "${payload.topic}" (stub — full impl in Epic 5)`],
+      suggestions: [`Brainstormer: ideas for "${payload.topic}"`],
       confidence: 0.5,
       provenance: 'agent:brainstormer',
     };
@@ -318,6 +321,27 @@ const handlers: IpcHandlers = {
     reindexEntities(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), manifest);
     return { entities: listEntities(getVaultRoot(), manifest, payload.type) };
+  },
+
+  // ─── Agent: Brainstorm (Epic 5 Phase 1) — real Claude completion ───
+  [IPC_CHANNELS.AGENT_BRAINSTORM]: async (payload: AgentBrainstormPayload): Promise<AgentBrainstormResponse> => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
+    }
+    const client = new Anthropic({ apiKey });
+    const userContent = payload.context
+      ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
+      : payload.prompt;
+    const message = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: 'You are a creative writing brainstormer. Help the writer explore ideas, plot possibilities, character motivations, and narrative directions. Be imaginative and specific.',
+      messages: [{ role: 'user', content: userContent }],
+    });
+    const block = message.content[0];
+    const text = block.type === 'text' ? block.text : '';
+    return { text };
   },
 };
 

@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import type { Scene, Story, Chapter } from './types';
+import BrainstormerPanel from './BrainstormerPanel';
 import './RightSidebar.css';
 
 type Tab = 'notes' | 'properties' | 'ai';
@@ -125,104 +126,6 @@ function PropertiesPanel({
   );
 }
 
-function AiChatPanel({ scene }: { scene: Scene | null }) {
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || loading) return;
-    setMessages((m) => [...m, { role: 'user', text }]);
-    setInput('');
-    setLoading(true);
-    try {
-      const sceneContext = scene
-        ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
-        : '';
-      const payload = { prompt: text, context: sceneContext };
-      const result = await (window as any).api?.brainstorm?.(payload);
-      const reply =
-        typeof result === 'string'
-          ? result
-          : result?.text ?? result?.content ?? 'No response from AI.';
-      setMessages((m) => [...m, { role: 'ai', text: reply }]);
-    } catch {
-      setMessages((m) => [...m, { role: 'ai', text: '(AI unavailable — check your API key in Settings)' }]);
-    } finally {
-      setLoading(false);
-    }
-  }, [input, loading, scene]);
-
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  };
-
-  if (!scene && messages.length === 0) {
-    return (
-      <div className="sidebar-empty">
-        <div className="sidebar-empty-icon">🤖</div>
-        <p>Ask the Brainstormer anything.</p>
-        <p className="sidebar-empty-sub">Select a scene to give it context, or just start a free-form conversation about your story.</p>
-        <div className="ai-input-area">
-          <textarea
-            ref={inputRef}
-            className="ai-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="What should happen next? What motivates this character?"
-            rows={3}
-          />
-          <button className="ai-send-btn" onClick={send} disabled={!input.trim() || loading}>
-            {loading ? '…' : 'Ask'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="ai-chat-panel">
-      <div className="ai-messages">
-        {messages.length === 0 && (
-          <div className="ai-welcome">
-            <p>Brainstormer is ready.</p>
-            {scene && <p className="ai-welcome-sub">Context: <em>{scene.title}</em></p>}
-          </div>
-        )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`ai-message ai-message-${msg.role}`}>
-            <div className="ai-message-bubble">{msg.text}</div>
-          </div>
-        ))}
-        {loading && (
-          <div className="ai-message ai-message-ai">
-            <div className="ai-message-bubble ai-thinking">Thinking…</div>
-          </div>
-        )}
-      </div>
-      <div className="ai-input-area">
-        <textarea
-          ref={inputRef}
-          className="ai-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="Ask anything about your story…"
-          rows={3}
-        />
-        <button className="ai-send-btn" onClick={send} disabled={!input.trim() || loading}>
-          {loading ? '…' : 'Ask'}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export default function RightSidebar({ activeTab, onTabChange, selectedScene, selectedChapter, selectedStory }: Props) {
   const tabs: { id: Tab; label: string }[] = [
@@ -249,7 +152,7 @@ export default function RightSidebar({ activeTab, onTabChange, selectedScene, se
         {activeTab === 'properties' && (
           <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
         )}
-        {activeTab === 'ai' && <AiChatPanel scene={selectedScene} />}
+        {activeTab === 'ai' && <BrainstormerPanel scene={selectedScene} />}
       </div>
     </div>
   );

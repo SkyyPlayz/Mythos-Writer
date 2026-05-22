@@ -310,3 +310,145 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Brainstormer Panel */
+.brainstormer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.brainstormer-header {
+  flex-shrink: 0;
+}
+
+.brainstormer-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #52525b;
+}
+
+.brainstormer-hint em {
+  color: #71717a;
+  font-style: normal;
+}
+
+.brainstormer-input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.brainstormer-input {
+  width: 100%;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  color: #d4d4d8;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  padding: 10px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+  min-height: 80px;
+}
+
+.brainstormer-input:focus {
+  outline: none;
+  border-color: #7c3aed;
+}
+
+.brainstormer-input::placeholder {
+  color: #3f3f46;
+}
+
+.brainstormer-input:disabled {
+  opacity: 0.5;
+}
+
+.brainstormer-btn {
+  align-self: flex-end;
+  background: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.brainstormer-btn:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.brainstormer-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.brainstormer-error {
+  background: #1f0a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 0.85rem;
+  padding: 10px 12px;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.brainstormer-output-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.brainstormer-output-label {
+  font-size: 0.7rem;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.brainstormer-output {
+  flex: 1;
+  width: 100%;
+  background: #0f0f11;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  color: #d4d4d8;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  padding: 10px;
+  resize: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  min-height: 160px;
+  cursor: default;
+}
+
+.brainstormer-empty {
+  font-size: 0.82rem;
+  color: #3f3f46;
+  text-align: center;
+  padding: 20px 8px;
+}
+
+.brainstormer-empty kbd {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 0.78rem;
+  color: #71717a;
+}

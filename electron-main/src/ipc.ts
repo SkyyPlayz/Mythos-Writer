@@ -34,6 +34,9 @@ export const IPC_CHANNELS = {
   AI_WRITING_ASSISTANT: 'ai:writing-assistant',
   AI_ARCHIVE: 'ai:archive',
 
+  // Agent channels (Epic 5)
+  AGENT_BRAINSTORM: 'agent:brainstorm',
+
   // System
   SYSTEM_INFO: 'system:info',
 
@@ -98,6 +101,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AI_BRAINSTORMER]: (payload: BrainstormerPayload) => BrainstormerResponse;
   [IPC_CHANNELS.AI_WRITING_ASSISTANT]: (payload: WritingAssistantPayload) => WritingAssistantResponse;
   [IPC_CHANNELS.AI_ARCHIVE]: (payload: ArchivePayload) => ArchiveResponse;
+  [IPC_CHANNELS.AGENT_BRAINSTORM]: (payload: AgentBrainstormPayload) => Promise<AgentBrainstormResponse>;
   [IPC_CHANNELS.SYSTEM_INFO]: (payload: never) => SystemInfo;
   [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => SceneSnapshot;
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
@@ -436,4 +440,15 @@ export interface EntityListPayload {
 
 export interface EntityListResponse {
   entities: EntityEntry[];
+}
+
+// ─── Agent brainstorm types (Epic 5 Phase 1) ───
+
+export interface AgentBrainstormPayload {
+  prompt: string;
+  context?: string;
+}
+
+export interface AgentBrainstormResponse {
+  text: string;
 }

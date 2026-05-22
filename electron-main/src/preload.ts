@@ -39,6 +39,10 @@ contextBridge.exposeInMainWorld('api', {
   archive: (manuscript: string, vaultPath: string) =>
     ipcRenderer.invoke('ai:archive', { manuscript, vaultPath }),
 
+  // Agent channels (Epic 5)
+  agentBrainstorm: (prompt: string, context?: string) =>
+    ipcRenderer.invoke('agent:brainstorm', { prompt, context }),
+
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
