@@ -36,6 +36,9 @@ export const IPC_CHANNELS = {
 
   // Agent channels (Epic 5)
   AGENT_WRITING_ASSISTANT: 'agent:writing-assistant',
+  AGENT_BRAINSTORM: 'agent:brainstorm',
+  AGENT_VAULT_INDEX: 'agent:vault-index',
+  AGENT_VAULT_CHECK: 'agent:vault-check',
 
   // System
   SYSTEM_INFO: 'system:info',
@@ -442,6 +445,17 @@ export interface EntityListResponse {
   entities: EntityEntry[];
 }
 
+// ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───
+
+export interface AgentBrainstormPayload {
+  prompt: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+}
+
+export interface AgentBrainstormResponse {
+  text: string;
+}
+
 // ─── Writing Assistant agent types (Epic 5) ───
 
 export interface AgentWritingAssistantPayload {
@@ -451,4 +465,38 @@ export interface AgentWritingAssistantPayload {
 
 export interface AgentWritingAssistantResponse {
   text: string;
+}
+
+// ─── Vault Agent types (Epic 5 — MYT-110) ───
+
+export interface VaultIndexEntry {
+  id: string;
+  name: string;
+  type: EntityEntry['type'];
+  aliases?: string[];
+  tags?: string[];
+  keyFacts: string;
+}
+
+export interface VaultIndexResponse {
+  entities: VaultIndexEntry[];
+}
+
+export interface VaultCheckPayload {
+  sceneContent: string;
+}
+
+export interface VaultCheckInconsistency {
+  id: string;
+  entityName: string;
+  text: string;
+  rationale: string;
+  timestamp: string;
+  source_agent: 'vault-agent';
+  status: 'proposed' | 'dismissed';
+}
+
+export interface VaultCheckResponse {
+  text: string;
+  inconsistencies: VaultCheckInconsistency[];
 }

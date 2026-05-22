@@ -360,7 +360,7 @@ export default function DesktopShell() {
     <div className="desktop-shell">
       <AppMenuBar view={view} onSetView={setView} />
       {view === 'brainstorm' && (
-        <BrainstormPage onBack={() => setView('editor')} />
+        <BrainstormPage onClose={() => setView('editor')} />
       )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}

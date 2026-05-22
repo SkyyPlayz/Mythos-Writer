@@ -43,6 +43,10 @@ import {
   type EntityDeletePayload,
   type EntityListPayload,
   type AgentWritingAssistantPayload,
+  type AgentBrainstormPayload,
+  type VaultCheckPayload,
+  type VaultIndexEntry,
+  type VaultCheckInconsistency,
 } from './ipc.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import {
@@ -358,6 +362,53 @@ function initAutoUpdater() {
   autoUpdater.on('error', () => { /* intentionally silent in stub mode */ });
 }
 
+// ─── Brainstorm Agent streaming handler ───
+function registerBrainstormHandler() {
+  ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
+    }
+    const client = new Anthropic({ apiKey });
+
+    const systemPrompt = `You are a Brainstorm Agent for fiction authors. Help the author develop their story world through conversation. You discuss story ideas, characters, locations, themes, plot arcs, world-building, and narrative goals.
+
+When you identify or introduce a specific named story fact — a character, location, item, or worldbuilding note — include a structured tag so the app can extract it:
+
+[FACT:character|Character Name|One-sentence description]
+[FACT:location|Place Name|One-sentence description]
+[FACT:item|Item Name|One-sentence description]
+[FACT:note|Note Title|Key content of the note]
+
+Be creative, ask clarifying questions, and help the author think deeper about their story. These FACT tags will appear in a "Detected Facts" panel so the author can save them to their vault.`;
+
+    const messages = [
+      ...(payload.history ?? []).map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+      { role: 'user' as const, content: payload.prompt },
+    ];
+
+    let fullText = '';
+    const stream = client.messages.stream({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages,
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        fullText += chunk.delta.text;
+        event.sender.send('agent:brainstorm:chunk', { chunk: chunk.delta.text });
+      }
+    }
+
+    return { text: fullText };
+  });
+}
+
 // ─── Writing Assistant streaming handler ───
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
@@ -390,10 +441,124 @@ function registerWritingAssistantHandler() {
   });
 }
 
+// ─── Vault Agent handlers ───
+function registerVaultAgentHandlers() {
+  // agent:vault-index — builds in-memory index of all vault entities
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, () => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    reindexEntities(getVaultRoot(), manifest);
+    const entities = listEntities(getVaultRoot(), manifest, undefined);
+
+    const indexed: VaultIndexEntry[] = entities.map((e) => {
+      let prose = '';
+      try {
+        const { content } = readVaultFile(getVaultRoot(), e.path);
+        // Strip YAML frontmatter to get prose body
+        const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+        prose = match ? match[1].trim() : content.trim();
+      } catch { /* entity file missing — use metadata only */ }
+
+      const keyFacts = prose
+        ? prose.slice(0, 500)
+        : [
+            e.aliases?.length ? `Aliases: ${e.aliases.join(', ')}` : '',
+            e.tags?.length ? `Tags: ${e.tags.join(', ')}` : '',
+          ].filter(Boolean).join('. ') || `${e.type} named ${e.name}`;
+
+      return {
+        id: e.id,
+        name: e.name,
+        type: e.type,
+        aliases: e.aliases,
+        tags: e.tags,
+        keyFacts,
+      };
+    });
+
+    return { entities: indexed };
+  });
+
+  // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
+    }
+
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    reindexEntities(getVaultRoot(), manifest);
+    const entities = listEntities(getVaultRoot(), manifest, undefined);
+
+    const vaultSummary = entities.length === 0
+      ? 'No vault entities found.'
+      : entities.map((e) => {
+          let prose = '';
+          try {
+            const { content } = readVaultFile(getVaultRoot(), e.path);
+            const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+            prose = match ? match[1].trim() : content.trim();
+          } catch { /* ignore */ }
+          const facts = prose ? prose.slice(0, 400) : '';
+          const aliases = e.aliases?.length ? ` (aliases: ${e.aliases.join(', ')})` : '';
+          return `## ${e.name}${aliases}\nType: ${e.type}\n${facts}`.trim();
+        }).join('\n\n');
+
+    const systemPrompt = `You are a Vault Agent for a fiction author. Your job is to check the current scene for continuity errors against stored vault facts.
+
+Vault contents:
+${vaultSummary}
+
+Check the scene for contradictions with the vault facts: character traits, physical descriptions, location details, item properties, timeline issues.
+
+For every inconsistency you find, output a tag on its own line:
+[ISSUE:entity-name|Brief description of the contradiction]
+
+Then write a short summary paragraph. If no issues are found, say so and output no ISSUE tags.`;
+
+    const client = new Anthropic({ apiKey });
+    let fullText = '';
+
+    const stream = client.messages.stream({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: `Scene to check:\n\n${payload.sceneContent}` }],
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        fullText += chunk.delta.text;
+        event.sender.send('agent:vault-check:chunk', { chunk: chunk.delta.text });
+      }
+    }
+
+    // Parse [ISSUE:entity-name|description] tags
+    const issuePattern = /\[ISSUE:([^\|]+)\|([^\]]+)\]/g;
+    const inconsistencies: VaultCheckInconsistency[] = [];
+    let match;
+    while ((match = issuePattern.exec(fullText)) !== null) {
+      inconsistencies.push({
+        id: `vault-${Date.now()}-${inconsistencies.length}`,
+        entityName: match[1].trim(),
+        text: match[2].trim(),
+        rationale: match[2].trim(),
+        timestamp: new Date().toISOString(),
+        source_agent: 'vault-agent',
+        status: 'proposed',
+      });
+    }
+
+    return { text: fullText, inconsistencies };
+  });
+}
+
 // ─── App lifecycle ───
 app.whenReady().then(async () => {
   ensureVaultDir();
   setupIpcMain(handlers);
+  registerBrainstormHandler();
   registerWritingAssistantHandler();
   createWindow();
   initAutoUpdater();

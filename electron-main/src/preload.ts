@@ -47,6 +47,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('agent:writing-assistant:chunk', handler);
     return () => ipcRenderer.removeListener('agent:writing-assistant:chunk', handler);
   },
+  agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) =>
+    ipcRenderer.invoke('agent:brainstorm', { prompt, history }),
+  onBrainstormChunk: (cb: (chunk: string) => void) => {
+    const handler = (_: unknown, data: { chunk: string }) => cb(data.chunk);
+    ipcRenderer.on('agent:brainstorm:chunk', handler);
+    return () => ipcRenderer.removeListener('agent:brainstorm:chunk', handler);
+  },
 
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),

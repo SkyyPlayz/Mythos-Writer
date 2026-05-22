@@ -1,58 +1,63 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import './BrainstormPage.css';
 
-interface DetectedFact {
-  id: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
-  name: string;
-  description: string;
-  saved: boolean;
-  saving: boolean;
-}
-
 interface Message {
   role: 'user' | 'assistant';
   text: string;
   streaming?: boolean;
 }
 
-const ENTITY_TYPES = ['character', 'location', 'item', 'concept', 'other'] as const;
+interface DetectedFact {
+  id: string;
+  type: 'character' | 'location' | 'item' | 'note';
+  name: string;
+  content: string;
+  savedStatus: 'unsaved' | 'saving' | 'saved' | 'error';
+}
 
-function parseFacts(text: string): Omit<DetectedFact, 'id' | 'saved' | 'saving'>[] {
-  const factRegex = /\[FACT:(\w+)\|([^|]+)\|([^\]]+)\]/g;
-  const facts: Omit<DetectedFact, 'id' | 'saved' | 'saving'>[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = factRegex.exec(text)) !== null) {
-    const rawType = match[1].toLowerCase();
-    const type = (ENTITY_TYPES.includes(rawType as typeof ENTITY_TYPES[number])
-      ? rawType
-      : 'other') as DetectedFact['type'];
-    facts.push({ type, name: match[2].trim(), description: match[3].trim() });
+function extractFacts(text: string): Omit<DetectedFact, 'id' | 'savedStatus'>[] {
+  const factPattern = /\[FACT:(character|location|item|note)\|([^\]|]+)\|([^\]]+)\]/gi;
+  const facts: Omit<DetectedFact, 'id' | 'savedStatus'>[] = [];
+  let match;
+  while ((match = factPattern.exec(text)) !== null) {
+    facts.push({
+      type: match[1].toLowerCase() as DetectedFact['type'],
+      name: match[2].trim(),
+      content: match[3].trim(),
+    });
   }
   return facts;
 }
 
-// Strip FACT tags from displayed chat text
-function displayText(text: string): string {
-  return text.replace(/\[FACT:[^\]]+\]/g, '').replace(/\n{3,}/g, '\n\n').trim();
+function stripFactTags(text: string): string {
+  return text.replace(/\[FACT:(character|location|item|note)\|[^\]]+\]/gi, '').replace(/\n{3,}/g, '\n\n').trim();
 }
+
+const FACT_TYPE_LABELS: Record<DetectedFact['type'], string> = {
+  character: 'Character',
+  location: 'Location',
+  item: 'Item',
+  note: 'Note',
+};
 
 interface Props {
-  onBack: () => void;
+  onClose: () => void;
 }
 
-export default function BrainstormPage({ onBack }: Props) {
+export default function BrainstormPage({ onClose }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [facts, setFacts] = useState<DetectedFact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [facts, setFacts] = useState<DetectedFact[]>([]);
-  const [history, setHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesEndRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -71,7 +76,10 @@ export default function BrainstormPage({ onBack }: Props) {
 
     const userMsg: Message = { role: 'user', text: trimmed };
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
+
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
+
+    const history = messages.map((m) => ({ role: m.role, content: m.text }));
 
     unsubscribeRef.current?.();
     unsubscribeRef.current = window.api.onBrainstormChunk((chunk) => {
@@ -88,43 +96,40 @@ export default function BrainstormPage({ onBack }: Props) {
     try {
       const response = await window.api.agentBrainstorm(trimmed, history);
 
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last?.role === 'assistant') {
-          updated[updated.length - 1] = { ...last, text: response.text, streaming: false };
-        }
-        return updated;
-      });
-
-      const newFacts = parseFacts(response.text);
-      if (newFacts.length > 0) {
+      const extracted = extractFacts(response.text);
+      if (extracted.length > 0) {
         setFacts((prev) => [
           ...prev,
-          ...newFacts.map((f) => ({
+          ...extracted.map((f) => ({
             ...f,
-            id: crypto.randomUUID(),
-            saved: false,
-            saving: false,
+            id: `fact-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            savedStatus: 'unsaved' as const,
           })),
         ]);
       }
 
-      setHistory((prev) => [
-        ...prev,
-        { role: 'user', content: trimmed },
-        { role: 'assistant', content: response.text },
-      ]);
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.role === 'assistant') {
+          updated[updated.length - 1] = {
+            ...last,
+            text: stripFactTags(response.text) || response.text,
+            streaming: false,
+          };
+        }
+        return updated;
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => prev.slice(0, -1));
-      setError(msg || 'AI unavailable — check your ANTHROPIC_API_KEY.');
+      setError(msg || 'AI unavailable — check your API key in settings.');
     } finally {
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
       setLoading(false);
     }
-  }, [prompt, loading, history]);
+  }, [prompt, loading, messages]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -133,82 +138,73 @@ export default function BrainstormPage({ onBack }: Props) {
     }
   };
 
-  const saveFactToVault = useCallback(
-    async (factId: string) => {
-      const fact = facts.find((f) => f.id === factId);
-      if (!fact || fact.saved || fact.saving) return;
+  const saveFactToVault = useCallback(async (factId: string) => {
+    const fact = facts.find((f) => f.id === factId);
+    if (!fact) return;
 
-      setFacts((prev) => prev.map((f) => (f.id === factId ? { ...f, saving: true } : f)));
-      try {
-        await window.api.entityCreate({
-          name: fact.name,
-          type: fact.type,
-          prose: fact.description,
-          tags: ['brainstorm'],
-        });
-        setFacts((prev) =>
-          prev.map((f) => (f.id === factId ? { ...f, saving: false, saved: true } : f)),
-        );
-      } catch {
-        setFacts((prev) => prev.map((f) => (f.id === factId ? { ...f, saving: false } : f)));
-      }
-    },
-    [facts],
-  );
+    setFacts((prev) =>
+      prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saving' } : f)),
+    );
+
+    try {
+      await window.api.entityCreate({
+        name: fact.name,
+        type: fact.type === 'note' ? 'other' : fact.type,
+        prose: fact.content,
+        tags: ['brainstorm'],
+      });
+      setFacts((prev) =>
+        prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
+      );
+    } catch {
+      setFacts((prev) =>
+        prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'error' } : f)),
+      );
+    }
+  }, [facts]);
 
   return (
     <div className="brainstorm-page">
       <div className="brainstorm-header">
-        <button className="brainstorm-back-btn" onClick={onBack}>
-          ← Editor
-        </button>
-        <div className="brainstorm-header-text">
-          <h2 className="brainstorm-title">Brainstorm Agent</h2>
-          <p className="brainstorm-subtitle">
-            Talk through your story, world, and characters. Named facts will appear on the right to
-            save to your vault.
-          </p>
+        <div className="brainstorm-title">
+          <span className="brainstorm-icon">🧠</span>
+          <h2>Brainstorm Agent</h2>
+          <span className="brainstorm-subtitle">Talk through your story — facts auto-extract to your vault</span>
         </div>
+        <button className="brainstorm-close-btn" onClick={onClose} aria-label="Close brainstorm">
+          ✕
+        </button>
       </div>
 
       <div className="brainstorm-body">
-        {/* Chat column */}
-        <div className="brainstorm-chat-col">
+        <div className="brainstorm-chat">
           <div className="brainstorm-messages" aria-live="polite">
-            {messages.length === 0 && !error && (
+            {messages.length === 0 && (
               <div className="brainstorm-empty">
-                What story are you building? Describe your world, characters, plot ideas, or
-                goals — I'll help you develop them and extract key facts as we talk.
+                <p>Tell me about your story. Who are the main characters? What world is it set in? What&apos;s the central conflict?</p>
+                <p className="brainstorm-empty-sub">Named characters, locations, and world-building notes will appear in the Facts panel — save them to your vault with one click.</p>
               </div>
             )}
             {messages.map((msg, i) => (
-              <div key={i} className={`bs-message bs-message-${msg.role}`}>
+              <div key={i} className={`brainstorm-msg brainstorm-msg-${msg.role}`}>
                 {msg.role === 'user' ? (
-                  <div className="bs-user-bubble">{msg.text}</div>
+                  <div className="brainstorm-user-bubble">{msg.text}</div>
                 ) : (
-                  <div className="bs-assistant-bubble">
-                    <div
-                      className={`bs-assistant-text${msg.streaming ? ' bs-streaming' : ''}`}
-                      aria-label="Brainstorm agent response"
-                    >
-                      {displayText(msg.text)}
-                      {msg.streaming && (
-                        <span className="bs-cursor" aria-hidden="true">
-                          ▍
-                        </span>
-                      )}
+                  <div className="brainstorm-assistant-bubble">
+                    <div className={`brainstorm-assistant-text${msg.streaming ? ' brainstorm-streaming' : ''}`}>
+                      {msg.text}
+                      {msg.streaming && <span className="brainstorm-cursor" aria-hidden="true">▍</span>}
                     </div>
                   </div>
                 )}
               </div>
             ))}
-            {error && (
-              <div className="brainstorm-error" role="alert">
-                {error}
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
+
+          {error && (
+            <div className="brainstorm-error" role="alert">{error}</div>
+          )}
 
           <div className="brainstorm-input-area">
             <textarea
@@ -216,7 +212,7 @@ export default function BrainstormPage({ onBack }: Props) {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKey}
-              placeholder="Tell me about your protagonist, your world, or your plot ideas…"
+              placeholder="Tell me about your story world, characters, or plot ideas…"
               rows={3}
               disabled={loading}
               aria-label="Brainstorm prompt"
@@ -231,10 +227,9 @@ export default function BrainstormPage({ onBack }: Props) {
           </div>
         </div>
 
-        {/* Detected Facts panel */}
-        <div className="brainstorm-facts-col">
+        <div className="brainstorm-facts-panel">
           <div className="brainstorm-facts-header">
-            <span className="brainstorm-facts-title">Detected Facts</span>
+            Detected Facts
             {facts.length > 0 && (
               <span className="brainstorm-facts-count">{facts.length}</span>
             )}
@@ -242,25 +237,43 @@ export default function BrainstormPage({ onBack }: Props) {
           <div className="brainstorm-facts-list">
             {facts.length === 0 ? (
               <div className="brainstorm-facts-empty">
-                Named characters, locations, and items the agent identifies will appear here.
+                Named facts will appear here as Claude identifies them.
               </div>
             ) : (
               facts.map((fact) => (
-                <div key={fact.id} className={`bs-fact${fact.saved ? ' bs-fact-saved' : ''}`}>
-                  <span className={`bs-fact-type bs-fact-type-${fact.type}`}>{fact.type}</span>
-                  <div className="bs-fact-name">{fact.name}</div>
-                  <div className="bs-fact-desc">{fact.description}</div>
-                  {!fact.saved ? (
-                    <button
-                      className="bs-fact-save-btn"
-                      onClick={() => saveFactToVault(fact.id)}
-                      disabled={fact.saving}
-                    >
-                      {fact.saving ? 'Saving…' : 'Save to vault'}
-                    </button>
-                  ) : (
-                    <span className="bs-fact-saved-label">Saved ✓</span>
-                  )}
+                <div key={fact.id} className={`brainstorm-fact brainstorm-fact-${fact.savedStatus}`}>
+                  <div className="brainstorm-fact-header">
+                    <span className={`brainstorm-fact-type brainstorm-type-${fact.type}`}>
+                      {FACT_TYPE_LABELS[fact.type]}
+                    </span>
+                    <span className="brainstorm-fact-name">{fact.name}</span>
+                  </div>
+                  <p className="brainstorm-fact-content">{fact.content}</p>
+                  <div className="brainstorm-fact-actions">
+                    {fact.savedStatus === 'unsaved' && (
+                      <button
+                        className="brainstorm-save-btn"
+                        onClick={() => saveFactToVault(fact.id)}
+                        aria-label={`Save ${fact.name} to vault`}
+                      >
+                        Save to Vault
+                      </button>
+                    )}
+                    {fact.savedStatus === 'saving' && (
+                      <span className="brainstorm-saving">Saving…</span>
+                    )}
+                    {fact.savedStatus === 'saved' && (
+                      <span className="brainstorm-saved">Saved ✓</span>
+                    )}
+                    {fact.savedStatus === 'error' && (
+                      <span className="brainstorm-save-error">
+                        Failed —{' '}
+                        <button className="brainstorm-retry-btn" onClick={() => saveFactToVault(fact.id)}>
+                          retry
+                        </button>
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))
             )}

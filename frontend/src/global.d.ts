@@ -42,6 +42,8 @@ interface Window {
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;
     agentWritingAssistant: (prompt: string, context?: string) => Promise<{ text: string }>;
     onWritingAssistantChunk: (cb: (chunk: string) => void) => () => void;
+    agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
+    onBrainstormChunk: (cb: (chunk: string) => void) => () => void;
     getAppInfo: () => Promise<{ platform: string; electronVersion: string; appVersion: string }>;
     getSystemInfo: () => Promise<{ platform: string; electronVersion: string; nodeVersion: string }>;
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;
