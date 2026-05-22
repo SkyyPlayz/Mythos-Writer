@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import './BrainstormPage.css';
 
 interface Message {
@@ -52,6 +53,7 @@ export default function BrainstormPage({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const { announce, liveText } = useLiveAnnounce();
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -73,6 +75,7 @@ export default function BrainstormPage({ onClose }: Props) {
     setLoading(true);
     setError(null);
     setPrompt('');
+    announce('Generating response…');
 
     const userMsg: Message = { role: 'user', text: trimmed };
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
@@ -120,10 +123,14 @@ export default function BrainstormPage({ onClose }: Props) {
         }
         return updated;
       });
+      const factCount = extracted.length;
+      announce(factCount > 0 ? `Response ready. ${factCount} fact${factCount !== 1 ? 's' : ''} detected.` : 'Response ready.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => prev.slice(0, -1));
-      setError(msg || 'AI unavailable — check your API key in settings.');
+      const errorMsg = msg || 'AI unavailable — check your API key in settings.';
+      setError(errorMsg);
+      announce(`Error: ${errorMsg}`);
     } finally {
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
@@ -165,6 +172,15 @@ export default function BrainstormPage({ onClose }: Props) {
 
   return (
     <div className="brainstorm-page">
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveText}
+      </span>
+
       <div className="brainstorm-header">
         <div className="brainstorm-title">
           <span className="brainstorm-icon">🧠</span>
@@ -178,7 +194,7 @@ export default function BrainstormPage({ onClose }: Props) {
 
       <div className="brainstorm-body">
         <div className="brainstorm-chat">
-          <div className="brainstorm-messages" aria-live="polite">
+          <div className="brainstorm-messages">
             {messages.length === 0 && (
               <div className="brainstorm-empty">
                 <p>Tell me about your story. Who are the main characters? What world is it set in? What&apos;s the central conflict?</p>

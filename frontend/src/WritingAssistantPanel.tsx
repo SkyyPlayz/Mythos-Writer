@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Scene } from './types';
+import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 
 interface WritingAssistantSuggestion {
   id: string;
@@ -28,6 +29,7 @@ export default function WritingAssistantPanel({ scene }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const { announce, liveText } = useLiveAnnounce();
 
   useEffect(() => {
     return () => {
@@ -42,6 +44,7 @@ export default function WritingAssistantPanel({ scene }: Props) {
     setLoading(true);
     setError(null);
     setPrompt('');
+    announce('Generating response…');
 
     const userMsg: Message = { role: 'user', text: trimmed };
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
@@ -86,10 +89,13 @@ export default function WritingAssistantPanel({ scene }: Props) {
         }
         return updated;
       });
+      announce('Response ready.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => prev.slice(0, -1)); // remove the empty assistant bubble
-      setError(msg || 'AI unavailable — check your API key in settings.');
+      const errorMsg = msg || 'AI unavailable — check your API key in settings.';
+      setError(errorMsg);
+      announce(`Error: ${errorMsg}`);
     } finally {
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
@@ -116,6 +122,15 @@ export default function WritingAssistantPanel({ scene }: Props) {
 
   return (
     <div className="writing-assistant-panel">
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveText}
+      </span>
+
       <div className="writing-assistant-header">
         <p className="writing-assistant-hint">
           {scene
@@ -124,7 +139,7 @@ export default function WritingAssistantPanel({ scene }: Props) {
         </p>
       </div>
 
-      <div className="writing-assistant-messages" aria-live="polite">
+      <div className="writing-assistant-messages">
         {messages.map((msg, i) => (
           <div
             key={i}

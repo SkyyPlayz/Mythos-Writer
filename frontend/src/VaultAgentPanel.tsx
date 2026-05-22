@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Scene } from './types';
+import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import './VaultAgentPanel.css';
 
 interface Props {
@@ -13,6 +14,7 @@ export default function VaultAgentPanel({ scene }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
+  const { announce, liveText } = useLiveAnnounce();
 
   useEffect(() => {
     return () => { unsubRef.current?.(); };
@@ -31,6 +33,7 @@ export default function VaultAgentPanel({ scene }: Props) {
     setError(null);
     setStreamText('');
     setInconsistencies([]);
+    announce('Checking continuity…');
 
     unsubRef.current?.();
     unsubRef.current = window.api.onVaultCheckChunk((chunk) => {
@@ -42,9 +45,13 @@ export default function VaultAgentPanel({ scene }: Props) {
       setStreamText(result.text);
       setInconsistencies(result.inconsistencies);
       setLastChecked(new Date());
+      const issueCount = result.inconsistencies.filter((i: VaultCheckInconsistency) => i.status === 'proposed').length;
+      announce(issueCount === 0 ? 'Check complete. No inconsistencies found.' : `Check complete. ${issueCount} issue${issueCount !== 1 ? 's' : ''} found.`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || 'Vault Agent unavailable — check your API key in settings.');
+      const errorMsg = msg || 'Vault Agent unavailable — check your API key in settings.';
+      setError(errorMsg);
+      announce(`Error: ${errorMsg}`);
     } finally {
       unsubRef.current?.();
       unsubRef.current = null;
@@ -63,6 +70,15 @@ export default function VaultAgentPanel({ scene }: Props) {
 
   return (
     <div className="vault-agent-panel">
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveText}
+      </span>
+
       <div className="va-header">
         <div className="va-title">Vault Agent</div>
         <p className="va-subtitle">Check the current scene for continuity errors against vault facts.</p>
@@ -82,7 +98,7 @@ export default function VaultAgentPanel({ scene }: Props) {
       )}
 
       {checking && streamText && (
-        <div className="va-stream" aria-live="polite">
+        <div className="va-stream" aria-hidden="true">
           <div className="va-stream-text">{streamText}<span className="va-cursor" aria-hidden="true">▍</span></div>
         </div>
       )}
