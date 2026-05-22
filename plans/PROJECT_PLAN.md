@@ -115,7 +115,7 @@ Supporting work:
 This applies to all agents that can modify vault content or propose changes.
 
 - **Suggestion objects** carry: `source` (which agent), `confidence`, `rationale`, `timestamp`, `target` (vault path or manuscript anchor), `payload` (proposed change), and `status` (proposed / accepted / rejected).
-- **Proposed by default.** Users review and accept in a suggestion review panel.
+- **Proposed by default.** Users review and accept in a suggestion review panel. one click take me there to see source of change. 
 - **Auto-apply is opt-in**, with configurable confidence thresholds and per-agent budgets (token and rate caps).
 - **Provenance** is written for every AI-created or AI-modified vault entry (frontmatter fields linking back to the originating suggestion + run).
 - **Snapshots + audit log** on every applied suggestion. **One-click rollback** restores the previous state.
