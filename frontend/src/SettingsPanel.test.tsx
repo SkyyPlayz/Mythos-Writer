@@ -4,9 +4,9 @@ import SettingsPanel from './SettingsPanel';
 const defaultSettings: AppSettings = {
   apiKey: '',
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 10000, maxSuggestionsPerHour: 20 },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 10000, maxSuggestionsPerHour: 20 },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 10000, maxSuggestionsPerHour: 20 },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 10000, maxSuggestionsPerHour: 20, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000 },
+    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 10000, maxSuggestionsPerHour: 20, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000 },
+    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 10000, maxSuggestionsPerHour: 20, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000 },
   },
   theme: 'dark',
 };
@@ -196,5 +196,176 @@ describe('SettingsPanel', () => {
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-new' } });
     expect(screen.queryByTestId('key-configured-hint')).not.toBeInTheDocument();
+  });
+
+  // ── MYT-158: per-agent settings ──
+
+  it('renders model selectors for all three agents', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+
+    expect(screen.getByLabelText(/writing assistant model/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/brainstorm agent model/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/archive agent model/i)).toBeInTheDocument();
+  });
+
+  it('model selectors show the haiku/sonnet/opus options', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+
+    const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
+    const options = Array.from(waSelect.options).map((o) => o.text);
+    expect(options).toContain('claude-haiku');
+    expect(options).toContain('claude-sonnet');
+    expect(options).toContain('claude-opus');
+  });
+
+  it('model selector change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+
+    fireEvent.change(screen.getByLabelText(/writing assistant model/i), {
+      target: { value: 'claude-haiku-4-5-20251001' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.model).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('heartbeat interval inputs render for all three agents', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(screen.getByLabelText(/heartbeat interval/i, { selector: '#wa-heartbeat' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/heartbeat interval/i, { selector: '#brainstorm-heartbeat' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/heartbeat interval/i, { selector: '#archive-heartbeat' })).toBeInTheDocument();
+  });
+
+  it('heartbeat interval change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.change(screen.getByLabelText(/heartbeat interval/i, { selector: '#brainstorm-heartbeat' }), {
+      target: { value: '10' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.brainstorm.heartbeatIntervalMinutes).toBe(10);
+  });
+
+  it('auto-apply threshold sliders render for all three agents', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const sliders = screen.getAllByRole('slider');
+    expect(sliders.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('auto-apply threshold slider is disabled when autoApply is off', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant auto-apply threshold/i));
+
+    const slider = screen.getByLabelText(/writing assistant auto-apply threshold/i) as HTMLInputElement;
+    expect(slider.disabled).toBe(true);
+  });
+
+  it('auto-apply threshold slider becomes enabled when autoApply is toggled on', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/auto-apply writing assistant suggestions/i));
+
+    const autoApplyToggle = screen.getByRole('checkbox', { name: /auto-apply writing assistant suggestions/i });
+    fireEvent.click(autoApplyToggle);
+
+    const slider = screen.getByLabelText(/writing assistant auto-apply threshold/i) as HTMLInputElement;
+    expect(slider.disabled).toBe(false);
+  });
+
+  it('auto-apply threshold slider change is saved via IPC', async () => {
+    const settingsWithAutoApply = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true, confidenceThreshold: 0.8 },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant auto-apply threshold/i));
+
+    fireEvent.change(screen.getByLabelText(/writing assistant auto-apply threshold/i), {
+      target: { value: '0.6' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.confidenceThreshold).toBeCloseTo(0.6);
+  });
+
+  it('max tokens per day inputs render for all three agents', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(document.getElementById('wa-max-tokens-day')).toBeInTheDocument();
+    expect(document.getElementById('brainstorm-max-tokens-day')).toBeInTheDocument();
+    expect(document.getElementById('archive-max-tokens-day')).toBeInTheDocument();
+  });
+
+  it('max tokens per day change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const input = document.getElementById('archive-max-tokens-day') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '2000000' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.archive.maxTokensPerDay).toBe(2000000);
+  });
+
+  it('full settings round-trip via IPC mock', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+
+    // Change model to haiku
+    fireEvent.change(screen.getByLabelText(/writing assistant model/i), {
+      target: { value: 'claude-haiku-4-5-20251001' },
+    });
+
+    // Change heartbeat interval
+    fireEvent.change(document.getElementById('wa-heartbeat') as HTMLElement, {
+      target: { value: '15' },
+    });
+
+    // Change max tokens/day
+    fireEvent.change(document.getElementById('wa-max-tokens-day') as HTMLElement, {
+      target: { value: '1000000' },
+    });
+
+    // Enable auto-apply then change threshold
+    const autoApplyToggle = screen.getByRole('checkbox', { name: /auto-apply writing assistant suggestions/i });
+    fireEvent.click(autoApplyToggle);
+    fireEvent.change(screen.getByLabelText(/writing assistant auto-apply threshold/i), {
+      target: { value: '0.75' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.model).toBe('claude-haiku-4-5-20251001');
+    expect(saved.agents.writingAssistant.heartbeatIntervalMinutes).toBe(15);
+    expect(saved.agents.writingAssistant.maxTokensPerDay).toBe(1000000);
+    expect(saved.agents.writingAssistant.autoApply).toBe(true);
+    expect(saved.agents.writingAssistant.confidenceThreshold).toBeCloseTo(0.75);
   });
 });
