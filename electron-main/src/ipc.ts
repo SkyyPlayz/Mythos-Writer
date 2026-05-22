@@ -28,8 +28,10 @@ export const IPC_CHANNELS = {
   // Suggestions
   SUGGESTIONS_LIST: 'suggestions:list',
   SUGGESTIONS_UPSERT: 'suggestions:upsert',
+  SUGGESTIONS_ACCEPT: 'suggestions:accept',
   SUGGESTIONS_APPLY: 'suggestions:apply',
   SUGGESTIONS_REJECT: 'suggestions:reject',
+  SUGGESTIONS_ROLLBACK: 'suggestions:rollback',
 
   // Audit log
   AUDIT_LIST: 'audit:list',
@@ -73,6 +75,9 @@ export const IPC_CHANNELS = {
   // App settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+
+  // Generation log
+  GENERATION_LOG_RECENT: 'generationLog:recent',
 } as const;
 
 // ─── Main process handlers ───
@@ -138,11 +143,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
+  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => SuggestionsAcceptResponse;
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => SuggestionsApplyResponse;
   [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => SuggestionsRejectResponse;
+  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => SuggestionsRollbackResponse;
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => AuditListResponse;
   [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
+  [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
 }
 
 // ─── Payload / Response types ───
@@ -402,6 +410,7 @@ export interface SceneSnapshot {
   id: string;
   sceneId: string;
   content: string;
+  contentHash: string;
   wordCount: number;
   createdAt: string;
 }
@@ -554,14 +563,25 @@ export interface VaultCheckResponse {
 
 // ─── App settings types ───
 
+export interface AgentBudgetSettings {
+  autoApply: boolean;
+  confidenceThreshold: number;
+  maxTokensPerHour: number;
+  maxSuggestionsPerHour: number;
+}
+
 export interface AppSettings {
   apiKey: string;
   agents: {
-    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number };
-    brainstorm: { enabled: boolean; model: string };
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number };
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings;
+    brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
   theme: 'light' | 'dark';
+  snapshots?: {
+    maxPerScene: number;
+    maxAgeDays: number;
+  };
 }
 
 export interface SettingsSetPayload {
@@ -574,15 +594,17 @@ export interface SettingsSetResponse {
 
 // ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
 
-export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected';
-export type AuditAction = 'apply' | 'reject' | 'rollback';
+export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back';
+export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
+export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
 export type TimelineSource = 'explicit_marker' | 'prose';
 
 export interface SuggestionRow {
   id: string;
-  source_agent: string;
+  source_agent: SourceAgent | string;
   confidence: number;
   rationale: string;
+  target_kind: 'vault' | 'manuscript' | null;
   target_path: string | null;
   target_anchor: string | null;
   payload_json: string | null;
@@ -590,6 +612,8 @@ export interface SuggestionRow {
   created_at: string;
   applied_at: string | null;
   applied_run_id: string | null;
+  /** 1 if this suggestion was blocked by a budget cap, 0 otherwise */
+  budget_exceeded: number;
 }
 
 export interface AuditLogRow {
@@ -615,6 +639,7 @@ export interface TimelineEntryRow {
 
 export interface SuggestionsListPayload {
   status?: SuggestionStatus;
+  sourceAgent?: SourceAgent | string;
 }
 
 export interface SuggestionsListResponse {
@@ -627,6 +652,17 @@ export interface SuggestionsUpsertPayload {
 
 export interface SuggestionsUpsertResponse {
   id: string;
+}
+
+export interface SuggestionsAcceptPayload {
+  id: string;
+  actor?: string;
+}
+
+export interface SuggestionsAcceptResponse {
+  id: string;
+  status: SuggestionStatus;
+  auditId: string;
 }
 
 export interface SuggestionsApplyPayload {
@@ -643,12 +679,24 @@ export interface SuggestionsApplyResponse {
 
 export interface SuggestionsRejectPayload {
   id: string;
+  reason?: string;
   actor?: string;
 }
 
 export interface SuggestionsRejectResponse {
   id: string;
   auditId: string;
+}
+
+export interface SuggestionsRollbackPayload {
+  id: string;
+  actor?: string;
+}
+
+export interface SuggestionsRollbackResponse {
+  id: string;
+  auditId: string;
+  restoredPath: string | null;
 }
 
 // ─── Audit IPC payload / response types ───
@@ -677,4 +725,29 @@ export interface TimelineUpsertPayload {
 
 export interface TimelineUpsertResponse {
   id: string;
+}
+
+// ─── Generation log IPC types ───
+
+export interface GenerationLogRow {
+  id: string;
+  agent: string;
+  model: string;
+  endpoint: string;
+  request_id: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  latency_ms: number;
+  error: string | null;
+  created_at: string;
+  payload_digest: string | null;
+}
+
+export interface GenerationLogRecentPayload {
+  limit?: number;
+  agent?: string;
+}
+
+export interface GenerationLogRecentResponse {
+  entries: GenerationLogRow[];
 }

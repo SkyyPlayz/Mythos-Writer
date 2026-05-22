@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import {
   openDb,
   closeDb,
@@ -13,6 +14,8 @@ import {
   listAuditLog,
   upsertTimelineEntry,
   listTimelineEntries,
+  insertGenerationLog,
+  listGenerationLog,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
@@ -21,6 +24,7 @@ function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0
     source_agent: 'vault-agent',
     confidence: 0.9,
     rationale: 'Timeline mismatch',
+    target_kind: null as 'vault' | 'manuscript' | null,
     target_path: 'scenes/scene-1.md',
     target_anchor: null,
     payload_json: null,
@@ -28,6 +32,7 @@ function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0
     created_at: new Date().toISOString(),
     applied_at: null,
     applied_run_id: null,
+    budget_exceeded: 0,
     ...overrides,
   };
 }
@@ -78,16 +83,17 @@ describe('migrations', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('sets user_version to 1 on first open', () => {
+  it('sets user_version to latest on first open', () => {
     const db = openDb(tmpDir);
-    expect(db.pragma('user_version', { simple: true })).toBe(1);
+    expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(2);
   });
 
-  it('migration is idempotent — re-open leaves user_version at 1', () => {
-    openDb(tmpDir);
+  it('migration is idempotent — re-open keeps user_version stable', () => {
+    const db1 = openDb(tmpDir);
+    const v1 = db1.pragma('user_version', { simple: true }) as number;
     closeDb();
-    const db = openDb(tmpDir);
-    expect(db.pragma('user_version', { simple: true })).toBe(1);
+    const db2 = openDb(tmpDir);
+    expect(db2.pragma('user_version', { simple: true })).toBe(v1);
     expect(listSuggestions()).toEqual([]);
   });
 });
@@ -242,5 +248,123 @@ describe('timeline_entries', () => {
     expect(rows[0].confidence).toBe(0.9);
     expect(rows[0].source).toBe('explicit_marker');
     expect(rows[0].notes_json).toBe('{"note":"updated"}');
+  });
+});
+
+// ─── Generation log CRUD ───
+
+describe('generation_log', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts a success row and reads it back', () => {
+    insertGenerationLog({
+      id: 'gen-1',
+      agent: 'writing-assistant',
+      model: 'claude-haiku-4-5-20251001',
+      endpoint: 'messages.stream',
+      request_id: null,
+      tokens_in: 150,
+      tokens_out: 200,
+      latency_ms: 1234,
+      error: null,
+      created_at: new Date().toISOString(),
+      payload_digest: 'abc123hash',
+    });
+    const rows = listGenerationLog();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].agent).toBe('writing-assistant');
+    expect(rows[0].tokens_in).toBe(150);
+    expect(rows[0].tokens_out).toBe(200);
+    expect(rows[0].error).toBeNull();
+  });
+
+  it('records a row when stream is cancelled (tokens null)', () => {
+    insertGenerationLog({
+      id: 'gen-cancel',
+      agent: 'brainstorm',
+      model: 'claude-haiku-4-5-20251001',
+      endpoint: 'messages.stream',
+      request_id: null,
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: 500,
+      error: null,
+      created_at: new Date().toISOString(),
+      payload_digest: 'somehash',
+    });
+    const rows = listGenerationLog();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tokens_in).toBeNull();
+    expect(rows[0].tokens_out).toBeNull();
+    expect(rows[0].error).toBeNull();
+  });
+
+  it('records a row with error field on upstream failure', () => {
+    insertGenerationLog({
+      id: 'gen-err',
+      agent: 'vault-agent',
+      model: 'claude-haiku-4-5-20251001',
+      endpoint: 'messages.stream',
+      request_id: null,
+      tokens_in: null,
+      tokens_out: null,
+      latency_ms: 100,
+      error: 'API key invalid',
+      created_at: new Date().toISOString(),
+      payload_digest: 'somehash',
+    });
+    const rows = listGenerationLog();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].error).toBe('API key invalid');
+  });
+
+  it('payload_digest stores a hash, not the raw prompt text', () => {
+    const rawPrompt = 'Top secret story prompt with sensitive content';
+    const hash = crypto.createHash('sha256').update(rawPrompt).digest('hex');
+    insertGenerationLog({
+      id: 'gen-secret',
+      agent: 'writing-assistant',
+      model: 'claude-haiku-4-5-20251001',
+      endpoint: 'messages.stream',
+      request_id: null,
+      tokens_in: 10,
+      tokens_out: 20,
+      latency_ms: 300,
+      error: null,
+      created_at: new Date().toISOString(),
+      payload_digest: hash,
+    });
+    const rows = listGenerationLog();
+    expect(rows[0].payload_digest).toBe(hash);
+    expect(rows[0].payload_digest).not.toBe(rawPrompt);
+    expect(rows[0].payload_digest).not.toContain('sensitive');
+  });
+
+  it('listGenerationLog filters by agent', () => {
+    const now = new Date().toISOString();
+    const base = { model: 'm', endpoint: 'e', request_id: null, tokens_in: 1, tokens_out: 1, latency_ms: 1, error: null, created_at: now, payload_digest: null };
+    insertGenerationLog({ id: 'g1', agent: 'brainstorm', ...base });
+    insertGenerationLog({ id: 'g2', agent: 'writing-assistant', ...base });
+    expect(listGenerationLog({ agent: 'brainstorm' })).toHaveLength(1);
+    expect(listGenerationLog({ agent: 'writing-assistant' })).toHaveLength(1);
+    expect(listGenerationLog()).toHaveLength(2);
+  });
+
+  it('listGenerationLog respects limit', () => {
+    const now = new Date().toISOString();
+    for (let i = 0; i < 5; i++) {
+      insertGenerationLog({ id: `g${i}`, agent: 'brainstorm', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null });
+    }
+    expect(listGenerationLog({ limit: 3 })).toHaveLength(3);
   });
 });
