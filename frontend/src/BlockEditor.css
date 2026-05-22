@@ -60,219 +60,121 @@
   color: #fcd34d;
 }
 
-/* Blocks list */
+/* TipTap editor wrapper */
 
-.blocks-list {
+.tiptap-editor-wrap {
   flex: 1;
   overflow-y: auto;
   padding: 1.5rem 2rem;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  justify-content: center;
 }
 
-.block-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  transition: border-color 0.15s;
-  cursor: grab;
+.tiptap-content {
+  width: 100%;
+  max-width: 720px;
 }
 
-.block-row:hover {
-  border-color: #2a2a2a;
-}
-
-.block-row.block-selected {
-  border-color: #3f2d6a;
-  background: #0d0a1a;
-}
-
-.block-row.block-type-heading {
-  border-left: 3px solid #7c3aed;
-}
-
-.block-row.block-type-dialogue {
-  border-left: 3px solid #0e7490;
-}
-
-.block-row.block-type-action {
-  border-left: 3px solid #b45309;
-}
-
-.block-row.block-type-description {
-  border-left: 3px solid #16a34a;
-}
-
-.block-row.block-type-note {
-  border-left: 3px solid #6b7280;
-}
-
-.block-drag-handle {
-  color: #3f3f46;
-  font-size: 1rem;
-  padding-top: 0.45rem;
-  cursor: grab;
-  user-select: none;
-  flex-shrink: 0;
-  width: 16px;
-}
-
-.block-row:hover .block-drag-handle {
-  color: #71717a;
-}
-
-.block-type-badge {
-  flex-shrink: 0;
-  padding-top: 0.3rem;
-}
-
-.block-type-select {
-  background: transparent;
-  border: none;
-  color: #52525b;
-  font-size: 0.72rem;
-  cursor: pointer;
-  padding: 0.15rem 0.2rem;
-  width: 82px;
-  appearance: none;
-}
-
-.block-row:hover .block-type-select,
-.block-row.block-selected .block-type-select {
-  color: #a1a1aa;
-}
-
-.block-type-select:focus {
+.tiptap-content .ProseMirror {
   outline: none;
-  color: #c4b5fd;
-}
-
-.block-input {
-  flex: 1;
-  background: transparent;
-  border: none;
+  min-height: 60vh;
   color: #e4e4e7;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 1rem;
   line-height: 1.75;
-  resize: none;
-  padding: 0.2rem 0;
-  min-height: 1.75rem;
-  overflow: hidden;
+  caret-color: #a78bfa;
 }
 
-.block-input:focus {
-  outline: none;
-  color: #f4f4f5;
+.tiptap-content .ProseMirror h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #d8b4fe;
+  margin: 1.5rem 0 0.75rem;
+  line-height: 1.3;
 }
 
-.block-heading-input {
+.tiptap-content .ProseMirror h2 {
   font-size: 1.4rem;
   font-weight: 700;
-  font-family: inherit;
-  color: #d8b4fe;
-  line-height: 1.4;
-  padding: 0.1rem 0;
+  color: #c4b5fd;
+  margin: 1.25rem 0 0.6rem;
+  line-height: 1.35;
 }
 
-.block-type-dialogue .block-input {
+.tiptap-content .ProseMirror h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #a78bfa;
+  margin: 1rem 0 0.5rem;
+}
+
+.tiptap-content .ProseMirror p {
+  margin: 0.5rem 0;
+}
+
+.tiptap-content .ProseMirror strong {
+  color: #fcd34d;
+  font-weight: 700;
+}
+
+.tiptap-content .ProseMirror em {
+  color: #86efac;
+  font-style: italic;
+}
+
+.tiptap-content .ProseMirror blockquote {
+  border-left: 3px solid #0e7490;
+  padding-left: 1rem;
+  margin: 0.75rem 0;
   color: #67e8f9;
   font-style: italic;
 }
 
-.block-type-action .block-input {
-  color: #fcd34d;
+.tiptap-content .ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
 }
 
-.block-type-description .block-input {
-  color: #86efac;
+.tiptap-content .ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
 }
 
-.block-type-note .block-input {
-  color: #9ca3af;
+.tiptap-content .ProseMirror li {
+  margin: 0.25rem 0;
+}
+
+.tiptap-content .ProseMirror code {
+  background: #1a1a2e;
+  color: #c4b5fd;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
   font-size: 0.9rem;
 }
 
-/* Add block button */
-
-.add-block-btn {
-  margin: 0.75rem 2rem 1.5rem;
-  align-self: flex-start;
-  background: transparent;
-  border: 1px dashed #3f3f46;
-  color: #52525b;
+.tiptap-content .ProseMirror pre {
+  background: #0f0f1a;
+  border: 1px solid #2a2a3a;
   border-radius: 6px;
-  padding: 0.4rem 1rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.15s;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
 }
 
-.add-block-btn:hover {
-  border-color: #7c3aed;
-  color: #a78bfa;
-}
-
-/* Focus mode */
-
-.focus-mode {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: #0a0a0a;
-}
-
-.focus-mode-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  border-bottom: 1px solid #1a1a1a;
-}
-
-.focus-exit-btn {
-  background: transparent;
-  border: none;
-  color: #7c3aed;
+.tiptap-content .ProseMirror pre code {
+  background: none;
+  padding: 0;
+  color: #c4b5fd;
   font-size: 0.9rem;
-  cursor: pointer;
-  padding: 0.3rem 0;
 }
 
-.focus-exit-btn:hover {
-  color: #a78bfa;
-}
-
-.focus-scene-title {
-  color: #52525b;
-  font-size: 0.85rem;
-}
-
-.focus-mode-body {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  padding: 3rem 2rem;
-  overflow-y: auto;
-}
-
-.focus-textarea {
-  width: 100%;
-  max-width: 680px;
-  background: transparent;
-  border: none;
-  color: #f4f4f5;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 1.15rem;
-  line-height: 2;
-  resize: none;
-  min-height: 60vh;
-}
-
-.focus-textarea:focus {
-  outline: none;
+.tiptap-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: 'Start writing your scene\2026';
+  color: #3f3f46;
+  pointer-events: none;
+  float: left;
+  height: 0;
 }
