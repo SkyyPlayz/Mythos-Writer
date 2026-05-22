@@ -63,7 +63,13 @@ function App() {
         );
       }
 
-      const reader = res.body!.getReader();
+      if (!res.body) {
+        throw new Error(
+          'Streaming story responses are not supported by this browser. Please try again in a modern browser.'
+        );
+      }
+
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
