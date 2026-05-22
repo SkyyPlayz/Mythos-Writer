@@ -90,6 +90,7 @@ import {
   stopVaultWatcher,
   parseFrontmatter,
   serializeFrontmatter,
+  safePath,
 } from './vault.js';
 import { openManifest } from './manifest.js';
 import {
@@ -334,6 +335,9 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => {
     ensureVaultDir();
+    if (payload.snapshotPath) {
+      safePath(getVaultRoot(), payload.snapshotPath); // throws on path traversal
+    }
     const now = new Date().toISOString();
     const auditId = crypto.randomUUID();
     updateSuggestionStatus(payload.id, 'accepted', now, payload.appliedRunId);
@@ -376,6 +380,7 @@ const handlers: IpcHandlers = {
     let restoredPath: string | null = null;
 
     if (applyEntry?.snapshot_path && suggestion.target_path) {
+      safePath(getVaultRoot(), applyEntry.snapshot_path); // throws on path traversal
       const fullSnapshotPath = path.join(getVaultRoot(), applyEntry.snapshot_path);
       if (fs.existsSync(fullSnapshotPath)) {
         const snapshot = JSON.parse(fs.readFileSync(fullSnapshotPath, 'utf-8')) as { originalContent: string; path: string };
@@ -533,10 +538,16 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
-    return loadAppSettings();
+    const s = loadAppSettings();
+    return { ...s, apiKey: maskApiKey(s.apiKey) };
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
-    saveAppSettings(payload.settings);
+    const current = loadAppSettings();
+    // Preserve the stored key when the renderer echoes back the masked preview unchanged.
+    const apiKey = payload.settings.apiKey === maskApiKey(current.apiKey)
+      ? current.apiKey
+      : payload.settings.apiKey;
+    saveAppSettings({ ...payload.settings, apiKey });
     return { saved: true };
   },
 
@@ -637,6 +648,11 @@ function loadAppSettings(): AppSettings {
 
 function saveAppSettings(settings: AppSettings): void {
   fs.writeFileSync(getAppSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+// Returns a masked preview (sk-ant-...XXXX) so the raw key never leaves the main process.
+function maskApiKey(key: string): string {
+  return key ? `sk-ant-...${key.slice(-4)}` : '';
 }
 
 // ─── Anthropic API key validation ───
