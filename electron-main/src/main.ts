@@ -445,10 +445,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
-    }
+    const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
     const userContent = payload.context
       ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
@@ -528,10 +525,7 @@ function registerVaultAgentHandlers() {
 
   // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
   ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
-    }
+    const apiKey = getValidatedApiKey();
 
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
