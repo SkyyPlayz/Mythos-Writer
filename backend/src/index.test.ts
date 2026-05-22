@@ -236,6 +236,40 @@ describe('POST /api/stories/generate', () => {
     expect(anthropicStreamMock).not.toHaveBeenCalled();
   });
 
+
+
+  it('allows the served browser to exchange for an HttpOnly story session without exposing the API token', async () => {
+    process.env.STORY_API_ACCESS_MODE = 'token';
+    process.env.STORY_API_TOKEN = 'test-token';
+
+    const session = await request(app).post('/api/stories/session').send({});
+    expect(session.status).toBe(200);
+    expect(session.body.csrfToken).toEqual(expect.any(String));
+    expect(session.body.csrfToken).not.toContain('test-token');
+    expect(session.headers['set-cookie']?.[0]).toContain('HttpOnly');
+
+    const browserRequest = await request(app)
+      .post('/api/stories/generate')
+      .set('Cookie', session.headers['set-cookie'])
+      .set('X-Story-CSRF', session.body.csrfToken)
+      .send({ prompt: 'A browser session tale' });
+    expect(browserRequest.status).toBe(200);
+    expect(browserRequest.text).toContain('[DONE]');
+  });
+
+  it('still rejects direct token-mode story generation without bearer auth or browser session proof', async () => {
+    process.env.STORY_API_ACCESS_MODE = 'token';
+    process.env.STORY_API_TOKEN = 'test-token';
+
+    const res = await request(app)
+      .post('/api/stories/generate')
+      .set('X-Story-CSRF', 'missing-cookie-proof')
+      .send({ prompt: 'An unauthenticated direct tale' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toContain('authorization bearer token or browser session is required');
+  });
+
   it('requires a bearer token when token access mode is configured', async () => {
     process.env.STORY_API_ACCESS_MODE = 'token';
     process.env.STORY_API_TOKEN = 'test-token';

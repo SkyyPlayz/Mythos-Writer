@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -23,6 +24,8 @@ const VALID_LENGTHS = new Set(['short', 'medium', 'long']);
 const MAX_PROMPT_LENGTH = 2000;
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_MAX = 20;
+const STORY_SESSION_COOKIE = 'mythos_story_session';
+const STORY_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
 type RateLimitBucket = {
   windowStartedAt: number;
@@ -46,6 +49,94 @@ const getBearerToken = (authorizationHeader: string | undefined): string | null 
 
   return authorizationHeader.slice('Bearer '.length);
 };
+
+const signSessionValue = (value: string, secret: string): string =>
+  createHmac('sha256', secret).update(value).digest('base64url');
+
+const safeEqual = (actual: string, expected: string): boolean => {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+
+  return (
+    actualBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(actualBuffer, expectedBuffer)
+  );
+};
+
+const createBrowserSession = (secret: string) => {
+  const nonce = randomBytes(32).toString('base64url');
+  const issuedAt = String(Date.now());
+  const unsignedSession = `${nonce}.${issuedAt}`;
+  const signature = signSessionValue(unsignedSession, secret);
+  const csrfToken = signSessionValue(`csrf.${unsignedSession}`, secret);
+
+  return {
+    cookieValue: `${unsignedSession}.${signature}`,
+    csrfToken,
+  };
+};
+
+const getCookieValue = (req: Request, name: string): string | null => {
+  const cookies = req.header('Cookie')?.split(';') ?? [];
+  const prefix = `${name}=`;
+  const cookie = cookies.map((value) => value.trim()).find((value) => value.startsWith(prefix));
+
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+};
+
+const hasValidBrowserSession = (req: Request, secret: string): boolean => {
+  const cookieValue = getCookieValue(req, STORY_SESSION_COOKIE);
+  const csrfToken = req.header('X-Story-CSRF');
+  if (!cookieValue || !csrfToken) {
+    return false;
+  }
+
+  const [nonce, issuedAt, signature] = cookieValue.split('.');
+  if (!nonce || !issuedAt || !signature) {
+    return false;
+  }
+
+  const issuedAtMs = Number(issuedAt);
+  if (
+    !Number.isFinite(issuedAtMs) ||
+    Date.now() - issuedAtMs > STORY_SESSION_MAX_AGE_SECONDS * 1000
+  ) {
+    return false;
+  }
+
+  const unsignedSession = `${nonce}.${issuedAt}`;
+  const expectedSignature = signSessionValue(unsignedSession, secret);
+  const expectedCsrf = signSessionValue(`csrf.${unsignedSession}`, secret);
+
+  return safeEqual(signature, expectedSignature) && safeEqual(csrfToken, expectedCsrf);
+};
+
+router.post('/session', (_req: Request, res: Response) => {
+  const accessMode = process.env.STORY_API_ACCESS_MODE?.toLowerCase();
+  const configuredToken = process.env.STORY_API_TOKEN;
+
+  if (accessMode !== 'token') {
+    res.json({ csrfToken: null, accessMode: accessMode ?? 'disabled' });
+    return;
+  }
+
+  if (!configuredToken) {
+    res.status(403).json({
+      error: 'story API token mode requires STORY_API_TOKEN to be configured',
+    });
+    return;
+  }
+
+  const session = createBrowserSession(configuredToken);
+  res.cookie(STORY_SESSION_COOKIE, session.cookieValue, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: STORY_SESSION_MAX_AGE_SECONDS * 1000,
+    path: '/api/stories',
+  });
+  res.json({ csrfToken: session.csrfToken });
+});
 
 const enforceStoryAccess = (req: Request, res: Response, next: NextFunction) => {
   const accessMode = process.env.STORY_API_ACCESS_MODE?.toLowerCase();
