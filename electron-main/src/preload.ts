@@ -40,8 +40,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('ai:archive', { manuscript, vaultPath }),
 
   // Agent channels (Epic 5)
-  agentBrainstorm: (prompt: string, context?: string) =>
-    ipcRenderer.invoke('agent:brainstorm', { prompt, context }),
+  agentWritingAssistant: (prompt: string, context?: string) =>
+    ipcRenderer.invoke('agent:writing-assistant', { prompt, context }),
+  onWritingAssistantChunk: (cb: (chunk: string) => void) => {
+    const handler = (_: unknown, data: { chunk: string }) => cb(data.chunk);
+    ipcRenderer.on('agent:writing-assistant:chunk', handler);
+    return () => ipcRenderer.removeListener('agent:writing-assistant:chunk', handler);
+  },
 
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),

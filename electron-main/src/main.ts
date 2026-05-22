@@ -42,8 +42,7 @@ import {
   type EntityUpdatePayload,
   type EntityDeletePayload,
   type EntityListPayload,
-  type AgentBrainstormPayload,
-  type AgentBrainstormResponse,
+  type AgentWritingAssistantPayload,
 } from './ipc.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import {
@@ -323,26 +322,6 @@ const handlers: IpcHandlers = {
     return { entities: listEntities(getVaultRoot(), manifest, payload.type) };
   },
 
-  // ─── Agent: Brainstorm (Epic 5 Phase 1) — real Claude completion ───
-  [IPC_CHANNELS.AGENT_BRAINSTORM]: async (payload: AgentBrainstormPayload): Promise<AgentBrainstormResponse> => {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
-    }
-    const client = new Anthropic({ apiKey });
-    const userContent = payload.context
-      ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
-      : payload.prompt;
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: 'You are a creative writing brainstormer. Help the writer explore ideas, plot possibilities, character motivations, and narrative directions. Be imaginative and specific.',
-      messages: [{ role: 'user', content: userContent }],
-    });
-    const block = message.content[0];
-    const text = block.type === 'text' ? block.text : '';
-    return { text };
-  },
 };
 
 // ─── Create BrowserWindow ───
@@ -379,10 +358,43 @@ function initAutoUpdater() {
   autoUpdater.on('error', () => { /* intentionally silent in stub mode */ });
 }
 
+// ─── Writing Assistant streaming handler ───
+// Registered separately so we can push chunk events to the renderer mid-response.
+function registerWritingAssistantHandler() {
+  ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
+    }
+    const client = new Anthropic({ apiKey });
+    const userContent = payload.context
+      ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
+      : payload.prompt;
+
+    let fullText = '';
+    const stream = client.messages.stream({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
+      messages: [{ role: 'user', content: userContent }],
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        fullText += chunk.delta.text;
+        event.sender.send('agent:writing-assistant:chunk', { chunk: chunk.delta.text });
+      }
+    }
+
+    return { text: fullText };
+  });
+}
+
 // ─── App lifecycle ───
 app.whenReady().then(async () => {
   ensureVaultDir();
   setupIpcMain(handlers);
+  registerWritingAssistantHandler();
   createWindow();
   initAutoUpdater();
   // Start watching vault for external markdown changes

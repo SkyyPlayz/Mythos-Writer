@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Scene, Story, Chapter } from './types';
-import BrainstormerPanel from './BrainstormerPanel';
+import WritingAssistantPanel from './WritingAssistantPanel';
 import './RightSidebar.css';
 
 type Tab = 'notes' | 'properties' | 'ai';
@@ -152,7 +152,7 @@ export default function RightSidebar({ activeTab, onTabChange, selectedScene, se
         {activeTab === 'properties' && (
           <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
         )}
-        {activeTab === 'ai' && <BrainstormerPanel scene={selectedScene} />}
+        {activeTab === 'ai' && <WritingAssistantPanel scene={selectedScene} />}
       </div>
     </div>
   );
