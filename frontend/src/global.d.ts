@@ -93,8 +93,6 @@ interface Window {
     reindexVault: () => Promise<{ scanned: number; updated: number }>;
     startVaultWatch: () => Promise<{ watching: boolean }>;
     stopVaultWatch: () => Promise<{ watching: boolean }>;
-    dbQuery: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    dbWrite: (sql: string, params?: unknown[]) => Promise<{ changes: number }>;
     brainstormer: (topic: string, context?: string) => Promise<unknown>;
     writingAssistant: (manuscript: string, scenePath: string) => Promise<unknown>;
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;

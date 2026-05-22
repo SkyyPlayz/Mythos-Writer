@@ -21,10 +21,6 @@ import {
   type Manifest,
   type ManifestWritePayload,
   type ManifestWriteResponse,
-  type DbQueryPayload,
-  type DbQueryResponse,
-  type DbWritePayload,
-  type DbWriteResponse,
   type AppReadyResponse,
   type BrainstormerPayload,
   type BrainstormerResponse,
@@ -255,13 +251,6 @@ const handlers: IpcHandlers = {
     await stopVaultWatcher();
     return { watching: false };
   },
-  [IPC_CHANNELS.DB_QUERY]: (_payload: DbQueryPayload): DbQueryResponse => {
-    return { rows: [] };
-  },
-  [IPC_CHANNELS.DB_WRITE]: (_payload: DbWritePayload): DbWriteResponse => {
-    return { changes: 0 };
-  },
-
   // ─── Suggestions ───
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
     ensureVaultDir();

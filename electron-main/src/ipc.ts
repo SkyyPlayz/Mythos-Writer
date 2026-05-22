@@ -21,10 +21,6 @@ export const IPC_CHANNELS = {
   VAULT_WATCH_START: 'vault:watch-start',
   VAULT_WATCH_STOP: 'vault:watch-stop',
 
-  // SQLite generic (stub)
-  DB_QUERY: 'db:query',
-  DB_WRITE: 'db:write',
-
   // Suggestions
   SUGGESTIONS_LIST: 'suggestions:list',
   SUGGESTIONS_UPSERT: 'suggestions:upsert',
@@ -120,8 +116,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_REINDEX]: (payload: never) => VaultReindexResponse;
   [IPC_CHANNELS.VAULT_WATCH_START]: (payload: never) => Promise<{ watching: boolean }>;
   [IPC_CHANNELS.VAULT_WATCH_STOP]: (payload: never) => Promise<{ watching: boolean }>;
-  [IPC_CHANNELS.DB_QUERY]: (payload: DbQueryPayload) => DbQueryResponse;
-  [IPC_CHANNELS.DB_WRITE]: (payload: DbWritePayload) => DbWriteResponse;
   [IPC_CHANNELS.APP_READY]: (payload: never) => AppReadyResponse;
   [IPC_CHANNELS.APP_QUIT]: (payload: never) => void;
   [IPC_CHANNELS.AI_BRAINSTORMER]: (payload: BrainstormerPayload) => BrainstormerResponse;
@@ -316,24 +310,6 @@ export interface ManifestWritePayload {
 export interface ManifestWriteResponse {
   path: string;
   bytes: number;
-}
-
-export interface DbQueryPayload {
-  sql: string;
-  params?: unknown[];
-}
-
-export interface DbQueryResponse {
-  rows: unknown[];
-}
-
-export interface DbWritePayload {
-  sql: string;
-  params?: unknown[];
-}
-
-export interface DbWriteResponse {
-  changes: number;
 }
 
 export interface AppReadyResponse {
