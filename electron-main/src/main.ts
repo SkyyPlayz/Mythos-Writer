@@ -1,5 +1,5 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -35,8 +35,21 @@ import {
   type ArchivePayload,
   type ArchiveResponse,
   type SystemInfo,
+  type VaultImportPayload,
 } from './ipc.js';
-import { readVaultFile, writeVaultFile, listVaultFiles, deleteVaultFile } from './vault.js';
+import {
+  readVaultFile,
+  writeVaultFile,
+  listVaultFiles,
+  deleteVaultFile,
+  readManifest,
+  writeManifest,
+  defaultManifest,
+  reindexVault,
+  importObsidianVault,
+  startVaultWatcher,
+  stopVaultWatcher,
+} from './vault.js';
 
 const require = createRequire(import.meta.url);
 
@@ -51,30 +64,65 @@ const anthropic = new Anthropic({
 });
 
 // ─── Vault root ───
-const getVaultRoot = () => {
-  const userDataPath = app.getPath('userData');
-  return path.join(userDataPath, 'vault');
-};
+// User can open any local folder as their vault; the chosen path is persisted
+// in userData/vault-settings.json so it survives restarts.
+function getVaultSettingsPath(): string {
+  return path.join(app.getPath('userData'), 'vault-settings.json');
+}
 
-// ─── Manifest path ───
+function loadVaultSettings(): { vaultRoot: string } {
+  const settingsPath = getVaultSettingsPath();
+  if (fs.existsSync(settingsPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    } catch {
+      // fall through to default
+    }
+  }
+  return { vaultRoot: path.join(app.getPath('userData'), 'vault') };
+}
+
+function saveVaultSettings(settings: { vaultRoot: string }): void {
+  fs.writeFileSync(getVaultSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
 
-// ─── Ensure vault directory exists ───
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
   if (!fs.existsSync(vaultRoot)) {
     fs.mkdirSync(vaultRoot, { recursive: true });
   }
   if (!fs.existsSync(getManifestPath())) {
-    const defaultManifest: Manifest = {
-      version: '1.0.0',
-      vaultRoot,
-      scenes: [],
-      entities: [],
-      chapters: [],
-    };
-    fs.writeFileSync(getManifestPath(), JSON.stringify(defaultManifest, null, 2));
+    writeManifest(getManifestPath(), defaultManifest(vaultRoot));
   }
+}
+
+// Notify renderer when vault changes so it can refresh state
+function notifyVaultChanged(filePath: string) {
+  if (mainWindow) {
+    mainWindow.webContents.send('vault:file-changed', { path: filePath });
+    // Debounced reindex — auto-sync markdown prose back to manifest
+    scheduleReindex();
+  }
+}
+
+let reindexTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleReindex() {
+  if (reindexTimer) clearTimeout(reindexTimer);
+  reindexTimer = setTimeout(() => {
+    try {
+      const vaultRoot = getVaultRoot();
+      const manifestPath = getManifestPath();
+      const manifest = readManifest(manifestPath);
+      const { manifest: updated } = reindexVault(vaultRoot, manifest);
+      writeManifest(manifestPath, updated);
+    } catch {
+      // non-fatal — next open will reindex
+    }
+    reindexTimer = null;
+  }, 1000);
 }
 
 // ─── Story generation (SSE streaming via IPC) ───
@@ -140,13 +188,62 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: () => {
     ensureVaultDir();
-    return JSON.parse(fs.readFileSync(getManifestPath(), 'utf-8')) as Manifest;
+    // Reindex on open so direct markdown edits sync back
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced } = reindexVault(getVaultRoot(), manifest);
+    writeManifest(getManifestPath(), synced);
+    return synced;
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
     ensureVaultDir();
-    const serialized = JSON.stringify(payload.manifest, null, 2);
-    fs.writeFileSync(getManifestPath(), serialized, 'utf-8');
-    return { path: getManifestPath(), bytes: serialized.length };
+    writeManifest(getManifestPath(), payload.manifest);
+    const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
+    return { path: getManifestPath(), bytes };
+  },
+  [IPC_CHANNELS.VAULT_OPEN_FOLDER]: async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Open Vault Folder',
+      buttonLabel: 'Open as Vault',
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { vaultRoot: null, cancelled: true };
+    }
+    const newRoot = result.filePaths[0];
+    saveVaultSettings({ vaultRoot: newRoot });
+    ensureVaultDir();
+    await stopVaultWatcher();
+    await startVaultWatcher(newRoot, notifyVaultChanged);
+    return { vaultRoot: newRoot, cancelled: false };
+  },
+  [IPC_CHANNELS.VAULT_GET_ROOT]: () => {
+    ensureVaultDir();
+    return { vaultRoot: getVaultRoot() };
+  },
+  [IPC_CHANNELS.VAULT_IMPORT]: async (payload: VaultImportPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const result = importObsidianVault(payload.sourcePath, getVaultRoot(), manifest);
+    // Reindex after import
+    const { manifest: updated } = reindexVault(getVaultRoot(), manifest);
+    writeManifest(getManifestPath(), updated);
+    return result;
+  },
+  [IPC_CHANNELS.VAULT_REINDEX]: () => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { manifest: updated, scanned, updated: count } = reindexVault(getVaultRoot(), manifest);
+    writeManifest(getManifestPath(), updated);
+    return { scanned, updated: count };
+  },
+  [IPC_CHANNELS.VAULT_WATCH_START]: async () => {
+    ensureVaultDir();
+    await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
+    return { watching: true };
+  },
+  [IPC_CHANNELS.VAULT_WATCH_STOP]: async () => {
+    await stopVaultWatcher();
+    return { watching: false };
   },
   [IPC_CHANNELS.DB_QUERY]: (payload: DbQueryPayload): DbQueryResponse => {
     // SQLite stub — placeholder for future implementation
@@ -227,11 +324,13 @@ function initAutoUpdater() {
 }
 
 // ─── App lifecycle ───
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   ensureVaultDir();
   setupIpcMain(handlers);
   createWindow();
   initAutoUpdater();
+  // Start watching vault for external markdown changes
+  await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -240,7 +339,8 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  await stopVaultWatcher();
   if (process.platform !== 'darwin') {
     app.quit();
   }

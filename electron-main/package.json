@@ -11,12 +11,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.3"
+    "@anthropic-ai/sdk": "^0.24.3",
+    "chokidar": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
-    "typescript": "^5.3.3",
     "electron-vite": "^2.3.0",
+    "typescript": "^5.3.3",
     "vitest": "^1.2.1"
   }
 }

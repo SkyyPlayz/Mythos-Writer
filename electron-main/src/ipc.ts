@@ -18,6 +18,14 @@ export const IPC_CHANNELS = {
   VAULT_MANIFEST_READ: 'vault:manifest:read',
   VAULT_MANIFEST_WRITE: 'vault:manifest:write',
 
+  // Vault folder management
+  VAULT_OPEN_FOLDER: 'vault:open-folder',
+  VAULT_GET_ROOT: 'vault:get-root',
+  VAULT_IMPORT: 'vault:import',
+  VAULT_REINDEX: 'vault:reindex',
+  VAULT_WATCH_START: 'vault:watch-start',
+  VAULT_WATCH_STOP: 'vault:watch-stop',
+
   // SQLite (stub for now)
   DB_QUERY: 'db:query',
   DB_WRITE: 'db:write',
@@ -72,6 +80,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: (payload: never) => Manifest;
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload) => ManifestWriteResponse;
+  [IPC_CHANNELS.VAULT_OPEN_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
+  [IPC_CHANNELS.VAULT_GET_ROOT]: (payload: never) => VaultGetRootResponse;
+  [IPC_CHANNELS.VAULT_IMPORT]: (payload: VaultImportPayload) => Promise<VaultImportResponse>;
+  [IPC_CHANNELS.VAULT_REINDEX]: (payload: never) => VaultReindexResponse;
+  [IPC_CHANNELS.VAULT_WATCH_START]: (payload: never) => Promise<{ watching: boolean }>;
+  [IPC_CHANNELS.VAULT_WATCH_STOP]: (payload: never) => Promise<{ watching: boolean }>;
   [IPC_CHANNELS.DB_QUERY]: (payload: DbQueryPayload) => DbQueryResponse;
   [IPC_CHANNELS.DB_WRITE]: (payload: DbWritePayload) => DbWriteResponse;
   [IPC_CHANNELS.APP_READY]: (payload: never) => AppReadyResponse;
@@ -145,37 +159,105 @@ export interface VaultDeleteResponse {
   deleted: boolean;
 }
 
+// ─── Full manifest schema ───
+
 export interface Manifest {
   version: string;
   vaultRoot: string;
-  scenes: SceneEntry[];
+  stories: StoryEntry[];
   entities: EntityEntry[];
+  suggestions: SuggestionEntry[];
+  // Legacy flat lists kept for backward compat — prefer stories[].chapters[].scenes[]
+  scenes: SceneEntry[];
   chapters: ChapterEntry[];
 }
 
-export interface SceneEntry {
+export interface StoryEntry {
   id: string;
   title: string;
+  synopsis?: string;
   path: string;
+  chapters: ChapterEntry[];
   createdAt: string;
   updatedAt: string;
-}
-
-export interface EntityEntry {
-  id: string;
-  name: string;
-  type: string;
-  path: string;
-  createdAt: string;
+  provenance?: AgentProvenance;
 }
 
 export interface ChapterEntry {
   id: string;
   title: string;
   path: string;
-  scenes: string[];
+  order: number;
+  scenes: SceneEntry[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SceneEntry {
+  id: string;
+  title: string;
+  path: string;
+  order: number;
+  chapterId?: string;
+  storyId?: string;
+  blocks: BlockEntry[];
+  card?: SceneCard;
+  timestamp?: SceneTimestamp;
+  createdAt: string;
+  updatedAt: string;
+  provenance?: AgentProvenance;
+}
+
+export interface BlockEntry {
+  id: string;
+  type: 'prose' | 'dialogue' | 'action' | 'description' | 'note';
+  order: number;
+  content: string;
+  updatedAt: string;
+}
+
+export interface SceneCard {
+  goal?: string;
+  conflict?: string;
+  outcome?: string;
+  pov?: string;
+  tags?: string[];
+}
+
+export interface SceneTimestamp {
+  storyTime?: string;
+  realTime?: string;
+  duration?: string;
+}
+
+export interface EntityEntry {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  path: string;
+  aliases?: string[];
+  tags?: string[];
+  createdAt: string;
+  provenance?: AgentProvenance;
+}
+
+export interface SuggestionEntry {
+  id: string;
+  source: string;
+  confidence: number;
+  rationale: string;
+  timestamp: string;
+  targetPath?: string;
+  targetId?: string;
+  payload?: unknown;
+  provenance?: AgentProvenance;
+}
+
+export interface AgentProvenance {
+  agentId: string;
+  agentType: string;
+  runId?: string;
+  timestamp: string;
 }
 
 export interface ManifestWritePayload {
@@ -247,4 +329,28 @@ export interface SystemInfo {
   platform: string;
   electronVersion: string;
   nodeVersion: string;
+}
+
+export interface VaultOpenFolderResponse {
+  vaultRoot: string | null;
+  cancelled: boolean;
+}
+
+export interface VaultGetRootResponse {
+  vaultRoot: string;
+}
+
+export interface VaultImportPayload {
+  sourcePath: string;
+}
+
+export interface VaultImportResponse {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface VaultReindexResponse {
+  scanned: number;
+  updated: number;
 }

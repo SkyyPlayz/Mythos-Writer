@@ -13,6 +13,20 @@ contextBridge.exposeInMainWorld('api', {
   readManifest: () => ipcRenderer.invoke('vault:manifest:read', undefined),
   writeManifest: (manifest: unknown) => ipcRenderer.invoke('vault:manifest:write', { manifest }),
 
+  // Vault folder management
+  openVaultFolder: () => ipcRenderer.invoke('vault:open-folder', undefined),
+  getVaultRoot: () => ipcRenderer.invoke('vault:get-root', undefined),
+  importVault: (sourcePath: string) => ipcRenderer.invoke('vault:import', { sourcePath }),
+  reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
+  startVaultWatch: () => ipcRenderer.invoke('vault:watch-start', undefined),
+  stopVaultWatch: () => ipcRenderer.invoke('vault:watch-stop', undefined),
+
+  // Push-notification from main when a markdown file changes
+  onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => {
+    ipcRenderer.on('vault:file-changed', cb);
+    return () => ipcRenderer.removeListener('vault:file-changed', cb);
+  },
+
   // Database (stub)
   dbQuery: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:query', { sql, params }),
   dbWrite: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:write', { sql, params }),

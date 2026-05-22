@@ -9,6 +9,12 @@ interface Window {
     deleteVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     readManifest: () => Promise<unknown>;
     writeManifest: (manifest: unknown) => Promise<unknown>;
+    openVaultFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean }>;
+    getVaultRoot: () => Promise<{ vaultRoot: string }>;
+    importVault: (sourcePath: string) => Promise<{ imported: number; skipped: number; errors: string[] }>;
+    reindexVault: () => Promise<{ scanned: number; updated: number }>;
+    startVaultWatch: () => Promise<{ watching: boolean }>;
+    stopVaultWatch: () => Promise<{ watching: boolean }>;
     dbQuery: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
     dbWrite: (sql: string, params?: unknown[]) => Promise<{ changes: number }>;
     generateStory: (payload: { prompt: string; genre?: string; length?: string }) => Promise<unknown>;
@@ -18,6 +24,7 @@ interface Window {
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;
     getAppInfo: () => Promise<{ platform: string; electronVersion: string; appVersion: string }>;
     getSystemInfo: () => Promise<{ platform: string; electronVersion: string; nodeVersion: string }>;
+    onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;
   };
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
   mythosIPC: {
