@@ -58,11 +58,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-interface AppMenuProps {
-  onOpenGenerate: () => void;
-}
-
-function AppMenuBar({ onOpenGenerate }: AppMenuProps) {
+function AppMenuBar() {
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -76,12 +72,6 @@ function AppMenuBar({ onOpenGenerate }: AppMenuProps) {
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openSettings?.()}>Settings…</button>
           </div>
         </div>
-        <div className="app-menu-item" tabIndex={0}>
-          View
-          <div className="app-menu-dropdown">
-            <button className="app-menu-dropdown-item" onClick={onOpenGenerate}>AI Generator</button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -93,11 +83,7 @@ interface DragState {
   startWidth: number;
 }
 
-interface ShellProps {
-  onOpenGenerate?: () => void;
-}
-
-export default function DesktopShell({ onOpenGenerate }: ShellProps) {
+export default function DesktopShell() {
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
@@ -351,7 +337,7 @@ export default function DesktopShell({ onOpenGenerate }: ShellProps) {
 
   return (
     <div className="desktop-shell">
-      <AppMenuBar onOpenGenerate={onOpenGenerate ?? (() => {})} />
+      <AppMenuBar />
       <div className="shell-panels">
       {/* Left rail */}
       <div className="shell-left" style={{ width: layout.leftWidth }}>

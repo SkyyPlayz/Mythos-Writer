@@ -4,14 +4,10 @@ import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
-import { Anthropic } from '@anthropic-ai/sdk';
 import {
   setupIpcMain,
   IPC_CHANNELS,
   type IpcHandlers,
-  type StoryGeneratePayload,
-  type StoryChunk,
-  type StoryStatus,
   type VaultReadPayload,
   type VaultReadResponse,
   type VaultWritePayload,
@@ -73,13 +69,6 @@ const require = createRequire(import.meta.url);
 
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
-let storyState: StoryStatus = { state: 'idle' };
-let abortController: AbortController | null = null;
-
-// ─── Anthropic client ───
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY ?? '',
-});
 
 // ─── Vault root ───
 // User can open any local folder as their vault; the chosen path is persisted
@@ -143,51 +132,8 @@ function scheduleReindex() {
   }, 1000);
 }
 
-// ─── Story generation (SSE streaming via IPC) ───
-async function* generateStory(payload: StoryGeneratePayload): AsyncGenerator<StoryChunk> {
-  abortController = new AbortController();
-
-  const systemPrompt = `You are a creative writing assistant for Mythos Writer. Generate stories based on the user's prompt. Respect genre and length constraints.`;
-
-  const userMessage = `Prompt: ${payload.prompt}
-Genre: ${payload.genre || 'no specific genre'}
-Length: ${payload.length || 'medium'}`;
-
-  try {
-    const response = await anthropic.messages.stream(
-      {
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: payload.length === 'short' ? 500 : payload.length === 'long' ? 2000 : 1000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      },
-      { signal: abortController.signal }
-    );
-
-    for await (const chunk of response) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        yield { chunk: chunk.delta.text };
-      }
-    }
-    yield { done: true };
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      yield { done: true };
-    } else {
-      yield { error: (error as Error).message };
-    }
-  }
-}
-
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
-  [IPC_CHANNELS.STORY_GENERATE]: generateStory,
-  [IPC_CHANNELS.STORY_ABORT]: () => {
-    abortController?.abort();
-    abortController = null;
-    storyState = { state: 'idle' };
-  },
-  [IPC_CHANNELS.STORY_STATUS]: () => storyState,
   [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
     ensureVaultDir();
     return readVaultFile(getVaultRoot(), payload.path);

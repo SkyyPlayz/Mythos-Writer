@@ -20,7 +20,7 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
       <div className="sidebar-empty">
         <div className="sidebar-empty-icon">📝</div>
         <p>Select a scene to add notes.</p>
-        <p className="sidebar-empty-sub">Notes are private workspace annotations — they won't appear in your exported story.</p>
+        <p className="sidebar-empty-sub">Notes are private workspace annotations — they won&apos;t appear in your exported story.</p>
       </div>
     );
   }

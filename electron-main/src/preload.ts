@@ -31,11 +31,6 @@ contextBridge.exposeInMainWorld('api', {
   dbQuery: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:query', { sql, params }),
   dbWrite: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:write', { sql, params }),
 
-  // Story generation
-  generateStory: (payload: { prompt: string; genre?: string; length?: string }) =>
-    ipcRenderer.invoke('story:generate', payload),
-  abortStory: () => ipcRenderer.invoke('story:abort', undefined),
-
   // AI agents (stubs for Epic 5)
   brainstormer: (topic: string, context?: string) =>
     ipcRenderer.invoke('ai:brainstormer', { topic, context }),
@@ -71,12 +66,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:list', { type }),
 });
 
-// Backward-compat alias — keeps existing App.tsx working
+// Backward-compat alias — kept for legacy code that still references window.mythosIPC
 contextBridge.exposeInMainWorld('mythosIPC', {
-  generateStory: (payload: { prompt: string; genre?: string; length?: string }) =>
-    ipcRenderer.invoke('story:generate', payload),
-  abortStory: () => ipcRenderer.invoke('story:abort', undefined),
-  getStoryStatus: () => ipcRenderer.invoke('story:status', undefined),
   readVaultFile: (filePath: string) => ipcRenderer.invoke('vault:read', { path: filePath }),
   writeVaultFile: (filePath: string, content: string) =>
     ipcRenderer.invoke('vault:write', { path: filePath, content }),

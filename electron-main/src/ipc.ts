@@ -5,11 +5,6 @@ import { ipcMain, ipcRenderer } from 'electron';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
-  // Story generation (Anthropic API)
-  STORY_GENERATE: 'story:generate',
-  STORY_ABORT: 'story:abort',
-  STORY_STATUS: 'story:status',
-
   // Vault / filesystem operations
   VAULT_READ: 'vault:read',
   VAULT_WRITE: 'vault:write',
@@ -84,9 +79,6 @@ export async function ipcCall<TChannel extends keyof IpcHandlers, TPayload, TRes
 // ─── Type definitions ───
 
 export interface IpcHandlers {
-  [IPC_CHANNELS.STORY_GENERATE]: (payload: StoryGeneratePayload) => AsyncGenerator<StoryChunk>;
-  [IPC_CHANNELS.STORY_ABORT]: (payload: never) => void;
-  [IPC_CHANNELS.STORY_STATUS]: (payload: never) => StoryStatus;
   [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
@@ -119,24 +111,6 @@ export interface IpcHandlers {
 }
 
 // ─── Payload / Response types ───
-
-export interface StoryGeneratePayload {
-  prompt: string;
-  genre?: string;
-  length?: string;
-}
-
-export interface StoryChunk {
-  chunk?: string;
-  done?: boolean;
-  error?: string;
-}
-
-export interface StoryStatus {
-  state: 'idle' | 'streaming' | 'done' | 'error';
-  story?: string;
-  error?: string;
-}
 
 export interface VaultReadPayload {
   path: string;

@@ -37,8 +37,6 @@ interface Window {
     stopVaultWatch: () => Promise<{ watching: boolean }>;
     dbQuery: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
     dbWrite: (sql: string, params?: unknown[]) => Promise<{ changes: number }>;
-    generateStory: (payload: { prompt: string; genre?: string; length?: string }) => Promise<unknown>;
-    abortStory: () => Promise<void>;
     brainstormer: (topic: string, context?: string) => Promise<unknown>;
     writingAssistant: (manuscript: string, scenePath: string) => Promise<unknown>;
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;
@@ -62,9 +60,6 @@ interface Window {
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
   mythosIPC: {
-    generateStory: (payload: { prompt: string; genre?: string; length?: string }) => Promise<unknown>;
-    abortStory: () => Promise<unknown>;
-    getStoryStatus: () => Promise<unknown>;
     readVaultFile: (path: string) => Promise<unknown>;
     writeVaultFile: (path: string, content: string) => Promise<unknown>;
     listVaultFiles: (root?: string) => Promise<unknown>;

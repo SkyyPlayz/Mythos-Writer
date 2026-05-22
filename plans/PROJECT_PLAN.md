@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Mythos Writer is a desktop-first AI-powered creative writing tool that helps authors, worldbuilders, and storytellers generate, organize, and develop stories, characters, and lore. It combines a rich writing editor with Claude AI to provide intelligent story generation, character development, and narrative assistance — all within a native desktop experience.
+Mythos Writer is a desktop-first tool that helps authors, worldbuilders, and storytellers organize and develop their stories, characters, and lore. It pairs a rich writing editor with optional AI assistance — auto-generated vault notes and on-demand writing-assistant suggestions — while keeping the author fully in control of every word in their manuscript.
 
 ---
 
@@ -10,14 +10,15 @@ Mythos Writer is a desktop-first AI-powered creative writing tool that helps aut
 
 ### Short-Term (v0.1 – v0.3)
 - Deliver a working Electron desktop app for Windows (and later macOS/Linux)
-- Integrate Claude API for story generation via a clean, minimal UI
+- Auto-generate structured vault notes (scene cards, entity summaries) from manuscript prose
+- On-demand writing-assistant suggestions invoked explicitly by the author
 - Support basic vault/project management (Obsidian-compatible markdown files)
 - Establish CI/CD pipeline with lint, typecheck, test, and build gates
 
 ### Medium-Term (v0.4 – v0.9)
 - Rich text editor with markdown support for writing and editing stories
 - Character and world-building management (entities, relationships, timelines)
-- Contextual AI assistance: generate continuations, suggest edits, summarize scenes
+- Contextual AI assistance: on-demand suggestions and summaries that the author explicitly invokes; AI never auto-edits or auto-generates story content
 - Import/export support (markdown, plain text, EPUB)
 - Autosave and local file sync via vault watcher
 
@@ -38,7 +39,7 @@ Mythos Writer is a desktop-first AI-powered creative writing tool that helps aut
 - [x] Electron app scaffolding with electron-vite
 - [x] React + TypeScript frontend
 - [x] IPC bridge between renderer and main process
-- [x] Claude API integration via backend/IPC
+- [x] AI agent stubs wired via IPC (full impl in Epic 5)
 - [x] Obsidian-compatible markdown vault with file watcher
 - [x] Windows packaging (ZIP and NSIS installer)
 - [x] GitHub Actions CI (lint → typecheck → test → build)
@@ -48,7 +49,6 @@ Mythos Writer is a desktop-first AI-powered creative writing tool that helps aut
 
 - [ ] Markdown editor component (e.g., CodeMirror or TipTap)
 - [ ] Project/vault browser sidebar
-- [ ] Story generation UI: prompt input → streamed output
 - [ ] Save/load documents from vault
 - [ ] Basic settings panel (API key management, theme)
 
@@ -115,6 +115,7 @@ IPC is the communication boundary: the renderer (frontend) never calls the Claud
 3. **AI as a tool, not a replacement** — the author stays in control; AI assists and suggests
 4. **Desktop-quality UX** — feels like a native app, not a web app wrapped in a frame
 5. **Open and extensible** — clean architecture that can grow into plugins and templates
+6. **AI Boundaries** — AI never modifies or generates story content unless the author explicitly invokes it; the only auto-generated content is vault notes and on-demand writing-assistant suggestions
 
 ---
 
