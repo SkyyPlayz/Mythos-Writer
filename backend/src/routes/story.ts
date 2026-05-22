@@ -157,14 +157,14 @@ const enforceStoryAccess = (req: Request, res: Response, next: NextFunction) => 
     }
 
     const requestToken = getBearerToken(req.header('Authorization'));
-    if (requestToken !== configuredToken) {
-      res
-        .status(401)
-        .json({ error: 'authorization bearer token is required for story generation' });
+    if (requestToken === configuredToken || hasValidBrowserSession(req, configuredToken)) {
+      next();
       return;
     }
 
-    next();
+    res.status(401).json({
+      error: 'authorization bearer token or browser session is required for story generation',
+    });
     return;
   }
 

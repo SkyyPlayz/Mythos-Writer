@@ -64,10 +64,15 @@ describe('App', () => {
   });
 
   it('shows a friendly error when streaming responses are unsupported', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: null,
-    } as Response);
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ csrfToken: null }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        body: null,
+      } as Response);
 
     render(<App />);
 

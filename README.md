@@ -57,7 +57,11 @@ assets and falls back to the frontend shell for browser routes, while `/api/*` a
 
 For deployment, set `PORT`, `ANTHROPIC_API_KEY`, `STORY_API_ACCESS_MODE=token`, a
 strong `STORY_API_TOKEN`, and a production `STORY_ALLOWED_ORIGINS` value for the
-frontend origin before starting the server. Do not commit real secrets.
+frontend origin before starting the server. Do not commit real secrets. The served
+browser app never receives `STORY_API_TOKEN`; it first requests `/api/stories/session`,
+which sets an HttpOnly same-site session cookie and returns a short CSRF proof used
+on `/api/stories/generate`. Direct API clients must still send
+`Authorization: Bearer` with the configured server token or they are rejected.
 
 ## Available scripts (run from repo root)
 
@@ -104,16 +108,18 @@ Copy `.env.example` to `backend/.env` and fill in:
 | ---------------------------- | ------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`          | Your Anthropic API key                                        |
 | `PORT`                       | Backend port (default `3001`)                                 |
-| `STORY_API_ACCESS_MODE`      | `demo` for local/demo use, or `token` to require bearer auth   |
-| `STORY_API_TOKEN`            | Bearer token required when `STORY_API_ACCESS_MODE=token`      |
+| `STORY_API_ACCESS_MODE`      | `demo` for local/demo use, or `token` for protected deployments |
+| `STORY_API_TOKEN`            | Server-side secret for bearer clients and signed browser sessions when token mode is enabled |
 | `STORY_ALLOWED_ORIGINS`      | Comma-separated CORS allowlist for browser clients            |
 | `STORY_RATE_LIMIT_WINDOW_MS` | Story generation rate limit window in milliseconds            |
 | `STORY_RATE_LIMIT_MAX`       | Max story generation requests per client per window           |
 
 For production-style deployments, set `STORY_API_ACCESS_MODE=token`, configure a
 strong `STORY_API_TOKEN`, and restrict `STORY_ALLOWED_ORIGINS` to the deployed
-frontend origin. Local demo installs can keep `STORY_API_ACCESS_MODE=demo` but
-are still protected by the configured rate limit/quota.
+frontend origin. The first-party browser flow uses an HttpOnly session cookie plus
+CSRF proof, so the deployment secret is never embedded in client JavaScript. Local
+demo installs can keep `STORY_API_ACCESS_MODE=demo` but are still protected by the
+configured rate limit/quota.
 
 ## CI
 

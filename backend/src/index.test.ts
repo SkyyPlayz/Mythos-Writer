@@ -278,7 +278,7 @@ describe('POST /api/stories/generate', () => {
       .post('/api/stories/generate')
       .send({ prompt: 'A locked tale' });
     expect(missingToken.status).toBe(401);
-    expect(missingToken.body.error).toContain('authorization bearer token is required');
+    expect(missingToken.body.error).toContain('authorization bearer token or browser session is required');
 
     const validToken = await request(app)
       .post('/api/stories/generate')

@@ -43,14 +43,33 @@ function App() {
     setStory('');
 
     try {
+      const sessionRes = await fetch('/api/stories/session', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!sessionRes.ok) {
+        const errData = await sessionRes
+          .json()
+          .catch(() => ({ error: `Server error: ${sessionRes.status}` }));
+        throw new Error(
+          (errData as { error?: string }).error ?? `Server error: ${sessionRes.status}`
+        );
+      }
+      const session = (await sessionRes.json()) as { csrfToken?: string | null };
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session.csrfToken) {
+        headers['X-Story-CSRF'] = session.csrfToken;
+      }
+
       const res = await fetch('/api/stories/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           prompt: prompt.trim(),
           genre: genre || undefined,
           length,
         }),
+        credentials: 'same-origin',
         signal: controller.signal,
       });
 
