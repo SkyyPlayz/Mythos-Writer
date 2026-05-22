@@ -8,18 +8,19 @@
     "electron-main"
   ],
   "scripts": {
-    "dev": "electron-vite dev --config electron-vite.config.ts",
-    "build": "electron-vite build --config electron-vite.config.ts && electron-builder --win",
-    "package": "electron-builder --win",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && electron-builder --win zip",
+    "build:installer": "electron-vite build && electron-builder --win nsis",
+    "package": "electron-builder --win zip",
     "lint": "npm run lint -w frontend && npm run lint -w electron-main",
     "test": "npm run test -w electron-main && npm run test -w frontend",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main",
-    "build:electron": "electron-vite build --config electron-vite.config.ts"
+    "build:electron": "electron-vite build"
   },
   "devDependencies": {
     "electron": "^33.2.0",
-    "electron-vite": "^2.3.0",
     "electron-builder": "^25.1.8",
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.3.9",
+    "electron-vite": "^2.3.0"
   }
 }

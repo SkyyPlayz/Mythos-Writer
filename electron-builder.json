@@ -1,6 +1,7 @@
 {
   "appId": "com.mythoswriter.app",
   "productName": "Mythos Writer",
+  "forceCodeSigning": false,
   "directories": {
     "output": "dist-electron"
   },
@@ -13,15 +14,21 @@
       {
         "target": "nsis",
         "arch": ["x64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64"]
       }
     ],
     "icon": "build/icon.ico",
-    "artifactName": "${productName}-${version}-Setup.exe"
+    "artifactName": "${productName}-${version}.${ext}",
+    "signAndEditExecutable": false
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
-  }
+  },
+  "publish": null
 }
