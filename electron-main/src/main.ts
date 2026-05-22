@@ -42,6 +42,7 @@ import {
   type EntityUpdatePayload,
   type EntityDeletePayload,
   type EntityListPayload,
+  type EntityBacklinksPayload,
   type AgentWritingAssistantPayload,
   type AgentBrainstormPayload,
   type VaultCheckPayload,
@@ -69,6 +70,7 @@ import {
   deleteEntity,
   listEntities,
   reindexEntities,
+  getEntityBacklinks,
 } from './entities.js';
 
 const require = createRequire(import.meta.url);
@@ -324,6 +326,11 @@ const handlers: IpcHandlers = {
     reindexEntities(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), manifest);
     return { entities: listEntities(getVaultRoot(), manifest, payload.type) };
+  },
+  [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return getEntityBacklinks(getVaultRoot(), manifest, payload.entityId);
   },
 
 };

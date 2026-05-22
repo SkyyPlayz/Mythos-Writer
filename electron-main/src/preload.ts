@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:delete', { id }),
   entityList: (type?: string) =>
     ipcRenderer.invoke('entity:list', { type }),
+  entityBacklinks: (entityId: string) =>
+    ipcRenderer.invoke('entity:backlinks', { entityId }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

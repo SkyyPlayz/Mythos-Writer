@@ -248,6 +248,77 @@ export function listEntities(
   });
 }
 
+// ─── Backlinks: scan scene markdown files for entity name / alias mentions ───
+
+export interface EntityBacklinkScene {
+  sceneId: string;
+  sceneTitle: string;
+  scenePath: string;
+  snippet: string;
+}
+
+export function getEntityBacklinks(
+  vaultRoot: string,
+  manifest: Manifest,
+  entityId: string
+): { entityId: string; scenes: EntityBacklinkScene[] } {
+  const entity = manifest.entities.find((e) => e.id === entityId);
+  if (!entity) return { entityId, scenes: [] };
+
+  const names = [entity.name, ...(entity.aliases ?? [])].filter(Boolean);
+  if (names.length === 0) return { entityId, scenes: [] };
+
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const wikiParts = names.map((n) => `\\[\\[${escape(n)}\\]\\]`);
+  const plainParts = names.map((n) => `(?<![\\w])${escape(n)}(?![\\w])`);
+  const pattern = new RegExp(`(${[...wikiParts, ...plainParts].join('|')})`, 'i');
+
+  // Flatten all scenes from nested story/chapter/scene tree + flat fallback list
+  const seen = new Set<string>();
+  const allScenes: Array<{ id: string; title: string; path: string }> = [];
+  for (const story of manifest.stories ?? []) {
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) {
+        if (!seen.has(scene.id)) {
+          allScenes.push({ id: scene.id, title: scene.title, path: scene.path });
+          seen.add(scene.id);
+        }
+      }
+    }
+  }
+  for (const scene of manifest.scenes ?? []) {
+    if (!seen.has(scene.id)) {
+      allScenes.push({ id: scene.id, title: scene.title, path: scene.path });
+      seen.add(scene.id);
+    }
+  }
+
+  const results: EntityBacklinkScene[] = [];
+
+  for (const scene of allScenes) {
+    let content = '';
+    try {
+      ({ content } = readVaultFile(vaultRoot, scene.path));
+    } catch {
+      continue;
+    }
+
+    const match = pattern.exec(content);
+    if (!match) continue;
+
+    const idx = match.index;
+    const start = Math.max(0, idx - 60);
+    const end = Math.min(content.length, idx + match[0].length + 60);
+    let snippet = content.slice(start, end).replace(/\n/g, ' ').trim();
+    if (start > 0) snippet = '…' + snippet;
+    if (end < content.length) snippet += '…';
+
+    results.push({ sceneId: scene.id, sceneTitle: scene.title, scenePath: scene.path, snippet });
+  }
+
+  return { entityId, scenes: results };
+}
+
 // ─── Vault reindex: scan entities/ folder for orphan entity files ───
 
 export function reindexEntities(vaultRoot: string, manifest: Manifest): void {

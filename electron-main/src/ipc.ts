@@ -55,6 +55,7 @@ export const IPC_CHANNELS = {
   ENTITY_UPDATE: 'entity:update',
   ENTITY_DELETE: 'entity:delete',
   ENTITY_LIST: 'entity:list',
+  ENTITY_BACKLINKS: 'entity:backlinks',
 } as const;
 
 // ─── Main process handlers ───
@@ -115,6 +116,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => EntityDeleteResponse;
   [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => EntityListResponse;
+  [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
 }
 
 // ─── Payload / Response types ───
@@ -443,6 +445,22 @@ export interface EntityListPayload {
 
 export interface EntityListResponse {
   entities: EntityEntry[];
+}
+
+export interface EntityBacklinksPayload {
+  entityId: string;
+}
+
+export interface EntityBacklinkScene {
+  sceneId: string;
+  sceneTitle: string;
+  scenePath: string;
+  snippet: string;
+}
+
+export interface EntityBacklinksResponse {
+  entityId: string;
+  scenes: EntityBacklinkScene[];
 }
 
 // ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───

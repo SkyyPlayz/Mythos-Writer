@@ -28,9 +28,10 @@ interface Props {
   onClose: () => void;
   onUpdated: (entity: EntityEntry) => void;
   onDeleted: (id: string) => void;
+  onOpenScene?: (scenePath: string) => void;
 }
 
-export default function EntityDetail({ entity, onClose, onUpdated, onDeleted }: Props) {
+export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, onOpenScene }: Props) {
   const [name, setName] = useState(entity.name);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join(', '));
   const [tags, setTags] = useState((entity.tags ?? []).join(', '));
@@ -40,6 +41,9 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted }: 
   const [dirty, setDirty] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
+  const [backlinks, setBacklinks] = useState<EntityBacklinkScene[]>([]);
+  const [backlinksOpen, setBacklinksOpen] = useState(true);
+  const [backlinksLoading, setBacklinksLoading] = useState(false);
 
   // Reset form when entity changes
   useEffect(() => {
@@ -65,6 +69,31 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted }: 
       }
     })();
   }, [entity.id, entity.path]);
+
+  // Load backlinks whenever entity changes
+  const loadBacklinks = useCallback(async () => {
+    setBacklinksLoading(true);
+    try {
+      const result = await window.api.entityBacklinks(entity.id);
+      setBacklinks(result.scenes ?? []);
+    } catch {
+      setBacklinks([]);
+    } finally {
+      setBacklinksLoading(false);
+    }
+  }, [entity.id]);
+
+  useEffect(() => {
+    loadBacklinks();
+  }, [loadBacklinks]);
+
+  // Refresh backlinks when any vault file changes (e.g. a scene is saved)
+  useEffect(() => {
+    const off = window.api.onVaultFileChanged(() => {
+      loadBacklinks();
+    });
+    return off;
+  }, [loadBacklinks]);
 
   const markDirty = useCallback(() => setDirty(true), []);
 
@@ -197,6 +226,46 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted }: 
         </div>
 
         {error && <div className="entity-det-error">{error}</div>}
+
+        {/* Backlinks panel */}
+        <div className="entity-det-backlinks">
+          <button
+            className="entity-det-backlinks-header"
+            onClick={() => setBacklinksOpen((o) => !o)}
+            aria-expanded={backlinksOpen}
+          >
+            <span className="entity-det-backlinks-chevron">{backlinksOpen ? '▾' : '▸'}</span>
+            <span className="entity-det-backlinks-title">Backlinks</span>
+            <span className="entity-det-backlinks-count">
+              {backlinksLoading ? '…' : backlinks.length}
+            </span>
+          </button>
+          {backlinksOpen && (
+            <div className="entity-det-backlinks-body">
+              {backlinksLoading ? (
+                <div className="entity-det-backlinks-empty">Scanning scenes…</div>
+              ) : backlinks.length === 0 ? (
+                <div className="entity-det-backlinks-empty">No scenes mention this entity yet.</div>
+              ) : (
+                <ul className="entity-det-backlinks-list">
+                  {backlinks.map((bl) => (
+                    <li key={bl.scenePath} className="entity-det-backlink-item">
+                      <button
+                        className="entity-det-backlink-scene"
+                        onClick={() => onOpenScene?.(bl.scenePath)}
+                        title={bl.scenePath}
+                        disabled={!onOpenScene}
+                      >
+                        {bl.sceneTitle || bl.scenePath.split('/').pop()?.replace(/\.md$/, '')}
+                      </button>
+                      <span className="entity-det-backlink-snippet">{bl.snippet}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="entity-det-meta">
           <span>Created {new Date(entity.createdAt).toLocaleDateString()}</span>

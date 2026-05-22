@@ -314,6 +314,19 @@ export default function DesktopShell() {
     setSelectedEntity(null);
   }, []);
 
+  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
+  const handleOpenSceneByPath = useCallback((scenePath: string) => {
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.path === scenePath);
+        if (scene) {
+          handleSelectScene(scene, chapter, story);
+          return;
+        }
+      }
+    }
+  }, [stories, handleSelectScene]);
+
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
     setSelectedEntity(entity);
     setSelectedScene(null);
@@ -402,6 +415,7 @@ export default function DesktopShell() {
               onClose={() => setSelectedEntity(null)}
               onUpdated={(updated) => setSelectedEntity(updated)}
               onDeleted={() => setSelectedEntity(null)}
+              onOpenScene={handleOpenSceneByPath}
             />
           ) : (
             <div className="shell-editor-empty">

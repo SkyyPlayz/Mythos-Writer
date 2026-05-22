@@ -29,6 +29,13 @@ interface VaultIndexEntry {
   keyFacts: string;
 }
 
+interface EntityBacklinkScene {
+  sceneId: string;
+  sceneTitle: string;
+  scenePath: string;
+  snippet: string;
+}
+
 interface VaultCheckInconsistency {
   id: string;
   entityName: string;
@@ -82,6 +89,7 @@ interface Window {
     entityUpdate: (payload: { id: string; name?: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
+    entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

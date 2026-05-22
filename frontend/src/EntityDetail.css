@@ -179,3 +179,113 @@
 .entity-det-btn-danger:hover {
   background: #991b1b;
 }
+
+/* Backlinks panel */
+.entity-det-backlinks {
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.entity-det-backlinks-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: var(--surface-alt, #161622);
+  border: none;
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--text-secondary, #aaa);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: background 0.15s;
+}
+
+.entity-det-backlinks-header:hover {
+  background: var(--hover, rgba(255,255,255,0.04));
+}
+
+.entity-det-backlinks-chevron {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.entity-det-backlinks-title {
+  flex: 1;
+}
+
+.entity-det-backlinks-count {
+  font-size: 10px;
+  background: var(--surface, #1e1e2e);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 10px;
+  padding: 1px 6px;
+  color: var(--text-muted, #666);
+}
+
+.entity-det-backlinks-body {
+  padding: 6px 0;
+}
+
+.entity-det-backlinks-empty {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  padding: 6px 12px;
+  font-style: italic;
+}
+
+.entity-det-backlinks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entity-det-backlink-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+}
+
+.entity-det-backlink-item:last-child {
+  border-bottom: none;
+}
+
+.entity-det-backlink-scene {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent, #6366f1);
+  padding: 0;
+  text-align: left;
+  transition: color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-det-backlink-scene:hover:not(:disabled) {
+  color: var(--accent-hover, #818cf8);
+  text-decoration: underline;
+}
+
+.entity-det-backlink-scene:disabled {
+  cursor: default;
+  color: var(--text-secondary, #aaa);
+}
+
+.entity-det-backlink-snippet {
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
