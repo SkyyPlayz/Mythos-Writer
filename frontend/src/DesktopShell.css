@@ -94,6 +94,36 @@
   margin: 4px 0;
 }
 
+/* View toggle (Editor / Brainstorm) */
+.app-menu-view-toggle {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.app-menu-view-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #71717a;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.app-menu-view-btn:hover {
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+
+.app-menu-view-btn.active {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #e4e4e7;
+}
+
 /* Main panels row */
 .shell-panels {
   display: flex;

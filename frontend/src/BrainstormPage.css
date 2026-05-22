@@ -1,0 +1,353 @@
+/* BrainstormPage — full-page chat surface for world-building */
+
+.brainstorm-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0a0a0b;
+  color: #e4e4e7;
+  overflow: hidden;
+}
+
+/* Header */
+.brainstorm-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: #0d0d0f;
+  border-bottom: 1px solid #1a1a1f;
+  flex-shrink: 0;
+}
+
+.brainstorm-back-btn {
+  background: none;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  color: #a1a1aa;
+  font-size: 0.82rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.brainstorm-back-btn:hover {
+  background: #18181b;
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+
+.brainstorm-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brainstorm-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e4e4e7;
+  margin: 0;
+}
+
+.brainstorm-subtitle {
+  font-size: 0.75rem;
+  color: #71717a;
+  margin: 0;
+}
+
+/* Body: two-column layout */
+.brainstorm-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* Chat column */
+.brainstorm-chat-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  border-right: 1px solid #1a1a1f;
+  overflow: hidden;
+}
+
+.brainstorm-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.brainstorm-empty {
+  color: #71717a;
+  font-size: 0.87rem;
+  line-height: 1.6;
+  padding: 40px 20px;
+  text-align: center;
+  max-width: 480px;
+  margin: auto;
+}
+
+/* Messages */
+.bs-message {
+  display: flex;
+}
+
+.bs-message-user {
+  justify-content: flex-end;
+}
+
+.bs-message-assistant {
+  justify-content: flex-start;
+}
+
+.bs-user-bubble {
+  background: #4c1d95;
+  color: #ede9fe;
+  border-radius: 14px 14px 4px 14px;
+  padding: 10px 14px;
+  max-width: 72%;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bs-assistant-bubble {
+  max-width: 80%;
+}
+
+.bs-assistant-text {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 4px 14px 14px 14px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: #d4d4d8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bs-streaming {
+  opacity: 0.85;
+}
+
+.bs-cursor {
+  display: inline-block;
+  animation: bs-blink 1s step-end infinite;
+  color: #7c3aed;
+  margin-left: 1px;
+}
+
+@keyframes bs-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.brainstorm-error {
+  background: #3b0a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  color: #fca5a5;
+  padding: 10px 14px;
+  font-size: 0.84rem;
+}
+
+/* Input area */
+.brainstorm-input-area {
+  display: flex;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #0d0d0f;
+  border-top: 1px solid #1a1a1f;
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.brainstorm-input {
+  flex: 1;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  color: #e4e4e7;
+  font-size: 0.88rem;
+  padding: 8px 12px;
+  resize: none;
+  font-family: inherit;
+  line-height: 1.5;
+  outline: none;
+}
+
+.brainstorm-input:focus {
+  border-color: #4c1d95;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+}
+
+.brainstorm-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.brainstorm-send-btn {
+  background: #7c3aed;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: flex-end;
+  height: 38px;
+}
+
+.brainstorm-send-btn:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.brainstorm-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Facts column */
+.brainstorm-facts-col {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #0d0d0f;
+}
+
+.brainstorm-facts-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid #1a1a1f;
+  flex-shrink: 0;
+}
+
+.brainstorm-facts-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #71717a;
+  flex: 1;
+}
+
+.brainstorm-facts-count {
+  background: #27272a;
+  border-radius: 10px;
+  color: #a1a1aa;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+}
+
+.brainstorm-facts-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brainstorm-facts-empty {
+  color: #52525b;
+  font-size: 0.81rem;
+  line-height: 1.6;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+/* Fact cards */
+.bs-fact {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color 0.15s;
+}
+
+.bs-fact:hover {
+  border-color: #3f3f46;
+}
+
+.bs-fact-saved {
+  border-color: #14532d;
+  background: #0a1e12;
+}
+
+/* Type badge */
+.bs-fact-type {
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 1px 6px;
+  width: fit-content;
+}
+
+.bs-fact-type-character { background: #1e1b4b; color: #a5b4fc; }
+.bs-fact-type-location  { background: #0c2a1a; color: #6ee7b7; }
+.bs-fact-type-item      { background: #2a1a0c; color: #fcd34d; }
+.bs-fact-type-concept   { background: #1a0c2a; color: #d8b4fe; }
+.bs-fact-type-other     { background: #1a1a1f; color: #71717a; }
+
+.bs-fact-name {
+  font-size: 0.87rem;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.bs-fact-desc {
+  font-size: 0.78rem;
+  color: #a1a1aa;
+  line-height: 1.5;
+}
+
+.bs-fact-save-btn {
+  margin-top: 4px;
+  background: #7c3aed;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 500;
+  padding: 5px 10px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.bs-fact-save-btn:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.bs-fact-save-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.bs-fact-saved-label {
+  margin-top: 4px;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: #4ade80;
+  align-self: flex-start;
+}

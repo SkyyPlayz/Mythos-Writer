@@ -5,6 +5,7 @@ import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor from './BlockEditor';
 import EntityDetail from './EntityDetail';
+import BrainstormPage from './BrainstormPage';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -58,7 +59,12 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-function AppMenuBar() {
+interface AppMenuBarProps {
+  view: 'editor' | 'brainstorm';
+  onSetView: (v: 'editor' | 'brainstorm') => void;
+}
+
+function AppMenuBar({ view, onSetView }: AppMenuBarProps) {
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -72,6 +78,20 @@ function AppMenuBar() {
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openSettings?.()}>Settings…</button>
           </div>
         </div>
+      </div>
+      <div className="app-menu-view-toggle">
+        <button
+          className={`app-menu-view-btn${view === 'editor' ? ' active' : ''}`}
+          onClick={() => onSetView('editor')}
+        >
+          Editor
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'brainstorm' ? ' active' : ''}`}
+          onClick={() => onSetView('brainstorm')}
+        >
+          Brainstorm
+        </button>
       </div>
     </div>
   );
@@ -93,6 +113,7 @@ export default function DesktopShell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
+  const [view, setView] = useState<'editor' | 'brainstorm'>('editor');
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragState = useRef<DragState | null>(null);
@@ -337,8 +358,11 @@ export default function DesktopShell() {
 
   return (
     <div className="desktop-shell">
-      <AppMenuBar />
-      <div className="shell-panels">
+      <AppMenuBar view={view} onSetView={setView} />
+      {view === 'brainstorm' && (
+        <BrainstormPage onBack={() => setView('editor')} />
+      )}
+      {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
       <div className="shell-left" style={{ width: layout.leftWidth }}>
         <LeftRail
@@ -414,7 +438,7 @@ export default function DesktopShell() {
           selectedStory={selectedStory}
         />
       </div>
-      </div>{/* end shell-panels */}
+      </div>}{/* end shell-panels */}
     </div>
   );
 }
