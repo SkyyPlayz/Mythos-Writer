@@ -11,6 +11,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build && electron-builder --win zip",
     "build:installer": "electron-vite build && electron-builder --win nsis",
+    "dist": "electron-vite build && electron-builder --win",
     "build:electron": "electron-vite build",
     "start": "electron .",
     "package": "electron-builder --win zip",

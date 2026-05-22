@@ -117,3 +117,29 @@ GitHub Actions runs on every push and pull request to `main`:
 3. Type-check — `tsc --noEmit` on frontend and electron-main
 4. Test — Vitest on electron-main and frontend
 5. Build — `npm run build:electron` (compiles main + renderer to `out/`, no packaging)
+
+## Releasing
+
+The release workflow (`.github/workflows/release.yml`) runs automatically when a version tag is pushed.
+
+```bash
+# 1. Tag the release
+git tag v0.x.y
+git push --tags
+```
+
+2. GitHub Actions builds the Windows NSIS installer and ZIP on `windows-latest`.
+3. A **draft** GitHub Release is created with both artifacts attached — no assets are published automatically.
+4. Go to the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases), review the draft, and click **Publish release** when ready.
+
+> Mac and Linux builds are stubbed (`if: false`) pending code signing setup in Phase 4.
+
+To test the workflow without shipping a real release, push a pre-release tag and delete the resulting draft immediately:
+
+```bash
+git tag v0.0.0-test
+git push origin v0.0.0-test
+# after verifying the draft release is created, delete tag and release:
+git push --delete origin v0.0.0-test
+git tag -d v0.0.0-test
+```
