@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { autoUpdater } from 'electron-updater';
 import Anthropic from '@anthropic-ai/sdk';
 import {
@@ -48,7 +49,27 @@ import {
   type VaultCheckPayload,
   type VaultIndexEntry,
   type VaultCheckInconsistency,
+  type AppSettings,
+  type SettingsSetPayload,
+  type SuggestionsListPayload,
+  type SuggestionsUpsertPayload,
+  type SuggestionsApplyPayload,
+  type SuggestionsRejectPayload,
+  type AuditListPayload,
+  type TimelineListPayload,
+  type TimelineUpsertPayload,
 } from './ipc.js';
+import {
+  openDb,
+  closeDb,
+  upsertSuggestion,
+  updateSuggestionStatus,
+  listSuggestions,
+  insertAuditLog,
+  listAuditLog,
+  upsertTimelineEntry,
+  listTimelineEntries,
+} from './db.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import {
   readVaultFile,
@@ -63,6 +84,7 @@ import {
   startVaultWatcher,
   stopVaultWatcher,
 } from './vault.js';
+import { openManifest } from './manifest.js';
 import {
   createEntity,
   readEntity,
@@ -109,9 +131,14 @@ function ensureVaultDir() {
   if (!fs.existsSync(vaultRoot)) {
     fs.mkdirSync(vaultRoot, { recursive: true });
   }
-  if (!fs.existsSync(getManifestPath())) {
-    writeManifest(getManifestPath(), defaultManifest(vaultRoot));
+  const manifestPath = getManifestPath();
+  if (!fs.existsSync(manifestPath)) {
+    writeManifest(manifestPath, defaultManifest(vaultRoot));
+  } else {
+    // Migrate legacy manifests to current schema version on every vault open.
+    openManifest(manifestPath);
   }
+  openDb(vaultRoot);
 }
 
 // Notify renderer when vault changes so it can refresh state
@@ -217,14 +244,71 @@ const handlers: IpcHandlers = {
     await stopVaultWatcher();
     return { watching: false };
   },
-  [IPC_CHANNELS.DB_QUERY]: (payload: DbQueryPayload): DbQueryResponse => {
-    // SQLite stub — placeholder for future implementation
+  [IPC_CHANNELS.DB_QUERY]: (_payload: DbQueryPayload): DbQueryResponse => {
     return { rows: [] };
   },
-  [IPC_CHANNELS.DB_WRITE]: (payload: DbWritePayload): DbWriteResponse => {
-    // SQLite stub — placeholder for future implementation
+  [IPC_CHANNELS.DB_WRITE]: (_payload: DbWritePayload): DbWriteResponse => {
     return { changes: 0 };
   },
+
+  // ─── Suggestions ───
+  [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
+    ensureVaultDir();
+    return { suggestions: listSuggestions(payload.status) };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => {
+    ensureVaultDir();
+    upsertSuggestion(payload.suggestion);
+    return { id: payload.suggestion.id };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const auditId = crypto.randomUUID();
+    updateSuggestionStatus(payload.id, 'accepted', now, payload.appliedRunId);
+    insertAuditLog({
+      id: auditId,
+      suggestion_id: payload.id,
+      action: 'apply',
+      snapshot_path: payload.snapshotPath ?? null,
+      actor: payload.actor ?? 'user',
+      created_at: now,
+    });
+    return { id: payload.id, auditId };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const auditId = crypto.randomUUID();
+    updateSuggestionStatus(payload.id, 'rejected');
+    insertAuditLog({
+      id: auditId,
+      suggestion_id: payload.id,
+      action: 'reject',
+      snapshot_path: null,
+      actor: payload.actor ?? 'user',
+      created_at: now,
+    });
+    return { id: payload.id, auditId };
+  },
+
+  // ─── Audit log ───
+  [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => {
+    ensureVaultDir();
+    return { entries: listAuditLog(payload.suggestionId) };
+  },
+
+  // ─── Timeline ───
+  [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => {
+    ensureVaultDir();
+    return { entries: listTimelineEntries(payload.scenePath) };
+  },
+  [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => {
+    ensureVaultDir();
+    upsertTimelineEntry(payload.entry);
+    return { id: payload.entry.id };
+  },
+
   [IPC_CHANNELS.APP_READY]: (): AppReadyResponse => ({
     platform: process.platform,
     electronVersion: process.versions.electron,
@@ -333,6 +417,14 @@ const handlers: IpcHandlers = {
     return getEntityBacklinks(getVaultRoot(), manifest, payload.entityId);
   },
 
+  [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
+    return loadAppSettings();
+  },
+  [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
+    saveAppSettings(payload.settings);
+    return { saved: true };
+  },
+
 };
 
 // ─── Create BrowserWindow ───
@@ -369,15 +461,59 @@ function initAutoUpdater() {
   autoUpdater.on('error', () => { /* intentionally silent in stub mode */ });
 }
 
+// ─── App settings persistence ───
+
+const SETTINGS_DEFAULTS: AppSettings = {
+  apiKey: '',
+  agents: {
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30 },
+    brainstorm: { enabled: true, model: 'claude-sonnet-4-6' },
+    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60 },
+  },
+  theme: 'dark',
+};
+
+function getAppSettingsPath(): string {
+  return path.join(app.getPath('userData'), 'app-settings.json');
+}
+
+function loadAppSettings(): AppSettings {
+  const settingsPath = getAppSettingsPath();
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
+      type AgentsRaw = Partial<AppSettings['agents']>;
+      const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
+      return {
+        ...SETTINGS_DEFAULTS,
+        ...raw,
+        agents: {
+          writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, ...(rawAgents.writingAssistant ?? {}) },
+          brainstorm: { ...SETTINGS_DEFAULTS.agents.brainstorm, ...(rawAgents.brainstorm ?? {}) },
+          archive: { ...SETTINGS_DEFAULTS.agents.archive, ...(rawAgents.archive ?? {}) },
+        },
+      };
+    } catch {
+      // fall through to defaults
+    }
+  }
+  return { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
+}
+
+function saveAppSettings(settings: AppSettings): void {
+  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+}
+
 // ─── Anthropic API key validation ───
-// Called before creating any Anthropic client so errors surface before streaming begins.
+// Checks persisted settings first, then falls back to environment variable.
 function getValidatedApiKey(): string {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const settings = loadAppSettings();
+  const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
+    throw new Error('ANTHROPIC_API_KEY is not set. Add it in Settings or to your environment to enable AI features.');
   }
   if (!apiKey.startsWith('sk-ant-')) {
-    throw new Error('ANTHROPIC_API_KEY appears invalid (expected format: sk-ant-…). Check your environment settings.');
+    throw new Error('ANTHROPIC_API_KEY appears invalid (expected format: sk-ant-…). Check Settings or your environment.');
   }
   return apiKey;
 }
@@ -630,6 +766,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', async () => {
   await stopVaultWatcher();
+  closeDb();
   if (process.platform !== 'darwin') {
     app.quit();
   }

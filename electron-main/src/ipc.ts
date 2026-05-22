@@ -21,9 +21,22 @@ export const IPC_CHANNELS = {
   VAULT_WATCH_START: 'vault:watch-start',
   VAULT_WATCH_STOP: 'vault:watch-stop',
 
-  // SQLite (stub for now)
+  // SQLite generic (stub)
   DB_QUERY: 'db:query',
   DB_WRITE: 'db:write',
+
+  // Suggestions
+  SUGGESTIONS_LIST: 'suggestions:list',
+  SUGGESTIONS_UPSERT: 'suggestions:upsert',
+  SUGGESTIONS_APPLY: 'suggestions:apply',
+  SUGGESTIONS_REJECT: 'suggestions:reject',
+
+  // Audit log
+  AUDIT_LIST: 'audit:list',
+
+  // Timeline
+  TIMELINE_LIST: 'timeline:list',
+  TIMELINE_UPSERT: 'timeline:upsert',
 
   // App lifecycle
   APP_READY: 'app:ready',
@@ -56,6 +69,10 @@ export const IPC_CHANNELS = {
   ENTITY_DELETE: 'entity:delete',
   ENTITY_LIST: 'entity:list',
   ENTITY_BACKLINKS: 'entity:backlinks',
+
+  // App settings
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_SET: 'settings:set',
 } as const;
 
 // ─── Main process handlers ───
@@ -117,6 +134,15 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => EntityDeleteResponse;
   [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => EntityListResponse;
   [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
+  [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
+  [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
+  [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
+  [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
+  [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => SuggestionsApplyResponse;
+  [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => SuggestionsRejectResponse;
+  [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => AuditListResponse;
+  [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
+  [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
 }
 
 // ─── Payload / Response types ───
@@ -167,6 +193,7 @@ export interface VaultDeleteResponse {
 // ─── Full manifest schema ───
 
 export interface Manifest {
+  schemaVersion: number;
   version: string;
   vaultRoot: string;
   stories: StoryEntry[];
@@ -175,6 +202,10 @@ export interface Manifest {
   // Legacy flat lists kept for backward compat — prefer stories[].chapters[].scenes[]
   scenes: SceneEntry[];
   chapters: ChapterEntry[];
+  /** suggestion id → vault path (provenance index) */
+  provenance: Record<string, string>;
+  /** Scene Crafter board file paths */
+  boardReferences: string[];
 }
 
 export interface StoryEntry {
@@ -205,6 +236,7 @@ export interface SceneEntry {
   order: number;
   chapterId?: string;
   storyId?: string;
+  currentDraftId?: string;
   blocks: BlockEntry[];
   draftState?: 'in-progress' | 'review' | 'final';
   card?: SceneCard;
@@ -252,6 +284,7 @@ export interface EntityEntry {
 export interface SuggestionEntry {
   id: string;
   source: string;
+  status: 'proposed' | 'accepted' | 'dismissed';
   confidence: number;
   rationale: string;
   timestamp: string;
@@ -517,4 +550,131 @@ export interface VaultCheckInconsistency {
 export interface VaultCheckResponse {
   text: string;
   inconsistencies: VaultCheckInconsistency[];
+}
+
+// ─── App settings types ───
+
+export interface AppSettings {
+  apiKey: string;
+  agents: {
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number };
+    brainstorm: { enabled: boolean; model: string };
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number };
+  };
+  theme: 'light' | 'dark';
+}
+
+export interface SettingsSetPayload {
+  settings: AppSettings;
+}
+
+export interface SettingsSetResponse {
+  saved: boolean;
+}
+
+// ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
+
+export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected';
+export type AuditAction = 'apply' | 'reject' | 'rollback';
+export type TimelineSource = 'explicit_marker' | 'prose';
+
+export interface SuggestionRow {
+  id: string;
+  source_agent: string;
+  confidence: number;
+  rationale: string;
+  target_path: string | null;
+  target_anchor: string | null;
+  payload_json: string | null;
+  status: SuggestionStatus;
+  created_at: string;
+  applied_at: string | null;
+  applied_run_id: string | null;
+}
+
+export interface AuditLogRow {
+  id: string;
+  suggestion_id: string;
+  action: AuditAction;
+  snapshot_path: string | null;
+  actor: string;
+  created_at: string;
+}
+
+export interface TimelineEntryRow {
+  id: string;
+  scene_path: string;
+  inferred_time: string;
+  confidence: number;
+  source: TimelineSource;
+  notes_json: string | null;
+  created_at: string;
+}
+
+// ─── Suggestions IPC payload / response types ───
+
+export interface SuggestionsListPayload {
+  status?: SuggestionStatus;
+}
+
+export interface SuggestionsListResponse {
+  suggestions: SuggestionRow[];
+}
+
+export interface SuggestionsUpsertPayload {
+  suggestion: SuggestionRow;
+}
+
+export interface SuggestionsUpsertResponse {
+  id: string;
+}
+
+export interface SuggestionsApplyPayload {
+  id: string;
+  snapshotPath?: string;
+  actor?: string;
+  appliedRunId?: string;
+}
+
+export interface SuggestionsApplyResponse {
+  id: string;
+  auditId: string;
+}
+
+export interface SuggestionsRejectPayload {
+  id: string;
+  actor?: string;
+}
+
+export interface SuggestionsRejectResponse {
+  id: string;
+  auditId: string;
+}
+
+// ─── Audit IPC payload / response types ───
+
+export interface AuditListPayload {
+  suggestionId?: string;
+}
+
+export interface AuditListResponse {
+  entries: AuditLogRow[];
+}
+
+// ─── Timeline IPC payload / response types ───
+
+export interface TimelineListPayload {
+  scenePath?: string;
+}
+
+export interface TimelineListResponse {
+  entries: TimelineEntryRow[];
+}
+
+export interface TimelineUpsertPayload {
+  entry: TimelineEntryRow;
+}
+
+export interface TimelineUpsertResponse {
+  id: string;
 }
