@@ -560,6 +560,7 @@ app.whenReady().then(async () => {
   setupIpcMain(handlers);
   registerBrainstormHandler();
   registerWritingAssistantHandler();
+  registerVaultAgentHandlers();
   createWindow();
   initAutoUpdater();
   // Start watching vault for external markdown changes

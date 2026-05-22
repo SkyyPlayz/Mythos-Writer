@@ -54,6 +54,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('agent:brainstorm:chunk', handler);
     return () => ipcRenderer.removeListener('agent:brainstorm:chunk', handler);
   },
+  agentVaultIndex: () =>
+    ipcRenderer.invoke('agent:vault-index', {}),
+  agentVaultCheck: (sceneContent: string) =>
+    ipcRenderer.invoke('agent:vault-check', { sceneContent }),
+  onVaultCheckChunk: (cb: (chunk: string) => void) => {
+    const handler = (_: unknown, data: { chunk: string }) => cb(data.chunk);
+    ipcRenderer.on('agent:vault-check:chunk', handler);
+    return () => ipcRenderer.removeListener('agent:vault-check:chunk', handler);
+  },
 
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),

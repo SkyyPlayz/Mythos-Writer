@@ -20,6 +20,25 @@ interface EntityEntry {
   updatedAt: string;
 }
 
+interface VaultIndexEntry {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  aliases?: string[];
+  tags?: string[];
+  keyFacts: string;
+}
+
+interface VaultCheckInconsistency {
+  id: string;
+  entityName: string;
+  text: string;
+  rationale: string;
+  timestamp: string;
+  source_agent: 'vault-agent';
+  status: 'proposed' | 'dismissed';
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -44,6 +63,9 @@ interface Window {
     onWritingAssistantChunk: (cb: (chunk: string) => void) => () => void;
     agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
     onBrainstormChunk: (cb: (chunk: string) => void) => () => void;
+    agentVaultIndex: () => Promise<{ entities: VaultIndexEntry[] }>;
+    agentVaultCheck: (sceneContent: string) => Promise<{ text: string; inconsistencies: VaultCheckInconsistency[] }>;
+    onVaultCheckChunk: (cb: (chunk: string) => void) => () => void;
     getAppInfo: () => Promise<{ platform: string; electronVersion: string; appVersion: string }>;
     getSystemInfo: () => Promise<{ platform: string; electronVersion: string; nodeVersion: string }>;
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;

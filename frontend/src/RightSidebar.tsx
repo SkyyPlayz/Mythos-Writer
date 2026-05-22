@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
+import VaultAgentPanel from './VaultAgentPanel';
 import './RightSidebar.css';
 
 type Tab = 'notes' | 'properties' | 'ai';
@@ -127,6 +128,33 @@ function PropertiesPanel({
 }
 
 
+type AiSubTab = 'writing' | 'vault';
+
+function AiPanel({ scene }: { scene: Scene | null }) {
+  const [subTab, setSubTab] = useState<AiSubTab>('writing');
+
+  return (
+    <div className="ai-panel">
+      <div className="ai-subtabs">
+        <button
+          className={`ai-subtab${subTab === 'writing' ? ' active' : ''}`}
+          onClick={() => setSubTab('writing')}
+        >
+          Writing
+        </button>
+        <button
+          className={`ai-subtab${subTab === 'vault' ? ' active' : ''}`}
+          onClick={() => setSubTab('vault')}
+        >
+          Vault
+        </button>
+      </div>
+      {subTab === 'writing' && <WritingAssistantPanel scene={scene} />}
+      {subTab === 'vault' && <VaultAgentPanel scene={scene} />}
+    </div>
+  );
+}
+
 export default function RightSidebar({ activeTab, onTabChange, selectedScene, selectedChapter, selectedStory }: Props) {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'notes', label: 'Notes' },
@@ -152,7 +180,7 @@ export default function RightSidebar({ activeTab, onTabChange, selectedScene, se
         {activeTab === 'properties' && (
           <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
         )}
-        {activeTab === 'ai' && <WritingAssistantPanel scene={selectedScene} />}
+        {activeTab === 'ai' && <AiPanel scene={selectedScene} />}
       </div>
     </div>
   );
