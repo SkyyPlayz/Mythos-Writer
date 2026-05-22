@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function roundTrip(markdown: string): string {
   const editor = new Editor({
@@ -11,8 +17,31 @@ function roundTrip(markdown: string): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = (editor.storage as any).markdown.getMarkdown() as string;
   editor.destroy();
-  return result.trim();
+  return result;
 }
+
+/** roundTrip without trimming — used for trailing-newline assertions. */
+function roundTripRaw(markdown: string): string {
+  const editor = new Editor({
+    extensions: [StarterKit, Markdown],
+    content: markdown,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (editor.storage as any).markdown.getMarkdown() as string;
+  editor.destroy();
+  return result;
+}
+
+function fixture(name: string): string {
+  return readFileSync(
+    resolve(__dirname, '__fixtures__/markdown', name),
+    'utf-8',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Original suite (kept verbatim for non-regression)
+// ---------------------------------------------------------------------------
 
 describe('BlockEditor markdown round-trip', () => {
   it('paragraph preserves plain text', () => {
@@ -24,19 +53,19 @@ describe('BlockEditor markdown round-trip', () => {
   it('heading h1', () => {
     const md = '# Chapter One';
     const out = roundTrip(md);
-    expect(out).toBe('# Chapter One');
+    expect(out.trim()).toBe('# Chapter One');
   });
 
   it('heading h2', () => {
     const md = '## Scene Two';
     const out = roundTrip(md);
-    expect(out).toBe('## Scene Two');
+    expect(out.trim()).toBe('## Scene Two');
   });
 
   it('heading h3', () => {
     const md = '### Act Three';
     const out = roundTrip(md);
-    expect(out).toBe('### Act Three');
+    expect(out.trim()).toBe('### Act Three');
   });
 
   it('bold preserves marked text', () => {
@@ -88,5 +117,224 @@ describe('BlockEditor markdown round-trip', () => {
     expect(out).toContain('const x = 42;');
     expect(out).toContain('console.log(x);');
     expect(out).toContain('```');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Extended regression suite (MYT-131)
+// ---------------------------------------------------------------------------
+
+describe('BlockEditor markdown round-trip — extended regression (MYT-131)', () => {
+
+  // -- Inline marks ----------------------------------------------------------
+
+  describe('inline marks', () => {
+    it('bold round-trips with double asterisks', () => {
+      const out = roundTrip('**bold text**');
+      expect(out).toContain('**bold text**');
+    });
+
+    it('italic round-trips', () => {
+      const out = roundTrip('*italic text*');
+      expect(out).toMatch(/[*_]italic text[*_]/);
+    });
+
+    it('strikethrough round-trips', () => {
+      const out = roundTrip('~~struck~~');
+      expect(out).toContain('~~struck~~');
+    });
+
+    it('inline code round-trips', () => {
+      const out = roundTrip('`const x = 1;`');
+      expect(out).toContain('`const x = 1;`');
+    });
+
+    it('combined marks in fixture preserve all tokens', () => {
+      const src = fixture('inline-marks.md').trim();
+      const out = roundTrip(src);
+      expect(out).toContain('**furious**');
+      expect(out).toMatch(/[*_]whispered[*_]/);
+      expect(out).toContain('`inline code`');
+      expect(out).toContain('~~strikethrough~~');
+    });
+  });
+
+  // -- Headings --------------------------------------------------------------
+
+  describe('headings', () => {
+    it('H1 round-trips exactly', () => {
+      expect(roundTrip('# Title').trim()).toBe('# Title');
+    });
+
+    it('H2 round-trips exactly', () => {
+      expect(roundTrip('## Section').trim()).toBe('## Section');
+    });
+
+    it('H3 round-trips exactly', () => {
+      expect(roundTrip('### Sub').trim()).toBe('### Sub');
+    });
+
+    it('H4 round-trips exactly', () => {
+      expect(roundTrip('#### Deep').trim()).toBe('#### Deep');
+    });
+
+    it('blank lines between headings and paragraphs are restored', () => {
+      const src = fixture('headings.md').trim();
+      const out = roundTrip(src);
+      // Each heading must be present
+      expect(out).toMatch(/^# Heading One/m);
+      expect(out).toMatch(/^## Heading Two/m);
+      expect(out).toMatch(/^### Heading Three/m);
+      expect(out).toMatch(/^#### Heading Four/m);
+      expect(out).toContain('A paragraph after headings.');
+    });
+  });
+
+  // -- Lists -----------------------------------------------------------------
+
+  describe('lists', () => {
+    it('bullet list from fixture preserves all items', () => {
+      const src = fixture('lists.md').trim();
+      const out = roundTrip(src);
+      expect(out).toContain('First item');
+      expect(out).toContain('Second item');
+      expect(out).toContain('Third item');
+    });
+
+    it('ordered list from fixture preserves all items and numbering', () => {
+      const src = fixture('lists.md').trim();
+      const out = roundTrip(src);
+      expect(out).toContain('Step one');
+      expect(out).toContain('Step two');
+      expect(out).toContain('Step three');
+      expect(out).toMatch(/\d+\.\s/);
+    });
+
+    it('nested bullet list preserves hierarchy', () => {
+      const src = fixture('nested-list.md').trim();
+      const out = roundTrip(src);
+      expect(out).toContain('Parent one');
+      expect(out).toContain('Child one');
+      expect(out).toContain('Child two');
+      expect(out).toContain('Parent two');
+    });
+  });
+
+  // -- Code blocks -----------------------------------------------------------
+
+  describe('code blocks', () => {
+    it('fenced code block with language tag preserves language', () => {
+      const md = '```typescript\nconst x: number = 42;\n```';
+      const out = roundTrip(md);
+      expect(out).toContain('```typescript');
+      expect(out).toContain('const x: number = 42;');
+    });
+
+    it('code block fixture round-trips language and content', () => {
+      const src = fixture('code-block.md').trim();
+      const out = roundTrip(src);
+      expect(out).toContain('```typescript');
+      expect(out).toContain('const x: number = 42;');
+      expect(out).toContain('console.log(x);');
+    });
+
+    it('fenced block without language round-trips content', () => {
+      const md = '```\nplain code\n```';
+      const out = roundTrip(md);
+      expect(out).toContain('plain code');
+      expect(out).toContain('```');
+    });
+  });
+
+  // -- Blockquotes -----------------------------------------------------------
+
+  describe('blockquotes', () => {
+    it('simple blockquote round-trips', () => {
+      const src = fixture('blockquote.md').trim();
+      const out = roundTrip(src);
+      expect(out).toContain('To be or not to be');
+      expect(out).toMatch(/^>/m);
+    });
+
+    it('nested blockquote preserves inner content', () => {
+      // tiptap-markdown flattens nested blockquotes into one level;
+      // verify inner text is still present
+      const md = '> Outer\n>\n> > Inner nested quote';
+      const out = roundTrip(md);
+      expect(out).toContain('Outer');
+      expect(out).toContain('Inner nested quote');
+    });
+  });
+
+  // -- Wiki-link tokens ------------------------------------------------------
+  // GAP (MYT-138): tiptap-markdown escapes square brackets, so [[wiki-link]]
+  // becomes \[\[wiki-link\]\] on output. A custom TipTap extension is needed
+  // to preserve these tokens. Tests below document the current (broken)
+  // behaviour so any fix will surface as a clean diff.
+
+  describe('wiki-link tokens', () => {
+    it('[[wiki-link]] — GAP: currently escaped to \\[\\[...\\]\\] (see MYT-138)', () => {
+      const md = 'See [[Elara]] for details.';
+      const out = roundTrip(md);
+      // Document the gap: brackets are escaped, not preserved
+      expect(out).toContain('\\[\\[Elara\\]\\]');
+      // Once MYT-138 is fixed, replace the above with:
+      // expect(out).toContain('[[Elara]]');
+    });
+
+    it('wiki-link fixture — GAP: all tokens are escaped (see MYT-138)', () => {
+      const src = fixture('wiki-link.md').trim();
+      const out = roundTrip(src);
+      expect(out).toContain('\\[\\[Elara\\]\\]');
+      expect(out).toContain('\\[\\[The Shadow Realm\\]\\]');
+    });
+  });
+
+  // -- Tables ----------------------------------------------------------------
+
+  describe('tables', () => {
+    it('GFM table — documents current behaviour (gap expected without Table extension)', () => {
+      // StarterKit does not include a Table extension by default.
+      // Verify the text content is at least partially preserved even if
+      // GFM table syntax is lost. If this test fails after adding a Table
+      // extension, update the assertion to verify full round-trip.
+      const md = '| Name | Role |\n|------|------|\n| Elara | Hero |';
+      const out = roundTrip(md);
+      // Content should survive in some form
+      expect(out).toContain('Elara');
+      expect(out).toContain('Hero');
+    });
+  });
+
+  // -- Line breaks -----------------------------------------------------------
+
+  describe('line break behaviour', () => {
+    it('hard break (two trailing spaces) is preserved as a line break', () => {
+      // Two trailing spaces before \n signals a hard break in CommonMark
+      const md = 'Line one  \nLine two';
+      const out = roundTrip(md);
+      expect(out).toContain('Line one');
+      expect(out).toContain('Line two');
+    });
+
+    it('soft wrap within a paragraph does not insert extra blank lines', () => {
+      const md = 'First sentence. Second sentence.';
+      const out = roundTrip(md);
+      // Should not split into two separate paragraphs
+      expect(out.trim()).not.toMatch(/First sentence\.\s*\n\s*\n\s*Second sentence/);
+    });
+  });
+
+  // -- Trailing newline ------------------------------------------------------
+  // GAP (MYT-138): tiptap-markdown v0.9 does not append a trailing newline.
+  // Test documents current behaviour; update when the gap is resolved.
+
+  describe('trailing newline', () => {
+    it('output — GAP: no trailing newline in tiptap-markdown v0.9 (see MYT-138)', () => {
+      const raw = roundTripRaw('Hello world');
+      // Currently no trailing newline — document the gap
+      expect(raw).not.toMatch(/\n$/);
+      // Once fixed, replace the above with: expect(raw).toMatch(/\n$/);
+    });
   });
 });

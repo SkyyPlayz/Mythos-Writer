@@ -21,10 +21,6 @@ import {
   type Manifest,
   type ManifestWritePayload,
   type ManifestWriteResponse,
-  type DbQueryPayload,
-  type DbQueryResponse,
-  type DbWritePayload,
-  type DbWriteResponse,
   type AppReadyResponse,
   type BrainstormerPayload,
   type BrainstormerResponse,
@@ -53,23 +49,32 @@ import {
   type SettingsSetPayload,
   type SuggestionsListPayload,
   type SuggestionsUpsertPayload,
+  type SuggestionsAcceptPayload,
   type SuggestionsApplyPayload,
   type SuggestionsRejectPayload,
+  type SuggestionsRollbackPayload,
   type AuditListPayload,
   type TimelineListPayload,
   type TimelineUpsertPayload,
+  type GenerationLogRecentPayload,
 } from './ipc.js';
 import {
   openDb,
   closeDb,
+  getDb,
   upsertSuggestion,
   updateSuggestionStatus,
+  updateSuggestionBudgetExceeded,
+  getSuggestion,
   listSuggestions,
   insertAuditLog,
   listAuditLog,
   upsertTimelineEntry,
   listTimelineEntries,
+  insertGenerationLog,
+  listGenerationLog,
 } from './db.js';
+import { evaluateAutoApply } from './budget.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import {
   readVaultFile,
@@ -83,6 +88,8 @@ import {
   importObsidianVault,
   startVaultWatcher,
   stopVaultWatcher,
+  parseFrontmatter,
+  serializeFrontmatter,
 } from './vault.js';
 import { openManifest } from './manifest.js';
 import {
@@ -244,22 +251,86 @@ const handlers: IpcHandlers = {
     await stopVaultWatcher();
     return { watching: false };
   },
-  [IPC_CHANNELS.DB_QUERY]: (_payload: DbQueryPayload): DbQueryResponse => {
-    return { rows: [] };
-  },
-  [IPC_CHANNELS.DB_WRITE]: (_payload: DbWritePayload): DbWriteResponse => {
-    return { changes: 0 };
-  },
-
   // ─── Suggestions ───
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
     ensureVaultDir();
-    return { suggestions: listSuggestions(payload.status) };
+    return { suggestions: listSuggestions(payload.status, payload.sourceAgent) };
   },
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => {
     ensureVaultDir();
     upsertSuggestion(payload.suggestion);
+
+    // Auto-apply policy: evaluate immediately after insert.
+    const settingsKey = SOURCE_AGENT_TO_SETTINGS_KEY[payload.suggestion.source_agent];
+    if (settingsKey) {
+      const agentSettings = loadAppSettings().agents[settingsKey];
+      const result = evaluateAutoApply(
+        payload.suggestion.confidence,
+        payload.suggestion.source_agent,
+        agentSettings,
+        getDb(),
+      );
+      if (result.shouldAutoApply) {
+        const now = new Date().toISOString();
+        const auditId = crypto.randomUUID();
+        updateSuggestionStatus(payload.suggestion.id, 'accepted', now, 'auto-apply');
+        insertAuditLog({
+          id: auditId,
+          suggestion_id: payload.suggestion.id,
+          action: 'apply',
+          snapshot_path: null,
+          actor: 'auto_applied',
+          created_at: now,
+        });
+      } else if (result.budgetExceeded) {
+        updateSuggestionBudgetExceeded(payload.suggestion.id, true);
+      }
+    }
+
     return { id: payload.suggestion.id };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const auditId = crypto.randomUUID();
+    const suggestion = getSuggestion(payload.id);
+    if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
+
+    let finalStatus: 'accepted' | 'applied' = 'accepted';
+    let snapshotPath: string | null = null;
+
+    if (suggestion.target_kind === 'vault' && suggestion.target_path && suggestion.payload_json) {
+      const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
+      if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
+      const relSnapshotPath = path.join('.mythos', 'suggestion-snapshots', `${payload.id}.json`);
+      const fullSnapshotPath = path.join(getVaultRoot(), relSnapshotPath);
+
+      let originalContent = '';
+      try {
+        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
+        originalContent = content;
+      } catch { /* new file — empty original is fine */ }
+      fs.writeFileSync(fullSnapshotPath, JSON.stringify({ originalContent, path: suggestion.target_path }), 'utf-8');
+      snapshotPath = relSnapshotPath;
+
+      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
+      const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
+      const { frontmatter, prose } = parseFrontmatter(newContent);
+      frontmatter['provenance'] = payload.id;
+      writeVaultFile(getVaultRoot(), suggestion.target_path, serializeFrontmatter(frontmatter, prose));
+      finalStatus = 'applied';
+    }
+
+    updateSuggestionStatus(payload.id, finalStatus, now);
+    insertAuditLog({
+      id: auditId,
+      suggestion_id: payload.id,
+      action: finalStatus === 'applied' ? 'apply' : 'accept',
+      snapshot_path: snapshotPath,
+      actor: payload.actor ?? 'user',
+      created_at: now,
+    });
+    return { id: payload.id, status: finalStatus, auditId };
   },
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => {
     ensureVaultDir();
@@ -290,6 +361,39 @@ const handlers: IpcHandlers = {
       created_at: now,
     });
     return { id: payload.id, auditId };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const auditId = crypto.randomUUID();
+    const suggestion = getSuggestion(payload.id);
+    if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
+    if (suggestion.status !== 'applied') {
+      throw new Error(`Suggestion ${payload.id} is not in 'applied' state (current: ${suggestion.status})`);
+    }
+
+    const applyEntry = listAuditLog(payload.id).find((e) => e.action === 'apply');
+    let restoredPath: string | null = null;
+
+    if (applyEntry?.snapshot_path && suggestion.target_path) {
+      const fullSnapshotPath = path.join(getVaultRoot(), applyEntry.snapshot_path);
+      if (fs.existsSync(fullSnapshotPath)) {
+        const snapshot = JSON.parse(fs.readFileSync(fullSnapshotPath, 'utf-8')) as { originalContent: string; path: string };
+        writeVaultFile(getVaultRoot(), snapshot.path, snapshot.originalContent);
+        restoredPath = snapshot.path;
+      }
+    }
+
+    updateSuggestionStatus(payload.id, 'rolled_back');
+    insertAuditLog({
+      id: auditId,
+      suggestion_id: payload.id,
+      action: 'rollback',
+      snapshot_path: applyEntry?.snapshot_path ?? null,
+      actor: payload.actor ?? 'user',
+      created_at: now,
+    });
+    return { id: payload.id, auditId, restoredPath };
   },
 
   // ─── Audit log ───
@@ -345,7 +449,8 @@ const handlers: IpcHandlers = {
   }),
   [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => {
     ensureVaultDir();
-    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content);
+    const { snapshots: retention } = loadAppSettings();
+    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention);
   },
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => {
     ensureVaultDir();
@@ -365,7 +470,17 @@ const handlers: IpcHandlers = {
       const { content } = readVaultFile(getVaultRoot(), payload.scenePath);
       currentContent = content;
     } catch { /* new file */ }
-    const preRestoreSnapshot = saveSnapshot(getVaultRoot(), payload.sceneId, currentContent);
+    const { snapshots: retention } = loadAppSettings();
+    const preRestoreSnapshot = saveSnapshot(getVaultRoot(), payload.sceneId, currentContent, retention);
+    // Audit log: action=rollback, snapshot_path holds prior content hash for traceability
+    insertAuditLog({
+      id: crypto.randomUUID(),
+      suggestion_id: payload.sceneId,
+      action: 'rollback',
+      snapshot_path: preRestoreSnapshot.contentHash,
+      actor: 'user',
+      created_at: new Date().toISOString(),
+    });
     // Write the restored content to vault markdown
     writeVaultFile(getVaultRoot(), payload.scenePath, target.content);
     return { restored: target, preRestoreSnapshot };
@@ -425,6 +540,11 @@ const handlers: IpcHandlers = {
     return { saved: true };
   },
 
+  [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => {
+    ensureVaultDir();
+    return { entries: listGenerationLog({ limit: payload.limit, agent: payload.agent }) };
+  },
+
 };
 
 // ─── Create BrowserWindow ───
@@ -463,14 +583,29 @@ function initAutoUpdater() {
 
 // ─── App settings persistence ───
 
+const AGENT_BUDGET_DEFAULTS = {
+  autoApply: false,
+  confidenceThreshold: 0.85,
+  maxTokensPerHour: 100_000,
+  maxSuggestionsPerHour: 50,
+};
+
 const SETTINGS_DEFAULTS: AppSettings = {
   apiKey: '',
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30 },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6' },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60 },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
+    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
+    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
   },
   theme: 'dark',
+  snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+};
+
+/** Maps source_agent DB value → settings key. Unknown agents have no budget enforcement. */
+const SOURCE_AGENT_TO_SETTINGS_KEY: Record<string, keyof AppSettings['agents']> = {
+  'writing-assistant': 'writingAssistant',
+  'brainstorm': 'brainstorm',
+  'archive': 'archive',
 };
 
 function getAppSettingsPath(): string {
@@ -543,24 +678,29 @@ Be creative, ask clarifying questions, and help the author think deeper about th
       { role: 'user' as const, content: payload.prompt },
     ];
 
+    const model = 'claude-haiku-4-5-20251001';
     let fullText = '';
+    let tokensIn: number | null = null;
+    let tokensOut: number | null = null;
+    let genError: string | null = null;
+    const startedAt = Date.now();
+
     const controller = new AbortController();
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
 
     const stream = client.messages.stream(
-      {
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages,
-      },
+      { model, max_tokens: 1024, system: systemPrompt, messages },
       { signal: controller.signal },
     );
 
     try {
       for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        if (chunk.type === 'message_start') {
+          tokensIn = chunk.message.usage.input_tokens;
+        } else if (chunk.type === 'message_delta') {
+          tokensOut = chunk.usage.output_tokens;
+        } else if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
           fullText += chunk.delta.text;
           if (!event.sender.isDestroyed()) {
             event.sender.send('agent:brainstorm:chunk', { chunk: chunk.delta.text });
@@ -568,9 +708,31 @@ Be creative, ask clarifying questions, and help the author think deeper about th
         }
       }
     } catch (err: unknown) {
-      if ((err as Error)?.name !== 'AbortError') throw err;
+      if ((err as Error)?.name !== 'AbortError') {
+        genError = (err as Error).message ?? 'unknown error';
+        throw err;
+      }
     } finally {
       event.sender.off('destroyed', onDestroyed);
+      const promptText = payload.prompt;
+      const payloadDigest = process.env.PERSIST_PROMPTS === '1'
+        ? promptText
+        : crypto.createHash('sha256').update(promptText).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'brainstorm',
+          model,
+          endpoint: 'messages.stream',
+          request_id: null,
+          tokens_in: tokensIn,
+          tokens_out: tokensOut,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: payloadDigest,
+        });
+      } catch { /* non-fatal — logging must not break agent response */ }
     }
 
     return { text: fullText };
@@ -587,14 +749,20 @@ function registerWritingAssistantHandler() {
       ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
       : payload.prompt;
 
+    const model = 'claude-haiku-4-5-20251001';
     let fullText = '';
+    let tokensIn: number | null = null;
+    let tokensOut: number | null = null;
+    let genError: string | null = null;
+    const startedAt = Date.now();
+
     const controller = new AbortController();
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
 
     const stream = client.messages.stream(
       {
-        model: 'claude-haiku-4-5-20251001',
+        model,
         max_tokens: 1024,
         system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
         messages: [{ role: 'user', content: userContent }],
@@ -604,7 +772,11 @@ function registerWritingAssistantHandler() {
 
     try {
       for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        if (chunk.type === 'message_start') {
+          tokensIn = chunk.message.usage.input_tokens;
+        } else if (chunk.type === 'message_delta') {
+          tokensOut = chunk.usage.output_tokens;
+        } else if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
           fullText += chunk.delta.text;
           if (!event.sender.isDestroyed()) {
             event.sender.send('agent:writing-assistant:chunk', { chunk: chunk.delta.text });
@@ -612,9 +784,30 @@ function registerWritingAssistantHandler() {
         }
       }
     } catch (err: unknown) {
-      if ((err as Error)?.name !== 'AbortError') throw err;
+      if ((err as Error)?.name !== 'AbortError') {
+        genError = (err as Error).message ?? 'unknown error';
+        throw err;
+      }
     } finally {
       event.sender.off('destroyed', onDestroyed);
+      const payloadDigest = process.env.PERSIST_PROMPTS === '1'
+        ? userContent
+        : crypto.createHash('sha256').update(userContent).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'writing-assistant',
+          model,
+          endpoint: 'messages.stream',
+          request_id: null,
+          tokens_in: tokensIn,
+          tokens_out: tokensOut,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: payloadDigest,
+        });
+      } catch { /* non-fatal */ }
     }
 
     return { text: fullText };
@@ -695,24 +888,35 @@ For every inconsistency you find, output a tag on its own line:
 Then write a short summary paragraph. If no issues are found, say so and output no ISSUE tags.`;
 
     const client = new Anthropic({ apiKey });
+    const vaultCheckModel = 'claude-haiku-4-5-20251001';
+    const vaultCheckContent = `Scene to check:\n\n${payload.sceneContent}`;
     let fullText = '';
+    let vaultTokensIn: number | null = null;
+    let vaultTokensOut: number | null = null;
+    let vaultGenError: string | null = null;
+    const vaultStartedAt = Date.now();
+
     const controller = new AbortController();
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
 
     const stream = client.messages.stream(
       {
-        model: 'claude-haiku-4-5-20251001',
+        model: vaultCheckModel,
         max_tokens: 1024,
         system: systemPrompt,
-        messages: [{ role: 'user', content: `Scene to check:\n\n${payload.sceneContent}` }],
+        messages: [{ role: 'user', content: vaultCheckContent }],
       },
       { signal: controller.signal },
     );
 
     try {
       for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        if (chunk.type === 'message_start') {
+          vaultTokensIn = chunk.message.usage.input_tokens;
+        } else if (chunk.type === 'message_delta') {
+          vaultTokensOut = chunk.usage.output_tokens;
+        } else if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
           fullText += chunk.delta.text;
           if (!event.sender.isDestroyed()) {
             event.sender.send('agent:vault-check:chunk', { chunk: chunk.delta.text });
@@ -720,9 +924,30 @@ Then write a short summary paragraph. If no issues are found, say so and output 
         }
       }
     } catch (err: unknown) {
-      if ((err as Error)?.name !== 'AbortError') throw err;
+      if ((err as Error)?.name !== 'AbortError') {
+        vaultGenError = (err as Error).message ?? 'unknown error';
+        throw err;
+      }
     } finally {
       event.sender.off('destroyed', onDestroyed);
+      const vaultPayloadDigest = process.env.PERSIST_PROMPTS === '1'
+        ? vaultCheckContent
+        : crypto.createHash('sha256').update(vaultCheckContent).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'vault-agent',
+          model: vaultCheckModel,
+          endpoint: 'messages.stream',
+          request_id: null,
+          tokens_in: vaultTokensIn,
+          tokens_out: vaultTokensOut,
+          latency_ms: Date.now() - vaultStartedAt,
+          error: vaultGenError,
+          created_at: new Date().toISOString(),
+          payload_digest: vaultPayloadDigest,
+        });
+      } catch { /* non-fatal */ }
     }
 
     // Parse [ISSUE:entity-name|description] tags

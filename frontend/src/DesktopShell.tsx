@@ -417,6 +417,7 @@ export default function DesktopShell() {
           onCreateStory={createStory}
           onCreateChapter={createChapter}
           onCreateScene={createScene}
+          onOpenVaultPath={handleOpenSceneByPath}
         />
       </div>
 

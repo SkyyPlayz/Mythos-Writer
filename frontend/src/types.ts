@@ -64,7 +64,7 @@ export interface LayoutPrefs {
   rightWidth: number;
   bottomHeight: number;
   rightTab: 'notes' | 'properties' | 'ai';
-  leftTab: 'stories' | 'vault' | 'entities';
+  leftTab: 'stories' | 'vault' | 'entities' | 'review';
 }
 
 export interface Manifest {
@@ -76,4 +76,5 @@ export interface Manifest {
   scenes: Scene[];
   chapters: Chapter[];
   layout?: LayoutPrefs;
+  lastOpenedSceneId?: string;
 }

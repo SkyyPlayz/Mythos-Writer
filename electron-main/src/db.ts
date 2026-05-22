@@ -8,8 +8,9 @@ import path from 'path';
 
 // ─── Domain types ───
 
-export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected';
-export type AuditAction = 'apply' | 'reject' | 'rollback';
+export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back';
+export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
+export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
 export type TimelineSource = 'explicit_marker' | 'prose';
 
 export interface DbSuggestion {
@@ -17,6 +18,7 @@ export interface DbSuggestion {
   source_agent: string;
   confidence: number;
   rationale: string;
+  target_kind: 'vault' | 'manuscript' | null;
   target_path: string | null;
   target_anchor: string | null;
   payload_json: string | null;
@@ -24,6 +26,8 @@ export interface DbSuggestion {
   created_at: string;
   applied_at: string | null;
   applied_run_id: string | null;
+  /** 1 if blocked by a budget cap; 0 otherwise */
+  budget_exceeded: number;
 }
 
 export interface DbAuditLog {
@@ -43,6 +47,20 @@ export interface DbTimelineEntry {
   source: TimelineSource;
   notes_json: string | null;
   created_at: string;
+}
+
+export interface DbGenerationLog {
+  id: string;
+  agent: string;
+  model: string;
+  endpoint: string;
+  request_id: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  latency_ms: number;
+  error: string | null;
+  created_at: string;
+  payload_digest: string | null;
 }
 
 // ─── Module state ───
@@ -132,6 +150,35 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma('user_version = 1');
   }
+
+  if (currentVersion < 2) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS generation_log (
+        id             TEXT PRIMARY KEY,
+        agent          TEXT NOT NULL,
+        model          TEXT NOT NULL,
+        endpoint       TEXT NOT NULL,
+        request_id     TEXT,
+        tokens_in      INTEGER,
+        tokens_out     INTEGER,
+        latency_ms     INTEGER NOT NULL,
+        error          TEXT,
+        created_at     TEXT NOT NULL,
+        payload_digest TEXT
+      );
+    `);
+    db.pragma('user_version = 2');
+  }
+
+  if (currentVersion < 3) {
+    db.exec(`ALTER TABLE suggestions ADD COLUMN target_kind TEXT;`);
+    db.pragma('user_version = 3');
+  }
+
+  if (currentVersion < 4) {
+    db.exec(`ALTER TABLE suggestions ADD COLUMN budget_exceeded INTEGER NOT NULL DEFAULT 0;`);
+    db.pragma('user_version = 4');
+  }
 }
 
 // ─── Suggestions ───
@@ -140,13 +187,19 @@ export function upsertSuggestion(s: DbSuggestion): void {
   getDb()
     .prepare(
       `INSERT OR REPLACE INTO suggestions
-         (id, source_agent, confidence, rationale, target_path, target_anchor,
-          payload_json, status, created_at, applied_at, applied_run_id)
+         (id, source_agent, confidence, rationale, target_kind, target_path, target_anchor,
+          payload_json, status, created_at, applied_at, applied_run_id, budget_exceeded)
        VALUES
-         (@id, @source_agent, @confidence, @rationale, @target_path, @target_anchor,
-          @payload_json, @status, @created_at, @applied_at, @applied_run_id)`
+         (@id, @source_agent, @confidence, @rationale, @target_kind, @target_path, @target_anchor,
+          @payload_json, @status, @created_at, @applied_at, @applied_run_id, @budget_exceeded)`
     )
     .run(s);
+}
+
+export function updateSuggestionBudgetExceeded(id: string, exceeded: boolean): void {
+  getDb()
+    .prepare(`UPDATE suggestions SET budget_exceeded = @exceeded WHERE id = @id`)
+    .run({ id, exceeded: exceeded ? 1 : 0 });
 }
 
 export function updateSuggestionStatus(
@@ -164,12 +217,30 @@ export function updateSuggestionStatus(
     .run({ id, status, applied_at: appliedAt ?? null, applied_run_id: appliedRunId ?? null });
 }
 
-export function listSuggestions(status?: SuggestionStatus): DbSuggestion[] {
+export function getSuggestion(id: string): DbSuggestion | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM suggestions WHERE id = ?')
+      .get(id) as DbSuggestion | undefined) ?? null
+  );
+}
+
+export function listSuggestions(status?: SuggestionStatus, sourceAgent?: string): DbSuggestion[] {
   const db = getDb();
+  if (status && sourceAgent) {
+    return db
+      .prepare('SELECT * FROM suggestions WHERE status = ? AND source_agent = ? ORDER BY created_at DESC')
+      .all(status, sourceAgent) as DbSuggestion[];
+  }
   if (status) {
     return db
       .prepare('SELECT * FROM suggestions WHERE status = ? ORDER BY created_at DESC')
       .all(status) as DbSuggestion[];
+  }
+  if (sourceAgent) {
+    return db
+      .prepare('SELECT * FROM suggestions WHERE source_agent = ? ORDER BY created_at DESC')
+      .all(sourceAgent) as DbSuggestion[];
   }
   return db.prepare('SELECT * FROM suggestions ORDER BY created_at DESC').all() as DbSuggestion[];
 }
@@ -216,4 +287,63 @@ export function listTimelineEntries(scenePath?: string): DbTimelineEntry[] {
       .all(scenePath) as DbTimelineEntry[];
   }
   return db.prepare('SELECT * FROM timeline_entries ORDER BY inferred_time ASC').all() as DbTimelineEntry[];
+}
+
+// ─── Generation log ───
+
+export function insertGenerationLog(entry: DbGenerationLog): void {
+  getDb()
+    .prepare(
+      `INSERT INTO generation_log
+         (id, agent, model, endpoint, request_id, tokens_in, tokens_out,
+          latency_ms, error, created_at, payload_digest)
+       VALUES
+         (@id, @agent, @model, @endpoint, @request_id, @tokens_in, @tokens_out,
+          @latency_ms, @error, @created_at, @payload_digest)`
+    )
+    .run(entry);
+}
+
+export function listGenerationLog(opts: { limit?: number; agent?: string } = {}): DbGenerationLog[] {
+  const db = getDb();
+  const limit = opts.limit ?? 100;
+  if (opts.agent) {
+    return db
+      .prepare('SELECT * FROM generation_log WHERE agent = ? ORDER BY created_at DESC LIMIT ?')
+      .all(opts.agent, limit) as DbGenerationLog[];
+  }
+  return db
+    .prepare('SELECT * FROM generation_log ORDER BY created_at DESC LIMIT ?')
+    .all(limit) as DbGenerationLog[];
+}
+
+// ─── Budget window counters ───
+
+/**
+ * Count suggestions from a source agent created within a rolling window.
+ * Used by auto-apply enforcement to check suggestion rate budgets.
+ */
+export function countSuggestionsInWindow(sourceAgent: string, windowMs: number): number {
+  const windowStart = new Date(Date.now() - windowMs).toISOString();
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) as cnt FROM suggestions WHERE source_agent = ? AND created_at >= ?`
+    )
+    .get(sourceAgent, windowStart) as { cnt: number };
+  return row.cnt;
+}
+
+/**
+ * Count total tokens (in + out) from an agent in the rolling window.
+ * Returns 0 when no generation_log rows exist for the agent.
+ */
+export function countTokensInWindow(agent: string, windowMs: number): number {
+  const windowStart = new Date(Date.now() - windowMs).toISOString();
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) as total
+         FROM generation_log WHERE agent = ? AND created_at >= ?`
+    )
+    .get(agent, windowStart) as { total: number };
+  return row.total;
 }

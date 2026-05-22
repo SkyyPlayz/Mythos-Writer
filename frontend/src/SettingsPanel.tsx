@@ -1,14 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import './SettingsPanel.css';
 
+const BUDGET_DEFAULTS: AgentBudgetSettings = {
+  autoApply: false,
+  confidenceThreshold: 0.85,
+  maxTokensPerHour: 100_000,
+  maxSuggestionsPerHour: 50,
+};
+
 const DEFAULTS: AppSettings = {
   apiKey: '',
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30 },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6' },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60 },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
+    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS },
+    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
   },
   theme: 'dark',
+  snapshots: { maxPerScene: 100, maxAgeDays: 30 },
 };
 
 function validateApiKey(key: string): string | null {
@@ -169,6 +177,57 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     onChange={(e) => setAgentField('writingAssistant', 'scanIntervalSeconds', Number(e.target.value))}
                   />
                 </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-toggle" htmlFor="wa-auto-apply">
+                    <input
+                      id="wa-auto-apply"
+                      type="checkbox"
+                      aria-label="Auto-apply Writing Assistant suggestions"
+                      checked={settings.agents.writingAssistant.autoApply}
+                      onChange={(e) => setAgentField('writingAssistant', 'autoApply', e.target.checked)}
+                    />
+                    <span className="settings-toggle-track" />
+                  </label>
+                  <span className="settings-label">Auto-apply suggestions</span>
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="wa-confidence">Min confidence</label>
+                  <input
+                    id="wa-confidence"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={settings.agents.writingAssistant.confidenceThreshold}
+                    onChange={(e) => setAgentField('writingAssistant', 'confidenceThreshold', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="wa-max-suggestions">Max suggestions/hr</label>
+                  <input
+                    id="wa-max-suggestions"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={settings.agents.writingAssistant.maxSuggestionsPerHour}
+                    onChange={(e) => setAgentField('writingAssistant', 'maxSuggestionsPerHour', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="wa-max-tokens">Max tokens/hr</label>
+                  <input
+                    id="wa-max-tokens"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1000}
+                    max={1_000_000}
+                    step={1000}
+                    value={settings.agents.writingAssistant.maxTokensPerHour}
+                    onChange={(e) => setAgentField('writingAssistant', 'maxTokensPerHour', Number(e.target.value))}
+                  />
+                </div>
               </div>
             </div>
 
@@ -194,6 +253,57 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     type="text"
                     value={settings.agents.brainstorm.model}
                     onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-toggle" htmlFor="brainstorm-auto-apply">
+                    <input
+                      id="brainstorm-auto-apply"
+                      type="checkbox"
+                      aria-label="Auto-apply Brainstorm Agent suggestions"
+                      checked={settings.agents.brainstorm.autoApply}
+                      onChange={(e) => setAgentField('brainstorm', 'autoApply', e.target.checked)}
+                    />
+                    <span className="settings-toggle-track" />
+                  </label>
+                  <span className="settings-label">Auto-apply suggestions</span>
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="brainstorm-confidence">Min confidence</label>
+                  <input
+                    id="brainstorm-confidence"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={settings.agents.brainstorm.confidenceThreshold}
+                    onChange={(e) => setAgentField('brainstorm', 'confidenceThreshold', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="brainstorm-max-suggestions">Max suggestions/hr</label>
+                  <input
+                    id="brainstorm-max-suggestions"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={settings.agents.brainstorm.maxSuggestionsPerHour}
+                    onChange={(e) => setAgentField('brainstorm', 'maxSuggestionsPerHour', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="brainstorm-max-tokens">Max tokens/hr</label>
+                  <input
+                    id="brainstorm-max-tokens"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1000}
+                    max={1_000_000}
+                    step={1000}
+                    value={settings.agents.brainstorm.maxTokensPerHour}
+                    onChange={(e) => setAgentField('brainstorm', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
               </div>
@@ -235,8 +345,99 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     onChange={(e) => setAgentField('archive', 'continuityCheckIntervalSeconds', Number(e.target.value))}
                   />
                 </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-toggle" htmlFor="archive-auto-apply">
+                    <input
+                      id="archive-auto-apply"
+                      type="checkbox"
+                      aria-label="Auto-apply Archive Agent suggestions"
+                      checked={settings.agents.archive.autoApply}
+                      onChange={(e) => setAgentField('archive', 'autoApply', e.target.checked)}
+                    />
+                    <span className="settings-toggle-track" />
+                  </label>
+                  <span className="settings-label">Auto-apply suggestions</span>
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="archive-confidence">Min confidence</label>
+                  <input
+                    id="archive-confidence"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={settings.agents.archive.confidenceThreshold}
+                    onChange={(e) => setAgentField('archive', 'confidenceThreshold', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="archive-max-suggestions">Max suggestions/hr</label>
+                  <input
+                    id="archive-max-suggestions"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={settings.agents.archive.maxSuggestionsPerHour}
+                    onChange={(e) => setAgentField('archive', 'maxSuggestionsPerHour', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="archive-max-tokens">Max tokens/hr</label>
+                  <input
+                    id="archive-max-tokens"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1000}
+                    max={1_000_000}
+                    step={1000}
+                    value={settings.agents.archive.maxTokensPerHour}
+                    onChange={(e) => setAgentField('archive', 'maxTokensPerHour', Number(e.target.value))}
+                  />
+                </div>
               </div>
             </div>
+          </section>
+
+          {/* ── Snapshots ── */}
+          <section className="settings-section" aria-labelledby="section-snapshots">
+            <h3 className="settings-section-title" id="section-snapshots">Snapshots</h3>
+            <div className="settings-agent-fields">
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="snap-max-per-scene">Max snapshots per scene</label>
+                <input
+                  id="snap-max-per-scene"
+                  className="settings-input settings-input-sm settings-input-number"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={settings.snapshots?.maxPerScene ?? 100}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setSettings((p) => ({ ...p, snapshots: { maxAgeDays: p.snapshots?.maxAgeDays ?? 30, maxPerScene: val } }));
+                    setSavedOk(false);
+                  }}
+                />
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="snap-max-age-days">Retain snapshots for (days, 0=unlimited)</label>
+                <input
+                  id="snap-max-age-days"
+                  className="settings-input settings-input-sm settings-input-number"
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={settings.snapshots?.maxAgeDays ?? 30}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setSettings((p) => ({ ...p, snapshots: { maxPerScene: p.snapshots?.maxPerScene ?? 100, maxAgeDays: val } }));
+                    setSavedOk(false);
+                  }}
+                />
+              </div>
+            </div>
+            <p className="settings-hint">Snapshots are taken automatically while you write. Older ones are pruned by count and age.</p>
           </section>
 
           {/* ── Theme ── */}

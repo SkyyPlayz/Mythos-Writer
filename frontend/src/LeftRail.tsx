@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import type { Story, Chapter, Scene, EntityEntry } from './types';
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
+import SuggestionReview from './SuggestionReview';
 import './LeftRail.css';
 
-type Tab = 'stories' | 'vault' | 'entities';
+type Tab = 'stories' | 'vault' | 'entities' | 'review';
 
 interface VaultEntry {
   path: string;
@@ -123,6 +124,7 @@ interface Props {
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
+  onOpenVaultPath?: (path: string) => void;
 }
 
 export default function LeftRail({
@@ -136,6 +138,7 @@ export default function LeftRail({
   onCreateStory,
   onCreateChapter,
   onCreateScene,
+  onOpenVaultPath,
 }: Props) {
   return (
     <div className="left-rail">
@@ -158,6 +161,13 @@ export default function LeftRail({
         >
           Vault
         </button>
+        <button
+          className={`rail-tab${activeTab === 'review' ? ' active' : ''}`}
+          onClick={() => onTabChange('review')}
+          aria-label="Suggestion Review inbox"
+        >
+          Review
+        </button>
       </div>
       <div className="rail-content">
         {activeTab === 'stories' && (
@@ -177,6 +187,7 @@ export default function LeftRail({
           />
         )}
         {activeTab === 'vault' && <VaultBrowser />}
+        {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} />}
       </div>
     </div>
   );

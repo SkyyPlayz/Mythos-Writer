@@ -27,10 +27,6 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('vault:file-changed', cb);
   },
 
-  // Database (stub)
-  dbQuery: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:query', { sql, params }),
-  dbWrite: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:write', { sql, params }),
-
   // AI agents (stubs for Epic 5)
   brainstormer: (topic: string, context?: string) =>
     ipcRenderer.invoke('ai:brainstormer', { topic, context }),
@@ -95,6 +91,20 @@ contextBridge.exposeInMainWorld('api', {
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
   settingsSet: (settings: unknown) => ipcRenderer.invoke('settings:set', { settings }),
+
+  // Suggestions lifecycle
+  suggestionsList: (status?: string, sourceAgent?: string) =>
+    ipcRenderer.invoke('suggestions:list', { status, sourceAgent }),
+  suggestionsUpsert: (suggestion: unknown) =>
+    ipcRenderer.invoke('suggestions:upsert', { suggestion }),
+  suggestionsAccept: (id: string, actor?: string) =>
+    ipcRenderer.invoke('suggestions:accept', { id, actor }),
+  suggestionsReject: (id: string, reason?: string, actor?: string) =>
+    ipcRenderer.invoke('suggestions:reject', { id, reason, actor }),
+  suggestionsRollback: (id: string, actor?: string) =>
+    ipcRenderer.invoke('suggestions:rollback', { id, actor }),
+  auditList: (suggestionId?: string) =>
+    ipcRenderer.invoke('audit:list', { suggestionId }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
@@ -106,8 +116,6 @@ contextBridge.exposeInMainWorld('mythosIPC', {
   deleteVaultFile: (filePath: string) => ipcRenderer.invoke('vault:delete', { path: filePath }),
   readManifest: () => ipcRenderer.invoke('vault:manifest:read', undefined),
   writeManifest: (manifest: unknown) => ipcRenderer.invoke('vault:manifest:write', { manifest }),
-  dbQuery: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:query', { sql, params }),
-  dbWrite: (sql: string, params?: unknown[]) => ipcRenderer.invoke('db:write', { sql, params }),
   brainstormer: (topic: string, context?: string) =>
     ipcRenderer.invoke('ai:brainstormer', { topic, context }),
   writingAssistant: (manuscript: string, scenePath: string) =>

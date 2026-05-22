@@ -4,6 +4,7 @@ interface SceneSnapshot {
   id: string;
   sceneId: string;
   content: string;
+  contentHash: string;
   wordCount: number;
   createdAt: string;
 }
@@ -46,14 +47,35 @@ interface VaultCheckInconsistency {
   status: 'proposed' | 'dismissed';
 }
 
+interface Suggestion {
+  id: string;
+  source_agent: 'writing-assistant' | 'brainstorm' | 'archive';
+  target: string;
+  confidence: number;
+  rationale: string;
+  createdAt: string;
+  status: 'proposed' | 'accepted' | 'rejected' | 'ignored';
+}
+
+interface AgentBudgetSettings {
+  autoApply: boolean;
+  confidenceThreshold: number;
+  maxTokensPerHour: number;
+  maxSuggestionsPerHour: number;
+}
+
 interface AppSettings {
   apiKey: string;
   agents: {
-    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number };
-    brainstorm: { enabled: boolean; model: string };
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number };
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings;
+    brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
   theme: 'light' | 'dark';
+  snapshots?: {
+    maxPerScene: number;
+    maxAgeDays: number;
+  };
 }
 
 interface Window {
@@ -71,8 +93,6 @@ interface Window {
     reindexVault: () => Promise<{ scanned: number; updated: number }>;
     startVaultWatch: () => Promise<{ watching: boolean }>;
     stopVaultWatch: () => Promise<{ watching: boolean }>;
-    dbQuery: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    dbWrite: (sql: string, params?: unknown[]) => Promise<{ changes: number }>;
     brainstormer: (topic: string, context?: string) => Promise<unknown>;
     writingAssistant: (manuscript: string, scenePath: string) => Promise<unknown>;
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;
@@ -100,6 +120,12 @@ interface Window {
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+
+    // Suggestion lifecycle — wired once the Suggestion API contract issue is merged
+    suggestionsList?: () => Promise<{ suggestions: Suggestion[] }>;
+    suggestionsAccept?: (id: string) => Promise<{ id: string; status: 'accepted' }>;
+    suggestionsReject?: (id: string) => Promise<{ id: string; status: 'rejected' }>;
+    suggestionsIgnore?: (id: string) => Promise<{ id: string; status: 'ignored' }>;
 
     // App settings
     settingsGet: () => Promise<AppSettings>;
