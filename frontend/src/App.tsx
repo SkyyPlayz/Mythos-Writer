@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import WritingApp from './WritingApp';
+import DesktopShell from './DesktopShell';
 import './App.css';
 
 declare global {
@@ -207,22 +207,27 @@ function App() {
 
   return (
     <div className="root-layout">
-      <div className="top-tabs">
-        <button
-          className={`top-tab${tab === 'write' ? ' active' : ''}`}
-          onClick={() => setTab('write')}
-        >
-          Write
-        </button>
-        <button
-          className={`top-tab${tab === 'generate' ? ' active' : ''}`}
-          onClick={() => setTab('generate')}
-        >
-          Generate
-        </button>
-      </div>
-
-      {tab === 'write' ? <WritingApp /> : <GeneratorPanel />}
+      {tab === 'write' ? (
+        <DesktopShell onOpenGenerate={() => setTab('generate')} />
+      ) : (
+        <>
+          <div className="top-tabs">
+            <button
+              className="top-tab"
+              onClick={() => setTab('write')}
+            >
+              ← Write
+            </button>
+            <button
+              className={`top-tab${tab === 'generate' ? ' active' : ''}`}
+              onClick={() => setTab('generate')}
+            >
+              Generate
+            </button>
+          </div>
+          <GeneratorPanel />
+        </>
+      )}
     </div>
   );
 }

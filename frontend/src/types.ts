@@ -45,6 +45,14 @@ export interface Story {
   updatedAt: string;
 }
 
+export interface LayoutPrefs {
+  leftWidth: number;
+  rightWidth: number;
+  bottomHeight: number;
+  rightTab: 'notes' | 'properties' | 'ai';
+  leftTab: 'stories' | 'vault';
+}
+
 export interface Manifest {
   version: string;
   vaultRoot: string;
@@ -53,4 +61,5 @@ export interface Manifest {
   suggestions: unknown[];
   scenes: Scene[];
   chapters: Chapter[];
+  layout?: LayoutPrefs;
 }
