@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import type { Story, Chapter, Scene } from './types';
+import type { Story, Chapter, Scene, EntityEntry } from './types';
 import StoryNavigator from './StoryNavigator';
+import EntityBrowser from './EntityBrowser';
 import './LeftRail.css';
 
-type Tab = 'stories' | 'vault';
+type Tab = 'stories' | 'vault' | 'entities';
 
 interface VaultEntry {
   path: string;
@@ -116,7 +117,9 @@ interface Props {
   onTabChange: (tab: Tab) => void;
   stories: Story[];
   selectedSceneId: string | null;
+  selectedEntityId: string | null;
   onSelectScene: (scene: Scene, chapter: Chapter, story: Story) => void;
+  onSelectEntity: (entity: EntityEntry) => void;
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
@@ -127,7 +130,9 @@ export default function LeftRail({
   onTabChange,
   stories,
   selectedSceneId,
+  selectedEntityId,
   onSelectScene,
+  onSelectEntity,
   onCreateStory,
   onCreateChapter,
   onCreateScene,
@@ -142,6 +147,12 @@ export default function LeftRail({
           Stories
         </button>
         <button
+          className={`rail-tab${activeTab === 'entities' ? ' active' : ''}`}
+          onClick={() => onTabChange('entities')}
+        >
+          Entities
+        </button>
+        <button
           className={`rail-tab${activeTab === 'vault' ? ' active' : ''}`}
           onClick={() => onTabChange('vault')}
         >
@@ -149,7 +160,7 @@ export default function LeftRail({
         </button>
       </div>
       <div className="rail-content">
-        {activeTab === 'stories' ? (
+        {activeTab === 'stories' && (
           <StoryNavigator
             stories={stories}
             selectedSceneId={selectedSceneId}
@@ -158,9 +169,14 @@ export default function LeftRail({
             onCreateChapter={onCreateChapter}
             onCreateScene={onCreateScene}
           />
-        ) : (
-          <VaultBrowser />
         )}
+        {activeTab === 'entities' && (
+          <EntityBrowser
+            onSelectEntity={onSelectEntity}
+            selectedEntityId={selectedEntityId}
+          />
+        )}
+        {activeTab === 'vault' && <VaultBrowser />}
       </div>
     </div>
   );

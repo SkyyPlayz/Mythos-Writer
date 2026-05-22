@@ -2,6 +2,20 @@
 
 export type BlockType = 'prose' | 'heading' | 'dialogue' | 'action' | 'description' | 'note';
 
+export type EntityType = 'character' | 'location' | 'item' | 'concept' | 'other';
+
+export interface EntityEntry {
+  id: string;
+  name: string;
+  type: EntityType;
+  path: string;
+  aliases?: string[];
+  tags?: string[];
+  properties?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type DraftState = 'in-progress' | 'review' | 'final';
 
 export interface Block {
@@ -50,7 +64,7 @@ export interface LayoutPrefs {
   rightWidth: number;
   bottomHeight: number;
   rightTab: 'notes' | 'properties' | 'ai';
-  leftTab: 'stories' | 'vault';
+  leftTab: 'stories' | 'vault' | 'entities';
 }
 
 export interface Manifest {

@@ -8,6 +8,18 @@ interface SceneSnapshot {
   createdAt: string;
 }
 
+interface EntityEntry {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  path: string;
+  aliases?: string[];
+  tags?: string[];
+  properties?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -39,6 +51,13 @@ interface Window {
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
+
+    // Entity CRUD
+    entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
+    entityRead: (id: string) => Promise<EntityEntry | null>;
+    entityUpdate: (payload: { id: string; name?: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
+    entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
+    entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

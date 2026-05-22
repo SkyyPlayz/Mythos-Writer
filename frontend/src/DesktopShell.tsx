@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs } from './types';
+import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor from './BlockEditor';
+import EntityDetail from './EntityDetail';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -102,6 +103,7 @@ export default function DesktopShell({ onOpenGenerate }: ShellProps) {
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
@@ -302,6 +304,14 @@ export default function DesktopShell({ onOpenGenerate }: ShellProps) {
     setSelectedScene(scene);
     setSelectedChapter(chapter);
     setSelectedStory(story);
+    setSelectedEntity(null);
+  }, []);
+
+  const handleSelectEntity = useCallback((entity: EntityEntry) => {
+    setSelectedEntity(entity);
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
   }, []);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -350,7 +360,9 @@ export default function DesktopShell({ onOpenGenerate }: ShellProps) {
           onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
           stories={stories}
           selectedSceneId={selectedScene?.id ?? null}
+          selectedEntityId={selectedEntity?.id ?? null}
           onSelectScene={handleSelectScene}
+          onSelectEntity={handleSelectEntity}
           onCreateStory={createStory}
           onCreateChapter={createChapter}
           onCreateScene={createScene}
@@ -372,6 +384,14 @@ export default function DesktopShell({ onOpenGenerate }: ShellProps) {
               scene={selectedScene}
               onBlocksChange={handleBlocksChange}
               onDraftStateChange={handleDraftStateChange}
+            />
+          ) : selectedEntity ? (
+            <EntityDetail
+              key={selectedEntity.id}
+              entity={selectedEntity}
+              onClose={() => setSelectedEntity(null)}
+              onUpdated={(updated) => setSelectedEntity(updated)}
+              onDeleted={() => setSelectedEntity(null)}
             />
           ) : (
             <div className="shell-editor-empty">
