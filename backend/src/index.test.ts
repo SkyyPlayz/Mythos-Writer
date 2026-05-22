@@ -3,20 +3,22 @@ import request from 'supertest';
 import { app } from './index';
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: {
-      stream: vi.fn().mockImplementation(async function* () {
-        yield {
-          type: 'content_block_delta',
-          delta: { type: 'text_delta', text: 'Once upon' },
-        };
-        yield {
-          type: 'content_block_delta',
-          delta: { type: 'text_delta', text: ' a time.' },
-        };
-      }),
-    },
-  })),
+  default: vi.fn(function AnthropicMock() {
+    return {
+      messages: {
+        stream: vi.fn().mockImplementation(async function* () {
+          yield {
+            type: 'content_block_delta',
+            delta: { type: 'text_delta', text: 'Once upon' },
+          };
+          yield {
+            type: 'content_block_delta',
+            delta: { type: 'text_delta', text: ' a time.' },
+          };
+        }),
+      },
+    };
+  }),
 }));
 
 describe('GET /health', () => {
