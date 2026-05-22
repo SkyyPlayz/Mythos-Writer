@@ -2,11 +2,10 @@
   "appId": "com.mythoswriter.app",
   "productName": "Mythos Writer",
   "directories": {
-    "output": "dist/releases"
+    "output": "dist-electron"
   },
   "files": [
-    "electron-main/dist/**/*",
-    "frontend/dist/**/*",
+    "out/**/*",
     "package.json"
   ],
   "win": {
@@ -24,10 +23,5 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
-  },
-  "electronUpdater": {
-    "provider": "generic",
-    "url": "https://update.mythoswriter.com/releases",
-    "channel": "latest"
   }
 }

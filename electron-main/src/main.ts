@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
+import { autoUpdater } from 'electron-updater';
 import { Anthropic } from '@anthropic-ai/sdk';
 import {
   setupIpcMain,
@@ -208,7 +209,8 @@ function createWindow() {
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../../frontend/dist/index.html'));
+    // electron-vite outputs renderer to out/renderer/ relative to out/main/
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
   mainWindow.on('closed', () => {
@@ -216,11 +218,20 @@ function createWindow() {
   });
 }
 
+// ─── Auto-updater (stubbed — no live update server configured) ───
+function initAutoUpdater() {
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  // Suppress errors when no update server is reachable (stub mode)
+  autoUpdater.on('error', () => { /* intentionally silent in stub mode */ });
+}
+
 // ─── App lifecycle ───
 app.whenReady().then(() => {
   ensureVaultDir();
   setupIpcMain(handlers);
   createWindow();
+  initAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
