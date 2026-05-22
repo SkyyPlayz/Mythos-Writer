@@ -323,6 +323,24 @@ export default function DesktopShell() {
     (window as any).api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, updateManifest]);
 
+  const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
+    const updatedStories = stories.map((s) =>
+      s.id !== storyId ? s : {
+        ...s,
+        chapters: s.chapters.map((ch) =>
+          ch.id !== chapterId ? ch : {
+            ...ch,
+            scenes: orderedIds.map((id, idx) => {
+              const scene = ch.scenes.find((sc) => sc.id === id)!;
+              return { ...scene, order: idx };
+            }),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+  }, [stories, updateManifest]);
+
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
     setSelectedScene(scene);
     setSelectedChapter(chapter);
@@ -417,6 +435,7 @@ export default function DesktopShell() {
           onCreateStory={createStory}
           onCreateChapter={createChapter}
           onCreateScene={createScene}
+          onReorderScenes={handleReorderScenes}
           onOpenVaultPath={handleOpenSceneByPath}
         />
       </div>

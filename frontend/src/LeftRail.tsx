@@ -124,6 +124,7 @@ interface Props {
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
+  onReorderScenes: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
   onOpenVaultPath?: (path: string) => void;
 }
 
@@ -138,6 +139,7 @@ export default function LeftRail({
   onCreateStory,
   onCreateChapter,
   onCreateScene,
+  onReorderScenes,
   onOpenVaultPath,
 }: Props) {
   return (
@@ -178,6 +180,7 @@ export default function LeftRail({
             onCreateStory={onCreateStory}
             onCreateChapter={onCreateChapter}
             onCreateScene={onCreateScene}
+            onReorderScenes={onReorderScenes}
           />
         )}
         {activeTab === 'entities' && (
