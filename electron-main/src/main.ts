@@ -369,13 +369,23 @@ function initAutoUpdater() {
   autoUpdater.on('error', () => { /* intentionally silent in stub mode */ });
 }
 
+// ─── Anthropic API key validation ───
+// Called before creating any Anthropic client so errors surface before streaming begins.
+function getValidatedApiKey(): string {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
+  }
+  if (!apiKey.startsWith('sk-ant-')) {
+    throw new Error('ANTHROPIC_API_KEY appears invalid (expected format: sk-ant-…). Check your environment settings.');
+  }
+  return apiKey;
+}
+
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your environment to enable AI features.');
-    }
+    const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
     const systemPrompt = `You are a Brainstorm Agent for fiction authors. Help the author develop their story world through conversation. You discuss story ideas, characters, locations, themes, plot arcs, world-building, and narrative goals.
@@ -398,18 +408,33 @@ Be creative, ask clarifying questions, and help the author think deeper about th
     ];
 
     let fullText = '';
-    const stream = client.messages.stream({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages,
-    });
+    const controller = new AbortController();
+    const onDestroyed = () => controller.abort();
+    event.sender.once('destroyed', onDestroyed);
 
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        fullText += chunk.delta.text;
-        event.sender.send('agent:brainstorm:chunk', { chunk: chunk.delta.text });
+    const stream = client.messages.stream(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages,
+      },
+      { signal: controller.signal },
+    );
+
+    try {
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+          fullText += chunk.delta.text;
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('agent:brainstorm:chunk', { chunk: chunk.delta.text });
+          }
+        }
       }
+    } catch (err: unknown) {
+      if ((err as Error)?.name !== 'AbortError') throw err;
+    } finally {
+      event.sender.off('destroyed', onDestroyed);
     }
 
     return { text: fullText };
@@ -430,18 +455,33 @@ function registerWritingAssistantHandler() {
       : payload.prompt;
 
     let fullText = '';
-    const stream = client.messages.stream({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
-      messages: [{ role: 'user', content: userContent }],
-    });
+    const controller = new AbortController();
+    const onDestroyed = () => controller.abort();
+    event.sender.once('destroyed', onDestroyed);
 
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        fullText += chunk.delta.text;
-        event.sender.send('agent:writing-assistant:chunk', { chunk: chunk.delta.text });
+    const stream = client.messages.stream(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
+        messages: [{ role: 'user', content: userContent }],
+      },
+      { signal: controller.signal },
+    );
+
+    try {
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+          fullText += chunk.delta.text;
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('agent:writing-assistant:chunk', { chunk: chunk.delta.text });
+          }
+        }
       }
+    } catch (err: unknown) {
+      if ((err as Error)?.name !== 'AbortError') throw err;
+    } finally {
+      event.sender.off('destroyed', onDestroyed);
     }
 
     return { text: fullText };
@@ -526,19 +566,33 @@ Then write a short summary paragraph. If no issues are found, say so and output 
 
     const client = new Anthropic({ apiKey });
     let fullText = '';
+    const controller = new AbortController();
+    const onDestroyed = () => controller.abort();
+    event.sender.once('destroyed', onDestroyed);
 
-    const stream = client.messages.stream({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: `Scene to check:\n\n${payload.sceneContent}` }],
-    });
+    const stream = client.messages.stream(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Scene to check:\n\n${payload.sceneContent}` }],
+      },
+      { signal: controller.signal },
+    );
 
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        fullText += chunk.delta.text;
-        event.sender.send('agent:vault-check:chunk', { chunk: chunk.delta.text });
+    try {
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+          fullText += chunk.delta.text;
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('agent:vault-check:chunk', { chunk: chunk.delta.text });
+          }
+        }
       }
+    } catch (err: unknown) {
+      if ((err as Error)?.name !== 'AbortError') throw err;
+    } finally {
+      event.sender.off('destroyed', onDestroyed);
     }
 
     // Parse [ISSUE:entity-name|description] tags
