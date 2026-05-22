@@ -9,9 +9,7 @@ Mythos Writer is a **standalone, local-first, desktop-first** writing applicatio
 
 The product is **Option B**: standalone app with Obsidian vault compatibility. **Not** an Obsidian plugin. We read and write Obsidian-style markdown but implement all editor, layout, AI, versioning, timeline, and metadata systems ourselves.
 
-Four named AI agents assist the author across these surfaces. None of them auto-edits the manuscript; the author stays in control of every word. All agent actions are **proposed as suggestions by default** — see *AI Suggestion & Provenance Governance* below.
-
-> **Naming note (TBD):** the original goal brief defines **three** agents — *Brainstormer*, *Writing Assistant*, *Archive* — where Archive owns both vault linking/continuity **and** the timeline. The board's later guidance in MYT-107 splits those responsibilities into **four** agents (adds *Vault Agent* alongside *Archive Agent*). This plan reflects the latest four-agent framing; consolidation back to three is an open question.
+Three named AI agents assist the author across these surfaces. None of them auto-edits the manuscript; the author stays in control of every word. All agent actions are **proposed as suggestions by default** — see *AI Suggestion & Provenance Governance* below.
 
 ---
 
@@ -30,9 +28,9 @@ Four named AI agents assist the author across these surfaces. None of them auto-
 - Block-based rich text editor with markdown round-trip for manuscript writing.
 - **Versioned drafts** of chapters and scenes (snapshots + history, one-click rollback).
 - Character and world-building management (entities, relationships, locations) inside the vault.
-- **Brainstorm Agent**: chat surface where the author talks through story, world, ideas, goals, and plans; agent **automatically builds and maintains the vault** from the conversation (entity pages, scene cards, structured world notes), with provenance recorded for every creation.
+- **Brainstorm Agent**: chat surface where the author talks through story, world, ideas, goals, and plans; agent **automatically builds and maintains the vault** from the conversation (entity pages, structured world notes), with provenance recorded for every creation. *Does not create Scene Crafter cards — those come from user drag-and-drop of existing vault notes.*
 - **Writing Assistant**: scans manuscript on a user-configurable heartbeat; posts tips, inline comments, and suggestions to the sidebar; **never edits manuscript text automatically**.
-- **Vault Agent**: indexes the entire vault and surfaces inconsistencies against the manuscript; suggests and inserts Obsidian-style `[[wiki-link]]` references from the writing page to vault pages.
+- **Archive Agent**: indexes the entire vault and (1) surfaces inconsistencies against the manuscript, (2) suggests and inserts Obsidian-style `[[wiki-link]]` references from the writing page to vault pages, and (3) builds & maintains the Story Timeline (Phase 5). Single agent for both vault-linking/continuity and timeline duties.
 - **Vault Graph View** — Obsidian-style graph of vault notes and their links (distinct from the Story Timeline).
 - **Suggestion governance**: all agent actions create suggestion objects (source, confidence, rationale, timestamp); proposed by default; auto-apply opt-in with thresholds and per-agent budgets; snapshots + audit entries on apply; one-click rollback.
 - Import/export support (markdown, plain text, EPUB).
@@ -42,9 +40,9 @@ Four named AI agents assist the author across these surfaces. None of them auto-
 ### Long-Term (v1.0+)
 - Full-featured writing suite rivaling tools like Scrivener, but AI-native.
 - Multi-project workspace with tagging, search, and cross-reference.
-- **Scene Crafter** — first-class Kanban planning board (per story). Brainstormer can auto-create scene cards; users can drag characters/items onto cards (creating suggestions); converting a card to a scene writes the scene markdown file and updates the manifest. Columns model status (e.g. Idea → Drafted → Written → Cut). *Goal-defined first-class feature; targeted later for delivery sequencing only.*
+- **Scene Crafter** — first-class Kanban planning board (per story), modeled after the **Obsidian Kanban plugin**. Author drags existing vault notes from the vault browser onto the board to build scenes/beats; cards are vault notes (not a separate store). Columns model status (e.g. Idea → Drafted → Written → Cut). Board itself is a markdown file in the vault so it stays Obsidian-compatible. *Goal-defined first-class feature; targeted later for delivery sequencing only.*
 - **Automatic Timeline Builder (Story Timeline)** — first-class **Archive Agent**-driven timeline per story. Archive infers scene timestamps from explicit and implicit time cues with a confidence score, places scenes on a visual timeline, detects overlaps, and surfaces continuity suggestions. Planned-but-unwritten beats appear greyed-out so the author can see the whole arc at a glance. All placements are suggestions until the user confirms (or enables auto-apply).
-- **Archive Agent** — fourth named agent. Compares manuscript to vault, proposes links and timeline placements, detects inconsistencies, and offers the explicit action verbs: **Match Archive to Story**, **Suggest Story Change**, or **Ignore**. Can link implicit references after user confirmation. Read-only with respect to the manuscript.
+- **Archive Agent (full scope)** — the third agent owns vault linking/continuity *and* the Story Timeline. Compares manuscript to vault, proposes `[[wiki-links]]` and timeline placements, detects inconsistencies, and offers the explicit action verbs: **Match Archive to Story**, **Suggest Story Change**, or **Ignore**. Can link implicit references after user confirmation. Read-only with respect to the manuscript.
 - Optional cloud sync and collaboration features.
 - Plugin or template system for genre-specific workflows (fantasy, sci-fi, mystery, etc.).
 - Full **macOS and Linux** distribution (signing, notarization).
@@ -71,22 +69,21 @@ Four named AI agents assist the author across these surfaces. None of them auto-
 - [ ] Per-chapter / per-scene file layout in the vault
 - [ ] Project/vault browser sidebar
 - [ ] Save/load documents from vault
-- [ ] **Manifest.json schema (v1)** — indexes scenes, entities, scene cards, suggestions, provenance
+- [ ] **Manifest.json schema (v1)** — indexes scenes, entities, suggestions, provenance, and board references (scene cards live as vault notes; the manifest just points at them)
 - [ ] Versioned drafts: snapshot on save, history view, one-click rollback
 - [ ] Basic settings panel (API key management, theme, per-agent enable/disable, Writing Assistant heartbeat interval)
 
 ### Phase 3 — AI-Augmented Authoring
 **Status:** Planned
 
-The four named agents (subject to the naming TBD above):
+The three named agents:
 
 - [ ] **Writing Assistant** — sidebar inside the writing page. Reads current scene/chapter context and posts tips, inline comments, and suggestions on a user-configurable heartbeat. Never edits the manuscript.
-- [ ] **Brainstorm Agent** — separate chat surface. The author talks through their story, world, ideas, goals, and plans; the agent extracts structured information and writes/updates vault notes (entities, locations, lore, scene cards), recording provenance.
-- [ ] **Vault Agent** — indexes the entire vault. (1) Continuity-checks the manuscript against vault contents and surfaces inconsistencies; (2) suggests and inserts `[[wiki-link]]` references from manuscript to vault pages.
-- [ ] **Archive Agent** — owns the Story Timeline (Phase 5). Indexes vault + manuscript, infers chronology, marks unwritten beats. Surfaces gaps. Read-only on the manuscript.
+- [ ] **Brainstorm Agent** — separate chat surface. The author talks through their story, world, ideas, goals, and plans; the agent extracts structured information and writes/updates vault notes (entities, locations, lore), recording provenance. Does not author Scene Crafter cards.
+- [ ] **Archive Agent** — indexes the entire vault. (1) Continuity-checks the manuscript against vault contents and surfaces inconsistencies; (2) suggests and inserts `[[wiki-link]]` references from manuscript to vault pages; (3) in Phase 5, owns the Story Timeline (infers chronology, marks unwritten beats, detects overlaps). Read-only on the manuscript.
 
 Supporting work:
-- [ ] **Suggestion store + audit log** (DB tables for suggestions, audits, provenance).
+- [ ] **Suggestion store + audit log** (DB tables for suggestions, audits, provenance, and timeline entries).
 - [ ] **Agent API contract** — suggestion payload schema, apply/reject endpoints, auto-apply policy controls, per-agent budget controls.
 - [ ] Prompt history and generation log.
 - [ ] User-facing settings: per-agent enable, per-agent model selection, per-agent auto-apply thresholds and budgets.
@@ -104,7 +101,7 @@ Supporting work:
 ### Phase 5 — Story Planning Surfaces
 **Status:** Future (goal-classified *first-class*; sequenced later for delivery)
 
-- [ ] **Scene Crafter (Kanban)** — per-story board. Brainstormer-seeded card creation; drag-to-add entity suggestions; convert-card-to-scene writes the scene file and updates the manifest. Target: card appears within 2s of generation.
+- [ ] **Scene Crafter (Kanban)** — per-story board, Obsidian-Kanban-plugin style. Author drags existing vault notes onto columns; cards *are* vault notes. Board persisted as a markdown file in the vault so Obsidian users can open it natively. Columns: Idea → Drafted → Written → Cut (configurable).
 - [ ] **Vault Graph View** — Obsidian-compatible graph of vault notes and links.
 - [ ] **Story Timeline (Automatic Timeline Builder)** — per-story graph/timeline view. Archive-driven scene-time inference with confidence; visual placement; overlap detection; greyed-out planned beats. Target: confirmed placement within 5s.
 - [ ] Archive confirmation dialog with the three action verbs: **Match Archive to Story**, **Suggest Story Change**, **Ignore**.
@@ -133,7 +130,7 @@ This applies to all agents that can modify vault content or propose changes.
 | Main process| Node.js, TypeScript (electron-main package) |
 | AI          | Anthropic Claude API (`@anthropic-ai/sdk`)  |
 | Storage     | Local markdown vault (Obsidian-compatible) + `manifest.json` index |
-| Persistence | Suggestion/audit/scene-card/timeline tables (SQLite — TBD) |
+| Persistence | Suggestion/audit/timeline tables (SQLite — TBD)            |
 | Build       | electron-vite, electron-builder             |
 | Tooling     | ESLint, Prettier, Vitest, GitHub Actions    |
 
@@ -169,7 +166,7 @@ IPC is the communication boundary: the renderer (frontend) never calls the Claud
 4. **AI as a tool, not a replacement** — the author stays in control; AI assists and suggests.
 5. **Desktop-quality UX** — feels like a native app, not a web app in a frame.
 6. **Open and extensible** — clean architecture that can grow into plugins and templates.
-7. **AI Boundaries** — AI never modifies or generates manuscript prose. Writing Assistant only advises. Brainstorm Agent writes to vault notes (with provenance). Vault Agent only inserts `[[wiki-links]]` and surfaces inconsistencies. Archive Agent only reads vault + manuscript to build the timeline; it does not edit either.
+7. **AI Boundaries** — AI never modifies or generates manuscript prose. Writing Assistant only advises. Brainstorm Agent writes to vault notes (with provenance). Archive Agent inserts `[[wiki-links]]`, surfaces inconsistencies, and builds the timeline; it never edits the manuscript.
 8. **Suggestion-first** — agent actions are suggestions by default; auto-apply is opt-in; every change is auditable and reversible.
 
 ---
@@ -183,9 +180,8 @@ IPC is the communication boundary: the renderer (frontend) never calls the Claud
 | Vault Graph View     | Obsidian-style graph of vault notes and links                                                               | Obsidian   |
 | Writing Assistant    | Sidebar on the writing page; scans on heartbeat; tips & inline comments                                     | —          |
 | Brainstorm Agent     | Separate chat; author talks through story/world/ideas; agent fills vault notes from the conversation        | —          |
-| Vault Agent          | Background indexer; checks story against vault for inconsistencies; manages `[[wiki-links]]`                | —          |
-| Archive Agent        | Builds & maintains per-story Story Timeline; proposes links & placements with action verbs                  | —          |
-| Scene Crafter        | Per-story Kanban board for scene/beat cards (Idea → Drafted → Written → Cut); first-class                   | Trello     |
+| Archive Agent        | Indexer & timeline: checks story against vault, manages `[[wiki-links]]`, builds Story Timeline             | —          |
+| Scene Crafter        | Per-story Kanban (Obsidian-Kanban-plugin style); drag vault notes onto columns; board is a vault markdown   | Obsidian Kanban |
 | Story Timeline       | Per-story timeline/graph view; greyed-out planned beats; overlap detection                                  | —          |
 | Suggestion Review    | Inbox of pending suggestions with accept/reject/ignore; per-agent filters; audit trail and rollback         | —          |
 
@@ -193,13 +189,12 @@ IPC is the communication boundary: the renderer (frontend) never calls the Claud
 
 ## Open Questions / Decisions Needed
 
-- **Agent count (3 vs 4).** Goal brief defines 3 (Brainstormer, Writing Assistant, Archive — Archive owns both linking/continuity and timeline). MYT-107 latest framing splits this into 4 (separates Vault Agent from Archive Agent). Confirm which to ship.
 - Editor library choice: TipTap (rich-text, Word-like, block engine) is the leading candidate; CodeMirror is a fallback if we keep the editor plain-markdown.
 - Streaming UI for the Writing Assistant and Brainstorm Agent: stream tokens or wait for full response?
 - Obsidian backwards-compat scope for v1: honor Obsidian's `.obsidian/` config (themes, plugins list) or just the file/folder layout, `[[wiki-link]]` syntax, and graph view?
-- Vault Agent: what triggers a continuity check — on save, on-demand, or continuous background scan? Where do flagged inconsistencies surface in the writing UI?
+- Archive Agent continuity check trigger: on save, on-demand, or continuous background scan? Where do flagged inconsistencies surface in the writing UI?
 - Manifest.json schema versioning + migration strategy when fields are added.
-- Scene Crafter card storage: vault-backed markdown notes (one card = one note, status in frontmatter) vs. separate board store. Vault-backed keeps Obsidian compatibility.
+- Scene Crafter board file format: adopt the Obsidian Kanban plugin's markdown format (`## Column` headings + bullet lists of `[[note]]` links) for drop-in compatibility, or define our own simple format? Adopting Obsidian's format means existing Kanban-plugin boards open natively.
 - Story Timeline / Archive Agent: graph layout library (Cytoscape.js vs. React Flow vs. custom SVG)? Does Archive infer chronology from prose, only from explicit timeline markers in vault notes, or both?
 - Persistence engine for suggestions/audit/timeline tables: SQLite (likely) vs. markdown frontmatter only.
 - Distribution: direct GitHub Releases only, or also consider Winget / Homebrew / Linux package repos?
