@@ -37,14 +37,15 @@ describe('SettingsPanel', () => {
   });
 
   it('loads settings from IPC on mount', async () => {
-    const withKey: AppSettings = { ...defaultSettings, apiKey: 'sk-ant-test123' };
-    mockSettingsGet.mockResolvedValueOnce(withKey);
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...3456' });
 
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
 
+    // Input must be empty — masked value must not appear in the writable field
     const input = screen.getByLabelText(/anthropic api key/i) as HTMLInputElement;
-    expect(input.value).toBe('sk-ant-test123');
+    expect(input.value).toBe('');
+    expect(screen.getByTestId('key-configured-hint')).toBeInTheDocument();
     expect(mockSettingsGet).toHaveBeenCalledTimes(1);
   });
 
@@ -141,5 +142,59 @@ describe('SettingsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/disk full/i));
+  });
+
+  // ── MYT-146 acceptance criteria ──
+
+  it('does not show configured hint when no key is set', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(screen.queryByTestId('key-configured-hint')).not.toBeInTheDocument();
+  });
+
+  it('saving without touching the key sends the masked value so the backend guard preserves it', async () => {
+    const masked = 'sk-ant-...9876';
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: masked });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: masked }));
+  });
+
+  it('saving with a new key typed sends the typed value', async () => {
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...9876' });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-brandnew' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'sk-ant-brandnew' }));
+  });
+
+  it('clearing the key (type then delete all) sends empty string to clear stored key', async () => {
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...9876' });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    // Make input dirty by typing, then clear it
+    const input = screen.getByLabelText(/anthropic api key/i);
+    fireEvent.change(input, { target: { value: 'sk-ant-temp' } });
+    fireEvent.change(input, { target: { value: '' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: '' }));
+  });
+
+  it('hides configured hint once the user starts typing a new key', async () => {
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...9876' });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('key-configured-hint'));
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-new' } });
+    expect(screen.queryByTestId('key-configured-hint')).not.toBeInTheDocument();
   });
 });

@@ -32,6 +32,9 @@ interface Props {
 
 export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
+  // Separate input state so the masked value from settingsGet never appears in the writable field.
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
@@ -41,13 +44,16 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   useEffect(() => {
     window.api.settingsGet().then((s) => {
       setSettings(s);
+      // Do not populate the input — masked value stays in settings state only
       setLoading(false);
     }).catch(() => {
       setLoading(false);
     });
   }, []);
 
-  const apiKeyError = validateApiKey(settings.apiKey);
+  const keyIsConfigured = Boolean(settings.apiKey);
+  // Only validate when the user has touched the field; an untouched empty input is not an error.
+  const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
 
   const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(
     agent: A,
@@ -70,15 +76,21 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setSaveError(null);
     setSavedOk(false);
     try {
-      await window.api.settingsSet(settings);
+      const payload: AppSettings = {
+        ...settings,
+        // When dirty: send the typed value ('' clears the key; a new sk-ant-... value updates it).
+        // When not dirty: echo the masked value back so the backend guard preserves the stored key.
+        apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
+      };
+      await window.api.settingsSet(payload);
       setSavedOk(true);
-      onSaved?.(settings);
+      onSaved?.(payload);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyError, onSaved]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, onSaved]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
@@ -114,9 +126,9 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   id="api-key-input"
                   className={`settings-input${apiKeyError ? ' settings-input-error' : ''}`}
                   type={showApiKey ? 'text' : 'password'}
-                  value={settings.apiKey}
-                  onChange={(e) => { setSettings((p) => ({ ...p, apiKey: e.target.value })); setSavedOk(false); }}
-                  placeholder="sk-ant-…"
+                  value={apiKeyInput}
+                  onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
+                  placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : 'sk-ant-…'}
                   aria-describedby={apiKeyError ? 'api-key-error' : undefined}
                   autoComplete="off"
                   spellCheck={false}
@@ -132,6 +144,9 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               </div>
               {apiKeyError && (
                 <p className="settings-error-msg" id="api-key-error" role="alert">{apiKeyError}</p>
+              )}
+              {!apiKeyDirty && keyIsConfigured && (
+                <p className="settings-hint" data-testid="key-configured-hint">Key is already configured.</p>
               )}
               <p className="settings-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
             </div>
