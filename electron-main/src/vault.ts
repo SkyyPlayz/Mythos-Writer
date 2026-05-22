@@ -12,6 +12,7 @@ import type {
   BlockEntry,
   EntityEntry,
 } from './ipc.js';
+import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 
 // ─── Path safety ───
 
@@ -223,11 +224,12 @@ export function readManifest(manifestPath: string): Manifest {
 }
 
 export function writeManifest(manifestPath: string, manifest: Manifest): void {
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+  writeManifestAtomic(manifestPath, manifest);
 }
 
 export function defaultManifest(vaultRoot: string): Manifest {
   return {
+    schemaVersion: SCHEMA_VERSION,
     version: '2.0.0',
     vaultRoot,
     stories: [],
@@ -235,6 +237,8 @@ export function defaultManifest(vaultRoot: string): Manifest {
     suggestions: [],
     scenes: [],
     chapters: [],
+    provenance: {},
+    boardReferences: [],
   };
 }
 

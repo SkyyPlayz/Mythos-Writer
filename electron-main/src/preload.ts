@@ -91,6 +91,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:list', { type }),
   entityBacklinks: (entityId: string) =>
     ipcRenderer.invoke('entity:backlinks', { entityId }),
+
+  // App settings
+  settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
+  settingsSet: (settings: unknown) => ipcRenderer.invoke('settings:set', { settings }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
