@@ -1,5 +1,13 @@
 /// <reference types="vite/client" />
 
+interface SceneSnapshot {
+  id: string;
+  sceneId: string;
+  content: string;
+  wordCount: number;
+  createdAt: string;
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -25,7 +33,14 @@ interface Window {
     getAppInfo: () => Promise<{ platform: string; electronVersion: string; appVersion: string }>;
     getSystemInfo: () => Promise<{ platform: string; electronVersion: string; nodeVersion: string }>;
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;
+
+    // Versioning — per-scene snapshots
+    snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
+    snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
+    snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
   };
+
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
   mythosIPC: {
     generateStory: (payload: { prompt: string; genre?: string; length?: string }) => Promise<unknown>;

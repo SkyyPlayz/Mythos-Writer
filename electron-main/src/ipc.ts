@@ -41,6 +41,12 @@ export const IPC_CHANNELS = {
 
   // System
   SYSTEM_INFO: 'system:info',
+
+  // Versioning — per-scene snapshots
+  SNAPSHOT_SAVE: 'snapshot:save',
+  SNAPSHOT_LIST: 'snapshot:list',
+  SNAPSHOT_GET: 'snapshot:get',
+  SNAPSHOT_RESTORE: 'snapshot:restore',
 } as const;
 
 // ─── Main process handlers ───
@@ -94,6 +100,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AI_WRITING_ASSISTANT]: (payload: WritingAssistantPayload) => WritingAssistantResponse;
   [IPC_CHANNELS.AI_ARCHIVE]: (payload: ArchivePayload) => ArchiveResponse;
   [IPC_CHANNELS.SYSTEM_INFO]: (payload: never) => SystemInfo;
+  [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => SceneSnapshot;
+  [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
+  [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
+  [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
 }
 
 // ─── Payload / Response types ───
@@ -353,4 +363,47 @@ export interface VaultImportResponse {
 export interface VaultReindexResponse {
   scanned: number;
   updated: number;
+}
+
+// ─── Snapshot types ───
+
+export interface SceneSnapshot {
+  id: string;
+  sceneId: string;
+  content: string;
+  wordCount: number;
+  createdAt: string;
+}
+
+export interface SnapshotSavePayload {
+  sceneId: string;
+  content: string;
+}
+
+export interface SnapshotListPayload {
+  sceneId: string;
+}
+
+export interface SnapshotListResponse {
+  snapshots: SceneSnapshot[];
+}
+
+export interface SnapshotGetPayload {
+  sceneId: string;
+  snapshotId: string;
+}
+
+export interface SnapshotGetResponse {
+  snapshot: SceneSnapshot | null;
+}
+
+export interface SnapshotRestorePayload {
+  sceneId: string;
+  snapshotId: string;
+  scenePath: string;
+}
+
+export interface SnapshotRestoreResponse {
+  restored: SceneSnapshot;
+  preRestoreSnapshot: SceneSnapshot;
 }

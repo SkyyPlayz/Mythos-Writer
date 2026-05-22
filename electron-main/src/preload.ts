@@ -47,6 +47,16 @@ contextBridge.exposeInMainWorld('api', {
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
+
+  // Versioning — per-scene snapshots
+  snapshotSave: (sceneId: string, content: string) =>
+    ipcRenderer.invoke('snapshot:save', { sceneId, content }),
+  snapshotList: (sceneId: string) =>
+    ipcRenderer.invoke('snapshot:list', { sceneId }),
+  snapshotGet: (sceneId: string, snapshotId: string) =>
+    ipcRenderer.invoke('snapshot:get', { sceneId, snapshotId }),
+  snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) =>
+    ipcRenderer.invoke('snapshot:restore', { sceneId, snapshotId, scenePath }),
 });
 
 // Backward-compat alias — keeps existing App.tsx working

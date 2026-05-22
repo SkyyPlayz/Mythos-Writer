@@ -36,7 +36,12 @@ import {
   type ArchiveResponse,
   type SystemInfo,
   type VaultImportPayload,
+  type SnapshotSavePayload,
+  type SnapshotListPayload,
+  type SnapshotGetPayload,
+  type SnapshotRestorePayload,
 } from './ipc.js';
+import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import {
   readVaultFile,
   writeVaultFile,
@@ -287,6 +292,33 @@ const handlers: IpcHandlers = {
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
   }),
+  [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => {
+    ensureVaultDir();
+    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content);
+  },
+  [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => {
+    ensureVaultDir();
+    return { snapshots: listSnapshots(getVaultRoot(), payload.sceneId) };
+  },
+  [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => {
+    ensureVaultDir();
+    return { snapshot: getSnapshot(getVaultRoot(), payload.sceneId, payload.snapshotId) };
+  },
+  [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => {
+    ensureVaultDir();
+    const target = getSnapshot(getVaultRoot(), payload.sceneId, payload.snapshotId);
+    if (!target) throw new Error(`Snapshot not found: ${payload.snapshotId}`);
+    // Read current content to snapshot it first
+    let currentContent = '';
+    try {
+      const { content } = readVaultFile(getVaultRoot(), payload.scenePath);
+      currentContent = content;
+    } catch { /* new file */ }
+    const preRestoreSnapshot = saveSnapshot(getVaultRoot(), payload.sceneId, currentContent);
+    // Write the restored content to vault markdown
+    writeVaultFile(getVaultRoot(), payload.scenePath, target.content);
+    return { restored: target, preRestoreSnapshot };
+  },
 };
 
 // ─── Create BrowserWindow ───
