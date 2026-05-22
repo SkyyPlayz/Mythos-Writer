@@ -46,6 +46,16 @@ interface VaultCheckInconsistency {
   status: 'proposed' | 'dismissed';
 }
 
+interface AppSettings {
+  apiKey: string;
+  agents: {
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number };
+    brainstorm: { enabled: boolean; model: string };
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number };
+  };
+  theme: 'light' | 'dark';
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -90,6 +100,10 @@ interface Window {
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+
+    // App settings
+    settingsGet: () => Promise<AppSettings>;
+    settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

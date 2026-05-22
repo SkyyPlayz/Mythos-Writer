@@ -21,9 +21,10 @@ interface Message {
 
 interface Props {
   scene: Scene | null;
+  enabled?: boolean;
 }
 
-export default function WritingAssistantPanel({ scene }: Props) {
+export default function WritingAssistantPanel({ scene, enabled = true }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -119,6 +120,14 @@ export default function WritingAssistantPanel({ scene }: Props) {
       ),
     );
   };
+
+  if (!enabled) {
+    return (
+      <div className="writing-assistant-panel writing-assistant-disabled">
+        <p className="writing-assistant-disabled-msg">Writing Assistant is disabled. Enable it in Settings.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="writing-assistant-panel">

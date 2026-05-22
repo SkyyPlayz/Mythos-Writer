@@ -124,6 +124,24 @@
   color: #e4e4e7;
 }
 
+.app-menu-gear-btn {
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 0.95rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-left: 6px;
+  -webkit-app-region: no-drag;
+  line-height: 1;
+}
+
+.app-menu-gear-btn:hover {
+  color: #e4e4e7;
+  background: #27272a;
+}
+
 /* Main panels row */
 .shell-panels {
   display: flex;

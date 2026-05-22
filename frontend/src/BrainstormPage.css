@@ -351,3 +351,22 @@
   color: #4ade80;
   align-self: flex-start;
 }
+
+.brainstorm-disabled {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brainstorm-disabled-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.brainstorm-disabled-msg {
+  font-size: 0.875rem;
+  color: #52525b;
+  text-align: center;
+}

@@ -12,6 +12,8 @@ interface Props {
   selectedScene: Scene | null;
   selectedChapter: Chapter | null;
   selectedStory: Story | null;
+  writingAssistantEnabled?: boolean;
+  archiveEnabled?: boolean;
 }
 
 function NotesPanel({ scene }: { scene: Scene | null }) {
@@ -130,7 +132,7 @@ function PropertiesPanel({
 
 type AiSubTab = 'writing' | 'vault';
 
-function AiPanel({ scene }: { scene: Scene | null }) {
+function AiPanel({ scene, writingAssistantEnabled = true, archiveEnabled = true }: { scene: Scene | null; writingAssistantEnabled?: boolean; archiveEnabled?: boolean }) {
   const [subTab, setSubTab] = useState<AiSubTab>('writing');
 
   return (
@@ -149,13 +151,13 @@ function AiPanel({ scene }: { scene: Scene | null }) {
           Vault
         </button>
       </div>
-      {subTab === 'writing' && <WritingAssistantPanel scene={scene} />}
-      {subTab === 'vault' && <VaultAgentPanel scene={scene} />}
+      {subTab === 'writing' && <WritingAssistantPanel scene={scene} enabled={writingAssistantEnabled} />}
+      {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
     </div>
   );
 }
 
-export default function RightSidebar({ activeTab, onTabChange, selectedScene, selectedChapter, selectedStory }: Props) {
+export default function RightSidebar({ activeTab, onTabChange, selectedScene, selectedChapter, selectedStory, writingAssistantEnabled = true, archiveEnabled = true }: Props) {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'notes', label: 'Notes' },
     { id: 'properties', label: 'Properties' },
@@ -180,7 +182,7 @@ export default function RightSidebar({ activeTab, onTabChange, selectedScene, se
         {activeTab === 'properties' && (
           <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
         )}
-        {activeTab === 'ai' && <AiPanel scene={selectedScene} />}
+        {activeTab === 'ai' && <AiPanel scene={selectedScene} writingAssistantEnabled={writingAssistantEnabled} archiveEnabled={archiveEnabled} />}
       </div>
     </div>
   );

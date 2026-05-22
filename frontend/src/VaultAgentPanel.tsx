@@ -5,9 +5,10 @@ import './VaultAgentPanel.css';
 
 interface Props {
   scene: Scene | null;
+  enabled?: boolean;
 }
 
-export default function VaultAgentPanel({ scene }: Props) {
+export default function VaultAgentPanel({ scene, enabled = true }: Props) {
   const [checking, setChecking] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [inconsistencies, setInconsistencies] = useState<VaultCheckInconsistency[]>([]);
@@ -67,6 +68,14 @@ export default function VaultAgentPanel({ scene }: Props) {
 
   const activeIssues = inconsistencies.filter((i) => i.status === 'proposed');
   const dismissedCount = inconsistencies.filter((i) => i.status === 'dismissed').length;
+
+  if (!enabled) {
+    return (
+      <div className="vault-agent-panel vault-agent-disabled">
+        <p className="vault-agent-disabled-msg">Archive Agent is disabled. Enable it in Settings.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="vault-agent-panel">

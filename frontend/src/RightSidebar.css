@@ -488,3 +488,19 @@
   color: #a78bfa;
   border-bottom-color: #7c3aed;
 }
+
+.writing-assistant-disabled,
+.vault-agent-disabled {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 24px 16px;
+}
+
+.writing-assistant-disabled-msg,
+.vault-agent-disabled-msg {
+  text-align: center;
+  font-size: 0.82rem;
+  color: #52525b;
+}

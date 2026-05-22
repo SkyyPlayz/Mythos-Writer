@@ -43,9 +43,10 @@ const FACT_TYPE_LABELS: Record<DetectedFact['type'], string> = {
 
 interface Props {
   onClose: () => void;
+  enabled?: boolean;
 }
 
-export default function BrainstormPage({ onClose }: Props) {
+export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -169,6 +170,17 @@ export default function BrainstormPage({ onClose }: Props) {
       );
     }
   }, [facts]);
+
+  if (!enabled) {
+    return (
+      <div className="brainstorm-page brainstorm-disabled">
+        <div className="brainstorm-disabled-inner">
+          <p className="brainstorm-disabled-msg">Brainstorm Agent is disabled. Enable it in Settings.</p>
+          <button className="brainstorm-close-btn" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="brainstorm-page">

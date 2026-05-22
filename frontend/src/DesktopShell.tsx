@@ -6,6 +6,7 @@ import BottomBar from './BottomBar';
 import BlockEditor from './BlockEditor';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
+import SettingsPanel from './SettingsPanel';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -62,9 +63,10 @@ function blocksToMarkdown(scene: Scene): string {
 interface AppMenuBarProps {
   view: 'editor' | 'brainstorm';
   onSetView: (v: 'editor' | 'brainstorm') => void;
+  onOpenSettings: () => void;
 }
 
-function AppMenuBar({ view, onSetView }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -75,7 +77,7 @@ function AppMenuBar({ view, onSetView }: AppMenuBarProps) {
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.newStory?.()}>New Story</button>
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openVault?.()}>Open Vault…</button>
             <div className="app-menu-separator" />
-            <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openSettings?.()}>Settings…</button>
+            <button className="app-menu-dropdown-item" onClick={onOpenSettings}>Settings…</button>
           </div>
         </div>
       </div>
@@ -93,6 +95,14 @@ function AppMenuBar({ view, onSetView }: AppMenuBarProps) {
           Brainstorm
         </button>
       </div>
+      <button
+        className="app-menu-gear-btn"
+        onClick={onOpenSettings}
+        aria-label="Open settings"
+        title="Settings"
+      >
+        ⚙
+      </button>
     </div>
   );
 }
@@ -114,6 +124,8 @@ export default function DesktopShell() {
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<'editor' | 'brainstorm'>('editor');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragState = useRef<DragState | null>(null);
@@ -121,12 +133,16 @@ export default function DesktopShell() {
   useEffect(() => {
     (async () => {
       try {
-        const m = await (window as any).api.readManifest() as Manifest;
+        const [m, s] = await Promise.all([
+          (window as any).api.readManifest() as Promise<Manifest>,
+          (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
+        ]);
         setManifest(m);
         setStories(m.stories ?? []);
         if (m.layout) {
           setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
         }
+        if (s) setAppSettings(s);
       } catch (e) {
         setError('Failed to load vault: ' + String(e));
       } finally {
@@ -369,11 +385,23 @@ export default function DesktopShell() {
     );
   }
 
+  const agentFlags = {
+    writingAssistant: appSettings?.agents.writingAssistant.enabled ?? true,
+    brainstorm: appSettings?.agents.brainstorm.enabled ?? true,
+    archive: appSettings?.agents.archive.enabled ?? true,
+  };
+
   return (
     <div className="desktop-shell">
-      <AppMenuBar view={view} onSetView={setView} />
+      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} />
+      {settingsOpen && (
+        <SettingsPanel
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(s) => setAppSettings(s)}
+        />
+      )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} />
+        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
       )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
@@ -450,6 +478,8 @@ export default function DesktopShell() {
           selectedScene={selectedScene}
           selectedChapter={selectedChapter}
           selectedStory={selectedStory}
+          writingAssistantEnabled={agentFlags.writingAssistant}
+          archiveEnabled={agentFlags.archive}
         />
       </div>
       </div>}{/* end shell-panels */}
