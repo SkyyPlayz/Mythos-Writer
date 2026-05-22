@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

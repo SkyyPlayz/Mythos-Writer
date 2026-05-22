@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
@@ -21,20 +21,142 @@ const LENGTH_TO_TOKENS: Record<string, number> = {
 
 const VALID_LENGTHS = new Set(['short', 'medium', 'long']);
 const MAX_PROMPT_LENGTH = 2000;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
+const DEFAULT_RATE_LIMIT_MAX = 20;
 
-router.post('/generate', async (req: Request, res: Response) => {
+type RateLimitBucket = {
+  windowStartedAt: number;
+  count: number;
+};
+
+const storyRateLimitBuckets = new Map<string, RateLimitBucket>();
+
+const parsePositiveInteger = (
+  value: string | undefined,
+  fallback: number,
+): number => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getBearerToken = (authorizationHeader: string | undefined): string | null => {
+  if (!authorizationHeader?.startsWith('Bearer ')) {
+    return null;
+  }
+
+  return authorizationHeader.slice('Bearer '.length);
+};
+
+const enforceStoryAccess = (req: Request, res: Response, next: NextFunction) => {
+  const accessMode = process.env.STORY_API_ACCESS_MODE?.toLowerCase();
+
+  if (accessMode === 'demo') {
+    next();
+    return;
+  }
+
+  if (accessMode === 'token') {
+    const configuredToken = process.env.STORY_API_TOKEN;
+
+    if (!configuredToken) {
+      res.status(403).json({
+        error: 'story API token mode requires STORY_API_TOKEN to be configured',
+      });
+      return;
+    }
+
+    const requestToken = getBearerToken(req.header('Authorization'));
+    if (requestToken !== configuredToken) {
+      res
+        .status(401)
+        .json({ error: 'authorization bearer token is required for story generation' });
+      return;
+    }
+
+    next();
+    return;
+  }
+
+  res.status(403).json({
+    error:
+      'story generation is disabled until STORY_API_ACCESS_MODE is set to demo or token',
+  });
+};
+
+const enforceStoryRateLimit = (req: Request, res: Response, next: NextFunction) => {
+  const windowMs = parsePositiveInteger(
+    process.env.STORY_RATE_LIMIT_WINDOW_MS,
+    DEFAULT_RATE_LIMIT_WINDOW_MS,
+  );
+  const maxRequests = parsePositiveInteger(
+    process.env.STORY_RATE_LIMIT_MAX,
+    DEFAULT_RATE_LIMIT_MAX,
+  );
+  const now = Date.now();
+  const clientId = req.ip || req.socket.remoteAddress || 'unknown-client';
+  const currentBucket = storyRateLimitBuckets.get(clientId);
+
+  if (!currentBucket || now - currentBucket.windowStartedAt >= windowMs) {
+    storyRateLimitBuckets.set(clientId, { windowStartedAt: now, count: 1 });
+    res.setHeader('X-RateLimit-Limit', String(maxRequests));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(maxRequests - 1, 0)));
+    next();
+    return;
+  }
+
+  if (currentBucket.count >= maxRequests) {
+    res.setHeader('X-RateLimit-Limit', String(maxRequests));
+    res.setHeader('X-RateLimit-Remaining', '0');
+    res.status(429).json({ error: 'story generation rate limit exceeded' });
+    return;
+  }
+
+  currentBucket.count += 1;
+  res.setHeader('X-RateLimit-Limit', String(maxRequests));
+  res.setHeader(
+    'X-RateLimit-Remaining',
+    String(Math.max(maxRequests - currentBucket.count, 0)),
+  );
+  next();
+};
+
+const resetStoryRateLimits = () => {
+  storyRateLimitBuckets.clear();
+};
+
+router.post(
+  '/generate',
+  enforceStoryAccess,
+  enforceStoryRateLimit,
+  async (req: Request, res: Response) => {
   const { prompt, genre, length = 'medium' } = req.body as {
-    prompt?: string;
-    genre?: string;
-    length?: string;
+    prompt?: unknown;
+    genre?: unknown;
+    length?: unknown;
   };
 
-  if (!prompt) {
+  if (typeof prompt !== 'string') {
+    res.status(400).json({ error: prompt == null ? 'prompt is required' : 'prompt must be a string' });
+    return;
+  }
+
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
     res.status(400).json({ error: 'prompt is required' });
     return;
   }
 
-  if (prompt.length > MAX_PROMPT_LENGTH) {
+  if (typeof length !== 'string') {
+    res.status(400).json({ error: 'length must be one of: short, medium, long' });
+    return;
+  }
+
+  if (genre != null && typeof genre !== 'string') {
+    res.status(400).json({ error: 'genre must be a string' });
+    return;
+  }
+
+  if (trimmedPrompt.length > MAX_PROMPT_LENGTH) {
     res
       .status(400)
       .json({ error: `prompt must be ${MAX_PROMPT_LENGTH} characters or fewer` });
@@ -46,10 +168,18 @@ router.post('/generate', async (req: Request, res: Response) => {
     return;
   }
 
-  const maxTokens = LENGTH_TO_TOKENS[length] ?? LENGTH_TO_TOKENS.medium;
-  const userMessage = genre ? `Genre: ${genre}\n\nPrompt: ${prompt}` : prompt;
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!anthropicApiKey) {
+    res.status(503).json({
+      error: 'ANTHROPIC_API_KEY must be configured before story generation can start',
+    });
+    return;
+  }
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const maxTokens = LENGTH_TO_TOKENS[length] ?? LENGTH_TO_TOKENS.medium;
+  const userMessage = genre ? `Genre: ${genre}\n\nPrompt: ${trimmedPrompt}` : trimmedPrompt;
+
+  const client = new Anthropic({ apiKey: anthropicApiKey });
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -62,6 +192,12 @@ router.post('/generate', async (req: Request, res: Response) => {
       max_tokens: maxTokens,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
+    });
+
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        stream.abort();
+      }
     });
 
     for await (const event of stream) {
@@ -92,4 +228,4 @@ router.post('/generate', async (req: Request, res: Response) => {
   }
 });
 
-export { router as storyRouter };
+export { router as storyRouter, resetStoryRateLimits };
