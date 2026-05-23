@@ -6,6 +6,7 @@ import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
+import KanbanBoard from './KanbanBoard';
 import SettingsPanel from './SettingsPanel';
 import UpdateBanner from './UpdateBanner';
 import './DesktopShell.css';
@@ -61,9 +62,11 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
+type AppView = 'editor' | 'brainstorm' | 'kanban';
+
 interface AppMenuBarProps {
-  view: 'editor' | 'brainstorm';
-  onSetView: (v: 'editor' | 'brainstorm') => void;
+  view: AppView;
+  onSetView: (v: AppView) => void;
   onOpenSettings: () => void;
 }
 
@@ -95,6 +98,12 @@ function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
         >
           Brainstorm
         </button>
+        <button
+          className={`app-menu-view-btn${view === 'kanban' ? ' active' : ''}`}
+          onClick={() => onSetView('kanban')}
+        >
+          Board
+        </button>
       </div>
       <button
         className="app-menu-gear-btn"
@@ -124,7 +133,7 @@ export default function DesktopShell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
-  const [view, setView] = useState<'editor' | 'brainstorm'>('editor');
+  const [view, setView] = useState<AppView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
@@ -435,6 +444,23 @@ export default function DesktopShell() {
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+      )}
+      {view === 'kanban' && (
+        <div className="shell-kanban">
+          {selectedStory ? (
+            <KanbanBoard
+              key={selectedStory.id}
+              boardPath={`${selectedStory.path}/kanban.md`}
+              storyTitle={selectedStory.title}
+            />
+          ) : (
+            <div className="shell-editor-empty">
+              <div className="shell-editor-empty-icon">🗂️</div>
+              <h2>No Story Selected</h2>
+              <p>Select a story from the Editor view to open its Scene Board.</p>
+            </div>
+          )}
+        </div>
       )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
