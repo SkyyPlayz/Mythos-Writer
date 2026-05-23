@@ -112,6 +112,31 @@ export function writeVaultFile(
   return { path: filePath, bytes: Buffer.byteLength(content, 'utf-8') };
 }
 
+/**
+ * Atomic vault write: temp file → fdatasync → rename.
+ * A crash between writeSync and renameSync leaves the original file intact.
+ */
+export function writeVaultFileAtomic(
+  vaultRoot: string,
+  filePath: string,
+  content: string
+): { path: string; bytes: number } {
+  const fullPath = safePath(vaultRoot, filePath);
+  const dir = path.dirname(fullPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${fullPath}.tmp`;
+  const buf = Buffer.from(content, 'utf-8');
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeSync(fd, buf);
+    fs.fdatasyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, fullPath);
+  return { path: filePath, bytes: buf.byteLength };
+}
+
 export function listVaultFiles(
   vaultRoot: string,
   root?: string
@@ -228,6 +253,26 @@ export function writeSceneFile(vaultRoot: string, relativePath: string, data: Sc
   };
   const content = serializeFrontmatter(fm, data.prose);
   writeVaultFile(vaultRoot, relativePath, content);
+}
+
+/** Atomic variant of writeSceneFile — temp + fdatasync + rename. */
+export function writeSceneFileAtomic(vaultRoot: string, relativePath: string, data: SceneFileData): void {
+  const fm: Frontmatter = {
+    id: data.id,
+    title: data.title,
+    ...(data.chapterId ? { chapterId: data.chapterId } : {}),
+    ...(data.storyId ? { storyId: data.storyId } : {}),
+    ...(data.order !== undefined ? { order: data.order } : {}),
+    ...(data.tags?.length ? { tags: data.tags } : {}),
+    ...(data.goal ? { goal: data.goal } : {}),
+    ...(data.conflict ? { conflict: data.conflict } : {}),
+    ...(data.outcome ? { outcome: data.outcome } : {}),
+    ...(data.pov ? { pov: data.pov } : {}),
+    ...(data.storyTime ? { storyTime: data.storyTime } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  const content = serializeFrontmatter(fm, data.prose);
+  writeVaultFileAtomic(vaultRoot, relativePath, content);
 }
 
 export function readSceneFile(vaultRoot: string, relativePath: string): SceneFileData {

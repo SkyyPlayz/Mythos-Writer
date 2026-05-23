@@ -89,6 +89,14 @@ export const IPC_CHANNELS = {
   CHAPTER_CREATE: 'chapter:create',
   SCENE_CREATE: 'scene:create',
 
+  // Structured chapter / scene save+load (Phase 2 — MYT-196)
+  CHAPTER_LIST: 'chapter:list',
+  CHAPTER_GET: 'chapter:get',
+  CHAPTER_SAVE: 'chapter:save',
+  SCENE_LIST: 'scene:list',
+  SCENE_GET: 'scene:get',
+  SCENE_SAVE: 'scene:save',
+
   // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
@@ -175,6 +183,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
   [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => ChapterEntry;
   [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => SceneEntry;
+  [IPC_CHANNELS.CHAPTER_LIST]: (payload: ChapterListPayload) => ChapterListResponse;
+  [IPC_CHANNELS.CHAPTER_GET]: (payload: ChapterGetPayload) => ChapterGetResponse;
+  [IPC_CHANNELS.CHAPTER_SAVE]: (payload: ChapterSavePayload) => ChapterSaveResponse;
+  [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
+  [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
+  [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
 }
 
 // ─── Payload / Response types ───
@@ -856,6 +870,62 @@ export interface SceneCreatePayload {
   chapterId: string;
   title: string;
   order?: number;
+}
+
+// ─── Chapter / Scene save+load (Phase 2 — MYT-196) ───
+
+export interface ChapterListPayload {
+  storyId: string;
+}
+
+export interface ChapterListResponse {
+  chapters: ChapterEntry[];
+}
+
+export interface ChapterGetPayload {
+  chapterId: string;
+}
+
+export interface ChapterGetResponse {
+  chapter: ChapterEntry | null;
+}
+
+export interface ChapterSavePayload {
+  chapterId: string;
+  title?: string;
+  order?: number;
+}
+
+export interface ChapterSaveResponse {
+  chapter: ChapterEntry;
+}
+
+export interface SceneListPayload {
+  chapterId: string;
+}
+
+export interface SceneListResponse {
+  scenes: SceneEntry[];
+}
+
+export interface SceneGetPayload {
+  sceneId: string;
+}
+
+export interface SceneGetResponse {
+  scene: SceneEntry | null;
+  prose: string;
+}
+
+export interface SceneSavePayload {
+  sceneId: string;
+  prose: string;
+  title?: string;
+  order?: number;
+}
+
+export interface SceneSaveResponse {
+  scene: SceneEntry;
 }
 
 // ─── Vault Graph types (Phase 5 — MYT-163) ───

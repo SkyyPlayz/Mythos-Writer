@@ -62,6 +62,12 @@ import {
   type ArchiveScanPayload,
   type ChapterCreatePayload,
   type SceneCreatePayload,
+  type ChapterListPayload,
+  type ChapterGetPayload,
+  type ChapterSavePayload,
+  type SceneListPayload,
+  type SceneGetPayload,
+  type SceneSavePayload,
 } from './ipc.js';
 import {
   openDb,
@@ -100,6 +106,8 @@ import {
   serializeFrontmatter,
   safePath,
   writeSceneFile,
+  writeSceneFileAtomic,
+  readSceneFile,
   chapterVaultPath,
   sceneVaultPath,
 } from './vault.js';
@@ -673,6 +681,122 @@ const handlers: IpcHandlers = {
     chapter.scenes.push(scene);
     writeManifest(getManifestPath(), manifest);
     return scene;
+  },
+
+  // ─── Chapter / Scene save+load (MYT-196) ───
+  [IPC_CHANNELS.CHAPTER_LIST]: (payload: ChapterListPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+    return { chapters: story.chapters };
+  },
+
+  [IPC_CHANNELS.CHAPTER_GET]: (payload: ChapterGetPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    for (const story of manifest.stories) {
+      const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+      if (chapter) return { chapter };
+    }
+    return { chapter: null };
+  },
+
+  [IPC_CHANNELS.CHAPTER_SAVE]: (payload: ChapterSavePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    let found = null as typeof manifest.stories[0]['chapters'][0] | null;
+    for (const story of manifest.stories) {
+      const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+      if (chapter) { found = chapter; break; }
+    }
+    if (!found) throw new Error(`Chapter not found: ${payload.chapterId}`);
+    if (payload.title !== undefined) found.title = payload.title;
+    if (payload.order !== undefined) found.order = payload.order;
+    found.updatedAt = new Date().toISOString();
+    writeManifest(getManifestPath(), manifest);
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'chapter', id: found.id });
+    return { chapter: found };
+  },
+
+  [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    for (const story of manifest.stories) {
+      const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+      if (chapter) return { scenes: chapter.scenes };
+    }
+    throw new Error(`Chapter not found: ${payload.chapterId}`);
+  },
+
+  [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    // Search nested story→chapter→scene first
+    for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) {
+          let prose = '';
+          try { prose = readSceneFile(getVaultRoot(), scene.path).prose; } catch { /* missing */ }
+          return { scene, prose };
+        }
+      }
+    }
+    // Fallback: flat legacy scenes list
+    const scene = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (scene) {
+      let prose = '';
+      try { prose = readSceneFile(getVaultRoot(), scene.path).prose; } catch { /* missing */ }
+      return { scene, prose };
+    }
+    return { scene: null, prose: '' };
+  },
+
+  [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    // Find scene in nested structure or legacy flat list
+    let found = null as import('./ipc.js').SceneEntry | null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) { found = scene; break outer; }
+      }
+    }
+    if (!found) found = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+
+    // Validate path before writing (rejects traversal)
+    safePath(getVaultRoot(), found.path);
+
+    const nowStr = new Date().toISOString();
+    if (payload.title !== undefined) found.title = payload.title;
+    if (payload.order !== undefined) found.order = payload.order;
+    found.updatedAt = nowStr;
+
+    // Sync prose block
+    const proseBlock = found.blocks.find((b) => b.type === 'prose');
+    if (proseBlock) {
+      proseBlock.content = payload.prose;
+      proseBlock.updatedAt = nowStr;
+    } else {
+      found.blocks.push({ id: crypto.randomUUID(), type: 'prose', order: 0, content: payload.prose, updatedAt: nowStr });
+    }
+
+    // Atomic write: temp → fdatasync → rename
+    writeSceneFileAtomic(getVaultRoot(), found.path, {
+      id: found.id,
+      title: found.title,
+      chapterId: found.chapterId,
+      storyId: found.storyId,
+      order: found.order,
+      prose: payload.prose,
+    });
+
+    writeManifest(getManifestPath(), manifest);
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
+    return { scene: found };
   },
 
   // ─── Vault graph (MYT-163) ───
