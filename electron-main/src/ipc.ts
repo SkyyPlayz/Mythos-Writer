@@ -61,6 +61,11 @@ export const IPC_CHANNELS = {
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
 
+  // Versioned drafts — Phase 2 (MYT-198)
+  VERSION_LIST: 'version:list',
+  VERSION_GET: 'version:get',
+  VERSION_ROLLBACK: 'version:rollback',
+
   // Entity CRUD
   ENTITY_CREATE: 'entity:create',
   ENTITY_READ: 'entity:read',
@@ -158,6 +163,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
   [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
   [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
+  [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
+  [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
   [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => EntityEntry;
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => EntityEntry | null;
   [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
@@ -466,6 +474,42 @@ export interface SnapshotRestorePayload {
 export interface SnapshotRestoreResponse {
   restored: SceneSnapshot;
   preRestoreSnapshot: SceneSnapshot;
+}
+
+// ─── Versioned drafts types (Phase 2 — MYT-198) ───
+
+export interface SceneVersion {
+  sceneId: string;
+  /** Sanitized ISO timestamp — the filename stem under .versions/<sceneId>/. */
+  ts: string;
+  content: string;
+}
+
+export interface VersionListPayload {
+  sceneId: string;
+}
+
+export interface VersionListResponse {
+  versions: SceneVersion[];
+}
+
+export interface VersionGetPayload {
+  sceneId: string;
+  ts: string;
+}
+
+export interface VersionGetResponse {
+  version: SceneVersion | null;
+}
+
+export interface VersionRollbackPayload {
+  sceneId: string;
+  ts: string;
+}
+
+export interface VersionRollbackResponse {
+  restoredVersion: SceneVersion;
+  preRollbackVersion: SceneVersion;
 }
 
 // ─── Entity IPC payload / response types ───

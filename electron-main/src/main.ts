@@ -68,6 +68,9 @@ import {
   type SceneListPayload,
   type SceneGetPayload,
   type SceneSavePayload,
+  type VersionListPayload,
+  type VersionGetPayload,
+  type VersionRollbackPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -90,6 +93,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply } from './budget.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
+import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
   readVaultFile,
   writeVaultFile,
@@ -534,6 +538,69 @@ const handlers: IpcHandlers = {
     return { restored: target, preRestoreSnapshot };
   },
 
+  // ─── Versioned drafts (Phase 2 — MYT-198) ───
+  [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => {
+    ensureVaultDir();
+    return { versions: listVersions(getVaultRoot(), payload.sceneId) };
+  },
+  [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => {
+    ensureVaultDir();
+    return { version: getVersion(getVaultRoot(), payload.sceneId, payload.ts) };
+  },
+  [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => {
+    ensureVaultDir();
+    // Locate scene in manifest to get its vault path and current metadata
+    const manifest = readManifest(getManifestPath());
+    let found = null as import('./ipc.js').SceneEntry | null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) { found = scene; break outer; }
+      }
+    }
+    if (!found) found = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+
+    safePath(getVaultRoot(), found.path);
+
+    let currentProse = '';
+    try {
+      currentProse = readSceneFile(getVaultRoot(), found.path).prose;
+    } catch { /* scene file may not exist yet */ }
+
+    const { restoredVersion, preRollbackVersion } = rollbackVersion(
+      getVaultRoot(),
+      payload.sceneId,
+      payload.ts,
+      currentProse,
+    );
+
+    // Write restored prose back into the scene file, preserving frontmatter
+    writeSceneFileAtomic(getVaultRoot(), found.path, {
+      id: found.id,
+      title: found.title,
+      chapterId: found.chapterId,
+      storyId: found.storyId,
+      order: found.order,
+      prose: restoredVersion.content,
+    });
+
+    // Sync prose block in manifest
+    const nowStr = new Date().toISOString();
+    const proseBlock = found.blocks.find((b) => b.type === 'prose');
+    if (proseBlock) {
+      proseBlock.content = restoredVersion.content;
+      proseBlock.updatedAt = nowStr;
+    } else {
+      found.blocks.push({ id: crypto.randomUUID(), type: 'prose', order: 0, content: restoredVersion.content, updatedAt: nowStr });
+    }
+    found.updatedAt = nowStr;
+    writeManifest(getManifestPath(), manifest);
+
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
+    return { restoredVersion, preRollbackVersion };
+  },
+
   // ─── Entity CRUD ───
   [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => {
     ensureVaultDir();
@@ -793,6 +860,9 @@ const handlers: IpcHandlers = {
       order: found.order,
       prose: payload.prose,
     });
+
+    // Snapshot the saved prose — non-fatal if it fails
+    try { saveVersion(getVaultRoot(), found.id, payload.prose); } catch { /* ignore */ }
 
     writeManifest(getManifestPath(), manifest);
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
