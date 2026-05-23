@@ -16,6 +16,8 @@ import {
   listTimelineEntries,
   insertGenerationLog,
   listGenerationLog,
+  getGenerationLogEntry,
+  truncateGenerationLogBody,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
@@ -366,5 +368,68 @@ describe('generation_log', () => {
       insertGenerationLog({ id: `g${i}`, agent: 'brainstorm', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null });
     }
     expect(listGenerationLog({ limit: 3 })).toHaveLength(3);
+  });
+
+  it('listGenerationLog paginates via offset', () => {
+    const base = { model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, payload_digest: null };
+    // Insert 5 rows with distinct created_at so ORDER BY is stable
+    for (let i = 0; i < 5; i++) {
+      const ts = new Date(1_000_000 + i * 1000).toISOString();
+      insertGenerationLog({ id: `pg${i}`, agent: 'brainstorm', created_at: ts, ...base });
+    }
+    const page0 = listGenerationLog({ limit: 2, offset: 0 });
+    const page1 = listGenerationLog({ limit: 2, offset: 2 });
+    const page2 = listGenerationLog({ limit: 2, offset: 4 });
+    expect(page0).toHaveLength(2);
+    expect(page1).toHaveLength(2);
+    expect(page2).toHaveLength(1);
+    // All ids distinct across pages
+    const ids = [...page0, ...page1, ...page2].map(r => r.id);
+    expect(new Set(ids).size).toBe(5);
+  });
+
+  it('listGenerationLog agentFilter returns only matching agent rows', () => {
+    const now = new Date().toISOString();
+    const base = { model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null };
+    insertGenerationLog({ id: 'af1', agent: 'writing-assistant', ...base });
+    insertGenerationLog({ id: 'af2', agent: 'writing-assistant', ...base });
+    insertGenerationLog({ id: 'af3', agent: 'archive', ...base });
+    const wa = listGenerationLog({ agent: 'writing-assistant' });
+    const arc = listGenerationLog({ agent: 'archive' });
+    expect(wa).toHaveLength(2);
+    expect(wa.every(r => r.agent === 'writing-assistant')).toBe(true);
+    expect(arc).toHaveLength(1);
+    expect(arc[0].agent).toBe('archive');
+  });
+
+  it('truncateGenerationLogBody trims prompt_text and response_text to 10 KB in list rows', () => {
+    const bigText = 'x'.repeat(12 * 1024); // 12 KB
+    const now = new Date().toISOString();
+    insertGenerationLog({ id: 'trunc-1', agent: 'writing-assistant', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null, prompt_text: bigText, response_text: bigText });
+    const [raw] = listGenerationLog();
+    const truncated = truncateGenerationLogBody(raw);
+    expect(Buffer.byteLength(truncated.prompt_text!, 'utf8')).toBeLessThanOrEqual(10 * 1024 + 4); // +4 for ellipsis char
+    expect(Buffer.byteLength(truncated.response_text!, 'utf8')).toBeLessThanOrEqual(10 * 1024 + 4);
+    expect(truncated.prompt_text).toMatch(/…$/);
+    expect(truncated.response_text).toMatch(/…$/);
+  });
+
+  it('truncateGenerationLogBody leaves short texts unchanged', () => {
+    const now = new Date().toISOString();
+    insertGenerationLog({ id: 'trunc-2', agent: 'brainstorm', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null, prompt_text: 'short prompt', response_text: null });
+    const [raw] = listGenerationLog();
+    const truncated = truncateGenerationLogBody(raw);
+    expect(truncated.prompt_text).toBe('short prompt');
+    expect(truncated.response_text).toBeNull();
+  });
+
+  it('getGenerationLogEntry returns full body without truncation', () => {
+    const bigText = 'y'.repeat(12 * 1024);
+    const now = new Date().toISOString();
+    insertGenerationLog({ id: 'full-get', agent: 'brainstorm', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null, prompt_text: bigText, response_text: null });
+    const row = getGenerationLogEntry('full-get');
+    expect(row).not.toBeNull();
+    expect(row!.prompt_text).toBe(bigText);
+    expect(row!.prompt_text!.length).toBe(12 * 1024);
   });
 });

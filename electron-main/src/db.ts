@@ -61,6 +61,8 @@ export interface DbGenerationLog {
   error: string | null;
   created_at: string;
   payload_digest: string | null;
+  prompt_text: string | null;
+  response_text: string | null;
 }
 
 // ─── Module state ───
@@ -179,6 +181,14 @@ function runMigrations(db: Database.Database): void {
     db.exec(`ALTER TABLE suggestions ADD COLUMN budget_exceeded INTEGER NOT NULL DEFAULT 0;`);
     db.pragma('user_version = 4');
   }
+
+  if (currentVersion < 5) {
+    db.exec(`
+      ALTER TABLE generation_log ADD COLUMN prompt_text TEXT;
+      ALTER TABLE generation_log ADD COLUMN response_text TEXT;
+    `);
+    db.pragma('user_version = 5');
+  }
 }
 
 // ─── Suggestions ───
@@ -296,25 +306,51 @@ export function insertGenerationLog(entry: DbGenerationLog): void {
     .prepare(
       `INSERT INTO generation_log
          (id, agent, model, endpoint, request_id, tokens_in, tokens_out,
-          latency_ms, error, created_at, payload_digest)
+          latency_ms, error, created_at, payload_digest, prompt_text, response_text)
        VALUES
          (@id, @agent, @model, @endpoint, @request_id, @tokens_in, @tokens_out,
-          @latency_ms, @error, @created_at, @payload_digest)`
+          @latency_ms, @error, @created_at, @payload_digest, @prompt_text, @response_text)`
     )
-    .run(entry);
+    .run({ prompt_text: null, response_text: null, ...entry });
 }
 
-export function listGenerationLog(opts: { limit?: number; agent?: string } = {}): DbGenerationLog[] {
+export function listGenerationLog(opts: { limit?: number; offset?: number; agent?: string } = {}): DbGenerationLog[] {
   const db = getDb();
-  const limit = opts.limit ?? 100;
+  const limit = opts.limit ?? 20;
+  const offset = opts.offset ?? 0;
   if (opts.agent) {
     return db
-      .prepare('SELECT * FROM generation_log WHERE agent = ? ORDER BY created_at DESC LIMIT ?')
-      .all(opts.agent, limit) as DbGenerationLog[];
+      .prepare('SELECT * FROM generation_log WHERE agent = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
+      .all(opts.agent, limit, offset) as DbGenerationLog[];
   }
   return db
-    .prepare('SELECT * FROM generation_log ORDER BY created_at DESC LIMIT ?')
-    .all(limit) as DbGenerationLog[];
+    .prepare('SELECT * FROM generation_log ORDER BY created_at DESC LIMIT ? OFFSET ?')
+    .all(limit, offset) as DbGenerationLog[];
+}
+
+export function countGenerationLog(agent?: string): number {
+  const db = getDb();
+  if (agent) {
+    const row = db.prepare('SELECT COUNT(*) as cnt FROM generation_log WHERE agent = ?').get(agent) as { cnt: number };
+    return row.cnt;
+  }
+  const row = db.prepare('SELECT COUNT(*) as cnt FROM generation_log').get() as { cnt: number };
+  return row.cnt;
+}
+
+export function getGenerationLogEntry(id: string): DbGenerationLog | null {
+  return (getDb().prepare('SELECT * FROM generation_log WHERE id = ?').get(id) as DbGenerationLog | undefined) ?? null;
+}
+
+const BODY_TRUNCATE_BYTES = 10 * 1024; // 10 KB
+
+/** Truncate prompt_text / response_text for IPC list efficiency. GET returns full rows. */
+export function truncateGenerationLogBody(row: DbGenerationLog): DbGenerationLog {
+  const truncate = (s: string | null) =>
+    s !== null && Buffer.byteLength(s, 'utf8') > BODY_TRUNCATE_BYTES
+      ? s.slice(0, BODY_TRUNCATE_BYTES) + '…'
+      : s;
+  return { ...row, prompt_text: truncate(row.prompt_text), response_text: truncate(row.response_text) };
 }
 
 // ─── Budget window counters ───

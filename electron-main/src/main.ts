@@ -57,6 +57,8 @@ import {
   type TimelineListPayload,
   type TimelineUpsertPayload,
   type GenerationLogRecentPayload,
+  type GenerationLogListPayload,
+  type GenerationLogGetPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -73,6 +75,9 @@ import {
   listTimelineEntries,
   insertGenerationLog,
   listGenerationLog,
+  countGenerationLog,
+  getGenerationLogEntry,
+  truncateGenerationLogBody,
 } from './db.js';
 import { evaluateAutoApply } from './budget.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
@@ -102,6 +107,12 @@ import {
   reindexEntities,
   getEntityBacklinks,
 } from './entities.js';
+import {
+  buildArchiveIndex,
+  getArchiveIndex,
+  getArchiveStatus,
+  runArchiveScan,
+} from './archiveAgent.js';
 
 const require = createRequire(import.meta.url);
 
@@ -570,7 +581,59 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => {
     ensureVaultDir();
-    return { entries: listGenerationLog({ limit: payload.limit, agent: payload.agent }) };
+    return { entries: listGenerationLog({ limit: payload.limit, agent: payload.agent }).map(truncateGenerationLogBody) };
+  },
+
+  [IPC_CHANNELS.GENERATION_LOG_LIST]: (payload: GenerationLogListPayload) => {
+    ensureVaultDir();
+    const pageSize = payload.pageSize ?? 20;
+    const page = payload.page ?? 0;
+    const agent = payload.agent && payload.agent !== 'all' ? payload.agent : undefined;
+    const entries = listGenerationLog({ limit: pageSize, offset: page * pageSize, agent }).map(truncateGenerationLogBody);
+    const total = countGenerationLog(agent);
+    return { entries, total, page, pageSize };
+  },
+
+  [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => {
+    ensureVaultDir();
+    return { entry: getGenerationLogEntry(payload.id) };
+  },
+
+  // ─── Vault graph (MYT-163) ───
+  [IPC_CHANNELS.VAULT_GRAPH_DATA]: async () => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const nodes = manifest.entities.map((e) => ({
+      id: e.id,
+      label: e.name,
+      type: e.type,
+      path: e.path,
+    }));
+    return { nodes, edges: [] };
+  },
+
+  // ─── Archive Agent (MYT-157) ───
+  [IPC_CHANNELS.ARCHIVE_STATUS]: () => {
+    return getArchiveStatus();
+  },
+
+  [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => {
+    ensureVaultDir();
+    let index = getArchiveIndex();
+    if (!index) {
+      const manifest = readManifest(getManifestPath());
+      reindexEntities(getVaultRoot(), manifest);
+      index = buildArchiveIndex(getVaultRoot(), manifest);
+    }
+    const result = runArchiveScan(payload.sceneText, index, payload.scenePath);
+    for (const suggestion of result.suggestions) {
+      upsertSuggestion(suggestion);
+    }
+    return {
+      suggestions: result.suggestions,
+      inconsistenciesFound: result.inconsistenciesFound,
+      wikiLinksFound: result.wikiLinksFound,
+    };
   },
 
 };
