@@ -1,7 +1,6 @@
 {
   "appId": "com.mythoswriter.app",
   "productName": "Mythos Writer",
-  "forceCodeSigning": false,
   "directories": {
     "output": "dist-electron"
   },
@@ -22,7 +21,7 @@
     ],
     "icon": "build/icon.ico",
     "artifactName": "${productName}-${version}.${ext}",
-    "signAndEditExecutable": false
+    "signAndEditExecutable": true
   },
   "nsis": {
     "oneClick": false,

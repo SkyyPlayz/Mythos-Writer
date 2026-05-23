@@ -23,8 +23,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Decode Windows signing certificate
+        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $certBytes = [Convert]::FromBase64String("$env:WINDOWS_CERTIFICATE_BASE64")
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\certificate.pfx", $certBytes)
+          echo "WIN_CSC_LINK=$env:RUNNER_TEMP\certificate.pfx" >> $env:GITHUB_ENV
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+
       - name: Build and package (NSIS + ZIP)
         run: npm run dist
+        env:
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
       - name: Upload NSIS installer artifact
         uses: actions/upload-artifact@v4
