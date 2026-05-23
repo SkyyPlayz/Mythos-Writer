@@ -110,6 +110,45 @@ contextBridge.exposeInMainWorld('api', {
   auditList: (suggestionId?: string) =>
     ipcRenderer.invoke('audit:list', { suggestionId }),
 
+  // Generalized token streaming — stream:* channels (MYT-156)
+  streamStart: (payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; system?: string; model?: string; maxTokens?: number }) =>
+    ipcRenderer.invoke('stream:start', payload),
+  streamCancel: (streamId: string) =>
+    ipcRenderer.invoke('stream:cancel', { streamId }),
+  streamAck: (streamId: string, count: number) =>
+    ipcRenderer.send('stream:ack', { streamId, count }),
+  onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string; token: string }) => cb(data);
+    ipcRenderer.on('stream:token', handler);
+    return () => ipcRenderer.removeListener('stream:token', handler);
+  },
+  onStreamEnd: (cb: (data: { streamId: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string }) => cb(data);
+    ipcRenderer.on('stream:end', handler);
+    return () => ipcRenderer.removeListener('stream:end', handler);
+  },
+  onStreamError: (cb: (data: { streamId: string; error: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string; error: string }) => cb(data);
+    ipcRenderer.on('stream:error', handler);
+    return () => ipcRenderer.removeListener('stream:error', handler);
+  },
+
+  // STT (MYT-156) — speech-to-text fill for the brainstorm composer
+  sttStart: () => ipcRenderer.send('stt:start'),
+  sttStop: () => ipcRenderer.send('stt:stop'),
+  onSttResult: (cb: (text: string) => void) => {
+    const handler = (_: unknown, data: { text: string }) => cb(data.text);
+    ipcRenderer.on('stt:result', handler);
+    return () => ipcRenderer.removeListener('stt:result', handler);
+  },
+
+  // Vault notes updated push event (MYT-156)
+  onVaultNotesUpdated: (cb: (data: { count: number }) => void) => {
+    const handler = (_: unknown, data: { count: number }) => cb(data);
+    ipcRenderer.on('vault:notes-updated', handler);
+    return () => ipcRenderer.removeListener('vault:notes-updated', handler);
+  },
+
   // Stream-start push events — renderer receives requestId before first chunk
   onWritingAssistantStreamStart: (cb: (requestId: string) => void) => {
     const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
@@ -134,6 +173,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.send('agent:brainstorm:stream-cancel', { requestId }),
   cancelVaultCheck: (requestId: string) =>
     ipcRenderer.send('agent:vault-check:stream-cancel', { requestId }),
+
+  // Generation log
+  generationLogList: (page?: number, pageSize?: number, agent?: string) =>
+    ipcRenderer.invoke('generationLog:list', { page, pageSize, agent }),
+  generationLogGet: (id: string) =>
+    ipcRenderer.invoke('generationLog:get', { id }),
 
   // Auto-update status (MYT-210) — feature-flagged; calls are safe no-ops when MYTHOS_AUTO_UPDATE!=1
   onUpdateStatus: (cb: (state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready') => void) => {

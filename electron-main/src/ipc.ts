@@ -75,6 +75,8 @@ export const IPC_CHANNELS = {
 
   // Generation log
   GENERATION_LOG_RECENT: 'generationLog:recent',
+  GENERATION_LOG_LIST: 'generationLog:list',
+  GENERATION_LOG_GET: 'generationLog:get',
 
   // Archive Agent (Phase 3)
   ARCHIVE_SCAN: 'archive:scan',
@@ -162,6 +164,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
+  [IPC_CHANNELS.GENERATION_LOG_LIST]: (payload: GenerationLogListPayload) => GenerationLogListResponse;
+  [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => GenerationLogGetResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
@@ -790,6 +794,27 @@ export interface GenerationLogRecentPayload {
 export interface GenerationLogRecentResponse {
   entries: GenerationLogRow[];
   total: number;
+}
+
+export interface GenerationLogListPayload {
+  page?: number;
+  pageSize?: number;
+  agent?: string;
+}
+
+export interface GenerationLogListResponse {
+  entries: GenerationLogRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface GenerationLogGetPayload {
+  id: string;
+}
+
+export interface GenerationLogGetResponse {
+  entry: GenerationLogRow | null;
 }
 
 // ─── Archive Agent IPC types (Phase 3) ───

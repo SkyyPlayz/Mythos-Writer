@@ -153,6 +153,10 @@ interface Window {
     suggestionsReject?: (id: string) => Promise<{ id: string; status: 'rejected' }>;
     suggestionsIgnore?: (id: string) => Promise<{ id: string; status: 'ignored' }>;
 
+    // Generation log
+    generationLogList: (page?: number, pageSize?: number, agent?: string) => Promise<{ entries: GenerationLogRow[]; total: number; page: number; pageSize: number }>;
+    generationLogGet: (id: string) => Promise<{ entry: GenerationLogRow | null }>;
+
     // App settings
     settingsGet: () => Promise<AppSettings>;
     settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
@@ -187,6 +191,14 @@ interface Window {
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
     onStreamError: (cb: (data: { streamId: string; error: string }) => void) => () => void;
+
+    // STT (MYT-156)
+    sttStart?: () => void;
+    sttStop?: () => void;
+    onSttResult?: (cb: (text: string) => void) => () => void;
+
+    // Vault notes updated push event (MYT-156)
+    onVaultNotesUpdated?: (cb: (data: { count: number }) => void) => () => void;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

@@ -57,6 +57,8 @@ import {
   type TimelineListPayload,
   type TimelineUpsertPayload,
   type GenerationLogRecentPayload,
+  type GenerationLogListPayload,
+  type GenerationLogGetPayload,
   type ArchiveScanPayload,
 } from './ipc.js';
 import {
@@ -590,6 +592,21 @@ const handlers: IpcHandlers = {
     const entries = listGenerationLog({ ...opts, limit: payload.limit, offset: payload.offset }).map(truncateGenerationLogBody);
     const total = countGenerationLog(opts);
     return { entries, total };
+  },
+
+  [IPC_CHANNELS.GENERATION_LOG_LIST]: (payload: GenerationLogListPayload) => {
+    ensureVaultDir();
+    const pageSize = payload.pageSize ?? 20;
+    const page = payload.page ?? 0;
+    const agent = payload.agent && payload.agent !== 'all' ? payload.agent : undefined;
+    const entries = listGenerationLog({ limit: pageSize, offset: page * pageSize, agent }).map(truncateGenerationLogBody);
+    const total = countGenerationLog(agent);
+    return { entries, total, page, pageSize };
+  },
+
+  [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => {
+    ensureVaultDir();
+    return { entry: getGenerationLogEntry(payload.id) };
   },
 
   // ─── Vault graph (MYT-163) ───
