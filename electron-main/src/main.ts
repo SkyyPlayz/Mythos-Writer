@@ -145,6 +145,7 @@ import { registerVoiceHandlers } from './voice.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
+import { registerStreamingHandlers } from './streaming.js';
 
 const require = createRequire(import.meta.url);
 
@@ -1082,51 +1083,282 @@ const handlers: IpcHandlers = {
     const sampleRoot = path.join(app.getPath('documents'), 'Mythos Writer Sample');
     if (!fs.existsSync(sampleRoot)) {
       fs.mkdirSync(sampleRoot, { recursive: true });
-      // Scaffold a minimal sample project
-      const manuscriptDir = path.join(sampleRoot, 'Manuscript', 'the-lost-horizon', 'chapter-one');
-      fs.mkdirSync(manuscriptDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(manuscriptDir, 'the-departure.md'),
-        [
-          '---',
-          'title: The Departure',
-          'type: scene',
-          '---',
-          '',
-          'The morning mist clung to the docks as [[Elara Voss]] pulled her coat tighter.',
-          'Somewhere beyond the grey horizon lay the answers she had spent three years seeking.',
-          '',
-          '"You don\'t have to do this," said [[Captain Renn]], not turning from the wheel.',
-          '',
-          '"I know," she replied. "That\'s exactly why I\'m going."',
-        ].join('\n'),
-      );
+
+      // ── Manuscript ──────────────────────────────────────────────────────────
+      const storySlug = 'the-lost-horizon';
+
+      const ch1Dir = path.join(sampleRoot, 'Manuscript', storySlug, 'chapter-one');
+      const ch2Dir = path.join(sampleRoot, 'Manuscript', storySlug, 'chapter-two');
+      fs.mkdirSync(ch1Dir, { recursive: true });
+      fs.mkdirSync(ch2Dir, { recursive: true });
+
+      // Chapter 1 – Scene 1
+      fs.writeFileSync(path.join(ch1Dir, 'the-departure.md'), [
+        '---',
+        'title: The Departure',
+        'type: scene',
+        '---',
+        '',
+        'The morning mist clung to the docks of [[Port Caelum]] as [[Elara Voss]] pulled her coat tighter.',
+        'Somewhere beyond the grey horizon lay the answers she had spent three years seeking.',
+        '',
+        '"You don\'t have to do this," said [[Captain Renn]], not turning from the wheel of the _Meridian Star_.',
+        '',
+        '"I know," she replied. "That\'s exactly why I\'m going."',
+        '',
+        'The vessel groaned as it left the pier. Above the crow\'s nest a faded chart fluttered — marked with the sigil of the [[Tidecallers\' Compact]].',
+        '',
+        '> **Writing Assistant tip:** Select any paragraph and open the Writing Assistant panel to get tone suggestions or ask it to continue the scene.',
+      ].join('\n'));
+
+      // Chapter 1 – Scene 2
+      fs.writeFileSync(path.join(ch1Dir, 'first-night-at-sea.md'), [
+        '---',
+        'title: First Night at Sea',
+        'type: scene',
+        '---',
+        '',
+        'The stars over the [[Sunken Expanse]] were nothing like those above [[Port Caelum]].',
+        '[[Elara Voss]] spread her mentor\'s journal across the galley table, tracing the inked coastlines with one finger.',
+        '',
+        '"He was here," she murmured, tapping a circled inlet. "Before the storm took him."',
+        '',
+        '[[Captain Renn]] appeared in the doorway, holding two mugs of black tea.',
+        '"Your mentor was a fool," he said, setting one mug down. "Brave — but a fool."',
+        '',
+        'Elara did not argue. [[Dr. Harlan Voss]] had been both.',
+        '',
+        '> **Archive tip:** The names [[Dr. Harlan Voss]] and [[Tidecallers\' Compact]] above are wiki-links.',
+        '> Open the Archive panel to see suggested entity pages for them, or click a link to create a new entity.',
+      ].join('\n'));
+
+      // Chapter 2 – Scene 1
+      fs.writeFileSync(path.join(ch2Dir, 'the-sunken-archive.md'), [
+        '---',
+        'title: The Sunken Archive',
+        'type: scene',
+        '---',
+        '',
+        'Three days out from [[Port Caelum]], the [[Meridian Star]] anchored above the submerged ruins of [[Aethon\'s Cradle]].',
+        '',
+        '[[Elara Voss]] descended alone, the pressure suit sealing with a hiss. The water was cold and black beyond her helmet lamp.',
+        'Below her, columns rose from silt like broken teeth — and among them, a door still stood, engraved with the mark of the [[Tidecallers\' Compact]].',
+        '',
+        'She had found it.',
+        '',
+        '> **Brainstorm tip:** Open the Brainstorm panel and ask "What should Elara discover inside the archive?" to explore plot possibilities with the AI.',
+      ].join('\n'));
+
+      // Chapter 2 – Scene 2
+      fs.writeFileSync(path.join(ch2Dir, 'the-archivist.md'), [
+        '---',
+        'title: The Archivist',
+        'type: scene',
+        '---',
+        '',
+        'Inside the chamber the air was stale but breathable — somehow, after all centuries, the [[Tidecallers\' Compact]] seals had held.',
+        '',
+        'A figure sat at the far end of the room, motionless, draped in a corroded robe.',
+        'Then it turned.',
+        '',
+        '"I wondered," said [[The Archivist]], "when one of Harlan\'s kin would come."',
+        '',
+        '[[Elara Voss]] took a step back. "You knew my father?"',
+        '',
+        '"I taught him everything he knew about the [[Aethon\'s Cradle|Cradle]]." A pause. "And everything he should never have shared."',
+        '',
+        '> **Writing Assistant tip:** Highlight "A figure sat at the far end of the room" and ask the Writing Assistant to add sensory detail.',
+      ].join('\n'));
+
+      // ── Entities ─────────────────────────────────────────────────────────────
       const entitiesDir = path.join(sampleRoot, 'Entities');
       fs.mkdirSync(entitiesDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(entitiesDir, 'elara-voss.md'),
-        [
-          '---',
-          'name: Elara Voss',
-          'type: character',
-          'tags: [protagonist]',
-          '---',
-          '',
-          'Marine archaeologist turned treasure hunter. Driven by the disappearance of her mentor.',
-        ].join('\n'),
-      );
-      fs.writeFileSync(
-        path.join(entitiesDir, 'captain-renn.md'),
-        [
-          '---',
-          'name: Captain Renn',
-          'type: character',
-          'tags: [supporting]',
-          '---',
-          '',
-          'Weathered captain of the _Meridian Star_. Reluctant ally with a complicated past.',
-        ].join('\n'),
-      );
+
+      // Characters
+      fs.writeFileSync(path.join(entitiesDir, 'elara-voss.md'), [
+        '---',
+        'name: Elara Voss',
+        'type: character',
+        'tags: [protagonist]',
+        '---',
+        '',
+        'Marine archaeologist turned deep-sea explorer. Driven by the disappearance of her mentor and father, [[Dr. Harlan Voss]].',
+        '',
+        '**Motivation:** Uncover the truth about her father\'s final expedition to [[Aethon\'s Cradle]].',
+        '**Flaw:** Trusts evidence over people — often at the cost of the people around her.',
+        '',
+        'See also: [[Captain Renn]], [[The Archivist]]',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'captain-renn.md'), [
+        '---',
+        'name: Captain Renn',
+        'type: character',
+        'tags: [supporting]',
+        '---',
+        '',
+        'Weathered captain of the _[[Meridian Star]]_. Reluctant ally with a complicated past.',
+        '',
+        '**Secret:** He was on the original expedition with [[Dr. Harlan Voss]] and knows why it went wrong.',
+        '**Arc:** Moves from self-protective silence to reluctant confession.',
+        '',
+        'See also: [[Elara Voss]], [[Tidecallers\' Compact]]',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'dr-harlan-voss.md'), [
+        '---',
+        'name: Dr. Harlan Voss',
+        'type: character',
+        'tags: [absent, mentor]',
+        '---',
+        '',
+        'Marine historian and founding scholar of the [[Tidecallers\' Compact]] research initiative.',
+        'Vanished during his third dive to [[Aethon\'s Cradle]].',
+        '',
+        '**Role:** In absentia — referenced through journals, memories, and [[The Archivist]]\'s testimony.',
+        '',
+        'See also: [[Elara Voss]], [[Captain Renn]]',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'the-archivist.md'), [
+        '---',
+        'name: The Archivist',
+        'type: character',
+        'tags: [antagonist, ancient]',
+        '---',
+        '',
+        'An ancient guardian of [[Aethon\'s Cradle]], preserved by [[Tidecallers\' Compact]] technology for an unknown span of centuries.',
+        '',
+        '**Motivation:** Protect the knowledge within the Cradle from those who would misuse it.',
+        '**Ambiguity:** Not evil — believes the secrets should stay buried. May be right.',
+        '',
+        'See also: [[Dr. Harlan Voss]], [[Aethon\'s Cradle]]',
+      ].join('\n'));
+
+      // Locations
+      fs.writeFileSync(path.join(entitiesDir, 'port-caelum.md'), [
+        '---',
+        'name: Port Caelum',
+        'type: location',
+        'tags: [city, harbour]',
+        '---',
+        '',
+        'A fog-shrouded harbour city built on the bones of an older settlement.',
+        'The main departure point for expeditions into the [[Sunken Expanse]].',
+        '',
+        '**Atmosphere:** Perpetual mist, weathered stone, the smell of brine and coal smoke.',
+        '**Key sites:** The Cartographers\' Guild, Renn\'s dry-dock, the archive at Voss University.',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'aethons-cradle.md'), [
+        '---',
+        'name: Aethon\'s Cradle',
+        'type: location',
+        'tags: [ruin, underwater, ancient]',
+        '---',
+        '',
+        'Submerged ruins of a pre-collapse city, resting 300 m below the surface of the [[Sunken Expanse]].',
+        'Primary research site of the [[Tidecallers\' Compact]].',
+        '',
+        '**Lore:** Once the capital of the Aethon civilisation, swallowed by the sea in the Cataclysm of the Third Tide.',
+        '**Hazards:** Extreme depth, structural instability, and [[The Archivist]].',
+      ].join('\n'));
+
+      // Lore / Concepts
+      const loreDir = path.join(sampleRoot, 'Lore');
+      fs.mkdirSync(loreDir, { recursive: true });
+
+      fs.writeFileSync(path.join(loreDir, 'tidecallers-compact.md'), [
+        '---',
+        'name: Tidecallers\' Compact',
+        'type: concept',
+        'tags: [organisation, lore]',
+        '---',
+        '',
+        'A scholarly organisation dedicated to cataloguing and protecting the ruins of [[Aethon\'s Cradle]].',
+        'Founded jointly by [[Dr. Harlan Voss]] and an unnamed patron known only as "the Benefactor."',
+        '',
+        '**Sigil:** A circle of nine waves, each cresting at a different height.',
+        '**Current status:** Officially disbanded after the loss of Dr. Voss; unofficially active underground.',
+        '',
+        '> **Archive tip:** This note is linked from the manuscript scenes.',
+        '> The Archive agent can suggest new entities whenever you write a new concept into a scene.',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(loreDir, 'the-three-tides.md'), [
+        '---',
+        'name: The Three Tides',
+        'type: concept',
+        'tags: [lore, history]',
+        '---',
+        '',
+        '## The First Tide',
+        'The founding of the Aethon civilisation, said to have been guided by oceanic spirits.',
+        '',
+        '## The Second Tide',
+        'A century of expansion across the known seas; the era when [[Aethon\'s Cradle]] rose to its greatest power.',
+        '',
+        '## The Third Tide (the Cataclysm)',
+        'A catastrophic event — cause unknown — that submerged the capital and ended the Aethon age overnight.',
+        '[[The Archivist]] is one of the few entities old enough to have witnessed it.',
+        '',
+        '> **Brainstorm tip:** Ask the Brainstorm agent "What caused the Third Tide?" to develop a backstory.',
+      ].join('\n'));
+
+      // ── Scene Crafter board ───────────────────────────────────────────────────
+      const boardsDir = path.join(sampleRoot, 'Boards');
+      fs.mkdirSync(boardsDir, { recursive: true });
+
+      fs.writeFileSync(path.join(boardsDir, 'the-lost-horizon-board.md'), [
+        '---',
+        'kanban-plugin: board',
+        'mythos-board-version: 1',
+        `story-id: ${storySlug}`,
+        `last-modified: ${new Date().toISOString()}`,
+        '---',
+        '',
+        '## Outline',
+        '',
+        `- [ ] [[Manuscript/${storySlug}/chapter-one/the-departure|The Departure]]`,
+        `- [ ] [[Manuscript/${storySlug}/chapter-one/first-night-at-sea|First Night at Sea]]`,
+        '',
+        '## Draft',
+        '',
+        `- [x] [[Manuscript/${storySlug}/chapter-two/the-sunken-archive|The Sunken Archive]] #action`,
+        `- [x] [[Manuscript/${storySlug}/chapter-two/the-archivist|The Archivist]] #reveal`,
+        '',
+        '## Revision',
+        '',
+        '## Done',
+        '',
+        '',
+        '%%',
+        '{"kanban-plugin":"board"}',
+        '%%',
+      ].join('\n'));
+
+      // ── README ────────────────────────────────────────────────────────────────
+      fs.writeFileSync(path.join(sampleRoot, 'README.md'), [
+        '# The Lost Horizon — Sample Project',
+        '',
+        'Welcome to Mythos Writer! This sample project is designed to show you the main features.',
+        '',
+        '## What\'s included',
+        '',
+        '- **Manuscript/** — Two chapters of _The Lost Horizon_, a deep-sea mystery.',
+        '  Each scene contains tips for the Writing Assistant and Archive agents.',
+        '- **Entities/** — Four characters and two locations with wiki-links between them.',
+        '- **Lore/** — Two lore pages (Tidecallers\' Compact, The Three Tides) demonstrating',
+        '  the Archive\'s wiki-link suggestion feature.',
+        '- **Boards/** — A Scene Crafter Kanban board tracking scenes through Outline → Draft → Revision → Done.',
+        '',
+        '## Quick tour',
+        '',
+        '1. **Writing Assistant** — Open any scene, select a sentence, and use the Writing Assistant panel.',
+        '2. **Archive** — Click a `[[wiki-link]]` in a scene to jump to or create an entity page.',
+        '3. **Brainstorm** — Open the Brainstorm panel and ask a question about the story.',
+        '4. **Scene Crafter** — Open `Boards/the-lost-horizon-board.md` to see the scene board.',
+      ].join('\n'));
     }
     saveVaultSettings({ vaultRoot: sampleRoot });
     ensureVaultDir();
@@ -1794,6 +2026,7 @@ app.whenReady().then(async () => {
   registerWritingAssistantHandler();
   registerVaultAgentHandlers();
   registerWritingScanHandler();
+  registerStreamingHandlers(getValidatedApiKey);
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
