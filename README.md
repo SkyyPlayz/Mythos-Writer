@@ -13,7 +13,7 @@ AI-powered creative writing and story generation tool — desktop-first, built w
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 20.19+ or 22.12+
 - npm 10+
 - An [Anthropic API key](https://console.anthropic.com/)
 
