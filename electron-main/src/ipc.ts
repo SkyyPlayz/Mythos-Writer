@@ -98,7 +98,7 @@ export async function ipcCall<TChannel extends keyof IpcHandlers, TPayload, TRes
   channel: TChannel,
   payload: TPayload
 ): Promise<TResponse | { error: string }> {
-  return ipcRenderer.invoke(channel, payload);
+  return ipcRenderer.invoke(channel, payload) as Promise<TResponse | { error: string }>;
 }
 
 // ─── Type definitions ───

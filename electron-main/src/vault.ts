@@ -16,7 +16,7 @@ import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 
 // ─── Path safety ───
 
-function safePath(vaultRoot: string, relativePath: string): string {
+export function safePath(vaultRoot: string, relativePath: string): string {
   const resolved = path.resolve(vaultRoot, relativePath);
   if (!resolved.startsWith(path.resolve(vaultRoot) + path.sep) && resolved !== path.resolve(vaultRoot)) {
     throw new Error(`Path traversal denied: ${relativePath}`);
