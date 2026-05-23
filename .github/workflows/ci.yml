@@ -123,3 +123,23 @@ jobs:
         with:
           name: linux-appimage
           path: dist-electron/*.AppImage
+
+      - name: Install AppImage runtime dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libfuse2 xvfb
+
+      - name: Smoke-test AppImage (start / stop)
+        run: |
+          APPIMAGE=$(ls dist-electron/*.AppImage | head -1)
+          chmod +x "$APPIMAGE"
+          xvfb-run --auto-servernum "$APPIMAGE" --no-sandbox &
+          APP_PID=$!
+          sleep 8
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "AppImage exited prematurely — smoke test FAILED"
+            exit 1
+          fi
+          kill "$APP_PID"
+          wait "$APP_PID" || true
+          echo "Smoke test passed: AppImage started and stopped cleanly"
