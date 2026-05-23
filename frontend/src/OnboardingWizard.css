@@ -102,9 +102,27 @@
   background: rgba(137, 180, 250, 0.08);
 }
 
+.choice-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .choice-title {
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+.choice-recommended {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-accent, #89b4fa);
+  color: #1e1e2e;
+  line-height: 1.4;
 }
 
 .choice-desc {
@@ -201,4 +219,102 @@
   font-size: 3rem;
   text-align: center;
   color: var(--color-success, #a6e3a1);
+}
+
+/* ─── Dry-run report ─────────────────────────────────────── */
+
+.dry-run-report {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dry-run-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface-alt, #313244);
+  border-radius: 8px;
+}
+
+.dry-run-stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-accent, #89b4fa);
+  line-height: 1;
+}
+
+.dry-run-stat-label {
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.dry-run-section {
+  border: 1px solid var(--color-border, #45475a);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dry-run-section-title {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dry-run-warn {
+  color: var(--color-warning, #fab387);
+  background: rgba(250, 179, 135, 0.08);
+}
+
+.dry-run-info {
+  color: var(--color-text-muted, #a6adc8);
+}
+
+.dry-run-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.dry-run-file {
+  font-family: monospace;
+  opacity: 0.75;
+}
+
+.dry-run-link {
+  color: var(--color-error, #f38ba8);
+  font-family: monospace;
+}
+
+.dry-run-more {
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.dry-run-ok {
+  font-size: 0.9rem;
+  color: var(--color-success, #a6e3a1);
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+.dry-run-fatal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dry-run-hint {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin: 0;
 }

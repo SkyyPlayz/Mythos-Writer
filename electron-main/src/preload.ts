@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('api', {
   getVaultRoot: () => ipcRenderer.invoke('vault:get-root', undefined),
   importVault: (sourcePath: string) => ipcRenderer.invoke('vault:import', { sourcePath }),
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
+  pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
+  obsidianDryRun: (sourcePath: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath }),
+  obsidianRegister: (sourcePath: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath }),
+  loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', undefined),
   startVaultWatch: () => ipcRenderer.invoke('vault:watch-start', undefined),
   stopVaultWatch: () => ipcRenderer.invoke('vault:watch-stop', undefined),
 
@@ -254,6 +258,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('agent:budget-cap', handler);
     return () => ipcRenderer.removeListener('agent:budget-cap', handler);
   },
+
+  // EPUB export (MYT-253)
+  exportEpub: (storyId: string) =>
+    ipcRenderer.invoke('export:epub', { storyId }),
+
+  // DOCX export (MYT-252)
+  exportDocx: (storyId: string) =>
+    ipcRenderer.invoke('export:docx', { storyId }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

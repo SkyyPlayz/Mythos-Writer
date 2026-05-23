@@ -73,6 +73,9 @@ import {
   type VersionRollbackPayload,
   type SearchQueryPayload,
   type WritingScanPayload,
+  type VaultObsidianDryRunPayload,
+  type VaultObsidianRegisterPayload,
+  type VaultLoadSampleResponse,
 } from './ipc.js';
 import {
   openDb,
@@ -109,6 +112,7 @@ import {
   defaultManifest,
   reindexVault,
   importObsidianVault,
+  obsidianDryRun,
   startVaultWatcher,
   stopVaultWatcher,
   parseFrontmatter,
@@ -119,6 +123,7 @@ import {
   readSceneFile,
   chapterVaultPath,
   sceneVaultPath,
+  mergeProvenanceFrontmatter,
 } from './vault.js';
 import { openManifest } from './manifest.js';
 import {
@@ -138,6 +143,8 @@ import {
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
 import { buildFullIndex, searchVault } from './search.js';
+import { buildEpub } from './epub.js';
+import { buildDocx } from './docx.js';
 
 const require = createRequire(import.meta.url);
 
@@ -371,9 +378,15 @@ const handlers: IpcHandlers = {
 
       const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
       const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
-      const { frontmatter, prose } = parseFrontmatter(newContent);
-      frontmatter['provenance'] = payload.id;
-      writeVaultFile(getVaultRoot(), suggestion.target_path, serializeFrontmatter(frontmatter, prose));
+      const { prose: newProse } = parseFrontmatter(newContent);
+      mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {
+        source_agent: suggestion.source_agent,
+        confidence: suggestion.confidence,
+        rationale: suggestion.rationale,
+        timestamp: now,
+        run_id: suggestion.applied_run_id ?? undefined,
+        suggestion_id: payload.id,
+      }, newProse);
       finalStatus = 'applied';
     }
 
@@ -951,6 +964,179 @@ const handlers: IpcHandlers = {
       inconsistenciesFound: result.inconsistenciesFound,
       wikiLinksFound: result.wikiLinksFound,
     };
+  },
+
+  // ─── EPUB export (MYT-253) ───
+  [IPC_CHANNELS.EXPORT_EPUB]: async (payload: { storyId: string }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+
+    const result = await dialog.showSaveDialog({
+      title: 'Export EPUB',
+      defaultPath: `${story.title.replace(/[/\\?%*:|"<>]/g, '-')}.epub`,
+      filters: [{ name: 'EPUB', extensions: ['epub'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+
+    // Build chapter/scene structure, reading prose from vault
+    const chapters = story.chapters
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((ch) => ({
+        id: ch.id,
+        title: ch.title,
+        scenes: ch.scenes
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map((sc) => {
+            let prose = '';
+            try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+            return { id: sc.id, title: sc.title, prose };
+          }),
+      }));
+
+    const buffer = await buildEpub({ title: story.title, chapters });
+    fs.writeFileSync(result.filePath, buffer);
+    return { path: result.filePath, cancelled: false };
+  },
+
+  // ─── DOCX export (MYT-252) ───
+  [IPC_CHANNELS.EXPORT_DOCX]: async (payload: { storyId: string }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+
+    const result = await dialog.showSaveDialog({
+      title: 'Export DOCX',
+      defaultPath: `${story.title.replace(/[/\\?%*:|"<>]/g, '-')}.docx`,
+      filters: [{ name: 'Word Document', extensions: ['docx'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+
+    const chapters = story.chapters
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((ch) => ({
+        id: ch.id,
+        title: ch.title,
+        scenes: ch.scenes
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map((sc) => {
+            let prose = '';
+            try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+            return { id: sc.id, title: sc.title, prose };
+          }),
+      }));
+
+    const buffer = await buildDocx({ title: story.title, chapters });
+    fs.writeFileSync(result.filePath, buffer);
+    return { path: result.filePath, cancelled: false };
+  },
+
+  // ─── Obsidian vault import wizard (MYT-244) ───
+  [IPC_CHANNELS.VAULT_PICK_FOLDER]: async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Select Obsidian Vault Folder',
+      buttonLabel: 'Select Folder',
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { vaultRoot: null, cancelled: true };
+    }
+    return { vaultRoot: result.filePaths[0], cancelled: false };
+  },
+
+  [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: async (_payload: VaultObsidianDryRunPayload) => {
+    const { sourcePath } = _payload;
+    // Load existing manifest to detect name collisions (may not exist yet)
+    let existingManifest = null;
+    try {
+      if (fs.existsSync(getManifestPath())) {
+        existingManifest = readManifest(getManifestPath());
+      }
+    } catch { /* non-fatal */ }
+    return obsidianDryRun(sourcePath, existingManifest);
+  },
+
+  [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: async (_payload: VaultObsidianRegisterPayload) => {
+    const { sourcePath } = _payload;
+    // Point the vault root at the chosen Obsidian folder and rebuild the manifest
+    saveVaultSettings({ vaultRoot: sourcePath });
+    ensureVaultDir(); // creates manifest.json if absent, opens DB
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced, scanned } = reindexVault(sourcePath, manifest);
+    writeManifest(getManifestPath(), synced);
+    // Rebuild full-text search index
+    try { buildFullIndex(getDb(), sourcePath, synced); } catch { /* non-fatal */ }
+    // Start file watcher on the new root
+    await stopVaultWatcher();
+    await startVaultWatcher(sourcePath, notifyVaultChanged);
+    return { vaultRoot: sourcePath, notesIndexed: scanned };
+  },
+
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (): Promise<VaultLoadSampleResponse> => {
+    const sampleRoot = path.join(app.getPath('documents'), 'Mythos Writer Sample');
+    if (!fs.existsSync(sampleRoot)) {
+      fs.mkdirSync(sampleRoot, { recursive: true });
+      // Scaffold a minimal sample project
+      const manuscriptDir = path.join(sampleRoot, 'Manuscript', 'the-lost-horizon', 'chapter-one');
+      fs.mkdirSync(manuscriptDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(manuscriptDir, 'the-departure.md'),
+        [
+          '---',
+          'title: The Departure',
+          'type: scene',
+          '---',
+          '',
+          'The morning mist clung to the docks as [[Elara Voss]] pulled her coat tighter.',
+          'Somewhere beyond the grey horizon lay the answers she had spent three years seeking.',
+          '',
+          '"You don\'t have to do this," said [[Captain Renn]], not turning from the wheel.',
+          '',
+          '"I know," she replied. "That\'s exactly why I\'m going."',
+        ].join('\n'),
+      );
+      const entitiesDir = path.join(sampleRoot, 'Entities');
+      fs.mkdirSync(entitiesDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(entitiesDir, 'elara-voss.md'),
+        [
+          '---',
+          'name: Elara Voss',
+          'type: character',
+          'tags: [protagonist]',
+          '---',
+          '',
+          'Marine archaeologist turned treasure hunter. Driven by the disappearance of her mentor.',
+        ].join('\n'),
+      );
+      fs.writeFileSync(
+        path.join(entitiesDir, 'captain-renn.md'),
+        [
+          '---',
+          'name: Captain Renn',
+          'type: character',
+          'tags: [supporting]',
+          '---',
+          '',
+          'Weathered captain of the _Meridian Star_. Reluctant ally with a complicated past.',
+        ].join('\n'),
+      );
+    }
+    saveVaultSettings({ vaultRoot: sampleRoot });
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced } = reindexVault(sampleRoot, manifest);
+    writeManifest(getManifestPath(), synced);
+    try { buildFullIndex(getDb(), sampleRoot, synced); } catch { /* non-fatal */ }
+    await stopVaultWatcher();
+    await startVaultWatcher(sampleRoot, notifyVaultChanged);
+    return { vaultRoot: sampleRoot };
   },
 
 };
