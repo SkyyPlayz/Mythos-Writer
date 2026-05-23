@@ -74,4 +74,13 @@ describe('POST /api/stories/generate', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('length must be one of');
   });
+
+  it('returns 400 when prompt or length are not strings', async () => {
+    const res = await request(app)
+      .post('/api/stories/generate')
+      .send({ prompt: ['A tale'], length: ['short'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('prompt is required');
+  });
 });

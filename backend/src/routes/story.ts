@@ -23,11 +23,14 @@ const VALID_LENGTHS = new Set(['short', 'medium', 'long']);
 const MAX_PROMPT_LENGTH = 2000;
 
 router.post('/generate', async (req: Request, res: Response) => {
-  const { prompt, genre, length = 'medium' } = req.body as {
-    prompt?: string;
-    genre?: string;
-    length?: string;
-  };
+  const body =
+    typeof req.body === 'object' && req.body !== null && !Array.isArray(req.body)
+      ? req.body
+      : {};
+  const prompt = typeof body.prompt === 'string' ? body.prompt : undefined;
+  const genre = typeof body.genre === 'string' ? body.genre : undefined;
+  const length =
+    typeof body.length === 'string' ? body.length : body.length === undefined ? 'medium' : undefined;
 
   if (!prompt) {
     res.status(400).json({ error: 'prompt is required' });
