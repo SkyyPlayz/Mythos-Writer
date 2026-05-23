@@ -504,3 +504,55 @@
   font-size: 0.82rem;
   color: #52525b;
 }
+
+/* Writing Assistant input row with mic button */
+.writing-assistant-input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 12px;
+}
+
+.writing-assistant-input-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.wa-mic-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #3f3f46;
+  background: #27272a;
+  color: #a1a1aa;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.wa-mic-btn:hover:not(:disabled) {
+  background: #3f3f46;
+  color: #e4e4e7;
+}
+
+.wa-mic-btn--recording {
+  background: #7f1d1d;
+  border-color: #ef4444;
+  color: #fca5a5;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+.wa-mic-btn--error {
+  border-color: #f97316;
+  color: #f97316;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

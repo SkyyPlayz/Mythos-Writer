@@ -15,6 +15,7 @@ interface Props {
   selectedStory: Story | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
+  micDeviceId?: string;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
 }
@@ -138,12 +139,14 @@ function AiPanel({
   scene,
   writingAssistantEnabled = true,
   archiveEnabled = true,
+  micDeviceId,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
 }: {
   scene: Scene | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
+  micDeviceId?: string;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
 }) {
@@ -171,7 +174,7 @@ function AiPanel({
           Archive
         </button>
       </div>
-      {subTab === 'writing' && <WritingAssistantPanel scene={scene} enabled={writingAssistantEnabled} />}
+      {subTab === 'writing' && <WritingAssistantPanel scene={scene} enabled={writingAssistantEnabled} micDeviceId={micDeviceId} />}
       {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
       {subTab === 'archive' && (
         <ArchivePanel
@@ -192,6 +195,7 @@ export default function RightSidebar({
   selectedStory,
   writingAssistantEnabled = true,
   archiveEnabled = true,
+  micDeviceId,
   onJumpToText,
   onInsertWikiLink,
 }: Props) {
@@ -224,6 +228,7 @@ export default function RightSidebar({
             scene={selectedScene}
             writingAssistantEnabled={writingAssistantEnabled}
             archiveEnabled={archiveEnabled}
+            micDeviceId={micDeviceId}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}
           />

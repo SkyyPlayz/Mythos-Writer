@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './SettingsPanel.css';
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
@@ -49,6 +49,9 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
+  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const micEnumeratedRef = useRef(false);
 
   useEffect(() => {
     window.api.settingsGet().then((s) => {
@@ -58,6 +61,19 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
     }).catch(() => {
       setLoading(false);
     });
+  }, []);
+
+  const enumerateMics = useCallback(async () => {
+    if (micEnumeratedRef.current) return;
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission('granted');
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setMicDevices(devices.filter((d) => d.kind === 'audioinput'));
+      micEnumeratedRef.current = true;
+    } catch {
+      setMicPermission('denied');
+    }
   }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
@@ -577,6 +593,109 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
               </div>
             </section>
           )}
+
+          {/* ── Voice IO ── */}
+          <section className="settings-section" aria-labelledby="section-voice">
+            <h3 className="settings-section-title" id="section-voice">Voice Input</h3>
+            <div className="settings-field settings-field-inline">
+              <label className="settings-toggle" htmlFor="voice-enabled">
+                <input
+                  id="voice-enabled"
+                  type="checkbox"
+                  aria-label="Enable voice input"
+                  checked={settings.voice?.enabled ?? false}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setSettings((p) => ({ ...p, voice: { enabled, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: p.voice?.micDeviceId } }));
+                    setSavedOk(false);
+                    if (enabled) enumerateMics();
+                  }}
+                />
+                <span className="settings-toggle-track" />
+              </label>
+              <span className="settings-label">Enable voice input (mic button in Writing Assistant &amp; Brainstorm)</span>
+            </div>
+
+            {(settings.voice?.enabled) && (
+              <div className="settings-agent-fields">
+                <div className="settings-field">
+                  <div className="settings-voice-permission">
+                    {micPermission === 'unknown' && (
+                      <button className="settings-btn settings-btn-secondary" type="button" onClick={enumerateMics}>
+                        Check microphone permission
+                      </button>
+                    )}
+                    {micPermission === 'granted' && (
+                      <span className="settings-voice-perm-ok">Microphone access granted</span>
+                    )}
+                    {micPermission === 'denied' && (
+                      <span className="settings-voice-perm-denied">Microphone access denied — allow it in your OS/browser settings</span>
+                    )}
+                  </div>
+                </div>
+
+                {micPermission === 'granted' && micDevices.length > 0 && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-mic-device">Microphone</label>
+                    <select
+                      id="voice-mic-device"
+                      className="settings-input settings-select"
+                      value={settings.voice?.micDeviceId ?? ''}
+                      aria-label="Select microphone"
+                      onChange={(e) => {
+                        const micDeviceId = e.target.value || undefined;
+                        setSettings((p) => ({ ...p, voice: { ...p.voice!, micDeviceId } }));
+                        setSavedOk(false);
+                      }}
+                    >
+                      <option value="">Default microphone</option>
+                      {micDevices.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-toggle" htmlFor="voice-cloud">
+                    <input
+                      id="voice-cloud"
+                      type="checkbox"
+                      aria-label="Enable cloud speech-to-text fallback"
+                      checked={settings.voice?.cloudFallback ?? false}
+                      onChange={(e) => {
+                        setSettings((p) => ({ ...p, voice: { ...p.voice!, cloudFallback: e.target.checked } }));
+                        setSavedOk(false);
+                      }}
+                    />
+                    <span className="settings-toggle-track" />
+                  </label>
+                  <span className="settings-label">Cloud STT fallback (OpenAI Whisper)</span>
+                </div>
+
+                {settings.voice?.cloudFallback && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-openai-key">OpenAI API Key</label>
+                    <input
+                      id="voice-openai-key"
+                      className="settings-input"
+                      type="password"
+                      value={settings.voice?.openaiApiKey ?? ''}
+                      placeholder="sk-… (leave blank to use OPENAI_API_KEY env var)"
+                      autoComplete="off"
+                      onChange={(e) => {
+                        setSettings((p) => ({ ...p, voice: { ...p.voice!, openaiApiKey: e.target.value || undefined } }));
+                        setSavedOk(false);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="settings-hint">Voice input uses your browser's built-in Web Speech API by default, with no data sent to third parties.</p>
+          </section>
 
           {/* ── Theme ── */}
           <section className="settings-section" aria-labelledby="section-theme">

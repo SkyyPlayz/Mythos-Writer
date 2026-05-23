@@ -368,3 +368,37 @@
 .settings-btn-save:hover:not(:disabled) {
   background: #6d28d9;
 }
+
+/* Voice IO section */
+.settings-voice-permission {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.settings-voice-perm-ok {
+  font-size: 0.82rem;
+  color: #4ade80;
+}
+
+.settings-voice-perm-denied {
+  font-size: 0.82rem;
+  color: #f87171;
+}
+
+.settings-btn-secondary {
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #a1a1aa;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.settings-btn-secondary:hover {
+  background: #3f3f46;
+  color: #e4e4e7;
+}

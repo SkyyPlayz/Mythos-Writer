@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import { useMicButton } from './hooks/useMicButton';
 
 interface WritingAssistantSuggestion {
   id: string;
@@ -22,15 +23,25 @@ interface Message {
 interface Props {
   scene: Scene | null;
   enabled?: boolean;
+  micDeviceId?: string;
 }
 
-export default function WritingAssistantPanel({ scene, enabled = true }: Props) {
+export default function WritingAssistantPanel({ scene, enabled = true, micDeviceId }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const { announce, liveText } = useLiveAnnounce();
+
+  const { micState, startRecording } = useMicButton({
+    micDeviceId,
+    onTranscript: (text, isFinal) => {
+      if (isFinal) setPrompt((p) => (p ? p + ' ' + text : text));
+      else setPrompt(text);
+    },
+    onError: (msg) => setError(msg),
+  });
 
   useEffect(() => {
     return () => {
@@ -217,13 +228,24 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
           disabled={loading}
           aria-label="Writing assistant prompt"
         />
-        <button
-          className="writing-assistant-btn"
-          onClick={ask}
-          disabled={!prompt.trim() || loading}
-        >
-          {loading ? 'Thinking…' : 'Ask'}
-        </button>
+        <div className="writing-assistant-input-actions">
+          <button
+            className={`wa-mic-btn${micState === 'recording' ? ' wa-mic-btn--recording' : ''}${micState === 'error' ? ' wa-mic-btn--error' : ''}`}
+            onClick={startRecording}
+            disabled={loading}
+            aria-label={micState === 'recording' ? 'Stop recording' : 'Start voice input'}
+            title={micState === 'recording' ? 'Stop recording' : 'Voice input'}
+          >
+            {micState === 'recording' ? '⏹' : '🎤'}
+          </button>
+          <button
+            className="writing-assistant-btn"
+            onClick={ask}
+            disabled={!prompt.trim() || loading}
+          >
+            {loading ? 'Thinking…' : 'Ask'}
+          </button>
+        </div>
       </div>
     </div>
   );

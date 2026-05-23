@@ -455,6 +455,7 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
     brainstorm: appSettings?.agents?.brainstorm?.enabled ?? true,
     archive: appSettings?.agents?.archive?.enabled ?? true,
   };
+  const micDeviceId = appSettings?.voice?.micDeviceId;
 
   return (
     <div className="desktop-shell">
@@ -474,7 +475,7 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
         />
       )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} micDeviceId={micDeviceId} />
       )}
       {view === 'kanban' && (
         <div className="shell-kanban">
@@ -597,6 +598,7 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
           selectedStory={selectedStory}
           writingAssistantEnabled={agentFlags.writingAssistant}
           archiveEnabled={agentFlags.archive}
+          micDeviceId={micDeviceId}
           onJumpToText={handleJumpToText}
           onInsertWikiLink={handleInsertWikiLink}
         />

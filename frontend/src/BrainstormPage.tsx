@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import { useMicButton } from './hooks/useMicButton';
 import './BrainstormPage.css';
 
 interface Message {
@@ -44,9 +45,10 @@ const FACT_TYPE_LABELS: Record<DetectedFact['type'], string> = {
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  micDeviceId?: string;
 }
 
-export default function BrainstormPage({ onClose, enabled = true }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, micDeviceId }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -55,6 +57,15 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const { announce, liveText } = useLiveAnnounce();
+
+  const { micState, startRecording } = useMicButton({
+    micDeviceId,
+    onTranscript: (text, isFinal) => {
+      if (isFinal) setPrompt((p) => (p ? p + ' ' + text : text));
+      else setPrompt(text);
+    },
+    onError: (msg) => setError(msg),
+  });
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -245,13 +256,24 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
               disabled={loading}
               aria-label="Brainstorm prompt"
             />
-            <button
-              className="brainstorm-send-btn"
-              onClick={send}
-              disabled={!prompt.trim() || loading}
-            >
-              {loading ? 'Thinking…' : 'Send'}
-            </button>
+            <div className="brainstorm-input-actions">
+              <button
+                className={`brainstorm-mic-btn${micState === 'recording' ? ' brainstorm-mic-btn--recording' : ''}${micState === 'error' ? ' brainstorm-mic-btn--error' : ''}`}
+                onClick={startRecording}
+                disabled={loading}
+                aria-label={micState === 'recording' ? 'Stop recording' : 'Start voice input'}
+                title={micState === 'recording' ? 'Stop recording' : 'Voice input'}
+              >
+                {micState === 'recording' ? '⏹' : '🎤'}
+              </button>
+              <button
+                className="brainstorm-send-btn"
+                onClick={send}
+                disabled={!prompt.trim() || loading}
+              >
+                {loading ? 'Thinking…' : 'Send'}
+              </button>
+            </div>
           </div>
         </div>
 

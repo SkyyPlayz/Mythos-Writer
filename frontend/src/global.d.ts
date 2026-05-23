@@ -68,6 +68,13 @@ interface AgentBudgetSettings {
   maxTokensPerDay: number;
 }
 
+interface VoiceSettings {
+  enabled: boolean;
+  cloudFallback: boolean;
+  micDeviceId?: string;
+  openaiApiKey?: string;
+}
+
 interface AppSettings {
   apiKey: string;
   agents: {
@@ -81,6 +88,7 @@ interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  voice?: VoiceSettings;
 }
 
 type TimelineSource = 'explicit_marker' | 'prose';
@@ -205,6 +213,14 @@ interface Window {
     // Timeline entries (MYT-216)
     timelineList: (scenePath?: string) => Promise<{ entries: TimelineEntryRow[] }>;
     timelineUpsert: (entry: TimelineEntryRow) => Promise<{ id: string }>;
+
+    // Voice IO (MYT-205)
+    voiceStart: (micDeviceId?: string) => Promise<{ sessionId: string }>;
+    voiceStop: (sessionId: string) => Promise<{ ok: boolean }>;
+    voiceLocalTranscript: (sessionId: string, text: string, isFinal: boolean) => void;
+    voiceAudioChunk: (sessionId: string, chunk: ArrayBuffer) => void;
+    onVoiceTranscript: (cb: (event: { sessionId: string; text: string; isFinal: boolean }) => void) => () => void;
+    onVoiceError: (cb: (event: { sessionId: string; error: string }) => void) => () => void;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
