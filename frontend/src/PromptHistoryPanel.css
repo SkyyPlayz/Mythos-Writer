@@ -1,0 +1,321 @@
+.phistory-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.phistory-panel {
+  background: var(--bg-panel, #1e1e2e);
+  border: 1px solid var(--border, #3a3a5c);
+  border-radius: 8px;
+  width: min(800px, 94vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.phistory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border, #3a3a5c);
+  flex-shrink: 0;
+}
+
+.phistory-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary, #cdd6f4);
+}
+
+.phistory-close {
+  background: none;
+  border: none;
+  color: var(--text-muted, #6c7086);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.phistory-close:hover {
+  background: var(--hover, #313244);
+  color: var(--text-primary, #cdd6f4);
+}
+
+.phistory-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 20px 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border, #3a3a5c);
+}
+
+.phistory-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 12px 8px;
+  cursor: pointer;
+  color: var(--text-muted, #6c7086);
+  font-size: 0.85rem;
+  transition: color 0.15s, border-color 0.15s;
+  border-radius: 4px 4px 0 0;
+}
+
+.phistory-tab:hover {
+  color: var(--text-primary, #cdd6f4);
+}
+
+.phistory-tab.active {
+  color: var(--accent, #89b4fa);
+  border-bottom-color: var(--accent, #89b4fa);
+}
+
+.phistory-filters {
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border, #3a3a5c);
+}
+
+.phistory-search {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-input, #181825);
+  border: 1px solid var(--border, #3a3a5c);
+  border-radius: 4px;
+  color: var(--text-primary, #cdd6f4);
+  font-size: 0.875rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.phistory-search:focus {
+  border-color: var(--accent, #89b4fa);
+}
+
+.phistory-date-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.phistory-date-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted, #6c7086);
+}
+
+.phistory-date {
+  padding: 4px 8px;
+  background: var(--bg-input, #181825);
+  border: 1px solid var(--border, #3a3a5c);
+  border-radius: 4px;
+  color: var(--text-primary, #cdd6f4);
+  font-size: 0.8rem;
+}
+
+.phistory-clear-dates {
+  background: none;
+  border: 1px solid var(--border, #3a3a5c);
+  border-radius: 4px;
+  color: var(--text-muted, #6c7086);
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.phistory-clear-dates:hover {
+  border-color: var(--text-muted, #6c7086);
+  color: var(--text-primary, #cdd6f4);
+}
+
+.phistory-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.phistory-loading,
+.phistory-empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted, #6c7086);
+  font-size: 0.875rem;
+}
+
+.phistory-error {
+  padding: 16px 20px;
+  color: var(--error, #f38ba8);
+  font-size: 0.875rem;
+}
+
+.phistory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.phistory-row {
+  border-bottom: 1px solid var(--border-subtle, #2a2a3e);
+}
+
+.phistory-row:last-child {
+  border-bottom: none;
+}
+
+.phistory-row-summary {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary, #cdd6f4);
+  transition: background 0.1s;
+  flex-wrap: wrap;
+}
+
+.phistory-row-summary:hover {
+  background: var(--hover, #313244);
+}
+
+.phistory-agent-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--accent-dim, #1e3a5f);
+  color: var(--accent, #89b4fa);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.phistory-timestamp {
+  font-size: 0.75rem;
+  color: var(--text-muted, #6c7086);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.phistory-prompt-snippet {
+  font-size: 0.825rem;
+  color: var(--text-secondary, #a6adc8);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phistory-error-badge {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(243, 139, 168, 0.15);
+  color: var(--error, #f38ba8);
+  flex-shrink: 0;
+}
+
+.phistory-row-detail {
+  padding: 12px 20px 16px;
+  background: var(--bg-detail, #181825);
+  border-top: 1px solid var(--border-subtle, #2a2a3e);
+}
+
+.phistory-detail-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 0.75rem;
+  color: var(--text-muted, #6c7086);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.phistory-detail-error {
+  color: var(--error, #f38ba8);
+}
+
+.phistory-detail-section {
+  margin-bottom: 12px;
+}
+
+.phistory-detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.phistory-detail-section h4 {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted, #6c7086);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.phistory-detail-text {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-code, #11111b);
+  border: 1px solid var(--border-subtle, #2a2a3e);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #a6adc8);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: inherit;
+}
+
+.phistory-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border, #3a3a5c);
+  flex-shrink: 0;
+}
+
+.phistory-page-btn {
+  background: var(--bg-input, #181825);
+  border: 1px solid var(--border, #3a3a5c);
+  border-radius: 4px;
+  color: var(--text-primary, #cdd6f4);
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.phistory-page-btn:hover:not(:disabled) {
+  border-color: var(--accent, #89b4fa);
+  color: var(--accent, #89b4fa);
+}
+
+.phistory-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.phistory-page-info {
+  font-size: 0.8rem;
+  color: var(--text-muted, #6c7086);
+}

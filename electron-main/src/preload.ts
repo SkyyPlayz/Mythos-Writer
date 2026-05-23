@@ -92,6 +92,10 @@ contextBridge.exposeInMainWorld('api', {
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
   settingsSet: (settings: unknown) => ipcRenderer.invoke('settings:set', { settings }),
 
+  // Generation log (prompt history)
+  generationLogRecent: (payload: { limit?: number; offset?: number; agent?: string; dateFrom?: string; dateTo?: string; search?: string }) =>
+    ipcRenderer.invoke('generationLog:recent', payload),
+
   // Suggestions lifecycle
   suggestionsList: (status?: string, sourceAgent?: string) =>
     ipcRenderer.invoke('suggestions:list', { status, sourceAgent }),

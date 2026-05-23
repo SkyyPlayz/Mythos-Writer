@@ -580,7 +580,15 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => {
     ensureVaultDir();
-    return { entries: listGenerationLog({ limit: payload.limit, agent: payload.agent }).map(truncateGenerationLogBody) };
+    const opts = {
+      agent: payload.agent,
+      dateFrom: payload.dateFrom,
+      dateTo: payload.dateTo,
+      search: payload.search,
+    };
+    const entries = listGenerationLog({ ...opts, limit: payload.limit, offset: payload.offset }).map(truncateGenerationLogBody);
+    const total = countGenerationLog(opts);
+    return { entries, total };
   },
 
   // ─── Vault graph (MYT-163) ───

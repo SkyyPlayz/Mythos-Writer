@@ -761,15 +761,22 @@ export interface GenerationLogRow {
   error: string | null;
   created_at: string;
   payload_digest: string | null;
+  prompt_text: string | null;
+  response_text: string | null;
 }
 
 export interface GenerationLogRecentPayload {
   limit?: number;
+  offset?: number;
   agent?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
 }
 
 export interface GenerationLogRecentResponse {
   entries: GenerationLogRow[];
+  total: number;
 }
 
 // ─── Archive Agent IPC types (Phase 3) ───

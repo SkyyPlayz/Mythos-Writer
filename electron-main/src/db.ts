@@ -314,27 +314,42 @@ export function insertGenerationLog(entry: Omit<DbGenerationLog, 'prompt_text' |
     .run({ prompt_text: null, response_text: null, ...entry });
 }
 
-export function listGenerationLog(opts: { limit?: number; offset?: number; agent?: string } = {}): DbGenerationLog[] {
+interface GenerationLogOpts {
+  limit?: number;
+  offset?: number;
+  agent?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+}
+
+function buildGenerationLogWhere(opts: Omit<GenerationLogOpts, 'limit' | 'offset'>): { where: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (opts.agent) { conditions.push('agent = ?'); params.push(opts.agent); }
+  if (opts.dateFrom) { conditions.push('created_at >= ?'); params.push(opts.dateFrom); }
+  if (opts.dateTo) { conditions.push('created_at <= ?'); params.push(opts.dateTo); }
+  if (opts.search) {
+    conditions.push('(prompt_text LIKE ? OR response_text LIKE ?)');
+    params.push(`%${opts.search}%`, `%${opts.search}%`);
+  }
+  return { where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', params };
+}
+
+export function listGenerationLog(opts: GenerationLogOpts = {}): DbGenerationLog[] {
   const db = getDb();
   const limit = opts.limit ?? 20;
   const offset = opts.offset ?? 0;
-  if (opts.agent) {
-    return db
-      .prepare('SELECT * FROM generation_log WHERE agent = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
-      .all(opts.agent, limit, offset) as DbGenerationLog[];
-  }
+  const { where, params } = buildGenerationLogWhere(opts);
   return db
-    .prepare('SELECT * FROM generation_log ORDER BY created_at DESC LIMIT ? OFFSET ?')
-    .all(limit, offset) as DbGenerationLog[];
+    .prepare(`SELECT * FROM generation_log ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .all(...params, limit, offset) as DbGenerationLog[];
 }
 
-export function countGenerationLog(agent?: string): number {
+export function countGenerationLog(opts: Omit<GenerationLogOpts, 'limit' | 'offset'> = {}): number {
   const db = getDb();
-  if (agent) {
-    const row = db.prepare('SELECT COUNT(*) as cnt FROM generation_log WHERE agent = ?').get(agent) as { cnt: number };
-    return row.cnt;
-  }
-  const row = db.prepare('SELECT COUNT(*) as cnt FROM generation_log').get() as { cnt: number };
+  const { where, params } = buildGenerationLogWhere(opts);
+  const row = db.prepare(`SELECT COUNT(*) as cnt FROM generation_log ${where}`).get(...params) as { cnt: number };
   return row.cnt;
 }
 

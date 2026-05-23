@@ -81,6 +81,22 @@ interface AppSettings {
   onboardingComplete?: boolean;
 }
 
+interface GenerationLogRow {
+  id: string;
+  agent: string;
+  model: string;
+  endpoint: string;
+  request_id: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  latency_ms: number;
+  error: string | null;
+  created_at: string;
+  payload_digest: string | null;
+  prompt_text: string | null;
+  response_text: string | null;
+}
+
 interface BrainstormExtractedEntity {
   path: string;
   name: string;
@@ -140,6 +156,16 @@ interface Window {
     // App settings
     settingsGet: () => Promise<AppSettings>;
     settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
+
+    // Generation log (prompt history viewer)
+    generationLogRecent: (payload: {
+      limit?: number;
+      offset?: number;
+      agent?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      search?: string;
+    }) => Promise<{ entries: GenerationLogRow[]; total: number }>;
 
     // Brainstorm Chat (MYT-150) — streaming with entity extraction
     brainstormChat: (

@@ -9,6 +9,7 @@ import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import SettingsPanel from './SettingsPanel';
+import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
 import './DesktopShell.css';
 
@@ -69,9 +70,10 @@ interface AppMenuBarProps {
   view: AppView;
   onSetView: (v: AppView) => void;
   onOpenSettings: () => void;
+  onOpenHistory: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuBarProps) {
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -81,6 +83,8 @@ function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
           <div className="app-menu-dropdown">
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.newStory?.()}>New Story</button>
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openVault?.()}>Open Vault…</button>
+            <div className="app-menu-separator" />
+            <button className="app-menu-dropdown-item" onClick={onOpenHistory}>Prompt History…</button>
             <div className="app-menu-separator" />
             <button className="app-menu-dropdown-item" onClick={onOpenSettings}>Settings…</button>
           </div>
@@ -142,6 +146,7 @@ export default function DesktopShell() {
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<AppView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -442,12 +447,15 @@ export default function DesktopShell() {
   return (
     <div className="desktop-shell">
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} />
+      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
           onSaved={(s) => setAppSettings(s)}
         />
+      )}
+      {historyOpen && (
+        <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
