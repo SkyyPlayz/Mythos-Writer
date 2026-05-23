@@ -7,6 +7,7 @@ import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
+import VaultGraphView from './VaultGraphView';
 import SettingsPanel from './SettingsPanel';
 import UpdateBanner from './UpdateBanner';
 import './DesktopShell.css';
@@ -62,7 +63,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban';
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
 
 interface AppMenuBarProps {
   view: AppView;
@@ -103,6 +104,12 @@ function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
           onClick={() => onSetView('kanban')}
         >
           Board
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'graph' ? ' active' : ''}`}
+          onClick={() => onSetView('graph')}
+        >
+          Graph
         </button>
       </div>
       <button
@@ -460,6 +467,11 @@ export default function DesktopShell() {
               <p>Select a story from the Editor view to open its Scene Board.</p>
             </div>
           )}
+        </div>
+      )}
+      {view === 'graph' && (
+        <div className="shell-graph">
+          <VaultGraphView onOpenNote={handleOpenSceneByPath} />
         </div>
       )}
       {view === 'editor' && <div className="shell-panels">

@@ -156,6 +156,13 @@
   flex-direction: column;
 }
 
+.shell-graph {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .shell-left {
   flex-shrink: 0;
   height: 100%;

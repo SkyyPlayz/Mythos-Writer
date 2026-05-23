@@ -74,6 +74,13 @@ export const IPC_CHANNELS = {
 
   // Generation log
   GENERATION_LOG_RECENT: 'generationLog:recent',
+
+  // Archive Agent (Phase 3)
+  ARCHIVE_SCAN: 'archive:scan',
+  ARCHIVE_STATUS: 'archive:status',
+
+  // Vault graph (Phase 5 — MYT-163)
+  VAULT_GRAPH_DATA: 'vault:graph-data',
 } as const;
 
 // ─── Main process handlers ───
@@ -145,6 +152,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
+  [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
+  [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
+  [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -726,4 +736,44 @@ export interface GenerationLogRecentPayload {
 
 export interface GenerationLogRecentResponse {
   entries: GenerationLogRow[];
+}
+
+// ─── Archive Agent IPC types (Phase 3) ───
+
+export interface ArchiveScanPayload {
+  sceneText: string;
+  scenePath: string;
+}
+
+export interface ArchiveScanResponse {
+  suggestions: SuggestionRow[];
+  inconsistenciesFound: number;
+  wikiLinksFound: number;
+}
+
+export interface ArchiveStatusResponse {
+  status: 'idle' | 'indexing' | 'ready';
+  count: number;
+  total: number;
+  builtAt: string | null;
+}
+
+// ─── Vault Graph types (Phase 5 — MYT-163) ───
+
+export interface VaultGraphNode {
+  id: string;
+  label: string;
+  path: string;
+  folder?: string;
+  tags?: string[];
+}
+
+export interface VaultGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface VaultGraphDataResponse {
+  nodes: VaultGraphNode[];
+  edges: VaultGraphEdge[];
 }
