@@ -196,6 +196,32 @@ contextBridge.exposeInMainWorld('api', {
   sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) =>
     ipcRenderer.invoke('scene:create', payload),
 
+  // Search (MYT-251)
+  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) =>
+    ipcRenderer.invoke('search:query', { query, scope, limit }),
+
+  // Writing Assistant scheduled scan (MYT-233)
+  writingScan: (sceneId: string, prose: string, scenePath: string) =>
+    ipcRenderer.invoke('writing:scan', { sceneId, prose, scenePath }),
+  // Push: backend scheduler broadcasts completed scan results (MYT-236)
+  onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => cb(data);
+    ipcRenderer.on('writing:scan:result', handler);
+    return () => ipcRenderer.removeListener('writing:scan:result', handler);
+  },
+
+  // Archive continuity-check scheduled scan (MYT-234)
+  archiveScan: (sceneText: string, scenePath: string) =>
+    ipcRenderer.invoke('archive:scan', { sceneText, scenePath }),
+
+  // Beta-Read Mode (MYT-237) — anchored inline comments
+  betaReadCreate: (sceneId: string, anchorText: string, commentText: string) =>
+    ipcRenderer.invoke('betaRead:create', { sceneId, anchorText, commentText }),
+  betaReadList: (sceneId: string) =>
+    ipcRenderer.invoke('betaRead:list', { sceneId }),
+  betaReadDismiss: (id: string) =>
+    ipcRenderer.invoke('betaRead:dismiss', { id }),
+
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }
   voiceStart: (micDeviceId?: string) =>
@@ -220,6 +246,13 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_: unknown, data: { sessionId: string; error: string }) => cb(data);
     ipcRenderer.on('voice:error', handler);
     return () => ipcRenderer.removeListener('voice:error', handler);
+  },
+
+  // Budget enforcement (MYT-207) — subscribe to agent:budget-cap push events from main
+  onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => {
+    const handler = (_: unknown, data: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => cb(data);
+    ipcRenderer.on('agent:budget-cap', handler);
+    return () => ipcRenderer.removeListener('agent:budget-cap', handler);
   },
 });
 

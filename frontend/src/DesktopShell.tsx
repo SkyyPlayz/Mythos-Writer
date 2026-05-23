@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
+import { applyTheme } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -11,6 +12,7 @@ import VaultGraphView from './VaultGraphView';
 import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
+import SearchBar from './SearchBar';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -66,14 +68,24 @@ function blocksToMarkdown(scene: Scene): string {
 
 type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
 
+interface SearchResultItem {
+  docId: string;
+  vault: 'story' | 'notes';
+  kind: string;
+  title: string;
+  snippet: string;
+  rank: number;
+}
+
 interface AppMenuBarProps {
   view: AppView;
   onSetView: (v: AppView) => void;
   onOpenSettings: () => void;
   onOpenHistory: () => void;
+  onSearchNavigate: (result: SearchResultItem) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate }: AppMenuBarProps) {
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -90,28 +102,33 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuB
           </div>
         </div>
       </div>
+      <SearchBar onNavigate={onSearchNavigate} />
       <div className="app-menu-view-toggle">
         <button
           className={`app-menu-view-btn${view === 'editor' ? ' active' : ''}`}
           onClick={() => onSetView('editor')}
+          aria-pressed={view === 'editor'}
         >
           Editor
         </button>
         <button
           className={`app-menu-view-btn${view === 'brainstorm' ? ' active' : ''}`}
           onClick={() => onSetView('brainstorm')}
+          aria-pressed={view === 'brainstorm'}
         >
           Brainstorm
         </button>
         <button
           className={`app-menu-view-btn${view === 'kanban' ? ' active' : ''}`}
           onClick={() => onSetView('kanban')}
+          aria-pressed={view === 'kanban'}
         >
           Board
         </button>
         <button
           className={`app-menu-view-btn${view === 'graph' ? ' active' : ''}`}
           onClick={() => onSetView('graph')}
+          aria-pressed={view === 'graph'}
         >
           Graph
         </button>
@@ -148,6 +165,8 @@ export default function DesktopShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [budgetToast, setBudgetToast] = useState<string | null>(null);
+  const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
@@ -164,6 +183,21 @@ export default function DesktopShell() {
     editorApiRef.current?.insertWikiLink(link, anchorText);
   }, []);
   const dragState = useRef<DragState | null>(null);
+
+  useEffect(() => {
+    if (!window.api.onBudgetCapHit) return;
+    const unsub = window.api.onBudgetCapHit((event) => {
+      const windowLabel = event.reason === 'daily_token_cap' ? 'daily' : 'hourly';
+      const msg = `${event.agentLabel} paused: ${windowLabel} token cap reached.`;
+      setBudgetToast(msg);
+      if (budgetToastTimer.current) clearTimeout(budgetToastTimer.current);
+      budgetToastTimer.current = setTimeout(() => setBudgetToast(null), 5000);
+    });
+    return () => {
+      unsub();
+      if (budgetToastTimer.current) clearTimeout(budgetToastTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -403,6 +437,32 @@ export default function DesktopShell() {
     setSelectedStory(null);
   }, []);
 
+  const handleSearchNavigate = useCallback((result: SearchResultItem) => {
+    if (result.vault === 'story') {
+      // Navigate to scene by docId
+      for (const story of stories) {
+        for (const chapter of story.chapters) {
+          const scene = chapter.scenes.find((sc) => sc.id === result.docId);
+          if (scene) {
+            handleSelectScene(scene, chapter, story);
+            setView('editor');
+            return;
+          }
+        }
+      }
+    } else {
+      // Navigate to entity by docId — look up in manifest entities
+      (window as any).api?.entityRead(result.docId)
+        .then((entry: EntityEntry | null) => {
+          if (entry) {
+            handleSelectEntity(entry);
+            setView('editor');
+          }
+        })
+        .catch(() => {});
+    }
+  }, [stories, handleSelectScene, handleSelectEntity]);
+
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
     if (!selectedStory || !selectedScene) return;
     const allScenes: { scene: Scene; chapter: Chapter }[] = [];
@@ -447,11 +507,11 @@ export default function DesktopShell() {
   return (
     <div className="desktop-shell">
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
+      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
-          onSaved={(s) => setAppSettings(s)}
+          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme ?? 'system'); }}
         />
       )}
       {historyOpen && (
@@ -562,11 +622,18 @@ export default function DesktopShell() {
           selectedStory={selectedStory}
           writingAssistantEnabled={agentFlags.writingAssistant}
           archiveEnabled={agentFlags.archive}
+          scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+          isPageFocused={view === 'editor'}
           onJumpToText={handleJumpToText}
           onInsertWikiLink={handleInsertWikiLink}
         />
       </div>
       </div>}{/* end shell-panels */}
+      {budgetToast && (
+        <div className="budget-toast" role="alert" aria-live="assertive">
+          {budgetToast}
+        </div>
+      )}
     </div>
   );
 }

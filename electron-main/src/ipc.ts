@@ -111,6 +111,22 @@ export const IPC_CHANNELS = {
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',
   VOICE_TRANSCRIPT_STREAM: 'voice:transcript',
+
+  // Full-text search (MYT-251)
+  SEARCH_QUERY: 'search:query',
+
+  // Writing Assistant scheduled scan (MYT-233)
+  WRITING_SCAN: 'writing:scan',
+  // Push channel: backend scheduler → renderer (MYT-236)
+  WRITING_SCAN_RESULT: 'writing:scan:result',
+
+  // Budget enforcement (MYT-207) — main pushes this when an agent hits a token/rate cap
+  AGENT_BUDGET_CAP: 'agent:budget-cap',
+
+  // Beta-Read Mode (MYT-237) — anchored inline comments
+  BETA_READ_CREATE: 'betaRead:create',
+  BETA_READ_LIST: 'betaRead:list',
+  BETA_READ_DISMISS: 'betaRead:dismiss',
 } as const;
 
 // ─── Main process handlers ───
@@ -198,6 +214,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
   [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
+  [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
+  [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
+  [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
+  [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
 }
 
 // ─── Payload / Response types ───
@@ -993,4 +1013,97 @@ export interface VaultGraphEdge {
 export interface VaultGraphDataResponse {
   nodes: VaultGraphNode[];
   edges: VaultGraphEdge[];
+}
+
+// ─── Search (MYT-251) ───
+
+export type SearchScope = 'story' | 'notes' | 'both';
+
+export interface SearchQueryPayload {
+  query: string;
+  scope: SearchScope;
+  limit?: number;
+}
+
+export interface SearchResultItem {
+  docId: string;
+  vault: 'story' | 'notes';
+  kind: string;
+  title: string;
+  snippet: string;
+  rank: number;
+}
+
+export interface SearchQueryResponse {
+  results: SearchResultItem[];
+  elapsed_ms: number;
+}
+
+// ─── Writing Assistant scheduled scan (MYT-233) ───
+
+export interface WritingScanPayload {
+  sceneId: string;
+  prose: string;
+  scenePath: string;
+}
+
+export interface WritingScanResponse {
+  tips: string[];
+  scannedAt: string;
+}
+
+// Push payload emitted by the backend scheduler on writing:scan:result (MYT-236)
+export interface WritingScanResultPayload {
+  sceneId: string;
+  scenePath: string;
+  tips: string[];
+  scannedAt: string;
+}
+
+// ─── Beta-Read Mode (MYT-237) ───
+
+export interface BetaReadComment {
+  id: string;
+  scene_id: string;
+  anchor_text: string;
+  comment_text: string;
+  created_at: string;
+  dismissed_at: string | null;
+}
+
+export interface BetaReadCreatePayload {
+  sceneId: string;
+  anchorText: string;
+  commentText: string;
+}
+
+export interface BetaReadCreateResponse {
+  comment: BetaReadComment;
+}
+
+export interface BetaReadListPayload {
+  sceneId: string;
+}
+
+export interface BetaReadListResponse {
+  comments: BetaReadComment[];
+}
+
+export interface BetaReadDismissPayload {
+  id: string;
+}
+
+export interface BetaReadDismissResponse {
+  id: string;
+  dismissed: boolean;
+}
+
+// ─── Budget enforcement push event (MYT-207) ───
+
+/** Emitted on agent:budget-cap when an agent is blocked by a token or rate cap. */
+export interface AgentBudgetCapEvent {
+  agent: string;
+  reason: 'hourly_token_cap' | 'daily_token_cap';
+  /** Human-readable label, e.g. "Writing Assistant" */
+  agentLabel: string;
 }

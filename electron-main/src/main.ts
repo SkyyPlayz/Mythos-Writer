@@ -71,6 +71,8 @@ import {
   type VersionListPayload,
   type VersionGetPayload,
   type VersionRollbackPayload,
+  type SearchQueryPayload,
+  type WritingScanPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -90,8 +92,11 @@ import {
   countGenerationLog,
   getGenerationLogEntry,
   truncateGenerationLogBody,
+  insertBetaReadComment,
+  listBetaReadComments,
+  dismissBetaReadComment,
 } from './db.js';
-import { evaluateAutoApply } from './budget.js';
+import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
@@ -132,6 +137,7 @@ import {
   runArchiveScan,
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
+import { buildFullIndex, searchVault } from './search.js';
 
 const require = createRequire(import.meta.url);
 
@@ -215,6 +221,8 @@ function scheduleReindex() {
       const manifest = readManifest(manifestPath);
       const { manifest: updated } = reindexVault(vaultRoot, manifest);
       writeManifest(manifestPath, updated);
+      // Rebuild FTS index after manifest reindex (incremental on file change)
+      try { buildFullIndex(getDb(), vaultRoot, updated); } catch { /* non-fatal */ }
     } catch {
       // non-fatal — next open will reindex
     }
@@ -869,6 +877,42 @@ const handlers: IpcHandlers = {
     return { scene: found };
   },
 
+  // ─── Beta-Read Mode (MYT-237) ───
+  [IPC_CHANNELS.BETA_READ_CREATE]: (payload: { sceneId: string; anchorText: string; commentText: string }) => {
+    ensureVaultDir();
+    const id = crypto.randomUUID();
+    const comment = {
+      id,
+      scene_id: payload.sceneId,
+      anchor_text: payload.anchorText,
+      comment_text: payload.commentText,
+      created_at: new Date().toISOString(),
+      dismissed_at: null,
+    };
+    insertBetaReadComment(comment);
+    return { comment };
+  },
+
+  [IPC_CHANNELS.BETA_READ_LIST]: (payload: { sceneId: string }) => {
+    ensureVaultDir();
+    const comments = listBetaReadComments(payload.sceneId);
+    return { comments };
+  },
+
+  [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: { id: string }) => {
+    ensureVaultDir();
+    dismissBetaReadComment(payload.id);
+    return { id: payload.id, dismissed: true };
+  },
+
+  // ─── Search (MYT-251) ───
+  [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => {
+    ensureVaultDir();
+    const t0 = Date.now();
+    const results = searchVault(getDb(), payload.query, payload.scope, payload.limit ?? 20);
+    return { results, elapsed_ms: Date.now() - t0 };
+  },
+
   // ─── Vault graph (MYT-163) ───
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: async () => {
     ensureVaultDir();
@@ -1109,8 +1153,21 @@ function getValidatedApiKey(): string {
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
-    if (!loadAppSettings().agents.brainstorm.enabled) {
+    const agentSettings = loadAppSettings().agents.brainstorm;
+    if (!agentSettings.enabled) {
       throw new Error('Brainstorm agent is disabled in settings.');
+    }
+    const budgetCheck = checkCallBudget('brainstorm', agentSettings, getDb());
+    if (!budgetCheck.allowed) {
+      const capLabel = budgetCheck.reason === 'daily_token_cap' ? 'daily token cap' : 'hourly token cap';
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'brainstorm',
+          agentLabel: 'Brainstorm Agent',
+          reason: budgetCheck.reason,
+        });
+      }
+      throw new Error(`Brainstorm Agent paused: ${capLabel} reached. Try again next window.`);
     }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
@@ -1206,8 +1263,21 @@ Be creative, ask clarifying questions, and help the author think deeper about th
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
-    if (!loadAppSettings().agents.writingAssistant.enabled) {
+    const agentSettings = loadAppSettings().agents.writingAssistant;
+    if (!agentSettings.enabled) {
       throw new Error('Writing Assistant is disabled in settings.');
+    }
+    const budgetCheck = checkCallBudget('writing-assistant', agentSettings, getDb());
+    if (!budgetCheck.allowed) {
+      const capLabel = budgetCheck.reason === 'daily_token_cap' ? 'daily token cap' : 'hourly token cap';
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'writing-assistant',
+          agentLabel: 'Writing Assistant',
+          reason: budgetCheck.reason,
+        });
+      }
+      throw new Error(`Writing Assistant paused: ${capLabel} reached. Try again next window.`);
     }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
@@ -1450,6 +1520,85 @@ Then write a short summary paragraph. If no issues are found, say so and output 
   });
 }
 
+// ─── Writing Assistant scheduled scan handler (MYT-233) ───
+// Non-streaming: returns structured tips for background scheduler use.
+function registerWritingScanHandler(): void {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (_event, payload: WritingScanPayload) => {
+    const settings = loadAppSettings();
+    if (!settings.agents.writingAssistant.enabled) {
+      return { tips: [], scannedAt: new Date().toISOString() };
+    }
+    const budgetCheck = checkCallBudget('writing-assistant', settings.agents.writingAssistant, getDb());
+    if (!budgetCheck.allowed) {
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'writing-assistant',
+          agentLabel: 'Writing Assistant',
+          reason: budgetCheck.reason,
+        });
+      }
+      return { tips: [], scannedAt: new Date().toISOString() };
+    }
+    const apiKey = getValidatedApiKey();
+    const client = new Anthropic({ apiKey });
+    const model = settings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
+    const startedAt = Date.now();
+    let tokensIn: number | null = null;
+    let tokensOut: number | null = null;
+    let genError: string | null = null;
+
+    try {
+      const response = await client.messages.create({
+        model,
+        max_tokens: 512,
+        system: 'You are a Writing Assistant doing a quick scene scan. Read the prose and identify 2–3 specific, actionable writing tips about craft, pacing, voice, or clarity. Return ONLY a JSON array of tip strings, for example: ["Tip one.", "Tip two."]. No other text.',
+        messages: [{
+          role: 'user',
+          content: `Scene (${payload.scenePath}):\n\n${payload.prose.slice(0, 4000)}`,
+        }],
+      });
+
+      tokensIn = response.usage.input_tokens;
+      tokensOut = response.usage.output_tokens;
+
+      const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
+      let tips: string[] = [];
+      try {
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (Array.isArray(parsed)) tips = parsed.map(String);
+        }
+      } catch { /* fallback below */ }
+      if (tips.length === 0) {
+        tips = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      }
+
+      return { tips: tips.slice(0, 5), scannedAt: new Date().toISOString() };
+    } catch (err: unknown) {
+      genError = (err as Error).message ?? 'unknown error';
+      throw err;
+    } finally {
+      const digest = crypto.createHash('sha256').update(payload.prose.slice(0, 100)).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'writing-assistant',
+          model,
+          endpoint: 'messages.create',
+          request_id: null,
+          tokens_in: tokensIn,
+          tokens_out: tokensOut,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: digest,
+        });
+      } catch { /* non-fatal */ }
+    }
+  });
+}
+
 // ─── App lifecycle ───
 app.whenReady().then(async () => {
   ensureVaultDir();
@@ -1458,12 +1607,19 @@ app.whenReady().then(async () => {
   registerBrainstormHandler();
   registerWritingAssistantHandler();
   registerVaultAgentHandlers();
+  registerWritingScanHandler();
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
   );
   createWindow();
   initAutoUpdater();
+  // Build initial FTS index (non-fatal)
+  try {
+    const manifest = readManifest(getManifestPath());
+    buildFullIndex(getDb(), getVaultRoot(), manifest);
+  } catch { /* non-fatal — index rebuilt on next watcher event */ }
+
   // Start watching vault for external markdown changes
   await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
 
