@@ -63,9 +63,9 @@ Three named AI agents assist the author across these surfaces. None of them auto
 - [x] GitHub Actions CI (lint → typecheck → test → build)
 
 ### Phase 2 — Core Writing Experience
-**Status:** Planned
+**Status:** In progress
 
-- [ ] Block-based editor component built on **TipTap**, with markdown round-trip
+- [x] Block-based editor component built on **TipTap**, with markdown round-trip (MYT-193)
 - [ ] Per-chapter / per-scene file layout in the vault
 - [ ] Project/vault browser sidebar
 - [ ] Save/load documents from vault
