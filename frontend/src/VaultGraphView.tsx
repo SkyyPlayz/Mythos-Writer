@@ -1,15 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  MiniMap,
-  useNodesState,
-  useEdgesState,
-  type Node,
-  type Edge,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { select } from 'd3-selection';
+import { zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from 'd3-zoom';
+import { drag, type DragBehavior } from 'd3-drag';
+import 'd3-transition';
 import './VaultGraphView.css';
 
 export interface GraphNode {
@@ -30,146 +23,103 @@ export interface VaultGraphData {
   edges: GraphEdge[];
 }
 
+interface SimNode extends GraphNode {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
 interface Props {
   onOpenNote?: (path: string) => void;
 }
 
-// Simple force-directed layout using a spring-repulsion pass
-function applyForceLayout(
-  gnodes: GraphNode[],
-  gedges: GraphEdge[],
-): { id: string; x: number; y: number }[] {
-  const W = 900, H = 700;
-  const positions: Record<string, { x: number; y: number }> = {};
-
-  // Initialize in a circle
-  gnodes.forEach((n, i) => {
+function runForceSimulation(gnodes: GraphNode[], gedges: GraphEdge[], W: number, H: number): SimNode[] {
+  const nodes: SimNode[] = gnodes.map((n, i) => {
     const angle = (2 * Math.PI * i) / Math.max(gnodes.length, 1);
-    positions[n.id] = {
-      x: W / 2 + (W / 3) * Math.cos(angle),
-      y: H / 2 + (H / 3) * Math.sin(angle),
-    };
+    return { ...n, x: W / 2 + (W / 3) * Math.cos(angle), y: H / 2 + (H / 3) * Math.sin(angle), vx: 0, vy: 0 };
   });
+  const idxById: Record<string, number> = {};
+  nodes.forEach((n, i) => { idxById[n.id] = i; });
 
-  const k = Math.sqrt((W * H) / Math.max(gnodes.length, 1));
-  const iterations = 80;
+  const k = Math.sqrt((W * H) / Math.max(nodes.length, 1));
+  const iterations = 100;
 
   for (let iter = 0; iter < iterations; iter++) {
-    const disp: Record<string, { x: number; y: number }> = {};
-    gnodes.forEach((n) => { disp[n.id] = { x: 0, y: 0 }; });
+    const disp = nodes.map(() => ({ x: 0, y: 0 }));
 
     // Repulsion
-    for (let i = 0; i < gnodes.length; i++) {
-      for (let j = i + 1; j < gnodes.length; j++) {
-        const u = gnodes[i].id, v = gnodes[j].id;
-        const dx = positions[u].x - positions[v].x;
-        const dy = positions[u].y - positions[v].y;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
         const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 0.01);
         const force = (k * k) / dist;
-        disp[u].x += (dx / dist) * force;
-        disp[u].y += (dy / dist) * force;
-        disp[v].x -= (dx / dist) * force;
-        disp[v].y -= (dy / dist) * force;
+        disp[i].x += (dx / dist) * force;
+        disp[i].y += (dy / dist) * force;
+        disp[j].x -= (dx / dist) * force;
+        disp[j].y -= (dy / dist) * force;
       }
     }
 
     // Attraction along edges
     for (const e of gedges) {
-      const u = e.source, v = e.target;
-      if (!positions[u] || !positions[v]) continue;
-      const dx = positions[u].x - positions[v].x;
-      const dy = positions[u].y - positions[v].y;
+      const ui = idxById[e.source], vi = idxById[e.target];
+      if (ui == null || vi == null) continue;
+      const dx = nodes[ui].x - nodes[vi].x;
+      const dy = nodes[ui].y - nodes[vi].y;
       const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 0.01);
       const force = (dist * dist) / k;
-      disp[u].x -= (dx / dist) * force;
-      disp[u].y -= (dy / dist) * force;
-      disp[v].x += (dx / dist) * force;
-      disp[v].y += (dy / dist) * force;
+      disp[ui].x -= (dx / dist) * force;
+      disp[ui].y -= (dy / dist) * force;
+      disp[vi].x += (dx / dist) * force;
+      disp[vi].y += (dy / dist) * force;
     }
 
-    // Apply displacement with cooling
     const temp = W / (iter + 1);
-    for (const n of gnodes) {
-      const d = disp[n.id];
+    for (let i = 0; i < nodes.length; i++) {
+      const d = disp[i];
       const dLen = Math.max(Math.sqrt(d.x * d.x + d.y * d.y), 0.01);
-      positions[n.id].x += (d.x / dLen) * Math.min(dLen, temp);
-      positions[n.id].y += (d.y / dLen) * Math.min(dLen, temp);
-      positions[n.id].x = Math.max(40, Math.min(W - 40, positions[n.id].x));
-      positions[n.id].y = Math.max(40, Math.min(H - 40, positions[n.id].y));
+      nodes[i].x += (d.x / dLen) * Math.min(dLen, temp);
+      nodes[i].y += (d.y / dLen) * Math.min(dLen, temp);
+      nodes[i].x = Math.max(60, Math.min(W - 60, nodes[i].x));
+      nodes[i].y = Math.max(40, Math.min(H - 40, nodes[i].y));
     }
   }
-
-  return gnodes.map((n) => ({ id: n.id, ...positions[n.id] }));
+  return nodes;
 }
 
-function buildFlowElements(
-  data: VaultGraphData,
-  filterFolder: string,
-  filterTag: string,
-): { nodes: Node[]; edges: Edge[] } {
-  let filtered = data.nodes;
-
-  if (filterFolder) {
-    filtered = filtered.filter((n) => !n.folder || n.folder === filterFolder);
-  }
-  if (filterTag) {
-    filtered = filtered.filter((n) => n.tags?.includes(filterTag));
-  }
-
-  const nodeIds = new Set(filtered.map((n) => n.id));
-  const filteredEdges = data.edges.filter(
-    (e) => nodeIds.has(e.source) && nodeIds.has(e.target),
-  );
-
-  const positions = applyForceLayout(filtered, filteredEdges);
-  const posMap: Record<string, { x: number; y: number }> = {};
-  positions.forEach((p) => { posMap[p.id] = { x: p.x, y: p.y }; });
-
-  const nodes: Node[] = filtered.map((n) => ({
-    id: n.id,
-    position: posMap[n.id] ?? { x: 0, y: 0 },
-    data: { label: n.label, path: n.path },
-    type: 'default',
-    style: {
-      background: '#1e1e2e',
-      color: '#cdd6f4',
-      border: '1px solid #585b70',
-      borderRadius: 8,
-      fontSize: 12,
-      padding: '4px 10px',
-      cursor: 'pointer',
-    },
-  }));
-
-  const edges: Edge[] = filteredEdges.map((e, i) => ({
-    id: `e-${i}-${e.source}-${e.target}`,
-    source: e.source,
-    target: e.target,
-    style: { stroke: '#585b70' },
-  }));
-
-  return { nodes, edges };
-}
+const NODE_W = 100;
+const NODE_H = 28;
 
 export default function VaultGraphView({ onOpenNote }: Props) {
+  const svgRef = useRef<SVGSVGElement>(null);
   const [graphData, setGraphData] = useState<VaultGraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterFolder, setFilterFolder] = useState('');
   const [filterTag, setFilterTag] = useState('');
+  const [dims, setDims] = useState({ w: 900, h: 700 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  // observe container size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) setDims({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     (async () => {
       try {
         const data = await (window as any).api?.vaultGraphData?.() as VaultGraphData | undefined;
-        if (data) {
-          setGraphData(data);
-        } else {
-          setError('VAULT_GRAPH_DATA IPC not available yet.');
-        }
+        if (data) setGraphData(data);
+        else setError('VAULT_GRAPH_DATA IPC not available yet.');
       } catch (e) {
         setError(String(e));
       } finally {
@@ -178,13 +128,6 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!graphData) return;
-    const { nodes: n, edges: e } = buildFlowElements(graphData, filterFolder, filterTag);
-    setNodes(n);
-    setEdges(e);
-  }, [graphData, filterFolder, filterTag, setNodes, setEdges]);
-
   const folders = useMemo(() => {
     if (!graphData) return [];
     return Array.from(new Set(graphData.nodes.map((n) => n.folder).filter(Boolean))) as string[];
@@ -192,35 +135,167 @@ export default function VaultGraphView({ onOpenNote }: Props) {
 
   const tags = useMemo(() => {
     if (!graphData) return [];
-    const all = graphData.nodes.flatMap((n) => n.tags ?? []);
-    return Array.from(new Set(all));
+    return Array.from(new Set(graphData.nodes.flatMap((n) => n.tags ?? [])));
   }, [graphData]);
 
-  const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    const path = (node.data as any).path as string;
-    if (path) onOpenNote?.(path);
-  }, [onOpenNote]);
+  const { simNodes, simEdges } = useMemo(() => {
+    if (!graphData) return { simNodes: [], simEdges: [] };
+    let filtered = graphData.nodes;
+    if (filterFolder) filtered = filtered.filter((n) => n.folder === filterFolder);
+    if (filterTag) filtered = filtered.filter((n) => n.tags?.includes(filterTag));
+    const nodeIds = new Set(filtered.map((n) => n.id));
+    const filteredEdges = graphData.edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    const simNodes = runForceSimulation(filtered, filteredEdges, dims.w, dims.h);
+    return { simNodes, simEdges: filteredEdges };
+  }, [graphData, filterFolder, filterTag, dims]);
 
-  if (loading) {
-    return <div className="vgv-state">Loading vault graph…</div>;
-  }
+  // render SVG using d3-zoom and d3-drag
+  useEffect(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl || simNodes.length === 0) return;
 
-  if (error) {
-    return (
-      <div className="vgv-state vgv-error">
-        <p>{error}</p>
-        <p className="vgv-error-sub">The BackendDev VAULT_GRAPH_DATA handler may not be implemented yet.</p>
-      </div>
-    );
-  }
+    const svgSel = select(svgEl);
+    svgSel.selectAll('*').remove();
 
-  if (!graphData || graphData.nodes.length === 0) {
-    return (
-      <div className="vgv-state">
-        <p>No notes found. Add some markdown files with [[wiki-links]] to see your vault graph.</p>
-      </div>
-    );
-  }
+    const defs = svgSel.append('defs');
+    defs.append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '0 -4 8 8')
+      .attr('refX', 10)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-4L8,0L0,4')
+      .attr('fill', '#585b70');
+
+    const g = svgSel.append('g').attr('class', 'vgv-world');
+
+    // edges
+    const idxById: Record<string, SimNode> = {};
+    simNodes.forEach((n) => { idxById[n.id] = n; });
+
+    g.append('g').attr('class', 'edges')
+      .selectAll('line')
+      .data(simEdges)
+      .enter()
+      .append('line')
+      .attr('x1', (e) => idxById[e.source]?.x ?? 0)
+      .attr('y1', (e) => idxById[e.source]?.y ?? 0)
+      .attr('x2', (e) => idxById[e.target]?.x ?? 0)
+      .attr('y2', (e) => idxById[e.target]?.y ?? 0)
+      .attr('stroke', '#585b70')
+      .attr('stroke-width', 1.2)
+      .attr('marker-end', 'url(#arrowhead)');
+
+    // node groups
+    type NodeDatum = SimNode;
+
+    const nodeG = g.append('g').attr('class', 'nodes')
+      .selectAll<SVGGElement, NodeDatum>('g')
+      .data(simNodes)
+      .enter()
+      .append('g')
+      .attr('transform', (d) => `translate(${d.x},${d.y})`)
+      .attr('cursor', 'pointer')
+      .attr('tabindex', 0)
+      .attr('role', 'button')
+      .attr('aria-label', (d) => d.label);
+
+    nodeG.append('rect')
+      .attr('x', -NODE_W / 2)
+      .attr('y', -NODE_H / 2)
+      .attr('width', NODE_W)
+      .attr('height', NODE_H)
+      .attr('rx', 6)
+      .attr('fill', '#1e1e2e')
+      .attr('stroke', '#585b70')
+      .attr('stroke-width', 1);
+
+    nodeG.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('fill', '#cdd6f4')
+      .attr('font-size', 11)
+      .text((d) => d.label.length > 14 ? d.label.slice(0, 12) + '…' : d.label);
+
+    // click handler
+    nodeG.on('click', (_event, d) => {
+      onOpenNote?.(d.path);
+    });
+
+    // hover highlight
+    nodeG.on('mouseenter', function () {
+      select(this).select('rect').attr('stroke', '#cba6f7').attr('stroke-width', 2);
+    }).on('mouseleave', function () {
+      select(this).select('rect').attr('stroke', '#585b70').attr('stroke-width', 1);
+    });
+
+    // drag
+    const dragBehavior: DragBehavior<SVGGElement, NodeDatum, NodeDatum> = drag<SVGGElement, NodeDatum>()
+      .on('start', function (_event, d) {
+        select(this).raise();
+        d.vx = 0; d.vy = 0;
+      })
+      .on('drag', function (event, d) {
+        d.x = event.x; d.y = event.y;
+        select(this).attr('transform', `translate(${d.x},${d.y})`);
+        // update edges
+        g.selectAll<SVGLineElement, GraphEdge>('line')
+          .filter((e) => e.source === d.id || e.target === d.id)
+          .attr('x1', (e) => e.source === d.id ? d.x : (idxById[e.source]?.x ?? 0))
+          .attr('y1', (e) => e.source === d.id ? d.y : (idxById[e.source]?.y ?? 0))
+          .attr('x2', (e) => e.target === d.id ? d.x : (idxById[e.target]?.x ?? 0))
+          .attr('y2', (e) => e.target === d.id ? d.y : (idxById[e.target]?.y ?? 0));
+      });
+
+    nodeG.call(dragBehavior);
+
+    // zoom & pan
+    const zoomBehavior: ZoomBehavior<SVGSVGElement, unknown> = zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 4])
+      .on('zoom', (event) => {
+        const t: ZoomTransform = event.transform;
+        g.attr('transform', t.toString());
+      });
+
+    svgSel.call(zoomBehavior);
+
+    // fit to view
+    const padding = 60;
+    const xs = simNodes.map((n) => n.x);
+    const ys = simNodes.map((n) => n.y);
+    const minX = Math.min(...xs) - padding;
+    const maxX = Math.max(...xs) + padding;
+    const minY = Math.min(...ys) - padding;
+    const maxY = Math.max(...ys) + padding;
+    const gw = maxX - minX, gh = maxY - minY;
+    const scale = Math.min(dims.w / gw, dims.h / gh, 2);
+    const tx = (dims.w - gw * scale) / 2 - minX * scale;
+    const ty = (dims.h - gh * scale) / 2 - minY * scale;
+    try {
+      svgSel.call(zoomBehavior.transform, zoomIdentity.translate(tx, ty).scale(scale));
+    } catch {
+      // jsdom lacks SVGSVGElement.viewBox — skip initial fit in test env
+      g.attr('transform', zoomIdentity.translate(tx, ty).scale(scale).toString());
+    }
+
+    return () => { svgSel.selectAll('*').remove(); };
+  }, [simNodes, simEdges, dims, onOpenNote]);
+
+  if (loading) return <div className="vgv-state">Loading vault graph…</div>;
+  if (error) return (
+    <div className="vgv-state vgv-error">
+      <p>{error}</p>
+      <p className="vgv-error-sub">The BackendDev VAULT_GRAPH_DATA handler may not be implemented yet.</p>
+    </div>
+  );
+  if (!graphData || graphData.nodes.length === 0) return (
+    <div className="vgv-state">
+      <p>No notes found. Add some markdown files with [[wiki-links]] to see your vault graph.</p>
+    </div>
+  );
 
   return (
     <div className="vgv-root" data-testid="vault-graph-view">
@@ -229,44 +304,27 @@ export default function VaultGraphView({ onOpenNote }: Props) {
         <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
         <div className="vgv-filters">
           {folders.length > 0 && (
-            <select
-              value={filterFolder}
-              onChange={(e) => setFilterFolder(e.target.value)}
-              aria-label="Filter by folder"
-            >
+            <select value={filterFolder} onChange={(e) => setFilterFolder(e.target.value)} aria-label="Filter by folder">
               <option value="">All folders</option>
               {folders.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           )}
           {tags.length > 0 && (
-            <select
-              value={filterTag}
-              onChange={(e) => setFilterTag(e.target.value)}
-              aria-label="Filter by tag"
-            >
+            <select value={filterTag} onChange={(e) => setFilterTag(e.target.value)} aria-label="Filter by tag">
               <option value="">All tags</option>
               {tags.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           )}
         </div>
       </div>
-      <div className="vgv-canvas">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeClick={handleNodeClick}
-          fitView
-          attributionPosition="bottom-right"
-        >
-          <Background gap={16} color="#313244" />
-          <Controls />
-          <MiniMap
-            nodeColor="#585b70"
-            maskColor="rgba(17,17,27,0.8)"
-          />
-        </ReactFlow>
+      <div className="vgv-canvas" ref={containerRef}>
+        <svg
+          ref={svgRef}
+          width={dims.w}
+          height={dims.h}
+          style={{ display: 'block', background: '#11111b' }}
+          aria-label="Vault note graph"
+        />
       </div>
     </div>
   );
