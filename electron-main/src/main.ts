@@ -888,6 +888,9 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => {
+    if (!loadAppSettings().agents.archive.enabled) {
+      return { suggestions: [], inconsistenciesFound: 0, wikiLinksFound: 0 };
+    }
     ensureVaultDir();
     let index = getArchiveIndex();
     if (!index) {
@@ -934,33 +937,60 @@ function createWindow() {
   });
 }
 
-// ─── Auto-updater (MYT-210) ───
+// ─── Auto-updater (MYT-245) ───
 // Feature-flagged: only active when MYTHOS_AUTO_UPDATE=1 (set in production CI/release builds).
-// During development and staging builds this block is inert — the IPC handlers are still
-// registered so the renderer can call them safely, but they no-op.
+// Supports two channels: stable (GitHub releases) and beta (GitHub pre-releases).
+// IPC handlers are always registered so renderer calls are safe no-ops in dev.
 const AUTO_UPDATE_ENABLED = process.env.MYTHOS_AUTO_UPDATE === '1';
 
 type UpdateState = 'checking' | 'available' | 'not-available' | 'downloading' | 'ready';
 
-function sendUpdateStatus(state: UpdateState) {
+interface UpdateStatusPayload {
+  state: UpdateState;
+  version?: string;
+  releaseNotes?: string | null;
+}
+
+// Last known available update — queried by renderer via UPDATE_GET_INFO
+let lastUpdateInfo: { version: string; releaseNotes: string | null } | null = null;
+
+function sendUpdateStatus(payload: UpdateStatusPayload) {
   if (mainWindow) {
-    mainWindow.webContents.send('update:status', { state });
+    mainWindow.webContents.send('update:status', payload);
   }
 }
 
+function applyUpdateChannel() {
+  const { updateChannel } = loadAppSettings();
+  // electron-updater maps 'latest' → stable GitHub releases, 'beta' → pre-releases
+  autoUpdater.channel = updateChannel === 'beta' ? 'beta' : 'latest';
+}
+
+function normalizeReleaseNotes(
+  notes: string | Array<{ version: string; note: string | null }> | null | undefined,
+): string | null {
+  if (!notes) return null;
+  if (typeof notes === 'string') return notes;
+  return notes.map((n) => `### ${n.version}\n${n.note ?? ''}`).join('\n\n');
+}
+
 function initAutoUpdater() {
-  // Register IPC handlers regardless of flag so renderer calls don't throw.
+  // Always register IPC handlers — safe no-ops when flag is off or not packaged.
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, () => {
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
+    applyUpdateChannel();
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     return { queued: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, () => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (_event, payload?: { quit: boolean }) => {
     if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
-    autoUpdater.quitAndInstall(false, true);
+    const quit = payload?.quit !== false; // default true = restart immediately
+    autoUpdater.quitAndInstall(false, quit);
     return { ok: true };
   });
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, () => lastUpdateInfo);
 
   if (!AUTO_UPDATE_ENABLED) return;
 
@@ -968,13 +998,29 @@ function initAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('error', () => { /* non-fatal — silenced to avoid noise on dev builds */ });
-  autoUpdater.on('checking-for-update', () => sendUpdateStatus('checking'));
-  autoUpdater.on('update-available', () => sendUpdateStatus('available'));
-  autoUpdater.on('update-not-available', () => sendUpdateStatus('not-available'));
-  autoUpdater.on('download-progress', () => sendUpdateStatus('downloading'));
-  autoUpdater.on('update-downloaded', () => sendUpdateStatus('ready'));
+  autoUpdater.on('checking-for-update', () => sendUpdateStatus({ state: 'checking' }));
+  autoUpdater.on('update-not-available', () => sendUpdateStatus({ state: 'not-available' }));
+  autoUpdater.on('download-progress', () => sendUpdateStatus({ state: 'downloading', version: lastUpdateInfo?.version, releaseNotes: lastUpdateInfo?.releaseNotes }));
 
-  // Only poll in packaged production builds to avoid hitting GitHub API during dev.
+  autoUpdater.on('update-available', (info) => {
+    const releaseNotes = normalizeReleaseNotes(
+      (info as { releaseNotes?: string | Array<{ version: string; note: string | null }> | null }).releaseNotes,
+    );
+    lastUpdateInfo = { version: (info as { version: string }).version, releaseNotes };
+    sendUpdateStatus({ state: 'available', version: lastUpdateInfo.version, releaseNotes });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const version = (info as { version: string }).version;
+    const releaseNotes = lastUpdateInfo?.releaseNotes ?? normalizeReleaseNotes(
+      (info as { releaseNotes?: string | Array<{ version: string; note: string | null }> | null }).releaseNotes,
+    );
+    if (!lastUpdateInfo) lastUpdateInfo = { version, releaseNotes };
+    sendUpdateStatus({ state: 'ready', version, releaseNotes });
+  });
+
+  // Apply channel setting and poll on startup (packaged builds only).
+  applyUpdateChannel();
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify().catch(() => { /* silenced */ });
   }
@@ -1000,6 +1046,7 @@ const SETTINGS_DEFAULTS: AppSettings = {
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+  updateChannel: 'stable',
 };
 
 /** Maps source_agent DB value → settings key. Unknown agents have no budget enforcement. */
@@ -1062,6 +1109,9 @@ function getValidatedApiKey(): string {
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+    if (!loadAppSettings().agents.brainstorm.enabled) {
+      throw new Error('Brainstorm agent is disabled in settings.');
+    }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
@@ -1156,6 +1206,9 @@ Be creative, ask clarifying questions, and help the author think deeper about th
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+    if (!loadAppSettings().agents.writingAssistant.enabled) {
+      throw new Error('Writing Assistant is disabled in settings.');
+    }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
     const userContent = payload.context

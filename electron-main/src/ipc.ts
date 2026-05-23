@@ -102,9 +102,10 @@ export const IPC_CHANNELS = {
   SCENE_GET: 'scene:get',
   SCENE_SAVE: 'scene:save',
 
-  // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
+  // Auto-updater (MYT-245) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
+  UPDATE_GET_INFO: 'update:get-info',
 
   // Voice IO (MYT-205) — local-first STT + IPC channel
   VOICE_START: 'voice:start',
@@ -683,6 +684,8 @@ export interface AppSettings {
   };
   onboardingComplete?: boolean;
   voice?: VoiceSettings;
+  /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
+  updateChannel?: 'stable' | 'beta';
 }
 
 export interface SettingsSetPayload {

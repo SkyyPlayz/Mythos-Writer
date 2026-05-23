@@ -180,14 +180,15 @@ contextBridge.exposeInMainWorld('api', {
   generationLogGet: (id: string) =>
     ipcRenderer.invoke('generationLog:get', { id }),
 
-  // Auto-update status (MYT-210) — feature-flagged; calls are safe no-ops when MYTHOS_AUTO_UPDATE!=1
-  onUpdateStatus: (cb: (state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready') => void) => {
-    const handler = (_: unknown, data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' }) => cb(data.state);
+  // Auto-update (MYT-245) — feature-flagged; calls are safe no-ops when MYTHOS_AUTO_UPDATE!=1
+  onUpdateStatus: (cb: (data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => void) => {
+    const handler = (_: unknown, data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => cb(data);
     ipcRenderer.on('update:status', handler);
     return () => ipcRenderer.removeListener('update:status', handler);
   },
   checkForUpdate: () => ipcRenderer.invoke('update:check', undefined),
-  installUpdate: () => ipcRenderer.invoke('update:install', undefined),
+  getUpdateInfo: () => ipcRenderer.invoke('update:get-info', undefined),
+  installUpdate: (quit = true) => ipcRenderer.invoke('update:install', { quit }),
 
   // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
   chapterCreate: (payload: { storyId: string; title: string; order?: number }) =>
