@@ -49,6 +49,16 @@ export interface DbTimelineEntry {
   created_at: string;
 }
 
+export interface DbProvenance {
+  id: string;
+  entity_id: string;
+  entity_kind: 'suggestion' | 'entity' | 'scene' | 'timeline_entry' | string;
+  agent_id: string;
+  agent_type: string;
+  run_id: string | null;
+  created_at: string;
+}
+
 export interface DbGenerationLog {
   id: string;
   agent: string;
@@ -188,6 +198,22 @@ function runMigrations(db: Database.Database): void {
       ALTER TABLE generation_log ADD COLUMN response_text TEXT;
     `);
     db.pragma('user_version = 5');
+  }
+
+  if (currentVersion < 6) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS provenance (
+        id          TEXT PRIMARY KEY,
+        entity_id   TEXT NOT NULL,
+        entity_kind TEXT NOT NULL,
+        agent_id    TEXT NOT NULL,
+        agent_type  TEXT NOT NULL,
+        run_id      TEXT,
+        created_at  TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_provenance_entity ON provenance (entity_id, entity_kind);
+    `);
+    db.pragma('user_version = 6');
   }
 }
 
@@ -366,6 +392,60 @@ export function truncateGenerationLogBody(row: DbGenerationLog): DbGenerationLog
       ? s.slice(0, BODY_TRUNCATE_BYTES) + '…'
       : s;
   return { ...row, prompt_text: truncate(row.prompt_text), response_text: truncate(row.response_text) };
+}
+
+// ─── Provenance ───
+
+export function insertProvenance(entry: DbProvenance): void {
+  getDb()
+    .prepare(
+      `INSERT INTO provenance (id, entity_id, entity_kind, agent_id, agent_type, run_id, created_at)
+       VALUES (@id, @entity_id, @entity_kind, @agent_id, @agent_type, @run_id, @created_at)`
+    )
+    .run(entry);
+}
+
+export function getProvenance(id: string): DbProvenance | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM provenance WHERE id = ?')
+      .get(id) as DbProvenance | undefined) ?? null
+  );
+}
+
+export function listProvenanceForEntity(entityId: string, entityKind?: string): DbProvenance[] {
+  const db = getDb();
+  if (entityKind) {
+    return db
+      .prepare('SELECT * FROM provenance WHERE entity_id = ? AND entity_kind = ? ORDER BY created_at DESC')
+      .all(entityId, entityKind) as DbProvenance[];
+  }
+  return db
+    .prepare('SELECT * FROM provenance WHERE entity_id = ? ORDER BY created_at DESC')
+    .all(entityId) as DbProvenance[];
+}
+
+export function listProvenance(opts: { agentId?: string; entityKind?: string; limit?: number } = {}): DbProvenance[] {
+  const db = getDb();
+  const limit = opts.limit ?? 100;
+  if (opts.agentId && opts.entityKind) {
+    return db
+      .prepare('SELECT * FROM provenance WHERE agent_id = ? AND entity_kind = ? ORDER BY created_at DESC LIMIT ?')
+      .all(opts.agentId, opts.entityKind, limit) as DbProvenance[];
+  }
+  if (opts.agentId) {
+    return db
+      .prepare('SELECT * FROM provenance WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?')
+      .all(opts.agentId, limit) as DbProvenance[];
+  }
+  if (opts.entityKind) {
+    return db
+      .prepare('SELECT * FROM provenance WHERE entity_kind = ? ORDER BY created_at DESC LIMIT ?')
+      .all(opts.entityKind, limit) as DbProvenance[];
+  }
+  return db
+    .prepare('SELECT * FROM provenance ORDER BY created_at DESC LIMIT ?')
+    .all(limit) as DbProvenance[];
 }
 
 // ─── Budget window counters ───
