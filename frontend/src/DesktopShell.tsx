@@ -7,6 +7,7 @@ import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import SettingsPanel from './SettingsPanel';
+import UpdateBanner from './UpdateBanner';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -424,6 +425,7 @@ export default function DesktopShell() {
 
   return (
     <div className="desktop-shell">
+      <UpdateBanner />
       <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} />
       {settingsOpen && (
         <SettingsPanel

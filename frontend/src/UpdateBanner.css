@@ -1,0 +1,46 @@
+.update-banner {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  font-size: 13px;
+  z-index: 9000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+.update-banner--ready {
+  border-color: #22c55e;
+  background: #14532d;
+}
+
+.update-banner--downloading {
+  border-color: #3b82f6;
+  background: #1e3a5f;
+}
+
+.update-banner__msg {
+  flex: 1;
+}
+
+.update-banner__close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.update-banner__close:hover {
+  color: #e2e8f0;
+}

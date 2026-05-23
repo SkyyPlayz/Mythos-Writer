@@ -108,6 +108,23 @@ const require = createRequire(import.meta.url);
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
 
+// Maps requestId → AbortController for in-flight streaming agent calls.
+// Populated on invoke, cleaned up in finally block or on cancel.
+const agentControllers = new Map<string, AbortController>();
+
+function registerAgentCancelHandlers(): void {
+  for (const channel of [
+    'agent:writing-assistant:stream-cancel',
+    'agent:brainstorm:stream-cancel',
+    'agent:vault-check:stream-cancel',
+  ] as const) {
+    ipcMain.on(channel, (_event, { requestId }: { requestId: string }) => {
+      agentControllers.get(requestId)?.abort();
+      agentControllers.delete(requestId);
+    });
+  }
+}
+
 // ─── Vault root ───
 // User can open any local folder as their vault; the chosen path is persisted
 // in userData/vault-settings.json so it survives restarts.
@@ -584,12 +601,30 @@ function createWindow() {
   });
 }
 
-// ─── Auto-updater (stubbed — no live update server configured) ───
+// ─── Auto-updater ───
+type UpdateState = 'checking' | 'available' | 'not-available' | 'downloading' | 'ready';
+
+function sendUpdateStatus(state: UpdateState) {
+  if (mainWindow) {
+    mainWindow.webContents.send('update:status', { state });
+  }
+}
+
 function initAutoUpdater() {
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  // Suppress errors when no update server is reachable (stub mode)
-  autoUpdater.on('error', () => { /* intentionally silent in stub mode */ });
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('error', () => { /* non-fatal — silenced to avoid noise on dev builds */ });
+  autoUpdater.on('checking-for-update', () => sendUpdateStatus('checking'));
+  autoUpdater.on('update-available', () => sendUpdateStatus('available'));
+  autoUpdater.on('update-not-available', () => sendUpdateStatus('not-available'));
+  autoUpdater.on('download-progress', () => sendUpdateStatus('downloading'));
+  autoUpdater.on('update-downloaded', () => sendUpdateStatus('ready'));
+
+  // Only check in packaged production builds
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => { /* silenced */ });
+  }
 }
 
 // ─── App settings persistence ───
@@ -694,6 +729,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
       { role: 'user' as const, content: payload.prompt },
     ];
 
+    const requestId = crypto.randomUUID();
     const model = 'claude-haiku-4-5-20251001';
     let fullText = '';
     let tokensIn: number | null = null;
@@ -702,8 +738,13 @@ Be creative, ask clarifying questions, and help the author think deeper about th
     const startedAt = Date.now();
 
     const controller = new AbortController();
+    agentControllers.set(requestId, controller);
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:brainstorm:stream-start', { requestId });
+    }
 
     const stream = client.messages.stream(
       { model, max_tokens: 1024, system: systemPrompt, messages },
@@ -729,6 +770,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
         throw err;
       }
     } finally {
+      agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const promptText = payload.prompt;
       const payloadDigest = process.env.PERSIST_PROMPTS === '1'
@@ -740,7 +782,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
           agent: 'brainstorm',
           model,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: tokensIn,
           tokens_out: tokensOut,
           latency_ms: Date.now() - startedAt,
@@ -751,7 +793,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
       } catch { /* non-fatal — logging must not break agent response */ }
     }
 
-    return { text: fullText };
+    return { text: fullText, requestId };
   });
 }
 
@@ -765,6 +807,7 @@ function registerWritingAssistantHandler() {
       ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
       : payload.prompt;
 
+    const requestId = crypto.randomUUID();
     const model = 'claude-haiku-4-5-20251001';
     let fullText = '';
     let tokensIn: number | null = null;
@@ -773,8 +816,13 @@ function registerWritingAssistantHandler() {
     const startedAt = Date.now();
 
     const controller = new AbortController();
+    agentControllers.set(requestId, controller);
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:writing-assistant:stream-start', { requestId });
+    }
 
     const stream = client.messages.stream(
       {
@@ -805,6 +853,7 @@ function registerWritingAssistantHandler() {
         throw err;
       }
     } finally {
+      agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const payloadDigest = process.env.PERSIST_PROMPTS === '1'
         ? userContent
@@ -815,7 +864,7 @@ function registerWritingAssistantHandler() {
           agent: 'writing-assistant',
           model,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: tokensIn,
           tokens_out: tokensOut,
           latency_ms: Date.now() - startedAt,
@@ -826,7 +875,7 @@ function registerWritingAssistantHandler() {
       } catch { /* non-fatal */ }
     }
 
-    return { text: fullText };
+    return { text: fullText, requestId };
   });
 }
 
@@ -906,6 +955,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     const client = new Anthropic({ apiKey });
     const vaultCheckModel = 'claude-haiku-4-5-20251001';
     const vaultCheckContent = `Scene to check:\n\n${payload.sceneContent}`;
+    const requestId = crypto.randomUUID();
     let fullText = '';
     let vaultTokensIn: number | null = null;
     let vaultTokensOut: number | null = null;
@@ -913,8 +963,13 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     const vaultStartedAt = Date.now();
 
     const controller = new AbortController();
+    agentControllers.set(requestId, controller);
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:vault-check:stream-start', { requestId });
+    }
 
     const stream = client.messages.stream(
       {
@@ -945,6 +1000,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
         throw err;
       }
     } finally {
+      agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const vaultPayloadDigest = process.env.PERSIST_PROMPTS === '1'
         ? vaultCheckContent
@@ -955,7 +1011,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
           agent: 'vault-agent',
           model: vaultCheckModel,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: vaultTokensIn,
           tokens_out: vaultTokensOut,
           latency_ms: Date.now() - vaultStartedAt,
@@ -982,7 +1038,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
       });
     }
 
-    return { text: fullText, inconsistencies };
+    return { text: fullText, inconsistencies, requestId };
   });
 }
 
@@ -990,6 +1046,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
 app.whenReady().then(async () => {
   ensureVaultDir();
   setupIpcMain(handlers);
+  registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();
   registerVaultAgentHandlers();

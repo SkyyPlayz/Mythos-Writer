@@ -105,6 +105,38 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suggestions:rollback', { id, actor }),
   auditList: (suggestionId?: string) =>
     ipcRenderer.invoke('audit:list', { suggestionId }),
+
+  // Stream-start push events — renderer receives requestId before first chunk
+  onWritingAssistantStreamStart: (cb: (requestId: string) => void) => {
+    const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
+    ipcRenderer.on('agent:writing-assistant:stream-start', handler);
+    return () => ipcRenderer.removeListener('agent:writing-assistant:stream-start', handler);
+  },
+  onBrainstormStreamStart: (cb: (requestId: string) => void) => {
+    const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
+    ipcRenderer.on('agent:brainstorm:stream-start', handler);
+    return () => ipcRenderer.removeListener('agent:brainstorm:stream-start', handler);
+  },
+  onVaultCheckStreamStart: (cb: (requestId: string) => void) => {
+    const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
+    ipcRenderer.on('agent:vault-check:stream-start', handler);
+    return () => ipcRenderer.removeListener('agent:vault-check:stream-start', handler);
+  },
+
+  // Cancel channels — fire-and-forget, aborts the running stream for the given requestId
+  cancelWritingAssistant: (requestId: string) =>
+    ipcRenderer.send('agent:writing-assistant:stream-cancel', { requestId }),
+  cancelBrainstorm: (requestId: string) =>
+    ipcRenderer.send('agent:brainstorm:stream-cancel', { requestId }),
+  cancelVaultCheck: (requestId: string) =>
+    ipcRenderer.send('agent:vault-check:stream-cancel', { requestId }),
+
+  // Auto-update status
+  onUpdateStatus: (cb: (state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready') => void) => {
+    const handler = (_: unknown, data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' }) => cb(data.state);
+    ipcRenderer.on('update:status', handler);
+    return () => ipcRenderer.removeListener('update:status', handler);
+  },
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

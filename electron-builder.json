@@ -38,5 +38,9 @@
     ],
     "artifactName": "${productName}-${version}.${ext}"
   },
-  "publish": null
+  "publish": {
+    "provider": "github",
+    "owner": "SkyyPlayz",
+    "repo": "Mythos-Writer"
+  }
 }
