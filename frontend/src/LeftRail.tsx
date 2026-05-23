@@ -97,6 +97,8 @@ function VaultTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }
       style={{ paddingLeft: 8 + depth * 16 }}
       onClick={() => isMd && onOpenFile(node.path)}
       title={node.path}
+      draggable={isMd}
+      onDragStart={isMd ? (e) => { e.dataTransfer.setData('text/plain', node.path); e.dataTransfer.effectAllowed = 'copy'; } : undefined}
     >
       <span className="vt-chevron" />
       <span className="vt-icon vt-icon-file">{isMd ? '📄' : '·'}</span>
