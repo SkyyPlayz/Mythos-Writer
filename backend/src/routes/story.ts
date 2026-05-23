@@ -157,7 +157,7 @@ const enforceStoryAccess = (req: Request, res: Response, next: NextFunction) => 
     }
 
     const requestToken = getBearerToken(req.header('Authorization'));
-    if (requestToken !== configuredToken) {
+    if (!requestToken || !safeEqual(requestToken, configuredToken)) {
       res
         .status(401)
         .json({ error: 'authorization bearer token is required for story generation' });
@@ -184,6 +184,12 @@ const enforceStoryRateLimit = (req: Request, res: Response, next: NextFunction) 
     DEFAULT_RATE_LIMIT_MAX,
   );
   const now = Date.now();
+  for (const [bucketClientId, bucket] of storyRateLimitBuckets.entries()) {
+    if (now - bucket.windowStartedAt >= windowMs) {
+      storyRateLimitBuckets.delete(bucketClientId);
+    }
+  }
+
   const clientId = req.ip || req.socket.remoteAddress || 'unknown-client';
   const currentBucket = storyRateLimitBuckets.get(clientId);
 
@@ -220,103 +226,106 @@ router.post(
   enforceStoryAccess,
   enforceStoryRateLimit,
   async (req: Request, res: Response) => {
-  const { prompt, genre, length = 'medium' } = req.body as {
-    prompt?: unknown;
-    genre?: unknown;
-    length?: unknown;
-  };
+    const { prompt, genre, length = 'medium' } = req.body as {
+      prompt?: unknown;
+      genre?: unknown;
+      length?: unknown;
+    };
 
-  if (typeof prompt !== 'string') {
-    res.status(400).json({ error: prompt == null ? 'prompt is required' : 'prompt must be a string' });
-    return;
-  }
-
-  const trimmedPrompt = prompt.trim();
-  if (!trimmedPrompt) {
-    res.status(400).json({ error: 'prompt is required' });
-    return;
-  }
-
-  if (typeof length !== 'string') {
-    res.status(400).json({ error: 'length must be one of: short, medium, long' });
-    return;
-  }
-
-  if (genre != null && typeof genre !== 'string') {
-    res.status(400).json({ error: 'genre must be a string' });
-    return;
-  }
-
-  if (trimmedPrompt.length > MAX_PROMPT_LENGTH) {
-    res
-      .status(400)
-      .json({ error: `prompt must be ${MAX_PROMPT_LENGTH} characters or fewer` });
-    return;
-  }
-
-  if (!VALID_LENGTHS.has(length)) {
-    res.status(400).json({ error: 'length must be one of: short, medium, long' });
-    return;
-  }
-
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!anthropicApiKey) {
-    res.status(503).json({
-      error: 'ANTHROPIC_API_KEY must be configured before story generation can start',
-    });
-    return;
-  }
-
-  const maxTokens = LENGTH_TO_TOKENS[length] ?? LENGTH_TO_TOKENS.medium;
-  const userMessage = genre ? `Genre: ${genre}\n\nPrompt: ${trimmedPrompt}` : trimmedPrompt;
-
-  const client = new Anthropic({ apiKey: anthropicApiKey });
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  try {
-    const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: maxTokens,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    });
-
-    res.on('close', () => {
-      if (!res.writableEnded) {
-        stream.abort();
-      }
-    });
-
-    for await (const event of stream) {
-      if (
-        event.type === 'content_block_delta' &&
-        event.delta.type === 'text_delta'
-      ) {
-        res.write(`data: ${JSON.stringify({ chunk: event.delta.text })}\n\n`);
-      }
-    }
-
-    res.write('data: [DONE]\n\n');
-    res.end();
-  } catch (err) {
-    const error = err as Error & { status?: number };
-
-    if (!res.headersSent) {
-      res
-        .status(error.status ?? 500)
-        .json({ error: error.message ?? 'Story generation failed' });
+    if (typeof prompt !== 'string') {
+      res.status(400).json({
+        error: prompt == null ? 'prompt is required' : 'prompt must be a string',
+      });
       return;
     }
 
-    res.write(
-      `data: ${JSON.stringify({ error: error.message ?? 'Story generation failed' })}\n\n`,
-    );
-    res.end();
-  }
-});
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) {
+      res.status(400).json({ error: 'prompt is required' });
+      return;
+    }
+
+    if (typeof length !== 'string') {
+      res.status(400).json({ error: 'length must be one of: short, medium, long' });
+      return;
+    }
+
+    if (genre != null && typeof genre !== 'string') {
+      res.status(400).json({ error: 'genre must be a string' });
+      return;
+    }
+
+    if (trimmedPrompt.length > MAX_PROMPT_LENGTH) {
+      res
+        .status(400)
+        .json({ error: `prompt must be ${MAX_PROMPT_LENGTH} characters or fewer` });
+      return;
+    }
+
+    if (!VALID_LENGTHS.has(length)) {
+      res.status(400).json({ error: 'length must be one of: short, medium, long' });
+      return;
+    }
+
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
+    if (!anthropicApiKey) {
+      res.status(503).json({
+        error: 'ANTHROPIC_API_KEY must be configured before story generation can start',
+      });
+      return;
+    }
+
+    const maxTokens = LENGTH_TO_TOKENS[length] ?? LENGTH_TO_TOKENS.medium;
+    const userMessage = genre ? `Genre: ${genre}\n\nPrompt: ${trimmedPrompt}` : trimmedPrompt;
+
+    const client = new Anthropic({ apiKey: anthropicApiKey });
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    try {
+      const stream = client.messages.stream({
+        model: 'claude-sonnet-4-6',
+        max_tokens: maxTokens,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      res.on('close', () => {
+        if (!res.writableEnded) {
+          stream.abort();
+        }
+      });
+
+      for await (const event of stream) {
+        if (
+          event.type === 'content_block_delta' &&
+          event.delta.type === 'text_delta'
+        ) {
+          res.write(`data: ${JSON.stringify({ chunk: event.delta.text })}\n\n`);
+        }
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch (err) {
+      const error = err as Error & { status?: number };
+
+      if (!res.headersSent) {
+        res
+          .status(error.status ?? 500)
+          .json({ error: error.message ?? 'Story generation failed' });
+        return;
+      }
+
+      res.write(
+        `data: ${JSON.stringify({ error: error.message ?? 'Story generation failed' })}\n\n`,
+      );
+      res.end();
+    }
+  },
+);
 
 export { router as storyRouter, resetStoryRateLimits };
