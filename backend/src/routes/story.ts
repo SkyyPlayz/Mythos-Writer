@@ -226,6 +226,11 @@ router.post(
   enforceStoryAccess,
   enforceStoryRateLimit,
   async (req: Request, res: Response) => {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      res.status(400).json({ error: 'request body must be a JSON object' });
+      return;
+    }
+
     const { prompt, genre, length = 'medium' } = req.body as {
       prompt?: unknown;
       genre?: unknown;
