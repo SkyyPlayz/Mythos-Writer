@@ -4,9 +4,32 @@ import SettingsPanel from './SettingsPanel';
 const defaultSettings: AppSettings = {
   apiKey: '',
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30 },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6' },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60 },
+    writingAssistant: {
+      enabled: true,
+      model: 'claude-sonnet-4-6',
+      scanIntervalSeconds: 30,
+      autoApply: false,
+      confidenceThreshold: 0.8,
+      maxTokensPerHour: 100000,
+      maxSuggestionsPerHour: 50,
+    },
+    brainstorm: {
+      enabled: true,
+      model: 'claude-sonnet-4-6',
+      autoApply: false,
+      confidenceThreshold: 0.8,
+      maxTokensPerHour: 100000,
+      maxSuggestionsPerHour: 50,
+    },
+    archive: {
+      enabled: true,
+      model: 'claude-sonnet-4-6',
+      continuityCheckIntervalSeconds: 60,
+      autoApply: false,
+      confidenceThreshold: 0.8,
+      maxTokensPerHour: 100000,
+      maxSuggestionsPerHour: 50,
+    },
   },
   theme: 'dark',
 };
