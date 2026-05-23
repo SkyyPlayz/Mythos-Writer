@@ -17,7 +17,112 @@ import {
   reindexVault,
   importObsidianVault,
   defaultManifest,
+  toSlug,
+  resolveSlugCollision,
+  chapterVaultPath,
+  sceneVaultPath,
+  MANUSCRIPT_DIR,
 } from './vault.js';
+
+describe('Manuscript layout — slug and path helpers', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-slug-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  describe('toSlug', () => {
+    it('lowercases and replaces spaces with hyphens', () => {
+      expect(toSlug('Chapter One')).toBe('chapter-one');
+    });
+
+    it('strips non-alphanumeric characters and diacritics', () => {
+      // "Arrivée" → NFD → "Arrivee" (accent stripped) → "arrivee"
+      expect(toSlug("L'Arrivée: Part 1")).toBe('larrivee-part-1');
+    });
+
+    it('collapses multiple hyphens', () => {
+      expect(toSlug('Chapter  1  --  Title')).toBe('chapter-1-title');
+    });
+
+    it('returns untitled for empty or all-special input', () => {
+      expect(toSlug('!!! ???')).toBe('untitled');
+      expect(toSlug('')).toBe('untitled');
+    });
+
+    it('strips leading and trailing hyphens', () => {
+      expect(toSlug('  -Hello-  ')).toBe('hello');
+    });
+  });
+
+  describe('resolveSlugCollision', () => {
+    it('returns base path when no collision', () => {
+      const result = resolveSlugCollision(tmpDir, 'Manuscript/story', 'chapter-1');
+      expect(result).toBe('Manuscript/story/chapter-1');
+    });
+
+    it('appends -2 when base path already exists as directory', () => {
+      fs.mkdirSync(path.join(tmpDir, 'Manuscript', 'story', 'chapter-1'), { recursive: true });
+      const result = resolveSlugCollision(tmpDir, 'Manuscript/story', 'chapter-1');
+      expect(result).toBe('Manuscript/story/chapter-1-2');
+    });
+
+    it('appends -3 when -2 also exists', () => {
+      fs.mkdirSync(path.join(tmpDir, 'Manuscript', 'story', 'chapter-1'), { recursive: true });
+      fs.mkdirSync(path.join(tmpDir, 'Manuscript', 'story', 'chapter-1-2'), { recursive: true });
+      const result = resolveSlugCollision(tmpDir, 'Manuscript/story', 'chapter-1');
+      expect(result).toBe('Manuscript/story/chapter-1-3');
+    });
+
+    it('resolves .md file collisions', () => {
+      fs.mkdirSync(path.join(tmpDir, 'Manuscript', 'story', 'ch'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'Manuscript', 'story', 'ch', 'scene.md'), '', 'utf-8');
+      const result = resolveSlugCollision(tmpDir, 'Manuscript/story/ch', 'scene', '.md');
+      expect(result).toBe('Manuscript/story/ch/scene-2.md');
+    });
+  });
+
+  describe('chapterVaultPath', () => {
+    it('produces Manuscript/<story-slug>/<chapter-slug>', () => {
+      const result = chapterVaultPath(tmpDir, 'My Story', 'Chapter One');
+      expect(result).toBe(`${MANUSCRIPT_DIR}/my-story/chapter-one`);
+    });
+
+    it('resolves directory collision', () => {
+      fs.mkdirSync(path.join(tmpDir, MANUSCRIPT_DIR, 'my-story', 'chapter-one'), { recursive: true });
+      const result = chapterVaultPath(tmpDir, 'My Story', 'Chapter One');
+      expect(result).toBe(`${MANUSCRIPT_DIR}/my-story/chapter-one-2`);
+    });
+  });
+
+  describe('sceneVaultPath', () => {
+    it('produces <chapterDir>/<scene-slug>.md', () => {
+      const chapterDir = `${MANUSCRIPT_DIR}/my-story/chapter-one`;
+      fs.mkdirSync(path.join(tmpDir, chapterDir), { recursive: true });
+      const result = sceneVaultPath(tmpDir, chapterDir, 'The Opening Scene');
+      expect(result).toBe(`${MANUSCRIPT_DIR}/my-story/chapter-one/the-opening-scene.md`);
+    });
+
+    it('resolves file collision deterministically', () => {
+      const chapterDir = `${MANUSCRIPT_DIR}/my-story/ch-1`;
+      fs.mkdirSync(path.join(tmpDir, chapterDir), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, chapterDir, 'opening.md'), '', 'utf-8');
+      const result = sceneVaultPath(tmpDir, chapterDir, 'opening');
+      expect(result).toBe(`${MANUSCRIPT_DIR}/my-story/ch-1/opening-2.md`);
+    });
+
+    it('uses actual chapter dir path, not re-derived from title', () => {
+      const chapterDir = `${MANUSCRIPT_DIR}/my-story/chapter-one-2`;
+      fs.mkdirSync(path.join(tmpDir, chapterDir), { recursive: true });
+      const result = sceneVaultPath(tmpDir, chapterDir, 'Intro');
+      expect(result).toBe(`${MANUSCRIPT_DIR}/my-story/chapter-one-2/intro.md`);
+    });
+  });
+});
 
 describe('IPC vault round-trip', () => {
   let tmpDir: string;

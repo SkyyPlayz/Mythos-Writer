@@ -199,6 +199,10 @@ interface Window {
 
     // Vault notes updated push event (MYT-156)
     onVaultNotesUpdated?: (cb: (data: { count: number }) => void) => () => void;
+
+    // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
+    chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
+    sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<import('./types').Scene>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

@@ -189,6 +189,12 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdate: () => ipcRenderer.invoke('update:check', undefined),
   installUpdate: () => ipcRenderer.invoke('update:install', undefined),
 
+  // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
+  chapterCreate: (payload: { storyId: string; title: string; order?: number }) =>
+    ipcRenderer.invoke('chapter:create', payload),
+  sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) =>
+    ipcRenderer.invoke('scene:create', payload),
+
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }
   voiceStart: (micDeviceId?: string) =>

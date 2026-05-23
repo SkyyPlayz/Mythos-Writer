@@ -85,6 +85,10 @@ export const IPC_CHANNELS = {
   // Vault graph (Phase 5 — MYT-163)
   VAULT_GRAPH_DATA: 'vault:graph-data',
 
+  // Structured chapter / scene creation (Phase 2 — MYT-195)
+  CHAPTER_CREATE: 'chapter:create',
+  SCENE_CREATE: 'scene:create',
+
   // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
@@ -169,6 +173,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
+  [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => ChapterEntry;
+  [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => SceneEntry;
 }
 
 // ─── Payload / Response types ───
@@ -835,6 +841,21 @@ export interface ArchiveStatusResponse {
   count: number;
   total: number;
   builtAt: string | null;
+}
+
+// ─── Chapter / Scene creation (Phase 2 — MYT-195) ───
+
+export interface ChapterCreatePayload {
+  storyId: string;
+  title: string;
+  order?: number;
+}
+
+export interface SceneCreatePayload {
+  storyId: string;
+  chapterId: string;
+  title: string;
+  order?: number;
 }
 
 // ─── Vault Graph types (Phase 5 — MYT-163) ───

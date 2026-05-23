@@ -60,6 +60,8 @@ import {
   type GenerationLogListPayload,
   type GenerationLogGetPayload,
   type ArchiveScanPayload,
+  type ChapterCreatePayload,
+  type SceneCreatePayload,
 } from './ipc.js';
 import {
   openDb,
@@ -97,6 +99,9 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  writeSceneFile,
+  chapterVaultPath,
+  sceneVaultPath,
 } from './vault.js';
 import { openManifest } from './manifest.js';
 import {
@@ -607,6 +612,67 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => {
     ensureVaultDir();
     return { entry: getGenerationLogEntry(payload.id) };
+  },
+
+  // ─── Chapter / Scene creation (Phase 2 — MYT-195) ───
+  [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+
+    const dirPath = chapterVaultPath(getVaultRoot(), story.title, payload.title);
+    const fullDir = path.join(getVaultRoot(), dirPath);
+    if (!fs.existsSync(fullDir)) fs.mkdirSync(fullDir, { recursive: true });
+
+    const nowStr = new Date().toISOString();
+    const chapter = {
+      id: crypto.randomUUID(),
+      title: payload.title,
+      path: dirPath,
+      order: payload.order ?? story.chapters.length,
+      scenes: [],
+      createdAt: nowStr,
+      updatedAt: nowStr,
+    };
+    story.chapters.push(chapter);
+    writeManifest(getManifestPath(), manifest);
+    return chapter;
+  },
+
+  [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+    const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+    if (!chapter) throw new Error(`Chapter not found: ${payload.chapterId}`);
+
+    const filePath = sceneVaultPath(getVaultRoot(), chapter.path, payload.title);
+    const nowStr = new Date().toISOString();
+    const scene = {
+      id: crypto.randomUUID(),
+      title: payload.title,
+      path: filePath,
+      order: payload.order ?? chapter.scenes.length,
+      chapterId: payload.chapterId,
+      storyId: payload.storyId,
+      blocks: [],
+      draftState: 'in-progress' as const,
+      createdAt: nowStr,
+      updatedAt: nowStr,
+    };
+    writeSceneFile(getVaultRoot(), filePath, {
+      id: scene.id,
+      title: scene.title,
+      chapterId: scene.chapterId,
+      storyId: scene.storyId,
+      order: scene.order,
+      prose: '',
+    });
+    chapter.scenes.push(scene);
+    writeManifest(getManifestPath(), manifest);
+    return scene;
   },
 
   // ─── Vault graph (MYT-163) ───
