@@ -585,6 +585,8 @@ export interface AgentBudgetSettings {
   confidenceThreshold: number;
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
+  heartbeatIntervalMinutes: number;
+  maxTokensPerDay: number;
 }
 
 export interface AppSettings {

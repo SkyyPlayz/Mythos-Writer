@@ -701,6 +701,8 @@ const AGENT_BUDGET_DEFAULTS = {
   confidenceThreshold: 0.85,
   maxTokensPerHour: 100_000,
   maxSuggestionsPerHour: 50,
+  heartbeatIntervalMinutes: 5,
+  maxTokensPerDay: 500_000,
 };
 
 const SETTINGS_DEFAULTS: AppSettings = {

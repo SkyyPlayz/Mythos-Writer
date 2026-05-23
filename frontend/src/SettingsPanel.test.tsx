@@ -318,6 +318,29 @@ describe('SettingsPanel', () => {
     expect(document.getElementById('archive-max-tokens-day')).toBeInTheDocument();
   });
 
+  // ── MYT-200 acceptance criteria ──
+
+  it('archive continuity-check interval input renders', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(document.getElementById('archive-interval')).toBeInTheDocument();
+  });
+
+  it('archive continuity-check interval change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const input = document.getElementById('archive-interval') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '120' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.archive.continuityCheckIntervalSeconds).toBe(120);
+  });
+
   it('max tokens per day change is saved via IPC', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
