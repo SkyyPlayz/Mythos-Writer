@@ -1,11 +1,12 @@
 /* BrainstormPage — full-page chat surface for world-building */
 
 .brainstorm-page {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0a0a0b;
-  color: #e4e4e7;
+  background: var(--bg-base);
+  color: var(--text-primary);
   overflow: hidden;
 }
 
@@ -15,16 +16,16 @@
   align-items: center;
   gap: 16px;
   padding: 12px 20px;
-  background: #0d0d0f;
-  border-bottom: 1px solid #1a1a1f;
+  background: var(--bg-bar);
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .brainstorm-back-btn {
   background: none;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-default);
   border-radius: 6px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   padding: 4px 10px;
   cursor: pointer;
@@ -33,9 +34,9 @@
 }
 
 .brainstorm-back-btn:hover {
-  background: #18181b;
-  color: #e4e4e7;
-  border-color: #3f3f46;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
 }
 
 .brainstorm-header-text {
@@ -47,13 +48,13 @@
 .brainstorm-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .brainstorm-subtitle {
   font-size: 0.75rem;
-  color: #71717a;
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -71,7 +72,7 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  border-right: 1px solid #1a1a1f;
+  border-right: 1px solid var(--border-subtle);
   overflow: hidden;
 }
 
@@ -85,7 +86,7 @@
 }
 
 .brainstorm-empty {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.87rem;
   line-height: 1.6;
   padding: 40px 20px;
@@ -108,7 +109,7 @@
 }
 
 .bs-user-bubble {
-  background: #4c1d95;
+  background: var(--accent-border);
   color: #ede9fe;
   border-radius: 14px 14px 4px 14px;
   padding: 10px 14px;
@@ -124,13 +125,13 @@
 }
 
 .bs-assistant-text {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
   border-radius: 4px 14px 14px 14px;
   padding: 10px 14px;
   font-size: 0.88rem;
   line-height: 1.65;
-  color: #d4d4d8;
+  color: var(--text-dim);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -142,7 +143,7 @@
 .bs-cursor {
   display: inline-block;
   animation: bs-blink 1s step-end infinite;
-  color: #7c3aed;
+  color: var(--accent);
   margin-left: 1px;
 }
 
@@ -165,18 +166,18 @@
   display: flex;
   gap: 8px;
   padding: 14px 16px;
-  background: #0d0d0f;
-  border-top: 1px solid #1a1a1f;
+  background: var(--bg-bar);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
   align-items: flex-end;
 }
 
 .brainstorm-input {
   flex: 1;
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   font-size: 0.88rem;
   padding: 8px 12px;
   resize: none;
@@ -186,7 +187,7 @@
 }
 
 .brainstorm-input:focus {
-  border-color: #4c1d95;
+  border-color: var(--accent-border);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
 }
 
@@ -196,7 +197,7 @@
 }
 
 .brainstorm-send-btn {
-  background: #7c3aed;
+  background: var(--accent);
   border: none;
   border-radius: 8px;
   color: #fff;
@@ -210,7 +211,7 @@
 }
 
 .brainstorm-send-btn:hover:not(:disabled) {
-  background: #6d28d9;
+  background: var(--accent-hover);
 }
 
 .brainstorm-send-btn:disabled {
@@ -225,7 +226,7 @@
   width: 300px;
   flex-shrink: 0;
   overflow: hidden;
-  background: #0d0d0f;
+  background: var(--bg-bar);
 }
 
 .brainstorm-facts-header {
@@ -233,7 +234,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px 10px;
-  border-bottom: 1px solid #1a1a1f;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -242,14 +243,14 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #71717a;
+  color: var(--text-muted);
   flex: 1;
 }
 
 .brainstorm-facts-count {
-  background: #27272a;
+  background: var(--border-default);
   border-radius: 10px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 600;
   padding: 2px 7px;
@@ -265,7 +266,7 @@
 }
 
 .brainstorm-facts-empty {
-  color: #52525b;
+  color: var(--text-faint);
   font-size: 0.81rem;
   line-height: 1.6;
   text-align: center;
@@ -274,8 +275,8 @@
 
 /* Fact cards */
 .bs-fact {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 10px 12px;
   display: flex;
@@ -285,7 +286,7 @@
 }
 
 .bs-fact:hover {
-  border-color: #3f3f46;
+  border-color: var(--border-strong);
 }
 
 .bs-fact-saved {
@@ -308,23 +309,23 @@
 .bs-fact-type-location  { background: #0c2a1a; color: #6ee7b7; }
 .bs-fact-type-item      { background: #2a1a0c; color: #fcd34d; }
 .bs-fact-type-concept   { background: #1a0c2a; color: #d8b4fe; }
-.bs-fact-type-other     { background: #1a1a1f; color: #71717a; }
+.bs-fact-type-other     { background: var(--border-subtle); color: var(--text-muted); }
 
 .bs-fact-name {
   font-size: 0.87rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-primary);
 }
 
 .bs-fact-desc {
   font-size: 0.78rem;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
 .bs-fact-save-btn {
   margin-top: 4px;
-  background: #7c3aed;
+  background: var(--accent);
   border: none;
   border-radius: 6px;
   color: #fff;
@@ -336,7 +337,7 @@
 }
 
 .bs-fact-save-btn:hover:not(:disabled) {
-  background: #6d28d9;
+  background: var(--accent-hover);
 }
 
 .bs-fact-save-btn:disabled {
@@ -348,8 +349,292 @@
   margin-top: 4px;
   font-size: 0.76rem;
   font-weight: 500;
-  color: #4ade80;
+  color: var(--success);
   align-self: flex-start;
+}
+
+/* New session button */
+.brainstorm-new-session-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.brainstorm-new-session-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* Mic button */
+.brainstorm-mic-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 1rem;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: flex-end;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.brainstorm-mic-btn:hover {
+  background: var(--border-default);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.brainstorm-mic-btn-recording {
+  background: #7f1d1d;
+  border-color: #ef4444;
+  color: #fca5a5;
+  animation: bs-mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes bs-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+}
+
+/* Cancel button */
+.brainstorm-cancel-btn {
+  background: #3b0a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: flex-end;
+  height: 38px;
+}
+
+.brainstorm-cancel-btn:hover {
+  background: #7f1d1d;
+  color: #fff;
+}
+
+/* Toast notification */
+.brainstorm-toast {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #14532d;
+  border: 1px solid #166534;
+  border-radius: 8px;
+  color: #4ade80;
+  font-size: 0.82rem;
+  padding: 8px 16px;
+  z-index: 100;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: bs-toast-in 0.2s ease-out;
+}
+
+@keyframes bs-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Fact action helpers */
+.bs-fact-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bs-fact-saving {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.bs-fact-save-error {
+  font-size: 0.76rem;
+  color: #fca5a5;
+}
+
+.bs-fact-retry-btn {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 0.76rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+/* Continuity issues section */
+.brainstorm-continuity-section {
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.bs-continuity-badge {
+  background: #3b1a0a;
+  color: #fbbf24;
+}
+
+.bs-continuity-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.bs-continuity-empty {
+  padding: 12px 0;
+}
+
+.bs-cont-item {
+  border-radius: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 6px 10px;
+  transition: border-color 0.15s;
+}
+
+.bs-cont-item:hover {
+  border-color: var(--border-strong);
+}
+
+.bs-cont-item-resolved {
+  opacity: 0.5;
+}
+
+.bs-cont-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.bs-cont-checkbox {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.bs-cont-label-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.bs-cont-label-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.bs-cont-label-btn:disabled {
+  cursor: default;
+}
+
+.bs-cont-expand {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bs-cont-anchor {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.bs-cont-answer-kinds {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.bs-cont-kind-btn {
+  background: var(--bg-bar);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.71rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.bs-cont-kind-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.bs-cont-kind-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.bs-cont-textarea {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  resize: none;
+  font-family: inherit;
+  line-height: 1.5;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.bs-cont-textarea:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+}
+
+.bs-cont-submit-btn {
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 500;
+  padding: 5px 12px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.bs-cont-submit-btn:hover {
+  background: var(--accent-hover);
+}
+
+.brainstorm-facts-header-divider {
+  border-top: 1px solid var(--border-subtle);
 }
 
 .brainstorm-disabled {
@@ -367,6 +652,6 @@
 
 .brainstorm-disabled-msg {
   font-size: 0.875rem;
-  color: #52525b;
+  color: var(--text-faint);
   text-align: center;
 }
