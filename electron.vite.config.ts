@@ -5,6 +5,9 @@ export default defineConfig({
   main: {
     build: {
       target: 'node20',
+      rollupOptions: {
+        external: ['better-sqlite3'],
+      },
       lib: {
         entry: 'electron-main/src/main.ts',
       },
