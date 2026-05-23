@@ -59,6 +59,7 @@ import {
   type GenerationLogRecentPayload,
   type GenerationLogListPayload,
   type GenerationLogGetPayload,
+  type ArchiveScanPayload,
 } from './ipc.js';
 import {
   openDb,

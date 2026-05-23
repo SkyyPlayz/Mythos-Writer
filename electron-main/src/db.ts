@@ -301,7 +301,7 @@ export function listTimelineEntries(scenePath?: string): DbTimelineEntry[] {
 
 // ─── Generation log ───
 
-export function insertGenerationLog(entry: DbGenerationLog): void {
+export function insertGenerationLog(entry: Omit<DbGenerationLog, 'prompt_text' | 'response_text'> & { prompt_text?: string | null; response_text?: string | null }): void {
   getDb()
     .prepare(
       `INSERT INTO generation_log
