@@ -622,10 +622,14 @@ const handlers: IpcHandlers = {
     for (const suggestion of result.suggestions) {
       upsertSuggestion(suggestion);
     }
+    for (const entry of result.timelineEntries) {
+      upsertTimelineEntry(entry);
+    }
     return {
       suggestions: result.suggestions,
       inconsistenciesFound: result.inconsistenciesFound,
       wikiLinksFound: result.wikiLinksFound,
+      timelineEntriesFound: result.timelineEntriesFound,
     };
   },
 

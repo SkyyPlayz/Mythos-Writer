@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import type { Manifest, EntityEntry } from './ipc.js';
 import { listEntities } from './entities.js';
 import { readVaultFile } from './vault.js';
-import type { DbSuggestion } from './db.js';
+import type { DbSuggestion, DbTimelineEntry } from './db.js';
 
 // ─── Types ───
 
@@ -29,6 +29,8 @@ export interface ArchiveScanResult {
   suggestions: DbSuggestion[];
   inconsistenciesFound: number;
   wikiLinksFound: number;
+  timelineEntriesFound: number;
+  timelineEntries: DbTimelineEntry[];
 }
 
 export type ArchiveIndexStatus = 'idle' | 'indexing' | 'ready';
@@ -275,6 +277,110 @@ export function detectWikiLinkOpportunities(
   return suggestions;
 }
 
+// ─── Time-cue extraction ───
+// Phase 5 (MYT-217): parse explicit time cues into timeline_entries rows.
+// Source 'explicit_marker' only — prose-derived cues land in a follow-up.
+
+/**
+ * Ordered list of scene-marker patterns with their confidence scores.
+ * Each entry: [regex (case-insensitive), confidence, label-group-index].
+ * The full match text is stored as inferred_time.
+ */
+const SCENE_MARKER_PATTERNS: Array<{ re: RegExp; confidence: number }> = [
+  // Absolute date-like markers: "January 3rd", "3 January 2024", "March 15, 2024"
+  {
+    re: /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b/gi,
+    confidence: 0.9,
+  },
+  // ISO-style dates in prose: "2024-01-15"
+  { re: /\b\d{4}-\d{2}-\d{2}\b/g, confidence: 0.9 },
+  // Time-of-day anchors: "That morning", "That evening", "That afternoon", "That night"
+  {
+    re: /\b(?:that|the same)\s+(?:morning|afternoon|evening|night|dawn|dusk|midday|midnight|noon)\b/gi,
+    confidence: 0.7,
+  },
+  // Relative elapsed markers: "Three days later", "Two weeks earlier", "An hour later"
+  {
+    re: /\b(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:moment|second|minute|hour|day|week|month|year)s?\s+(?:later|earlier|before|after|ago)\b/gi,
+    confidence: 0.75,
+  },
+  // "The next/following/previous <period>" patterns
+  {
+    re: /\bthe\s+(?:next|following|previous|prior)\s+(?:morning|afternoon|evening|night|day|week|month|year)\b/gi,
+    confidence: 0.8,
+  },
+  // "Later that day/week/month"
+  {
+    re: /\blater\s+that\s+(?:day|week|month|year|morning|afternoon|evening|night)\b/gi,
+    confidence: 0.75,
+  },
+  // "Days/weeks/months later" (plain plural)
+  {
+    re: /\b(?:days|weeks|months|years|hours|minutes)\s+(?:later|earlier|before|after)\b/gi,
+    confidence: 0.7,
+  },
+];
+
+/** Parse frontmatter block (the raw text between the first --- delimiters). */
+function parseFrontmatterDate(rawContent: string): string | null {
+  const fm = rawContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fm) return null;
+  const dateMatch = fm[1].match(/^date:\s*(.+)$/m);
+  if (!dateMatch) return null;
+  return dateMatch[1].trim().replace(/^["']|["']$/g, '');
+}
+
+/**
+ * Extract explicit time cues from a scene file's raw content.
+ * Returns DbTimelineEntry rows — caller must upsert them into SQLite.
+ */
+export function extractTimeCues(rawContent: string, scenePath: string): DbTimelineEntry[] {
+  const entries: DbTimelineEntry[] = [];
+  const now = new Date().toISOString();
+
+  // 1 — Frontmatter date (highest confidence, source = explicit_marker)
+  const fmDate = parseFrontmatterDate(rawContent);
+  if (fmDate) {
+    entries.push({
+      id: crypto.randomUUID(),
+      scene_path: scenePath,
+      inferred_time: fmDate,
+      confidence: 0.95,
+      source: 'explicit_marker',
+      notes_json: JSON.stringify({ origin: 'frontmatter_date' }),
+      created_at: now,
+    });
+  }
+
+  // 2 — Strip frontmatter before scanning prose
+  const prose = rawContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+
+  // 3 — Scene-marker patterns in prose
+  // Deduplicate by (normalised match text) to avoid double-counting repeated phrases.
+  const seen = new Set<string>();
+  for (const { re, confidence } of SCENE_MARKER_PATTERNS) {
+    re.lastIndex = 0; // reset stateful regex
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(prose)) !== null) {
+      const text = m[0].trim();
+      const key = text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({
+        id: crypto.randomUUID(),
+        scene_path: scenePath,
+        inferred_time: text,
+        confidence,
+        source: 'explicit_marker',
+        notes_json: JSON.stringify({ origin: 'scene_marker', matchIndex: m.index }),
+        created_at: now,
+      });
+    }
+  }
+
+  return entries;
+}
+
 // ─── Combined scan ───
 
 export function runArchiveScan(
@@ -284,9 +390,12 @@ export function runArchiveScan(
 ): ArchiveScanResult {
   const inconsistencies = detectInconsistencies(sceneText, index, scenePath);
   const wikiLinks = detectWikiLinkOpportunities(sceneText, index, scenePath);
+  const timelineEntries = extractTimeCues(sceneText, scenePath);
   return {
     suggestions: [...inconsistencies, ...wikiLinks],
     inconsistenciesFound: inconsistencies.length,
     wikiLinksFound: wikiLinks.length,
+    timelineEntriesFound: timelineEntries.length,
+    timelineEntries,
   };
 }
