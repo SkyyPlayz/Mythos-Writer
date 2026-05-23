@@ -56,6 +56,17 @@ These are the features you get right away — the foundation of Mythos Writer.
 
 These features will arrive in future updates as the system grows more powerful.
 
+### Full local-model and BYO-provider support (immediate post-MVP priority)
+
+The first post-MVP milestone is full support for any model the user wants to attach — cloud APIs, locally running models (Ollama, LM Studio, llama.cpp), and custom agent providers like HermesAI. The MVP ships cloud-only for simplicity, but local-model support is the **highest-priority next task** after MVP launch.
+
+This means:
+
+- A model picker per agent (Brainstorm, Writing Assistant, Archive).
+- An OpenAI-compatible endpoint adapter so any provider following that spec works out of the box.
+- A local-model adapter for the major local runtimes.
+- Sensible defaults and cost/perf guidance so users without a strong preference get something that "just works."
+
 ### Full smart linking and metadata extraction
 
 - Automatic detection of characters, locations, and items in your scenes.

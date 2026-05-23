@@ -32,6 +32,25 @@ It can point out:
 - If you like a suggestion, you apply it manually or click **Accept**.
 - If you don't like it, you ignore it.
 
+## Beta-Read Mode
+
+The Writing Assistant has two scan styles:
+
+### Heartbeat scans (default)
+
+Periodic, background scans on the interval you set. Results land in the sidebar as a list of suggestions tagged to scenes and blocks. Subtle, passive, and easy to ignore until you're ready.
+
+### Beta-Read Mode (on demand)
+
+When you ask the Writing Assistant to **beta-read a story, chapter, or scene**, it switches to a deeper review pass and writes feedback as **Word-style inline comments** tied to highlighted spans of text — the same way comments work in Microsoft Word.
+
+- Each comment is anchored to a specific phrase, sentence, or paragraph.
+- Comments are visible (and resolvable) in **Edit Mode**, which automatically toggles comment visibility on.
+- You can reply to a comment, accept its suggestion, dismiss it, or convert it into a Brainstorm chat thread.
+- Beta-read comments are stored alongside the suggestion database, so they survive across sessions and don't reappear after dismissal.
+
+This gives you a focused, full-pass review when you want one, while keeping the everyday heartbeat scans quiet and unobtrusive.
+
 ## Why it exists
 
 The Writing Assistant helps you improve your craft without taking over your writing. It's supportive, not intrusive — a second pair of eyes that respects your voice.

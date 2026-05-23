@@ -39,6 +39,37 @@ This is what your AI agents work inside.
 
 You can change the folder locations for either vault at any time.
 
+## Default folder layout inside the Notes Vault
+
+The Notes Vault is organized around **universes** so worldbuilding scales cleanly across multiple stories and shared worlds. Story ideas live at the top level so they can link to entities across any universe.
+
+```
+Mythos Vault/
+├── Universes/
+│   ├── <World Name 1>/
+│   │   ├── Locations/
+│   │   ├── History & Lore/
+│   │   ├── Society & Governance/
+│   │   ├── Characters/
+│   │   └── ... (anything specific to that world)
+│   └── <World Name 2>/
+│       └── ...
+└── Story ideas/
+    ├── <Story Title>/
+    │   ├── characters.md
+    │   ├── beats.md
+    │   └── linked-locations.md  (← cross-universe links)
+    └── ...
+```
+
+This structure mirrors how authors naturally separate "the world" from "a story set in the world." A single story can pull characters and locations from multiple universes via wiki-links.
+
+### When the structure doesn't fit
+
+The Brainstorm Agent builds on this layout by default. If a note doesn't fit cleanly (for example, a piece of cross-universe lore, or a real-world reference), the agent falls back to the **default frontmatter schemas** (see the [Q&A Explainer document](#) — section "Default frontmatter schemas") so the note is still typed and searchable even outside the folder hierarchy.
+
+You can rename or restructure folders at any time. The manifest tracks notes by stable IDs, so links survive renames in either Mythos Writer or Obsidian.
+
 ## Chapters and scenes are separate files
 
 Even though the editor can show your whole book as one continuous document, each chapter and scene is saved as its own file inside the Story Vault — with drafts.

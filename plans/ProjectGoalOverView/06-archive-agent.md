@@ -45,6 +45,20 @@ It will:
 
 It always waits for your confirmation before applying changes.
 
+## Continuity issues live in the Brainstorm sidebar
+
+Every continuity issue the Archive Agent surfaces shows up as a **checkbox item in a todo list inside the Brainstorm Agent's sidebar**. The Archive Agent is the detector; the Brainstorm Agent is the conversational surface where the user resolves issues.
+
+- Click an issue → it expands inline to show the conflict (scene vs note, with the relevant snippets).
+- Answer it right there in the sidebar — a quick "fix the note," "fix the prose," or a free-text reply.
+- The answer goes directly to the Brainstorm Agent, which:
+  - Updates the relevant note if the user picked "match notes to story."
+  - Drafts a suggested prose edit for the Writing Assistant if the user picked "suggest a story change."
+  - Records the user's free-text answer alongside the note so future continuity passes know the resolution.
+- Check the box → the issue is marked resolved and disappears from the list. The same issue won't reappear after benign saves.
+
+This keeps the **issue-finding** and **issue-answering** flows on the same screen, with one persistent todo list the user can work through in batches.
+
 ## Why it exists
 
 The Archive Agent makes sure your world stays believable and organized, even as it grows more complex. It's your continuity editor, your timeline manager, and your logic checker — all in one.

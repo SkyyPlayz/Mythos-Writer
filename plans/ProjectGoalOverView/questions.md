@@ -1,5 +1,7 @@
 # Open Questions
 
+> **Status: Resolved (2026-05-22)** — All questions in this document were resolved via the board Q&A on MYT-183. See **[00-decisions-log.md](00-decisions-log.md)** for the resolved decisions and where they live in the plan files. The questions below are preserved as historical context.
+
 These are questions raised by the project vision document that need decisions or clarification before — or during — implementation. Each question is grouped by area, with the relevant section linked.
 
 ## 1. Overview / Product positioning

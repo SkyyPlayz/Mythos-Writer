@@ -57,6 +57,29 @@ It becomes your second brain, keeping track of everything so you can focus on wr
 - It can create entities (characters, locations, items, notes).
 - It keeps your vault organized so the Archive Agent can check continuity.
 - It feeds the Writing Assistant with context so suggestions stay accurate.
+- It hosts the **continuity todo list** in its sidebar — every continuity issue the Archive Agent finds shows up as a checkbox item the user can click to read, answer, and resolve directly inside the Brainstorm sidebar. Answers are routed straight back into the Brainstorm Agent's context so it can update notes if needed.
+
+## Model choice — bring your own
+
+The Brainstorm Agent is **model-agnostic**. You choose which model powers it:
+
+- **Cloud models** (Anthropic Claude, OpenAI, others) via API key.
+- **Local models** running on your machine (Ollama, LM Studio, llama.cpp, etc.).
+- **Custom agents and providers** like HermesAI or any OpenAI-compatible endpoint.
+
+The setting lives in the app's preferences. You can swap models at any time. The same flexibility applies to the Writing Assistant and Archive Agent — you can use the same model everywhere or pair a cheap/local model for one agent and a stronger cloud model for another.
+
+This is a first-class design decision: no Mythos Writer feature should ever be locked to a single AI provider.
+
+## Vault structure the agent builds against
+
+The Brainstorm Agent builds notes inside the **Universes / Story ideas** layout described in [Storage and Organization](02-storage-and-organization.md#default-folder-layout-inside-the-notes-vault).
+
+- Worldbuilding notes (locations, lore, society, governance, history) live under `Universes/<World>/...`.
+- Story-specific notes (story ideas, beats, story-bound characters, cross-universe location refs) live under `Story ideas/<Story Title>/`.
+- When a note doesn't naturally fit either bucket, the agent falls back to the default frontmatter schemas so it remains typed and findable.
+
+The agent extends this structure as needed (new sub-folders per world, new note types), but always preserves the user's existing layout. When in doubt, it asks the user to clarify rather than guessing.
 
 ## In short
 

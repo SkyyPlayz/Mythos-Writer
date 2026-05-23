@@ -1,5 +1,7 @@
 # Overview
 
+> **Mythos Writer — a writing app, with an extra brain, to keep everything in mind so you don't have to.**
+
 Mythos Writer is a writing app designed to feel as comfortable as a word processor while quietly managing all the complex parts of worldbuilding for you. You write in a clean, familiar editor, and the app takes care of organizing your ideas, notes, characters, locations, and timelines in the background.
 
 ## Core promise
@@ -35,3 +37,13 @@ You focus on telling your story. The app handles the rest.
 - **Local-first.** Your files live on your computer by default.
 - **Reversible by default.** Snapshots, history, and rollback for every change.
 - **Approachable.** Looks and feels like a word processor on day one.
+
+## Obsidian compatibility (CEO decision)
+
+Mythos Writer is **fully backwards-compatible with Obsidian vaults**. You can:
+
+- Import an existing Obsidian vault and start writing in it immediately.
+- Open any Mythos Writer vault inside Obsidian and edit notes there.
+- Use the Obsidian Kanban plugin against Mythos Writer's Scene Crafter boards.
+
+This compatibility is a low-cost commitment: most of what "Obsidian-compatible" means is just standard markdown, `[[wiki-links]]`, and frontmatter — which is what we'd write anyway. It does not constrain the editor, the agents, the timeline, or any other product surface. If at any point compatibility starts genuinely blocking a better experience, we will revisit, but the current direction is to keep it.
