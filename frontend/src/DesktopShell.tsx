@@ -434,9 +434,9 @@ export default function DesktopShell() {
   }
 
   const agentFlags = {
-    writingAssistant: appSettings?.agents.writingAssistant.enabled ?? true,
-    brainstorm: appSettings?.agents.brainstorm.enabled ?? true,
-    archive: appSettings?.agents.archive.enabled ?? true,
+    writingAssistant: appSettings?.agents?.writingAssistant?.enabled ?? true,
+    brainstorm: appSettings?.agents?.brainstorm?.enabled ?? true,
+    archive: appSettings?.agents?.archive?.enabled ?? true,
   };
 
   return (
