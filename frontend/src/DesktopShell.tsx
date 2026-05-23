@@ -8,6 +8,7 @@ import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
+import StoryTimeline from './StoryTimeline';
 import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
@@ -64,7 +65,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'timeline';
 
 interface AppMenuBarProps {
   view: AppView;
@@ -114,6 +115,12 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuB
           onClick={() => onSetView('graph')}
         >
           Graph
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'timeline' ? ' active' : ''}`}
+          onClick={() => onSetView('timeline')}
+        >
+          Timeline
         </button>
       </div>
       <button
@@ -485,6 +492,24 @@ export default function DesktopShell() {
         <div className="shell-graph">
           <VaultGraphView onOpenNote={handleOpenSceneByPath} />
         </div>
+      )}
+      {view === 'timeline' && (
+        selectedStory ? (
+          <StoryTimeline
+            key={selectedStory.id}
+            storyPath={selectedStory.path}
+            storyTitle={selectedStory.title}
+            onClose={() => setView('editor')}
+          />
+        ) : (
+          <div className="shell-graph">
+            <div className="shell-editor-empty">
+              <div className="shell-editor-empty-icon">⏱</div>
+              <h2>No Story Selected</h2>
+              <p>Select a story from the Editor view to open its Timeline.</p>
+            </div>
+          </div>
+        )
       )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}

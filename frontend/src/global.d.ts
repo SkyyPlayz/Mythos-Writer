@@ -83,6 +83,18 @@ interface AppSettings {
   onboardingComplete?: boolean;
 }
 
+type TimelineSource = 'explicit_marker' | 'prose';
+
+interface TimelineEntryRow {
+  id: string;
+  scene_path: string;
+  inferred_time: string;
+  confidence: number;
+  source: TimelineSource;
+  notes_json: string | null;
+  created_at: string;
+}
+
 interface GenerationLogRow {
   id: string;
   agent: string;
@@ -189,6 +201,10 @@ interface Window {
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
     onStreamError: (cb: (data: { streamId: string; error: string }) => void) => () => void;
+
+    // Timeline entries (MYT-216)
+    timelineList: (scenePath?: string) => Promise<{ entries: TimelineEntryRow[] }>;
+    timelineUpsert: (entry: TimelineEntryRow) => Promise<{ id: string }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

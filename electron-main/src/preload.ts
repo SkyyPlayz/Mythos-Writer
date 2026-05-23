@@ -169,6 +169,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('voice:error', handler);
     return () => ipcRenderer.removeListener('voice:error', handler);
   },
+
+  // Timeline entries (MYT-216)
+  timelineList: (scenePath?: string) => ipcRenderer.invoke('timeline:list', { scenePath }),
+  timelineUpsert: (entry: unknown) => ipcRenderer.invoke('timeline:upsert', { entry }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
