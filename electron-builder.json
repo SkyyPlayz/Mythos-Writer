@@ -30,5 +30,14 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
   },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}-${version}.${ext}"
+  },
   "publish": null
 }

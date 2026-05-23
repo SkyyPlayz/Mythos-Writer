@@ -81,3 +81,42 @@ jobs:
         with:
           name: macos-dmg
           path: dist-electron/*.dmg
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (frontend)
+        run: npm run lint -w frontend
+
+      - name: Type-check (frontend)
+        run: npm run typecheck -w frontend
+
+      - name: Type-check (electron-main)
+        run: npm run typecheck -w electron-main
+
+      - name: Test (electron-main)
+        run: npm run test -w electron-main
+
+      - name: Test (frontend)
+        run: npm run test -w frontend
+
+      - name: Build and package (Linux AppImage)
+        run: npm run dist:linux
+
+      - name: Upload Linux AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist-electron/*.AppImage
