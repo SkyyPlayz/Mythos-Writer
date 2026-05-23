@@ -86,6 +86,11 @@ export const IPC_CHANNELS = {
   // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
+
+  // Voice IO (MYT-205) — local-first STT + IPC channel
+  VOICE_START: 'voice:start',
+  VOICE_STOP: 'voice:stop',
+  VOICE_TRANSCRIPT_STREAM: 'voice:transcript',
 } as const;
 
 // ─── Main process handlers ───
@@ -589,6 +594,13 @@ export interface AgentBudgetSettings {
   maxTokensPerDay: number;
 }
 
+export interface VoiceSettings {
+  enabled: boolean;
+  cloudFallback: boolean;
+  micDeviceId?: string;
+  openaiApiKey?: string;
+}
+
 export interface AppSettings {
   apiKey: string;
   agents: {
@@ -602,6 +614,7 @@ export interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  voice?: VoiceSettings;
 }
 
 export interface SettingsSetPayload {

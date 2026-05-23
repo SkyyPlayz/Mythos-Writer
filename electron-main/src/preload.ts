@@ -143,6 +143,32 @@ contextBridge.exposeInMainWorld('api', {
   },
   checkForUpdate: () => ipcRenderer.invoke('update:check', undefined),
   installUpdate: () => ipcRenderer.invoke('update:install', undefined),
+
+  // Voice IO (MYT-205) — local-first STT
+  // voiceStart → starts a session; returns { sessionId }
+  voiceStart: (micDeviceId?: string) =>
+    ipcRenderer.invoke('voice:start', { micDeviceId }),
+  // voiceStop → ends the session; triggers cloud transcription when enabled
+  voiceStop: (sessionId: string) =>
+    ipcRenderer.invoke('voice:stop', { sessionId }),
+  // voiceLocalTranscript — fire-and-forget; relay Web Speech API text to main for broadcast
+  voiceLocalTranscript: (sessionId: string, text: string, isFinal: boolean) =>
+    ipcRenderer.send('voice:local-transcript', { sessionId, text, isFinal }),
+  // voiceAudioChunk — fire-and-forget; send raw audio chunk for cloud STT accumulation
+  voiceAudioChunk: (sessionId: string, chunk: ArrayBuffer) =>
+    ipcRenderer.send('voice:audio-chunk', { sessionId, chunk }),
+  // onVoiceTranscript — subscribe to transcript push events from main
+  onVoiceTranscript: (cb: (event: { sessionId: string; text: string; isFinal: boolean }) => void) => {
+    const handler = (_: unknown, data: { sessionId: string; text: string; isFinal: boolean }) => cb(data);
+    ipcRenderer.on('voice:transcript', handler);
+    return () => ipcRenderer.removeListener('voice:transcript', handler);
+  },
+  // onVoiceError — subscribe to voice error push events from main
+  onVoiceError: (cb: (event: { sessionId: string; error: string }) => void) => {
+    const handler = (_: unknown, data: { sessionId: string; error: string }) => cb(data);
+    ipcRenderer.on('voice:error', handler);
+    return () => ipcRenderer.removeListener('voice:error', handler);
+  },
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

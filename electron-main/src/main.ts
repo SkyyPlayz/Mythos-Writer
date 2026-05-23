@@ -112,6 +112,7 @@ import {
   getArchiveStatus,
   runArchiveScan,
 } from './archiveAgent.js';
+import { registerVoiceHandlers } from './voice.js';
 
 const require = createRequire(import.meta.url);
 
@@ -1127,6 +1128,10 @@ app.whenReady().then(async () => {
   registerBrainstormHandler();
   registerWritingAssistantHandler();
   registerVaultAgentHandlers();
+  registerVoiceHandlers(
+    () => mainWindow?.webContents ?? null,
+    loadAppSettings,
+  );
   createWindow();
   initAutoUpdater();
   // Start watching vault for external markdown changes
