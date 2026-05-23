@@ -24,9 +24,12 @@ jobs:
         run: npm ci
 
       - name: Decode Windows signing certificate
-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}
         shell: pwsh
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Write-Host "No Windows signing certificate configured; building unsigned installer."
+            exit 0
+          }
           $certBytes = [Convert]::FromBase64String("$env:WINDOWS_CERTIFICATE_BASE64")
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\certificate.pfx", $certBytes)
           echo "WIN_CSC_LINK=$env:RUNNER_TEMP\certificate.pfx" >> $env:GITHUB_ENV
