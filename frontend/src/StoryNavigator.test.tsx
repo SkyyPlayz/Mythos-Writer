@@ -105,4 +105,46 @@ describe('StoryNavigator', () => {
     render(<StoryNavigator {...makeProps({ stories: [] })} />);
     expect(screen.getByText(/no stories yet/i)).toBeInTheDocument();
   });
+
+  it('moves scene up when ArrowUp is pressed on a non-first scene', () => {
+    const onReorderScenes = vi.fn();
+    render(<StoryNavigator {...makeProps({ onReorderScenes })} />);
+    const sceneTwoRow = screen.getByText('Scene Two').closest('.nav-scene-row')!;
+    fireEvent.keyDown(sceneTwoRow, { key: 'ArrowUp' });
+    expect(onReorderScenes).toHaveBeenCalledWith('st1', 'ch1', ['sc2', 'sc1']);
+  });
+
+  it('moves scene down when ArrowDown is pressed on a non-last scene', () => {
+    const onReorderScenes = vi.fn();
+    render(<StoryNavigator {...makeProps({ onReorderScenes })} />);
+    const sceneOneRow = screen.getByText('Scene One').closest('.nav-scene-row')!;
+    fireEvent.keyDown(sceneOneRow, { key: 'ArrowDown' });
+    expect(onReorderScenes).toHaveBeenCalledWith('st1', 'ch1', ['sc2', 'sc1']);
+  });
+
+  it('does not call onReorderScenes when ArrowUp is pressed on the first scene', () => {
+    const onReorderScenes = vi.fn();
+    render(<StoryNavigator {...makeProps({ onReorderScenes })} />);
+    const sceneOneRow = screen.getByText('Scene One').closest('.nav-scene-row')!;
+    fireEvent.keyDown(sceneOneRow, { key: 'ArrowUp' });
+    expect(onReorderScenes).not.toHaveBeenCalled();
+  });
+
+  it('does not call onReorderScenes when ArrowDown is pressed on the last scene', () => {
+    const onReorderScenes = vi.fn();
+    render(<StoryNavigator {...makeProps({ onReorderScenes })} />);
+    const sceneTwoRow = screen.getByText('Scene Two').closest('.nav-scene-row')!;
+    fireEvent.keyDown(sceneTwoRow, { key: 'ArrowDown' });
+    expect(onReorderScenes).not.toHaveBeenCalled();
+  });
+
+  it('selects scene on Enter key, no reorder', () => {
+    const onSelectScene = vi.fn();
+    const onReorderScenes = vi.fn();
+    render(<StoryNavigator {...makeProps({ onSelectScene, onReorderScenes })} />);
+    const sceneOneRow = screen.getByText('Scene One').closest('.nav-scene-row')!;
+    fireEvent.keyDown(sceneOneRow, { key: 'Enter' });
+    expect(onSelectScene).toHaveBeenCalledWith(scene1, chapter1, story1);
+    expect(onReorderScenes).not.toHaveBeenCalled();
+  });
 });
