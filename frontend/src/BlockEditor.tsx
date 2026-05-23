@@ -1,15 +1,21 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import type { Block, Scene, DraftState } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import './BlockEditor.css';
+
+export interface BlockEditorApi {
+  jumpToText: (text: string) => void;
+  insertWikiLink: (link: string, anchorText: string) => void;
+}
 
 interface Props {
   scene: Scene;
   onBlocksChange: (blocks: Block[]) => void;
   onDraftStateChange: (state: DraftState) => void;
+  onEditorReady?: (api: BlockEditorApi) => void;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -36,12 +42,14 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
   return lines.join('\n').trim();
 }
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBlocksChangeRef = useRef(onBlocksChange);
   onBlocksChangeRef.current = onBlocksChange;
   const blockIdRef = useRef(scene.blocks[0]?.id ?? crypto.randomUUID());
+  const onEditorReadyRef = useRef(onEditorReady);
+  onEditorReadyRef.current = onEditorReady;
 
   const editor = useEditor({
     extensions: [StarterKit, WikiLink, Markdown],
@@ -64,6 +72,49 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange 
       }, 800);
     },
   });
+
+  // Expose jump-to-text and insert-wiki-link APIs to the parent once the editor is ready
+  useEffect(() => {
+    if (!editor) return;
+    const cb = onEditorReadyRef.current;
+    if (!cb) return;
+
+    const findTextRange = (text: string): { from: number; to: number } | null => {
+      const needle = text.toLowerCase();
+      let result: { from: number; to: number } | null = null;
+      editor.state.doc.descendants((node, pos) => {
+        if (result) return false;
+        if (node.isText && node.text) {
+          const idx = node.text.toLowerCase().indexOf(needle);
+          if (idx >= 0) {
+            result = { from: pos + idx, to: pos + idx + text.length };
+          }
+        }
+        return true;
+      });
+      return result;
+    };
+
+    cb({
+      jumpToText: (text: string) => {
+        const range = findTextRange(text);
+        if (range) {
+          editor.commands.setTextSelection(range);
+          editor.commands.scrollIntoView();
+        }
+      },
+      insertWikiLink: (link: string, anchorText: string) => {
+        const range = findTextRange(anchorText);
+        if (range) {
+          editor.chain().setTextSelection(range).insertContent(link).run();
+        } else {
+          editor.chain().focus().insertContent(link).run();
+        }
+      },
+    });
+  // Run only when the editor instance changes (new scene key causes remount)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   const handleDraftChange = (state: DraftState) => {
     setDraftState(state);

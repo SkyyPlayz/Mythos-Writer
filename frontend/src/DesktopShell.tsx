@@ -3,7 +3,7 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, E
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
-import BlockEditor from './BlockEditor';
+import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import SettingsPanel from './SettingsPanel';
@@ -128,6 +128,19 @@ export default function DesktopShell() {
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorApiRef = useRef<BlockEditorApi | null>(null);
+
+  const handleEditorReady = useCallback((api: BlockEditorApi) => {
+    editorApiRef.current = api;
+  }, []);
+
+  const handleJumpToText = useCallback((text: string) => {
+    editorApiRef.current?.jumpToText(text);
+  }, []);
+
+  const handleInsertWikiLink = useCallback((link: string, anchorText: string) => {
+    editorApiRef.current?.insertWikiLink(link, anchorText);
+  }, []);
   const dragState = useRef<DragState | null>(null);
 
   useEffect(() => {
@@ -455,6 +468,7 @@ export default function DesktopShell() {
               scene={selectedScene}
               onBlocksChange={handleBlocksChange}
               onDraftStateChange={handleDraftStateChange}
+              onEditorReady={handleEditorReady}
             />
           ) : selectedEntity ? (
             <EntityDetail
@@ -500,6 +514,8 @@ export default function DesktopShell() {
           selectedStory={selectedStory}
           writingAssistantEnabled={agentFlags.writingAssistant}
           archiveEnabled={agentFlags.archive}
+          onJumpToText={handleJumpToText}
+          onInsertWikiLink={handleInsertWikiLink}
         />
       </div>
       </div>}{/* end shell-panels */}

@@ -1,0 +1,253 @@
+import { useState, useEffect, useCallback } from 'react';
+import type { Scene } from './types';
+import './ArchivePanel.css';
+
+interface ArchivePayload {
+  kind: 'inconsistency' | 'wiki-link';
+  anchorText?: string;
+  link?: string;
+  entityName?: string;
+}
+
+interface ArchiveItem {
+  id: string;
+  kind: 'inconsistency' | 'wiki-link';
+  description: string;
+  anchorText: string;
+  wikiLink: string | null;
+  confidence: number;
+  createdAt: string;
+  status: 'proposed' | 'rejected' | 'accepted';
+}
+
+const MOCK_ITEMS: ArchiveItem[] = [
+  {
+    id: 'arc-inc-mock-1',
+    kind: 'inconsistency',
+    description: 'The Foundry appears in this scene but was destroyed in chapter 1.',
+    anchorText: 'The Foundry gates swung open',
+    wikiLink: null,
+    confidence: 0.91,
+    createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+    status: 'proposed',
+  },
+  {
+    id: 'arc-wl-mock-1',
+    kind: 'wiki-link',
+    description: 'Detected reference to a known entity — add a wiki-link.',
+    anchorText: 'the foundry',
+    wikiLink: '[[The Foundry]]',
+    confidence: 0.87,
+    createdAt: new Date(Date.now() - 7_200_000).toISOString(),
+    status: 'proposed',
+  },
+];
+
+function parseItem(raw: Record<string, unknown>): ArchiveItem | null {
+  if (!raw.payload_json) return null;
+  let payload: ArchivePayload;
+  try {
+    payload = JSON.parse(raw.payload_json as string);
+  } catch {
+    return null;
+  }
+  if (payload.kind !== 'inconsistency' && payload.kind !== 'wiki-link') return null;
+  return {
+    id: raw.id as string,
+    kind: payload.kind,
+    description: (raw.rationale as string) || '',
+    anchorText: payload.anchorText || payload.link?.replace(/\[\[|\]\]/g, '') || '',
+    wikiLink: payload.kind === 'wiki-link' ? (payload.link ?? null) : null,
+    confidence: (raw.confidence as number) ?? 0,
+    createdAt: (raw.created_at as string) || new Date().toISOString(),
+    status: (raw.status as ArchiveItem['status']) || 'proposed',
+  };
+}
+
+export interface Props {
+  scene: Scene | null;
+  onJumpToText: (text: string) => void;
+  onInsertWikiLink: (link: string, anchorText: string) => void;
+}
+
+export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: Props) {
+  const [items, setItems] = useState<ArchiveItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const api = (window as any).api;
+        if (typeof api?.suggestionsList === 'function') {
+          const result = await api.suggestionsList(undefined, 'archive');
+          if (cancelled) return;
+          const rows: Record<string, unknown>[] = result?.suggestions ?? [];
+          const parsed = rows.map(parseItem).filter(Boolean) as ArchiveItem[];
+          setItems(parsed);
+          setIsLive(true);
+        } else {
+          if (!cancelled) setItems(MOCK_ITEMS);
+        }
+      } catch {
+        if (!cancelled) setItems(MOCK_ITEMS);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [scene?.id]);
+
+  const handleReject = useCallback(async (id: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      if (typeof api?.suggestionsReject === 'function') {
+        await api.suggestionsReject(id);
+      }
+    } catch { /* optimistic update already applied */ }
+  }, []);
+
+  const handleAcceptWikiLink = useCallback(async (item: ArchiveItem) => {
+    if (!item.wikiLink) return;
+    onInsertWikiLink(item.wikiLink, item.anchorText);
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      if (typeof api?.suggestionsAccept === 'function') {
+        await api.suggestionsAccept(item.id);
+      }
+    } catch { /* optimistic update already applied */ }
+  }, [onInsertWikiLink]);
+
+  const handleJump = useCallback((anchorText: string) => {
+    onJumpToText(anchorText);
+  }, [onJumpToText]);
+
+  if (loading) {
+    return (
+      <div className="archive-panel">
+        <div className="ap-loading" aria-label="Loading archive suggestions">Loading…</div>
+      </div>
+    );
+  }
+
+  const proposed = items.filter((i) => i.status === 'proposed');
+  const inconsistencies = proposed.filter((i) => i.kind === 'inconsistency');
+  const wikiLinks = proposed.filter((i) => i.kind === 'wiki-link');
+
+  return (
+    <div className="archive-panel">
+      {!isLive && (
+        <div className="ap-mock-banner" role="note">
+          Preview mode — live API not yet connected.
+        </div>
+      )}
+
+      {!scene && (
+        <div className="ap-no-scene">Select a scene to see archive suggestions.</div>
+      )}
+
+      <section aria-label="Inconsistencies">
+        <div className="ap-section-header">
+          <h3 className="ap-section-title">Inconsistencies</h3>
+          {inconsistencies.length > 0 && (
+            <span className="ap-badge" aria-label={`${inconsistencies.length} inconsistencies`}>
+              {inconsistencies.length}
+            </span>
+          )}
+        </div>
+
+        {inconsistencies.length === 0 ? (
+          <div className="ap-empty-section" role="status">No inconsistencies found.</div>
+        ) : (
+          <ul className="ap-card-list" aria-label="Inconsistency list">
+            {inconsistencies.map((item) => (
+              <li
+                key={item.id}
+                className="ap-card ap-card-inconsistency"
+                role="article"
+                aria-label={`Inconsistency: ${item.description}`}
+              >
+                <p className="ap-card-description">{item.description}</p>
+                {item.anchorText && (
+                  <p className="ap-card-anchor">
+                    Near: <em>&ldquo;{item.anchorText}&rdquo;</em>
+                  </p>
+                )}
+                <div className="ap-actions">
+                  {item.anchorText && (
+                    <button
+                      className="ap-btn ap-btn-jump"
+                      onClick={() => handleJump(item.anchorText)}
+                      aria-label={`Jump to line: ${item.anchorText}`}
+                    >
+                      Jump to Line
+                    </button>
+                  )}
+                  <button
+                    className="ap-btn ap-btn-reject"
+                    onClick={() => handleReject(item.id)}
+                    aria-label="Dismiss inconsistency"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-label="Wiki-link suggestions">
+        <div className="ap-section-header">
+          <h3 className="ap-section-title">Wiki Links</h3>
+          {wikiLinks.length > 0 && (
+            <span className="ap-badge" aria-label={`${wikiLinks.length} wiki-link suggestions`}>
+              {wikiLinks.length}
+            </span>
+          )}
+        </div>
+
+        {wikiLinks.length === 0 ? (
+          <div className="ap-empty-section" role="status">No wiki-link suggestions.</div>
+        ) : (
+          <ul className="ap-card-list" aria-label="Wiki-link list">
+            {wikiLinks.map((item) => (
+              <li
+                key={item.id}
+                className="ap-card ap-card-wikilink"
+                role="article"
+                aria-label={`Wiki-link suggestion: ${item.wikiLink}`}
+              >
+                <p className="ap-card-link-text">{item.wikiLink}</p>
+                <p className="ap-card-description">{item.description}</p>
+                <div className="ap-actions">
+                  <button
+                    className="ap-btn ap-btn-accept"
+                    onClick={() => handleAcceptWikiLink(item)}
+                    aria-label={`Accept wiki-link ${item.wikiLink}`}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className="ap-btn ap-btn-reject"
+                    onClick={() => handleReject(item.id)}
+                    aria-label={`Reject wiki-link ${item.wikiLink}`}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
