@@ -13,6 +13,7 @@ import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
+import BetaReadMargin from './BetaReadMargin';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -167,6 +168,8 @@ export default function DesktopShell() {
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
+  const [betaReadLoading, setBetaReadLoading] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
@@ -183,6 +186,50 @@ export default function DesktopShell() {
     editorApiRef.current?.insertWikiLink(link, anchorText);
   }, []);
   const dragState = useRef<DragState | null>(null);
+
+  // ─── Beta-Read Mode (MYT-237) ───
+
+  const loadBetaReadComments = useCallback(async (sceneId: string) => {
+    try {
+      const res = await (window as any).api.betaReadList(sceneId);
+      setBetaReadComments(res.comments ?? []);
+    } catch {
+      setBetaReadComments([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedScene) {
+      loadBetaReadComments(selectedScene.id);
+    } else {
+      setBetaReadComments([]);
+    }
+  }, [selectedScene?.id, loadBetaReadComments]);
+
+  const handleBetaReadRequest = useCallback(async (selectedText: string) => {
+    if (!selectedScene || betaReadLoading) return;
+    setBetaReadLoading(true);
+    try {
+      const context = `You are a beta reader giving constructive feedback. Highlight strengths, flag anything confusing, and suggest one improvement. Be concise (2–4 sentences).\n\nPassage:\n\n${selectedText}`;
+      const res = await (window as any).api.agentWritingAssistant(selectedText, context);
+      const commentText: string = res?.text ?? 'No feedback generated.';
+      await (window as any).api.betaReadCreate(selectedScene.id, selectedText, commentText);
+      await loadBetaReadComments(selectedScene.id);
+    } catch {
+      // non-fatal
+    } finally {
+      setBetaReadLoading(false);
+    }
+  }, [selectedScene, betaReadLoading, loadBetaReadComments]);
+
+  const handleBetaReadDismiss = useCallback(async (id: string) => {
+    try {
+      await (window as any).api.betaReadDismiss(id);
+      setBetaReadComments((prev) => prev.filter((c) => c.id !== id));
+    } catch {
+      // non-fatal
+    }
+  }, []);
 
   useEffect(() => {
     if (!window.api.onBudgetCapHit) return;
@@ -571,13 +618,30 @@ export default function DesktopShell() {
       <div className="shell-center-column">
         <div className="shell-editor">
           {selectedScene ? (
-            <BlockEditor
-              key={selectedScene.id}
-              scene={selectedScene}
-              onBlocksChange={handleBlocksChange}
-              onDraftStateChange={handleDraftStateChange}
-              onEditorReady={handleEditorReady}
-            />
+            <div className="shell-editor-beta-wrap">
+              <BlockEditor
+                key={selectedScene.id}
+                scene={selectedScene}
+                onBlocksChange={handleBlocksChange}
+                onDraftStateChange={handleDraftStateChange}
+                onEditorReady={handleEditorReady}
+                onBetaReadRequest={handleBetaReadRequest}
+              />
+              {(betaReadComments.length > 0 || betaReadLoading) && (
+                <div className="shell-beta-margin">
+                  {betaReadLoading && (
+                    <div className="br-loading" aria-live="polite">
+                      <span className="wa-spinner" aria-hidden="true" />
+                      Reading…
+                    </div>
+                  )}
+                  <BetaReadMargin
+                    comments={betaReadComments}
+                    onDismiss={handleBetaReadDismiss}
+                  />
+                </div>
+              )}
+            </div>
           ) : selectedEntity ? (
             <EntityDetail
               key={selectedEntity.id}

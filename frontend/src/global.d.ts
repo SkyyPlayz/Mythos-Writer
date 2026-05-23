@@ -73,7 +73,7 @@ interface AppSettings {
     brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
-  theme: 'light' | 'dark';
+  theme: 'light' | 'dark' | 'system';
   snapshots?: {
     maxPerScene: number;
     maxAgeDays: number;
@@ -97,6 +97,15 @@ interface GenerationLogRow {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+}
+
+interface BetaReadComment {
+  id: string;
+  scene_id: string;
+  anchor_text: string;
+  comment_text: string;
+  created_at: string;
+  dismissed_at: string | null;
 }
 
 interface BrainstormExtractedEntity {
@@ -211,6 +220,18 @@ interface Window {
     checkForUpdate: () => Promise<{ queued: boolean; reason?: string }>;
     getUpdateInfo: () => Promise<{ version: string; releaseNotes: string | null } | null>;
     installUpdate: (quit?: boolean) => Promise<{ ok: boolean; reason?: string }>;
+
+    // Writing Assistant scheduled scan (MYT-233) + push subscription (MYT-236)
+    writingScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ tips: string[]; scannedAt: string }>;
+    onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => () => void;
+
+    // Archive continuity-check scheduled scan (MYT-234)
+    archiveScan: (sceneText: string, scenePath: string) => Promise<{ suggestions: unknown[]; inconsistenciesFound: number; wikiLinksFound: number }>;
+
+    // Beta-Read Mode (MYT-237) — anchored inline comments
+    betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;
+    betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
+    betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

@@ -127,6 +127,9 @@ export const IPC_CHANNELS = {
   BETA_READ_CREATE: 'betaRead:create',
   BETA_READ_LIST: 'betaRead:list',
   BETA_READ_DISMISS: 'betaRead:dismiss',
+
+  // EPUB export (MYT-253)
+  EXPORT_EPUB: 'export:epub',
 } as const;
 
 // ─── Main process handlers ───
@@ -218,6 +221,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
   [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
+  [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -1096,6 +1100,17 @@ export interface BetaReadDismissPayload {
 export interface BetaReadDismissResponse {
   id: string;
   dismissed: boolean;
+}
+
+// ─── EPUB export (MYT-253) ───
+
+export interface ExportEpubPayload {
+  storyId: string;
+}
+
+export interface ExportEpubResponse {
+  path: string | null;
+  cancelled: boolean;
 }
 
 // ─── Budget enforcement push event (MYT-207) ───
