@@ -12,6 +12,8 @@
     "build": "electron-vite build && electron-builder --win zip",
     "build:installer": "electron-vite build && electron-builder --win nsis",
     "dist": "electron-vite build && electron-builder --win",
+    "dist:mac": "electron-vite build && electron-builder --mac dmg --publish never",
+    "dist:linux": "electron-vite build && electron-builder --linux AppImage --publish never",
     "build:electron": "electron-vite build",
     "start": "electron .",
     "package": "electron-builder --win zip",

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
+import ArchivePanel from './ArchivePanel';
 import './RightSidebar.css';
 
 type Tab = 'notes' | 'properties' | 'ai';
@@ -14,6 +15,8 @@ interface Props {
   selectedStory: Story | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
+  onJumpToText?: (text: string) => void;
+  onInsertWikiLink?: (link: string, anchorText: string) => void;
 }
 
 function NotesPanel({ scene }: { scene: Scene | null }) {
@@ -129,10 +132,21 @@ function PropertiesPanel({
   );
 }
 
+type AiSubTab = 'writing' | 'vault' | 'archive';
 
-type AiSubTab = 'writing' | 'vault';
-
-function AiPanel({ scene, writingAssistantEnabled = true, archiveEnabled = true }: { scene: Scene | null; writingAssistantEnabled?: boolean; archiveEnabled?: boolean }) {
+function AiPanel({
+  scene,
+  writingAssistantEnabled = true,
+  archiveEnabled = true,
+  onJumpToText = () => {},
+  onInsertWikiLink = () => {},
+}: {
+  scene: Scene | null;
+  writingAssistantEnabled?: boolean;
+  archiveEnabled?: boolean;
+  onJumpToText?: (text: string) => void;
+  onInsertWikiLink?: (link: string, anchorText: string) => void;
+}) {
   const [subTab, setSubTab] = useState<AiSubTab>('writing');
 
   return (
@@ -150,14 +164,37 @@ function AiPanel({ scene, writingAssistantEnabled = true, archiveEnabled = true 
         >
           Vault
         </button>
+        <button
+          className={`ai-subtab${subTab === 'archive' ? ' active' : ''}`}
+          onClick={() => setSubTab('archive')}
+        >
+          Archive
+        </button>
       </div>
       {subTab === 'writing' && <WritingAssistantPanel scene={scene} enabled={writingAssistantEnabled} />}
       {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
+      {subTab === 'archive' && (
+        <ArchivePanel
+          scene={scene}
+          onJumpToText={onJumpToText}
+          onInsertWikiLink={onInsertWikiLink}
+        />
+      )}
     </div>
   );
 }
 
-export default function RightSidebar({ activeTab, onTabChange, selectedScene, selectedChapter, selectedStory, writingAssistantEnabled = true, archiveEnabled = true }: Props) {
+export default function RightSidebar({
+  activeTab,
+  onTabChange,
+  selectedScene,
+  selectedChapter,
+  selectedStory,
+  writingAssistantEnabled = true,
+  archiveEnabled = true,
+  onJumpToText,
+  onInsertWikiLink,
+}: Props) {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'notes', label: 'Notes' },
     { id: 'properties', label: 'Properties' },
@@ -182,7 +219,15 @@ export default function RightSidebar({ activeTab, onTabChange, selectedScene, se
         {activeTab === 'properties' && (
           <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
         )}
-        {activeTab === 'ai' && <AiPanel scene={selectedScene} writingAssistantEnabled={writingAssistantEnabled} archiveEnabled={archiveEnabled} />}
+        {activeTab === 'ai' && (
+          <AiPanel
+            scene={selectedScene}
+            writingAssistantEnabled={writingAssistantEnabled}
+            archiveEnabled={archiveEnabled}
+            onJumpToText={onJumpToText}
+            onInsertWikiLink={onInsertWikiLink}
+          />
+        )}
       </div>
     </div>
   );

@@ -11,7 +11,8 @@ declare module 'electron' {
     invoke(channel: string, payload?: unknown): Promise<unknown>;
   };
   export const ipcMain: {
-    handle(channel: string, handler: (...args: unknown[]) => Promise<unknown>): void;
+    handle(channel: string, handler: (...args: unknown[]) => unknown): void;
+    on(channel: string, handler: (...args: unknown[]) => void): void;
   };
   export const app: {
     getPath(name: string): string;

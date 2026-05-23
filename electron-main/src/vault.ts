@@ -14,9 +14,78 @@ import type {
 } from './ipc.js';
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 
+// ─── Manuscript layout ───
+
+export const MANUSCRIPT_DIR = 'Manuscript';
+
+/** Convert a human title to a filesystem-safe slug. */
+export function toSlug(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')  // strip diacritics
+    .replace(/[^a-z0-9\s-]/g, '')    // keep alphanum, spaces, hyphens
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'untitled';
+}
+
+/**
+ * Deterministically resolve slug collisions inside a parent directory.
+ * Returns the first relative path (parentDir/slug[ext] or parentDir/slug-N[ext]) not yet on disk.
+ */
+export function resolveSlugCollision(
+  vaultRoot: string,
+  parentDir: string,
+  baseSlug: string,
+  ext = ''
+): string {
+  const make = (suffix: string) => {
+    const name = `${baseSlug}${suffix}${ext}`;
+    return parentDir ? `${parentDir}/${name}` : name;
+  };
+  if (!fs.existsSync(path.join(vaultRoot, make('')))) return make('');
+  for (let i = 2; i <= 9999; i++) {
+    const candidate = make(`-${i}`);
+    if (!fs.existsSync(path.join(vaultRoot, candidate))) return candidate;
+  }
+  throw new Error(`Too many slug collisions for: ${baseSlug}`);
+}
+
+/**
+ * Compute a chapter directory path: Manuscript/<story-slug>/<chapter-slug>.
+ * Resolves collisions deterministically against existing directories.
+ */
+export function chapterVaultPath(
+  vaultRoot: string,
+  storyTitle: string,
+  chapterTitle: string
+): string {
+  return resolveSlugCollision(
+    vaultRoot,
+    `${MANUSCRIPT_DIR}/${toSlug(storyTitle)}`,
+    toSlug(chapterTitle)
+  );
+}
+
+/**
+ * Compute a scene file path: <chapterDir>/<scene-slug>.md.
+ * chapterDir is the actual chapter directory path as stored in the manifest.
+ * Resolves collisions deterministically against existing .md files.
+ */
+export function sceneVaultPath(
+  vaultRoot: string,
+  chapterDir: string,
+  sceneTitle: string
+): string {
+  return resolveSlugCollision(vaultRoot, chapterDir, toSlug(sceneTitle), '.md');
+}
+
 // ─── Path safety ───
 
-function safePath(vaultRoot: string, relativePath: string): string {
+export function safePath(vaultRoot: string, relativePath: string): string {
   const resolved = path.resolve(vaultRoot, relativePath);
   if (!resolved.startsWith(path.resolve(vaultRoot) + path.sep) && resolved !== path.resolve(vaultRoot)) {
     throw new Error(`Path traversal denied: ${relativePath}`);
@@ -41,6 +110,31 @@ export function writeVaultFile(
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(fullPath, content, 'utf-8');
   return { path: filePath, bytes: Buffer.byteLength(content, 'utf-8') };
+}
+
+/**
+ * Atomic vault write: temp file → fdatasync → rename.
+ * A crash between writeSync and renameSync leaves the original file intact.
+ */
+export function writeVaultFileAtomic(
+  vaultRoot: string,
+  filePath: string,
+  content: string
+): { path: string; bytes: number } {
+  const fullPath = safePath(vaultRoot, filePath);
+  const dir = path.dirname(fullPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${fullPath}.tmp`;
+  const buf = Buffer.from(content, 'utf-8');
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeSync(fd, buf);
+    fs.fdatasyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, fullPath);
+  return { path: filePath, bytes: buf.byteLength };
 }
 
 export function listVaultFiles(
@@ -159,6 +253,26 @@ export function writeSceneFile(vaultRoot: string, relativePath: string, data: Sc
   };
   const content = serializeFrontmatter(fm, data.prose);
   writeVaultFile(vaultRoot, relativePath, content);
+}
+
+/** Atomic variant of writeSceneFile — temp + fdatasync + rename. */
+export function writeSceneFileAtomic(vaultRoot: string, relativePath: string, data: SceneFileData): void {
+  const fm: Frontmatter = {
+    id: data.id,
+    title: data.title,
+    ...(data.chapterId ? { chapterId: data.chapterId } : {}),
+    ...(data.storyId ? { storyId: data.storyId } : {}),
+    ...(data.order !== undefined ? { order: data.order } : {}),
+    ...(data.tags?.length ? { tags: data.tags } : {}),
+    ...(data.goal ? { goal: data.goal } : {}),
+    ...(data.conflict ? { conflict: data.conflict } : {}),
+    ...(data.outcome ? { outcome: data.outcome } : {}),
+    ...(data.pov ? { pov: data.pov } : {}),
+    ...(data.storyTime ? { storyTime: data.storyTime } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  const content = serializeFrontmatter(fm, data.prose);
+  writeVaultFileAtomic(vaultRoot, relativePath, content);
 }
 
 export function readSceneFile(vaultRoot: string, relativePath: string): SceneFileData {
@@ -433,6 +547,15 @@ export async function startVaultWatcher(
   });
   activeWatcher.on('add', (filePath: string) => {
     if (filePath.endsWith('.md')) onChanged(filePath);
+  });
+  activeWatcher.on('unlink', (filePath: string) => {
+    onChanged(filePath);
+  });
+  activeWatcher.on('addDir', (filePath: string) => {
+    onChanged(filePath);
+  });
+  activeWatcher.on('unlinkDir', (filePath: string) => {
+    onChanged(filePath);
   });
 }
 

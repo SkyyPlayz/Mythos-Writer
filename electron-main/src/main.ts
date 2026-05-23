@@ -57,6 +57,20 @@ import {
   type TimelineListPayload,
   type TimelineUpsertPayload,
   type GenerationLogRecentPayload,
+  type GenerationLogListPayload,
+  type GenerationLogGetPayload,
+  type ArchiveScanPayload,
+  type ChapterCreatePayload,
+  type SceneCreatePayload,
+  type ChapterListPayload,
+  type ChapterGetPayload,
+  type ChapterSavePayload,
+  type SceneListPayload,
+  type SceneGetPayload,
+  type SceneSavePayload,
+  type VersionListPayload,
+  type VersionGetPayload,
+  type VersionRollbackPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -73,9 +87,13 @@ import {
   listTimelineEntries,
   insertGenerationLog,
   listGenerationLog,
+  countGenerationLog,
+  getGenerationLogEntry,
+  truncateGenerationLogBody,
 } from './db.js';
 import { evaluateAutoApply } from './budget.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
+import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
   readVaultFile,
   writeVaultFile,
@@ -91,6 +109,11 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  writeSceneFile,
+  writeSceneFileAtomic,
+  readSceneFile,
+  chapterVaultPath,
+  sceneVaultPath,
 } from './vault.js';
 import { openManifest } from './manifest.js';
 import {
@@ -102,11 +125,35 @@ import {
   reindexEntities,
   getEntityBacklinks,
 } from './entities.js';
+import {
+  buildArchiveIndex,
+  getArchiveIndex,
+  getArchiveStatus,
+  runArchiveScan,
+} from './archiveAgent.js';
+import { registerVoiceHandlers } from './voice.js';
 
 const require = createRequire(import.meta.url);
 
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
+
+// Maps requestId → AbortController for in-flight streaming agent calls.
+// Populated on invoke, cleaned up in finally block or on cancel.
+const agentControllers = new Map<string, AbortController>();
+
+function registerAgentCancelHandlers(): void {
+  for (const channel of [
+    'agent:writing-assistant:stream-cancel',
+    'agent:brainstorm:stream-cancel',
+    'agent:vault-check:stream-cancel',
+  ] as const) {
+    ipcMain.on(channel, (_event, { requestId }: { requestId: string }) => {
+      agentControllers.get(requestId)?.abort();
+      agentControllers.delete(requestId);
+    });
+  }
+}
 
 // ─── Vault root ───
 // User can open any local folder as their vault; the chosen path is persisted
@@ -491,6 +538,69 @@ const handlers: IpcHandlers = {
     return { restored: target, preRestoreSnapshot };
   },
 
+  // ─── Versioned drafts (Phase 2 — MYT-198) ───
+  [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => {
+    ensureVaultDir();
+    return { versions: listVersions(getVaultRoot(), payload.sceneId) };
+  },
+  [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => {
+    ensureVaultDir();
+    return { version: getVersion(getVaultRoot(), payload.sceneId, payload.ts) };
+  },
+  [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => {
+    ensureVaultDir();
+    // Locate scene in manifest to get its vault path and current metadata
+    const manifest = readManifest(getManifestPath());
+    let found = null as import('./ipc.js').SceneEntry | null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) { found = scene; break outer; }
+      }
+    }
+    if (!found) found = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+
+    safePath(getVaultRoot(), found.path);
+
+    let currentProse = '';
+    try {
+      currentProse = readSceneFile(getVaultRoot(), found.path).prose;
+    } catch { /* scene file may not exist yet */ }
+
+    const { restoredVersion, preRollbackVersion } = rollbackVersion(
+      getVaultRoot(),
+      payload.sceneId,
+      payload.ts,
+      currentProse,
+    );
+
+    // Write restored prose back into the scene file, preserving frontmatter
+    writeSceneFileAtomic(getVaultRoot(), found.path, {
+      id: found.id,
+      title: found.title,
+      chapterId: found.chapterId,
+      storyId: found.storyId,
+      order: found.order,
+      prose: restoredVersion.content,
+    });
+
+    // Sync prose block in manifest
+    const nowStr = new Date().toISOString();
+    const proseBlock = found.blocks.find((b) => b.type === 'prose');
+    if (proseBlock) {
+      proseBlock.content = restoredVersion.content;
+      proseBlock.updatedAt = nowStr;
+    } else {
+      found.blocks.push({ id: crypto.randomUUID(), type: 'prose', order: 0, content: restoredVersion.content, updatedAt: nowStr });
+    }
+    found.updatedAt = nowStr;
+    writeManifest(getManifestPath(), manifest);
+
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
+    return { restoredVersion, preRollbackVersion };
+  },
+
   // ─── Entity CRUD ───
   [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => {
     ensureVaultDir();
@@ -553,7 +663,247 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => {
     ensureVaultDir();
-    return { entries: listGenerationLog({ limit: payload.limit, agent: payload.agent }) };
+    const opts = {
+      agent: payload.agent,
+      dateFrom: payload.dateFrom,
+      dateTo: payload.dateTo,
+      search: payload.search,
+    };
+    const entries = listGenerationLog({ ...opts, limit: payload.limit, offset: payload.offset }).map(truncateGenerationLogBody);
+    const total = countGenerationLog(opts);
+    return { entries, total };
+  },
+
+  [IPC_CHANNELS.GENERATION_LOG_LIST]: (payload: GenerationLogListPayload) => {
+    ensureVaultDir();
+    const pageSize = payload.pageSize ?? 20;
+    const page = payload.page ?? 0;
+    const agent = payload.agent && payload.agent !== 'all' ? payload.agent : undefined;
+    const entries = listGenerationLog({ limit: pageSize, offset: page * pageSize, agent }).map(truncateGenerationLogBody);
+    const total = countGenerationLog({ agent });
+    return { entries, total, page, pageSize };
+  },
+
+  [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => {
+    ensureVaultDir();
+    return { entry: getGenerationLogEntry(payload.id) };
+  },
+
+  // ─── Chapter / Scene creation (Phase 2 — MYT-195) ───
+  [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+
+    const dirPath = chapterVaultPath(getVaultRoot(), story.title, payload.title);
+    const fullDir = path.join(getVaultRoot(), dirPath);
+    if (!fs.existsSync(fullDir)) fs.mkdirSync(fullDir, { recursive: true });
+
+    const nowStr = new Date().toISOString();
+    const chapter = {
+      id: crypto.randomUUID(),
+      title: payload.title,
+      path: dirPath,
+      order: payload.order ?? story.chapters.length,
+      scenes: [],
+      createdAt: nowStr,
+      updatedAt: nowStr,
+    };
+    story.chapters.push(chapter);
+    writeManifest(getManifestPath(), manifest);
+    return chapter;
+  },
+
+  [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+    const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+    if (!chapter) throw new Error(`Chapter not found: ${payload.chapterId}`);
+
+    const filePath = sceneVaultPath(getVaultRoot(), chapter.path, payload.title);
+    const nowStr = new Date().toISOString();
+    const scene = {
+      id: crypto.randomUUID(),
+      title: payload.title,
+      path: filePath,
+      order: payload.order ?? chapter.scenes.length,
+      chapterId: payload.chapterId,
+      storyId: payload.storyId,
+      blocks: [],
+      draftState: 'in-progress' as const,
+      createdAt: nowStr,
+      updatedAt: nowStr,
+    };
+    writeSceneFile(getVaultRoot(), filePath, {
+      id: scene.id,
+      title: scene.title,
+      chapterId: scene.chapterId,
+      storyId: scene.storyId,
+      order: scene.order,
+      prose: '',
+    });
+    chapter.scenes.push(scene);
+    writeManifest(getManifestPath(), manifest);
+    return scene;
+  },
+
+  // ─── Chapter / Scene save+load (MYT-196) ───
+  [IPC_CHANNELS.CHAPTER_LIST]: (payload: ChapterListPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+    return { chapters: story.chapters };
+  },
+
+  [IPC_CHANNELS.CHAPTER_GET]: (payload: ChapterGetPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    for (const story of manifest.stories) {
+      const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+      if (chapter) return { chapter };
+    }
+    return { chapter: null };
+  },
+
+  [IPC_CHANNELS.CHAPTER_SAVE]: (payload: ChapterSavePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    let found = null as typeof manifest.stories[0]['chapters'][0] | null;
+    for (const story of manifest.stories) {
+      const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+      if (chapter) { found = chapter; break; }
+    }
+    if (!found) throw new Error(`Chapter not found: ${payload.chapterId}`);
+    if (payload.title !== undefined) found.title = payload.title;
+    if (payload.order !== undefined) found.order = payload.order;
+    found.updatedAt = new Date().toISOString();
+    writeManifest(getManifestPath(), manifest);
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'chapter', id: found.id });
+    return { chapter: found };
+  },
+
+  [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    for (const story of manifest.stories) {
+      const chapter = story.chapters.find((c) => c.id === payload.chapterId);
+      if (chapter) return { scenes: chapter.scenes };
+    }
+    throw new Error(`Chapter not found: ${payload.chapterId}`);
+  },
+
+  [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    // Search nested story→chapter→scene first
+    for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) {
+          let prose = '';
+          try { prose = readSceneFile(getVaultRoot(), scene.path).prose; } catch { /* missing */ }
+          return { scene, prose };
+        }
+      }
+    }
+    // Fallback: flat legacy scenes list
+    const scene = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (scene) {
+      let prose = '';
+      try { prose = readSceneFile(getVaultRoot(), scene.path).prose; } catch { /* missing */ }
+      return { scene, prose };
+    }
+    return { scene: null, prose: '' };
+  },
+
+  [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    // Find scene in nested structure or legacy flat list
+    let found = null as import('./ipc.js').SceneEntry | null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) { found = scene; break outer; }
+      }
+    }
+    if (!found) found = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+
+    // Validate path before writing (rejects traversal)
+    safePath(getVaultRoot(), found.path);
+
+    const nowStr = new Date().toISOString();
+    if (payload.title !== undefined) found.title = payload.title;
+    if (payload.order !== undefined) found.order = payload.order;
+    found.updatedAt = nowStr;
+
+    // Sync prose block
+    const proseBlock = found.blocks.find((b) => b.type === 'prose');
+    if (proseBlock) {
+      proseBlock.content = payload.prose;
+      proseBlock.updatedAt = nowStr;
+    } else {
+      found.blocks.push({ id: crypto.randomUUID(), type: 'prose', order: 0, content: payload.prose, updatedAt: nowStr });
+    }
+
+    // Atomic write: temp → fdatasync → rename
+    writeSceneFileAtomic(getVaultRoot(), found.path, {
+      id: found.id,
+      title: found.title,
+      chapterId: found.chapterId,
+      storyId: found.storyId,
+      order: found.order,
+      prose: payload.prose,
+    });
+
+    // Snapshot the saved prose — non-fatal if it fails
+    try { saveVersion(getVaultRoot(), found.id, payload.prose); } catch { /* ignore */ }
+
+    writeManifest(getManifestPath(), manifest);
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
+    return { scene: found };
+  },
+
+  // ─── Vault graph (MYT-163) ───
+  [IPC_CHANNELS.VAULT_GRAPH_DATA]: async () => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const nodes = manifest.entities.map((e) => ({
+      id: e.id,
+      label: e.name,
+      type: e.type,
+      path: e.path,
+    }));
+    return { nodes, edges: [] };
+  },
+
+  // ─── Archive Agent (MYT-157) ───
+  [IPC_CHANNELS.ARCHIVE_STATUS]: () => {
+    return getArchiveStatus();
+  },
+
+  [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => {
+    ensureVaultDir();
+    let index = getArchiveIndex();
+    if (!index) {
+      const manifest = readManifest(getManifestPath());
+      reindexEntities(getVaultRoot(), manifest);
+      index = buildArchiveIndex(getVaultRoot(), manifest);
+    }
+    const result = runArchiveScan(payload.sceneText, index, payload.scenePath);
+    for (const suggestion of result.suggestions) {
+      upsertSuggestion(suggestion);
+    }
+    return {
+      suggestions: result.suggestions,
+      inconsistenciesFound: result.inconsistenciesFound,
+      wikiLinksFound: result.wikiLinksFound,
+    };
   },
 
 };
@@ -584,12 +934,50 @@ function createWindow() {
   });
 }
 
-// ─── Auto-updater (stubbed — no live update server configured) ───
+// ─── Auto-updater (MYT-210) ───
+// Feature-flagged: only active when MYTHOS_AUTO_UPDATE=1 (set in production CI/release builds).
+// During development and staging builds this block is inert — the IPC handlers are still
+// registered so the renderer can call them safely, but they no-op.
+const AUTO_UPDATE_ENABLED = process.env.MYTHOS_AUTO_UPDATE === '1';
+
+type UpdateState = 'checking' | 'available' | 'not-available' | 'downloading' | 'ready';
+
+function sendUpdateStatus(state: UpdateState) {
+  if (mainWindow) {
+    mainWindow.webContents.send('update:status', { state });
+  }
+}
+
 function initAutoUpdater() {
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  // Suppress errors when no update server is reachable (stub mode)
-  autoUpdater.on('error', () => { /* intentionally silent in stub mode */ });
+  // Register IPC handlers regardless of flag so renderer calls don't throw.
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, () => {
+    if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    return { queued: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, () => {
+    if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
+  });
+
+  if (!AUTO_UPDATE_ENABLED) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('error', () => { /* non-fatal — silenced to avoid noise on dev builds */ });
+  autoUpdater.on('checking-for-update', () => sendUpdateStatus('checking'));
+  autoUpdater.on('update-available', () => sendUpdateStatus('available'));
+  autoUpdater.on('update-not-available', () => sendUpdateStatus('not-available'));
+  autoUpdater.on('download-progress', () => sendUpdateStatus('downloading'));
+  autoUpdater.on('update-downloaded', () => sendUpdateStatus('ready'));
+
+  // Only poll in packaged production builds to avoid hitting GitHub API during dev.
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => { /* silenced */ });
+  }
 }
 
 // ─── App settings persistence ───
@@ -599,6 +987,8 @@ const AGENT_BUDGET_DEFAULTS = {
   confidenceThreshold: 0.85,
   maxTokensPerHour: 100_000,
   maxSuggestionsPerHour: 50,
+  heartbeatIntervalMinutes: 5,
+  maxTokensPerDay: 500_000,
 };
 
 const SETTINGS_DEFAULTS: AppSettings = {
@@ -694,6 +1084,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
       { role: 'user' as const, content: payload.prompt },
     ];
 
+    const requestId = crypto.randomUUID();
     const model = 'claude-haiku-4-5-20251001';
     let fullText = '';
     let tokensIn: number | null = null;
@@ -702,8 +1093,13 @@ Be creative, ask clarifying questions, and help the author think deeper about th
     const startedAt = Date.now();
 
     const controller = new AbortController();
+    agentControllers.set(requestId, controller);
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:brainstorm:stream-start', { requestId });
+    }
 
     const stream = client.messages.stream(
       { model, max_tokens: 1024, system: systemPrompt, messages },
@@ -729,6 +1125,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
         throw err;
       }
     } finally {
+      agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const promptText = payload.prompt;
       const payloadDigest = process.env.PERSIST_PROMPTS === '1'
@@ -740,7 +1137,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
           agent: 'brainstorm',
           model,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: tokensIn,
           tokens_out: tokensOut,
           latency_ms: Date.now() - startedAt,
@@ -751,7 +1148,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
       } catch { /* non-fatal — logging must not break agent response */ }
     }
 
-    return { text: fullText };
+    return { text: fullText, requestId };
   });
 }
 
@@ -765,6 +1162,7 @@ function registerWritingAssistantHandler() {
       ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
       : payload.prompt;
 
+    const requestId = crypto.randomUUID();
     const model = 'claude-haiku-4-5-20251001';
     let fullText = '';
     let tokensIn: number | null = null;
@@ -773,8 +1171,13 @@ function registerWritingAssistantHandler() {
     const startedAt = Date.now();
 
     const controller = new AbortController();
+    agentControllers.set(requestId, controller);
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:writing-assistant:stream-start', { requestId });
+    }
 
     const stream = client.messages.stream(
       {
@@ -805,6 +1208,7 @@ function registerWritingAssistantHandler() {
         throw err;
       }
     } finally {
+      agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const payloadDigest = process.env.PERSIST_PROMPTS === '1'
         ? userContent
@@ -815,7 +1219,7 @@ function registerWritingAssistantHandler() {
           agent: 'writing-assistant',
           model,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: tokensIn,
           tokens_out: tokensOut,
           latency_ms: Date.now() - startedAt,
@@ -826,7 +1230,7 @@ function registerWritingAssistantHandler() {
       } catch { /* non-fatal */ }
     }
 
-    return { text: fullText };
+    return { text: fullText, requestId };
   });
 }
 
@@ -906,6 +1310,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     const client = new Anthropic({ apiKey });
     const vaultCheckModel = 'claude-haiku-4-5-20251001';
     const vaultCheckContent = `Scene to check:\n\n${payload.sceneContent}`;
+    const requestId = crypto.randomUUID();
     let fullText = '';
     let vaultTokensIn: number | null = null;
     let vaultTokensOut: number | null = null;
@@ -913,8 +1318,13 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     const vaultStartedAt = Date.now();
 
     const controller = new AbortController();
+    agentControllers.set(requestId, controller);
     const onDestroyed = () => controller.abort();
     event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:vault-check:stream-start', { requestId });
+    }
 
     const stream = client.messages.stream(
       {
@@ -945,6 +1355,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
         throw err;
       }
     } finally {
+      agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const vaultPayloadDigest = process.env.PERSIST_PROMPTS === '1'
         ? vaultCheckContent
@@ -955,7 +1366,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
           agent: 'vault-agent',
           model: vaultCheckModel,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: vaultTokensIn,
           tokens_out: vaultTokensOut,
           latency_ms: Date.now() - vaultStartedAt,
@@ -982,7 +1393,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
       });
     }
 
-    return { text: fullText, inconsistencies };
+    return { text: fullText, inconsistencies, requestId };
   });
 }
 
@@ -990,9 +1401,14 @@ Then write a short summary paragraph. If no issues are found, say so and output 
 app.whenReady().then(async () => {
   ensureVaultDir();
   setupIpcMain(handlers);
+  registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();
   registerVaultAgentHandlers();
+  registerVoiceHandlers(
+    () => mainWindow?.webContents ?? null,
+    loadAppSettings,
+  );
   createWindow();
   initAutoUpdater();
   // Start watching vault for external markdown changes

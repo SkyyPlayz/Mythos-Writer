@@ -9,6 +9,8 @@ import {
   closeDb,
   upsertSuggestion,
   updateSuggestionStatus,
+  updateSuggestionBudgetExceeded,
+  getSuggestion,
   listSuggestions,
   insertAuditLog,
   listAuditLog,
@@ -16,6 +18,14 @@ import {
   listTimelineEntries,
   insertGenerationLog,
   listGenerationLog,
+  getGenerationLogEntry,
+  truncateGenerationLogBody,
+  countSuggestionsInWindow,
+  countTokensInWindow,
+  insertProvenance,
+  getProvenance,
+  listProvenanceForEntity,
+  listProvenance,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
@@ -85,7 +95,7 @@ describe('migrations', () => {
 
   it('sets user_version to latest on first open', () => {
     const db = openDb(tmpDir);
-    expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(2);
+    expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(6);
   });
 
   it('migration is idempotent — re-open keeps user_version stable', () => {
@@ -366,5 +376,225 @@ describe('generation_log', () => {
       insertGenerationLog({ id: `g${i}`, agent: 'brainstorm', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null });
     }
     expect(listGenerationLog({ limit: 3 })).toHaveLength(3);
+  });
+
+  it('listGenerationLog paginates via offset', () => {
+    const base = { model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, payload_digest: null };
+    // Insert 5 rows with distinct created_at so ORDER BY is stable
+    for (let i = 0; i < 5; i++) {
+      const ts = new Date(1_000_000 + i * 1000).toISOString();
+      insertGenerationLog({ id: `pg${i}`, agent: 'brainstorm', created_at: ts, ...base });
+    }
+    const page0 = listGenerationLog({ limit: 2, offset: 0 });
+    const page1 = listGenerationLog({ limit: 2, offset: 2 });
+    const page2 = listGenerationLog({ limit: 2, offset: 4 });
+    expect(page0).toHaveLength(2);
+    expect(page1).toHaveLength(2);
+    expect(page2).toHaveLength(1);
+    // All ids distinct across pages
+    const ids = [...page0, ...page1, ...page2].map(r => r.id);
+    expect(new Set(ids).size).toBe(5);
+  });
+
+  it('listGenerationLog agentFilter returns only matching agent rows', () => {
+    const now = new Date().toISOString();
+    const base = { model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null };
+    insertGenerationLog({ id: 'af1', agent: 'writing-assistant', ...base });
+    insertGenerationLog({ id: 'af2', agent: 'writing-assistant', ...base });
+    insertGenerationLog({ id: 'af3', agent: 'archive', ...base });
+    const wa = listGenerationLog({ agent: 'writing-assistant' });
+    const arc = listGenerationLog({ agent: 'archive' });
+    expect(wa).toHaveLength(2);
+    expect(wa.every(r => r.agent === 'writing-assistant')).toBe(true);
+    expect(arc).toHaveLength(1);
+    expect(arc[0].agent).toBe('archive');
+  });
+
+  it('truncateGenerationLogBody trims prompt_text and response_text to 10 KB in list rows', () => {
+    const bigText = 'x'.repeat(12 * 1024); // 12 KB
+    const now = new Date().toISOString();
+    insertGenerationLog({ id: 'trunc-1', agent: 'writing-assistant', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null, prompt_text: bigText, response_text: bigText });
+    const [raw] = listGenerationLog();
+    const truncated = truncateGenerationLogBody(raw);
+    expect(Buffer.byteLength(truncated.prompt_text!, 'utf8')).toBeLessThanOrEqual(10 * 1024 + 4); // +4 for ellipsis char
+    expect(Buffer.byteLength(truncated.response_text!, 'utf8')).toBeLessThanOrEqual(10 * 1024 + 4);
+    expect(truncated.prompt_text).toMatch(/…$/);
+    expect(truncated.response_text).toMatch(/…$/);
+  });
+
+  it('truncateGenerationLogBody leaves short texts unchanged', () => {
+    const now = new Date().toISOString();
+    insertGenerationLog({ id: 'trunc-2', agent: 'brainstorm', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null, prompt_text: 'short prompt', response_text: null });
+    const [raw] = listGenerationLog();
+    const truncated = truncateGenerationLogBody(raw);
+    expect(truncated.prompt_text).toBe('short prompt');
+    expect(truncated.response_text).toBeNull();
+  });
+
+  it('getGenerationLogEntry returns full body without truncation', () => {
+    const bigText = 'y'.repeat(12 * 1024);
+    const now = new Date().toISOString();
+    insertGenerationLog({ id: 'full-get', agent: 'brainstorm', model: 'm', endpoint: 'e', request_id: null, tokens_in: null, tokens_out: null, latency_ms: 1, error: null, created_at: now, payload_digest: null, prompt_text: bigText, response_text: null });
+    const row = getGenerationLogEntry('full-get');
+    expect(row).not.toBeNull();
+    expect(row!.prompt_text).toBe(bigText);
+    expect(row!.prompt_text!.length).toBe(12 * 1024);
+  });
+});
+
+// ─── getSuggestion + budget helpers ───
+
+describe('getSuggestion and budget helpers', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('getSuggestion returns null for unknown id', () => {
+    expect(getSuggestion('no-such-id')).toBeNull();
+  });
+
+  it('getSuggestion returns the row after insert', () => {
+    upsertSuggestion(makeSuggestion({ id: 'sug-get' }));
+    const row = getSuggestion('sug-get');
+    expect(row).not.toBeNull();
+    expect(row!.id).toBe('sug-get');
+  });
+
+  it('updateSuggestionBudgetExceeded sets flag', () => {
+    upsertSuggestion(makeSuggestion({ id: 'sug-budget', budget_exceeded: 0 }));
+    updateSuggestionBudgetExceeded('sug-budget', true);
+    expect(getSuggestion('sug-budget')!.budget_exceeded).toBe(1);
+    updateSuggestionBudgetExceeded('sug-budget', false);
+    expect(getSuggestion('sug-budget')!.budget_exceeded).toBe(0);
+  });
+
+  it('countSuggestionsInWindow counts rows within window', () => {
+    const now = new Date().toISOString();
+    upsertSuggestion(makeSuggestion({ id: 'sw-1', source_agent: 'archive', created_at: now }));
+    upsertSuggestion(makeSuggestion({ id: 'sw-2', source_agent: 'archive', created_at: now }));
+    upsertSuggestion(makeSuggestion({ id: 'sw-3', source_agent: 'brainstorm', created_at: now }));
+    expect(countSuggestionsInWindow('archive', 60_000)).toBe(2);
+    expect(countSuggestionsInWindow('brainstorm', 60_000)).toBe(1);
+  });
+
+  it('countSuggestionsInWindow excludes rows outside window', () => {
+    const old = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    upsertSuggestion(makeSuggestion({ id: 'sw-old', source_agent: 'archive', created_at: old }));
+    expect(countSuggestionsInWindow('archive', 60_000)).toBe(0);
+  });
+
+  it('countTokensInWindow sums tokens from generation_log', () => {
+    const now = new Date().toISOString();
+    insertGenerationLog({ id: 'tw-1', agent: 'archive', model: 'm', endpoint: 'e', request_id: null, tokens_in: 100, tokens_out: 200, latency_ms: 1, error: null, created_at: now, payload_digest: null });
+    insertGenerationLog({ id: 'tw-2', agent: 'archive', model: 'm', endpoint: 'e', request_id: null, tokens_in: 50, tokens_out: 75, latency_ms: 1, error: null, created_at: now, payload_digest: null });
+    expect(countTokensInWindow('archive', 60_000)).toBe(425);
+  });
+
+  it('countTokensInWindow returns 0 when no rows', () => {
+    expect(countTokensInWindow('archive', 60_000)).toBe(0);
+  });
+});
+
+// ─── Provenance CRUD ───
+
+describe('provenance', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts and retrieves a provenance entry by id', () => {
+    const now = new Date().toISOString();
+    insertProvenance({ id: 'prov-1', entity_id: 'sug-abc', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: 'run-42', created_at: now });
+    const row = getProvenance('prov-1');
+    expect(row).not.toBeNull();
+    expect(row!.entity_id).toBe('sug-abc');
+    expect(row!.entity_kind).toBe('suggestion');
+    expect(row!.agent_id).toBe('archive');
+    expect(row!.run_id).toBe('run-42');
+  });
+
+  it('getProvenance returns null for unknown id', () => {
+    expect(getProvenance('no-such-prov')).toBeNull();
+  });
+
+  it('stores null run_id', () => {
+    insertProvenance({ id: 'prov-norun', entity_id: 'sug-x', entity_kind: 'suggestion', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: new Date().toISOString() });
+    expect(getProvenance('prov-norun')!.run_id).toBeNull();
+  });
+
+  it('listProvenanceForEntity returns entries matching entity_id', () => {
+    const now = new Date().toISOString();
+    insertProvenance({ id: 'p1', entity_id: 'ent-A', entity_kind: 'entity', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: now });
+    insertProvenance({ id: 'p2', entity_id: 'ent-B', entity_kind: 'entity', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: now });
+    insertProvenance({ id: 'p3', entity_id: 'ent-A', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    expect(listProvenanceForEntity('ent-A')).toHaveLength(2);
+    expect(listProvenanceForEntity('ent-B')).toHaveLength(1);
+  });
+
+  it('listProvenanceForEntity filters by entity_kind', () => {
+    const now = new Date().toISOString();
+    insertProvenance({ id: 'pk1', entity_id: 'ent-C', entity_kind: 'entity', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: now });
+    insertProvenance({ id: 'pk2', entity_id: 'ent-C', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    expect(listProvenanceForEntity('ent-C', 'entity')).toHaveLength(1);
+    expect(listProvenanceForEntity('ent-C', 'entity')[0].id).toBe('pk1');
+    expect(listProvenanceForEntity('ent-C', 'suggestion')).toHaveLength(1);
+  });
+
+  it('listProvenance returns all entries', () => {
+    const now = new Date().toISOString();
+    insertProvenance({ id: 'la1', entity_id: 'e1', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    insertProvenance({ id: 'la2', entity_id: 'e2', entity_kind: 'entity', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: now });
+    expect(listProvenance()).toHaveLength(2);
+  });
+
+  it('listProvenance filters by agent_id', () => {
+    const now = new Date().toISOString();
+    insertProvenance({ id: 'ag1', entity_id: 'e1', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    insertProvenance({ id: 'ag2', entity_id: 'e2', entity_kind: 'suggestion', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: now });
+    insertProvenance({ id: 'ag3', entity_id: 'e3', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    const arc = listProvenance({ agentId: 'archive' });
+    expect(arc).toHaveLength(2);
+    expect(arc.every(r => r.agent_id === 'archive')).toBe(true);
+  });
+
+  it('listProvenance filters by entity_kind', () => {
+    const now = new Date().toISOString();
+    insertProvenance({ id: 'ek1', entity_id: 'e1', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    insertProvenance({ id: 'ek2', entity_id: 'e2', entity_kind: 'entity', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: now });
+    expect(listProvenance({ entityKind: 'suggestion' })).toHaveLength(1);
+    expect(listProvenance({ entityKind: 'entity' })).toHaveLength(1);
+  });
+
+  it('listProvenance filters by both agent_id and entity_kind', () => {
+    const now = new Date().toISOString();
+    insertProvenance({ id: 'both1', entity_id: 'e1', entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    insertProvenance({ id: 'both2', entity_id: 'e2', entity_kind: 'entity', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    insertProvenance({ id: 'both3', entity_id: 'e3', entity_kind: 'suggestion', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: null, created_at: now });
+    expect(listProvenance({ agentId: 'archive', entityKind: 'suggestion' })).toHaveLength(1);
+    expect(listProvenance({ agentId: 'archive', entityKind: 'suggestion' })[0].id).toBe('both1');
+  });
+
+  it('listProvenance respects limit', () => {
+    const now = new Date().toISOString();
+    for (let i = 0; i < 5; i++) {
+      insertProvenance({ id: `lim${i}`, entity_id: `e${i}`, entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
+    }
+    expect(listProvenance({ limit: 3 })).toHaveLength(3);
   });
 });

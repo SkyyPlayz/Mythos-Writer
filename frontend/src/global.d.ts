@@ -62,6 +62,8 @@ interface AgentBudgetSettings {
   confidenceThreshold: number;
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
+  heartbeatIntervalMinutes: number;
+  maxTokensPerDay: number;
 }
 
 interface AppSettings {
@@ -76,6 +78,30 @@ interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+  onboardingComplete?: boolean;
+}
+
+interface GenerationLogRow {
+  id: string;
+  agent: string;
+  model: string;
+  endpoint: string;
+  request_id: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  latency_ms: number;
+  error: string | null;
+  created_at: string;
+  payload_digest: string | null;
+  prompt_text: string | null;
+  response_text: string | null;
+}
+
+interface BrainstormExtractedEntity {
+  path: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'note';
+  suggestionId: string;
 }
 
 interface Window {
@@ -127,9 +153,56 @@ interface Window {
     suggestionsReject?: (id: string) => Promise<{ id: string; status: 'rejected' }>;
     suggestionsIgnore?: (id: string) => Promise<{ id: string; status: 'ignored' }>;
 
+    // Generation log
+    generationLogList: (page?: number, pageSize?: number, agent?: string) => Promise<{ entries: GenerationLogRow[]; total: number; page: number; pageSize: number }>;
+    generationLogGet: (id: string) => Promise<{ entry: GenerationLogRow | null }>;
+
     // App settings
     settingsGet: () => Promise<AppSettings>;
     settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
+
+    // Generation log (prompt history viewer)
+    generationLogRecent: (payload: {
+      limit?: number;
+      offset?: number;
+      agent?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      search?: string;
+    }) => Promise<{ entries: GenerationLogRow[]; total: number }>;
+
+    // Brainstorm Chat (MYT-150) — streaming with entity extraction
+    brainstormChat: (
+      message: string,
+      history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+      vaultPath?: string,
+    ) => Promise<{ text: string; entities: BrainstormExtractedEntity[] }>;
+    onBrainstormChatChunk: (cb: (chunk: string) => void) => () => void;
+
+    // Generalized token streaming — stream:* channels
+    streamStart: (payload: {
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      system?: string;
+      model?: string;
+      maxTokens?: number;
+    }) => Promise<{ streamId: string }>;
+    streamCancel: (streamId: string) => Promise<{ cancelled: boolean }>;
+    streamAck: (streamId: string, count: number) => void;
+    onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
+    onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
+    onStreamError: (cb: (data: { streamId: string; error: string }) => void) => () => void;
+
+    // STT (MYT-156)
+    sttStart?: () => void;
+    sttStop?: () => void;
+    onSttResult?: (cb: (text: string) => void) => () => void;
+
+    // Vault notes updated push event (MYT-156)
+    onVaultNotesUpdated?: (cb: (data: { count: number }) => void) => () => void;
+
+    // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
+    chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
+    sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<import('./types').Scene>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

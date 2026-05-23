@@ -164,54 +164,37 @@ export default function WritingApp() {
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
 
-  const createChapter = useCallback((storyId: string) => {
+  const createChapter = useCallback(async (storyId: string) => {
     const title = prompt('Chapter title:');
     if (!title?.trim()) return;
-    const id = generateId();
-    const chapter: Chapter = {
-      id,
-      title: title.trim(),
-      path: `stories/${storyId}/chapters/${id}`,
-      order: (stories.find((s) => s.id === storyId)?.chapters.length ?? 0),
-      scenes: [],
-      createdAt: now(),
-      updatedAt: now(),
-    };
-    const updatedStories = stories.map((s) =>
-      s.id !== storyId ? s : { ...s, chapters: [...s.chapters, chapter] }
-    );
-    updateManifest(updatedStories);
+    try {
+      const chapter = await window.api.chapterCreate({ storyId, title: title.trim() });
+      const updatedStories = stories.map((s) =>
+        s.id !== storyId ? s : { ...s, chapters: [...s.chapters, chapter] }
+      );
+      updateManifest(updatedStories);
+    } catch (e) {
+      console.error('Failed to create chapter:', e);
+    }
   }, [stories, updateManifest]);
 
-  const createScene = useCallback((storyId: string, chapterId: string) => {
+  const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = prompt('Scene title:');
     if (!title?.trim()) return;
-    const id = generateId();
-    const story = stories.find((s) => s.id === storyId)!;
-    const chapter = story.chapters.find((c) => c.id === chapterId)!;
-    const scene: Scene = {
-      id,
-      title: title.trim(),
-      path: `stories/${storyId}/chapters/${chapterId}/scenes/${id}.md`,
-      order: chapter.scenes.length,
-      chapterId,
-      storyId,
-      blocks: [],
-      draftState: 'in-progress',
-      createdAt: now(),
-      updatedAt: now(),
-    };
-    const updatedStories = stories.map((s) =>
-      s.id !== storyId ? s : {
-        ...s,
-        chapters: s.chapters.map((ch) =>
-          ch.id !== chapterId ? ch : { ...ch, scenes: [...ch.scenes, scene] }
-        ),
-      }
-    );
-    updateManifest(updatedStories);
-    // Initialise empty markdown file
-    window.api.writeVault(scene.path, blocksToMarkdown(scene)).catch(() => {});
+    try {
+      const scene = await window.api.sceneCreate({ storyId, chapterId, title: title.trim() });
+      const updatedStories = stories.map((s) =>
+        s.id !== storyId ? s : {
+          ...s,
+          chapters: s.chapters.map((ch) =>
+            ch.id !== chapterId ? ch : { ...ch, scenes: [...ch.scenes, scene] }
+          ),
+        }
+      );
+      updateManifest(updatedStories);
+    } catch (e) {
+      console.error('Failed to create scene:', e);
+    }
   }, [stories, updateManifest]);
 
   const handleSelectScene = (scene: Scene, chapter: Chapter, story: Story) => {

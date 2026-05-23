@@ -134,6 +134,48 @@ git push --tags
 
 > Mac and Linux builds are stubbed (`if: false`) pending code signing setup in Phase 4.
 
+### Windows Code Signing
+
+The release workflow signs the Windows installer when the `WINDOWS_CERTIFICATE_BASE64` repository secret is present. Without the secret, the build still succeeds but produces an **unsigned** installer (Windows SmartScreen will warn users).
+
+#### Certificate options
+
+| Option | Use case | Notes |
+|--------|----------|-------|
+| **Self-signed** | Dev / CI verification | Free; SmartScreen will still warn end-users |
+| **Standard OV certificate** | Public releases | ~$200–400/yr from DigiCert, Sectigo, etc. |
+| **EV (Extended Validation)** | Production / SmartScreen reputation | ~$400–700/yr; immediately bypasses SmartScreen |
+
+#### Setting up the secrets
+
+**Generate a self-signed certificate (for CI testing):**
+
+```powershell
+# Run in PowerShell on Windows or in CI
+$cert = New-SelfSignedCertificate `
+  -Type CodeSigning `
+  -Subject "CN=Mythos Writer Dev" `
+  -KeyUsage DigitalSignature `
+  -FriendlyName "Mythos Writer Dev" `
+  -CertStoreLocation Cert:\CurrentUser\My `
+  -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+
+$password = ConvertTo-SecureString -String "YOUR_PASSWORD" -Force -AsPlainText
+Export-PfxCertificate -Cert $cert -FilePath certificate.pfx -Password $password
+
+# Base64-encode for the GitHub secret
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("certificate.pfx")) | Set-Clipboard
+```
+
+**Add GitHub repository secrets** (`Settings → Secrets and variables → Actions → New repository secret`):
+
+| Secret name | Value |
+|-------------|-------|
+| `WINDOWS_CERTIFICATE_BASE64` | Base64-encoded contents of `certificate.pfx` |
+| `WINDOWS_CERTIFICATE_PASSWORD` | Password used when exporting the `.pfx` |
+
+With these secrets in place, every tagged release build will produce a signed `.exe` installer.
+
 To test the workflow without shipping a real release, push a pre-release tag and delete the resulting draft immediately:
 
 ```bash

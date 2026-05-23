@@ -50,6 +50,7 @@ export const IPC_CHANNELS = {
   AGENT_BRAINSTORM: 'agent:brainstorm',
   AGENT_VAULT_INDEX: 'agent:vault-index',
   AGENT_VAULT_CHECK: 'agent:vault-check',
+  AGENT_ARCHIVE: 'agent:archive',
 
   // System
   SYSTEM_INFO: 'system:info',
@@ -59,6 +60,11 @@ export const IPC_CHANNELS = {
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
+
+  // Versioned drafts — Phase 2 (MYT-198)
+  VERSION_LIST: 'version:list',
+  VERSION_GET: 'version:get',
+  VERSION_ROLLBACK: 'version:rollback',
 
   // Entity CRUD
   ENTITY_CREATE: 'entity:create',
@@ -74,6 +80,36 @@ export const IPC_CHANNELS = {
 
   // Generation log
   GENERATION_LOG_RECENT: 'generationLog:recent',
+  GENERATION_LOG_LIST: 'generationLog:list',
+  GENERATION_LOG_GET: 'generationLog:get',
+
+  // Archive Agent (Phase 3)
+  ARCHIVE_SCAN: 'archive:scan',
+  ARCHIVE_STATUS: 'archive:status',
+
+  // Vault graph (Phase 5 — MYT-163)
+  VAULT_GRAPH_DATA: 'vault:graph-data',
+
+  // Structured chapter / scene creation (Phase 2 — MYT-195)
+  CHAPTER_CREATE: 'chapter:create',
+  SCENE_CREATE: 'scene:create',
+
+  // Structured chapter / scene save+load (Phase 2 — MYT-196)
+  CHAPTER_LIST: 'chapter:list',
+  CHAPTER_GET: 'chapter:get',
+  CHAPTER_SAVE: 'chapter:save',
+  SCENE_LIST: 'scene:list',
+  SCENE_GET: 'scene:get',
+  SCENE_SAVE: 'scene:save',
+
+  // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
+  UPDATE_CHECK: 'update:check',
+  UPDATE_INSTALL: 'update:install',
+
+  // Voice IO (MYT-205) — local-first STT + IPC channel
+  VOICE_START: 'voice:start',
+  VOICE_STOP: 'voice:stop',
+  VOICE_TRANSCRIPT_STREAM: 'voice:transcript',
 } as const;
 
 // ─── Main process handlers ───
@@ -98,7 +134,7 @@ export async function ipcCall<TChannel extends keyof IpcHandlers, TPayload, TRes
   channel: TChannel,
   payload: TPayload
 ): Promise<TResponse | { error: string }> {
-  return ipcRenderer.invoke(channel, payload);
+  return ipcRenderer.invoke(channel, payload) as Promise<TResponse | { error: string }>;
 }
 
 // ─── Type definitions ───
@@ -127,6 +163,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
   [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
   [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
+  [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
+  [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
   [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => EntityEntry;
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => EntityEntry | null;
   [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
@@ -145,6 +184,19 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
+  [IPC_CHANNELS.GENERATION_LOG_LIST]: (payload: GenerationLogListPayload) => GenerationLogListResponse;
+  [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => GenerationLogGetResponse;
+  [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
+  [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
+  [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
+  [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => ChapterEntry;
+  [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => SceneEntry;
+  [IPC_CHANNELS.CHAPTER_LIST]: (payload: ChapterListPayload) => ChapterListResponse;
+  [IPC_CHANNELS.CHAPTER_GET]: (payload: ChapterGetPayload) => ChapterGetResponse;
+  [IPC_CHANNELS.CHAPTER_SAVE]: (payload: ChapterSavePayload) => ChapterSaveResponse;
+  [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
+  [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
+  [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
 }
 
 // ─── Payload / Response types ───
@@ -424,6 +476,42 @@ export interface SnapshotRestoreResponse {
   preRestoreSnapshot: SceneSnapshot;
 }
 
+// ─── Versioned drafts types (Phase 2 — MYT-198) ───
+
+export interface SceneVersion {
+  sceneId: string;
+  /** Sanitized ISO timestamp — the filename stem under .versions/<sceneId>/. */
+  ts: string;
+  content: string;
+}
+
+export interface VersionListPayload {
+  sceneId: string;
+}
+
+export interface VersionListResponse {
+  versions: SceneVersion[];
+}
+
+export interface VersionGetPayload {
+  sceneId: string;
+  ts: string;
+}
+
+export interface VersionGetResponse {
+  version: SceneVersion | null;
+}
+
+export interface VersionRollbackPayload {
+  sceneId: string;
+  ts: string;
+}
+
+export interface VersionRollbackResponse {
+  restoredVersion: SceneVersion;
+  preRollbackVersion: SceneVersion;
+}
+
 // ─── Entity IPC payload / response types ───
 
 export interface EntityCreatePayload {
@@ -537,6 +625,32 @@ export interface VaultCheckResponse {
   inconsistencies: VaultCheckInconsistency[];
 }
 
+// ─── Archive Agent streaming types (Phase 3 — MYT-180) ───
+
+export interface AgentArchivePayload {
+  prompt: string;
+  context?: string;
+}
+
+export interface AgentArchiveTimelinePlacement {
+  scenePath: string;
+  inferredTime: string;
+  confidence: string;
+}
+
+export interface AgentArchiveLink {
+  scenePath: string;
+  entityName: string;
+}
+
+export interface AgentArchiveResponse {
+  text: string;
+  timelinePlacements: AgentArchiveTimelinePlacement[];
+  links: AgentArchiveLink[];
+  inconsistencies: string[];
+  requestId: string;
+}
+
 // ─── App settings types ───
 
 export interface AgentBudgetSettings {
@@ -544,6 +658,15 @@ export interface AgentBudgetSettings {
   confidenceThreshold: number;
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
+  heartbeatIntervalMinutes: number;
+  maxTokensPerDay: number;
+}
+
+export interface VoiceSettings {
+  enabled: boolean;
+  cloudFallback: boolean;
+  micDeviceId?: string;
+  openaiApiKey?: string;
 }
 
 export interface AppSettings {
@@ -558,6 +681,8 @@ export interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+  onboardingComplete?: boolean;
+  voice?: VoiceSettings;
 }
 
 export interface SettingsSetPayload {
@@ -717,13 +842,152 @@ export interface GenerationLogRow {
   error: string | null;
   created_at: string;
   payload_digest: string | null;
+  prompt_text: string | null;
+  response_text: string | null;
 }
 
 export interface GenerationLogRecentPayload {
   limit?: number;
+  offset?: number;
   agent?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
 }
 
 export interface GenerationLogRecentResponse {
   entries: GenerationLogRow[];
+  total: number;
+}
+
+export interface GenerationLogListPayload {
+  page?: number;
+  pageSize?: number;
+  agent?: string;
+}
+
+export interface GenerationLogListResponse {
+  entries: GenerationLogRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface GenerationLogGetPayload {
+  id: string;
+}
+
+export interface GenerationLogGetResponse {
+  entry: GenerationLogRow | null;
+}
+
+// ─── Archive Agent IPC types (Phase 3) ───
+
+export interface ArchiveScanPayload {
+  sceneText: string;
+  scenePath: string;
+}
+
+export interface ArchiveScanResponse {
+  suggestions: SuggestionRow[];
+  inconsistenciesFound: number;
+  wikiLinksFound: number;
+}
+
+export interface ArchiveStatusResponse {
+  status: 'idle' | 'indexing' | 'ready';
+  count: number;
+  total: number;
+  builtAt: string | null;
+}
+
+// ─── Chapter / Scene creation (Phase 2 — MYT-195) ───
+
+export interface ChapterCreatePayload {
+  storyId: string;
+  title: string;
+  order?: number;
+}
+
+export interface SceneCreatePayload {
+  storyId: string;
+  chapterId: string;
+  title: string;
+  order?: number;
+}
+
+// ─── Chapter / Scene save+load (Phase 2 — MYT-196) ───
+
+export interface ChapterListPayload {
+  storyId: string;
+}
+
+export interface ChapterListResponse {
+  chapters: ChapterEntry[];
+}
+
+export interface ChapterGetPayload {
+  chapterId: string;
+}
+
+export interface ChapterGetResponse {
+  chapter: ChapterEntry | null;
+}
+
+export interface ChapterSavePayload {
+  chapterId: string;
+  title?: string;
+  order?: number;
+}
+
+export interface ChapterSaveResponse {
+  chapter: ChapterEntry;
+}
+
+export interface SceneListPayload {
+  chapterId: string;
+}
+
+export interface SceneListResponse {
+  scenes: SceneEntry[];
+}
+
+export interface SceneGetPayload {
+  sceneId: string;
+}
+
+export interface SceneGetResponse {
+  scene: SceneEntry | null;
+  prose: string;
+}
+
+export interface SceneSavePayload {
+  sceneId: string;
+  prose: string;
+  title?: string;
+  order?: number;
+}
+
+export interface SceneSaveResponse {
+  scene: SceneEntry;
+}
+
+// ─── Vault Graph types (Phase 5 — MYT-163) ───
+
+export interface VaultGraphNode {
+  id: string;
+  label: string;
+  path: string;
+  folder?: string;
+  tags?: string[];
+}
+
+export interface VaultGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface VaultGraphDataResponse {
+  nodes: VaultGraphNode[];
+  edges: VaultGraphEdge[];
 }

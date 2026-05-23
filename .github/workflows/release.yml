@@ -23,8 +23,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Decode Windows signing certificate
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Write-Host "No Windows signing certificate configured; building unsigned installer."
+            exit 0
+          }
+          $certBytes = [Convert]::FromBase64String("$env:WINDOWS_CERTIFICATE_BASE64")
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\certificate.pfx", $certBytes)
+          echo "WIN_CSC_LINK=$env:RUNNER_TEMP\certificate.pfx" >> $env:GITHUB_ENV
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+
       - name: Build and package (NSIS + ZIP)
         run: npm run dist
+        env:
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
       - name: Upload NSIS installer artifact
         uses: actions/upload-artifact@v4
@@ -53,9 +68,34 @@ jobs:
     steps:
       - run: echo "Mac build pending code signing setup (Phase 4)"
 
-  # Stubbed pending code signing setup (Phase 4)
   build-linux:
-    if: false
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
-      - run: echo "Linux build pending code signing setup (Phase 4)"
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package (Linux AppImage)
+        run: npm run dist:linux
+
+      - name: Upload Linux AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist-electron/*.AppImage
+
+      - name: Create draft GitHub Release and attach assets
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist-electron/*.AppImage

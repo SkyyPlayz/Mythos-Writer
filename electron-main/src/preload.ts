@@ -92,6 +92,10 @@ contextBridge.exposeInMainWorld('api', {
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
   settingsSet: (settings: unknown) => ipcRenderer.invoke('settings:set', { settings }),
 
+  // Generation log (prompt history)
+  generationLogRecent: (payload: { limit?: number; offset?: number; agent?: string; dateFrom?: string; dateTo?: string; search?: string }) =>
+    ipcRenderer.invoke('generationLog:recent', payload),
+
   // Suggestions lifecycle
   suggestionsList: (status?: string, sourceAgent?: string) =>
     ipcRenderer.invoke('suggestions:list', { status, sourceAgent }),
@@ -105,6 +109,117 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suggestions:rollback', { id, actor }),
   auditList: (suggestionId?: string) =>
     ipcRenderer.invoke('audit:list', { suggestionId }),
+
+  // Generalized token streaming — stream:* channels (MYT-156)
+  streamStart: (payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; system?: string; model?: string; maxTokens?: number }) =>
+    ipcRenderer.invoke('stream:start', payload),
+  streamCancel: (streamId: string) =>
+    ipcRenderer.invoke('stream:cancel', { streamId }),
+  streamAck: (streamId: string, count: number) =>
+    ipcRenderer.send('stream:ack', { streamId, count }),
+  onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string; token: string }) => cb(data);
+    ipcRenderer.on('stream:token', handler);
+    return () => ipcRenderer.removeListener('stream:token', handler);
+  },
+  onStreamEnd: (cb: (data: { streamId: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string }) => cb(data);
+    ipcRenderer.on('stream:end', handler);
+    return () => ipcRenderer.removeListener('stream:end', handler);
+  },
+  onStreamError: (cb: (data: { streamId: string; error: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string; error: string }) => cb(data);
+    ipcRenderer.on('stream:error', handler);
+    return () => ipcRenderer.removeListener('stream:error', handler);
+  },
+
+  // STT (MYT-156) — speech-to-text fill for the brainstorm composer
+  sttStart: () => ipcRenderer.send('stt:start'),
+  sttStop: () => ipcRenderer.send('stt:stop'),
+  onSttResult: (cb: (text: string) => void) => {
+    const handler = (_: unknown, data: { text: string }) => cb(data.text);
+    ipcRenderer.on('stt:result', handler);
+    return () => ipcRenderer.removeListener('stt:result', handler);
+  },
+
+  // Vault notes updated push event (MYT-156)
+  onVaultNotesUpdated: (cb: (data: { count: number }) => void) => {
+    const handler = (_: unknown, data: { count: number }) => cb(data);
+    ipcRenderer.on('vault:notes-updated', handler);
+    return () => ipcRenderer.removeListener('vault:notes-updated', handler);
+  },
+
+  // Stream-start push events — renderer receives requestId before first chunk
+  onWritingAssistantStreamStart: (cb: (requestId: string) => void) => {
+    const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
+    ipcRenderer.on('agent:writing-assistant:stream-start', handler);
+    return () => ipcRenderer.removeListener('agent:writing-assistant:stream-start', handler);
+  },
+  onBrainstormStreamStart: (cb: (requestId: string) => void) => {
+    const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
+    ipcRenderer.on('agent:brainstorm:stream-start', handler);
+    return () => ipcRenderer.removeListener('agent:brainstorm:stream-start', handler);
+  },
+  onVaultCheckStreamStart: (cb: (requestId: string) => void) => {
+    const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
+    ipcRenderer.on('agent:vault-check:stream-start', handler);
+    return () => ipcRenderer.removeListener('agent:vault-check:stream-start', handler);
+  },
+
+  // Cancel channels — fire-and-forget, aborts the running stream for the given requestId
+  cancelWritingAssistant: (requestId: string) =>
+    ipcRenderer.send('agent:writing-assistant:stream-cancel', { requestId }),
+  cancelBrainstorm: (requestId: string) =>
+    ipcRenderer.send('agent:brainstorm:stream-cancel', { requestId }),
+  cancelVaultCheck: (requestId: string) =>
+    ipcRenderer.send('agent:vault-check:stream-cancel', { requestId }),
+
+  // Generation log
+  generationLogList: (page?: number, pageSize?: number, agent?: string) =>
+    ipcRenderer.invoke('generationLog:list', { page, pageSize, agent }),
+  generationLogGet: (id: string) =>
+    ipcRenderer.invoke('generationLog:get', { id }),
+
+  // Auto-update status (MYT-210) — feature-flagged; calls are safe no-ops when MYTHOS_AUTO_UPDATE!=1
+  onUpdateStatus: (cb: (state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready') => void) => {
+    const handler = (_: unknown, data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' }) => cb(data.state);
+    ipcRenderer.on('update:status', handler);
+    return () => ipcRenderer.removeListener('update:status', handler);
+  },
+  checkForUpdate: () => ipcRenderer.invoke('update:check', undefined),
+  installUpdate: () => ipcRenderer.invoke('update:install', undefined),
+
+  // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
+  chapterCreate: (payload: { storyId: string; title: string; order?: number }) =>
+    ipcRenderer.invoke('chapter:create', payload),
+  sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) =>
+    ipcRenderer.invoke('scene:create', payload),
+
+  // Voice IO (MYT-205) — local-first STT
+  // voiceStart → starts a session; returns { sessionId }
+  voiceStart: (micDeviceId?: string) =>
+    ipcRenderer.invoke('voice:start', { micDeviceId }),
+  // voiceStop → ends the session; triggers cloud transcription when enabled
+  voiceStop: (sessionId: string) =>
+    ipcRenderer.invoke('voice:stop', { sessionId }),
+  // voiceLocalTranscript — fire-and-forget; relay Web Speech API text to main for broadcast
+  voiceLocalTranscript: (sessionId: string, text: string, isFinal: boolean) =>
+    ipcRenderer.send('voice:local-transcript', { sessionId, text, isFinal }),
+  // voiceAudioChunk — fire-and-forget; send raw audio chunk for cloud STT accumulation
+  voiceAudioChunk: (sessionId: string, chunk: ArrayBuffer) =>
+    ipcRenderer.send('voice:audio-chunk', { sessionId, chunk }),
+  // onVoiceTranscript — subscribe to transcript push events from main
+  onVoiceTranscript: (cb: (event: { sessionId: string; text: string; isFinal: boolean }) => void) => {
+    const handler = (_: unknown, data: { sessionId: string; text: string; isFinal: boolean }) => cb(data);
+    ipcRenderer.on('voice:transcript', handler);
+    return () => ipcRenderer.removeListener('voice:transcript', handler);
+  },
+  // onVoiceError — subscribe to voice error push events from main
+  onVoiceError: (cb: (event: { sessionId: string; error: string }) => void) => {
+    const handler = (_: unknown, data: { sessionId: string; error: string }) => cb(data);
+    ipcRenderer.on('voice:error', handler);
+    return () => ipcRenderer.removeListener('voice:error', handler);
+  },
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

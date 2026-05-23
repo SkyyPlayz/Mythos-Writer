@@ -1,0 +1,71 @@
+.vgv-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #11111b;
+  color: #cdd6f4;
+}
+
+.vgv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #1e1e2e;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+
+.vgv-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #cba6f7;
+}
+
+.vgv-count {
+  font-size: 12px;
+  color: #6c7086;
+  flex: 1;
+}
+
+.vgv-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.vgv-filters select {
+  background: #313244;
+  color: #cdd6f4;
+  border: 1px solid #585b70;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vgv-canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+.vgv-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #6c7086;
+  gap: 8px;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px;
+}
+
+.vgv-error {
+  color: #f38ba8;
+}
+
+.vgv-error-sub {
+  font-size: 12px;
+  color: #6c7086;
+}

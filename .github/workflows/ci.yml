@@ -39,3 +39,107 @@ jobs:
 
       - name: Build (electron-vite)
         run: npm run build:electron
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Python setuptools (node-gyp needs distutils, removed in Python 3.12+)
+        run: pip3 install setuptools --break-system-packages
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (frontend)
+        run: npm run lint -w frontend
+
+      - name: Type-check (frontend)
+        run: npm run typecheck -w frontend
+
+      - name: Type-check (electron-main)
+        run: npm run typecheck -w electron-main
+
+      - name: Test (electron-main)
+        run: npm run test -w electron-main
+
+      - name: Test (frontend)
+        run: npm run test -w frontend
+
+      - name: Build and package (macOS DMG)
+        env:
+          # Skip code signing — notarization is a later step
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist:mac
+
+      - name: Upload macOS DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist-electron/*.dmg
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (frontend)
+        run: npm run lint -w frontend
+
+      - name: Type-check (frontend)
+        run: npm run typecheck -w frontend
+
+      - name: Type-check (electron-main)
+        run: npm run typecheck -w electron-main
+
+      - name: Test (electron-main)
+        run: npm run test -w electron-main
+
+      - name: Test (frontend)
+        run: npm run test -w frontend
+
+      - name: Build and package (Linux AppImage)
+        run: npm run dist:linux
+
+      - name: Upload Linux AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist-electron/*.AppImage
+
+      - name: Install AppImage runtime dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libfuse2 xvfb
+
+      - name: Smoke-test AppImage (start / stop)
+        run: |
+          APPIMAGE=$(ls dist-electron/*.AppImage | head -1)
+          chmod +x "$APPIMAGE"
+          xvfb-run --auto-servernum "$APPIMAGE" --no-sandbox &
+          APP_PID=$!
+          sleep 8
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "AppImage exited prematurely — smoke test FAILED"
+            exit 1
+          fi
+          kill "$APP_PID"
+          wait "$APP_PID" || true
+          echo "Smoke test passed: AppImage started and stopped cleanly"

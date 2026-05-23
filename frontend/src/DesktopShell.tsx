@@ -3,10 +3,14 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, E
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
-import BlockEditor from './BlockEditor';
+import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
+import KanbanBoard from './KanbanBoard';
+import VaultGraphView from './VaultGraphView';
 import SettingsPanel from './SettingsPanel';
+import PromptHistoryPanel from './PromptHistoryPanel';
+import UpdateBanner from './UpdateBanner';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -60,13 +64,16 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
+
 interface AppMenuBarProps {
-  view: 'editor' | 'brainstorm';
-  onSetView: (v: 'editor' | 'brainstorm') => void;
+  view: AppView;
+  onSetView: (v: AppView) => void;
   onOpenSettings: () => void;
+  onOpenHistory: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuBarProps) {
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -76,6 +83,8 @@ function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
           <div className="app-menu-dropdown">
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.newStory?.()}>New Story</button>
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openVault?.()}>Open Vault…</button>
+            <div className="app-menu-separator" />
+            <button className="app-menu-dropdown-item" onClick={onOpenHistory}>Prompt History…</button>
             <div className="app-menu-separator" />
             <button className="app-menu-dropdown-item" onClick={onOpenSettings}>Settings…</button>
           </div>
@@ -93,6 +102,18 @@ function AppMenuBar({ view, onSetView, onOpenSettings }: AppMenuBarProps) {
           onClick={() => onSetView('brainstorm')}
         >
           Brainstorm
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'kanban' ? ' active' : ''}`}
+          onClick={() => onSetView('kanban')}
+        >
+          Board
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'graph' ? ' active' : ''}`}
+          onClick={() => onSetView('graph')}
+        >
+          Graph
         </button>
       </div>
       <button
@@ -123,11 +144,25 @@ export default function DesktopShell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
-  const [view, setView] = useState<'editor' | 'brainstorm'>('editor');
+  const [view, setView] = useState<AppView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorApiRef = useRef<BlockEditorApi | null>(null);
+
+  const handleEditorReady = useCallback((api: BlockEditorApi) => {
+    editorApiRef.current = api;
+  }, []);
+
+  const handleJumpToText = useCallback((text: string) => {
+    editorApiRef.current?.jumpToText(text);
+  }, []);
+
+  const handleInsertWikiLink = useCallback((link: string, anchorText: string) => {
+    editorApiRef.current?.insertWikiLink(link, anchorText);
+  }, []);
   const dragState = useRef<DragState | null>(null);
 
   useEffect(() => {
@@ -323,6 +358,24 @@ export default function DesktopShell() {
     (window as any).api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, updateManifest]);
 
+  const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
+    const updatedStories = stories.map((s) =>
+      s.id !== storyId ? s : {
+        ...s,
+        chapters: s.chapters.map((ch) =>
+          ch.id !== chapterId ? ch : {
+            ...ch,
+            scenes: orderedIds.map((id, idx) => {
+              const scene = ch.scenes.find((sc) => sc.id === id)!;
+              return { ...scene, order: idx };
+            }),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+  }, [stories, updateManifest]);
+
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
     setSelectedScene(scene);
     setSelectedChapter(chapter);
@@ -386,22 +439,48 @@ export default function DesktopShell() {
   }
 
   const agentFlags = {
-    writingAssistant: appSettings?.agents.writingAssistant.enabled ?? true,
-    brainstorm: appSettings?.agents.brainstorm.enabled ?? true,
-    archive: appSettings?.agents.archive.enabled ?? true,
+    writingAssistant: appSettings?.agents?.writingAssistant?.enabled ?? true,
+    brainstorm: appSettings?.agents?.brainstorm?.enabled ?? true,
+    archive: appSettings?.agents?.archive?.enabled ?? true,
   };
 
   return (
     <div className="desktop-shell">
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} />
+      <UpdateBanner />
+      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
           onSaved={(s) => setAppSettings(s)}
         />
       )}
+      {historyOpen && (
+        <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
+      )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+      )}
+      {view === 'kanban' && (
+        <div className="shell-kanban">
+          {selectedStory ? (
+            <KanbanBoard
+              key={selectedStory.id}
+              boardPath={`${selectedStory.path}/kanban.md`}
+              storyTitle={selectedStory.title}
+            />
+          ) : (
+            <div className="shell-editor-empty">
+              <div className="shell-editor-empty-icon">🗂️</div>
+              <h2>No Story Selected</h2>
+              <p>Select a story from the Editor view to open its Scene Board.</p>
+            </div>
+          )}
+        </div>
+      )}
+      {view === 'graph' && (
+        <div className="shell-graph">
+          <VaultGraphView onOpenNote={handleOpenSceneByPath} />
+        </div>
       )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
@@ -417,6 +496,7 @@ export default function DesktopShell() {
           onCreateStory={createStory}
           onCreateChapter={createChapter}
           onCreateScene={createScene}
+          onReorderScenes={handleReorderScenes}
           onOpenVaultPath={handleOpenSceneByPath}
         />
       </div>
@@ -436,6 +516,7 @@ export default function DesktopShell() {
               scene={selectedScene}
               onBlocksChange={handleBlocksChange}
               onDraftStateChange={handleDraftStateChange}
+              onEditorReady={handleEditorReady}
             />
           ) : selectedEntity ? (
             <EntityDetail
@@ -481,6 +562,8 @@ export default function DesktopShell() {
           selectedStory={selectedStory}
           writingAssistantEnabled={agentFlags.writingAssistant}
           archiveEnabled={agentFlags.archive}
+          onJumpToText={handleJumpToText}
+          onInsertWikiLink={handleInsertWikiLink}
         />
       </div>
       </div>}{/* end shell-panels */}

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
 const mockManifest = {
@@ -14,6 +14,7 @@ const mockManifest = {
 beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).api = {
+    settingsGet: () => Promise.resolve({ onboardingComplete: true }),
     readManifest: () => Promise.resolve(mockManifest),
     writeManifest: () => Promise.resolve({}),
     onVaultFileChanged: () => () => {},
@@ -21,8 +22,10 @@ beforeEach(() => {
 });
 
 describe('App', () => {
-  it('renders the app shell loading state', () => {
+  it('renders the app shell loading state', async () => {
     render(<App />);
-    expect(screen.getByText(/loading your vault/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/loading your vault/i)).toBeInTheDocument();
+    });
   });
 });
