@@ -9,6 +9,7 @@ interface Props {
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
+  onReorderScenes?: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
 }
 
 export default function StoryNavigator({
@@ -18,11 +19,13 @@ export default function StoryNavigator({
   onCreateStory,
   onCreateChapter,
   onCreateScene,
+  onReorderScenes,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
     new Set(stories.flatMap((s) => s.chapters.map((c) => c.id)))
   );
+  const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
 
   const toggleStory = (id: string) =>
     setExpandedStories((prev) => {
@@ -76,10 +79,28 @@ export default function StoryNavigator({
                   </div>
 
                   {expandedChapters.has(chapter.id) &&
-                    chapter.scenes.sort((a, b) => a.order - b.order).map((scene) => (
+                    [...chapter.scenes].sort((a, b) => a.order - b.order).map((scene) => (
                       <div
                         key={scene.id}
                         className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
+                        draggable
+                        onDragStart={() => setDraggedSceneId(scene.id)}
+                        onDragEnd={() => setDraggedSceneId(null)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => {
+                          if (!draggedSceneId || draggedSceneId === scene.id) return;
+                          const orderedSceneIds = [...chapter.scenes]
+                            .sort((a, b) => a.order - b.order)
+                            .map((s) => s.id);
+                          const sourceIndex = orderedSceneIds.indexOf(draggedSceneId);
+                          const targetIndex = orderedSceneIds.indexOf(scene.id);
+                          if (sourceIndex === -1 || targetIndex === -1) return;
+
+                          orderedSceneIds.splice(sourceIndex, 1);
+                          orderedSceneIds.splice(targetIndex, 0, draggedSceneId);
+                          onReorderScenes?.(story.id, chapter.id, orderedSceneIds);
+                          setDraggedSceneId(null);
+                        }}
                         onClick={() => onSelectScene(scene, chapter, story)}
                       >
                         <span className="nav-scene-icon">◆</span>
