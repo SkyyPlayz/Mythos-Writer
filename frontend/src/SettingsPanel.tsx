@@ -1,11 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import './SettingsPanel.css';
 
+const MODEL_OPTIONS: { value: string; label: string }[] = [
+  { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku' },
+  { value: 'claude-sonnet-4-6', label: 'claude-sonnet' },
+  { value: 'claude-opus-4-7', label: 'claude-opus' },
+];
+
 const BUDGET_DEFAULTS: AgentBudgetSettings = {
   autoApply: false,
   confidenceThreshold: 0.85,
   maxTokensPerHour: 100_000,
   maxSuggestionsPerHour: 50,
+  heartbeatIntervalMinutes: 5,
+  maxTokensPerDay: 500_000,
 };
 
 const DEFAULTS: AppSettings = {
@@ -172,13 +180,15 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               <div className="settings-agent-fields">
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-model">Model</label>
-                  <input
+                  <select
                     id="wa-model"
-                    className="settings-input settings-input-sm"
-                    type="text"
+                    className="settings-input settings-select settings-input-sm"
                     value={settings.agents.writingAssistant.model}
+                    aria-label="Writing Assistant model"
                     onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
-                  />
+                  >
+                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-interval">Scan interval (s)</label>
@@ -190,6 +200,18 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     max={3600}
                     value={settings.agents.writingAssistant.scanIntervalSeconds}
                     onChange={(e) => setAgentField('writingAssistant', 'scanIntervalSeconds', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="wa-heartbeat">Heartbeat interval (min)</label>
+                  <input
+                    id="wa-heartbeat"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={settings.agents.writingAssistant.heartbeatIntervalMinutes}
+                    onChange={(e) => setAgentField('writingAssistant', 'heartbeatIntervalMinutes', Number(e.target.value))}
                   />
                 </div>
                 <div className="settings-field settings-field-inline">
@@ -206,16 +228,34 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
                 <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="wa-confidence">Min confidence</label>
+                  <label className="settings-label" htmlFor="wa-confidence">Auto-apply threshold</label>
+                  <div className="settings-slider-row">
+                    <input
+                      id="wa-confidence"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      disabled={!settings.agents.writingAssistant.autoApply}
+                      value={settings.agents.writingAssistant.confidenceThreshold}
+                      aria-label="Writing Assistant auto-apply threshold"
+                      onChange={(e) => setAgentField('writingAssistant', 'confidenceThreshold', Number(e.target.value))}
+                    />
+                    <span className="settings-slider-value">{settings.agents.writingAssistant.confidenceThreshold.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="wa-max-tokens-day">Max tokens/day</label>
                   <input
-                    id="wa-confidence"
+                    id="wa-max-tokens-day"
                     className="settings-input settings-input-sm settings-input-number"
                     type="number"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={settings.agents.writingAssistant.confidenceThreshold}
-                    onChange={(e) => setAgentField('writingAssistant', 'confidenceThreshold', Number(e.target.value))}
+                    min={1000}
+                    max={10_000_000}
+                    step={1000}
+                    value={settings.agents.writingAssistant.maxTokensPerDay}
+                    onChange={(e) => setAgentField('writingAssistant', 'maxTokensPerDay', Number(e.target.value))}
                   />
                 </div>
                 <div className="settings-field settings-field-inline">
@@ -262,12 +302,26 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               <div className="settings-agent-fields">
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-model">Model</label>
-                  <input
+                  <select
                     id="brainstorm-model"
-                    className="settings-input settings-input-sm"
-                    type="text"
+                    className="settings-input settings-select settings-input-sm"
                     value={settings.agents.brainstorm.model}
+                    aria-label="Brainstorm Agent model"
                     onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
+                  >
+                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="brainstorm-heartbeat">Heartbeat interval (min)</label>
+                  <input
+                    id="brainstorm-heartbeat"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={settings.agents.brainstorm.heartbeatIntervalMinutes}
+                    onChange={(e) => setAgentField('brainstorm', 'heartbeatIntervalMinutes', Number(e.target.value))}
                   />
                 </div>
                 <div className="settings-field settings-field-inline">
@@ -284,16 +338,34 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
                 <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="brainstorm-confidence">Min confidence</label>
+                  <label className="settings-label" htmlFor="brainstorm-confidence">Auto-apply threshold</label>
+                  <div className="settings-slider-row">
+                    <input
+                      id="brainstorm-confidence"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      disabled={!settings.agents.brainstorm.autoApply}
+                      value={settings.agents.brainstorm.confidenceThreshold}
+                      aria-label="Brainstorm Agent auto-apply threshold"
+                      onChange={(e) => setAgentField('brainstorm', 'confidenceThreshold', Number(e.target.value))}
+                    />
+                    <span className="settings-slider-value">{settings.agents.brainstorm.confidenceThreshold.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="brainstorm-max-tokens-day">Max tokens/day</label>
                   <input
-                    id="brainstorm-confidence"
+                    id="brainstorm-max-tokens-day"
                     className="settings-input settings-input-sm settings-input-number"
                     type="number"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={settings.agents.brainstorm.confidenceThreshold}
-                    onChange={(e) => setAgentField('brainstorm', 'confidenceThreshold', Number(e.target.value))}
+                    min={1000}
+                    max={10_000_000}
+                    step={1000}
+                    value={settings.agents.brainstorm.maxTokensPerDay}
+                    onChange={(e) => setAgentField('brainstorm', 'maxTokensPerDay', Number(e.target.value))}
                   />
                 </div>
                 <div className="settings-field settings-field-inline">
@@ -340,13 +412,15 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               <div className="settings-agent-fields">
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-model">Model</label>
-                  <input
+                  <select
                     id="archive-model"
-                    className="settings-input settings-input-sm"
-                    type="text"
+                    className="settings-input settings-select settings-input-sm"
                     value={settings.agents.archive.model}
+                    aria-label="Archive Agent model"
                     onChange={(e) => setAgentField('archive', 'model', e.target.value)}
-                  />
+                  >
+                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-interval">Continuity check interval (s)</label>
@@ -358,6 +432,18 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     max={3600}
                     value={settings.agents.archive.continuityCheckIntervalSeconds}
                     onChange={(e) => setAgentField('archive', 'continuityCheckIntervalSeconds', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="archive-heartbeat">Heartbeat interval (min)</label>
+                  <input
+                    id="archive-heartbeat"
+                    className="settings-input settings-input-sm settings-input-number"
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={settings.agents.archive.heartbeatIntervalMinutes}
+                    onChange={(e) => setAgentField('archive', 'heartbeatIntervalMinutes', Number(e.target.value))}
                   />
                 </div>
                 <div className="settings-field settings-field-inline">
@@ -374,16 +460,34 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
                 <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="archive-confidence">Min confidence</label>
+                  <label className="settings-label" htmlFor="archive-confidence">Auto-apply threshold</label>
+                  <div className="settings-slider-row">
+                    <input
+                      id="archive-confidence"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      disabled={!settings.agents.archive.autoApply}
+                      value={settings.agents.archive.confidenceThreshold}
+                      aria-label="Archive Agent auto-apply threshold"
+                      onChange={(e) => setAgentField('archive', 'confidenceThreshold', Number(e.target.value))}
+                    />
+                    <span className="settings-slider-value">{settings.agents.archive.confidenceThreshold.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="archive-max-tokens-day">Max tokens/day</label>
                   <input
-                    id="archive-confidence"
+                    id="archive-max-tokens-day"
                     className="settings-input settings-input-sm settings-input-number"
                     type="number"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={settings.agents.archive.confidenceThreshold}
-                    onChange={(e) => setAgentField('archive', 'confidenceThreshold', Number(e.target.value))}
+                    min={1000}
+                    max={10_000_000}
+                    step={1000}
+                    value={settings.agents.archive.maxTokensPerDay}
+                    onChange={(e) => setAgentField('archive', 'maxTokensPerDay', Number(e.target.value))}
                   />
                 </div>
                 <div className="settings-field settings-field-inline">

@@ -62,6 +62,8 @@ interface AgentBudgetSettings {
   confidenceThreshold: number;
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
+  heartbeatIntervalMinutes: number;
+  maxTokensPerDay: number;
 }
 
 interface AppSettings {
@@ -76,6 +78,13 @@ interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+}
+
+interface BrainstormExtractedEntity {
+  path: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'note';
+  suggestionId: string;
 }
 
 interface Window {
@@ -130,6 +139,14 @@ interface Window {
     // App settings
     settingsGet: () => Promise<AppSettings>;
     settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
+
+    // Brainstorm Chat (MYT-150) — streaming with entity extraction
+    brainstormChat: (
+      message: string,
+      history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+      vaultPath?: string,
+    ) => Promise<{ text: string; entities: BrainstormExtractedEntity[] }>;
+    onBrainstormChatChunk: (cb: (chunk: string) => void) => () => void;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
