@@ -36,9 +36,10 @@ function validateApiKey(key: string): string | null {
 interface Props {
   onClose: () => void;
   onSaved?: (settings: AppSettings) => void;
+  onRerunOnboarding?: () => void;
 }
 
-export default function SettingsPanel({ onClose, onSaved }: Props) {
+export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: Props) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
   // Separate input state so the masked value from settingsGet never appears in the writable field.
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -558,6 +559,24 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
             <p className="settings-hint">Snapshots are taken automatically while you write. Older ones are pruned by count and age.</p>
           </section>
+
+          {/* ── Onboarding ── */}
+          {onRerunOnboarding && (
+            <section className="settings-section" aria-labelledby="section-onboarding">
+              <h3 className="settings-section-title" id="section-onboarding">Onboarding</h3>
+              <div className="settings-field">
+                <button
+                  className="settings-btn settings-btn-cancel"
+                  type="button"
+                  onClick={onRerunOnboarding}
+                  data-testid="rerun-onboarding-btn"
+                >
+                  Run Setup Wizard…
+                </button>
+                <p className="settings-hint">Re-run the first-run wizard to change your vault, API key, or default agents.</p>
+              </div>
+            </section>
+          )}
 
           {/* ── Theme ── */}
           <section className="settings-section" aria-labelledby="section-theme">

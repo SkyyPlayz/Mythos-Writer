@@ -8,11 +8,22 @@ interface OnboardingWizardProps {
 
 type VaultChoice = 'new' | 'existing';
 
+const AGENT_LABELS: { key: keyof AppSettings['agents']; label: string; desc: string }[] = [
+  { key: 'writingAssistant', label: 'Writing Assistant', desc: 'Inline style and continuity suggestions as you write.' },
+  { key: 'brainstorm', label: 'Brainstorm Agent', desc: 'AI chat for plot, character, and world-building ideas.' },
+  { key: 'archive', label: 'Archive Agent', desc: 'Continuity checks and automatic entity extraction.' },
+];
+
 export default function OnboardingWizard({ initialSettings, onComplete }: OnboardingWizardProps) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [vaultChoice, setVaultChoice] = useState<VaultChoice>('new');
   const [vaultPath, setVaultPath] = useState<string>('');
   const [apiKey, setApiKey] = useState<string>('');
+  const [agentEnabled, setAgentEnabled] = useState<Record<keyof AppSettings['agents'], boolean>>({
+    writingAssistant: initialSettings.agents.writingAssistant.enabled,
+    brainstorm: initialSettings.agents.brainstorm.enabled,
+    archive: initialSettings.agents.archive.enabled,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
 
@@ -34,9 +45,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         ...initialSettings,
         apiKey: key,
         onboardingComplete: true,
+        agents: {
+          writingAssistant: { ...initialSettings.agents.writingAssistant, enabled: agentEnabled.writingAssistant },
+          brainstorm: { ...initialSettings.agents.brainstorm, enabled: agentEnabled.brainstorm },
+          archive: { ...initialSettings.agents.archive, enabled: agentEnabled.archive },
+        },
       };
       await window.api.settingsSet(updated);
-      setStep(4);
+      setStep(5);
       onComplete(updated);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save settings');
@@ -49,7 +65,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     <div className="onboarding-overlay" role="dialog" aria-modal="true" aria-label="Onboarding wizard">
       <div className="onboarding-card">
         <div className="onboarding-steps" aria-label="Step indicator">
-          {[1, 2, 3, 4].map((n) => (
+          {[1, 2, 3, 4, 5].map((n) => (
             <div
               key={n}
               className={`onboarding-step-dot ${step === n ? 'active' : step > n ? 'done' : ''}`}
@@ -150,25 +166,69 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               </button>
               <button
                 className="btn-ghost"
-                onClick={() => handleFinish(true)}
-                disabled={saving}
+                onClick={() => setStep(4)}
                 data-testid="skip-api-key"
               >
                 Skip for now
               </button>
               <button
                 className="btn-primary"
-                onClick={() => handleFinish(false)}
-                disabled={saving || !apiKey.trim()}
+                onClick={() => setStep(4)}
+                disabled={!apiKey.trim()}
                 data-testid="save-api-key"
               >
-                {saving ? 'Saving…' : 'Save &amp; continue'}
+                Next
               </button>
             </div>
           </div>
         )}
 
         {step === 4 && (
+          <div className="onboarding-step" data-testid="step-agents">
+            <h2 className="onboarding-title">Choose default agents</h2>
+            <p className="onboarding-subtitle">
+              Enable or disable the AI agents. You can change these any time in Settings.
+            </p>
+            <div className="onboarding-agent-list">
+              {AGENT_LABELS.map(({ key, label, desc }) => (
+                <label key={key} className="onboarding-agent-row">
+                  <div className="onboarding-agent-info">
+                    <span className="onboarding-agent-name">{label}</span>
+                    <span className="onboarding-agent-desc">{desc}</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="onboarding-agent-toggle"
+                    checked={agentEnabled[key]}
+                    onChange={(e) => setAgentEnabled((prev) => ({ ...prev, [key]: e.target.checked }))}
+                    aria-label={`Enable ${label}`}
+                    data-testid={`agent-toggle-${key}`}
+                  />
+                </label>
+              ))}
+            </div>
+            {error && (
+              <p className="onboarding-error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="onboarding-actions">
+              <button className="btn-secondary" onClick={() => setStep(3)}>
+                Back
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => handleFinish(apiKey.trim() === '')}
+                disabled={saving}
+                data-testid="finish-onboarding"
+              >
+                {saving ? 'Saving…' : 'Finish'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 5 && (
           <div className="onboarding-step" data-testid="step-done">
             <div className="onboarding-done-icon" aria-hidden="true">✓</div>
             <h2 className="onboarding-title">You&apos;re all set!</h2>

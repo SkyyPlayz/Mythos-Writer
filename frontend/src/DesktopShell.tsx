@@ -141,7 +141,11 @@ interface DragState {
   startWidth: number;
 }
 
-export default function DesktopShell() {
+interface DesktopShellProps {
+  onRerunOnboarding?: () => void;
+}
+
+export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = {}) {
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
@@ -460,6 +464,7 @@ export default function DesktopShell() {
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
           onSaved={(s) => setAppSettings(s)}
+          onRerunOnboarding={onRerunOnboarding ? () => { setSettingsOpen(false); onRerunOnboarding(); } : undefined}
         />
       )}
       {historyOpen && (

@@ -197,6 +197,47 @@
   cursor: not-allowed;
 }
 
+.onboarding-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.onboarding-agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border, #45475a);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.onboarding-agent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.onboarding-agent-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.onboarding-agent-desc {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.onboarding-agent-toggle {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--color-accent, #89b4fa);
+}
+
 .onboarding-done-icon {
   font-size: 3rem;
   text-align: center;

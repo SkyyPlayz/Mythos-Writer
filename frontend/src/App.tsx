@@ -31,7 +31,9 @@ function App() {
 
   return (
     <div className="root-layout">
-      <DesktopShell />
+      <DesktopShell
+        onRerunOnboarding={() => setSettings((s) => s ? { ...s, onboardingComplete: false } : s)}
+      />
     </div>
   );
 }

@@ -48,6 +48,15 @@ beforeEach(() => {
   };
 });
 
+async function advanceToAgents() {
+  render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /get started/i }));
+  fireEvent.click(screen.getByRole('button', { name: /next/i }));
+  // skip API key
+  fireEvent.click(screen.getByTestId('skip-api-key'));
+  await waitFor(() => expect(screen.getByTestId('step-agents')).toBeInTheDocument());
+}
+
 describe('OnboardingWizard', () => {
   it('renders the welcome step on first render', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
@@ -65,6 +74,10 @@ describe('OnboardingWizard', () => {
     // Step 2 → 3 (new vault, no dialog needed)
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
     expect(screen.getByTestId('step-apikey')).toBeInTheDocument();
+
+    // Step 3 → 4 (skip api key)
+    fireEvent.click(screen.getByTestId('skip-api-key'));
+    expect(screen.getByTestId('step-agents')).toBeInTheDocument();
   });
 
   it('navigates back from step 2 to step 1', () => {
@@ -80,6 +93,12 @@ describe('OnboardingWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(screen.getByTestId('step-vault')).toBeInTheDocument();
+  });
+
+  it('navigates back from step 4 to step 3', async () => {
+    await advanceToAgents();
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByTestId('step-apikey')).toBeInTheDocument();
   });
 
   describe('vault selection — existing vault', () => {
@@ -120,12 +139,12 @@ describe('OnboardingWizard', () => {
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
     }
 
-    it('save button is disabled when API key input is empty', async () => {
+    it('next button is disabled when API key input is empty', async () => {
       await goToApiKeyStep();
       expect(screen.getByTestId('save-api-key')).toBeDisabled();
     });
 
-    it('save button enables when API key is entered', async () => {
+    it('next button enables when API key is entered', async () => {
       await goToApiKeyStep();
       fireEvent.change(screen.getByTestId('api-key-input'), {
         target: { value: 'sk-ant-test1234' },
@@ -133,21 +152,53 @@ describe('OnboardingWizard', () => {
       expect(screen.getByTestId('save-api-key')).not.toBeDisabled();
     });
 
-    it('persists API key and calls onComplete on save', async () => {
-      const onComplete = vi.fn();
-      render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-      fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-      fireEvent.click(screen.getByRole('button', { name: /next/i }));
-
+    it('advances to agents step after entering key and clicking next', async () => {
+      await goToApiKeyStep();
       fireEvent.change(screen.getByTestId('api-key-input'), {
         target: { value: 'sk-ant-test1234' },
       });
       fireEvent.click(screen.getByTestId('save-api-key'));
+      expect(screen.getByTestId('step-agents')).toBeInTheDocument();
+    });
+
+    it('skip path — advances to agents step without requiring a key', async () => {
+      await goToApiKeyStep();
+      fireEvent.click(screen.getByTestId('skip-api-key'));
+      expect(screen.getByTestId('step-agents')).toBeInTheDocument();
+    });
+  });
+
+  describe('agents step', () => {
+    it('shows all three agent toggles with initial enabled state', async () => {
+      await advanceToAgents();
+      expect(screen.getByTestId('agent-toggle-writingAssistant')).toBeChecked();
+      expect(screen.getByTestId('agent-toggle-brainstorm')).toBeChecked();
+      expect(screen.getByTestId('agent-toggle-archive')).toBeChecked();
+    });
+
+    it('persists agent enabled flags and calls onComplete on finish', async () => {
+      const onComplete = vi.fn();
+      render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+      fireEvent.click(screen.getByRole('button', { name: /get started/i }));
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      fireEvent.click(screen.getByTestId('skip-api-key'));
+
+      await waitFor(() => expect(screen.getByTestId('step-agents')).toBeInTheDocument());
+
+      // disable brainstorm
+      fireEvent.click(screen.getByTestId('agent-toggle-brainstorm'));
+      fireEvent.click(screen.getByTestId('finish-onboarding'));
 
       await waitFor(() => {
         const api = (window as unknown as { api: { settingsSet: ReturnType<typeof vi.fn> } }).api;
         expect(api.settingsSet).toHaveBeenCalledWith(
-          expect.objectContaining({ apiKey: 'sk-ant-test1234', onboardingComplete: true }),
+          expect.objectContaining({
+            onboardingComplete: true,
+            agents: expect.objectContaining({
+              brainstorm: expect.objectContaining({ enabled: false }),
+              writingAssistant: expect.objectContaining({ enabled: true }),
+            }),
+          }),
         );
       });
       await waitFor(() => {
@@ -158,24 +209,24 @@ describe('OnboardingWizard', () => {
       expect(screen.getByTestId('step-done')).toBeInTheDocument();
     });
 
-    it('skip path — skips API key and persists onboardingComplete=true', async () => {
+    it('with API key entered — key is included in saved settings', async () => {
       const onComplete = vi.fn();
       render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
       fireEvent.click(screen.getByRole('button', { name: /get started/i }));
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-      fireEvent.click(screen.getByTestId('skip-api-key'));
+      fireEvent.change(screen.getByTestId('api-key-input'), { target: { value: 'sk-ant-test1234' } });
+      fireEvent.click(screen.getByTestId('save-api-key'));
+
+      await waitFor(() => expect(screen.getByTestId('step-agents')).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId('finish-onboarding'));
 
       await waitFor(() => {
         const api = (window as unknown as { api: { settingsSet: ReturnType<typeof vi.fn> } }).api;
         expect(api.settingsSet).toHaveBeenCalledWith(
-          expect.objectContaining({ onboardingComplete: true }),
+          expect.objectContaining({ apiKey: 'sk-ant-test1234', onboardingComplete: true }),
         );
       });
-      await waitFor(() => {
-        expect(onComplete).toHaveBeenCalled();
-      });
-      expect(screen.getByTestId('step-done')).toBeInTheDocument();
     });
   });
 
@@ -185,6 +236,9 @@ describe('OnboardingWizard', () => {
       fireEvent.click(screen.getByRole('button', { name: /get started/i }));
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
       fireEvent.click(screen.getByTestId('skip-api-key'));
+
+      await waitFor(() => expect(screen.getByTestId('step-agents')).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId('finish-onboarding'));
 
       await waitFor(() => {
         expect(screen.getByTestId('step-done')).toBeInTheDocument();
