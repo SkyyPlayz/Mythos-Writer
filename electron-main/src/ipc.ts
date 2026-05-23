@@ -82,6 +82,10 @@ export const IPC_CHANNELS = {
 
   // Vault graph (Phase 5 — MYT-163)
   VAULT_GRAPH_DATA: 'vault:graph-data',
+
+  // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
+  UPDATE_CHECK: 'update:check',
+  UPDATE_INSTALL: 'update:install',
 } as const;
 
 // ─── Main process handlers ───

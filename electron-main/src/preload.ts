@@ -131,12 +131,14 @@ contextBridge.exposeInMainWorld('api', {
   cancelVaultCheck: (requestId: string) =>
     ipcRenderer.send('agent:vault-check:stream-cancel', { requestId }),
 
-  // Auto-update status
+  // Auto-update status (MYT-210) — feature-flagged; calls are safe no-ops when MYTHOS_AUTO_UPDATE!=1
   onUpdateStatus: (cb: (state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready') => void) => {
     const handler = (_: unknown, data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' }) => cb(data.state);
     ipcRenderer.on('update:status', handler);
     return () => ipcRenderer.removeListener('update:status', handler);
   },
+  checkForUpdate: () => ipcRenderer.invoke('update:check', undefined),
+  installUpdate: () => ipcRenderer.invoke('update:install', undefined),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

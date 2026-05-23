@@ -648,7 +648,12 @@ function createWindow() {
   });
 }
 
-// ─── Auto-updater ───
+// ─── Auto-updater (MYT-210) ───
+// Feature-flagged: only active when MYTHOS_AUTO_UPDATE=1 (set in production CI/release builds).
+// During development and staging builds this block is inert — the IPC handlers are still
+// registered so the renderer can call them safely, but they no-op.
+const AUTO_UPDATE_ENABLED = process.env.MYTHOS_AUTO_UPDATE === '1';
+
 type UpdateState = 'checking' | 'available' | 'not-available' | 'downloading' | 'ready';
 
 function sendUpdateStatus(state: UpdateState) {
@@ -658,6 +663,21 @@ function sendUpdateStatus(state: UpdateState) {
 }
 
 function initAutoUpdater() {
+  // Register IPC handlers regardless of flag so renderer calls don't throw.
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, () => {
+    if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    return { queued: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, () => {
+    if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
+  });
+
+  if (!AUTO_UPDATE_ENABLED) return;
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -668,7 +688,7 @@ function initAutoUpdater() {
   autoUpdater.on('download-progress', () => sendUpdateStatus('downloading'));
   autoUpdater.on('update-downloaded', () => sendUpdateStatus('ready'));
 
-  // Only check in packaged production builds
+  // Only poll in packaged production builds to avoid hitting GitHub API during dev.
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify().catch(() => { /* silenced */ });
   }

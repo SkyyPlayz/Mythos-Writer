@@ -20,12 +20,21 @@ export default function UpdateBanner() {
   const messages: Record<Exclude<UpdateState, 'not-available' | 'checking'>, string> = {
     available: 'A new version is available — downloading…',
     downloading: 'Downloading update…',
-    ready: 'Update ready — will install on next restart.',
+    ready: 'Update ready.',
+  };
+
+  const handleInstall = () => {
+    (window as any).api?.installUpdate?.();
   };
 
   return (
     <div className={`update-banner update-banner--${state}`} role="status">
       <span className="update-banner__msg">{messages[state as keyof typeof messages]}</span>
+      {state === 'ready' && (
+        <button className="update-banner__install" onClick={handleInstall}>
+          Restart &amp; Install
+        </button>
+      )}
       <button className="update-banner__close" onClick={() => setDismissed(true)} aria-label="Dismiss">✕</button>
     </div>
   );
