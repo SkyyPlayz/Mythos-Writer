@@ -434,6 +434,15 @@ export async function startVaultWatcher(
   activeWatcher.on('add', (filePath: string) => {
     if (filePath.endsWith('.md')) onChanged(filePath);
   });
+  activeWatcher.on('unlink', (filePath: string) => {
+    onChanged(filePath);
+  });
+  activeWatcher.on('addDir', (filePath: string) => {
+    onChanged(filePath);
+  });
+  activeWatcher.on('unlinkDir', (filePath: string) => {
+    onChanged(filePath);
+  });
 }
 
 export async function stopVaultWatcher(): Promise<void> {

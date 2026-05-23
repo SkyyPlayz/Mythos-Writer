@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Story, Chapter, Scene, EntityEntry } from './types';
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -7,108 +7,191 @@ import './LeftRail.css';
 
 type Tab = 'stories' | 'vault' | 'entities' | 'review';
 
-interface VaultEntry {
+interface VaultListItem {
   path: string;
   name: string;
-  type: 'file' | 'directory';
-  children?: VaultEntry[];
+  isDirectory: boolean;
+  modifiedAt: string;
 }
 
-function groupByCategory(entries: VaultEntry[]) {
-  const categories: Record<string, VaultEntry[]> = {
-    Stories: [],
-    Characters: [],
-    Locations: [],
-    Items: [],
-    Notes: [],
-    Other: [],
-  };
-  for (const e of entries) {
-    const lower = e.path.toLowerCase();
-    if (lower.includes('stories/') || lower.includes('story')) categories['Stories'].push(e);
-    else if (lower.includes('character')) categories['Characters'].push(e);
-    else if (lower.includes('location') || lower.includes('place')) categories['Locations'].push(e);
-    else if (lower.includes('item') || lower.includes('object')) categories['Items'].push(e);
-    else if (lower.includes('note')) categories['Notes'].push(e);
-    else categories['Other'].push(e);
+interface TreeNode {
+  path: string;
+  name: string;
+  isDirectory: boolean;
+  children: TreeNode[];
+}
+
+function buildTree(items: VaultListItem[]): TreeNode[] {
+  const nodeMap = new Map<string, TreeNode>();
+  for (const item of items) {
+    nodeMap.set(item.path, { path: item.path, name: item.name, isDirectory: item.isDirectory, children: [] });
   }
-  return categories;
+  const roots: TreeNode[] = [];
+  for (const item of items) {
+    const node = nodeMap.get(item.path)!;
+    const lastSlash = item.path.lastIndexOf('/');
+    const parentPath = lastSlash > 0 ? item.path.slice(0, lastSlash) : null;
+    if (parentPath && nodeMap.has(parentPath)) {
+      nodeMap.get(parentPath)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  // Sort: directories first, then files, both alphabetically
+  function sortNodes(nodes: TreeNode[]) {
+    nodes.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    for (const n of nodes) if (n.isDirectory) sortNodes(n.children);
+  }
+  sortNodes(roots);
+  return roots;
 }
 
-function VaultBrowser() {
-  const [entries, setEntries] = useState<VaultEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(['Stories', 'Characters', 'Locations', 'Items', 'Notes']));
+interface VaultTreeNodeProps {
+  node: TreeNode;
+  depth: number;
+  expanded: Set<string>;
+  selected: string | null;
+  onToggle: (path: string) => void;
+  onOpenFile: (path: string) => void;
+}
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const result = await (window as any).api?.listVault?.();
-        if (Array.isArray(result)) {
-          const flat = result.map((p: string) => ({
-            path: p,
-            name: p.split('/').pop() ?? p,
-            type: 'file' as const,
-          }));
-          setEntries(flat);
+function VaultTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }: VaultTreeNodeProps) {
+  const isExpanded = expanded.has(node.path);
+  const isSelected = selected === node.path;
+
+  if (node.isDirectory) {
+    return (
+      <div className="vt-dir">
+        <div
+          className="vt-row vt-dir-row"
+          style={{ paddingLeft: 8 + depth * 16 }}
+          onClick={() => onToggle(node.path)}
+          title={node.path}
+        >
+          <span className="vt-chevron">{isExpanded ? '▾' : '▸'}</span>
+          <span className="vt-icon vt-icon-dir">{isExpanded ? '📂' : '📁'}</span>
+          <span className="vt-name">{node.name}</span>
+        </div>
+        {isExpanded && node.children.map((child) => (
+          <VaultTreeNode
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            expanded={expanded}
+            selected={selected}
+            onToggle={onToggle}
+            onOpenFile={onOpenFile}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const isMd = node.name.endsWith('.md');
+  return (
+    <div
+      className={`vt-row vt-file-row${isSelected ? ' vt-selected' : ''}${isMd ? ' vt-md' : ''}`}
+      style={{ paddingLeft: 8 + depth * 16 }}
+      onClick={() => isMd && onOpenFile(node.path)}
+      title={node.path}
+    >
+      <span className="vt-chevron" />
+      <span className="vt-icon vt-icon-file">{isMd ? '📄' : '·'}</span>
+      <span className="vt-name">{isMd ? node.name.slice(0, -3) : node.name}</span>
+    </div>
+  );
+}
+
+interface VaultBrowserProps {
+  onOpenPath?: (path: string) => void;
+}
+
+function VaultBrowser({ onOpenPath }: VaultBrowserProps) {
+  const [tree, setTree] = useState<TreeNode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<string | null>(null);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadTree = useCallback(async () => {
+    try {
+      const result = await window.api.listVault();
+      const nodes = buildTree(result.items ?? []);
+      setTree(nodes);
+      // Auto-expand top-level directories on first load
+      setExpanded((prev) => {
+        if (prev.size > 0) return prev;
+        const next = new Set<string>();
+        for (const n of nodes) {
+          if (n.isDirectory) next.add(n.path);
         }
-      } catch {
-        // vault not ready
-      } finally {
-        setLoading(false);
-      }
-    })();
+        return next;
+      });
+    } catch {
+      // vault not ready
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const toggleCategory = (cat: string) =>
+  useEffect(() => {
+    // Start vault watcher and load tree
+    window.api.startVaultWatch?.().catch(() => {});
+    loadTree();
+
+    const unsubscribe = window.api.onVaultFileChanged?.(() => {
+      // Debounce refresh to stay well within the 500ms acceptance criterion
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => loadTree(), 150);
+    });
+
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      unsubscribe?.();
+    };
+  }, [loadTree]);
+
+  const toggleDir = useCallback((path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(cat) ? next.delete(cat) : next.add(cat);
+      next.has(path) ? next.delete(path) : next.add(path);
       return next;
     });
+  }, []);
+
+  const handleOpenFile = useCallback((path: string) => {
+    setSelected(path);
+    onOpenPath?.(path);
+  }, [onOpenPath]);
 
   if (loading) return <div className="vault-loading">Loading vault…</div>;
 
-  const grouped = groupByCategory(entries);
-  const hasAny = Object.values(grouped).some((g) => g.length > 0);
-
-  if (!hasAny) {
+  if (tree.length === 0) {
     return (
       <div className="vault-empty">
         <div className="vault-empty-icon">🗄️</div>
         <p>Your vault is empty.</p>
-        <p className="vault-empty-sub">Markdown files you create or import will appear here, organized by type.</p>
+        <p className="vault-empty-sub">Markdown files you create or import will appear here.</p>
       </div>
     );
   }
 
   return (
-    <div className="vault-browser">
-      {Object.entries(grouped).map(([cat, items]) => {
-        if (items.length === 0) return null;
-        return (
-          <div key={cat} className="vault-category">
-            <div
-              className="vault-category-header"
-              onClick={() => toggleCategory(cat)}
-            >
-              <span className="vault-chevron">{expanded.has(cat) ? '▾' : '▸'}</span>
-              <span className="vault-category-name">{cat}</span>
-              <span className="vault-count">{items.length}</span>
-            </div>
-            {expanded.has(cat) && (
-              <div className="vault-items">
-                {items.map((item) => (
-                  <div key={item.path} className="vault-item" title={item.path}>
-                    <span className="vault-item-icon">◦</span>
-                    <span className="vault-item-name">{item.name.replace(/\.md$/, '')}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div className="vault-tree">
+      {tree.map((node) => (
+        <VaultTreeNode
+          key={node.path}
+          node={node}
+          depth={0}
+          expanded={expanded}
+          selected={selected}
+          onToggle={toggleDir}
+          onOpenFile={handleOpenFile}
+        />
+      ))}
     </div>
   );
 }
@@ -189,7 +272,7 @@ export default function LeftRail({
             selectedEntityId={selectedEntityId}
           />
         )}
-        {activeTab === 'vault' && <VaultBrowser />}
+        {activeTab === 'vault' && <VaultBrowser onOpenPath={onOpenVaultPath} />}
         {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} />}
       </div>
     </div>
