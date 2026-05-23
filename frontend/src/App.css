@@ -1,7 +1,50 @@
+/* Root layout with tab bar */
+
+.root-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.top-tabs {
+  display: flex;
+  background: #0d0d0d;
+  border-bottom: 1px solid #1e1e1e;
+  flex-shrink: 0;
+  padding: 0 1rem;
+}
+
+.top-tab {
+  padding: 0.55rem 1.2rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #52525b;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+  margin-bottom: -1px;
+}
+
+.top-tab:hover {
+  color: #a1a1aa;
+}
+
+.top-tab.active {
+  color: #c4b5fd;
+  border-bottom-color: #7c3aed;
+}
+
 .app {
+  flex: 1;
+  overflow-y: auto;
   max-width: 860px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
+  width: 100%;
 }
 
 header {

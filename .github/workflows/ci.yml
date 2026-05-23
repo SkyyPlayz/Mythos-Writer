@@ -22,26 +22,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint (backend)
-        run: npm run lint -w backend
-
       - name: Lint (frontend)
         run: npm run lint -w frontend
-
-      - name: Type-check (backend)
-        run: npm run typecheck -w backend
 
       - name: Type-check (frontend)
         run: npm run typecheck -w frontend
 
-      - name: Test (backend)
-        run: npm run test -w backend
+      - name: Type-check (electron-main)
+        run: npm run typecheck -w electron-main
+
+      - name: Test (electron-main)
+        run: npm run test -w electron-main
 
       - name: Test (frontend)
         run: npm run test -w frontend
 
-      - name: Build (backend)
-        run: npm run build -w backend
-
-      - name: Build (frontend)
-        run: npm run build -w frontend
+      - name: Build (electron-vite)
+        run: npm run build:electron

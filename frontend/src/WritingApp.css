@@ -1,0 +1,36 @@
+.writing-app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.writing-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.writing-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #52525b;
+  font-size: 0.95rem;
+}
+
+.writing-loading,
+.writing-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: #71717a;
+  font-size: 0.95rem;
+}
+
+.writing-error {
+  color: #f87171;
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@mythos-writer/electron-main",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.10.0",
+    "chokidar": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.3.3",
+    "vitest": "^3.2.4"
+  }
+}

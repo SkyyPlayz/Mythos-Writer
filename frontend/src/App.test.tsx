@@ -1,39 +1,28 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import App from './App';
 
+const mockManifest = {
+  version: '1',
+  vaultRoot: '/tmp',
+  stories: [],
+  entities: [],
+  suggestions: [],
+  scenes: [],
+  chapters: [],
+};
+
+beforeEach(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).api = {
+    readManifest: () => Promise.resolve(mockManifest),
+    writeManifest: () => Promise.resolve({}),
+    onVaultFileChanged: () => () => {},
+  };
+});
+
 describe('App', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('renders the heading', () => {
+  it('renders the app shell loading state', () => {
     render(<App />);
-    expect(screen.getByText('Mythos Writer')).toBeInTheDocument();
-  });
-
-  it('renders the generate button', () => {
-    render(<App />);
-    expect(screen.getByRole('button', { name: /generate story/i })).toBeInTheDocument();
-  });
-
-  it('shows a friendly error when streaming responses are unsupported', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: null,
-    } as Response);
-
-    render(<App />);
-
-    fireEvent.change(screen.getByLabelText(/story prompt/i), {
-      target: { value: 'A brave fox finds a hidden moon garden.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /generate story/i }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/streaming story responses are not supported/i)
-      ).toBeInTheDocument();
-    });
+    expect(screen.getByText(/loading your vault/i)).toBeInTheDocument();
   });
 });

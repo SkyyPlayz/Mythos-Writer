@@ -1,0 +1,155 @@
+.left-rail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #111113;
+  border-right: 1px solid #1f1f23;
+  overflow: hidden;
+}
+
+.rail-tabs {
+  display: flex;
+  border-bottom: 1px solid #27272a;
+  flex-shrink: 0;
+}
+
+.rail-tab {
+  flex: 1;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.rail-tab:hover {
+  color: #a1a1aa;
+}
+
+.rail-tab.active {
+  color: #e4e4e7;
+  border-bottom: 2px solid #7c3aed;
+  margin-bottom: -1px;
+}
+
+.rail-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Vault browser */
+.vault-loading {
+  padding: 16px;
+  color: #52525b;
+  font-size: 0.85rem;
+}
+
+.vault-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px 16px;
+  text-align: center;
+  color: #52525b;
+}
+
+.vault-empty-icon {
+  font-size: 1.8rem;
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+.vault-empty p {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  color: #71717a;
+}
+
+.vault-empty-sub {
+  font-size: 0.78rem !important;
+  color: #3f3f46 !important;
+}
+
+.vault-browser {
+  padding: 8px 0;
+}
+
+.vault-category {
+  margin-bottom: 2px;
+}
+
+.vault-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  user-select: none;
+  color: #71717a;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vault-category-header:hover {
+  color: #a1a1aa;
+  background: #18181b;
+}
+
+.vault-chevron {
+  font-size: 0.65rem;
+  width: 10px;
+}
+
+.vault-category-name {
+  flex: 1;
+}
+
+.vault-count {
+  background: #27272a;
+  color: #52525b;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 0.7rem;
+}
+
+.vault-items {
+  padding: 0 0 4px;
+}
+
+.vault-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 28px;
+  cursor: pointer;
+  color: #a1a1aa;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-item:hover {
+  background: #18181b;
+  color: #e4e4e7;
+}
+
+.vault-item-icon {
+  color: #3f3f46;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+.vault-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

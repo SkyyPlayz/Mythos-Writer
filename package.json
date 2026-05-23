@@ -2,18 +2,31 @@
   "name": "mythos-writer",
   "version": "0.1.0",
   "private": true,
+  "main": "out/main/main.js",
   "workspaces": [
-    "backend",
-    "frontend"
+    "frontend",
+    "electron-main"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
-    "build": "npm run build -w backend && npm run build -w frontend",
-    "lint": "npm run lint -w backend && npm run lint -w frontend",
-    "test": "npm run test -w backend && npm run test -w frontend",
-    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && electron-builder --win zip",
+    "build:installer": "electron-vite build && electron-builder --win nsis",
+    "dist": "electron-vite build && electron-builder --win",
+    "build:electron": "electron-vite build",
+    "start": "electron .",
+    "package": "electron-builder --win zip",
+    "lint": "npm run lint -w frontend",
+    "test": "npm run test -w electron-main && npm run test -w frontend",
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-updater": "^6.3.9",
+    "electron-vite": "^5.0.0",
+    "vite": "^6.4.2"
+  },
+  "overrides": {
+    "vite": "^6.4.2"
   }
 }
