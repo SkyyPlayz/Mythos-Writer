@@ -78,6 +78,7 @@ interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+  onboardingComplete?: boolean;
 }
 
 interface BrainstormExtractedEntity {
@@ -147,6 +148,19 @@ interface Window {
       vaultPath?: string,
     ) => Promise<{ text: string; entities: BrainstormExtractedEntity[] }>;
     onBrainstormChatChunk: (cb: (chunk: string) => void) => () => void;
+
+    // Generalized token streaming — stream:* channels
+    streamStart: (payload: {
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      system?: string;
+      model?: string;
+      maxTokens?: number;
+    }) => Promise<{ streamId: string }>;
+    streamCancel: (streamId: string) => Promise<{ cancelled: boolean }>;
+    streamAck: (streamId: string, count: number) => void;
+    onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
+    onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
+    onStreamError: (cb: (data: { streamId: string; error: string }) => void) => () => void;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

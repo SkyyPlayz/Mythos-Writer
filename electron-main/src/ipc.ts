@@ -50,6 +50,7 @@ export const IPC_CHANNELS = {
   AGENT_BRAINSTORM: 'agent:brainstorm',
   AGENT_VAULT_INDEX: 'agent:vault-index',
   AGENT_VAULT_CHECK: 'agent:vault-check',
+  AGENT_ARCHIVE: 'agent:archive',
 
   // System
   SYSTEM_INFO: 'system:info',
@@ -547,6 +548,32 @@ export interface VaultCheckResponse {
   inconsistencies: VaultCheckInconsistency[];
 }
 
+// ─── Archive Agent streaming types (Phase 3 — MYT-180) ───
+
+export interface AgentArchivePayload {
+  prompt: string;
+  context?: string;
+}
+
+export interface AgentArchiveTimelinePlacement {
+  scenePath: string;
+  inferredTime: string;
+  confidence: string;
+}
+
+export interface AgentArchiveLink {
+  scenePath: string;
+  entityName: string;
+}
+
+export interface AgentArchiveResponse {
+  text: string;
+  timelinePlacements: AgentArchiveTimelinePlacement[];
+  links: AgentArchiveLink[];
+  inconsistencies: string[];
+  requestId: string;
+}
+
 // ─── App settings types ───
 
 export interface AgentBudgetSettings {
@@ -568,6 +595,7 @@ export interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+  onboardingComplete?: boolean;
 }
 
 export interface SettingsSetPayload {
