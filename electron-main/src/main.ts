@@ -702,7 +702,7 @@ const handlers: IpcHandlers = {
     const page = payload.page ?? 0;
     const agent = payload.agent && payload.agent !== 'all' ? payload.agent : undefined;
     const entries = listGenerationLog({ limit: pageSize, offset: page * pageSize, agent }).map(truncateGenerationLogBody);
-    const total = countGenerationLog(agent);
+    const total = countGenerationLog({ agent });
     return { entries, total, page, pageSize };
   },
 
