@@ -60,6 +60,22 @@
   color: #fcd34d;
 }
 
+.btn-history {
+  padding: 0.3rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #3f3f46;
+  background: transparent;
+  color: #71717a;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-history:hover {
+  border-color: #6d28d9;
+  color: #a78bfa;
+}
+
 /* TipTap editor wrapper */
 
 .tiptap-editor-wrap {

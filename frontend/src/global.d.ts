@@ -53,6 +53,8 @@ interface Suggestion {
   target: string;
   confidence: number;
   rationale: string;
+  payload?: string;
+  auditId?: string;
   createdAt: string;
   status: 'proposed' | 'accepted' | 'rejected' | 'ignored';
 }

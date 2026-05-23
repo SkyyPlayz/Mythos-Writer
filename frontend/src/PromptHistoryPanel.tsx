@@ -14,10 +14,11 @@ const PAGE_SIZE = 20;
 
 interface Props {
   onClose: () => void;
+  initialTab?: AgentTab;
 }
 
-export default function PromptHistoryPanel({ onClose }: Props) {
-  const [tab, setTab] = useState<AgentTab>('all');
+export default function PromptHistoryPanel({ onClose, initialTab }: Props) {
+  const [tab, setTab] = useState<AgentTab>(initialTab ?? 'all');
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');

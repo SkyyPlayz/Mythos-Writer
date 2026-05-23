@@ -11,6 +11,8 @@ interface Suggestion {
   target: string;
   confidence: number;
   rationale: string;
+  payload?: string;
+  auditId?: string;
   createdAt: string;
   status: SuggestionStatus;
 }
@@ -45,6 +47,7 @@ const MOCK_SUGGESTIONS: Suggestion[] = [
     target: 'stories/chapter-1/scene-2.md',
     confidence: 0.87,
     rationale: 'Pacing slows in the third paragraph — consider splitting into two beats.',
+    payload: 'Split "The lantern swung wildly as she ran, her breath ragged, the footsteps behind her growing louder with every stride." into two sentences ending at "swung wildly" and resuming with "Her breath was ragged…"',
     createdAt: new Date(Date.now() - 3_600_000).toISOString(),
     status: 'proposed',
   },
@@ -54,6 +57,7 @@ const MOCK_SUGGESTIONS: Suggestion[] = [
     target: 'characters/elara.md',
     confidence: 0.72,
     rationale: "Elara's motivation for the vault heist is underspecified — add a scene showing her backstory.",
+    payload: 'Add a flashback scene in Chapter 2: Elara finds her father\'s old lockpicking kit in the rubble of their childhood home, establishing her personal stakes in the heist.',
     createdAt: new Date(Date.now() - 7_200_000).toISOString(),
     status: 'proposed',
   },
@@ -63,6 +67,7 @@ const MOCK_SUGGESTIONS: Suggestion[] = [
     target: 'locations/the-foundry.md',
     confidence: 0.91,
     rationale: 'The Foundry appears in ch3 but was destroyed in ch1 — continuity conflict.',
+    payload: 'ch1 Scene 4 line 12: "The Foundry collapsed in a cloud of ash and smoke." Conflicts with ch3 Scene 1: "They met at The Foundry\'s east entrance."',
     createdAt: new Date(Date.now() - 86_400_000).toISOString(),
     status: 'proposed',
   },
@@ -74,9 +79,12 @@ interface SuggestionRowProps {
   onReject: (id: string) => void;
   onIgnore: (id: string) => void;
   onOpenTarget: (path: string) => void;
+  onOpenAuditTrail?: (agent: AgentSource) => void;
 }
 
-function SuggestionRow({ suggestion, onAccept, onReject, onIgnore, onOpenTarget }: SuggestionRowProps) {
+function SuggestionRow({ suggestion, onAccept, onReject, onIgnore, onOpenTarget, onOpenAuditTrail }: SuggestionRowProps) {
+  const [payloadExpanded, setPayloadExpanded] = useState(false);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') { e.preventDefault(); onAccept(suggestion.id); }
     if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); onReject(suggestion.id); }
@@ -123,6 +131,26 @@ function SuggestionRow({ suggestion, onAccept, onReject, onIgnore, onOpenTarget 
 
       <p className="sr-rationale">{suggestion.rationale}</p>
 
+      {suggestion.payload && (
+        <div className="sr-payload">
+          <button
+            className="sr-payload-toggle"
+            onClick={() => setPayloadExpanded((v) => !v)}
+            aria-expanded={payloadExpanded}
+            aria-label={payloadExpanded ? 'Collapse payload preview' : 'Expand payload preview'}
+            tabIndex={-1}
+          >
+            <span className="sr-payload-toggle-icon">{payloadExpanded ? '▾' : '▸'}</span>
+            Payload preview
+          </button>
+          {payloadExpanded && (
+            <pre className="sr-payload-body" aria-label="Payload preview">
+              {suggestion.payload}
+            </pre>
+          )}
+        </div>
+      )}
+
       <div className="sr-actions">
         <button
           className="sr-btn sr-btn-accept"
@@ -145,6 +173,16 @@ function SuggestionRow({ suggestion, onAccept, onReject, onIgnore, onOpenTarget 
         >
           Ignore
         </button>
+        {onOpenAuditTrail && (
+          <button
+            className="sr-btn sr-btn-audit"
+            onClick={() => onOpenAuditTrail(suggestion.source_agent)}
+            aria-label={`View audit trail for ${AGENT_LABELS[suggestion.source_agent]} suggestion`}
+            tabIndex={-1}
+          >
+            Audit trail
+          </button>
+        )}
       </div>
     </div>
   );
@@ -152,9 +190,10 @@ function SuggestionRow({ suggestion, onAccept, onReject, onIgnore, onOpenTarget 
 
 interface Props {
   onOpenVaultPath?: (path: string) => void;
+  onOpenAuditTrail?: (agent: AgentSource) => void;
 }
 
-export default function SuggestionReview({ onOpenVaultPath }: Props) {
+export default function SuggestionReview({ onOpenVaultPath, onOpenAuditTrail }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [filter, setFilter] = useState<FilterOption>('all');
   const [loading, setLoading] = useState(true);
@@ -287,6 +326,7 @@ export default function SuggestionReview({ onOpenVaultPath }: Props) {
               onReject={handleReject}
               onIgnore={handleIgnore}
               onOpenTarget={handleOpenTarget}
+              onOpenAuditTrail={onOpenAuditTrail}
             />
           ))
         )}

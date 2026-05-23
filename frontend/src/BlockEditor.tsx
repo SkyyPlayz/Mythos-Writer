@@ -4,6 +4,7 @@ import { Markdown } from 'tiptap-markdown';
 import { useRef, useState, useEffect } from 'react';
 import type { Block, Scene, DraftState } from './types';
 import { WikiLink } from './WikiLinkExtension';
+import SceneHistory from './SceneHistory';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
@@ -44,6 +45,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
+  const [showHistory, setShowHistory] = useState(false);
   const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBlocksChangeRef = useRef(onBlocksChange);
   onBlocksChangeRef.current = onBlocksChange;
@@ -121,6 +123,17 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     onDraftStateChange(state);
   };
 
+  const handleHistoryRestore = (content: string) => {
+    if (!editor) return;
+    editor.commands.setContent(content);
+    setShowHistory(false);
+  };
+
+  const currentEditorContent = editor
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ? (editor.storage as any).markdown?.getMarkdown?.() ?? ''
+    : blocksToMarkdownBody(scene.blocks);
+
   return (
     <div className="block-editor">
       <div className="block-editor-toolbar">
@@ -136,10 +149,20 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
             </button>
           ))}
         </div>
+        <button className="btn-history" onClick={() => setShowHistory(true)}>History</button>
       </div>
       <div className="tiptap-editor-wrap">
         <EditorContent editor={editor} className="tiptap-content" />
       </div>
+      {showHistory && (
+        <SceneHistory
+          sceneId={scene.id}
+          scenePath={scene.path}
+          currentContent={currentEditorContent}
+          onRestore={handleHistoryRestore}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }

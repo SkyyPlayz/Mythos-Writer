@@ -209,6 +209,7 @@ interface Props {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onReorderScenes: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
   onOpenVaultPath?: (path: string) => void;
+  onOpenAuditTrail?: (agent: 'writing-assistant' | 'brainstorm' | 'archive') => void;
 }
 
 export default function LeftRail({
@@ -224,6 +225,7 @@ export default function LeftRail({
   onCreateScene,
   onReorderScenes,
   onOpenVaultPath,
+  onOpenAuditTrail,
 }: Props) {
   return (
     <div className="left-rail">
@@ -273,7 +275,7 @@ export default function LeftRail({
           />
         )}
         {activeTab === 'vault' && <VaultBrowser onOpenPath={onOpenVaultPath} />}
-        {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} />}
+        {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} onOpenAuditTrail={onOpenAuditTrail} />}
       </div>
     </div>
   );

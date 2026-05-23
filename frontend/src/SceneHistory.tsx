@@ -57,6 +57,7 @@ export default function SceneHistory({ sceneId, scenePath, currentContent, onRes
   const [selected, setSelected] = useState<SceneSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [diffLines, setDiffLines] = useState<Array<{ type: 'same' | 'removed' | 'added'; text: string }>>([]);
 
   const reload = useCallback(async () => {
@@ -76,8 +77,14 @@ export default function SceneHistory({ sceneId, scenePath, currentContent, onRes
     setDiffLines(lineDiff(selected.content, currentContent));
   }, [selected, currentContent]);
 
-  const handleRestore = async () => {
+  const handleRestoreClick = () => {
     if (!selected) return;
+    setShowConfirm(true);
+  };
+
+  const confirmRestore = async () => {
+    if (!selected) return;
+    setShowConfirm(false);
     setRestoring(true);
     try {
       const result = await window.api.snapshotRestore(sceneId, selected.id, scenePath);
@@ -99,6 +106,19 @@ export default function SceneHistory({ sceneId, scenePath, currentContent, onRes
   return (
     <div className="history-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="history-panel" role="dialog" aria-label="Scene History">
+        {showConfirm && (
+          <div className="history-confirm-overlay">
+            <div className="history-confirm-dialog" role="alertdialog" aria-label="Confirm rollback">
+              <p className="history-confirm-msg">Restore this snapshot? Your current content will be saved as a new snapshot first.</p>
+              <div className="history-confirm-actions">
+                <button className="btn-cancel" onClick={() => setShowConfirm(false)}>Cancel</button>
+                <button className="btn-restore" onClick={confirmRestore} disabled={restoring}>
+                  {restoring ? 'Restoring…' : 'Yes, restore'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="history-header">
           <h2>Scene History</h2>
           <button className="history-close" onClick={onClose} aria-label="Close history">✕</button>
@@ -148,7 +168,7 @@ export default function SceneHistory({ sceneId, scenePath, currentContent, onRes
                   </span>
                   <button
                     className="btn-restore"
-                    onClick={handleRestore}
+                    onClick={handleRestoreClick}
                     disabled={restoring}
                   >
                     {restoring ? 'Restoring…' : 'Restore this snapshot'}

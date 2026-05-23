@@ -244,4 +244,61 @@ describe('SuggestionReview', () => {
 
     expect(onOpenVaultPath).toHaveBeenCalledWith('stories/ch1/scene-1.md');
   });
+
+  it('renders payload toggle button when suggestion has payload', async () => {
+    const withPayload = [{ ...mockSuggestions[0], payload: 'Change "slowly walked" to "crept".' }];
+    mockSuggestionsList.mockResolvedValue({ suggestions: withPayload });
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    expect(screen.getByRole('button', { name: /expand payload preview/i })).toBeInTheDocument();
+  });
+
+  it('does not render payload toggle when suggestion has no payload', async () => {
+    const noPayload = [{ ...mockSuggestions[0], payload: undefined }];
+    mockSuggestionsList.mockResolvedValue({ suggestions: noPayload });
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    expect(screen.queryByRole('button', { name: /payload preview/i })).not.toBeInTheDocument();
+  });
+
+  it('expands payload preview when toggle is clicked', async () => {
+    const withPayload = [{ ...mockSuggestions[0], payload: 'Change "slowly walked" to "crept".' }];
+    mockSuggestionsList.mockResolvedValue({ suggestions: withPayload });
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    fireEvent.click(screen.getByRole('button', { name: /expand payload preview/i }));
+
+    expect(screen.getByLabelText('Payload preview')).toHaveTextContent('Change "slowly walked" to "crept".');
+    expect(screen.getByRole('button', { name: /collapse payload preview/i })).toBeInTheDocument();
+  });
+
+  it('renders audit trail button when onOpenAuditTrail is provided', async () => {
+    const onOpenAuditTrail = vi.fn();
+    render(<SuggestionReview onOpenAuditTrail={onOpenAuditTrail} />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    const auditBtns = screen.getAllByRole('button', { name: /view audit trail/i });
+    expect(auditBtns.length).toBeGreaterThan(0);
+  });
+
+  it('does not render audit trail button when onOpenAuditTrail is not provided', async () => {
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    expect(screen.queryByRole('button', { name: /view audit trail/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onOpenAuditTrail with source agent when audit trail button is clicked', async () => {
+    const onOpenAuditTrail = vi.fn();
+    render(<SuggestionReview onOpenAuditTrail={onOpenAuditTrail} />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    const auditBtns = screen.getAllByRole('button', { name: /view audit trail for writing assistant/i });
+    fireEvent.click(auditBtns[0]);
+
+    expect(onOpenAuditTrail).toHaveBeenCalledWith('writing-assistant');
+  });
 });

@@ -147,6 +147,7 @@ export default function DesktopShell() {
   const [view, setView] = useState<AppView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyAgent, setHistoryAgent] = useState<'all' | 'writing-assistant' | 'brainstorm' | 'archive'>('all');
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -455,7 +456,10 @@ export default function DesktopShell() {
         />
       )}
       {historyOpen && (
-        <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
+        <PromptHistoryPanel
+          onClose={() => { setHistoryOpen(false); setHistoryAgent('all'); }}
+          initialTab={historyAgent}
+        />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
@@ -498,6 +502,7 @@ export default function DesktopShell() {
           onCreateScene={createScene}
           onReorderScenes={handleReorderScenes}
           onOpenVaultPath={handleOpenSceneByPath}
+          onOpenAuditTrail={(agent) => { setHistoryAgent(agent); setHistoryOpen(true); }}
         />
       </div>
 
