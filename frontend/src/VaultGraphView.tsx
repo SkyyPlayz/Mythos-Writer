@@ -158,8 +158,8 @@ export default function VaultGraphView({ onOpenNote }: Props) {
   const [filterFolder, setFilterFolder] = useState('');
   const [filterTag, setFilterTag] = useState('');
 
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   useEffect(() => {
     (async () => {
