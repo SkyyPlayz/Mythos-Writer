@@ -68,6 +68,49 @@ describe('IPC vault round-trip', () => {
   });
 });
 
+// ─── Symlink sandbox escape (MYT-361) ────────────────────────────────────────
+
+describe('symlink sandbox escape — realpath check', () => {
+  let tmpDir: string;
+  let escapeTarget: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-symlink-'));
+    escapeTarget = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-escape-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(escapeTarget, { recursive: true, force: true });
+  });
+
+  it('readVaultFile rejects symlink pointing outside vault', () => {
+    // Create a symlink inside the vault pointing to an external directory
+    fs.writeFileSync(path.join(escapeTarget, 'secret.md'), 'leaked content');
+    fs.symlinkSync(escapeTarget, path.join(tmpDir, 'escape-link'));
+    // readVaultFile should reject because realpath goes outside vault
+    expect(() => readVaultFile(tmpDir, 'escape-link/secret.md')).toThrow('Path traversal denied');
+  });
+
+  it('writeVaultFile rejects symlink pointing outside vault', () => {
+    fs.symlinkSync(escapeTarget, path.join(tmpDir, 'escape-link'));
+    expect(() => writeVaultFile(tmpDir, 'escape-link/evil.md', 'content')).toThrow('Path traversal denied');
+  });
+
+  it('deleteVaultFile rejects symlink pointing outside vault', () => {
+    fs.symlinkSync(escapeTarget, path.join(tmpDir, 'escape-link'));
+    expect(() => deleteVaultFile(tmpDir, 'escape-link/some.md')).toThrow('Path traversal denied');
+  });
+
+  it('listVaultFiles skips symlink entries', () => {
+    fs.symlinkSync(escapeTarget, path.join(tmpDir, 'escape-link'));
+    writeVaultFile(tmpDir, 'normal.md', 'content');
+    const { items } = listVaultFiles(tmpDir);
+    expect(items.map((i) => i.name)).toContain('normal.md');
+    expect(items.map((i) => i.name)).not.toContain('escape-link');
+  });
+});
+
 describe('YAML frontmatter', () => {
   it('parseFrontmatter extracts keys and prose', () => {
     const raw = '---\ntitle: My Scene\nid: abc123\ntags: [action, drama]\n---\nProse goes here.';

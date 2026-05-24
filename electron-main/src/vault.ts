@@ -16,10 +16,31 @@ import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 
 // ─── Path safety ───
 
+// Resolve symlinks and assert the real path stays within the vault root.
+// `path.resolve` does not follow filesystem symlinks — a symlink inside the
+// vault pointing outside (e.g. vault/escape -> /etc/passwd) would pass the
+// prefix check. `fs.realpathSync.native` resolves symlinks at the OS level.
+// For writes (leaf may not exist yet), realpath the parent directory instead.
 export function safePath(vaultRoot: string, relativePath: string): string {
   const resolved = path.resolve(vaultRoot, relativePath);
-  if (!resolved.startsWith(path.resolve(vaultRoot) + path.sep) && resolved !== path.resolve(vaultRoot)) {
-    throw new Error(`Path traversal denied: ${relativePath}`);
+  const vaultReal = fs.realpathSync.native(vaultRoot);
+  // For reads: realpath the file itself (must exist).
+  // For writes: realpath the parent dir (leaf may not exist yet).
+  if (fs.existsSync(resolved)) {
+    const resolvedReal = fs.realpathSync.native(resolved);
+    if (!resolvedReal.startsWith(vaultReal + path.sep) && resolvedReal !== vaultReal) {
+      throw new Error(`Path traversal denied: ${relativePath}`);
+    }
+  } else {
+    // File doesn't exist yet — realpath the parent directory.
+    const parent = path.dirname(resolved);
+    if (fs.existsSync(parent)) {
+      const parentReal = fs.realpathSync.native(parent);
+      if (!parentReal.startsWith(vaultReal + path.sep) && parentReal !== vaultReal) {
+        throw new Error(`Path traversal denied: ${relativePath}`);
+      }
+    }
+    // Parent doesn't exist either — realpath the vaultRoot (already checked above).
   }
   return resolved;
 }
@@ -52,6 +73,8 @@ export function listVaultFiles(
 
   function walk(dir: string, prefix: string) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      // Skip symlinks — they may point outside the vault.
+      if (entry.isSymbolicLink()) continue;
       const fullPath = path.join(dir, entry.name);
       const relativePath = path.join(prefix, entry.name);
       items.push({
@@ -354,6 +377,8 @@ function collectMarkdownFiles(dir: string, base = ''): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    // Skip symlinks — they may point outside the vault.
+    if (entry.isSymbolicLink()) continue;
     const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory() && !entry.name.startsWith('.')) {
       results.push(...collectMarkdownFiles(path.join(dir, entry.name), rel));
@@ -422,10 +447,11 @@ export async function startVaultWatcher(
 
   const { default: chokidar } = await import('chokidar');
   activeWatcher = chokidar.watch(vaultRoot, {
-    ignored: /(^|[/\\])\../, // ignore dotfiles
+    ignored: /(^|[/\\\\])\\../, // ignore dotfiles
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
+    followSymlinks: false, // do not recurse into symlinked dirs (MYT-362)
   });
 
   activeWatcher.on('change', (filePath: string) => {
