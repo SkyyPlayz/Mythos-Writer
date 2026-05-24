@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './SettingsPanel.css';
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
@@ -39,6 +39,20 @@ interface Props {
 }
 
 export default function SettingsPanel({ onClose, onSaved }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    triggerRef.current = document.activeElement as HTMLElement;
+    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+      'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    firstFocusable?.focus();
+    return () => {
+      triggerRef.current?.focus();
+    };
+  }, []);
+
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
   // Separate input state so the masked value from settingsGet never appears in the writable field.
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -116,7 +130,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
 
   return (
     <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
-      <div className="settings-panel">
+      <div className="settings-panel" ref={dialogRef}>
         <div className="settings-header">
           <h2 className="settings-title">Settings</h2>
           <button className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>

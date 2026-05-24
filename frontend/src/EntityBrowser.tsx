@@ -153,6 +153,7 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
   );
   const [showCreate, setShowCreate] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const createBtnRef = useRef<HTMLButtonElement>(null);
 
   const loadEntities = useCallback(async () => {
     try {
@@ -182,6 +183,7 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
   ) => {
     const created = await window.api.entityCreate({ name, type, aliases, tags });
     setShowCreate(false);
+    createBtnRef.current?.focus();
     await loadEntities();
     onSelectEntity(created);
   };
@@ -204,7 +206,7 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
   return (
     <div className="entity-browser">
       <div className="entity-browser-toolbar">
-        <button className="entity-btn entity-btn-primary entity-btn-sm" onClick={() => setShowCreate(true)}>
+        <button ref={createBtnRef} className="entity-btn entity-btn-primary entity-btn-sm" onClick={() => setShowCreate(true)}>
           + New Entity
         </button>
       </div>
@@ -282,7 +284,7 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
       {showCreate && (
         <CreateDialog
           onConfirm={handleCreate}
-          onCancel={() => setShowCreate(false)}
+          onCancel={() => { setShowCreate(false); createBtnRef.current?.focus(); }}
         />
       )}
     </div>
