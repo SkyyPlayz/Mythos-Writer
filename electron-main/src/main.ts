@@ -78,6 +78,7 @@ import {
   type VaultLoadSampleResponse,
   type ProjectEntry,
   type ProjectSwitchPayload,
+  type ArchiveConfirmPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -101,6 +102,8 @@ import {
   listBetaReadComments,
   dismissBetaReadComment,
   insertManifestMigrationLog,
+  insertArchiveIgnore,
+  listArchiveIgnores,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -147,6 +150,7 @@ import {
   getArchiveIndex,
   getArchiveStatus,
   runArchiveScan,
+  type ArchiveIgnoreKey,
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
 import { buildFullIndex, searchVault } from './search.js';
@@ -1175,7 +1179,12 @@ const handlers: IpcHandlers = {
       reindexEntities(getVaultRoot(), manifest);
       index = buildArchiveIndex(getVaultRoot(), manifest);
     }
-    const result = runArchiveScan(payload.sceneText, index, payload.scenePath);
+    const ignores = listArchiveIgnores().map<ArchiveIgnoreKey>((ig) => ({
+      entity_id: ig.entity_id,
+      prop_key: ig.prop_key,
+      scene_path: ig.scene_path,
+    }));
+    const result = runArchiveScan(payload.sceneText, index, payload.scenePath, ignores);
     for (const suggestion of result.suggestions) {
       upsertSuggestion(suggestion);
     }
@@ -1183,6 +1192,129 @@ const handlers: IpcHandlers = {
       suggestions: result.suggestions,
       inconsistenciesFound: result.inconsistenciesFound,
       wikiLinksFound: result.wikiLinksFound,
+    };
+  },
+
+  // ─── Archive confirmation dialog (MYT-376) ───
+  [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const auditId = crypto.randomUUID();
+
+    const suggestion = getSuggestion(payload.suggestionId);
+    if (!suggestion) throw new Error(`Suggestion not found: ${payload.suggestionId}`);
+
+    if (suggestion.source_agent !== 'archive') {
+      throw new Error('archive:confirm only handles archive suggestions');
+    }
+
+    let payloadData: {
+      kind: string;
+      entityId?: string;
+      entityName?: string;
+      propKey?: string;
+      vaultValue?: string;
+      scenePhrase?: string;
+    } = { kind: '' };
+    try {
+      payloadData = JSON.parse(suggestion.payload_json ?? '{}');
+    } catch { /* malformed payload — proceed with defaults */ }
+
+    if (payloadData.kind !== 'inconsistency') {
+      throw new Error('archive:confirm only resolves inconsistency suggestions');
+    }
+
+    const { entityId = '', propKey = '', scenePhrase = '' } = payloadData;
+    const scenePath = suggestion.target_path ?? '';
+
+    if (payload.action === 'match_archive') {
+      // Update vault entity property to match manuscript value.
+      if (entityId && propKey && scenePhrase) {
+        try {
+          const manifest = readManifest(getManifestPath());
+          const entity = manifest.entities.find((e) => e.id === entityId);
+          if (entity) {
+            const updatedProperties = { ...(entity.properties ?? {}), [propKey]: scenePhrase };
+            updateEntity(getVaultRoot(), manifest, entityId, { properties: updatedProperties });
+          }
+        } catch { /* non-fatal — still record the audit */ }
+      }
+      updateSuggestionStatus(payload.suggestionId, 'applied', now);
+      insertAuditLog({
+        id: auditId,
+        suggestion_id: payload.suggestionId,
+        action: 'apply',
+        snapshot_path: null,
+        actor: 'user:match_archive',
+        created_at: now,
+      });
+      return { ok: true, auditId };
+
+    } else if (payload.action === 'suggest_story_change') {
+      // Create a counter-suggestion pointing at the manuscript.
+      const newId = crypto.randomUUID();
+      const counterSuggestion = {
+        id: newId,
+        source_agent: 'archive',
+        confidence: 0.8,
+        rationale: suggestion.rationale + ' — consider revising the manuscript to match the vault.',
+        target_kind: 'manuscript' as const,
+        target_path: scenePath,
+        target_anchor: suggestion.target_anchor,
+        payload_json: JSON.stringify({ ...payloadData, kind: 'story-change', originalSuggestionId: payload.suggestionId }),
+        status: 'proposed' as const,
+        created_at: now,
+        applied_at: null,
+        applied_run_id: null,
+        budget_exceeded: 0,
+      };
+      upsertSuggestion(counterSuggestion);
+      updateSuggestionStatus(payload.suggestionId, 'accepted', now);
+      insertAuditLog({
+        id: auditId,
+        suggestion_id: payload.suggestionId,
+        action: 'accept',
+        snapshot_path: null,
+        actor: 'user:suggest_story_change',
+        created_at: now,
+      });
+      return { ok: true, auditId, newSuggestionId: newId };
+
+    } else {
+      // action === 'ignore'
+      if (entityId && propKey && scenePath) {
+        insertArchiveIgnore({
+          id: crypto.randomUUID(),
+          entity_id: entityId,
+          prop_key: propKey,
+          scene_path: scenePath,
+          created_at: now,
+        });
+      }
+      updateSuggestionStatus(payload.suggestionId, 'rejected');
+      insertAuditLog({
+        id: auditId,
+        suggestion_id: payload.suggestionId,
+        action: 'reject',
+        snapshot_path: null,
+        actor: 'user:ignore',
+        created_at: now,
+      });
+      return { ok: true, auditId };
+    }
+  },
+
+  [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: () => {
+    ensureVaultDir();
+    const rows = listArchiveIgnores();
+    return {
+      entries: rows.map((r) => ({
+        id: r.id,
+        entityId: r.entity_id,
+        propKey: r.prop_key,
+        scenePath: r.scene_path,
+        createdAt: r.created_at,
+      })),
     };
   },
 

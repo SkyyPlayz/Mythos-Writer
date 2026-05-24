@@ -262,6 +262,21 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma('user_version = 9');
   }
+
+  if (currentVersion < 10) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS archive_ignore_list (
+        id          TEXT PRIMARY KEY,
+        entity_id   TEXT NOT NULL,
+        prop_key    TEXT NOT NULL,
+        scene_path  TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_archive_ignore_unique
+        ON archive_ignore_list (entity_id, prop_key, scene_path);
+    `);
+    db.pragma('user_version = 10');
+  }
 }
 
 // ─── Suggestions ───
@@ -567,6 +582,40 @@ export function countSuggestionsInWindow(sourceAgent: string, windowMs: number):
     )
     .get(sourceAgent, windowStart) as { cnt: number };
   return row.cnt;
+}
+
+// ─── Archive ignore list (MYT-376) ───
+
+export interface DbArchiveIgnore {
+  id: string;
+  entity_id: string;
+  prop_key: string;
+  scene_path: string;
+  created_at: string;
+}
+
+export function insertArchiveIgnore(entry: DbArchiveIgnore): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO archive_ignore_list (id, entity_id, prop_key, scene_path, created_at)
+       VALUES (@id, @entity_id, @prop_key, @scene_path, @created_at)`
+    )
+    .run(entry);
+}
+
+export function isArchiveIgnored(entityId: string, propKey: string, scenePath: string): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 FROM archive_ignore_list WHERE entity_id = ? AND prop_key = ? AND scene_path = ? LIMIT 1`
+    )
+    .get(entityId, propKey, scenePath);
+  return row !== undefined;
+}
+
+export function listArchiveIgnores(): DbArchiveIgnore[] {
+  return getDb()
+    .prepare('SELECT * FROM archive_ignore_list ORDER BY created_at DESC')
+    .all() as DbArchiveIgnore[];
 }
 
 /**

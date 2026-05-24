@@ -339,6 +339,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('project:switched', handler);
     return () => ipcRenderer.removeListener('project:switched', handler);
   },
+
+  // Archive confirmation dialog (MYT-376)
+  archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>
+    ipcRenderer.invoke('archive:confirm', { suggestionId, action }),
+  archiveIgnoreList: () => ipcRenderer.invoke('archive:ignore-list', undefined),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

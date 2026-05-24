@@ -176,10 +176,17 @@ const PROPERTY_CONTRADICTION_PAIRS: Record<string, Array<[string, string]>> = {
   ],
 };
 
+export interface ArchiveIgnoreKey {
+  entity_id: string;
+  prop_key: string;
+  scene_path: string;
+}
+
 export function detectInconsistencies(
   sceneText: string,
   index: ArchiveIndex,
   scenePath: string,
+  ignoreList?: ArchiveIgnoreKey[],
 ): DbSuggestion[] {
   const suggestions: DbSuggestion[] = [];
   const now = new Date().toISOString();
@@ -193,6 +200,11 @@ export function detectInconsistencies(
     for (const [propKey, propVal] of Object.entries(record.properties)) {
       const propValLower = propVal.toLowerCase();
       const contradictions = PROPERTY_CONTRADICTION_PAIRS[propKey] ?? [];
+
+      // Skip if user has ignored this entity+property+scene combination.
+      if (ignoreList?.some(
+        (ig) => ig.entity_id === record.id && ig.prop_key === propKey && ig.scene_path === scenePath
+      )) continue;
 
       for (const [vaultPhrase, contradictingPhrase] of contradictions) {
         if (
@@ -282,8 +294,9 @@ export function runArchiveScan(
   sceneText: string,
   index: ArchiveIndex,
   scenePath: string,
+  ignoreList?: ArchiveIgnoreKey[],
 ): ArchiveScanResult {
-  const inconsistencies = detectInconsistencies(sceneText, index, scenePath);
+  const inconsistencies = detectInconsistencies(sceneText, index, scenePath, ignoreList);
   const wikiLinks = detectWikiLinkOpportunities(sceneText, index, scenePath);
   return {
     suggestions: [...inconsistencies, ...wikiLinks],

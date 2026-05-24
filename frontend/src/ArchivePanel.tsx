@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Scene } from './types';
+import ArchiveConfirmDialog from './ArchiveConfirmDialog';
 import './ArchivePanel.css';
 
 interface ArchivePayload {
@@ -72,10 +73,17 @@ export interface Props {
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }
 
+interface DialogState {
+  suggestionId: string;
+  rationale: string;
+  anchorText: string;
+}
+
 export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, enabled = true, onWikiLinkSuggestionsChange }: Props) {
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
   const onWLSuggestionsRef = useRef(onWikiLinkSuggestionsChange);
   onWLSuggestionsRef.current = onWikiLinkSuggestionsChange;
 
@@ -127,6 +135,20 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
     } catch { /* optimistic update already applied */ }
   }, []);
 
+  const handleOpenDialog = useCallback((item: ArchiveItem) => {
+    setDialog({
+      suggestionId: item.id,
+      rationale: item.description,
+      anchorText: item.anchorText,
+    });
+  }, []);
+
+  const handleDialogResolved = useCallback((_action: string) => {
+    if (!dialog) return;
+    setItems((prev) => prev.filter((i) => i.id !== dialog.suggestionId));
+    setDialog(null);
+  }, [dialog]);
+
   const handleAcceptWikiLink = useCallback(async (item: ArchiveItem) => {
     if (!item.wikiLink) return;
     onInsertWikiLink(item.wikiLink, item.anchorText);
@@ -165,6 +187,16 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
   const wikiLinks = proposed.filter((i) => i.kind === 'wiki-link');
 
   return (
+    <>
+    {dialog && (
+      <ArchiveConfirmDialog
+        suggestionId={dialog.suggestionId}
+        rationale={dialog.rationale}
+        anchorText={dialog.anchorText}
+        onClose={() => setDialog(null)}
+        onResolved={handleDialogResolved}
+      />
+    )}
     <div className="archive-panel">
       {!isLive && (
         <div className="ap-mock-banner" role="note">
@@ -214,11 +246,12 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
                     </button>
                   )}
                   <button
-                    className="ap-btn ap-btn-reject"
-                    onClick={() => handleReject(item.id)}
-                    aria-label="Dismiss inconsistency"
+                    className="ap-btn ap-btn-resolve"
+                    onClick={() => handleOpenDialog(item)}
+                    aria-label="Resolve inconsistency"
+                    title="Choose how to resolve this continuity issue"
                   >
-                    Dismiss
+                    Resolve…
                   </button>
                 </div>
               </li>
@@ -272,5 +305,6 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
         )}
       </section>
     </div>
+    </>
   );
 }
