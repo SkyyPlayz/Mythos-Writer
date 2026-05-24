@@ -207,8 +207,8 @@ The following gaps between this spec and the current implementation (`electron-m
 
 | Delta | Spec requirement | Current behaviour | Follow-up |
 |---|---|---|---|
-| Bare wikilink cards | Parse `[[path]]` (no `|title`) gracefully, using basename as title | `CARD_RE` silently drops the card — the regex requires `\|title` | MYT-350 |
-| Pre-v1 migration | Insert `mythos-board-version: 1` on write if absent | No migration path implemented | MYT-350 |
+| Bare wikilink cards | Parse `[[path]]` (no `|title`) gracefully, using basename as title | `CARD_RE` silently drops the card — the regex requires `\|title` | MYT-357 |
+| Pre-v1 migration | Insert `mythos-board-version: 1` on write if absent | No migration path implemented | MYT-357 |
 
 ## Example
 
