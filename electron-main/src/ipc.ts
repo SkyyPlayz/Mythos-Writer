@@ -165,6 +165,10 @@ export const IPC_CHANNELS = {
   // Multi-project switcher (MYT-374)
   PROJECT_LIST: 'project:list',
   PROJECT_SWITCH: 'project:switch',
+
+  // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
+  ARCHIVE_CONFIRM: 'archive:confirm',
+  ARCHIVE_IGNORE_LIST: 'archive:ignore-list',
 } as const;
 
 // ─── Main process handlers ───
@@ -270,6 +274,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: TelemetryReportPayload) => TelemetryReportResponse;
   [IPC_CHANNELS.PROJECT_LIST]: (payload: never) => ProjectListResponse;
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
+  [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
+  [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1410,6 +1416,36 @@ export interface SetAgentConfigPayload {
 
 export interface SetAgentConfigResponse {
   saved: boolean;
+}
+
+// ─── Archive confirmation dialog (MYT-376) ───
+
+/** The three resolution verbs the user can pick for an inconsistency finding. */
+export type ArchiveConfirmAction = 'match_archive' | 'suggest_story_change' | 'ignore';
+
+export interface ArchiveConfirmPayload {
+  /** ID of the inconsistency suggestion being resolved. */
+  suggestionId: string;
+  action: ArchiveConfirmAction;
+}
+
+export interface ArchiveConfirmResponse {
+  ok: boolean;
+  auditId: string;
+  /** Set when action='suggest_story_change': the id of the newly created counter-suggestion. */
+  newSuggestionId?: string;
+}
+
+export interface ArchiveIgnoreEntry {
+  id: string;
+  entityId: string;
+  propKey: string;
+  scenePath: string;
+  createdAt: string;
+}
+
+export interface ArchiveIgnoreListResponse {
+  entries: ArchiveIgnoreEntry[];
 }
 
 // ─── Auto-updater Phase 4 (MYT-337) ───

@@ -23,6 +23,9 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   const [step, setStep] = useState<WizardStep>(1);
   const [vaultChoice, setVaultChoice] = useState<VaultChoice>('sample');
   const [vaultPath, setVaultPath] = useState<string>('');
+  // MYT-367: token issued by pickFolder; required by obsidian-dry-run and
+  // obsidian-register. Cleared on cancel/back so a stale token can't be reused.
+  const [registrationToken, setRegistrationToken] = useState<string>('');
   const [apiKey, setApiKey] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -41,13 +44,19 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   async function handleVaultNext() {
     setError('');
     if (vaultChoice === 'existing') {
-      const result = await (window.api as unknown as { pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean }> }).pickFolder();
-      if (result.cancelled || !result.vaultRoot) return;
+      const result = await (window.api as unknown as { pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null }> }).pickFolder();
+      if (result.cancelled || !result.vaultRoot || !result.registrationToken) return;
       const chosenPath = result.vaultRoot;
+      const token = result.registrationToken;
       setVaultPath(chosenPath);
+      setRegistrationToken(token);
       setScanning(true);
       try {
-        const report = await (window.api as unknown as { obsidianDryRun: (p: string) => Promise<DryRunReport> }).obsidianDryRun(chosenPath);
+        const report = await (window.api as unknown as { obsidianDryRun: (p: string, t: string) => Promise<DryRunReport | { error: string }> }).obsidianDryRun(chosenPath, token);
+        if ('error' in report) {
+          setError(report.error);
+          return;
+        }
         setDryRun(report);
         setStep(3);
       } catch (e) {
@@ -72,9 +81,21 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   async function handleConfirmImport() {
     setError('');
+    if (!registrationToken) {
+      setError('Folder selection expired — please pick the folder again.');
+      setStep(2);
+      setDryRun(null);
+      return;
+    }
     setRegistering(true);
     try {
-      await (window.api as unknown as { obsidianRegister: (p: string) => Promise<unknown> }).obsidianRegister(vaultPath);
+      const res = await (window.api as unknown as { obsidianRegister: (p: string, t: string) => Promise<{ vaultRoot: string; notesIndexed: number } | { error: string }> }).obsidianRegister(vaultPath, registrationToken);
+      if ('error' in res) {
+        setError(res.error);
+        return;
+      }
+      // Token is consumed on success; clear so subsequent flows must pick again.
+      setRegistrationToken('');
       setStep(apiKeyStep);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to register vault');
@@ -288,7 +309,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               <p className="onboarding-error" role="alert">{error}</p>
             )}
             <div className="onboarding-actions">
-              <button className="btn-secondary" onClick={() => { setStep(2); setDryRun(null); }}>
+              <button className="btn-secondary" onClick={() => { setStep(2); setDryRun(null); setRegistrationToken(''); }}>
                 Back
               </button>
               {!dryRun.fatalError && (
