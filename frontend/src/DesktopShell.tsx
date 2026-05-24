@@ -403,6 +403,12 @@ export default function DesktopShell() {
     };
   }, [layout]);
 
+  const adjustPanelWidth = useCallback((target: 'left' | 'right', delta: number) => {
+    const key = target === 'left' ? 'leftWidth' : 'rightWidth';
+    const newWidth = Math.max(160, Math.min(500, layout[key] + delta));
+    persistLayout({ ...layout, [key]: newWidth });
+  }, [layout, persistLayout]);
+
   // ─── Story/scene management ───
 
   const persistSceneMarkdown = useCallback(async (scene: Scene) => {
@@ -680,8 +686,21 @@ export default function DesktopShell() {
 
       {/* Left resize handle */}
       <div
+        role="separator"
+        aria-label="Resize left panel"
+        aria-orientation="vertical"
+        aria-valuenow={layout.leftWidth}
+        aria-valuemin={160}
+        aria-valuemax={500}
+        tabIndex={0}
         className="shell-divider shell-divider-left"
         onMouseDown={(e) => startDrag('left', e)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('left', +8); }
+          else if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('left', -8); }
+          else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 160 }); }
+          else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 500 }); }
+        }}
       />
 
       {/* Center + bottom */}
@@ -745,8 +764,21 @@ export default function DesktopShell() {
 
       {/* Right resize handle */}
       <div
+        role="separator"
+        aria-label="Resize right panel"
+        aria-orientation="vertical"
+        aria-valuenow={layout.rightWidth}
+        aria-valuemin={160}
+        aria-valuemax={500}
+        tabIndex={0}
         className="shell-divider shell-divider-right"
         onMouseDown={(e) => startDrag('right', e)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
+          else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
+          else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
+          else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
+        }}
       />
 
       {/* Right sidebar */}

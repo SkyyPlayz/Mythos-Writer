@@ -222,8 +222,11 @@
 }
 
 .shell-divider:hover,
-.shell-divider:active {
+.shell-divider:active,
+.shell-divider:focus-visible {
   background: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
 }
 
 /* Empty editor state */
