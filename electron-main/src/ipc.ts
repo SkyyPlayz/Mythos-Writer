@@ -710,8 +710,25 @@ export interface VoiceSettings {
   openaiApiKey?: string;
 }
 
+// ─── Provider settings (MYT-324) ───
+// Mirrors provider.ts ProviderConfig — kept in sync manually.
+export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+
+export interface ProviderSettings {
+  kind: ProviderKind;
+  /** API key — required for anthropic / openai; ignored for local providers */
+  apiKey?: string;
+  /** Base URL override; uses provider default when omitted */
+  baseUrl?: string;
+  /** Default model used for all agents unless the agent overrides it */
+  model: string;
+}
+
 export interface AppSettings {
+  /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
+  /** Active AI provider configuration. Defaults to Anthropic when absent. */
+  provider?: ProviderSettings;
   agents: {
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;

@@ -1,0 +1,207 @@
+// Model-agnostic AI provider abstraction.
+// Supports: Anthropic Claude (cloud), OpenAI (cloud), Ollama (local),
+// LM Studio (local), and custom OpenAI-compatible endpoints.
+//
+// All providers emit tokens via the same AsyncIterable<string> interface so
+// streaming.ts and agents can stay provider-unaware.
+
+import Anthropic from '@anthropic-ai/sdk';
+
+// ─── Provider config ─────────────────────────────────────────────────────────
+
+export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+
+export interface ProviderConfig {
+  kind: ProviderKind;
+  /** API key — required for anthropic / openai; ignored for local providers */
+  apiKey?: string;
+  /** Base URL override. Defaults are set per-kind if omitted. */
+  baseUrl?: string;
+  /** Model identifier, e.g. 'claude-haiku-4-5-20251001', 'gpt-4o-mini', 'llama3', etc. */
+  model: string;
+}
+
+// ─── Default base URLs ────────────────────────────────────────────────────────
+
+export const DEFAULT_BASE_URLS: Record<ProviderKind, string | undefined> = {
+  anthropic: undefined, // SDK resolves its own default
+  openai: 'https://api.openai.com/v1',
+  ollama: 'http://127.0.0.1:11434/v1',
+  lmstudio: 'http://127.0.0.1:1234/v1',
+  custom: undefined,
+};
+
+// ─── Token stream interface ───────────────────────────────────────────────────
+
+export interface StreamRequest {
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  system?: string;
+  maxTokens?: number;
+  signal?: AbortSignal;
+}
+
+export interface StreamResult {
+  /** Async iterable of text tokens emitted by the model */
+  tokens: AsyncIterable<string>;
+  /** Populated after the stream ends; may be null for providers that don't report usage */
+  usage?: { inputTokens: number; outputTokens: number } | null;
+}
+
+// ─── Anthropic implementation ─────────────────────────────────────────────────
+
+async function* runAnthropicStream(
+  config: ProviderConfig,
+  req: StreamRequest,
+): AsyncIterable<string> {
+  if (!config.apiKey) throw new Error('Anthropic provider requires an API key.');
+  const client = new Anthropic({ apiKey: config.apiKey });
+  const sdkStream = client.messages.stream(
+    {
+      model: config.model,
+      max_tokens: req.maxTokens ?? 1024,
+      ...(req.system !== undefined ? { system: req.system } : {}),
+      messages: req.messages,
+    },
+    { signal: req.signal },
+  );
+  for await (const chunk of sdkStream) {
+    if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+      yield chunk.delta.text;
+    }
+  }
+}
+
+// ─── OpenAI-compatible SSE implementation ─────────────────────────────────────
+// Used for OpenAI, Ollama, LM Studio, and custom endpoints.
+// Avoids adding an openai npm dependency — uses the streaming REST API directly.
+
+async function* runOpenAICompatibleStream(
+  config: ProviderConfig,
+  req: StreamRequest,
+): AsyncIterable<string> {
+  const baseUrl = config.baseUrl ?? DEFAULT_BASE_URLS[config.kind] ?? '';
+  if (!baseUrl) {
+    throw new Error(`Provider "${config.kind}" requires a baseUrl.`);
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (config.apiKey) {
+    headers['Authorization'] = `Bearer ${config.apiKey}`;
+  }
+
+  // Build messages: prepend system as a system role message when present
+  const messages: Array<{ role: string; content: string }> = [];
+  if (req.system) {
+    messages.push({ role: 'system', content: req.system });
+  }
+  for (const m of req.messages) {
+    messages.push({ role: m.role, content: m.content });
+  }
+
+  const body = JSON.stringify({
+    model: config.model,
+    messages,
+    max_tokens: req.maxTokens ?? 1024,
+    stream: true,
+  });
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body,
+    signal: req.signal,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw Object.assign(new Error(`HTTP ${res.status}: ${text}`), { status: res.status });
+  }
+
+  if (!res.body) throw new Error('Response body is null');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
+
+        const json = trimmed.slice(6);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(json);
+        } catch {
+          continue;
+        }
+
+        const delta = (parsed as { choices?: Array<{ delta?: { content?: string } }> })?.choices?.[0]?.delta?.content;
+        if (typeof delta === 'string' && delta.length > 0) {
+          yield delta;
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Stream tokens from any configured provider.
+ * Returns an AsyncIterable<string> that emits text tokens until the response ends or is aborted.
+ */
+export async function* streamFromProvider(
+  config: ProviderConfig,
+  req: StreamRequest,
+): AsyncIterable<string> {
+  if (config.kind === 'anthropic') {
+    yield* runAnthropicStream(config, req);
+  } else {
+    yield* runOpenAICompatibleStream(config, req);
+  }
+}
+
+/**
+ * Validate a ProviderConfig at startup / settings-save time.
+ * Returns null if valid; returns a human-readable error string if not.
+ */
+export function validateProviderConfig(cfg: ProviderConfig): string | null {
+  if (!cfg.kind) return 'Provider kind is required.';
+  if (!cfg.model || typeof cfg.model !== 'string' || cfg.model.trim() === '') {
+    return 'Provider model is required.';
+  }
+  if (cfg.kind === 'anthropic' && !cfg.apiKey) {
+    return 'Anthropic provider requires an API key.';
+  }
+  if (cfg.kind === 'openai' && !cfg.apiKey) {
+    return 'OpenAI provider requires an API key.';
+  }
+  if ((cfg.kind === 'custom') && !cfg.baseUrl) {
+    return 'Custom provider requires a baseUrl.';
+  }
+  return null;
+}
+
+/**
+ * Build a ProviderConfig from AppSettings for a named agent slot.
+ * Falls back to the global provider if agent-level override is absent.
+ */
+export function providerConfigForAgent(
+  globalProvider: ProviderConfig,
+  agentModelOverride?: string,
+): ProviderConfig {
+  if (!agentModelOverride) return globalProvider;
+  return { ...globalProvider, model: agentModelOverride };
+}
