@@ -56,8 +56,24 @@
   color: var(--text-primary);
 }
 
+.app-menu-item-trigger {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.app-menu-item-trigger:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
 .app-menu-dropdown {
-  display: none;
+  display: flex;
+  flex-direction: column;
   position: absolute;
   top: 100%;
   left: 0;
@@ -68,12 +84,6 @@
   padding: 4px;
   z-index: 100;
   box-shadow: var(--shadow-md);
-}
-
-.app-menu-item:focus-within .app-menu-dropdown,
-.app-menu-item:hover .app-menu-dropdown {
-  display: flex;
-  flex-direction: column;
 }
 
 .app-menu-dropdown-item {

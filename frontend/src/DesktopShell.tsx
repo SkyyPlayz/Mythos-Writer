@@ -89,6 +89,9 @@ interface AppMenuBarProps {
 }
 
 function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId }: AppMenuBarProps) {
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const fileMenuRef = useRef<HTMLDivElement>(null);
+
   const handleExportEpub = () => {
     if (!selectedStoryId) {
       alert('Select a story first to export it as EPUB.');
@@ -120,20 +123,35 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
-      <div className="app-menu-items">
-        <div className="app-menu-item" tabIndex={0}>
-          File
-          <div className="app-menu-dropdown">
-            <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.newStory?.()}>New Story</button>
-            <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openVault?.()}>Open Vault…</button>
-            <div className="app-menu-separator" />
-            <button className="app-menu-dropdown-item" onClick={handleExportEpub}>Export EPUB…</button>
-            <button className="app-menu-dropdown-item" onClick={handleExportDocx}>Export DOCX…</button>
-            <div className="app-menu-separator" />
-            <button className="app-menu-dropdown-item" onClick={onOpenHistory}>Prompt History…</button>
-            <div className="app-menu-separator" />
-            <button className="app-menu-dropdown-item" onClick={onOpenSettings}>Settings…</button>
-          </div>
+      <div className="app-menu-items" ref={fileMenuRef}>
+        <div className="app-menu-item">
+          <button
+            className="app-menu-item-trigger"
+            aria-haspopup="menu"
+            aria-controls="file-menu"
+            aria-expanded={fileMenuOpen}
+            onClick={() => setFileMenuOpen(o => !o)}
+            onBlur={(e) => {
+              if (fileMenuRef.current && !fileMenuRef.current.contains(e.relatedTarget as Node)) {
+                setFileMenuOpen(false);
+              }
+            }}
+          >
+            File
+          </button>
+          {fileMenuOpen && (
+            <div id="file-menu" className="app-menu-dropdown" role="menu">
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); (window as any).api?.newStory?.(); }}>New Story</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); (window as any).api?.openVault?.(); }}>Open Vault…</button>
+              <div className="app-menu-separator" role="separator" />
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
+              <div className="app-menu-separator" role="separator" />
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
+              <div className="app-menu-separator" role="separator" />
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenSettings(); }}>Settings…</button>
+            </div>
+          )}
         </div>
       </div>
       <SearchBar onNavigate={onSearchNavigate} />
