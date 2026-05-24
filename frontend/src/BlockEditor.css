@@ -48,6 +48,10 @@
   color: var(--accent-light);
 }
 
+.draft-btn.active::before {
+  content: '✓\00a0';
+}
+
 .draft-btn.draft-final.active {
   border-color: #16a34a;
   background: #052e16;

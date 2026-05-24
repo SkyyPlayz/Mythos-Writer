@@ -1455,6 +1455,8 @@ interface UpdateStatusPayload {
 
 // Last known available update — queried by renderer via UPDATE_GET_INFO
 let lastUpdateInfo: { version: string; releaseNotes: string | null } | null = null;
+// Set to true once the update-downloaded event fires (autoDownload=true handles the download).
+let updateDownloaded = false;
 
 function sendUpdateStatus(payload: UpdateStatusPayload) {
   if (mainWindow) {
@@ -1494,6 +1496,40 @@ function initAutoUpdater() {
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, () => lastUpdateInfo);
 
+  // MYT-337: app:checkForUpdate — async check that returns { available, version, releaseNotes }
+  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async () => {
+    if (!AUTO_UPDATE_ENABLED || !app.isPackaged) {
+      return { available: false, version: null, releaseNotes: null };
+    }
+    applyUpdateChannel();
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      if (!result) return { available: false, version: null, releaseNotes: null };
+      const infoVersion = result.updateInfo.version;
+      const available = infoVersion !== app.getVersion();
+      const releaseNotes = available
+        ? normalizeReleaseNotes(
+            result.updateInfo.releaseNotes as
+              | string
+              | Array<{ version: string; note: string | null }>
+              | null
+              | undefined,
+          )
+        : null;
+      if (available) lastUpdateInfo = { version: infoVersion, releaseNotes };
+      return { available, version: available ? infoVersion : null, releaseNotes };
+    } catch {
+      return { available: false, version: null, releaseNotes: null };
+    }
+  });
+
+  // MYT-337: app:installUpdate — schedules install on next quit (autoInstallOnAppQuit=true).
+  // Does NOT trigger an immediate restart; the downloaded update is applied when the user quits normally.
+  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, () => {
+    if (!AUTO_UPDATE_ENABLED) return { scheduled: false };
+    return { scheduled: updateDownloaded };
+  });
+
   if (!AUTO_UPDATE_ENABLED) return;
 
   autoUpdater.autoDownload = true;
@@ -1513,6 +1549,7 @@ function initAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    updateDownloaded = true;
     const version = (info as { version: string }).version;
     const releaseNotes = lastUpdateInfo?.releaseNotes ?? normalizeReleaseNotes(
       (info as { releaseNotes?: string | Array<{ version: string; note: string | null }> | null }).releaseNotes,

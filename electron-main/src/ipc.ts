@@ -107,6 +107,10 @@ export const IPC_CHANNELS = {
   UPDATE_INSTALL: 'update:install',
   UPDATE_GET_INFO: 'update:get-info',
 
+  // Auto-updater Phase 4 (MYT-337) — primary check/install channels with stable/beta support
+  APP_CHECK_FOR_UPDATE: 'app:checkForUpdate',
+  APP_INSTALL_UPDATE: 'app:installUpdate',
+
   // Voice IO (MYT-205) — local-first STT + IPC channel
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',
@@ -238,6 +242,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: never) => Promise<VaultLoadSampleResponse>;
+  [IPC_CHANNELS.APP_CHECK_FOR_UPDATE]: (payload: never) => Promise<CheckForUpdateResponse>;
+  [IPC_CHANNELS.APP_INSTALL_UPDATE]: (payload: never) => InstallUpdateResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1211,4 +1217,16 @@ export interface VaultObsidianRegisterResponse {
 
 export interface VaultLoadSampleResponse {
   vaultRoot: string;
+}
+
+// ─── Auto-updater Phase 4 (MYT-337) ───
+
+export interface CheckForUpdateResponse {
+  available: boolean;
+  version: string | null;
+  releaseNotes: string | null;
+}
+
+export interface InstallUpdateResponse {
+  scheduled: boolean;
 }

@@ -193,6 +193,12 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdate: () => ipcRenderer.invoke('update:check', undefined),
   getUpdateInfo: () => ipcRenderer.invoke('update:get-info', undefined),
   installUpdate: (quit = true) => ipcRenderer.invoke('update:install', { quit }),
+  // MYT-337: stable/beta channel support — returns { available, version, releaseNotes } directly
+  appCheckForUpdate: (): Promise<{ available: boolean; version: string | null; releaseNotes: string | null }> =>
+    ipcRenderer.invoke('app:checkForUpdate', undefined),
+  // MYT-337: schedules install on next quit; does NOT trigger immediate restart
+  appInstallUpdate: (): Promise<{ scheduled: boolean }> =>
+    ipcRenderer.invoke('app:installUpdate', undefined),
 
   // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
   chapterCreate: (payload: { storyId: string; title: string; order?: number }) =>
