@@ -3,16 +3,40 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
+
+env:
+  MYTHOS_AUTO_UPDATE: '1'
 
 jobs:
+  determine-release:
+    runs-on: ubuntu-latest
+    outputs:
+      is-beta: ${{ steps.check.outputs.is-beta }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Determine release type
+        id: check
+        run: |
+          TAG="${{ github.ref }}"
+          TAG="${TAG#refs/tags/}"
+          if [[ "$TAG" =~ ^v.*-beta ]]; then
+            echo "is-beta=true" >> $GITHUB_OUTPUT
+          else
+            echo "is-beta=false" >> $GITHUB_OUTPUT
+          fi
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
   build-windows:
+    needs: determine-release
     runs-on: windows-latest
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -41,19 +65,14 @@ jobs:
         env:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MYTHOS_AUTO_UPDATE: '1'
 
-      - name: Upload NSIS installer artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
-          path: dist-electron/*.exe
-
-      - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-zip
-          path: dist-electron/*.zip
+          name: windows-dist
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.zip
 
   # Stubbed pending code signing setup (Phase 4)
   build-mac:
@@ -69,6 +88,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -83,31 +104,56 @@ jobs:
         run: npm run dist:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MYTHOS_AUTO_UPDATE: '1'
 
-      - name: Upload Linux AppImage artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-appimage
-          path: dist-electron/*.AppImage
-
-      - name: Upload Linux deb artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-deb
-          path: dist-electron/*.deb
-
-      - name: Upload Linux rpm artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-rpm
-          path: dist-electron/*.rpm
-
-      - name: Create draft GitHub Release and attach assets
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: |
+          name: linux-dist
+          path: |
             dist-electron/*.AppImage
             dist-electron/*.deb
             dist-electron/*.rpm
+
+  publish-release:
+    needs: [determine-release, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate release notes
+        id: changelog
+        run: |
+          TAG="${{ needs.determine-release.outputs.version }}"
+          PREV_TAG=$(git tag -l --sort=-version:refname --merged HEAD "v*" | grep -v "$TAG" | head -1 || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --oneline --format="- %h %s" | head -20)
+          else
+            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --oneline --format="- %h %s")
+          fi
+
+          # Escape for GitHub Actions
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.determine-release.outputs.version }}
+          draft: false
+          prerelease: ${{ needs.determine-release.outputs.is-beta == 'true' }}
+          files: |
+            windows-dist/**/*
+            linux-dist/**/*
+          body: ${{ steps.changelog.outputs.notes }}

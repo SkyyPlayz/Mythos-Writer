@@ -100,6 +100,27 @@ npm run build:installer  # → dist-electron/Mythos Writer-<version>.exe
 | `npm run test`          | Vitest across both packages                           |
 | `npm run typecheck`     | `tsc --noEmit` across both packages                   |
 
+## Update Channels
+
+Mythos Writer supports **Stable** (default) and **Beta** (opt-in) release channels. The app checks for updates on launch and prompts before installing.
+
+### Opt into Beta
+
+To receive beta releases before they ship to stable:
+
+1. Open **Settings** in Mythos Writer
+2. Look for **"Update Channel"** option
+3. Select **"Beta"**
+4. The app will check for updates and offer beta releases
+
+Beta releases are labeled `v*.*.*-beta*` on the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases) and may contain experimental features.
+
+### Opt back into Stable
+
+1. Open **Settings**
+2. Change **"Update Channel"** back to **"Stable"**
+3. The next update will move you to the latest stable release
+
 ## Environment variables
 
 | Variable            | Description                                                     |
@@ -120,17 +141,30 @@ GitHub Actions runs on every push and pull request to `main`:
 
 ## Releasing
 
-The release workflow (`.github/workflows/release.yml`) runs automatically when a version tag is pushed.
+The release workflow (`.github/workflows/release.yml`) runs automatically when a version tag is pushed and publishes to two release channels:
+
+- **Stable channel** (default): triggered by `v*.*.*` tags (e.g., `v0.1.0`)
+- **Beta channel** (opt-in): triggered by `v*.*.*-beta*` tags (e.g., `v0.1.0-beta1`)
+
+### Publishing a release
 
 ```bash
-# 1. Tag the release
-git tag v0.x.y
+# Stable release
+git tag v0.1.0
+git push --tags
+
+# Beta release
+git tag v0.1.0-beta1
 git push --tags
 ```
 
-2. GitHub Actions builds the Windows NSIS installer and ZIP on `windows-latest`.
-3. A **draft** GitHub Release is created with both artifacts attached — no assets are published automatically.
-4. Go to the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases), review the draft, and click **Publish release** when ready.
+GitHub Actions automatically:
+1. Builds Windows NSIS installer and ZIP
+2. Builds Linux AppImage, deb, and rpm packages
+3. Generates release notes from PR titles and commit history
+4. Creates and publishes the GitHub Release (auto-published; marked as pre-release if beta)
+
+The release is immediately available via the auto-updater.
 
 > Mac and Linux builds are stubbed (`if: false`) pending code signing setup in Phase 4.
 
