@@ -210,7 +210,7 @@ export function detectInconsistencies(
             target_path: scenePath,
             target_anchor: snippet,
             payload_json: JSON.stringify({
-              type: 'inconsistency',
+              kind: 'inconsistency',
               entityId: record.id,
               entityName: record.name,
               propKey,
@@ -259,10 +259,11 @@ export function detectWikiLinkOpportunities(
       target_path: scenePath,
       target_anchor: snippet,
       payload_json: JSON.stringify({
-        type: 'wiki_link',
+        kind: 'wiki-link',
         entityId: record.id,
         entityName: record.name,
-        term: mention.term,
+        anchorText: mention.term,
+        link: `[[${record.name}]]`,
       }),
       status: 'proposed',
       created_at: now,
