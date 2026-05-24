@@ -9,6 +9,7 @@ export interface AgentBudgetSettings {
   confidenceThreshold: number;
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
+  maxTokensPerDay: number;
 }
 
 export interface AutoApplyResult {
@@ -26,6 +27,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  * 1. autoApply must be true — otherwise stay proposed, no budget check.
  * 2. confidence must be >= confidenceThreshold — otherwise stay proposed.
  * 3. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
+ *    Checks: hourly suggestion count, hourly token count, daily token count.
  * 4. All checks pass → auto-apply.
  */
 export function evaluateAutoApply(
@@ -47,8 +49,13 @@ export function evaluateAutoApply(
     return { shouldAutoApply: false, budgetExceeded: true };
   }
 
-  const tokenCount = countTokensInWindowWithDb(db, sourceAgent, ONE_HOUR_MS);
-  if (tokenCount >= settings.maxTokensPerHour) {
+  const hourlyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_HOUR_MS);
+  if (hourlyTokens >= settings.maxTokensPerHour) {
+    return { shouldAutoApply: false, budgetExceeded: true };
+  }
+
+  const dailyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_DAY_MS);
+  if (dailyTokens >= settings.maxTokensPerDay) {
     return { shouldAutoApply: false, budgetExceeded: true };
   }
 
@@ -83,6 +90,36 @@ function countTokensInWindowWithDb(
     )
     .get(agent, windowStart) as { total: number };
   return row.total;
+}
+
+export interface CallBudgetResult {
+  allowed: boolean;
+  reason?: 'hourly_token_cap' | 'daily_token_cap';
+}
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Check whether an agent is allowed to make an Anthropic API call right now.
+ * Called at the call site, before streaming starts.
+ * Checks rolling 1-hour and 24-hour token windows against per-agent settings.
+ */
+export function checkCallBudget(
+  agent: string,
+  settings: Pick<AgentBudgetSettings, 'maxTokensPerHour' | 'maxTokensPerDay'>,
+  db: Database.Database,
+): CallBudgetResult {
+  const hourlyTokens = countTokensInWindowWithDb(db, agent, ONE_HOUR_MS);
+  if (hourlyTokens >= settings.maxTokensPerHour) {
+    return { allowed: false, reason: 'hourly_token_cap' };
+  }
+
+  const dailyTokens = countTokensInWindowWithDb(db, agent, ONE_DAY_MS);
+  if (dailyTokens >= settings.maxTokensPerDay) {
+    return { allowed: false, reason: 'daily_token_cap' };
+  }
+
+  return { allowed: true };
 }
 
 // Re-export the db-module helpers so callers don't need two imports.

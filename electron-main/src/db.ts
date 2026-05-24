@@ -215,6 +215,39 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma('user_version = 6');
   }
+
+  if (currentVersion < 7) {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS fts_index USING fts5(
+        doc_id    UNINDEXED,
+        vault     UNINDEXED,
+        kind      UNINDEXED,
+        title,
+        body,
+        tokenize = 'porter ascii'
+      );
+      CREATE TABLE IF NOT EXISTS fts_indexed_at (
+        doc_id     TEXT PRIMARY KEY,
+        indexed_at TEXT NOT NULL
+      );
+    `);
+    db.pragma('user_version = 7');
+  }
+
+  if (currentVersion < 8) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS beta_read_comments (
+        id           TEXT PRIMARY KEY,
+        scene_id     TEXT NOT NULL,
+        anchor_text  TEXT NOT NULL,
+        comment_text TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        dismissed_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_beta_read_scene ON beta_read_comments (scene_id);
+    `);
+    db.pragma('user_version = 8');
+  }
 }
 
 // ─── Suggestions ───
@@ -446,6 +479,42 @@ export function listProvenance(opts: { agentId?: string; entityKind?: string; li
   return db
     .prepare('SELECT * FROM provenance ORDER BY created_at DESC LIMIT ?')
     .all(limit) as DbProvenance[];
+}
+
+// ─── Beta-Read Comments ───
+
+export interface DbBetaReadComment {
+  id: string;
+  scene_id: string;
+  anchor_text: string;
+  comment_text: string;
+  created_at: string;
+  dismissed_at: string | null;
+}
+
+export function insertBetaReadComment(c: DbBetaReadComment): void {
+  getDb()
+    .prepare(
+      `INSERT INTO beta_read_comments (id, scene_id, anchor_text, comment_text, created_at, dismissed_at)
+       VALUES (@id, @scene_id, @anchor_text, @comment_text, @created_at, @dismissed_at)`
+    )
+    .run(c);
+}
+
+export function listBetaReadComments(sceneId: string): DbBetaReadComment[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM beta_read_comments
+        WHERE scene_id = ? AND dismissed_at IS NULL
+        ORDER BY created_at ASC`
+    )
+    .all(sceneId) as DbBetaReadComment[];
+}
+
+export function dismissBetaReadComment(id: string): void {
+  getDb()
+    .prepare(`UPDATE beta_read_comments SET dismissed_at = ? WHERE id = ?`)
+    .run(new Date().toISOString(), id);
 }
 
 // ─── Budget window counters ───

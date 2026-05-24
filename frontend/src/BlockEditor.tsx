@@ -1,9 +1,10 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Block, Scene, DraftState } from './types';
 import { WikiLink } from './WikiLinkExtension';
+import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
@@ -16,6 +17,12 @@ interface Props {
   onBlocksChange: (blocks: Block[]) => void;
   onDraftStateChange: (state: DraftState) => void;
   onEditorReady?: (api: BlockEditorApi) => void;
+  /** Called when user triggers Beta-Read on a selection. */
+  onBetaReadRequest?: (selectedText: string) => void;
+  /** Archive wiki-link suggestions to highlight inline. */
+  wikiLinkSuggestions?: WLSuggestion[];
+  onAcceptWikiLink?: (id: string, link: string, anchorText: string) => void;
+  onRejectWikiLink?: (id: string) => void;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -42,17 +49,29 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
   return lines.join('\n').trim();
 }
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
+  const [selectionText, setSelectionText] = useState<string>('');
+  const [betaReadBubble, setBetaReadBubble] = useState<{ top: number; left: number } | null>(null);
+  const [hintTooltip, setHintTooltip] = useState<{
+    id: string; link: string; anchor: string; top: number; left: number;
+  } | null>(null);
+  const onAcceptWikiLinkRef = useRef(onAcceptWikiLink);
+  onAcceptWikiLinkRef.current = onAcceptWikiLink;
+  const onRejectWikiLinkRef = useRef(onRejectWikiLink);
+  onRejectWikiLinkRef.current = onRejectWikiLink;
   const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBlocksChangeRef = useRef(onBlocksChange);
   onBlocksChangeRef.current = onBlocksChange;
   const blockIdRef = useRef(scene.blocks[0]?.id ?? crypto.randomUUID());
   const onEditorReadyRef = useRef(onEditorReady);
   onEditorReadyRef.current = onEditorReady;
+  const onBetaReadRef = useRef(onBetaReadRequest);
+  onBetaReadRef.current = onBetaReadRequest;
+  const editorWrapRef = useRef<HTMLDivElement | null>(null);
 
   const editor = useEditor({
-    extensions: [StarterKit, WikiLink, Markdown],
+    extensions: [StarterKit, WikiLink, WikiLinkHintExtension, Markdown],
     content: blocksToMarkdownBody(scene.blocks),
     onUpdate({ editor }) {
       // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
@@ -70,6 +89,29 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           updatedAt: new Date().toISOString(),
         }]);
       }, 800);
+    },
+    onSelectionUpdate({ editor }) {
+      const { from, to } = editor.state.selection;
+      const text = from === to ? '' : editor.state.doc.textBetween(from, to, ' ');
+      const trimmed = text.trim();
+      setSelectionText(trimmed);
+      if (trimmed.length > 3 && editorWrapRef.current) {
+        // Position the bubble relative to the editorWrap using the native selection
+        const nativeSel = window.getSelection();
+        if (nativeSel && nativeSel.rangeCount > 0) {
+          const range = nativeSel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const wrapRect = editorWrapRef.current.getBoundingClientRect();
+          setBetaReadBubble({
+            top: rect.top - wrapRect.top - 36,
+            left: Math.max(0, rect.left - wrapRect.left + rect.width / 2 - 52),
+          });
+        } else {
+          setBetaReadBubble(null);
+        }
+      } else {
+        setBetaReadBubble(null);
+      }
     },
   });
 
@@ -116,10 +158,46 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
+  // Push updated wiki-link hint suggestions into the ProseMirror plugin
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(WIKI_LINK_HINT_META, wikiLinkSuggestions ?? [])
+    );
+  }, [editor, wikiLinkSuggestions]);
+
+  const handleHintMouseOver = useCallback((e: React.MouseEvent) => {
+    const el = (e.target as HTMLElement).closest('.archive-wl-hint') as HTMLElement | null;
+    if (!el || !editorWrapRef.current) return;
+    const rect = el.getBoundingClientRect();
+    const wrapRect = editorWrapRef.current.getBoundingClientRect();
+    setHintTooltip({
+      id: el.dataset.wlId ?? '',
+      link: el.dataset.wlLink ?? '',
+      anchor: el.dataset.wlAnchor ?? '',
+      top: rect.bottom - wrapRect.top + 6,
+      left: rect.left - wrapRect.left,
+    });
+  }, []);
+
+  const handleHintMouseLeave = useCallback((e: React.MouseEvent) => {
+    const related = e.relatedTarget as HTMLElement | null;
+    if (related?.closest('.wl-hint-tooltip')) return;
+    setHintTooltip(null);
+  }, []);
+
   const handleDraftChange = (state: DraftState) => {
     setDraftState(state);
     onDraftStateChange(state);
   };
+
+  const handleBetaReadClick = useCallback(() => {
+    if (!selectionText) return;
+    onBetaReadRef.current?.(selectionText);
+    setBetaReadBubble(null);
+    setSelectionText('');
+    editor?.commands.setTextSelection(editor.state.selection.from);
+  }, [selectionText, editor]);
 
   return (
     <div className="block-editor">
@@ -131,13 +209,62 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
               key={s}
               className={`draft-btn draft-${s}${draftState === s ? ' active' : ''}`}
               onClick={() => handleDraftChange(s)}
+              aria-pressed={draftState === s}
             >
               {DRAFT_STATE_LABELS[s]}
             </button>
           ))}
         </div>
       </div>
-      <div className="tiptap-editor-wrap">
+      <div
+        className="tiptap-editor-wrap"
+        ref={editorWrapRef}
+        style={{ position: 'relative' }}
+        onMouseOver={handleHintMouseOver}
+        onMouseLeave={handleHintMouseLeave}
+      >
+        {hintTooltip && (
+          <div
+            className="wl-hint-tooltip"
+            style={{ top: hintTooltip.top, left: hintTooltip.left }}
+            onMouseLeave={() => setHintTooltip(null)}
+          >
+            <span className="wl-hint-tooltip-link">{hintTooltip.link}</span>
+            <button
+              className="wl-hint-btn wl-hint-accept"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onAcceptWikiLinkRef.current?.(hintTooltip.id, hintTooltip.link, hintTooltip.anchor);
+                setHintTooltip(null);
+              }}
+              aria-label={`Accept wiki-link ${hintTooltip.link}`}
+            >
+              Accept
+            </button>
+            <button
+              className="wl-hint-btn wl-hint-reject"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onRejectWikiLinkRef.current?.(hintTooltip.id);
+                setHintTooltip(null);
+              }}
+              aria-label={`Reject wiki-link ${hintTooltip.link}`}
+            >
+              Reject
+            </button>
+          </div>
+        )}
+        {betaReadBubble && (
+          <button
+            className="beta-read-bubble"
+            style={{ top: betaReadBubble.top, left: betaReadBubble.left }}
+            onMouseDown={(e) => { e.preventDefault(); handleBetaReadClick(); }}
+            aria-label="Beta-read selected text"
+            title="Send to Beta-Read assistant"
+          >
+            Beta-Read
+          </button>
+        )}
         <EditorContent editor={editor} className="tiptap-content" />
       </div>
     </div>

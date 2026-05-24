@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Scene } from './types';
 import './ArchivePanel.css';
 
@@ -68,14 +68,22 @@ export interface Props {
   scene: Scene | null;
   onJumpToText: (text: string) => void;
   onInsertWikiLink: (link: string, anchorText: string) => void;
+  enabled?: boolean;
+  onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }
 
-export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: Props) {
+export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, enabled = true, onWikiLinkSuggestionsChange }: Props) {
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const onWLSuggestionsRef = useRef(onWikiLinkSuggestionsChange);
+  onWLSuggestionsRef.current = onWikiLinkSuggestionsChange;
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     (async () => {
@@ -99,7 +107,14 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: 
       }
     })();
     return () => { cancelled = true; };
-  }, [scene?.id]);
+  }, [scene?.id, enabled]);
+
+  useEffect(() => {
+    const proposed = items.filter((i) => i.status === 'proposed' && i.kind === 'wiki-link' && i.wikiLink);
+    onWLSuggestionsRef.current?.(
+      proposed.map((i) => ({ id: i.id, anchorText: i.anchorText, wikiLink: i.wikiLink! }))
+    );
+  }, [items]);
 
   const handleReject = useCallback(async (id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
@@ -128,6 +143,14 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: 
   const handleJump = useCallback((anchorText: string) => {
     onJumpToText(anchorText);
   }, [onJumpToText]);
+
+  if (!enabled) {
+    return (
+      <div className="archive-panel archive-disabled">
+        <p className="archive-disabled-msg">Archive Agent is disabled. Enable it in Settings.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

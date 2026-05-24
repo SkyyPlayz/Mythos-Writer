@@ -41,11 +41,39 @@ export default function StoryNavigator({
       return next;
     });
 
+  const handleSceneKeyDown = (
+    e: React.KeyboardEvent,
+    scene: Scene,
+    chapter: Chapter,
+    story: Story,
+    sortedScenes: Scene[]
+  ) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelectScene(scene, chapter, story);
+      return;
+    }
+    const idx = sortedScenes.findIndex((s) => s.id === scene.id);
+    if (e.key === 'ArrowUp' && idx > 0) {
+      e.preventDefault();
+      const reordered = sortedScenes.map((s) => s.id);
+      reordered.splice(idx, 1);
+      reordered.splice(idx - 1, 0, scene.id);
+      onReorderScenes?.(story.id, chapter.id, reordered);
+    } else if (e.key === 'ArrowDown' && idx < sortedScenes.length - 1) {
+      e.preventDefault();
+      const reordered = sortedScenes.map((s) => s.id);
+      reordered.splice(idx, 1);
+      reordered.splice(idx + 1, 0, scene.id);
+      onReorderScenes?.(story.id, chapter.id, reordered);
+    }
+  };
+
   return (
     <nav className="story-navigator">
       <div className="nav-header">
         <span className="nav-title">Stories</span>
-        <button className="nav-add-btn" onClick={onCreateStory} title="New story">+</button>
+        <button className="nav-add-btn" onClick={onCreateStory} aria-label="New story" title="New story">+</button>
       </div>
 
       <div className="nav-tree">
@@ -55,12 +83,19 @@ export default function StoryNavigator({
 
         {stories.map((story) => (
           <div key={story.id} className="nav-story">
-            <div className="nav-story-row" onClick={() => toggleStory(story.id)}>
-              <span className="nav-chevron">{expandedStories.has(story.id) ? '▾' : '▸'}</span>
-              <span className="nav-story-title">{story.title}</span>
+            <div className="nav-story-row">
+              <button
+                className="nav-story-toggle"
+                aria-expanded={expandedStories.has(story.id)}
+                onClick={() => toggleStory(story.id)}
+              >
+                <span className="nav-chevron">{expandedStories.has(story.id) ? '▾' : '▸'}</span>
+                <span className="nav-story-title">{story.title}</span>
+              </button>
               <button
                 className="nav-inline-add"
                 onClick={(e) => { e.stopPropagation(); onCreateChapter(story.id); }}
+                aria-label="Add chapter"
                 title="Add chapter"
               >+</button>
             </div>
@@ -68,25 +103,38 @@ export default function StoryNavigator({
             {expandedStories.has(story.id) &&
               story.chapters.sort((a, b) => a.order - b.order).map((chapter) => (
                 <div key={chapter.id} className="nav-chapter">
-                  <div className="nav-chapter-row" onClick={() => toggleChapter(chapter.id)}>
-                    <span className="nav-chevron">{expandedChapters.has(chapter.id) ? '▾' : '▸'}</span>
-                    <span className="nav-chapter-title">{chapter.title}</span>
+                  <div className="nav-chapter-row">
+                    <button
+                      className="nav-chapter-toggle"
+                      aria-expanded={expandedChapters.has(chapter.id)}
+                      onClick={() => toggleChapter(chapter.id)}
+                    >
+                      <span className="nav-chevron">{expandedChapters.has(chapter.id) ? '▾' : '▸'}</span>
+                      <span className="nav-chapter-title">{chapter.title}</span>
+                    </button>
                     <button
                       className="nav-inline-add"
                       onClick={(e) => { e.stopPropagation(); onCreateScene(story.id, chapter.id); }}
+                      aria-label="Add scene"
                       title="Add scene"
                     >+</button>
                   </div>
 
-                  {expandedChapters.has(chapter.id) &&
-                    [...chapter.scenes].sort((a, b) => a.order - b.order).map((scene) => (
+                  {expandedChapters.has(chapter.id) && (() => {
+                    const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
+                    return sortedScenes.map((scene) => (
                       <div
                         key={scene.id}
                         className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-current={selectedSceneId === scene.id ? 'true' : undefined}
+                        aria-label={`${scene.title}${onReorderScenes ? ' — use Up/Down arrow keys to reorder' : ''}`}
                         draggable
                         onDragStart={() => setDraggedSceneId(scene.id)}
                         onDragEnd={() => setDraggedSceneId(null)}
                         onDragOver={(e) => e.preventDefault()}
+                        onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
                         onDrop={() => {
                           if (!draggedSceneId || draggedSceneId === scene.id) return;
                           const orderedSceneIds = [...chapter.scenes]
@@ -111,7 +159,8 @@ export default function StoryNavigator({
                           </span>
                         )}
                       </div>
-                    ))}
+                    ));
+                  })()}
                 </div>
               ))}
           </div>

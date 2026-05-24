@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('api', {
   getVaultRoot: () => ipcRenderer.invoke('vault:get-root', undefined),
   importVault: (sourcePath: string) => ipcRenderer.invoke('vault:import', { sourcePath }),
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
+  pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
+  obsidianDryRun: (sourcePath: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath }),
+  obsidianRegister: (sourcePath: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath }),
+  loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', undefined),
   startVaultWatch: () => ipcRenderer.invoke('vault:watch-start', undefined),
   stopVaultWatch: () => ipcRenderer.invoke('vault:watch-stop', undefined),
 
@@ -180,20 +184,47 @@ contextBridge.exposeInMainWorld('api', {
   generationLogGet: (id: string) =>
     ipcRenderer.invoke('generationLog:get', { id }),
 
-  // Auto-update status (MYT-210) — feature-flagged; calls are safe no-ops when MYTHOS_AUTO_UPDATE!=1
-  onUpdateStatus: (cb: (state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready') => void) => {
-    const handler = (_: unknown, data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' }) => cb(data.state);
+  // Auto-update (MYT-245) — feature-flagged; calls are safe no-ops when MYTHOS_AUTO_UPDATE!=1
+  onUpdateStatus: (cb: (data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => void) => {
+    const handler = (_: unknown, data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => cb(data);
     ipcRenderer.on('update:status', handler);
     return () => ipcRenderer.removeListener('update:status', handler);
   },
   checkForUpdate: () => ipcRenderer.invoke('update:check', undefined),
-  installUpdate: () => ipcRenderer.invoke('update:install', undefined),
+  getUpdateInfo: () => ipcRenderer.invoke('update:get-info', undefined),
+  installUpdate: (quit = true) => ipcRenderer.invoke('update:install', { quit }),
 
   // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
   chapterCreate: (payload: { storyId: string; title: string; order?: number }) =>
     ipcRenderer.invoke('chapter:create', payload),
   sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) =>
     ipcRenderer.invoke('scene:create', payload),
+
+  // Search (MYT-251)
+  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) =>
+    ipcRenderer.invoke('search:query', { query, scope, limit }),
+
+  // Writing Assistant scheduled scan (MYT-233)
+  writingScan: (sceneId: string, prose: string, scenePath: string) =>
+    ipcRenderer.invoke('writing:scan', { sceneId, prose, scenePath }),
+  // Push: backend scheduler broadcasts completed scan results (MYT-236)
+  onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => cb(data);
+    ipcRenderer.on('writing:scan:result', handler);
+    return () => ipcRenderer.removeListener('writing:scan:result', handler);
+  },
+
+  // Archive continuity-check scheduled scan (MYT-234)
+  archiveScan: (sceneText: string, scenePath: string) =>
+    ipcRenderer.invoke('archive:scan', { sceneText, scenePath }),
+
+  // Beta-Read Mode (MYT-237) — anchored inline comments
+  betaReadCreate: (sceneId: string, anchorText: string, commentText: string) =>
+    ipcRenderer.invoke('betaRead:create', { sceneId, anchorText, commentText }),
+  betaReadList: (sceneId: string) =>
+    ipcRenderer.invoke('betaRead:list', { sceneId }),
+  betaReadDismiss: (id: string) =>
+    ipcRenderer.invoke('betaRead:dismiss', { id }),
 
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }
@@ -220,6 +251,24 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('voice:error', handler);
     return () => ipcRenderer.removeListener('voice:error', handler);
   },
+
+  // Budget enforcement (MYT-207) — subscribe to agent:budget-cap push events from main
+  onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => {
+    const handler = (_: unknown, data: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => cb(data);
+    ipcRenderer.on('agent:budget-cap', handler);
+    return () => ipcRenderer.removeListener('agent:budget-cap', handler);
+  },
+
+  // EPUB export (MYT-253)
+  exportEpub: (storyId: string) =>
+    ipcRenderer.invoke('export:epub', { storyId }),
+
+  // DOCX export (MYT-252)
+  exportDocx: (storyId: string) =>
+    ipcRenderer.invoke('export:docx', { storyId }),
+
+  // Vault Graph View (MYT-249)
+  vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

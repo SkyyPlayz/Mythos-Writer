@@ -102,14 +102,45 @@ export const IPC_CHANNELS = {
   SCENE_GET: 'scene:get',
   SCENE_SAVE: 'scene:save',
 
-  // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
+  // Auto-updater (MYT-245) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
+  UPDATE_GET_INFO: 'update:get-info',
 
   // Voice IO (MYT-205) — local-first STT + IPC channel
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',
   VOICE_TRANSCRIPT_STREAM: 'voice:transcript',
+
+  // Full-text search (MYT-251)
+  SEARCH_QUERY: 'search:query',
+
+  // Writing Assistant scheduled scan (MYT-233)
+  WRITING_SCAN: 'writing:scan',
+  // Push channel: backend scheduler → renderer (MYT-236)
+  WRITING_SCAN_RESULT: 'writing:scan:result',
+
+  // Budget enforcement (MYT-207) — main pushes this when an agent hits a token/rate cap
+  AGENT_BUDGET_CAP: 'agent:budget-cap',
+
+  // Beta-Read Mode (MYT-237) — anchored inline comments
+  BETA_READ_CREATE: 'betaRead:create',
+  BETA_READ_LIST: 'betaRead:list',
+  BETA_READ_DISMISS: 'betaRead:dismiss',
+
+  // EPUB export (MYT-253)
+  EXPORT_EPUB: 'export:epub',
+
+  // DOCX export (MYT-252)
+  EXPORT_DOCX: 'export:docx',
+
+  // Obsidian vault import wizard (MYT-244)
+  VAULT_OBSIDIAN_DRY_RUN: 'vault:obsidian-dry-run',
+  VAULT_OBSIDIAN_REGISTER: 'vault:obsidian-register',
+  // Opens folder picker but does NOT save vault settings (used by wizard before dry-run)
+  VAULT_PICK_FOLDER: 'vault:pick-folder',
+  // First-run onboarding: load bundled sample project (MYT-242)
+  VAULT_LOAD_SAMPLE: 'vault:load-sample',
 } as const;
 
 // ─── Main process handlers ───
@@ -197,6 +228,16 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
   [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
+  [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
+  [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
+  [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
+  [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
+  [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
+  [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
+  [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport>;
+  [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse>;
+  [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: never) => Promise<VaultLoadSampleResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -683,6 +724,8 @@ export interface AppSettings {
   };
   onboardingComplete?: boolean;
   voice?: VoiceSettings;
+  /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
+  updateChannel?: 'stable' | 'beta';
 }
 
 export interface SettingsSetPayload {
@@ -990,4 +1033,165 @@ export interface VaultGraphEdge {
 export interface VaultGraphDataResponse {
   nodes: VaultGraphNode[];
   edges: VaultGraphEdge[];
+}
+
+// ─── Search (MYT-251) ───
+
+export type SearchScope = 'story' | 'notes' | 'both';
+
+export interface SearchQueryPayload {
+  query: string;
+  scope: SearchScope;
+  limit?: number;
+}
+
+export interface SearchResultItem {
+  docId: string;
+  vault: 'story' | 'notes';
+  kind: string;
+  title: string;
+  snippet: string;
+  rank: number;
+}
+
+export interface SearchQueryResponse {
+  results: SearchResultItem[];
+  elapsed_ms: number;
+}
+
+// ─── Writing Assistant scheduled scan (MYT-233) ───
+
+export interface WritingScanPayload {
+  sceneId: string;
+  prose: string;
+  scenePath: string;
+}
+
+export interface WritingScanResponse {
+  tips: string[];
+  scannedAt: string;
+}
+
+// Push payload emitted by the backend scheduler on writing:scan:result (MYT-236)
+export interface WritingScanResultPayload {
+  sceneId: string;
+  scenePath: string;
+  tips: string[];
+  scannedAt: string;
+}
+
+// ─── Beta-Read Mode (MYT-237) ───
+
+export interface BetaReadComment {
+  id: string;
+  scene_id: string;
+  anchor_text: string;
+  comment_text: string;
+  created_at: string;
+  dismissed_at: string | null;
+}
+
+export interface BetaReadCreatePayload {
+  sceneId: string;
+  anchorText: string;
+  commentText: string;
+}
+
+export interface BetaReadCreateResponse {
+  comment: BetaReadComment;
+}
+
+export interface BetaReadListPayload {
+  sceneId: string;
+}
+
+export interface BetaReadListResponse {
+  comments: BetaReadComment[];
+}
+
+export interface BetaReadDismissPayload {
+  id: string;
+}
+
+export interface BetaReadDismissResponse {
+  id: string;
+  dismissed: boolean;
+}
+
+// ─── EPUB export (MYT-253) ───
+
+export interface ExportEpubPayload {
+  storyId: string;
+}
+
+export interface ExportEpubResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
+// ─── DOCX export (MYT-252) ───
+
+export interface ExportDocxPayload {
+  storyId: string;
+}
+
+export interface ExportDocxResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
+// ─── Budget enforcement push event (MYT-207) ───
+
+/** Emitted on agent:budget-cap when an agent is blocked by a token or rate cap. */
+export interface AgentBudgetCapEvent {
+  agent: string;
+  reason: 'hourly_token_cap' | 'daily_token_cap';
+  /** Human-readable label, e.g. "Writing Assistant" */
+  agentLabel: string;
+}
+
+// ─── Obsidian vault import wizard (MYT-244) ───
+
+export interface VaultObsidianDryRunPayload {
+  sourcePath: string;
+}
+
+export interface ObsidianBrokenLink {
+  /** Vault-relative file path that contains the broken link */
+  file: string;
+  /** The raw [[target]] text */
+  target: string;
+}
+
+export interface ObsidianNameCollision {
+  /** Note stem (filename without .md) that collides with a manifest entity name */
+  name: string;
+  /** Vault-relative file path of the colliding note */
+  file: string;
+}
+
+export interface VaultObsidianDryRunReport {
+  /** Total .md files found */
+  notesCount: number;
+  /** [[links]] whose target file does not exist */
+  brokenLinks: ObsidianBrokenLink[];
+  /** Note names that already exist as manifest entity names */
+  nameCollisions: ObsidianNameCollision[];
+  /** Files missing any YAML frontmatter block */
+  missingFrontmatter: string[];
+  /** Non-null when the folder is unreadable (e.g. permissions) */
+  fatalError: string | null;
+}
+
+export interface VaultObsidianRegisterPayload {
+  sourcePath: string;
+}
+
+export interface VaultObsidianRegisterResponse {
+  vaultRoot: string;
+  notesIndexed: number;
+}
+
+export interface VaultLoadSampleResponse {
+  vaultRoot: string;
 }

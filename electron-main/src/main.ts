@@ -71,6 +71,11 @@ import {
   type VersionListPayload,
   type VersionGetPayload,
   type VersionRollbackPayload,
+  type SearchQueryPayload,
+  type WritingScanPayload,
+  type VaultObsidianDryRunPayload,
+  type VaultObsidianRegisterPayload,
+  type VaultLoadSampleResponse,
 } from './ipc.js';
 import {
   openDb,
@@ -90,8 +95,11 @@ import {
   countGenerationLog,
   getGenerationLogEntry,
   truncateGenerationLogBody,
+  insertBetaReadComment,
+  listBetaReadComments,
+  dismissBetaReadComment,
 } from './db.js';
-import { evaluateAutoApply } from './budget.js';
+import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
@@ -104,8 +112,12 @@ import {
   defaultManifest,
   reindexVault,
   importObsidianVault,
+  obsidianDryRun,
   startVaultWatcher,
   stopVaultWatcher,
+  startNotesVaultWatcher,
+  stopNotesVaultWatcher,
+  scaffoldNotesVault,
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
@@ -114,6 +126,7 @@ import {
   readSceneFile,
   chapterVaultPath,
   sceneVaultPath,
+  mergeProvenanceFrontmatter,
 } from './vault.js';
 import { openManifest } from './manifest.js';
 import {
@@ -132,6 +145,10 @@ import {
   runArchiveScan,
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
+import { buildFullIndex, searchVault } from './search.js';
+import { buildEpub } from './epub.js';
+import { buildDocx } from './docx.js';
+import { registerStreamingHandlers } from './streaming.js';
 
 const require = createRequire(import.meta.url);
 
@@ -158,15 +175,20 @@ function registerAgentCancelHandlers(): void {
 // ─── Vault root ───
 // User can open any local folder as their vault; the chosen path is persisted
 // in userData/vault-settings.json so it survives restarts.
+interface VaultSettings {
+  vaultRoot: string;
+  notesVaultRoot?: string;
+}
+
 function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
 }
 
-function loadVaultSettings(): { vaultRoot: string } {
+function loadVaultSettings(): VaultSettings {
   const settingsPath = getVaultSettingsPath();
   if (fs.existsSync(settingsPath)) {
     try {
-      return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      return JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as VaultSettings;
     } catch {
       // fall through to default
     }
@@ -174,12 +196,17 @@ function loadVaultSettings(): { vaultRoot: string } {
   return { vaultRoot: path.join(app.getPath('userData'), 'vault') };
 }
 
-function saveVaultSettings(settings: { vaultRoot: string }): void {
-  fs.writeFileSync(getVaultSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+// Merges `updates` into the persisted settings so partial writes don't clobber other fields.
+function saveVaultSettings(updates: Partial<VaultSettings>): void {
+  const current = loadVaultSettings();
+  const merged: VaultSettings = { ...current, ...updates };
+  fs.writeFileSync(getVaultSettingsPath(), JSON.stringify(merged, null, 2), 'utf-8');
 }
 
 const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
+const getNotesVaultRoot = () =>
+  loadVaultSettings().notesVaultRoot ?? path.join(app.getPath('userData'), 'notes-vault');
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
@@ -194,6 +221,14 @@ function ensureVaultDir() {
     openManifest(manifestPath);
   }
   openDb(vaultRoot);
+}
+
+function ensureNotesVaultDir() {
+  const notesVaultRoot = getNotesVaultRoot();
+  if (!fs.existsSync(notesVaultRoot)) {
+    fs.mkdirSync(notesVaultRoot, { recursive: true });
+    scaffoldNotesVault(notesVaultRoot);
+  }
 }
 
 // Notify renderer when vault changes so it can refresh state
@@ -215,6 +250,8 @@ function scheduleReindex() {
       const manifest = readManifest(manifestPath);
       const { manifest: updated } = reindexVault(vaultRoot, manifest);
       writeManifest(manifestPath, updated);
+      // Rebuild FTS index after manifest reindex (incremental on file change)
+      try { buildFullIndex(getDb(), vaultRoot, updated); } catch { /* non-fatal */ }
     } catch {
       // non-fatal — next open will reindex
     }
@@ -321,12 +358,13 @@ const handlers: IpcHandlers = {
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
         const auditId = crypto.randomUUID();
-        updateSuggestionStatus(payload.suggestion.id, 'accepted', now, 'auto-apply');
+        const { finalStatus, snapshotPath } = autoApplyVaultWrite(payload.suggestion, now);
+        updateSuggestionStatus(payload.suggestion.id, finalStatus, now, 'auto-apply');
         insertAuditLog({
           id: auditId,
           suggestion_id: payload.suggestion.id,
-          action: 'apply',
-          snapshot_path: null,
+          action: finalStatus === 'applied' ? 'apply' : 'accept',
+          snapshot_path: snapshotPath,
           actor: 'auto_applied',
           created_at: now,
         });
@@ -344,31 +382,7 @@ const handlers: IpcHandlers = {
     const suggestion = getSuggestion(payload.id);
     if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
 
-    let finalStatus: 'accepted' | 'applied' = 'accepted';
-    let snapshotPath: string | null = null;
-
-    if (suggestion.target_kind === 'vault' && suggestion.target_path && suggestion.payload_json) {
-      const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
-      if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
-      const relSnapshotPath = path.join('.mythos', 'suggestion-snapshots', `${payload.id}.json`);
-      const fullSnapshotPath = path.join(getVaultRoot(), relSnapshotPath);
-
-      let originalContent = '';
-      try {
-        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
-        originalContent = content;
-      } catch { /* new file — empty original is fine */ }
-      fs.writeFileSync(fullSnapshotPath, JSON.stringify({ originalContent, path: suggestion.target_path }), 'utf-8');
-      snapshotPath = relSnapshotPath;
-
-      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
-      const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
-      const { frontmatter, prose } = parseFrontmatter(newContent);
-      frontmatter['provenance'] = payload.id;
-      writeVaultFile(getVaultRoot(), suggestion.target_path, serializeFrontmatter(frontmatter, prose));
-      finalStatus = 'applied';
-    }
-
+    const { finalStatus, snapshotPath } = autoApplyVaultWrite(suggestion, now);
     updateSuggestionStatus(payload.id, finalStatus, now);
     insertAuditLog({
       id: auditId,
@@ -869,17 +883,101 @@ const handlers: IpcHandlers = {
     return { scene: found };
   },
 
+  // ─── Beta-Read Mode (MYT-237) ───
+  [IPC_CHANNELS.BETA_READ_CREATE]: (payload: { sceneId: string; anchorText: string; commentText: string }) => {
+    ensureVaultDir();
+    const id = crypto.randomUUID();
+    const comment = {
+      id,
+      scene_id: payload.sceneId,
+      anchor_text: payload.anchorText,
+      comment_text: payload.commentText,
+      created_at: new Date().toISOString(),
+      dismissed_at: null,
+    };
+    insertBetaReadComment(comment);
+    return { comment };
+  },
+
+  [IPC_CHANNELS.BETA_READ_LIST]: (payload: { sceneId: string }) => {
+    ensureVaultDir();
+    const comments = listBetaReadComments(payload.sceneId);
+    return { comments };
+  },
+
+  [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: { id: string }) => {
+    ensureVaultDir();
+    dismissBetaReadComment(payload.id);
+    return { id: payload.id, dismissed: true };
+  },
+
+  // ─── Search (MYT-251) ───
+  [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => {
+    ensureVaultDir();
+    const t0 = Date.now();
+    const results = searchVault(getDb(), payload.query, payload.scope, payload.limit ?? 20);
+    return { results, elapsed_ms: Date.now() - t0 };
+  },
+
   // ─── Vault graph (MYT-163) ───
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: async () => {
     ensureVaultDir();
-    const manifest = readManifest(getManifestPath());
-    const nodes = manifest.entities.map((e) => ({
-      id: e.id,
-      label: e.name,
-      type: e.type,
-      path: e.path,
-    }));
-    return { nodes, edges: [] };
+    const vaultRoot = getVaultRoot();
+    const WIKI_LINK_RE = /\[\[([^\]|#]+?)(?:[|#][^\]]*?)?\]\]/g;
+    const MAX_NODES = 2000;
+
+    // Collect all .md files
+    const { items } = listVaultFiles(vaultRoot);
+    const mdFiles = items.filter((f) => !f.isDirectory && f.path.endsWith('.md'));
+
+    // Build node list and stem→id map for edge resolution
+    const stemToId = new Map<string, string>();
+    const nodeList: { id: string; label: string; path: string; folder?: string; tags?: string[] }[] = [];
+
+    for (const file of mdFiles) {
+      let content = '';
+      try { content = readVaultFile(vaultRoot, file.path).content; } catch { continue; }
+      const { frontmatter } = parseFrontmatter(content);
+      const id = String(frontmatter.id ?? file.path);
+      const label = String(frontmatter.title ?? path.basename(file.path, '.md'));
+      const folder = path.dirname(file.path) === '.' ? undefined : path.dirname(file.path);
+      const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined;
+      nodeList.push({ id, label, path: file.path, folder, tags });
+      stemToId.set(path.basename(file.path, '.md').toLowerCase(), id);
+    }
+
+    // Sample if over budget
+    const sampled = nodeList.length > MAX_NODES ? nodeList.slice(0, MAX_NODES) : nodeList;
+    const sampledIds = new Set(sampled.map((n) => n.id));
+
+    // Build edges from wiki-links
+    const edgeSet = new Set<string>();
+    const edges: { source: string; target: string }[] = [];
+
+    for (const file of mdFiles) {
+      let content = '';
+      try { content = readVaultFile(vaultRoot, file.path).content; } catch { continue; }
+      const { frontmatter } = parseFrontmatter(content);
+      const sourceId = String(frontmatter.id ?? file.path);
+      if (!sampledIds.has(sourceId)) continue;
+
+      WIKI_LINK_RE.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = WIKI_LINK_RE.exec(content)) !== null) {
+        const target = match[1].trim();
+        const targetStem = path.basename(target, '.md').toLowerCase();
+        const targetId = stemToId.get(targetStem);
+        if (targetId && targetId !== sourceId && sampledIds.has(targetId)) {
+          const key = `${sourceId}→${targetId}`;
+          if (!edgeSet.has(key)) {
+            edgeSet.add(key);
+            edges.push({ source: sourceId, target: targetId });
+          }
+        }
+      }
+    }
+
+    return { nodes: sampled, edges };
   },
 
   // ─── Archive Agent (MYT-157) ───
@@ -888,6 +986,9 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => {
+    if (!loadAppSettings().agents.archive.enabled) {
+      return { suggestions: [], inconsistenciesFound: 0, wikiLinksFound: 0 };
+    }
     ensureVaultDir();
     let index = getArchiveIndex();
     if (!index) {
@@ -904,6 +1005,410 @@ const handlers: IpcHandlers = {
       inconsistenciesFound: result.inconsistenciesFound,
       wikiLinksFound: result.wikiLinksFound,
     };
+  },
+
+  // ─── EPUB export (MYT-253) ───
+  [IPC_CHANNELS.EXPORT_EPUB]: async (payload: { storyId: string }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+
+    const result = await dialog.showSaveDialog({
+      title: 'Export EPUB',
+      defaultPath: `${story.title.replace(/[/\\?%*:|"<>]/g, '-')}.epub`,
+      filters: [{ name: 'EPUB', extensions: ['epub'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+
+    // Build chapter/scene structure, reading prose from vault
+    const chapters = story.chapters
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((ch) => ({
+        id: ch.id,
+        title: ch.title,
+        scenes: ch.scenes
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map((sc) => {
+            let prose = '';
+            try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+            return { id: sc.id, title: sc.title, prose };
+          }),
+      }));
+
+    const buffer = await buildEpub({ title: story.title, chapters });
+    fs.writeFileSync(result.filePath, buffer);
+    return { path: result.filePath, cancelled: false };
+  },
+
+  // ─── DOCX export (MYT-252) ───
+  [IPC_CHANNELS.EXPORT_DOCX]: async (payload: { storyId: string }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find((s) => s.id === payload.storyId);
+    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+
+    const result = await dialog.showSaveDialog({
+      title: 'Export DOCX',
+      defaultPath: `${story.title.replace(/[/\\?%*:|"<>]/g, '-')}.docx`,
+      filters: [{ name: 'Word Document', extensions: ['docx'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+
+    const chapters = story.chapters
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((ch) => ({
+        id: ch.id,
+        title: ch.title,
+        scenes: ch.scenes
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map((sc) => {
+            let prose = '';
+            try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+            return { id: sc.id, title: sc.title, prose };
+          }),
+      }));
+
+    const buffer = await buildDocx({ title: story.title, chapters });
+    fs.writeFileSync(result.filePath, buffer);
+    return { path: result.filePath, cancelled: false };
+  },
+
+  // ─── Obsidian vault import wizard (MYT-244) ───
+  [IPC_CHANNELS.VAULT_PICK_FOLDER]: async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Select Obsidian Vault Folder',
+      buttonLabel: 'Select Folder',
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { vaultRoot: null, cancelled: true };
+    }
+    return { vaultRoot: result.filePaths[0], cancelled: false };
+  },
+
+  [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: async (_payload: VaultObsidianDryRunPayload) => {
+    const { sourcePath } = _payload;
+    // Load existing manifest to detect name collisions (may not exist yet)
+    let existingManifest = null;
+    try {
+      if (fs.existsSync(getManifestPath())) {
+        existingManifest = readManifest(getManifestPath());
+      }
+    } catch { /* non-fatal */ }
+    return obsidianDryRun(sourcePath, existingManifest);
+  },
+
+  [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: async (_payload: VaultObsidianRegisterPayload) => {
+    const { sourcePath } = _payload;
+    // Point the vault root at the chosen Obsidian folder and rebuild the manifest
+    saveVaultSettings({ vaultRoot: sourcePath });
+    ensureVaultDir(); // creates manifest.json if absent, opens DB
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced, scanned } = reindexVault(sourcePath, manifest);
+    writeManifest(getManifestPath(), synced);
+    // Rebuild full-text search index
+    try { buildFullIndex(getDb(), sourcePath, synced); } catch { /* non-fatal */ }
+    // Start file watcher on the new root
+    await stopVaultWatcher();
+    await startVaultWatcher(sourcePath, notifyVaultChanged);
+    return { vaultRoot: sourcePath, notesIndexed: scanned };
+  },
+
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (): Promise<VaultLoadSampleResponse> => {
+    const sampleRoot = path.join(app.getPath('documents'), 'Mythos Writer Sample');
+    if (!fs.existsSync(sampleRoot)) {
+      fs.mkdirSync(sampleRoot, { recursive: true });
+
+      // ── Manuscript ──────────────────────────────────────────────────────────
+      const storySlug = 'the-lost-horizon';
+
+      const ch1Dir = path.join(sampleRoot, 'Manuscript', storySlug, 'chapter-one');
+      const ch2Dir = path.join(sampleRoot, 'Manuscript', storySlug, 'chapter-two');
+      fs.mkdirSync(ch1Dir, { recursive: true });
+      fs.mkdirSync(ch2Dir, { recursive: true });
+
+      // Chapter 1 – Scene 1
+      fs.writeFileSync(path.join(ch1Dir, 'the-departure.md'), [
+        '---',
+        'title: The Departure',
+        'type: scene',
+        '---',
+        '',
+        'The morning mist clung to the docks of [[Port Caelum]] as [[Elara Voss]] pulled her coat tighter.',
+        'Somewhere beyond the grey horizon lay the answers she had spent three years seeking.',
+        '',
+        '"You don\'t have to do this," said [[Captain Renn]], not turning from the wheel of the _Meridian Star_.',
+        '',
+        '"I know," she replied. "That\'s exactly why I\'m going."',
+        '',
+        'The vessel groaned as it left the pier. Above the crow\'s nest a faded chart fluttered — marked with the sigil of the [[Tidecallers\' Compact]].',
+        '',
+        '> **Writing Assistant tip:** Select any paragraph and open the Writing Assistant panel to get tone suggestions or ask it to continue the scene.',
+      ].join('\n'));
+
+      // Chapter 1 – Scene 2
+      fs.writeFileSync(path.join(ch1Dir, 'first-night-at-sea.md'), [
+        '---',
+        'title: First Night at Sea',
+        'type: scene',
+        '---',
+        '',
+        'The stars over the [[Sunken Expanse]] were nothing like those above [[Port Caelum]].',
+        '[[Elara Voss]] spread her mentor\'s journal across the galley table, tracing the inked coastlines with one finger.',
+        '',
+        '"He was here," she murmured, tapping a circled inlet. "Before the storm took him."',
+        '',
+        '[[Captain Renn]] appeared in the doorway, holding two mugs of black tea.',
+        '"Your mentor was a fool," he said, setting one mug down. "Brave — but a fool."',
+        '',
+        'Elara did not argue. [[Dr. Harlan Voss]] had been both.',
+        '',
+        '> **Archive tip:** The names [[Dr. Harlan Voss]] and [[Tidecallers\' Compact]] above are wiki-links.',
+        '> Open the Archive panel to see suggested entity pages for them, or click a link to create a new entity.',
+      ].join('\n'));
+
+      // Chapter 2 – Scene 1
+      fs.writeFileSync(path.join(ch2Dir, 'the-sunken-archive.md'), [
+        '---',
+        'title: The Sunken Archive',
+        'type: scene',
+        '---',
+        '',
+        'Three days out from [[Port Caelum]], the [[Meridian Star]] anchored above the submerged ruins of [[Aethon\'s Cradle]].',
+        '',
+        '[[Elara Voss]] descended alone, the pressure suit sealing with a hiss. The water was cold and black beyond her helmet lamp.',
+        'Below her, columns rose from silt like broken teeth — and among them, a door still stood, engraved with the mark of the [[Tidecallers\' Compact]].',
+        '',
+        'She had found it.',
+        '',
+        '> **Brainstorm tip:** Open the Brainstorm panel and ask "What should Elara discover inside the archive?" to explore plot possibilities with the AI.',
+      ].join('\n'));
+
+      // Chapter 2 – Scene 2
+      fs.writeFileSync(path.join(ch2Dir, 'the-archivist.md'), [
+        '---',
+        'title: The Archivist',
+        'type: scene',
+        '---',
+        '',
+        'Inside the chamber the air was stale but breathable — somehow, after all centuries, the [[Tidecallers\' Compact]] seals had held.',
+        '',
+        'A figure sat at the far end of the room, motionless, draped in a corroded robe.',
+        'Then it turned.',
+        '',
+        '"I wondered," said [[The Archivist]], "when one of Harlan\'s kin would come."',
+        '',
+        '[[Elara Voss]] took a step back. "You knew my father?"',
+        '',
+        '"I taught him everything he knew about the [[Aethon\'s Cradle|Cradle]]." A pause. "And everything he should never have shared."',
+        '',
+        '> **Writing Assistant tip:** Highlight "A figure sat at the far end of the room" and ask the Writing Assistant to add sensory detail.',
+      ].join('\n'));
+
+      // ── Entities ─────────────────────────────────────────────────────────────
+      const entitiesDir = path.join(sampleRoot, 'Entities');
+      fs.mkdirSync(entitiesDir, { recursive: true });
+
+      // Characters
+      fs.writeFileSync(path.join(entitiesDir, 'elara-voss.md'), [
+        '---',
+        'name: Elara Voss',
+        'type: character',
+        'tags: [protagonist]',
+        '---',
+        '',
+        'Marine archaeologist turned deep-sea explorer. Driven by the disappearance of her mentor and father, [[Dr. Harlan Voss]].',
+        '',
+        '**Motivation:** Uncover the truth about her father\'s final expedition to [[Aethon\'s Cradle]].',
+        '**Flaw:** Trusts evidence over people — often at the cost of the people around her.',
+        '',
+        'See also: [[Captain Renn]], [[The Archivist]]',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'captain-renn.md'), [
+        '---',
+        'name: Captain Renn',
+        'type: character',
+        'tags: [supporting]',
+        '---',
+        '',
+        'Weathered captain of the _[[Meridian Star]]_. Reluctant ally with a complicated past.',
+        '',
+        '**Secret:** He was on the original expedition with [[Dr. Harlan Voss]] and knows why it went wrong.',
+        '**Arc:** Moves from self-protective silence to reluctant confession.',
+        '',
+        'See also: [[Elara Voss]], [[Tidecallers\' Compact]]',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'dr-harlan-voss.md'), [
+        '---',
+        'name: Dr. Harlan Voss',
+        'type: character',
+        'tags: [absent, mentor]',
+        '---',
+        '',
+        'Marine historian and founding scholar of the [[Tidecallers\' Compact]] research initiative.',
+        'Vanished during his third dive to [[Aethon\'s Cradle]].',
+        '',
+        '**Role:** In absentia — referenced through journals, memories, and [[The Archivist]]\'s testimony.',
+        '',
+        'See also: [[Elara Voss]], [[Captain Renn]]',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'the-archivist.md'), [
+        '---',
+        'name: The Archivist',
+        'type: character',
+        'tags: [antagonist, ancient]',
+        '---',
+        '',
+        'An ancient guardian of [[Aethon\'s Cradle]], preserved by [[Tidecallers\' Compact]] technology for an unknown span of centuries.',
+        '',
+        '**Motivation:** Protect the knowledge within the Cradle from those who would misuse it.',
+        '**Ambiguity:** Not evil — believes the secrets should stay buried. May be right.',
+        '',
+        'See also: [[Dr. Harlan Voss]], [[Aethon\'s Cradle]]',
+      ].join('\n'));
+
+      // Locations
+      fs.writeFileSync(path.join(entitiesDir, 'port-caelum.md'), [
+        '---',
+        'name: Port Caelum',
+        'type: location',
+        'tags: [city, harbour]',
+        '---',
+        '',
+        'A fog-shrouded harbour city built on the bones of an older settlement.',
+        'The main departure point for expeditions into the [[Sunken Expanse]].',
+        '',
+        '**Atmosphere:** Perpetual mist, weathered stone, the smell of brine and coal smoke.',
+        '**Key sites:** The Cartographers\' Guild, Renn\'s dry-dock, the archive at Voss University.',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(entitiesDir, 'aethons-cradle.md'), [
+        '---',
+        'name: Aethon\'s Cradle',
+        'type: location',
+        'tags: [ruin, underwater, ancient]',
+        '---',
+        '',
+        'Submerged ruins of a pre-collapse city, resting 300 m below the surface of the [[Sunken Expanse]].',
+        'Primary research site of the [[Tidecallers\' Compact]].',
+        '',
+        '**Lore:** Once the capital of the Aethon civilisation, swallowed by the sea in the Cataclysm of the Third Tide.',
+        '**Hazards:** Extreme depth, structural instability, and [[The Archivist]].',
+      ].join('\n'));
+
+      // Lore / Concepts
+      const loreDir = path.join(sampleRoot, 'Lore');
+      fs.mkdirSync(loreDir, { recursive: true });
+
+      fs.writeFileSync(path.join(loreDir, 'tidecallers-compact.md'), [
+        '---',
+        'name: Tidecallers\' Compact',
+        'type: concept',
+        'tags: [organisation, lore]',
+        '---',
+        '',
+        'A scholarly organisation dedicated to cataloguing and protecting the ruins of [[Aethon\'s Cradle]].',
+        'Founded jointly by [[Dr. Harlan Voss]] and an unnamed patron known only as "the Benefactor."',
+        '',
+        '**Sigil:** A circle of nine waves, each cresting at a different height.',
+        '**Current status:** Officially disbanded after the loss of Dr. Voss; unofficially active underground.',
+        '',
+        '> **Archive tip:** This note is linked from the manuscript scenes.',
+        '> The Archive agent can suggest new entities whenever you write a new concept into a scene.',
+      ].join('\n'));
+
+      fs.writeFileSync(path.join(loreDir, 'the-three-tides.md'), [
+        '---',
+        'name: The Three Tides',
+        'type: concept',
+        'tags: [lore, history]',
+        '---',
+        '',
+        '## The First Tide',
+        'The founding of the Aethon civilisation, said to have been guided by oceanic spirits.',
+        '',
+        '## The Second Tide',
+        'A century of expansion across the known seas; the era when [[Aethon\'s Cradle]] rose to its greatest power.',
+        '',
+        '## The Third Tide (the Cataclysm)',
+        'A catastrophic event — cause unknown — that submerged the capital and ended the Aethon age overnight.',
+        '[[The Archivist]] is one of the few entities old enough to have witnessed it.',
+        '',
+        '> **Brainstorm tip:** Ask the Brainstorm agent "What caused the Third Tide?" to develop a backstory.',
+      ].join('\n'));
+
+      // ── Scene Crafter board ───────────────────────────────────────────────────
+      const boardsDir = path.join(sampleRoot, 'Boards');
+      fs.mkdirSync(boardsDir, { recursive: true });
+
+      fs.writeFileSync(path.join(boardsDir, 'the-lost-horizon-board.md'), [
+        '---',
+        'kanban-plugin: board',
+        'mythos-board-version: 1',
+        `story-id: ${storySlug}`,
+        `last-modified: ${new Date().toISOString()}`,
+        '---',
+        '',
+        '## Outline',
+        '',
+        `- [ ] [[Manuscript/${storySlug}/chapter-one/the-departure|The Departure]]`,
+        `- [ ] [[Manuscript/${storySlug}/chapter-one/first-night-at-sea|First Night at Sea]]`,
+        '',
+        '## Draft',
+        '',
+        `- [x] [[Manuscript/${storySlug}/chapter-two/the-sunken-archive|The Sunken Archive]] #action`,
+        `- [x] [[Manuscript/${storySlug}/chapter-two/the-archivist|The Archivist]] #reveal`,
+        '',
+        '## Revision',
+        '',
+        '## Done',
+        '',
+        '',
+        '%%',
+        '{"kanban-plugin":"board"}',
+        '%%',
+      ].join('\n'));
+
+      // ── README ────────────────────────────────────────────────────────────────
+      fs.writeFileSync(path.join(sampleRoot, 'README.md'), [
+        '# The Lost Horizon — Sample Project',
+        '',
+        'Welcome to Mythos Writer! This sample project is designed to show you the main features.',
+        '',
+        '## What\'s included',
+        '',
+        '- **Manuscript/** — Two chapters of _The Lost Horizon_, a deep-sea mystery.',
+        '  Each scene contains tips for the Writing Assistant and Archive agents.',
+        '- **Entities/** — Four characters and two locations with wiki-links between them.',
+        '- **Lore/** — Two lore pages (Tidecallers\' Compact, The Three Tides) demonstrating',
+        '  the Archive\'s wiki-link suggestion feature.',
+        '- **Boards/** — A Scene Crafter Kanban board tracking scenes through Outline → Draft → Revision → Done.',
+        '',
+        '## Quick tour',
+        '',
+        '1. **Writing Assistant** — Open any scene, select a sentence, and use the Writing Assistant panel.',
+        '2. **Archive** — Click a `[[wiki-link]]` in a scene to jump to or create an entity page.',
+        '3. **Brainstorm** — Open the Brainstorm panel and ask a question about the story.',
+        '4. **Scene Crafter** — Open `Boards/the-lost-horizon-board.md` to see the scene board.',
+      ].join('\n'));
+    }
+    saveVaultSettings({ vaultRoot: sampleRoot });
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced } = reindexVault(sampleRoot, manifest);
+    writeManifest(getManifestPath(), synced);
+    try { buildFullIndex(getDb(), sampleRoot, synced); } catch { /* non-fatal */ }
+    await stopVaultWatcher();
+    await startVaultWatcher(sampleRoot, notifyVaultChanged);
+    return { vaultRoot: sampleRoot };
   },
 
 };
@@ -934,33 +1439,60 @@ function createWindow() {
   });
 }
 
-// ─── Auto-updater (MYT-210) ───
+// ─── Auto-updater (MYT-245) ───
 // Feature-flagged: only active when MYTHOS_AUTO_UPDATE=1 (set in production CI/release builds).
-// During development and staging builds this block is inert — the IPC handlers are still
-// registered so the renderer can call them safely, but they no-op.
+// Supports two channels: stable (GitHub releases) and beta (GitHub pre-releases).
+// IPC handlers are always registered so renderer calls are safe no-ops in dev.
 const AUTO_UPDATE_ENABLED = process.env.MYTHOS_AUTO_UPDATE === '1';
 
 type UpdateState = 'checking' | 'available' | 'not-available' | 'downloading' | 'ready';
 
-function sendUpdateStatus(state: UpdateState) {
+interface UpdateStatusPayload {
+  state: UpdateState;
+  version?: string;
+  releaseNotes?: string | null;
+}
+
+// Last known available update — queried by renderer via UPDATE_GET_INFO
+let lastUpdateInfo: { version: string; releaseNotes: string | null } | null = null;
+
+function sendUpdateStatus(payload: UpdateStatusPayload) {
   if (mainWindow) {
-    mainWindow.webContents.send('update:status', { state });
+    mainWindow.webContents.send('update:status', payload);
   }
 }
 
+function applyUpdateChannel() {
+  const { updateChannel } = loadAppSettings();
+  // electron-updater maps 'latest' → stable GitHub releases, 'beta' → pre-releases
+  autoUpdater.channel = updateChannel === 'beta' ? 'beta' : 'latest';
+}
+
+function normalizeReleaseNotes(
+  notes: string | Array<{ version: string; note: string | null }> | null | undefined,
+): string | null {
+  if (!notes) return null;
+  if (typeof notes === 'string') return notes;
+  return notes.map((n) => `### ${n.version}\n${n.note ?? ''}`).join('\n\n');
+}
+
 function initAutoUpdater() {
-  // Register IPC handlers regardless of flag so renderer calls don't throw.
+  // Always register IPC handlers — safe no-ops when flag is off or not packaged.
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, () => {
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
+    applyUpdateChannel();
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     return { queued: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, () => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (_event, payload?: { quit: boolean }) => {
     if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
-    autoUpdater.quitAndInstall(false, true);
+    const quit = payload?.quit !== false; // default true = restart immediately
+    autoUpdater.quitAndInstall(false, quit);
     return { ok: true };
   });
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, () => lastUpdateInfo);
 
   if (!AUTO_UPDATE_ENABLED) return;
 
@@ -968,13 +1500,29 @@ function initAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('error', () => { /* non-fatal — silenced to avoid noise on dev builds */ });
-  autoUpdater.on('checking-for-update', () => sendUpdateStatus('checking'));
-  autoUpdater.on('update-available', () => sendUpdateStatus('available'));
-  autoUpdater.on('update-not-available', () => sendUpdateStatus('not-available'));
-  autoUpdater.on('download-progress', () => sendUpdateStatus('downloading'));
-  autoUpdater.on('update-downloaded', () => sendUpdateStatus('ready'));
+  autoUpdater.on('checking-for-update', () => sendUpdateStatus({ state: 'checking' }));
+  autoUpdater.on('update-not-available', () => sendUpdateStatus({ state: 'not-available' }));
+  autoUpdater.on('download-progress', () => sendUpdateStatus({ state: 'downloading', version: lastUpdateInfo?.version, releaseNotes: lastUpdateInfo?.releaseNotes }));
 
-  // Only poll in packaged production builds to avoid hitting GitHub API during dev.
+  autoUpdater.on('update-available', (info) => {
+    const releaseNotes = normalizeReleaseNotes(
+      (info as { releaseNotes?: string | Array<{ version: string; note: string | null }> | null }).releaseNotes,
+    );
+    lastUpdateInfo = { version: (info as { version: string }).version, releaseNotes };
+    sendUpdateStatus({ state: 'available', version: lastUpdateInfo.version, releaseNotes });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const version = (info as { version: string }).version;
+    const releaseNotes = lastUpdateInfo?.releaseNotes ?? normalizeReleaseNotes(
+      (info as { releaseNotes?: string | Array<{ version: string; note: string | null }> | null }).releaseNotes,
+    );
+    if (!lastUpdateInfo) lastUpdateInfo = { version, releaseNotes };
+    sendUpdateStatus({ state: 'ready', version, releaseNotes });
+  });
+
+  // Apply channel setting and poll on startup (packaged builds only).
+  applyUpdateChannel();
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify().catch(() => { /* silenced */ });
   }
@@ -1000,7 +1548,69 @@ const SETTINGS_DEFAULTS: AppSettings = {
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+  updateChannel: 'stable',
 };
+
+/**
+ * Shared vault-write logic for accepted/applied suggestions.
+ * For vault suggestions (target_kind='vault' with a target_path and payload_json):
+ *   - snapshots the original file content
+ *   - writes the new content (from payload.content or payload.prose) with provenance frontmatter
+ *   - returns finalStatus='applied' and the relative snapshot path
+ * For all other suggestions (manuscript or advisory):
+ *   - returns finalStatus='accepted' and snapshotPath=null
+ *
+ * Errors during vault write are silently swallowed so the suggestion DB state is always
+ * consistent — the suggestion records the attempted apply; callers should not re-throw.
+ */
+function autoApplyVaultWrite(
+  suggestion: import('./db.js').DbSuggestion,
+  now: string,
+): { finalStatus: 'accepted' | 'applied'; snapshotPath: string | null } {
+  if (
+    suggestion.target_kind === 'vault' &&
+    suggestion.target_path &&
+    suggestion.payload_json
+  ) {
+    try {
+      const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
+      if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
+      const relSnapshotPath = path.join(
+        '.mythos', 'suggestion-snapshots', `${suggestion.id}.json`,
+      );
+      const fullSnapshotPath = path.join(getVaultRoot(), relSnapshotPath);
+
+      let originalContent = '';
+      try {
+        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
+        originalContent = content;
+      } catch { /* new file — empty original */ }
+
+      fs.writeFileSync(
+        fullSnapshotPath,
+        JSON.stringify({ originalContent, path: suggestion.target_path }),
+        'utf-8',
+      );
+
+      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
+      const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
+      const { prose: newProse } = parseFrontmatter(newContent);
+      mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {
+        source_agent: suggestion.source_agent,
+        confidence: suggestion.confidence,
+        rationale: suggestion.rationale,
+        timestamp: now,
+        run_id: suggestion.applied_run_id ?? undefined,
+        suggestion_id: suggestion.id,
+      }, newProse);
+
+      return { finalStatus: 'applied', snapshotPath: relSnapshotPath };
+    } catch {
+      // Vault write failed — fall through to accepted without file write
+    }
+  }
+  return { finalStatus: 'accepted', snapshotPath: null };
+}
 
 /** Maps source_agent DB value → settings key. Unknown agents have no budget enforcement. */
 const SOURCE_AGENT_TO_SETTINGS_KEY: Record<string, keyof AppSettings['agents']> = {
@@ -1062,6 +1672,22 @@ function getValidatedApiKey(): string {
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+    const agentSettings = loadAppSettings().agents.brainstorm;
+    if (!agentSettings.enabled) {
+      throw new Error('Brainstorm agent is disabled in settings.');
+    }
+    const budgetCheck = checkCallBudget('brainstorm', agentSettings, getDb());
+    if (!budgetCheck.allowed) {
+      const capLabel = budgetCheck.reason === 'daily_token_cap' ? 'daily token cap' : 'hourly token cap';
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'brainstorm',
+          agentLabel: 'Brainstorm Agent',
+          reason: budgetCheck.reason,
+        });
+      }
+      throw new Error(`Brainstorm Agent paused: ${capLabel} reached. Try again next window.`);
+    }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
@@ -1156,6 +1782,22 @@ Be creative, ask clarifying questions, and help the author think deeper about th
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+    const agentSettings = loadAppSettings().agents.writingAssistant;
+    if (!agentSettings.enabled) {
+      throw new Error('Writing Assistant is disabled in settings.');
+    }
+    const budgetCheck = checkCallBudget('writing-assistant', agentSettings, getDb());
+    if (!budgetCheck.allowed) {
+      const capLabel = budgetCheck.reason === 'daily_token_cap' ? 'daily token cap' : 'hourly token cap';
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'writing-assistant',
+          agentLabel: 'Writing Assistant',
+          reason: budgetCheck.reason,
+        });
+      }
+      throw new Error(`Writing Assistant paused: ${capLabel} reached. Try again next window.`);
+    }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
     const userContent = payload.context
@@ -1397,6 +2039,85 @@ Then write a short summary paragraph. If no issues are found, say so and output 
   });
 }
 
+// ─── Writing Assistant scheduled scan handler (MYT-233) ───
+// Non-streaming: returns structured tips for background scheduler use.
+function registerWritingScanHandler(): void {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (_event, payload: WritingScanPayload) => {
+    const settings = loadAppSettings();
+    if (!settings.agents.writingAssistant.enabled) {
+      return { tips: [], scannedAt: new Date().toISOString() };
+    }
+    const budgetCheck = checkCallBudget('writing-assistant', settings.agents.writingAssistant, getDb());
+    if (!budgetCheck.allowed) {
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'writing-assistant',
+          agentLabel: 'Writing Assistant',
+          reason: budgetCheck.reason,
+        });
+      }
+      return { tips: [], scannedAt: new Date().toISOString() };
+    }
+    const apiKey = getValidatedApiKey();
+    const client = new Anthropic({ apiKey });
+    const model = settings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
+    const startedAt = Date.now();
+    let tokensIn: number | null = null;
+    let tokensOut: number | null = null;
+    let genError: string | null = null;
+
+    try {
+      const response = await client.messages.create({
+        model,
+        max_tokens: 512,
+        system: 'You are a Writing Assistant doing a quick scene scan. Read the prose and identify 2–3 specific, actionable writing tips about craft, pacing, voice, or clarity. Return ONLY a JSON array of tip strings, for example: ["Tip one.", "Tip two."]. No other text.',
+        messages: [{
+          role: 'user',
+          content: `Scene (${payload.scenePath}):\n\n${payload.prose.slice(0, 4000)}`,
+        }],
+      });
+
+      tokensIn = response.usage.input_tokens;
+      tokensOut = response.usage.output_tokens;
+
+      const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
+      let tips: string[] = [];
+      try {
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (Array.isArray(parsed)) tips = parsed.map(String);
+        }
+      } catch { /* fallback below */ }
+      if (tips.length === 0) {
+        tips = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      }
+
+      return { tips: tips.slice(0, 5), scannedAt: new Date().toISOString() };
+    } catch (err: unknown) {
+      genError = (err as Error).message ?? 'unknown error';
+      throw err;
+    } finally {
+      const digest = crypto.createHash('sha256').update(payload.prose.slice(0, 100)).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'writing-assistant',
+          model,
+          endpoint: 'messages.create',
+          request_id: null,
+          tokens_in: tokensIn,
+          tokens_out: tokensOut,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: digest,
+        });
+      } catch { /* non-fatal */ }
+    }
+  });
+}
+
 // ─── App lifecycle ───
 app.whenReady().then(async () => {
   ensureVaultDir();
@@ -1405,12 +2126,20 @@ app.whenReady().then(async () => {
   registerBrainstormHandler();
   registerWritingAssistantHandler();
   registerVaultAgentHandlers();
+  registerWritingScanHandler();
+  registerStreamingHandlers(getValidatedApiKey);
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
   );
   createWindow();
   initAutoUpdater();
+  // Build initial FTS index (non-fatal)
+  try {
+    const manifest = readManifest(getManifestPath());
+    buildFullIndex(getDb(), getVaultRoot(), manifest);
+  } catch { /* non-fatal — index rebuilt on next watcher event */ }
+
   // Start watching vault for external markdown changes
   await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
 

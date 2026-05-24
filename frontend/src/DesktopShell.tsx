@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
+import { applyTheme } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
@@ -11,6 +13,8 @@ import VaultGraphView from './VaultGraphView';
 import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
+import SearchBar from './SearchBar';
+import BetaReadMargin from './BetaReadMargin';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -66,14 +70,53 @@ function blocksToMarkdown(scene: Scene): string {
 
 type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
 
+interface SearchResultItem {
+  docId: string;
+  vault: 'story' | 'notes';
+  kind: string;
+  title: string;
+  snippet: string;
+  rank: number;
+}
+
 interface AppMenuBarProps {
   view: AppView;
   onSetView: (v: AppView) => void;
   onOpenSettings: () => void;
   onOpenHistory: () => void;
+  onSearchNavigate: (result: SearchResultItem) => void;
+  selectedStoryId?: string | null;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId }: AppMenuBarProps) {
+  const handleExportEpub = () => {
+    if (!selectedStoryId) {
+      alert('Select a story first to export it as EPUB.');
+      return;
+    }
+    (window as any).api?.exportEpub?.(selectedStoryId)
+      .then((res: { path: string | null; cancelled: boolean }) => {
+        if (!res.cancelled && res.path) {
+          alert(`EPUB saved to:\n${res.path}`);
+        }
+      })
+      .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  };
+
+  const handleExportDocx = () => {
+    if (!selectedStoryId) {
+      alert('Select a story first to export it as DOCX.');
+      return;
+    }
+    (window as any).api?.exportDocx?.(selectedStoryId)
+      .then((res: { path: string | null; cancelled: boolean }) => {
+        if (!res.cancelled && res.path) {
+          alert(`DOCX saved to:\n${res.path}`);
+        }
+      })
+      .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  };
+
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -84,34 +127,42 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuB
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.newStory?.()}>New Story</button>
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openVault?.()}>Open Vault…</button>
             <div className="app-menu-separator" />
+            <button className="app-menu-dropdown-item" onClick={handleExportEpub}>Export EPUB…</button>
+            <button className="app-menu-dropdown-item" onClick={handleExportDocx}>Export DOCX…</button>
+            <div className="app-menu-separator" />
             <button className="app-menu-dropdown-item" onClick={onOpenHistory}>Prompt History…</button>
             <div className="app-menu-separator" />
             <button className="app-menu-dropdown-item" onClick={onOpenSettings}>Settings…</button>
           </div>
         </div>
       </div>
+      <SearchBar onNavigate={onSearchNavigate} />
       <div className="app-menu-view-toggle">
         <button
           className={`app-menu-view-btn${view === 'editor' ? ' active' : ''}`}
           onClick={() => onSetView('editor')}
+          aria-pressed={view === 'editor'}
         >
           Editor
         </button>
         <button
           className={`app-menu-view-btn${view === 'brainstorm' ? ' active' : ''}`}
           onClick={() => onSetView('brainstorm')}
+          aria-pressed={view === 'brainstorm'}
         >
           Brainstorm
         </button>
         <button
           className={`app-menu-view-btn${view === 'kanban' ? ' active' : ''}`}
           onClick={() => onSetView('kanban')}
+          aria-pressed={view === 'kanban'}
         >
           Board
         </button>
         <button
           className={`app-menu-view-btn${view === 'graph' ? ' active' : ''}`}
           onClick={() => onSetView('graph')}
+          aria-pressed={view === 'graph'}
         >
           Graph
         </button>
@@ -148,9 +199,14 @@ export default function DesktopShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [budgetToast, setBudgetToast] = useState<string | null>(null);
+  const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
+  const [betaReadLoading, setBetaReadLoading] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
+  const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -163,7 +219,77 @@ export default function DesktopShell() {
   const handleInsertWikiLink = useCallback((link: string, anchorText: string) => {
     editorApiRef.current?.insertWikiLink(link, anchorText);
   }, []);
+
+  const handleEditorAcceptWikiLink = useCallback((id: string, link: string, anchorText: string) => {
+    editorApiRef.current?.insertWikiLink(link, anchorText);
+    setWikiLinkSuggestions((prev) => prev.filter((s) => s.id !== id));
+    window.api?.suggestionsAccept?.(id).catch(() => {});
+  }, []);
+
+  const handleEditorRejectWikiLink = useCallback((id: string) => {
+    setWikiLinkSuggestions((prev) => prev.filter((s) => s.id !== id));
+    window.api?.suggestionsReject?.(id).catch(() => {});
+  }, []);
   const dragState = useRef<DragState | null>(null);
+
+  // ─── Beta-Read Mode (MYT-237) ───
+
+  const loadBetaReadComments = useCallback(async (sceneId: string) => {
+    try {
+      const res = await (window as any).api.betaReadList(sceneId);
+      setBetaReadComments(res.comments ?? []);
+    } catch {
+      setBetaReadComments([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedScene) {
+      loadBetaReadComments(selectedScene.id);
+    } else {
+      setBetaReadComments([]);
+    }
+  }, [selectedScene?.id, loadBetaReadComments]);
+
+  const handleBetaReadRequest = useCallback(async (selectedText: string) => {
+    if (!selectedScene || betaReadLoading) return;
+    setBetaReadLoading(true);
+    try {
+      const context = `You are a beta reader giving constructive feedback. Highlight strengths, flag anything confusing, and suggest one improvement. Be concise (2–4 sentences).\n\nPassage:\n\n${selectedText}`;
+      const res = await (window as any).api.agentWritingAssistant(selectedText, context);
+      const commentText: string = res?.text ?? 'No feedback generated.';
+      await (window as any).api.betaReadCreate(selectedScene.id, selectedText, commentText);
+      await loadBetaReadComments(selectedScene.id);
+    } catch {
+      // non-fatal
+    } finally {
+      setBetaReadLoading(false);
+    }
+  }, [selectedScene, betaReadLoading, loadBetaReadComments]);
+
+  const handleBetaReadDismiss = useCallback(async (id: string) => {
+    try {
+      await (window as any).api.betaReadDismiss(id);
+      setBetaReadComments((prev) => prev.filter((c) => c.id !== id));
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!window.api.onBudgetCapHit) return;
+    const unsub = window.api.onBudgetCapHit((event) => {
+      const windowLabel = event.reason === 'daily_token_cap' ? 'daily' : 'hourly';
+      const msg = `${event.agentLabel} paused: ${windowLabel} token cap reached.`;
+      setBudgetToast(msg);
+      if (budgetToastTimer.current) clearTimeout(budgetToastTimer.current);
+      budgetToastTimer.current = setTimeout(() => setBudgetToast(null), 5000);
+    });
+    return () => {
+      unsub();
+      if (budgetToastTimer.current) clearTimeout(budgetToastTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -403,6 +529,32 @@ export default function DesktopShell() {
     setSelectedStory(null);
   }, []);
 
+  const handleSearchNavigate = useCallback((result: SearchResultItem) => {
+    if (result.vault === 'story') {
+      // Navigate to scene by docId
+      for (const story of stories) {
+        for (const chapter of story.chapters) {
+          const scene = chapter.scenes.find((sc) => sc.id === result.docId);
+          if (scene) {
+            handleSelectScene(scene, chapter, story);
+            setView('editor');
+            return;
+          }
+        }
+      }
+    } else {
+      // Navigate to entity by docId — look up in manifest entities
+      (window as any).api?.entityRead(result.docId)
+        .then((entry: EntityEntry | null) => {
+          if (entry) {
+            handleSelectEntity(entry);
+            setView('editor');
+          }
+        })
+        .catch(() => {});
+    }
+  }, [stories, handleSelectScene, handleSelectEntity]);
+
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
     if (!selectedStory || !selectedScene) return;
     const allScenes: { scene: Scene; chapter: Chapter }[] = [];
@@ -447,11 +599,11 @@ export default function DesktopShell() {
   return (
     <div className="desktop-shell">
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
+      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} selectedStoryId={selectedStory?.id ?? null} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
-          onSaved={(s) => setAppSettings(s)}
+          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme ?? 'system'); }}
         />
       )}
       {historyOpen && (
@@ -467,6 +619,13 @@ export default function DesktopShell() {
               key={selectedStory.id}
               boardPath={`${selectedStory.path}/kanban.md`}
               storyTitle={selectedStory.title}
+              onOpenNote={(notePath) => {
+                handleOpenSceneByPath(notePath);
+                setView('editor');
+              }}
+              scenes={selectedStory.chapters.flatMap((ch) =>
+                ch.scenes.map((sc) => ({ id: sc.id, title: sc.title, path: sc.path }))
+              )}
             />
           ) : (
             <div className="shell-editor-empty">
@@ -511,13 +670,33 @@ export default function DesktopShell() {
       <div className="shell-center-column">
         <div className="shell-editor">
           {selectedScene ? (
-            <BlockEditor
-              key={selectedScene.id}
-              scene={selectedScene}
-              onBlocksChange={handleBlocksChange}
-              onDraftStateChange={handleDraftStateChange}
-              onEditorReady={handleEditorReady}
-            />
+            <div className="shell-editor-beta-wrap">
+              <BlockEditor
+                key={selectedScene.id}
+                scene={selectedScene}
+                onBlocksChange={handleBlocksChange}
+                onDraftStateChange={handleDraftStateChange}
+                onEditorReady={handleEditorReady}
+                onBetaReadRequest={handleBetaReadRequest}
+                wikiLinkSuggestions={wikiLinkSuggestions}
+                onAcceptWikiLink={handleEditorAcceptWikiLink}
+                onRejectWikiLink={handleEditorRejectWikiLink}
+              />
+              {(betaReadComments.length > 0 || betaReadLoading) && (
+                <div className="shell-beta-margin">
+                  {betaReadLoading && (
+                    <div className="br-loading" aria-live="polite">
+                      <span className="wa-spinner" aria-hidden="true" />
+                      Reading…
+                    </div>
+                  )}
+                  <BetaReadMargin
+                    comments={betaReadComments}
+                    onDismiss={handleBetaReadDismiss}
+                  />
+                </div>
+              )}
+            </div>
           ) : selectedEntity ? (
             <EntityDetail
               key={selectedEntity.id}
@@ -562,11 +741,19 @@ export default function DesktopShell() {
           selectedStory={selectedStory}
           writingAssistantEnabled={agentFlags.writingAssistant}
           archiveEnabled={agentFlags.archive}
+          scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+          isPageFocused={view === 'editor'}
           onJumpToText={handleJumpToText}
           onInsertWikiLink={handleInsertWikiLink}
+          onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
         />
       </div>
       </div>}{/* end shell-panels */}
+      {budgetToast && (
+        <div className="budget-toast" role="alert" aria-live="assertive">
+          {budgetToast}
+        </div>
+      )}
     </div>
   );
 }

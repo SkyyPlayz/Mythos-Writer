@@ -36,10 +36,12 @@ jobs:
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
 
-      - name: Build and package (NSIS + ZIP)
+      - name: Build and publish (NSIS + ZIP)
         run: npm run dist
         env:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MYTHOS_AUTO_UPDATE: '1'
 
       - name: Upload NSIS installer artifact
         uses: actions/upload-artifact@v4
@@ -52,14 +54,6 @@ jobs:
         with:
           name: windows-zip
           path: dist-electron/*.zip
-
-      - name: Create draft GitHub Release and attach assets
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: |
-            dist-electron/*.exe
-            dist-electron/*.zip
 
   # Stubbed pending code signing setup (Phase 4)
   build-mac:
@@ -85,8 +79,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and package (Linux AppImage)
+      - name: Build and publish (Linux AppImage + deb + rpm)
         run: npm run dist:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MYTHOS_AUTO_UPDATE: '1'
 
       - name: Upload Linux AppImage artifact
         uses: actions/upload-artifact@v4
@@ -94,8 +91,23 @@ jobs:
           name: linux-appimage
           path: dist-electron/*.AppImage
 
+      - name: Upload Linux deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: dist-electron/*.deb
+
+      - name: Upload Linux rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm
+          path: dist-electron/*.rpm
+
       - name: Create draft GitHub Release and attach assets
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: dist-electron/*.AppImage
+          files: |
+            dist-electron/*.AppImage
+            dist-electron/*.deb
+            dist-electron/*.rpm

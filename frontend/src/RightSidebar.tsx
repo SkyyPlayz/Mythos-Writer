@@ -15,8 +15,11 @@ interface Props {
   selectedStory: Story | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
+  scanIntervalSeconds?: number;
+  isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
+  onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }
 
 function NotesPanel({ scene }: { scene: Scene | null }) {
@@ -138,14 +141,20 @@ function AiPanel({
   scene,
   writingAssistantEnabled = true,
   archiveEnabled = true,
+  scanIntervalSeconds = 30,
+  isPageFocused = true,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
+  onWikiLinkSuggestionsChange,
 }: {
   scene: Scene | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
+  scanIntervalSeconds?: number;
+  isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
+  onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }) {
   const [subTab, setSubTab] = useState<AiSubTab>('writing');
 
@@ -171,13 +180,23 @@ function AiPanel({
           Archive
         </button>
       </div>
-      {subTab === 'writing' && <WritingAssistantPanel scene={scene} enabled={writingAssistantEnabled} />}
+      {subTab === 'writing' && (
+        <WritingAssistantPanel
+          scene={scene}
+          enabled={writingAssistantEnabled}
+          scanIntervalSeconds={scanIntervalSeconds}
+          isPageFocused={isPageFocused}
+          onJumpToText={onJumpToText}
+        />
+      )}
       {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
       {subTab === 'archive' && (
         <ArchivePanel
           scene={scene}
+          enabled={archiveEnabled}
           onJumpToText={onJumpToText}
           onInsertWikiLink={onInsertWikiLink}
+          onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
         />
       )}
     </div>
@@ -192,8 +211,11 @@ export default function RightSidebar({
   selectedStory,
   writingAssistantEnabled = true,
   archiveEnabled = true,
+  scanIntervalSeconds = 30,
+  isPageFocused = true,
   onJumpToText,
   onInsertWikiLink,
+  onWikiLinkSuggestionsChange,
 }: Props) {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'notes', label: 'Notes' },
@@ -224,8 +246,11 @@ export default function RightSidebar({
             scene={selectedScene}
             writingAssistantEnabled={writingAssistantEnabled}
             archiveEnabled={archiveEnabled}
+            scanIntervalSeconds={scanIntervalSeconds}
+            isPageFocused={isPageFocused}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}
+            onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
           />
         )}
       </div>

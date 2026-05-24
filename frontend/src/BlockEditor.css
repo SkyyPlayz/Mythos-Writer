@@ -10,14 +10,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.6rem 1.2rem;
-  background: #111;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
 .scene-name {
   font-size: 0.95rem;
-  color: #a78bfa;
+  color: var(--accent-dim);
   font-weight: 500;
 }
 
@@ -29,23 +29,23 @@
 .draft-btn {
   padding: 0.3rem 0.75rem;
   border-radius: 4px;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--border-strong);
   background: transparent;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .draft-btn:hover {
-  border-color: #6d28d9;
-  color: #a78bfa;
+  border-color: var(--accent-hover);
+  color: var(--accent-dim);
 }
 
 .draft-btn.active {
-  border-color: #7c3aed;
-  background: #1e1030;
-  color: #c4b5fd;
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent-light);
 }
 
 .draft-btn.draft-final.active {
@@ -78,11 +78,11 @@
 .tiptap-content .ProseMirror {
   outline: none;
   min-height: 60vh;
-  color: #e4e4e7;
+  color: var(--text-primary);
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 1rem;
   line-height: 1.75;
-  caret-color: #a78bfa;
+  caret-color: var(--accent-dim);
 }
 
 .tiptap-content .ProseMirror h1 {
@@ -96,7 +96,7 @@
 .tiptap-content .ProseMirror h2 {
   font-size: 1.4rem;
   font-weight: 700;
-  color: #c4b5fd;
+  color: var(--accent-light);
   margin: 1.25rem 0 0.6rem;
   line-height: 1.35;
 }
@@ -104,7 +104,7 @@
 .tiptap-content .ProseMirror h3 {
   font-size: 1.15rem;
   font-weight: 600;
-  color: #a78bfa;
+  color: var(--accent-dim);
   margin: 1rem 0 0.5rem;
 }
 
@@ -147,8 +147,8 @@
 }
 
 .tiptap-content .ProseMirror code {
-  background: #1a1a2e;
-  color: #c4b5fd;
+  background: var(--bg-surface);
+  color: var(--accent-light);
   padding: 0.1rem 0.35rem;
   border-radius: 3px;
   font-family: 'Courier New', monospace;
@@ -156,8 +156,8 @@
 }
 
 .tiptap-content .ProseMirror pre {
-  background: #0f0f1a;
-  border: 1px solid #2a2a3a;
+  background: var(--bg-code);
+  border: 1px solid var(--border-separator);
   border-radius: 6px;
   padding: 1rem;
   margin: 0.75rem 0;
@@ -167,14 +167,89 @@
 .tiptap-content .ProseMirror pre code {
   background: none;
   padding: 0;
-  color: #c4b5fd;
+  color: var(--accent-light);
   font-size: 0.9rem;
 }
 
 .tiptap-content .ProseMirror p.is-editor-empty:first-child::before {
   content: 'Start writing your scene\2026';
-  color: #3f3f46;
+  color: var(--text-placeholder);
   pointer-events: none;
   float: left;
   height: 0;
+}
+
+/* Beta-Read floating bubble (MYT-237) */
+.beta-read-bubble {
+  position: absolute;
+  z-index: 50;
+  background: var(--color-accent, #e6a817);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  transition: background 0.15s;
+  pointer-events: auto;
+}
+
+.beta-read-bubble:hover {
+  background: var(--color-accent-dark, #c98a00);
+}
+
+/* Archive wiki-link hint decoration */
+.archive-wl-hint {
+  border-bottom: 2px dashed var(--color-archive-hint, #7c9ef5);
+  cursor: help;
+}
+
+/* Tooltip shown on hover over archive-wl-hint */
+.wl-hint-tooltip {
+  position: absolute;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-panel, #1e1e2e);
+  border: 1px solid var(--border-default, #333);
+  border-radius: 8px;
+  padding: 5px 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.wl-hint-tooltip-link {
+  color: var(--color-archive-hint, #7c9ef5);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.wl-hint-btn {
+  border: none;
+  border-radius: 5px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.wl-hint-btn:hover {
+  opacity: 0.82;
+}
+
+.wl-hint-accept {
+  background: var(--color-success, #3fb950);
+  color: #fff;
+}
+
+.wl-hint-reject {
+  background: var(--color-danger, #f85149);
+  color: #fff;
 }
