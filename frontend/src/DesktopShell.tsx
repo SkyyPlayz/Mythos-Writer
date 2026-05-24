@@ -5,6 +5,7 @@ import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
@@ -84,9 +85,38 @@ interface AppMenuBarProps {
   onOpenSettings: () => void;
   onOpenHistory: () => void;
   onSearchNavigate: (result: SearchResultItem) => void;
+  selectedStoryId?: string | null;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId }: AppMenuBarProps) {
+  const handleExportEpub = () => {
+    if (!selectedStoryId) {
+      alert('Select a story first to export it as EPUB.');
+      return;
+    }
+    (window as any).api?.exportEpub?.(selectedStoryId)
+      .then((res: { path: string | null; cancelled: boolean }) => {
+        if (!res.cancelled && res.path) {
+          alert(`EPUB saved to:\n${res.path}`);
+        }
+      })
+      .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  };
+
+  const handleExportDocx = () => {
+    if (!selectedStoryId) {
+      alert('Select a story first to export it as DOCX.');
+      return;
+    }
+    (window as any).api?.exportDocx?.(selectedStoryId)
+      .then((res: { path: string | null; cancelled: boolean }) => {
+        if (!res.cancelled && res.path) {
+          alert(`DOCX saved to:\n${res.path}`);
+        }
+      })
+      .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  };
+
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -96,6 +126,9 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           <div className="app-menu-dropdown">
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.newStory?.()}>New Story</button>
             <button className="app-menu-dropdown-item" onClick={() => (window as any).api?.openVault?.()}>Open Vault…</button>
+            <div className="app-menu-separator" />
+            <button className="app-menu-dropdown-item" onClick={handleExportEpub}>Export EPUB…</button>
+            <button className="app-menu-dropdown-item" onClick={handleExportDocx}>Export DOCX…</button>
             <div className="app-menu-separator" />
             <button className="app-menu-dropdown-item" onClick={onOpenHistory}>Prompt History…</button>
             <div className="app-menu-separator" />
@@ -173,6 +206,7 @@ export default function DesktopShell() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
+  const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -184,6 +218,17 @@ export default function DesktopShell() {
 
   const handleInsertWikiLink = useCallback((link: string, anchorText: string) => {
     editorApiRef.current?.insertWikiLink(link, anchorText);
+  }, []);
+
+  const handleEditorAcceptWikiLink = useCallback((id: string, link: string, anchorText: string) => {
+    editorApiRef.current?.insertWikiLink(link, anchorText);
+    setWikiLinkSuggestions((prev) => prev.filter((s) => s.id !== id));
+    window.api?.suggestionsAccept?.(id).catch(() => {});
+  }, []);
+
+  const handleEditorRejectWikiLink = useCallback((id: string) => {
+    setWikiLinkSuggestions((prev) => prev.filter((s) => s.id !== id));
+    window.api?.suggestionsReject?.(id).catch(() => {});
   }, []);
   const dragState = useRef<DragState | null>(null);
 
@@ -554,7 +599,7 @@ export default function DesktopShell() {
   return (
     <div className="desktop-shell">
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} />
+      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} selectedStoryId={selectedStory?.id ?? null} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
@@ -574,6 +619,13 @@ export default function DesktopShell() {
               key={selectedStory.id}
               boardPath={`${selectedStory.path}/kanban.md`}
               storyTitle={selectedStory.title}
+              onOpenNote={(notePath) => {
+                handleOpenSceneByPath(notePath);
+                setView('editor');
+              }}
+              scenes={selectedStory.chapters.flatMap((ch) =>
+                ch.scenes.map((sc) => ({ id: sc.id, title: sc.title, path: sc.path }))
+              )}
             />
           ) : (
             <div className="shell-editor-empty">
@@ -626,6 +678,9 @@ export default function DesktopShell() {
                 onDraftStateChange={handleDraftStateChange}
                 onEditorReady={handleEditorReady}
                 onBetaReadRequest={handleBetaReadRequest}
+                wikiLinkSuggestions={wikiLinkSuggestions}
+                onAcceptWikiLink={handleEditorAcceptWikiLink}
+                onRejectWikiLink={handleEditorRejectWikiLink}
               />
               {(betaReadComments.length > 0 || betaReadLoading) && (
                 <div className="shell-beta-margin">
@@ -690,6 +745,7 @@ export default function DesktopShell() {
           isPageFocused={view === 'editor'}
           onJumpToText={handleJumpToText}
           onInsertWikiLink={handleInsertWikiLink}
+          onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
         />
       </div>
       </div>}{/* end shell-panels */}

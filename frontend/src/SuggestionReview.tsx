@@ -13,6 +13,8 @@ interface Suggestion {
   rationale: string;
   createdAt: string;
   status: SuggestionStatus;
+  /** Serialised JSON payload — for brainstorm edits contains `{ prose: string }` */
+  payload_json?: string | null;
 }
 
 const AGENT_LABELS: Record<AgentSource, string> = {
@@ -123,6 +125,32 @@ function SuggestionRow({ suggestion, onAccept, onReject, onIgnore, onOpenTarget 
 
       <p className="sr-rationale">{suggestion.rationale}</p>
 
+      {suggestion.payload_json && (() => {
+        try {
+          const payload = JSON.parse(suggestion.payload_json) as { prose?: string; kind?: string; link?: string; anchorText?: string };
+          if (payload.kind === 'wiki-link' && payload.link) {
+            return (
+              <div className="sr-wikilink-preview">
+                <span className="sr-wikilink-badge">Wiki Link</span>
+                <span className="sr-wikilink-link">{payload.link}</span>
+                {payload.anchorText && (
+                  <span className="sr-wikilink-anchor">on &ldquo;{payload.anchorText}&rdquo;</span>
+                )}
+              </div>
+            );
+          }
+          if (payload.prose) {
+            return (
+              <details className="sr-proposed-content">
+                <summary className="sr-proposed-summary">Proposed content</summary>
+                <pre className="sr-proposed-pre">{payload.prose}</pre>
+              </details>
+            );
+          }
+        } catch { /* malformed JSON — skip */ }
+        return null;
+      })()}
+
       <div className="sr-actions">
         <button
           className="sr-btn sr-btn-accept"
@@ -167,7 +195,17 @@ export default function SuggestionReview({ onOpenVaultPath }: Props) {
         const api = (window as any).api;
         if (typeof api?.suggestionsList === 'function') {
           const result = await api.suggestionsList();
-          setSuggestions((result.suggestions as Suggestion[]) ?? []);
+          const mapped: Suggestion[] = ((result.suggestions ?? []) as Array<Record<string, unknown>>).map((r) => ({
+            id: r.id as string,
+            source_agent: (r.source_agent ?? 'brainstorm') as AgentSource,
+            target: (r.target_path ?? r.target ?? '') as string,
+            confidence: (r.confidence as number) ?? 0,
+            rationale: (r.rationale ?? '') as string,
+            createdAt: (r.created_at ?? r.createdAt ?? new Date().toISOString()) as string,
+            status: (r.status ?? 'proposed') as SuggestionStatus,
+            payload_json: (r.payload_json ?? null) as string | null,
+          }));
+          setSuggestions(mapped);
           setIsLive(true);
         } else {
           setSuggestions(MOCK_SUGGESTIONS);

@@ -284,3 +284,60 @@
   text-align: center;
   padding: 24px 0;
 }
+
+.sr-proposed-content {
+  margin: 4px 0 6px;
+}
+
+.sr-proposed-summary {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sr-proposed-pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: var(--bg-elevated, #1a1f2e);
+  border: 1px solid var(--border, #1e2433);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* Archive wiki-link suggestion distinct grouping */
+.sr-wikilink-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 6px;
+  flex-wrap: wrap;
+}
+
+.sr-wikilink-badge {
+  background: var(--color-archive-hint, #7c9ef5);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sr-wikilink-link {
+  color: var(--color-archive-hint, #7c9ef5);
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.sr-wikilink-anchor {
+  color: var(--text-muted, #888);
+  font-size: 0.82rem;
+  font-style: italic;
+}
