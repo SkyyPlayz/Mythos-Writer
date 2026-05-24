@@ -242,8 +242,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: never) => Promise<VaultLoadSampleResponse>;
-  [IPC_CHANNELS.APP_CHECK_FOR_UPDATE]: (payload: never) => Promise<CheckForUpdateResponse>;
-  [IPC_CHANNELS.APP_INSTALL_UPDATE]: (payload: never) => InstallUpdateResponse;
+  // APP_CHECK_FOR_UPDATE and APP_INSTALL_UPDATE are registered directly in initAutoUpdater()
+  // (async handlers — not routed through setupIpcMain)
 }
 
 // ─── Payload / Response types ───
