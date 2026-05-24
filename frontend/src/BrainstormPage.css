@@ -353,6 +353,15 @@
   align-self: flex-start;
 }
 
+/* Header actions group (download + new session) */
+.brainstorm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* New session button */
 .brainstorm-new-session-btn {
   background: none;
@@ -363,14 +372,41 @@
   padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
-  margin-left: auto;
 }
 
 .brainstorm-new-session-btn:hover {
   background: var(--bg-surface);
   color: var(--text-primary);
   border-color: var(--border-strong);
+}
+
+/* Download session button */
+.brainstorm-download-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.brainstorm-download-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* Draft size warning banner */
+.brainstorm-draft-warning {
+  background: var(--color-warning-bg, #fffbeb);
+  color: var(--color-warning-text, #92400e);
+  border-bottom: 1px solid var(--color-warning-border, #fde68a);
+  font-size: 0.78rem;
+  padding: 6px 20px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 /* Mic button */
@@ -478,6 +514,12 @@
   cursor: pointer;
   padding: 0;
   text-decoration: underline;
+}
+
+.bs-fact-pending-review {
+  font-size: 0.76rem;
+  color: var(--accent, #7c6ff7);
+  font-style: italic;
 }
 
 /* Continuity issues section */

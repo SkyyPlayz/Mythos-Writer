@@ -39,6 +39,16 @@ Example: [FACT:character|Aria Voss|A young sorceress who discovers her hidden po
 
 Emit one FACT tag per entity. Place them at the end of your response. Then respond naturally to help develop the story.`;
 
+const DRAFT_KEY = 'brainstorm:draft';
+const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
+
+interface BrainstormDraft {
+  v: 1;
+  savedAt: string;
+  messages: Message[];
+  facts: DetectedFact[];
+}
+
 interface Message {
   role: 'user' | 'assistant';
   text: string;
@@ -50,7 +60,7 @@ interface DetectedFact {
   type: 'character' | 'location' | 'item' | 'note';
   name: string;
   content: string;
-  savedStatus: 'unsaved' | 'saving' | 'saved' | 'error';
+  savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review';
 }
 
 function extractFacts(text: string): Omit<DetectedFact, 'id' | 'savedStatus'>[] {
@@ -94,6 +104,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
+  const [draftSizeWarning, setDraftSizeWarning] = useState(false);
 
   const streamIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef<string>('');
@@ -101,6 +112,53 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { announce, liveText } = useLiveAnnounce();
+
+  // Restore draft from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft: BrainstormDraft = JSON.parse(raw);
+        if (draft.v === 1 && Array.isArray(draft.messages) && draft.messages.length > 0) {
+          setMessages(draft.messages.map((m) => ({ ...m, streaming: false })));
+          setFacts(draft.facts ?? []);
+        }
+      }
+    } catch { /* ignore malformed draft */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist draft whenever messages or facts change (completed messages only)
+  useEffect(() => {
+    const completedMessages = messages.filter((m) => !m.streaming);
+    if (completedMessages.length === 0) return;
+    const draft: BrainstormDraft = {
+      v: 1,
+      savedAt: new Date().toISOString(),
+      messages: completedMessages,
+      facts,
+    };
+    const serialized = JSON.stringify(draft);
+    if (serialized.length > MAX_DRAFT_BYTES) {
+      setDraftSizeWarning(true);
+      return;
+    }
+    setDraftSizeWarning(false);
+    try {
+      localStorage.setItem(DRAFT_KEY, serialized);
+    } catch { /* quota exceeded — silently skip */ }
+  }, [messages, facts]);
+
+  // Warn before window close when there is an active session
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (messages.length > 0) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [messages.length]);
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -152,7 +210,25 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setFacts([]);
     setError(null);
     setLoading(false);
+    setDraftSizeWarning(false);
+    localStorage.removeItem(DRAFT_KEY);
   }, []);
+
+  const handleDownload = useCallback(() => {
+    const lines: string[] = ['# Brainstorm Session\n'];
+    for (const msg of messages) {
+      lines.push(`## ${msg.role === 'user' ? 'You' : 'Assistant'}`);
+      lines.push(msg.text);
+      lines.push('');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `brainstorm-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [messages]);
 
   const send = useCallback(async () => {
     const trimmed = prompt.trim();
@@ -290,15 +366,48 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       );
 
       try {
-        await window.api.entityCreate({
-          name: fact.name,
-          type: fact.type === 'note' ? 'other' : fact.type,
-          prose: fact.content,
-          tags: ['brainstorm'],
-        });
-        setFacts((prev) =>
-          prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
+        // Check if an entity with the same name already exists.
+        // If it does, the edit must go through the suggestion/confirmation flow.
+        const listResult = await window.api.entityList();
+        const existingEntities: Array<{ id: string; name: string; path: string }> =
+          (listResult as { entities?: Array<{ id: string; name: string; path: string }> })?.entities ?? [];
+        const existing = existingEntities.find(
+          (e) => e.name.toLowerCase() === fact.name.toLowerCase(),
         );
+
+        if (existing) {
+          const suggestionId = crypto.randomUUID();
+          const now = new Date().toISOString();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (window.api as any).suggestionsUpsert({
+            id: suggestionId,
+            source_agent: 'brainstorm',
+            confidence: 0.8,
+            rationale: `Brainstorm proposes updating "${fact.name}" (${fact.type}): ${fact.content}`,
+            target_kind: 'vault',
+            target_path: existing.path,
+            target_anchor: null,
+            payload_json: JSON.stringify({ prose: `# ${fact.name}\n\n${fact.content}\n` }),
+            status: 'proposed',
+            created_at: now,
+            applied_at: null,
+            applied_run_id: null,
+            budget_exceeded: 0,
+          });
+          setFacts((prev) =>
+            prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'pending_review' } : f)),
+          );
+        } else {
+          await window.api.entityCreate({
+            name: fact.name,
+            type: fact.type === 'note' ? 'other' : fact.type,
+            prose: fact.content,
+            tags: ['brainstorm'],
+          });
+          setFacts((prev) =>
+            prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
+          );
+        }
       } catch {
         setFacts((prev) =>
           prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'error' } : f)),
@@ -404,15 +513,33 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
           <div className="brainstorm-title">Brainstorm Agent</div>
           <div className="brainstorm-subtitle">Talk through your story — facts auto-extract to your vault</div>
         </div>
-        <button
-          className="brainstorm-new-session-btn"
-          onClick={handleNewSession}
-          aria-label="New session"
-          type="button"
-        >
-          New Session
-        </button>
+        <div className="brainstorm-header-actions">
+          {messages.length > 0 && (
+            <button
+              className="brainstorm-download-btn"
+              onClick={handleDownload}
+              aria-label="Download session as markdown"
+              type="button"
+              title="Download session as Markdown"
+            >
+              Download
+            </button>
+          )}
+          <button
+            className="brainstorm-new-session-btn"
+            onClick={handleNewSession}
+            aria-label="New session"
+            type="button"
+          >
+            New Session
+          </button>
+        </div>
       </div>
+      {draftSizeWarning && (
+        <div className="brainstorm-draft-warning" role="status">
+          Session too large to auto-save — download to preserve your work.
+        </div>
+      )}
 
       <div className="brainstorm-body">
         <div className="brainstorm-chat-col">
@@ -603,6 +730,9 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                     )}
                     {fact.savedStatus === 'saved' && (
                       <span className="bs-fact-saved-label">Saved ✓</span>
+                    )}
+                    {fact.savedStatus === 'pending_review' && (
+                      <span className="bs-fact-pending-review">Pending review →</span>
                     )}
                     {fact.savedStatus === 'error' && (
                       <span className="bs-fact-save-error">
