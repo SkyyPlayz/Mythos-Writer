@@ -112,18 +112,18 @@ interface StreamEntry {
 export class StreamRegistry {
   private streams = new Map<string, StreamEntry>();
   private concurrentBySender = new Map<number, number>();
-  // One 'destroyed' listener per sender — consolidates cleanup for F25 concurrency cap.
-  private senderDestroyedHandlers = new Map<number, () => void>();
+  // Track which senders have a consolidated 'destroyed' listener attached.
+  private destroyedListeners = new Set<number>();
 
   countBySender(senderId: number): number {
     return this.concurrentBySender.get(senderId) ?? 0;
   }
 
-  start(streamId: string, controller: AbortController, senderId: number): void {
+  start(streamId: string, controller: AbortController, sender: WebContents): void {
+    const senderId = sender.id;
     this.streams.set(streamId, { controller, pendingTokens: 0, senderId });
     this.concurrentBySender.set(senderId, this.countBySender(senderId) + 1);
-    // Register (or re-use) the sender-level destroyed handler.
-    this.ensureSenderDestroyedHandler(senderId);
+    this.registerDestroyedListener(sender);
   }
 
   get(streamId: string): StreamEntry | undefined {
@@ -173,7 +173,7 @@ export class StreamRegistry {
       if (newCount === 0) {
         this.concurrentBySender.delete(entry.senderId);
         // No more streams from this sender — clean up the listener.
-        this.cleanupSenderDestroyedHandler(entry.senderId);
+        this.unregisterDestroyedListener(entry.senderId);
       } else {
         this.concurrentBySender.set(entry.senderId, newCount);
       }
@@ -185,55 +185,26 @@ export class StreamRegistry {
     return this.streams.size;
   }
 
-  // Maintain a single 'destroyed' listener per sender that cancels all
-  // streams whose senderId matches. This avoids per-stream listeners
-  // exceeding EventEmitter.maxListeners (default 10) when F25 raises
-  // MAX_CONCURRENT_PER_SENDER above 10.
-  private ensureSenderDestroyedHandler(senderId: number): void {
-    if (this.senderDestroyedHandlers.has(senderId)) return;
-    const handler = () => {
-      // Cancel every active stream from this sender.
-      for (const [id, entry] of this.streams) {
-        if (entry.senderId === senderId) {
-          this.cancel(id);
-        }
-      }
-    };
-    this.senderDestroyedHandlers.set(senderId, handler);
-  }
-
-  private cleanupSenderDestroyedHandler(senderId: number): void {
-    const handler = this.senderDestroyedHandlers.get(senderId);
-    if (handler) {
-      this.senderDestroyedHandlers.delete(senderId);
-    }
-  }
-}
-
   // Attach a single 'destroyed' listener for a sender that cancels all its streams.
+  // This avoids per-stream listeners exceeding EventEmitter.maxListeners (default 10)
+  // when F25 raises MAX_CONCURRENT_PER_SENDER above 10.
   private registerDestroyedListener(sender: WebContents): void {
     const senderId = sender.id;
     if (this.destroyedListeners.has(senderId)) return; // already registered
-    const onDestroyed = () => {
+    this.destroyedListeners.add(senderId);
+    sender.once('destroyed', () => {
       // Walk the registry and cancel every stream whose senderId matches.
       for (const [streamId, entry] of this.streams) {
         if (entry.senderId === senderId) {
           this.cancel(streamId);
         }
       }
-    };
-    sender.once('destroyed', onDestroyed);
-    this.destroyedListeners.set(senderId, new WeakRef(sender));
+      this.destroyedListeners.delete(senderId);
+    });
   }
 
-  // Remove the consolidated listener when no streams remain for this sender.
   private unregisterDestroyedListener(senderId: number): void {
-    // WeakRef may already be dead if the sender was destroyed — that's fine.
     this.destroyedListeners.delete(senderId);
-  }
-
-  get size(): number {
-    return this.streams.size;
   }
 }
 
@@ -332,14 +303,9 @@ export function registerStreamingHandlers(
 
     const streamId = crypto.randomUUID();
     const controller = new AbortController();
-    reg.start(streamId, controller, senderId);
+    reg.start(streamId, controller, event.sender);
 
-    // Consolidated: one 'destroyed' listener per sender, not per stream.
-    reg.registerDestroyedListener(event.sender);
-
-    void runStream(event.sender, streamId, payload, controller, getApiKey, reg).finally(() => {
-      // runStream already calls reg.remove() which tears down the listener when count hits 0.
-    });
+    void runStream(event.sender, streamId, payload, controller, getApiKey, reg);
 
     return { streamId };
   });
