@@ -152,7 +152,7 @@ import { registerVoiceHandlers } from './voice.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
-import { registerStreamingHandlers } from './streaming.js';
+import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage } from './streaming.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -2053,7 +2053,12 @@ Be creative, ask clarifying questions, and help the author think deeper about th
     } catch (err: unknown) {
       if ((err as Error)?.name !== 'AbortError') {
         genError = (err as Error).message ?? 'unknown error';
-        throw err;
+        const category = categorizeStreamError(err);
+        const userMessage = streamErrorUserMessage(category);
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('agent:brainstorm:error', { requestId, category, message: userMessage });
+        }
+        throw new Error(userMessage);
       }
     } finally {
       agentControllers.delete(requestId);
@@ -2152,7 +2157,12 @@ function registerWritingAssistantHandler() {
     } catch (err: unknown) {
       if ((err as Error)?.name !== 'AbortError') {
         genError = (err as Error).message ?? 'unknown error';
-        throw err;
+        const category = categorizeStreamError(err);
+        const userMessage = streamErrorUserMessage(category);
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('agent:writing-assistant:error', { requestId, category, message: userMessage });
+        }
+        throw new Error(userMessage);
       }
     } finally {
       agentControllers.delete(requestId);
@@ -2299,7 +2309,12 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     } catch (err: unknown) {
       if ((err as Error)?.name !== 'AbortError') {
         vaultGenError = (err as Error).message ?? 'unknown error';
-        throw err;
+        const category = categorizeStreamError(err);
+        const userMessage = streamErrorUserMessage(category);
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('agent:vault-check:error', { requestId, category, message: userMessage });
+        }
+        throw new Error(userMessage);
       }
     } finally {
       agentControllers.delete(requestId);

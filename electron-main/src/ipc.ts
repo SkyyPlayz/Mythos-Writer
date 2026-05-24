@@ -145,6 +145,26 @@ export const IPC_CHANNELS = {
   VAULT_PICK_FOLDER: 'vault:pick-folder',
   // First-run onboarding: load bundled sample project (MYT-242)
   VAULT_LOAD_SAMPLE: 'vault:load-sample',
+
+  // Timeline chronology inference (MYT-319) — Archive Agent infers scene timestamps
+  TIMELINE_INFER: 'timeline:infer',
+
+  // Voice transcription (MYT-338) — single-shot STT; local-first, cloud fallback
+  VOICE_TRANSCRIBE: 'voice:transcribe',
+
+  // Text-to-speech (MYT-339) — streams audio chunks to renderer; cancellable mid-stream
+  VOICE_SPEAK: 'voice:speak',
+
+  // Per-agent config (MYT-343) — enable/model/threshold/budget per agent
+  SETTINGS_GET_AGENT_CONFIG: 'settings:getAgentConfig',
+  SETTINGS_SET_AGENT_CONFIG: 'settings:setAgentConfig',
+
+  // Telemetry (MYT-344) — opt-in, off by default
+  TELEMETRY_REPORT: 'telemetry:report',
+
+  // Multi-project switcher (MYT-374)
+  PROJECT_LIST: 'project:list',
+  PROJECT_SWITCH: 'project:switch',
 } as const;
 
 // ─── Main process handlers ───
@@ -183,7 +203,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload) => ManifestWriteResponse;
   [IPC_CHANNELS.VAULT_OPEN_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
   [IPC_CHANNELS.VAULT_GET_ROOT]: (payload: never) => VaultGetRootResponse;
-  [IPC_CHANNELS.VAULT_IMPORT]: (payload: VaultImportPayload) => Promise<VaultImportResponse>;
+  [IPC_CHANNELS.VAULT_IMPORT]: (payload: VaultImportPayload) => Promise<VaultImportResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_REINDEX]: (payload: never) => VaultReindexResponse;
   [IPC_CHANNELS.VAULT_WATCH_START]: (payload: never) => Promise<{ watching: boolean }>;
   [IPC_CHANNELS.VAULT_WATCH_STOP]: (payload: never) => Promise<{ watching: boolean }>;
@@ -238,12 +258,18 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
-  [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport>;
-  [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse>;
-  [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
+  [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: never) => Promise<VaultLoadSampleResponse>;
+  [IPC_CHANNELS.TIMELINE_INFER]: (payload: TimelineInferPayload) => TimelineInferResponse;
   // APP_CHECK_FOR_UPDATE and APP_INSTALL_UPDATE are registered directly in initAutoUpdater()
   // (async handlers — not routed through setupIpcMain)
+  [IPC_CHANNELS.SETTINGS_GET_AGENT_CONFIG]: (payload: never) => AgentConfigMap;
+  [IPC_CHANNELS.SETTINGS_SET_AGENT_CONFIG]: (payload: SetAgentConfigPayload) => SetAgentConfigResponse;
+  [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: TelemetryReportPayload) => TelemetryReportResponse;
+  [IPC_CHANNELS.PROJECT_LIST]: (payload: never) => ProjectListResponse;
+  [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -460,12 +486,34 @@ export interface VaultOpenFolderResponse {
   cancelled: boolean;
 }
 
+/**
+ * Response from VAULT_PICK_FOLDER. `registrationToken` is the one-shot,
+ * 60s-TTL token issued together with the user-chosen path; subsequent
+ * register/import calls must echo it back so the main process can prove
+ * the path came from a real dialog and not a renderer-fabricated string.
+ */
+export interface VaultPickFolderResponse {
+  vaultRoot: string | null;
+  cancelled: boolean;
+  registrationToken: string | null;
+}
+
 export interface VaultGetRootResponse {
   vaultRoot: string;
 }
 
 export interface VaultImportPayload {
   sourcePath: string;
+  registrationToken: string;
+}
+
+/**
+ * Returned from any handler that requires a valid registrationToken (MYT-360 /
+ * MYT-367) when the token is missing, wrong, or expired. The presence of `error`
+ * lets callers distinguish "rejected at the gate" from a successful response.
+ */
+export interface RegistrationTokenError {
+  error: string;
 }
 
 export interface VaultImportResponse {
@@ -709,11 +757,71 @@ export interface AgentBudgetSettings {
   maxTokensPerDay: number;
 }
 
+// ─── Per-agent config (MYT-343) ───
+// Clean normalized view of per-agent user-facing controls.
+
+export interface AgentBudget {
+  /** Maximum tokens consumed per calendar day. */
+  tokensPerDay: number;
+  /** Maximum Anthropic API calls per minute. */
+  requestsPerMinute: number;
+}
+
+export interface AgentConfig {
+  /** Whether the agent is allowed to run at all. */
+  enabled: boolean;
+  /** Provider+model string, e.g. "anthropic/claude-sonnet-4-6". */
+  model: string;
+  /** Confidence threshold [0,1] above which suggestions are auto-applied. */
+  autoApplyThreshold: number;
+  budget: AgentBudget;
+}
+
+export type AgentName = 'writingAssistant' | 'brainstorm' | 'archive';
+
+export interface AgentConfigMap {
+  writingAssistant: AgentConfig;
+  brainstorm: AgentConfig;
+  archive: AgentConfig;
+}
+
 export interface VoiceSettings {
   enabled: boolean;
   cloudFallback: boolean;
   micDeviceId?: string;
   openaiApiKey?: string;
+}
+
+// ─── STT adapter settings (MYT-338) ───
+// Off by default — no transcription unless stt.enabled = true.
+export interface SttSettings {
+  enabled: boolean;
+  /** 'local' = whisper.cpp only; 'cloud' = cloud only; 'auto' = local first, cloud fallback */
+  provider: 'local' | 'cloud' | 'auto';
+  /** Absolute path to local whisper.cpp binary */
+  localBinaryPath?: string;
+  /** OpenAI-compatible audio transcription endpoint */
+  cloudEndpoint?: string;
+  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  cloudApiKey?: string;
+}
+
+// ─── TTS adapter settings (MYT-339) ───
+// Off by default — no synthesis unless tts.enabled = true.
+export interface TtsSettings {
+  enabled: boolean;
+  /** 'local' = Piper only; 'cloud' = cloud only; 'auto' = local first, cloud fallback */
+  provider: 'local' | 'cloud' | 'auto';
+  /** Default voice identifier (Piper model voice or OpenAI voice name, e.g. 'alloy') */
+  voiceId?: string;
+  /** Absolute path to local Piper binary */
+  localBinaryPath?: string;
+  /** Absolute path to Piper .onnx voice model */
+  localModelPath?: string;
+  /** OpenAI-compatible TTS endpoint; defaults to https://api.openai.com/v1/audio/speech */
+  cloudEndpoint?: string;
+  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  cloudApiKey?: string;
 }
 
 // ─── Provider settings (MYT-324) ───
@@ -747,8 +855,17 @@ export interface AppSettings {
   };
   onboardingComplete?: boolean;
   voice?: VoiceSettings;
+  /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
+  stt?: SttSettings;
+  /** TTS adapter config (MYT-339). Absent or enabled=false → synthesis disabled. */
+  tts?: TtsSettings;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
+  /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */
+  telemetry?: {
+    enabled: boolean;
+    sessionId: string;
+  };
 }
 
 export interface SettingsSetPayload {
@@ -757,6 +874,39 @@ export interface SettingsSetPayload {
 
 export interface SettingsSetResponse {
   saved: boolean;
+}
+
+// ─── Multi-project types (MYT-374) ───────────────────────────────────────────
+
+export interface ProjectEntry {
+  name: string;
+  vaultRoot: string;
+  openedAt: string;
+}
+
+export interface ProjectListResponse {
+  projects: ProjectEntry[];
+  activeVaultRoot: string;
+}
+
+export interface ProjectSwitchPayload {
+  vaultRoot: string;
+}
+
+export interface ProjectSwitchResponse {
+  vaultRoot: string;
+  switched: boolean;
+  error?: string;
+}
+
+// ─── Telemetry types (MYT-344) ───────────────────────────────────────────────
+export interface TelemetryReportPayload {
+  type: string;
+  meta?: Record<string, string | number | boolean>;
+}
+
+export interface TelemetryReportResponse {
+  queued: boolean;
 }
 
 // ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
@@ -892,6 +1042,26 @@ export interface TimelineUpsertPayload {
 
 export interface TimelineUpsertResponse {
   id: string;
+}
+
+// MYT-319: Archive Agent timeline inference
+export interface TimelineInferPayload {
+  /** Story ID to infer chronology for */
+  storyId: string;
+}
+
+export interface TimelineInferredScene {
+  sceneId: string;
+  scenePath: string;
+  sceneTitle: string;
+  inferredTime: string | null;
+  confidence: number;
+  source: TimelineSource | null;
+  cue: string | null;
+}
+
+export interface TimelineInferResponse {
+  placements: TimelineInferredScene[];
 }
 
 // ─── Generation log IPC types ───
@@ -1141,10 +1311,20 @@ export interface BetaReadDismissResponse {
   dismissed: boolean;
 }
 
-// ─── EPUB export (MYT-253) ───
+// ─── EPUB export (MYT-253 / MYT-342) ───
+
+export interface ExportEpubMetadata {
+  title?: string;
+  author?: string;
+  language?: string;
+}
 
 export interface ExportEpubPayload {
   storyId: string;
+  /** Override title/author/language embedded in the EPUB metadata block. */
+  metadata?: ExportEpubMetadata;
+  /** Write directly to this path instead of showing a save dialog. */
+  targetPath?: string;
 }
 
 export interface ExportEpubResponse {
@@ -1177,6 +1357,7 @@ export interface AgentBudgetCapEvent {
 
 export interface VaultObsidianDryRunPayload {
   sourcePath: string;
+  registrationToken: string;
 }
 
 export interface ObsidianBrokenLink {
@@ -1208,6 +1389,7 @@ export interface VaultObsidianDryRunReport {
 
 export interface VaultObsidianRegisterPayload {
   sourcePath: string;
+  registrationToken: string;
 }
 
 export interface VaultObsidianRegisterResponse {
@@ -1217,6 +1399,17 @@ export interface VaultObsidianRegisterResponse {
 
 export interface VaultLoadSampleResponse {
   vaultRoot: string;
+}
+
+// ─── Per-agent config IPC types (MYT-343) ───
+
+export interface SetAgentConfigPayload {
+  agent: AgentName;
+  config: Partial<AgentConfig>;
+}
+
+export interface SetAgentConfigResponse {
+  saved: boolean;
 }
 
 // ─── Auto-updater Phase 4 (MYT-337) ───
@@ -1229,4 +1422,32 @@ export interface CheckForUpdateResponse {
 
 export interface InstallUpdateResponse {
   scheduled: boolean;
+}
+
+// ─── Voice transcription (MYT-338) ───
+
+export interface VoiceTranscribePayload {
+  /** Raw audio bytes — any format whisper.cpp or cloud endpoint accepts (wav/webm/mp3) */
+  audio: Buffer | ArrayBuffer;
+  /** MIME type hint, e.g. 'audio/wav'. Defaults to 'audio/webm' when absent. */
+  mimeType?: string;
+}
+
+export interface VoiceTranscribeResponse {
+  text: string;
+  /** Approximate confidence [0, 1]. Local path returns 0.9; cloud path returns 0.95. */
+  confidence: number;
+}
+
+// ─── Text-to-speech (MYT-339) ───
+
+export interface VoiceSpeakPayload {
+  text: string;
+  /** Override the default voice from tts.voiceId setting. */
+  voiceId?: string;
+}
+
+export interface VoiceSpeakResponse {
+  /** Unique id for this synthesis; correlates voice:speak:chunk / done / error push events. */
+  speakId: string;
 }

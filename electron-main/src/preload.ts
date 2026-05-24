@@ -16,11 +16,11 @@ contextBridge.exposeInMainWorld('api', {
   // Vault folder management
   openVaultFolder: () => ipcRenderer.invoke('vault:open-folder', undefined),
   getVaultRoot: () => ipcRenderer.invoke('vault:get-root', undefined),
-  importVault: (sourcePath: string) => ipcRenderer.invoke('vault:import', { sourcePath }),
+  importVault: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:import', { sourcePath, registrationToken }),
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
   pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
-  obsidianDryRun: (sourcePath: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath }),
-  obsidianRegister: (sourcePath: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath }),
+  obsidianDryRun: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath, registrationToken }),
+  obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
   loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', undefined),
   startVaultWatch: () => ipcRenderer.invoke('vault:watch-start', undefined),
   stopVaultWatch: () => ipcRenderer.invoke('vault:watch-stop', undefined),
@@ -95,6 +95,10 @@ contextBridge.exposeInMainWorld('api', {
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
   settingsSet: (settings: unknown) => ipcRenderer.invoke('settings:set', { settings }),
+  // Per-agent config (MYT-343)
+  getAgentConfig: () => ipcRenderer.invoke('settings:getAgentConfig', undefined),
+  setAgentConfig: (agent: string, config: unknown) =>
+    ipcRenderer.invoke('settings:setAgentConfig', { agent, config }),
 
   // Generation log (prompt history)
   generationLogRecent: (payload: { limit?: number; offset?: number; agent?: string; dateFrom?: string; dateTo?: string; search?: string }) =>
@@ -131,8 +135,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('stream:end', handler);
     return () => ipcRenderer.removeListener('stream:end', handler);
   },
-  onStreamError: (cb: (data: { streamId: string; error: string }) => void) => {
-    const handler = (_: unknown, data: { streamId: string; error: string }) => cb(data);
+  onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string; category: string; message: string }) => cb(data);
     ipcRenderer.on('stream:error', handler);
     return () => ipcRenderer.removeListener('stream:error', handler);
   },
@@ -168,6 +172,23 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);
     ipcRenderer.on('agent:vault-check:stream-start', handler);
     return () => ipcRenderer.removeListener('agent:vault-check:stream-start', handler);
+  },
+
+  // Agent error push events — fires when provider rejects before or during streaming
+  onBrainstormError: (cb: (data: { requestId: string; category: string; message: string }) => void) => {
+    const handler = (_: unknown, data: { requestId: string; category: string; message: string }) => cb(data);
+    ipcRenderer.on('agent:brainstorm:error', handler);
+    return () => ipcRenderer.removeListener('agent:brainstorm:error', handler);
+  },
+  onWritingAssistantError: (cb: (data: { requestId: string; category: string; message: string }) => void) => {
+    const handler = (_: unknown, data: { requestId: string; category: string; message: string }) => cb(data);
+    ipcRenderer.on('agent:writing-assistant:error', handler);
+    return () => ipcRenderer.removeListener('agent:writing-assistant:error', handler);
+  },
+  onVaultCheckError: (cb: (data: { requestId: string; category: string; message: string }) => void) => {
+    const handler = (_: unknown, data: { requestId: string; category: string; message: string }) => cb(data);
+    ipcRenderer.on('agent:vault-check:error', handler);
+    return () => ipcRenderer.removeListener('agent:vault-check:error', handler);
   },
 
   // Cancel channels — fire-and-forget, aborts the running stream for the given requestId
@@ -255,6 +276,30 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('voice:error', handler);
     return () => ipcRenderer.removeListener('voice:error', handler);
   },
+  // voiceTranscribe (MYT-338) — single-shot transcription; returns { text, confidence } or { error }
+  voiceTranscribe: (audio: ArrayBuffer, mimeType?: string) =>
+    ipcRenderer.invoke('voice:transcribe', { audio, mimeType }),
+
+  // TTS (MYT-339) — text-to-speech for agent replies; disabled by default (tts.enabled = false)
+  voiceSpeak: (text: string, voiceId?: string) =>
+    ipcRenderer.invoke('voice:speak', { text, voiceId }),
+  voiceSpeakCancel: (speakId: string) =>
+    ipcRenderer.send('voice:speak:cancel', { speakId }),
+  onVoiceSpeakChunk: (cb: (event: { speakId: string; chunk: Buffer }) => void) => {
+    const handler = (_: unknown, data: { speakId: string; chunk: Buffer }) => cb(data);
+    ipcRenderer.on('voice:speak:chunk', handler);
+    return () => ipcRenderer.removeListener('voice:speak:chunk', handler);
+  },
+  onVoiceSpeakDone: (cb: (event: { speakId: string }) => void) => {
+    const handler = (_: unknown, data: { speakId: string }) => cb(data);
+    ipcRenderer.on('voice:speak:done', handler);
+    return () => ipcRenderer.removeListener('voice:speak:done', handler);
+  },
+  onVoiceSpeakError: (cb: (event: { speakId: string; error: string }) => void) => {
+    const handler = (_: unknown, data: { speakId: string; error: string }) => cb(data);
+    ipcRenderer.on('voice:speak:error', handler);
+    return () => ipcRenderer.removeListener('voice:speak:error', handler);
+  },
 
   // Budget enforcement (MYT-207) — subscribe to agent:budget-cap push events from main
   onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => {
@@ -263,9 +308,9 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('agent:budget-cap', handler);
   },
 
-  // EPUB export (MYT-253)
-  exportEpub: (storyId: string) =>
-    ipcRenderer.invoke('export:epub', { storyId }),
+  // EPUB export (MYT-342)
+  exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) =>
+    ipcRenderer.invoke('export:epub', { storyId, metadata, targetPath }),
 
   // DOCX export (MYT-252)
   exportDocx: (storyId: string) =>
@@ -273,6 +318,27 @@ contextBridge.exposeInMainWorld('api', {
 
   // Vault Graph View (MYT-249)
   vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
+
+  // Timeline (MYT-319) — Archive-inferred chronology
+  timelineList: (scenePath?: string) =>
+    ipcRenderer.invoke('timeline:list', { scenePath }),
+  timelineUpsert: (entry: unknown) =>
+    ipcRenderer.invoke('timeline:upsert', { entry }),
+  timelineInfer: (storyId: string) =>
+    ipcRenderer.invoke('timeline:infer', { storyId }),
+
+  // Telemetry (MYT-344) — opt-in, off by default
+  telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) =>
+    ipcRenderer.invoke('telemetry:report', { type, meta }),
+
+  // Multi-project switcher (MYT-374)
+  projectList: () => ipcRenderer.invoke('project:list', undefined),
+  projectSwitch: (vaultRoot: string) => ipcRenderer.invoke('project:switch', { vaultRoot }),
+  onProjectSwitched: (cb: (data: { vaultRoot: string }) => void) => {
+    const handler = (_: unknown, data: { vaultRoot: string }) => cb(data);
+    ipcRenderer.on('project:switched', handler);
+    return () => ipcRenderer.removeListener('project:switched', handler);
+  },
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
