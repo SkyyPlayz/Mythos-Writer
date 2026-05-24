@@ -6,6 +6,7 @@ import path from 'path';
 import {
   SCHEMA_VERSION,
   ManifestVersionError,
+  ManifestMigrationError,
   migrateManifest,
   writeManifestAtomic,
   openManifest,
@@ -266,6 +267,72 @@ describe('openManifest', () => {
     }
     expect(caught).toBeInstanceOf(ManifestVersionError);
     expect(caught!.foundVersion).toBe(42);
+  });
+
+  it('v0→v1 migration creates a backup snapshot before writing the upgrade', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const legacy = legacyManifest(tmpDir);
+    fs.writeFileSync(manifestPath, JSON.stringify(legacy, null, 2), 'utf-8');
+
+    openManifest(manifestPath, { vaultRoot: tmpDir });
+
+    const backupDir = path.join(tmpDir, '.mythos', 'backups');
+    expect(fs.existsSync(backupDir)).toBe(true);
+    const backups = fs.readdirSync(backupDir).filter((f) => f.startsWith('manifest-'));
+    expect(backups).toHaveLength(1);
+    const backupContent = JSON.parse(
+      fs.readFileSync(path.join(backupDir, backups[0]), 'utf-8')
+    ) as Record<string, unknown>;
+    // Backup must contain the *pre-migration* (v0) manifest — no schemaVersion field.
+    expect(backupContent.schemaVersion).toBeUndefined();
+  });
+
+  it('v0→v1 migration calls onMigrated with correct version info', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    fs.writeFileSync(manifestPath, JSON.stringify(legacyManifest(tmpDir), null, 2), 'utf-8');
+
+    type MigrationEntry = { id: string; fromVersion: number; toVersion: number; backupPath: string; createdAt: string };
+    let callbackArg: MigrationEntry | null = null;
+    openManifest(manifestPath, {
+      vaultRoot: tmpDir,
+      onMigrated: (entry) => { callbackArg = entry; },
+    });
+
+    expect(callbackArg).not.toBeNull();
+    expect(callbackArg!.fromVersion).toBe(0);
+    expect(callbackArg!.toVersion).toBe(SCHEMA_VERSION);
+    expect(typeof callbackArg!.id).toBe('string');
+    expect(typeof callbackArg!.backupPath).toBe('string');
+    expect(callbackArg!.backupPath).toContain('.mythos');
+  });
+
+  it('onMigrated is NOT called when manifest is already at current version', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    writeManifestAtomic(manifestPath, defaultManifest(tmpDir));
+
+    const onMigrated = vi.fn();
+    openManifest(manifestPath, { vaultRoot: tmpDir, onMigrated });
+
+    expect(onMigrated).not.toHaveBeenCalled();
+  });
+
+  it('corrupted manifest (invalid JSON) throws ManifestMigrationError with backup path', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    fs.writeFileSync(manifestPath, '{ this is not valid json }', 'utf-8');
+
+    let caught: ManifestMigrationError | null = null;
+    try {
+      openManifest(manifestPath, { vaultRoot: tmpDir });
+    } catch (e) {
+      caught = e as ManifestMigrationError;
+    }
+
+    expect(caught).toBeInstanceOf(ManifestMigrationError);
+    expect(typeof caught!.backupPath).toBe('string');
+    expect(caught!.backupPath).toContain('.mythos');
+    // Backup file must exist and contain the original corrupt content
+    expect(fs.existsSync(caught!.backupPath)).toBe(true);
+    expect(fs.readFileSync(caught!.backupPath, 'utf-8')).toBe('{ this is not valid json }');
   });
 });
 

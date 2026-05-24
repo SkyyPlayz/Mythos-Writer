@@ -248,6 +248,20 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma('user_version = 8');
   }
+
+  if (currentVersion < 9) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS manifest_migration_log (
+        id            TEXT PRIMARY KEY,
+        manifest_path TEXT NOT NULL,
+        from_version  INTEGER NOT NULL,
+        to_version    INTEGER NOT NULL,
+        backup_path   TEXT NOT NULL,
+        created_at    TEXT NOT NULL
+      );
+    `);
+    db.pragma('user_version = 9');
+  }
 }
 
 // ─── Suggestions ───
@@ -515,6 +529,28 @@ export function dismissBetaReadComment(id: string): void {
   getDb()
     .prepare(`UPDATE beta_read_comments SET dismissed_at = ? WHERE id = ?`)
     .run(new Date().toISOString(), id);
+}
+
+// ─── Manifest migration log ───
+
+export interface DbManifestMigrationLog {
+  id: string;
+  manifest_path: string;
+  from_version: number;
+  to_version: number;
+  backup_path: string;
+  created_at: string;
+}
+
+export function insertManifestMigrationLog(entry: DbManifestMigrationLog): void {
+  getDb()
+    .prepare(
+      `INSERT INTO manifest_migration_log
+         (id, manifest_path, from_version, to_version, backup_path, created_at)
+       VALUES
+         (@id, @manifest_path, @from_version, @to_version, @backup_path, @created_at)`
+    )
+    .run(entry);
 }
 
 // ─── Budget window counters ───

@@ -76,6 +76,8 @@ import {
   type VaultObsidianDryRunPayload,
   type VaultObsidianRegisterPayload,
   type VaultLoadSampleResponse,
+  type ProjectEntry,
+  type ProjectSwitchPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -98,8 +100,10 @@ import {
   insertBetaReadComment,
   listBetaReadComments,
   dismissBetaReadComment,
+  insertManifestMigrationLog,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
+import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
@@ -128,7 +132,7 @@ import {
   sceneVaultPath,
   mergeProvenanceFrontmatter,
 } from './vault.js';
-import { openManifest } from './manifest.js';
+import { openManifest, ManifestMigrationError } from './manifest.js';
 import {
   createEntity,
   readEntity,
@@ -149,6 +153,13 @@ import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import { registerStreamingHandlers } from './streaming.js';
+import {
+  configureTelemetry,
+  generateSessionId,
+  reportEvent,
+  TELEMETRY_EVENT_TYPES,
+  type TelemetryEventType,
+} from './telemetry.js';
 
 const require = createRequire(import.meta.url);
 
@@ -178,6 +189,22 @@ function registerAgentCancelHandlers(): void {
 interface VaultSettings {
   vaultRoot: string;
   notesVaultRoot?: string;
+  recentProjects?: ProjectEntry[];
+}
+
+const MAX_RECENT_PROJECTS = 5;
+
+function addToRecentProjects(vaultRoot: string): void {
+  const current = loadVaultSettings();
+  const name = path.basename(vaultRoot);
+  const entry: ProjectEntry = { name, vaultRoot, openedAt: new Date().toISOString() };
+  const existing = (current.recentProjects ?? []).filter((p) => p.vaultRoot !== vaultRoot);
+  const updated = [entry, ...existing].slice(0, MAX_RECENT_PROJECTS);
+  saveVaultSettings({ recentProjects: updated });
+}
+
+function getRecentProjects(): ProjectEntry[] {
+  return loadVaultSettings().recentProjects ?? [];
 }
 
 function getVaultSettingsPath(): string {
@@ -213,14 +240,40 @@ function ensureVaultDir() {
   if (!fs.existsSync(vaultRoot)) {
     fs.mkdirSync(vaultRoot, { recursive: true });
   }
+  // Open DB before manifest migration so the audit callback can log immediately.
+  openDb(vaultRoot);
   const manifestPath = getManifestPath();
   if (!fs.existsSync(manifestPath)) {
     writeManifest(manifestPath, defaultManifest(vaultRoot));
   } else {
     // Migrate legacy manifests to current schema version on every vault open.
-    openManifest(manifestPath);
+    try {
+      openManifest(manifestPath, {
+        vaultRoot,
+        onMigrated: (entry) => {
+          insertManifestMigrationLog({
+            id: entry.id,
+            manifest_path: manifestPath,
+            from_version: entry.fromVersion,
+            to_version: entry.toVersion,
+            backup_path: entry.backupPath,
+            created_at: entry.createdAt,
+          });
+        },
+      });
+    } catch (err) {
+      if (err instanceof ManifestMigrationError) {
+        dialog.showErrorBox(
+          'Vault Migration Failed',
+          `Could not migrate the vault manifest.\n\nA backup was saved to:\n${err.backupPath}\n\nThe application will continue, but the vault may be in an inconsistent state. ` +
+            'You can restore from the backup manually.\n\nDetails: ' +
+            err.message
+        );
+      } else {
+        throw err;
+      }
+    }
   }
-  openDb(vaultRoot);
 }
 
 function ensureNotesVaultDir() {
@@ -258,6 +311,9 @@ function scheduleReindex() {
     reindexTimer = null;
   }, 1000);
 }
+
+// Registration token gate lives in ./registrationToken.ts (MYT-360 / MYT-367)
+// so unit tests can exercise it without pulling in Electron.
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
@@ -302,6 +358,7 @@ const handlers: IpcHandlers = {
     }
     const newRoot = result.filePaths[0];
     saveVaultSettings({ vaultRoot: newRoot });
+    addToRecentProjects(newRoot);
     ensureVaultDir();
     await stopVaultWatcher();
     await startVaultWatcher(newRoot, notifyVaultChanged);
@@ -312,9 +369,14 @@ const handlers: IpcHandlers = {
     return { vaultRoot: getVaultRoot() };
   },
   [IPC_CHANNELS.VAULT_IMPORT]: async (payload: VaultImportPayload) => {
+    // MYT-360: Validate token — must come from a user-selected folder picker
+    const validated = validateRegistrationToken(payload.registrationToken);
+    if (!validated) {
+      return { error: 'registrationToken required — use vault:pick-folder first' };
+    }
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const result = importObsidianVault(payload.sourcePath, getVaultRoot(), manifest);
+    const result = importObsidianVault(validated.vaultRoot, getVaultRoot(), manifest);
     // Reindex after import
     const { manifest: updated } = reindexVault(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), updated);
@@ -477,6 +539,75 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     upsertTimelineEntry(payload.entry);
     return { id: payload.entry.id };
+  },
+
+  // MYT-319 — Archive Agent infers scene chronology without LLM calls
+  [IPC_CHANNELS.TIMELINE_INFER]: (payload: { storyId: string }): import('./ipc.js').TimelineInferResponse => {
+    ensureVaultDir();
+    const manifest = readManifest(getVaultRoot());
+    const story = manifest.stories.find(s => s.id === payload.storyId);
+    if (!story) return { placements: [] };
+
+    // Prose patterns that hint at a specific point in time
+    const PROSE_PATTERNS: Array<{ re: RegExp; label: string }> = [
+      { re: /\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December),?\s+\d{4})\b/i, label: 'date mention' },
+      { re: /\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})\b/i, label: 'date mention' },
+      { re: /\b(\d{4}-\d{2}-\d{2})\b/, label: 'ISO date' },
+      { re: /\b(Year\s+\d+(?:\s+of\s+\w+)?)\b/i, label: 'in-world year' },
+      { re: /\b(Day\s+\d+(?:\s+of\s+\w+)?)\b/i, label: 'in-world day' },
+    ];
+
+    const placements: import('./ipc.js').TimelineInferredScene[] = [];
+
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) {
+        let inferredTime: string | null = null;
+        let confidence = 0;
+        let source: 'explicit_marker' | 'prose' | null = null;
+        let cue: string | null = null;
+
+        try {
+          const { content } = readVaultFile(getVaultRoot(), scene.path);
+          const fm = parseFrontmatter(content);
+
+          // Frontmatter date: field → highest confidence
+          const fmDate = (fm as Record<string, unknown>)['date'];
+          if (fmDate && typeof fmDate === 'string' && fmDate.trim()) {
+            inferredTime = fmDate.trim();
+            confidence = 0.95;
+            source = 'explicit_marker';
+            cue = 'frontmatter date:';
+          } else {
+            // Strip frontmatter block then scan prose
+            const prose = content.replace(/^---[\s\S]*?---\n?/, '');
+            for (const { re, label } of PROSE_PATTERNS) {
+              const m = prose.match(re);
+              if (m) {
+                inferredTime = m[1] ?? m[0];
+                confidence = 0.55;
+                source = 'prose';
+                cue = label;
+                break;
+              }
+            }
+          }
+        } catch {
+          // unreadable scene — leave nulls
+        }
+
+        placements.push({
+          sceneId: scene.id,
+          scenePath: scene.path,
+          sceneTitle: scene.title,
+          inferredTime,
+          confidence,
+          source,
+          cue,
+        });
+      }
+    }
+
+    return { placements };
   },
 
   [IPC_CHANNELS.APP_READY]: (): AppReadyResponse => ({
@@ -671,7 +802,55 @@ const handlers: IpcHandlers = {
     const apiKey = payload.settings.apiKey === maskApiKey(current.apiKey)
       ? current.apiKey
       : payload.settings.apiKey;
-    saveAppSettings({ ...payload.settings, apiKey });
+    // Regenerate sessionId when telemetry is being disabled (privacy: unlink future sessions).
+    let telemetry = payload.settings.telemetry;
+    if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
+      telemetry = { enabled: false, sessionId: generateSessionId() };
+    }
+    const updated = { ...payload.settings, apiKey, ...(telemetry !== undefined ? { telemetry } : {}) };
+    saveAppSettings(updated);
+    // Re-configure telemetry in-process immediately.
+    if (updated.telemetry) {
+      configureTelemetry({ enabled: updated.telemetry.enabled, sessionId: updated.telemetry.sessionId });
+    }
+    return { saved: true };
+  },
+
+  // MYT-343: per-agent config get/set
+  [IPC_CHANNELS.SETTINGS_GET_AGENT_CONFIG]: (): import('./ipc.js').AgentConfigMap => {
+    const s = loadAppSettings();
+    const toConfig = (a: typeof s.agents.writingAssistant): import('./ipc.js').AgentConfig => ({
+      enabled: a.enabled,
+      model: a.model,
+      autoApplyThreshold: (a as { autoApplyThreshold?: number }).autoApplyThreshold ?? 0.85,
+      budget: {
+        tokensPerDay: a.maxTokensPerDay,
+        requestsPerMinute: (a as { requestsPerMinute?: number }).requestsPerMinute ?? 60,
+      },
+    });
+    return {
+      writingAssistant: toConfig(s.agents.writingAssistant),
+      brainstorm: toConfig(s.agents.brainstorm),
+      archive: toConfig(s.agents.archive),
+    };
+  },
+  [IPC_CHANNELS.SETTINGS_SET_AGENT_CONFIG]: (payload: import('./ipc.js').SetAgentConfigPayload) => {
+    const current = loadAppSettings();
+    const agentKey = payload.agent as keyof typeof current.agents;
+    const existing = current.agents[agentKey];
+    const patch = payload.config;
+    const updated = {
+      ...existing,
+      ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+      ...(patch.model !== undefined ? { model: patch.model } : {}),
+      ...(patch.autoApplyThreshold !== undefined ? { autoApplyThreshold: patch.autoApplyThreshold } : {}),
+      ...(patch.budget?.tokensPerDay !== undefined ? { maxTokensPerDay: patch.budget.tokensPerDay } : {}),
+      ...(patch.budget?.requestsPerMinute !== undefined ? { requestsPerMinute: patch.budget.requestsPerMinute } : {}),
+    };
+    saveAppSettings({
+      ...current,
+      agents: { ...current.agents, [agentKey]: updated },
+    });
     return { saved: true };
   },
 
@@ -1007,19 +1186,25 @@ const handlers: IpcHandlers = {
     };
   },
 
-  // ─── EPUB export (MYT-253) ───
-  [IPC_CHANNELS.EXPORT_EPUB]: async (payload: { storyId: string }) => {
+  // ─── EPUB export (MYT-342) ───
+  [IPC_CHANNELS.EXPORT_EPUB]: async (payload: { storyId: string; metadata?: { title?: string; author?: string; language?: string }; targetPath?: string }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     const story = manifest.stories.find((s) => s.id === payload.storyId);
     if (!story) throw new Error(`Story not found: ${payload.storyId}`);
 
-    const result = await dialog.showSaveDialog({
-      title: 'Export EPUB',
-      defaultPath: `${story.title.replace(/[/\\?%*:|"<>]/g, '-')}.epub`,
-      filters: [{ name: 'EPUB', extensions: ['epub'] }],
-    });
-    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+    let filePath: string;
+    if (payload.targetPath) {
+      filePath = payload.targetPath;
+    } else {
+      const result = await dialog.showSaveDialog({
+        title: 'Export EPUB',
+        defaultPath: `${story.title.replace(/[/\\?%*:|"<>]/g, '-')}.epub`,
+        filters: [{ name: 'EPUB', extensions: ['epub'] }],
+      });
+      if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+      filePath = result.filePath;
+    }
 
     // Build chapter/scene structure, reading prose from vault
     const chapters = story.chapters
@@ -1038,9 +1223,14 @@ const handlers: IpcHandlers = {
           }),
       }));
 
-    const buffer = await buildEpub({ title: story.title, chapters });
-    fs.writeFileSync(result.filePath, buffer);
-    return { path: result.filePath, cancelled: false };
+    const buffer = await buildEpub({
+      title: payload.metadata?.title ?? story.title,
+      author: payload.metadata?.author,
+      language: payload.metadata?.language,
+      chapters,
+    });
+    fs.writeFileSync(filePath, buffer);
+    return { path: filePath, cancelled: false };
   },
 
   // ─── DOCX export (MYT-252) ───
@@ -1086,13 +1276,20 @@ const handlers: IpcHandlers = {
       buttonLabel: 'Select Folder',
     });
     if (result.canceled || result.filePaths.length === 0) {
-      return { vaultRoot: null, cancelled: true };
+      return { vaultRoot: null, cancelled: true, registrationToken: null };
     }
-    return { vaultRoot: result.filePaths[0], cancelled: false };
+    const token = generateRegistrationToken(result.filePaths[0]);
+    return { vaultRoot: result.filePaths[0], cancelled: false, registrationToken: token };
   },
 
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: async (_payload: VaultObsidianDryRunPayload) => {
-    const { sourcePath } = _payload;
+    const { registrationToken } = _payload;
+    // MYT-360 / MYT-367: token must come from vault:pick-folder. Peek (consume:false)
+    // so the same token survives a subsequent register call.
+    const validated = validateRegistrationToken(registrationToken, { consume: false });
+    if (!validated) {
+      return { error: 'registrationToken required — use vault:pick-folder first' };
+    }
     // Load existing manifest to detect name collisions (may not exist yet)
     let existingManifest = null;
     try {
@@ -1100,23 +1297,30 @@ const handlers: IpcHandlers = {
         existingManifest = readManifest(getManifestPath());
       }
     } catch { /* non-fatal */ }
-    return obsidianDryRun(sourcePath, existingManifest);
+    return obsidianDryRun(validated.vaultRoot, existingManifest);
   },
 
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: async (_payload: VaultObsidianRegisterPayload) => {
-    const { sourcePath } = _payload;
+    const { registrationToken } = _payload;
+    // MYT-360 / MYT-367: token-validated path is the only acceptable source.
+    // The renderer-supplied sourcePath field is deliberately ignored — the
+    // token alone proves the folder was chosen via the main-process dialog.
+    const validated = validateRegistrationToken(registrationToken);
+    if (!validated) {
+      return { error: 'registrationToken required — use vault:pick-folder first' };
+    }
     // Point the vault root at the chosen Obsidian folder and rebuild the manifest
-    saveVaultSettings({ vaultRoot: sourcePath });
+    saveVaultSettings({ vaultRoot: validated.vaultRoot });
     ensureVaultDir(); // creates manifest.json if absent, opens DB
     const manifest = readManifest(getManifestPath());
-    const { manifest: synced, scanned } = reindexVault(sourcePath, manifest);
+    const { manifest: synced, scanned } = reindexVault(validated.vaultRoot, manifest);
     writeManifest(getManifestPath(), synced);
     // Rebuild full-text search index
-    try { buildFullIndex(getDb(), sourcePath, synced); } catch { /* non-fatal */ }
+    try { buildFullIndex(getDb(), validated.vaultRoot, synced); } catch { /* non-fatal */ }
     // Start file watcher on the new root
     await stopVaultWatcher();
-    await startVaultWatcher(sourcePath, notifyVaultChanged);
-    return { vaultRoot: sourcePath, notesIndexed: scanned };
+    await startVaultWatcher(validated.vaultRoot, notifyVaultChanged);
+    return { vaultRoot: validated.vaultRoot, notesIndexed: scanned };
   },
 
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (): Promise<VaultLoadSampleResponse> => {
@@ -1411,6 +1615,52 @@ const handlers: IpcHandlers = {
     return { vaultRoot: sampleRoot };
   },
 
+  // ─── Telemetry (MYT-344) ───
+  [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: import('./ipc.js').TelemetryReportPayload) => {
+    reportEvent({ type: payload.type as TelemetryEventType, meta: payload.meta });
+    return { queued: true };
+  },
+
+  // ─── Multi-project switcher (MYT-374) ───
+  [IPC_CHANNELS.PROJECT_LIST]: () => {
+    return {
+      projects: getRecentProjects(),
+      activeVaultRoot: getVaultRoot(),
+    };
+  },
+
+  [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
+    const newRoot = payload.vaultRoot;
+    if (!newRoot || typeof newRoot !== 'string') {
+      return { vaultRoot: getVaultRoot(), switched: false, error: 'Invalid vault root' };
+    }
+    if (!fs.existsSync(newRoot)) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
+    }
+    // Stop watchers and close current DB before switching
+    await stopVaultWatcher();
+    await stopNotesVaultWatcher();
+    closeDb();
+    // Switch vault
+    saveVaultSettings({ vaultRoot: newRoot });
+    addToRecentProjects(newRoot);
+    ensureVaultDir();
+    // Rebuild FTS index for new vault
+    try {
+      const manifest = readManifest(getManifestPath());
+      const { manifest: synced } = reindexVault(newRoot, manifest);
+      writeManifest(getManifestPath(), synced);
+      try { buildFullIndex(getDb(), newRoot, synced); } catch { /* non-fatal */ }
+    } catch { /* non-fatal */ }
+    // Restart file watcher
+    await startVaultWatcher(newRoot, notifyVaultChanged);
+    // Notify renderer to reload
+    if (mainWindow) {
+      mainWindow.webContents.send('project:switched', { vaultRoot: newRoot });
+    }
+    return { vaultRoot: newRoot, switched: true };
+  },
+
 };
 
 // ─── Create BrowserWindow ───
@@ -1574,6 +1824,9 @@ const AGENT_BUDGET_DEFAULTS = {
   maxSuggestionsPerHour: 50,
   heartbeatIntervalMinutes: 5,
   maxTokensPerDay: 500_000,
+  // MYT-343: per-agent config additions
+  autoApplyThreshold: 0.85,
+  requestsPerMinute: 60,
 };
 
 const SETTINGS_DEFAULTS: AppSettings = {
@@ -1685,6 +1938,21 @@ function loadAppSettings(): AppSettings {
 
 function saveAppSettings(settings: AppSettings): void {
   fs.writeFileSync(getAppSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+// ─── Telemetry bootstrap ───────────────────────────────────────────────────
+// Called once on app-ready and whenever settings change.
+function initTelemetry(): void {
+  const settings = loadAppSettings();
+  const telemetry = settings.telemetry ?? { enabled: false, sessionId: '' };
+  // Ensure there's always a sessionId stored, even when disabled (regenerated on each disable).
+  if (!telemetry.sessionId) {
+    const id = generateSessionId();
+    saveAppSettings({ ...settings, telemetry: { ...telemetry, sessionId: id } });
+    configureTelemetry({ enabled: telemetry.enabled, sessionId: id });
+  } else {
+    configureTelemetry({ enabled: telemetry.enabled, sessionId: telemetry.sessionId });
+  }
 }
 
 // Returns a masked preview (sk-ant-...XXXX) so the raw key never leaves the main process.
@@ -2158,6 +2426,11 @@ function registerWritingScanHandler(): void {
 // ─── App lifecycle ───
 app.whenReady().then(async () => {
   ensureVaultDir();
+  ensureNotesVaultDir();
+  // Track current vault in recent projects list on every launch
+  addToRecentProjects(getVaultRoot());
+  // Initialize telemetry from persisted settings (off by default)
+  initTelemetry();
   setupIpcMain(handlers);
   registerAgentCancelHandlers();
   registerBrainstormHandler();
