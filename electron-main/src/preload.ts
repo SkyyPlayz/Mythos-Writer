@@ -266,6 +266,9 @@ contextBridge.exposeInMainWorld('api', {
   // DOCX export (MYT-252)
   exportDocx: (storyId: string) =>
     ipcRenderer.invoke('export:docx', { storyId }),
+
+  // Vault Graph View (MYT-249)
+  vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

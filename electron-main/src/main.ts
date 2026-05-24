@@ -930,14 +930,62 @@ const handlers: IpcHandlers = {
   // ─── Vault graph (MYT-163) ───
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: async () => {
     ensureVaultDir();
-    const manifest = readManifest(getManifestPath());
-    const nodes = manifest.entities.map((e) => ({
-      id: e.id,
-      label: e.name,
-      type: e.type,
-      path: e.path,
-    }));
-    return { nodes, edges: [] };
+    const vaultRoot = getVaultRoot();
+    const WIKI_LINK_RE = /\[\[([^\]|#]+?)(?:[|#][^\]]*?)?\]\]/g;
+    const MAX_NODES = 2000;
+
+    // Collect all .md files
+    const { items } = listVaultFiles(vaultRoot);
+    const mdFiles = items.filter((f) => !f.isDirectory && f.path.endsWith('.md'));
+
+    // Build node list and stem→id map for edge resolution
+    const stemToId = new Map<string, string>();
+    const nodeList: { id: string; label: string; path: string; folder?: string; tags?: string[] }[] = [];
+
+    for (const file of mdFiles) {
+      let content = '';
+      try { content = readVaultFile(vaultRoot, file.path).content; } catch { continue; }
+      const { frontmatter } = parseFrontmatter(content);
+      const id = String(frontmatter.id ?? file.path);
+      const label = String(frontmatter.title ?? path.basename(file.path, '.md'));
+      const folder = path.dirname(file.path) === '.' ? undefined : path.dirname(file.path);
+      const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined;
+      nodeList.push({ id, label, path: file.path, folder, tags });
+      stemToId.set(path.basename(file.path, '.md').toLowerCase(), id);
+    }
+
+    // Sample if over budget
+    const sampled = nodeList.length > MAX_NODES ? nodeList.slice(0, MAX_NODES) : nodeList;
+    const sampledIds = new Set(sampled.map((n) => n.id));
+
+    // Build edges from wiki-links
+    const edgeSet = new Set<string>();
+    const edges: { source: string; target: string }[] = [];
+
+    for (const file of mdFiles) {
+      let content = '';
+      try { content = readVaultFile(vaultRoot, file.path).content; } catch { continue; }
+      const { frontmatter } = parseFrontmatter(content);
+      const sourceId = String(frontmatter.id ?? file.path);
+      if (!sampledIds.has(sourceId)) continue;
+
+      WIKI_LINK_RE.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = WIKI_LINK_RE.exec(content)) !== null) {
+        const target = match[1].trim();
+        const targetStem = path.basename(target, '.md').toLowerCase();
+        const targetId = stemToId.get(targetStem);
+        if (targetId && targetId !== sourceId && sampledIds.has(targetId)) {
+          const key = `${sourceId}→${targetId}`;
+          if (!edgeSet.has(key)) {
+            edgeSet.add(key);
+            edges.push({ source: sourceId, target: targetId });
+          }
+        }
+      }
+    }
+
+    return { nodes: sampled, edges };
   },
 
   // ─── Archive Agent (MYT-157) ───
