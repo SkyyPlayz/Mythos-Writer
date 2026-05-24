@@ -102,3 +102,12 @@ jobs:
         with:
           name: linux-rpm
           path: dist-electron/*.rpm
+
+      - name: Create draft GitHub Release and attach assets
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            dist-electron/*.AppImage
+            dist-electron/*.deb
+            dist-electron/*.rpm
