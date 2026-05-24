@@ -137,6 +137,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   value={apiKeyInput}
                   onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
                   placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : 'sk-ant-…'}
+                  aria-invalid={apiKeyError ? 'true' : 'false'}
                   aria-describedby={apiKeyError ? 'api-key-error' : undefined}
                   autoComplete="off"
                   spellCheck={false}
