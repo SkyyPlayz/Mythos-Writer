@@ -41,6 +41,7 @@
   "publish": {
     "provider": "github",
     "owner": "SkyyPlayz",
-    "repo": "Mythos-Writer"
+    "repo": "Mythos-Writer",
+    "releaseType": "release"
   }
 }
