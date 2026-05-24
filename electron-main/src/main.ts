@@ -257,8 +257,22 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_IMPORT]: async (payload: VaultImportPayload) => {
     ensureVaultDir();
+    // Confirm the import source path with the user before proceeding (F6/MYT-360).
+    // Renderer-supplied paths are not trusted — require a main-process dialog gesture.
+    const sourcePath = payload.sourcePath;
+    const confirmResult = await dialog.showMessageBox({
+      type: 'question',
+      title: 'Import Vault',
+      message: `Import markdown files from: ${sourcePath}`,
+      buttons: ['Import', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (confirmResult.response !== 0) {
+      return { imported: 0, skipped: 0, errors: ['Import cancelled by user'] };
+    }
     const manifest = readManifest(getManifestPath());
-    const result = importObsidianVault(payload.sourcePath, getVaultRoot(), manifest);
+    const result = importObsidianVault(sourcePath, getVaultRoot(), manifest);
     // Reindex after import
     const { manifest: updated } = reindexVault(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), updated);
