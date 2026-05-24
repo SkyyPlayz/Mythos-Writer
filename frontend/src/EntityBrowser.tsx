@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EntityEntry, EntityType } from './types';
 import './EntityBrowser.css';
 
@@ -25,6 +25,9 @@ interface CreateDialogProps {
   onCancel: () => void;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<EntityType>('character');
@@ -32,6 +35,7 @@ function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
   const [tags, setTags] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,10 +52,35 @@ function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
     }
   };
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') { onCancel(); return; }
+    if (e.key === 'Tab' && dialogRef.current) {
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+  }, [onCancel]);
+
   return (
     <div className="entity-dialog-overlay" onClick={onCancel}>
-      <div className="entity-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="entity-dialog-header">New Entity</div>
+      <div
+        ref={dialogRef}
+        className="entity-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-entity-title"
+        onKeyDown={handleKeyDown}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div id="create-entity-title" className="entity-dialog-header">New Entity</div>
         <form onSubmit={handleSubmit} className="entity-dialog-form">
           <label className="entity-dialog-label">
             Type
@@ -193,32 +222,41 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
         if (items.length === 0) return null;
         return (
           <div key={type} className="entity-group">
-            <div className="entity-group-header" onClick={() => toggleType(type)}>
+            <button
+              className="entity-group-header"
+              onClick={() => toggleType(type)}
+              aria-expanded={expanded.has(type)}
+            >
               <span className="entity-chevron">{expanded.has(type) ? '▾' : '▸'}</span>
               <span className="entity-group-icon">{TYPE_ICONS[type]}</span>
               <span className="entity-group-name">{TYPE_LABELS[type]}</span>
               <span className="entity-count">{items.length}</span>
-            </div>
+            </button>
             {expanded.has(type) && (
               <div className="entity-items">
                 {items.map((entity) => (
                   <div
                     key={entity.id}
                     className={`entity-item${entity.id === selectedEntityId ? ' selected' : ''}`}
-                    onClick={() => onSelectEntity(entity)}
                   >
-                    <span className="entity-item-name">{entity.name}</span>
+                    <button
+                      className="entity-item-select"
+                      onClick={() => onSelectEntity(entity)}
+                      aria-pressed={entity.id === selectedEntityId}
+                    >
+                      <span className="entity-item-name">{entity.name}</span>
+                    </button>
                     {deleteConfirm === entity.id ? (
                       <span className="entity-delete-confirm">
                         <button
                           className="entity-btn-danger-sm"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(entity.id); }}
+                          onClick={() => handleDelete(entity.id)}
                         >
                           Delete
                         </button>
                         <button
                           className="entity-btn-ghost-sm"
-                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}
+                          onClick={() => setDeleteConfirm(null)}
                         >
                           Cancel
                         </button>
@@ -226,8 +264,9 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
                     ) : (
                       <button
                         className="entity-item-delete"
+                        aria-label="Delete entity"
                         title="Delete entity"
-                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm(entity.id); }}
+                        onClick={() => setDeleteConfirm(entity.id)}
                       >
                         ×
                       </button>

@@ -46,6 +46,12 @@
   color: var(--text-secondary, #aaa);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  /* button reset */
+  background: none;
+  border: none;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
 }
 
 .entity-group-header:hover {
@@ -81,12 +87,24 @@
 .entity-item {
   display: flex;
   align-items: center;
-  padding: 5px 10px 5px 28px;
+  position: relative;
+}
+
+.entity-item-select {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 4px 5px 28px;
   cursor: pointer;
   font-size: 13px;
   color: var(--text, #ddd);
   gap: 4px;
-  position: relative;
+  background: none;
+  border: none;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
 }
 
 .entity-item:hover {
@@ -95,6 +113,10 @@
 
 .entity-item.selected {
   background: var(--selected, rgba(99, 102, 241, 0.18));
+  color: var(--accent, #a5b4fc);
+}
+
+.entity-item.selected .entity-item-select {
   color: var(--accent, #a5b4fc);
 }
 
@@ -117,7 +139,8 @@
   flex-shrink: 0;
 }
 
-.entity-item:hover .entity-item-delete {
+.entity-item:hover .entity-item-delete,
+.entity-item-select:focus ~ .entity-item-delete {
   display: block;
 }
 
