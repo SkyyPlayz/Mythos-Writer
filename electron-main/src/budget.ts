@@ -27,6 +27,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  * 1. autoApply must be true — otherwise stay proposed, no budget check.
  * 2. confidence must be >= confidenceThreshold — otherwise stay proposed.
  * 3. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
+ *    Checks: hourly suggestion count, hourly token count, daily token count.
  * 4. All checks pass → auto-apply.
  */
 export function evaluateAutoApply(
@@ -48,8 +49,13 @@ export function evaluateAutoApply(
     return { shouldAutoApply: false, budgetExceeded: true };
   }
 
-  const tokenCount = countTokensInWindowWithDb(db, sourceAgent, ONE_HOUR_MS);
-  if (tokenCount >= settings.maxTokensPerHour) {
+  const hourlyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_HOUR_MS);
+  if (hourlyTokens >= settings.maxTokensPerHour) {
+    return { shouldAutoApply: false, budgetExceeded: true };
+  }
+
+  const dailyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_DAY_MS);
+  if (dailyTokens >= settings.maxTokensPerDay) {
     return { shouldAutoApply: false, budgetExceeded: true };
   }
 

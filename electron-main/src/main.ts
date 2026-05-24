@@ -115,6 +115,9 @@ import {
   obsidianDryRun,
   startVaultWatcher,
   stopVaultWatcher,
+  startNotesVaultWatcher,
+  stopNotesVaultWatcher,
+  scaffoldNotesVault,
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
@@ -172,15 +175,20 @@ function registerAgentCancelHandlers(): void {
 // ─── Vault root ───
 // User can open any local folder as their vault; the chosen path is persisted
 // in userData/vault-settings.json so it survives restarts.
+interface VaultSettings {
+  vaultRoot: string;
+  notesVaultRoot?: string;
+}
+
 function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
 }
 
-function loadVaultSettings(): { vaultRoot: string } {
+function loadVaultSettings(): VaultSettings {
   const settingsPath = getVaultSettingsPath();
   if (fs.existsSync(settingsPath)) {
     try {
-      return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      return JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as VaultSettings;
     } catch {
       // fall through to default
     }
@@ -188,12 +196,17 @@ function loadVaultSettings(): { vaultRoot: string } {
   return { vaultRoot: path.join(app.getPath('userData'), 'vault') };
 }
 
-function saveVaultSettings(settings: { vaultRoot: string }): void {
-  fs.writeFileSync(getVaultSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+// Merges `updates` into the persisted settings so partial writes don't clobber other fields.
+function saveVaultSettings(updates: Partial<VaultSettings>): void {
+  const current = loadVaultSettings();
+  const merged: VaultSettings = { ...current, ...updates };
+  fs.writeFileSync(getVaultSettingsPath(), JSON.stringify(merged, null, 2), 'utf-8');
 }
 
 const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
+const getNotesVaultRoot = () =>
+  loadVaultSettings().notesVaultRoot ?? path.join(app.getPath('userData'), 'notes-vault');
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
@@ -208,6 +221,14 @@ function ensureVaultDir() {
     openManifest(manifestPath);
   }
   openDb(vaultRoot);
+}
+
+function ensureNotesVaultDir() {
+  const notesVaultRoot = getNotesVaultRoot();
+  if (!fs.existsSync(notesVaultRoot)) {
+    fs.mkdirSync(notesVaultRoot, { recursive: true });
+    scaffoldNotesVault(notesVaultRoot);
+  }
 }
 
 // Notify renderer when vault changes so it can refresh state
@@ -337,12 +358,13 @@ const handlers: IpcHandlers = {
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
         const auditId = crypto.randomUUID();
-        updateSuggestionStatus(payload.suggestion.id, 'accepted', now, 'auto-apply');
+        const { finalStatus, snapshotPath } = autoApplyVaultWrite(payload.suggestion, now);
+        updateSuggestionStatus(payload.suggestion.id, finalStatus, now, 'auto-apply');
         insertAuditLog({
           id: auditId,
           suggestion_id: payload.suggestion.id,
-          action: 'apply',
-          snapshot_path: null,
+          action: finalStatus === 'applied' ? 'apply' : 'accept',
+          snapshot_path: snapshotPath,
           actor: 'auto_applied',
           created_at: now,
         });
@@ -360,37 +382,7 @@ const handlers: IpcHandlers = {
     const suggestion = getSuggestion(payload.id);
     if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
 
-    let finalStatus: 'accepted' | 'applied' = 'accepted';
-    let snapshotPath: string | null = null;
-
-    if (suggestion.target_kind === 'vault' && suggestion.target_path && suggestion.payload_json) {
-      const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
-      if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
-      const relSnapshotPath = path.join('.mythos', 'suggestion-snapshots', `${payload.id}.json`);
-      const fullSnapshotPath = path.join(getVaultRoot(), relSnapshotPath);
-
-      let originalContent = '';
-      try {
-        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
-        originalContent = content;
-      } catch { /* new file — empty original is fine */ }
-      fs.writeFileSync(fullSnapshotPath, JSON.stringify({ originalContent, path: suggestion.target_path }), 'utf-8');
-      snapshotPath = relSnapshotPath;
-
-      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
-      const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
-      const { prose: newProse } = parseFrontmatter(newContent);
-      mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {
-        source_agent: suggestion.source_agent,
-        confidence: suggestion.confidence,
-        rationale: suggestion.rationale,
-        timestamp: now,
-        run_id: suggestion.applied_run_id ?? undefined,
-        suggestion_id: payload.id,
-      }, newProse);
-      finalStatus = 'applied';
-    }
-
+    const { finalStatus, snapshotPath } = autoApplyVaultWrite(suggestion, now);
     updateSuggestionStatus(payload.id, finalStatus, now);
     insertAuditLog({
       id: auditId,
@@ -1558,6 +1550,67 @@ const SETTINGS_DEFAULTS: AppSettings = {
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   updateChannel: 'stable',
 };
+
+/**
+ * Shared vault-write logic for accepted/applied suggestions.
+ * For vault suggestions (target_kind='vault' with a target_path and payload_json):
+ *   - snapshots the original file content
+ *   - writes the new content (from payload.content or payload.prose) with provenance frontmatter
+ *   - returns finalStatus='applied' and the relative snapshot path
+ * For all other suggestions (manuscript or advisory):
+ *   - returns finalStatus='accepted' and snapshotPath=null
+ *
+ * Errors during vault write are silently swallowed so the suggestion DB state is always
+ * consistent — the suggestion records the attempted apply; callers should not re-throw.
+ */
+function autoApplyVaultWrite(
+  suggestion: import('./db.js').DbSuggestion,
+  now: string,
+): { finalStatus: 'accepted' | 'applied'; snapshotPath: string | null } {
+  if (
+    suggestion.target_kind === 'vault' &&
+    suggestion.target_path &&
+    suggestion.payload_json
+  ) {
+    try {
+      const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
+      if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
+      const relSnapshotPath = path.join(
+        '.mythos', 'suggestion-snapshots', `${suggestion.id}.json`,
+      );
+      const fullSnapshotPath = path.join(getVaultRoot(), relSnapshotPath);
+
+      let originalContent = '';
+      try {
+        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
+        originalContent = content;
+      } catch { /* new file — empty original */ }
+
+      fs.writeFileSync(
+        fullSnapshotPath,
+        JSON.stringify({ originalContent, path: suggestion.target_path }),
+        'utf-8',
+      );
+
+      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
+      const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
+      const { prose: newProse } = parseFrontmatter(newContent);
+      mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {
+        source_agent: suggestion.source_agent,
+        confidence: suggestion.confidence,
+        rationale: suggestion.rationale,
+        timestamp: now,
+        run_id: suggestion.applied_run_id ?? undefined,
+        suggestion_id: suggestion.id,
+      }, newProse);
+
+      return { finalStatus: 'applied', snapshotPath: relSnapshotPath };
+    } catch {
+      // Vault write failed — fall through to accepted without file write
+    }
+  }
+  return { finalStatus: 'accepted', snapshotPath: null };
+}
 
 /** Maps source_agent DB value → settings key. Unknown agents have no budget enforcement. */
 const SOURCE_AGENT_TO_SETTINGS_KEY: Record<string, keyof AppSettings['agents']> = {
