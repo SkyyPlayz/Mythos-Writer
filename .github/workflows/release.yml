@@ -74,12 +74,80 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.zip
 
-  # Stubbed pending code signing setup (Phase 4)
   build-mac:
-    if: false
+    needs: determine-release
     runs-on: macos-latest
+    permissions:
+      contents: write
+
     steps:
-      - run: echo "Mac build pending code signing setup (Phase 4)"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Python setuptools (node-gyp needs distutils, removed in Python 3.12+)
+        run: pip3 install setuptools --break-system-packages
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Import Apple Developer ID certificate
+        # Gracefully skipped when the secret is absent — unsigned build continues.
+        # Add APPLE_CERTIFICATE_BASE64 + APPLE_CERTIFICATE_PASSWORD secrets to
+        # enable Developer ID signing (board action required to purchase cert).
+        shell: bash
+        run: |
+          if [ -z "$APPLE_CERTIFICATE_BASE64" ]; then
+            echo "No Apple Developer ID certificate configured; building unsigned (dev signing)."
+            exit 0
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p actions "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p actions "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN_PATH"
+          echo "APPLE_CERT_IMPORTED=1" >> "$GITHUB_ENV"
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Build and publish (macOS DMG + ZIP)
+        shell: bash
+        run: |
+          # Use Developer ID identity from keychain when cert was imported;
+          # otherwise fall back to ad-hoc (CSC_IDENTITY_AUTO_DISCOVERY=false).
+          if [ "${APPLE_CERT_IMPORTED:-}" = "1" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=true
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npm run dist:mac:release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Notarization gate — set APPLE_NOTARIZE secret to '1' once Apple ID
+          # credentials are available. build/notarize.js is a no-op otherwise.
+          APPLE_NOTARIZE: ${{ secrets.APPLE_NOTARIZE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dist
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.zip
 
   build-linux:
     runs-on: ubuntu-latest
@@ -115,7 +183,7 @@ jobs:
             dist-electron/*.rpm
 
   publish-release:
-    needs: [determine-release, build-windows, build-linux]
+    needs: [determine-release, build-windows, build-linux, build-mac]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -156,4 +224,5 @@ jobs:
           files: |
             windows-dist/**/*
             linux-dist/**/*
+            macos-dist/**/*
           body: ${{ steps.changelog.outputs.notes }}

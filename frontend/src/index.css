@@ -20,6 +20,22 @@ body {
   }
 }
 
+/* WCAG 1.4.11: high-contrast and forced-colors support */
+@media (prefers-contrast: more) {
+  :root {
+    --text-muted: #999999;
+    --text-faint: #888888;
+    --border-default: #666666;
+    --accent: #9d6eff;
+  }
+}
+
+@media (forced-colors: active) {
+  * {
+    forced-color-adjust: auto;
+  }
+}
+
 /* Visually hidden but available to screen readers */
 .sr-only {
   position: absolute;

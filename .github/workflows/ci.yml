@@ -95,11 +95,13 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run dist:mac
 
-      - name: Upload macOS DMG artifact
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: dist-electron/*.dmg
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.zip
 
   build-linux:
     runs-on: ubuntu-latest

@@ -2,6 +2,7 @@ node_modules
 dist
 dist-electron
 out
-build
+# Ignore compiled native modules in build/ but not source assets (icons, plists, scripts)
+build/*.node
 .env
 *.local
