@@ -5,7 +5,8 @@
   "main": "out/main/main.js",
   "workspaces": [
     "frontend",
-    "electron-main"
+    "electron-main",
+    "backend"
   ],
   "scripts": {
     "dev": "electron-vite dev",
@@ -19,12 +20,12 @@
     "start": "electron .",
     "package": "electron-builder --win zip",
     "lint": "npm run lint -w frontend",
-    "test": "npm run test -w electron-main && npm run test -w frontend",
+    "test": "npm run test -w electron-main && npm run test -w frontend && npm run test -w backend",
     "test:e2e": "playwright test e2e/ --reporter=list",
     "test:e2e:smoke": "playwright test e2e/smoke.spec.ts --reporter=list",
     "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts --reporter=list",
     "test:e2e:brainstorm": "playwright test e2e/brainstorm.spec.ts --reporter=list",
-    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main"
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main && npm run typecheck -w backend"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0",
