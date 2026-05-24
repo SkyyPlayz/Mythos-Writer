@@ -40,6 +40,22 @@ jobs:
       - name: Build (electron-vite)
         run: npm run build:electron
 
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: sudo apt-get install -y xvfb
+
+      - name: E2E — vault CRUD (headless)
+        run: xvfb-run --auto-servernum npm run test:e2e:crud
+
+      - name: E2E — Brainstorm Agent streaming and vault note creation (headless)
+        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm
+
+      - name: Upload E2E report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: e2e-report/
+
   build-macos:
     runs-on: macos-latest
 
