@@ -96,7 +96,9 @@ describe('BrainstormPage', () => {
     );
   });
 
-  it('extracts FACT tags and shows them in the Facts panel', async () => {
+  it('extracts FACT tags, shows them in the Facts panel, and auto-saves', async () => {
+    mockEntityCreate.mockResolvedValue({ id: 'e1', name: 'Lyra Ashveil' });
+
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'Tell me about the hero' },
@@ -111,11 +113,16 @@ describe('BrainstormPage', () => {
       expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument(),
     );
     expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /save lyra ashveil to vault/i })).toBeInTheDocument();
+    // No manual save button — auto-save fires immediately
+    expect(screen.queryByRole('button', { name: /save lyra ashveil to vault/i })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
+    expect(mockEntityCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Lyra Ashveil', type: 'character' }),
+    );
   });
 
-  it('saves a fact to vault via entityCreate and shows Saved status', async () => {
-    mockEntityCreate.mockResolvedValueOnce({ id: 'e1', name: 'The Sunken City' });
+  it('auto-saves a fact to vault via entityCreate and shows Saved status', async () => {
+    mockEntityCreate.mockResolvedValue({ id: 'e1', name: 'The Sunken City' });
 
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
@@ -127,19 +134,13 @@ describe('BrainstormPage', () => {
       '[FACT:location|The Sunken City|An ancient city submerged beneath a magical sea]',
     ]);
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /save the sunken city to vault/i })).toBeInTheDocument(),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /save the sunken city to vault/i }));
-
     await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
     expect(mockEntityCreate).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'The Sunken City', type: 'location' }),
     );
   });
 
-  it('routes edit to pending_review when entity with same name already exists', async () => {
+  it('auto-routes edit to pending_review when entity with same name already exists', async () => {
     const mockSuggestionsUpsert = vi.fn().mockResolvedValue({ id: 'sug-1' });
     (window as unknown as { api: unknown }).api = buildApi({
       suggestionsUpsert: mockSuggestionsUpsert,
@@ -158,12 +159,6 @@ describe('BrainstormPage', () => {
     await simulateStream([
       '[FACT:location|The Sunken City|An updated description of the ancient city]',
     ]);
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /save the sunken city to vault/i })).toBeInTheDocument(),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /save the sunken city to vault/i }));
 
     await waitFor(() => expect(screen.getByText(/pending review/i)).toBeInTheDocument());
     expect(mockEntityCreate).not.toHaveBeenCalled();

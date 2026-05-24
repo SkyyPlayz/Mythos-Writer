@@ -285,14 +285,62 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       });
 
       if (extracted.length > 0) {
-        setFacts((prev) => [
-          ...prev,
-          ...extracted.map((f) => ({
-            ...f,
-            id: `fact-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            savedStatus: 'unsaved' as const,
-          })),
-        ]);
+        const newFacts: DetectedFact[] = extracted.map((f) => ({
+          ...f,
+          id: `fact-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          savedStatus: 'saving' as const,
+        }));
+        setFacts((prev) => [...prev, ...newFacts]);
+
+        for (const fact of newFacts) {
+          (async () => {
+            try {
+              const listResult = await window.api.entityList();
+              const existingEntities: Array<{ id: string; name: string; path: string }> =
+                (listResult as { entities?: Array<{ id: string; name: string; path: string }> })?.entities ?? [];
+              const existing = existingEntities.find(
+                (e) => e.name.toLowerCase() === fact.name.toLowerCase(),
+              );
+              if (existing) {
+                const suggestionId = crypto.randomUUID();
+                const now = new Date().toISOString();
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (window.api as any).suggestionsUpsert({
+                  id: suggestionId,
+                  source_agent: 'brainstorm',
+                  confidence: 0.8,
+                  rationale: `Brainstorm proposes updating "${fact.name}" (${fact.type}): ${fact.content}`,
+                  target_kind: 'vault',
+                  target_path: existing.path,
+                  target_anchor: null,
+                  payload_json: JSON.stringify({ prose: `# ${fact.name}\n\n${fact.content}\n` }),
+                  status: 'proposed',
+                  created_at: now,
+                  applied_at: null,
+                  applied_run_id: null,
+                  budget_exceeded: 0,
+                });
+                setFacts((prev) =>
+                  prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'pending_review' } : f2)),
+                );
+              } else {
+                await window.api.entityCreate({
+                  name: fact.name,
+                  type: fact.type === 'note' ? 'other' : fact.type,
+                  prose: fact.content,
+                  tags: ['brainstorm'],
+                });
+                setFacts((prev) =>
+                  prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'saved' } : f2)),
+                );
+              }
+            } catch {
+              setFacts((prev) =>
+                prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'error' } : f2)),
+              );
+            }
+          })();
+        }
       }
 
       const factCount = extracted.length;
@@ -716,15 +764,6 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                   <div className="bs-fact-name">{fact.name}</div>
                   <p className="bs-fact-desc">{fact.content}</p>
                   <div className="bs-fact-actions">
-                    {fact.savedStatus === 'unsaved' && (
-                      <button
-                        className="bs-fact-save-btn"
-                        onClick={() => saveFactToVault(fact.id)}
-                        aria-label={`Save ${fact.name} to vault`}
-                      >
-                        Save to Vault
-                      </button>
-                    )}
                     {fact.savedStatus === 'saving' && (
                       <span className="bs-fact-saving">Saving…</span>
                     )}
