@@ -120,6 +120,11 @@ interface BrainstormExtractedEntity {
   suggestionId: string;
 }
 
+interface BudgetCapHitEvent {
+  reason: 'daily_token_cap' | 'hourly_token_cap';
+  agentLabel: string;
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -229,6 +234,7 @@ interface Window {
     // Writing Assistant scheduled scan (MYT-233) + push subscription (MYT-236)
     writingScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ tips: string[]; scannedAt: string }>;
     onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => () => void;
+    onBudgetCapHit?: (cb: (event: BudgetCapHitEvent) => void) => () => void;
 
     // Archive continuity-check scheduled scan (MYT-234)
     archiveScan: (sceneText: string, scenePath: string) => Promise<{ suggestions: unknown[]; inconsistenciesFound: number; wikiLinksFound: number }>;

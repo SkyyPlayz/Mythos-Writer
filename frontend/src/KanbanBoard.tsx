@@ -55,10 +55,12 @@ const DEFAULT_COLUMN_NAMES = ['Idea', 'Drafted', 'Written', 'Cut'];
 interface Props {
   boardPath: string;
   storyTitle: string;
+  scenes?: { id: string; title: string; path: string }[];
   onBoardPathChange?: (path: string) => void;
+  onOpenNote?: (notePath: string) => void;
 }
 
-export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange }: Props) {
+export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, onOpenNote }: Props) {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragCard, setDragCard] = useState<{ colIdx: number; cardIdx: number } | null>(null);
@@ -299,7 +301,7 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange }
                   data-testid={`kanban-card-${card.notePath}`}
                   aria-label={`Card: ${card.notePath}`}
                 >
-                  <span className="kanban-card-link">[[{card.notePath}]]</span>
+                  <span className="kanban-card-link" onClick={() => onOpenNote?.(card.notePath)}>[[{card.notePath}]]</span>
                   <button
                     className="kanban-card-remove"
                     onClick={() => removeCard(colIdx, cardIdx)}

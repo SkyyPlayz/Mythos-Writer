@@ -679,7 +679,7 @@ export default function DesktopShell() {
               key={selectedStory.id}
               boardPath={`${selectedStory.path}/kanban.md`}
               storyTitle={selectedStory.title}
-              onOpenNote={(notePath) => {
+              onOpenNote={(notePath: string) => {
                 handleOpenSceneByPath(notePath);
                 setView('editor');
               }}

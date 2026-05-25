@@ -22,6 +22,9 @@ interface Message {
 interface Props {
   scene: Scene | null;
   enabled?: boolean;
+  scanIntervalSeconds?: number;
+  isPageFocused?: boolean;
+  onJumpToText?: (text: string) => void;
 }
 
 export default function WritingAssistantPanel({ scene, enabled = true }: Props) {
