@@ -5,7 +5,7 @@
  * Each describe block renders the component in isolation and asserts axe passes.
  */
 import { render, fireEvent } from '@testing-library/react';
-import { axe as runAxe, configureAxe } from 'vitest-axe';
+import { configureAxe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 import { expect, describe, it, beforeEach, vi } from 'vitest';
 
