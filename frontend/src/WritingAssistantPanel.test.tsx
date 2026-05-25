@@ -1,14 +1,17 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import WritingAssistantPanel from './WritingAssistantPanel';
 
 const mockAgentWritingAssistant = vi.fn();
 const mockOnWritingAssistantChunk = vi.fn(() => vi.fn()); // returns unsub fn
+const mockWritingScan = vi.fn();
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mockWritingScan.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
   (window as unknown as { api: unknown }).api = {
     agentWritingAssistant: mockAgentWritingAssistant,
     onWritingAssistantChunk: mockOnWritingAssistantChunk,
+    writingScan: mockWritingScan,
   };
 });
 
@@ -134,5 +137,131 @@ describe('WritingAssistantPanel', () => {
 
     await waitFor(() => screen.getByLabelText(/writing assistant response/i));
     expect(mockWriteVault).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: 'auth failure (bad API key)',
+      message: 'Authentication error — check your API key in Settings.',
+    },
+    {
+      label: 'rate limit exceeded',
+      message: 'Rate limit reached — try again shortly.',
+    },
+    {
+      label: 'model not found / invalid request',
+      message: 'Invalid request — check the model and input parameters.',
+    },
+    {
+      label: 'network failure',
+      message: 'Network error — check your connection and try again.',
+    },
+  ])('shows user-friendly error for provider rejection: $label', async ({ message }) => {
+    mockAgentWritingAssistant.mockRejectedValueOnce(new Error(message));
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'test prompt' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(message);
+    });
+    expect(screen.queryByLabelText(/writing assistant response/i)).not.toBeInTheDocument();
+  });
+});
+
+const mockScene = {
+  id: 's1',
+  title: 'The Heist',
+  blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked silently.', updatedAt: '' }],
+  draftState: 'in-progress' as const,
+  order: 0,
+  path: '/stories/ch1/scene1.md',
+  createdAt: '',
+  updatedAt: '',
+};
+
+describe('WritingAssistantPanel — heartbeat scheduler', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('calls writingScan at the configured interval and shows tips', async () => {
+    mockWritingScan.mockResolvedValue({
+      tips: ['Use shorter sentences.', 'Add sensory detail.'],
+      scannedAt: new Date().toISOString(),
+    });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    expect(screen.queryByLabelText(/writing tips/i)).not.toBeInTheDocument();
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+
+    expect(screen.getByLabelText(/writing tips/i)).toBeInTheDocument();
+    expect(screen.getByText('Use shorter sentences.')).toBeInTheDocument();
+    expect(screen.getByText('Add sensory detail.')).toBeInTheDocument();
+  });
+
+  it('calls writingScan with scene prose and path', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['Tip.'], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+
+    expect(mockWritingScan).toHaveBeenCalledWith(
+      mockScene.id,
+      mockScene.blocks[0].content,
+      mockScene.path,
+    );
+  });
+
+  it('does not call writingScan when isActive is false', async () => {
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={false} />);
+
+    await act(() => { vi.advanceTimersByTime(30_000); });
+
+    expect(mockWritingScan).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/writing tips/i)).not.toBeInTheDocument();
+  });
+
+  it('does not call writingScan when enabled is false', async () => {
+    render(<WritingAssistantPanel scene={mockScene} enabled={false} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(() => { vi.advanceTimersByTime(30_000); });
+
+    expect(mockWritingScan).not.toHaveBeenCalled();
+  });
+
+  it('does not show tips section when scan returns empty tips', async () => {
+    mockWritingScan.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+
+    expect(screen.queryByLabelText(/writing tips/i)).not.toBeInTheDocument();
+  });
+
+  it('updates tips after a second scan tick', async () => {
+    mockWritingScan
+      .mockResolvedValueOnce({ tips: ['First tip.'], scannedAt: new Date().toISOString() })
+      .mockResolvedValueOnce({ tips: ['Second tip.'], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(screen.getByText('First tip.')).toBeInTheDocument();
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(screen.getByText('Second tip.')).toBeInTheDocument();
+    expect(screen.queryByText('First tip.')).not.toBeInTheDocument();
   });
 });

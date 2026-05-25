@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import { useWritingScheduler } from './hooks/useWritingScheduler';
 
 interface WritingAssistantSuggestion {
   id: string;
@@ -22,15 +23,29 @@ interface Message {
 interface Props {
   scene: Scene | null;
   enabled?: boolean;
+  scanIntervalSeconds?: number;
+  isActive?: boolean;
 }
 
-export default function WritingAssistantPanel({ scene, enabled = true }: Props) {
+export default function WritingAssistantPanel({
+  scene,
+  enabled = true,
+  scanIntervalSeconds = 60,
+  isActive = true,
+}: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const { announce, liveText } = useLiveAnnounce();
+
+  const { result: scheduledResult } = useWritingScheduler({
+    scene,
+    enabled,
+    scanIntervalSeconds,
+    isActive,
+  });
 
   useEffect(() => {
     return () => {
@@ -147,6 +162,17 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
             : <><strong>Writing Assistant</strong> — no scene selected, asking freely.</>}
         </p>
       </div>
+
+      {scheduledResult && scheduledResult.tips.length > 0 && (
+        <div className="wa-scheduled-tips" aria-label="Writing tips">
+          <p className="wa-tips-heading">Writing tips</p>
+          <ul className="wa-tips-list">
+            {scheduledResult.tips.map((tip, i) => (
+              <li key={i} className="wa-tip-item">{tip}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="writing-assistant-messages">
         {messages.map((msg, i) => (
