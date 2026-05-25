@@ -3,7 +3,7 @@ import BrainstormPage from './BrainstormPage';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; error: string }) => void;
+type ErrorHandler = (data: { streamId: string; category?: string; message?: string; error?: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -55,7 +55,7 @@ async function simulateStream(tokens: string[], error?: string) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
     if (error) {
-      errorCb?.({ streamId: 'test-stream-1', error });
+      errorCb?.({ streamId: 'test-stream-1', message: error });
     } else {
       endCb?.({ streamId: 'test-stream-1' });
     }
@@ -205,6 +205,7 @@ describe('BrainstormPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('mid-stream failure'),
     );
+    expect(screen.queryByRole('button', { name: /cancel streaming/i })).not.toBeInTheDocument();
   });
 
   it('shows Cancel button while streaming and hides after completion', async () => {
@@ -281,7 +282,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     // Fire error immediately — no tokens precede it.
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: 'Invalid API key — check your API key in Settings.' });
+      errorCb?.({ streamId: 'test-stream-1', category: 'auth', message: 'Invalid API key — check your API key in Settings.' });
     });
 
     await waitFor(() =>
@@ -304,7 +305,8 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Invalid API key — check your API key in Settings.',
+        category: 'auth',
+        message: 'Invalid API key — check your API key in Settings.',
       });
     });
 
@@ -324,7 +326,8 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Rate limit reached — too many requests. Try again shortly.',
+        category: 'rate_limited',
+        message: 'Rate limit reached — too many requests. Try again shortly.',
       });
     });
 
@@ -344,7 +347,8 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Model unavailable — the selected model may not be accessible on your account.',
+        category: 'model_unavailable',
+        message: 'Model unavailable — the selected model may not be accessible on your account.',
       });
     });
 
@@ -362,7 +366,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: '' });
+      errorCb?.({ streamId: 'test-stream-1', message: '' });
     });
 
     await waitFor(() =>
@@ -378,7 +382,11 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: 'Rate limit reached — too many requests. Try again shortly.' });
+      errorCb?.({
+        streamId: 'test-stream-1',
+        category: 'rate_limited',
+        message: 'Rate limit reached — too many requests. Try again shortly.',
+      });
     });
 
     await waitFor(() =>
@@ -553,3 +561,22 @@ describe('Mic button', () => {
     );
   });
 });
+  it('shows an error when streamStart returns a structured start failure', async () => {
+    mockStreamStart.mockResolvedValueOnce({
+      error: 'START_FAILED',
+      category: 'auth',
+      message: 'Authentication error — check your API key in Settings.',
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Authentication error — check your API key in Settings.'),
+    );
+    expect(screen.queryByRole('button', { name: /cancel streaming/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/▍/)).not.toBeInTheDocument();
+  });

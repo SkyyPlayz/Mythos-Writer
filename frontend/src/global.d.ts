@@ -196,12 +196,15 @@ interface Window {
       system?: string;
       model?: string;
       maxTokens?: number;
-    }) => Promise<{ streamId: string }>;
+    }) => Promise<
+      | { streamId: string }
+      | { error: string; category?: string; message?: string }
+    >;
     streamCancel: (streamId: string) => Promise<{ cancelled: boolean }>;
     streamAck: (streamId: string, count: number) => void;
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
-    onStreamError: (cb: (data: { streamId: string; error: string }) => void) => () => void;
+    onStreamError: (cb: (data: { streamId: string; category?: string; message?: string; error?: string }) => void) => () => void;
 
     // STT (MYT-156)
     sttStart?: () => void;

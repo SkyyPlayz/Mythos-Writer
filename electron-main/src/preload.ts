@@ -135,8 +135,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('stream:end', handler);
     return () => ipcRenderer.removeListener('stream:end', handler);
   },
-  onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => {
-    const handler = (_: unknown, data: { streamId: string; category: string; message: string }) => cb(data);
+  onStreamError: (cb: (data: { streamId: string; category?: string; message?: string; error?: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string; category?: string; message?: string; error?: string }) => cb(data);
     ipcRenderer.on('stream:error', handler);
     return () => ipcRenderer.removeListener('stream:error', handler);
   },

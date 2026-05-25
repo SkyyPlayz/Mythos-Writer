@@ -32,14 +32,17 @@ export const MODEL_ALLOWLIST = new Set([
 export const STREAM_ERRORS = {
   TOO_MANY_STREAMS: 'TOO_MANY_STREAMS',
   INVALID_PAYLOAD: 'INVALID_PAYLOAD',
+  START_FAILED: 'START_FAILED',
 } as const;
 
 // Typed error categories sent over IPC. These are safe for the renderer —
 // no URLs, trace IDs, retry counts, or other main-process environment details.
 export const STREAM_ERROR_CATEGORIES = {
+  CONFIGURATION: 'configuration',
   RATE_LIMITED: 'rate_limited',
   AUTH: 'auth',
   NETWORK: 'network',
+  MODEL_UNAVAILABLE: 'model_unavailable',
   INVALID_REQUEST: 'invalid_request',
   UNKNOWN: 'unknown',
 } as const;
@@ -53,7 +56,7 @@ export function categorizeStreamError(err: unknown): StreamErrorCategory {
   if (status !== undefined) {
     if (status === 429) return STREAM_ERROR_CATEGORIES.RATE_LIMITED;
     if (status === 401 || status === 403) return STREAM_ERROR_CATEGORIES.AUTH;
-    if (status === 404) return STREAM_ERROR_CATEGORIES.INVALID_REQUEST;
+    if (status === 404) return STREAM_ERROR_CATEGORIES.MODEL_UNAVAILABLE;
     // 5xx and other HTTP errors are network-level
     if (status >= 500 || (status >= 400 && status !== 401 && status !== 403 && status !== 404 && status !== 429)) {
       return STREAM_ERROR_CATEGORIES.NETWORK;
@@ -64,7 +67,13 @@ export function categorizeStreamError(err: unknown): StreamErrorCategory {
   if (name === 'AbortError') return STREAM_ERROR_CATEGORIES.NETWORK;
   if (name === 'TypeError' || name === 'SyntaxError') return STREAM_ERROR_CATEGORIES.INVALID_REQUEST;
   const msg = (err as Error)?.message?.toLowerCase() ?? '';
+  if (msg.includes('not set') || msg.includes('missing') || msg.includes('configuration') || msg.includes('config')) {
+    return STREAM_ERROR_CATEGORIES.CONFIGURATION;
+  }
   if (msg.includes('rate') || msg.includes('limit') || msg.includes('429')) return STREAM_ERROR_CATEGORIES.RATE_LIMITED;
+  if (msg.includes('model') && (msg.includes('not found') || msg.includes('unavailable') || msg.includes('access'))) {
+    return STREAM_ERROR_CATEGORIES.MODEL_UNAVAILABLE;
+  }
   if (msg.includes('auth') || msg.includes('key') || msg.includes('permission')) return STREAM_ERROR_CATEGORIES.AUTH;
   if (msg.includes('network') || msg.includes('connect') || msg.includes('timeout') || msg.includes('dns')) return STREAM_ERROR_CATEGORIES.NETWORK;
   return STREAM_ERROR_CATEGORIES.UNKNOWN;
@@ -74,12 +83,16 @@ export function categorizeStreamError(err: unknown): StreamErrorCategory {
 // Never includes raw SDK details (URLs, trace IDs, retry counts, etc.).
 export function streamErrorUserMessage(category: StreamErrorCategory): string {
   switch (category) {
+    case STREAM_ERROR_CATEGORIES.CONFIGURATION:
+      return 'Configuration error — check your AI provider settings and try again.';
     case STREAM_ERROR_CATEGORIES.RATE_LIMITED:
       return 'Rate limit reached — try again shortly.';
     case STREAM_ERROR_CATEGORIES.AUTH:
       return 'Authentication error — check your API key in Settings.';
     case STREAM_ERROR_CATEGORIES.NETWORK:
       return 'Network error — check your connection and try again.';
+    case STREAM_ERROR_CATEGORIES.MODEL_UNAVAILABLE:
+      return 'Model unavailable — the selected model may not be accessible on your account.';
     case STREAM_ERROR_CATEGORIES.INVALID_REQUEST:
       return 'Invalid request — check the model and input parameters.';
     case STREAM_ERROR_CATEGORIES.UNKNOWN:
@@ -101,6 +114,28 @@ export interface StreamStartPayload {
   model?: string;
   maxTokens?: number;
 }
+
+export interface StreamStartSuccessPayload {
+  streamId: string;
+}
+
+export interface StreamStartErrorPayload {
+  error: string;
+  category?: StreamErrorCategory;
+  message?: string;
+}
+
+export type StreamStartResponse = StreamStartSuccessPayload | StreamStartErrorPayload;
+
+type StreamChunk = {
+  type: string;
+  delta?: {
+    type?: string;
+    text?: string;
+  };
+};
+
+const STREAM_START_PREFLIGHT_TIMEOUT_MS = 0;
 
 interface StreamEntry {
   controller: AbortController;
@@ -210,44 +245,87 @@ export class StreamRegistry {
 
 export const defaultRegistry = new StreamRegistry();
 
-async function runStream(
-  sender: WebContents,
-  streamId: string,
+function isTextDeltaChunk(chunk: StreamChunk): chunk is StreamChunk & { delta: { type: 'text_delta'; text: string } } {
+  return chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta' && typeof chunk.delta.text === 'string';
+}
+
+function createSdkStreamIterator(
   payload: StreamStartPayload,
   controller: AbortController,
   getApiKey: () => string,
+): AsyncIterator<StreamChunk> {
+  const apiKey = getApiKey();
+  const client = new Anthropic({ apiKey });
+  const sdkStream = client.messages.stream(
+    {
+      model: payload.model ?? 'claude-haiku-4-5-20251001',
+      max_tokens: payload.maxTokens ?? 1024,
+      ...(payload.system !== undefined ? { system: payload.system } : {}),
+      messages: payload.messages,
+    },
+    { signal: controller.signal },
+  );
+
+  return sdkStream[Symbol.asyncIterator]() as AsyncIterator<StreamChunk>;
+}
+
+async function preflightStreamStart(
+  firstChunkPromise: Promise<IteratorResult<StreamChunk>>,
+): Promise<
+  | { kind: 'ready'; firstChunk: IteratorResult<StreamChunk> }
+  | { kind: 'pending' }
+  | { kind: 'error'; error: unknown }
+> {
+  return Promise.race([
+    firstChunkPromise
+      .then((firstChunk) => ({ kind: 'ready', firstChunk }) as const)
+      .catch((error: unknown) => ({ kind: 'error', error }) as const),
+    new Promise<{ kind: 'pending' }>((resolve) => {
+      setTimeout(() => resolve({ kind: 'pending' }), STREAM_START_PREFLIGHT_TIMEOUT_MS);
+    }),
+  ]);
+}
+
+function buildStreamStartError(err: unknown): StreamStartErrorPayload {
+  const category = categorizeStreamError(err);
+  return {
+    error: STREAM_ERRORS.START_FAILED,
+    category,
+    message: streamErrorUserMessage(category),
+  };
+}
+
+async function runStream(
+  sender: WebContents,
+  streamId: string,
+  controller: AbortController,
   reg: StreamRegistry,
+  iterator: AsyncIterator<StreamChunk>,
+  firstChunk: Promise<IteratorResult<StreamChunk>> | IteratorResult<StreamChunk>,
 ): Promise<void> {
   try {
-    const apiKey = getApiKey();
-    const client = new Anthropic({ apiKey });
-    const sdkStream = client.messages.stream(
-      {
-        model: payload.model ?? 'claude-haiku-4-5-20251001',
-        max_tokens: payload.maxTokens ?? 1024,
-        ...(payload.system !== undefined ? { system: payload.system } : {}),
-        messages: payload.messages,
-      },
-      { signal: controller.signal },
-    );
+    let nextChunk = await firstChunk;
 
-    for await (const chunk of sdkStream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+    while (!nextChunk.done) {
+      const chunk = nextChunk.value;
+      if (isTextDeltaChunk(chunk)) {
         const entry = reg.get(streamId);
-        if (!entry) continue;
+        if (entry) {
+          if (entry.pendingTokens >= MAX_PENDING_TOKENS) {
+            await reg.waitForDrain(streamId);
+            // Exit cleanly on cancel or destroyed renderer — AbortError follows from the SDK on next tick.
+            if (controller.signal.aborted || sender.isDestroyed()) break;
+          }
 
-        if (entry.pendingTokens >= MAX_PENDING_TOKENS) {
-          await reg.waitForDrain(streamId);
-          // Exit cleanly on cancel or destroyed renderer — AbortError follows from the SDK on next tick.
-          if (controller.signal.aborted || sender.isDestroyed()) break;
+          const current = reg.get(streamId);
+          if (current && !sender.isDestroyed()) {
+            current.pendingTokens++;
+            sender.send(STREAM_CHANNELS.STREAM_TOKEN, { streamId, token: chunk.delta.text });
+          }
         }
-
-        const current = reg.get(streamId);
-        if (!current || sender.isDestroyed()) continue;
-
-        current.pendingTokens++;
-        sender.send(STREAM_CHANNELS.STREAM_TOKEN, { streamId, token: chunk.delta.text });
       }
+
+      nextChunk = await iterator.next();
     }
 
     if (!sender.isDestroyed()) {
@@ -278,7 +356,7 @@ export function registerStreamingHandlers(
   getApiKey: () => string,
   reg: StreamRegistry = defaultRegistry,
 ): void {
-  ipcMain.handle(STREAM_CHANNELS.STREAM_START, async (event, payload: StreamStartPayload) => {
+  ipcMain.handle(STREAM_CHANNELS.STREAM_START, async (event, payload: StreamStartPayload): Promise<StreamStartResponse> => {
     const senderId = event.sender.id;
     if (reg.countBySender(senderId) >= MAX_CONCURRENT_PER_SENDER) {
       return { error: STREAM_ERRORS.TOO_MANY_STREAMS };
@@ -305,7 +383,31 @@ export function registerStreamingHandlers(
     const controller = new AbortController();
     reg.start(streamId, controller, event.sender);
 
-    void runStream(event.sender, streamId, payload, controller, getApiKey, reg);
+    let iterator: AsyncIterator<StreamChunk>;
+    let firstChunkPromise: Promise<IteratorResult<StreamChunk>>;
+    try {
+      iterator = createSdkStreamIterator(payload, controller, getApiKey);
+      firstChunkPromise = iterator.next();
+      const preflight = await preflightStreamStart(firstChunkPromise);
+      if (preflight.kind === 'error') {
+        console.error(`[stream:start:error] streamId=${streamId} error=${(preflight.error as Error)?.message ?? 'Unknown'}`);
+        reg.remove(streamId);
+        return buildStreamStartError(preflight.error);
+      }
+
+      void runStream(
+        event.sender,
+        streamId,
+        controller,
+        reg,
+        iterator,
+        preflight.kind === 'ready' ? preflight.firstChunk : firstChunkPromise,
+      );
+    } catch (err: unknown) {
+      console.error(`[stream:start:error] streamId=${streamId} error=${(err as Error)?.message ?? 'Unknown'}`);
+      reg.remove(streamId);
+      return buildStreamStartError(err);
+    }
 
     return { streamId };
   });

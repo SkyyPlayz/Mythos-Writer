@@ -93,6 +93,10 @@ interface Props {
   enabled?: boolean;
 }
 
+function getStreamFailureMessage(error?: string, message?: string): string {
+  return message || error || 'AI unavailable — check your API key in settings.';
+}
+
 export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -352,11 +356,11 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       setLoading(false);
     });
 
-    const unsubError = window.api.onStreamError(({ streamId: sid, error: err }) => {
+    const unsubError = window.api.onStreamError(({ streamId: sid, error, message }) => {
       if (sid !== streamIdRef.current) return;
       cleanupStreamRef.current?.();
       setMessages((prev) => prev.slice(0, -1));
-      const msg = err || 'AI unavailable — check your API key in settings.';
+      const msg = getStreamFailureMessage(error, message);
       setError(msg);
       announce(`Error: ${msg}`);
       setLoading(false);
@@ -372,11 +376,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     };
 
     try {
-      const { streamId: sid } = await window.api.streamStart({
+      const result = await window.api.streamStart({
         messages: apiMessages,
         system: BRAINSTORM_SYSTEM_PROMPT,
       });
-      streamIdRef.current = sid;
+      if ('error' in result) {
+        throw new Error(getStreamFailureMessage(result.error, result.message));
+      }
+      streamIdRef.current = result.streamId;
     } catch (err) {
       cleanupStreamRef.current?.();
       setMessages((prev) => prev.slice(0, -1));

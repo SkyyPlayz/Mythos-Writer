@@ -65,7 +65,10 @@ function getHandlers(reg?: StreamRegistry) {
   const cancelEntry = [...handleCalls].reverse().find(([ch]) => ch === STREAM_CHANNELS.STREAM_CANCEL);
   const ackEntry = [...onCalls].reverse().find(([ch]) => ch === STREAM_CHANNELS.STREAM_ACK);
 
-  type StartHandler = (event: IpcMainInvokeEvent, payload: StreamStartPayload) => Promise<{ streamId: string }>;
+  type StartHandler = (
+    event: IpcMainInvokeEvent,
+    payload: StreamStartPayload,
+  ) => Promise<{ streamId: string; error?: string; category?: string; message?: string }>;
   type CancelHandler = (event: IpcMainInvokeEvent, payload: { streamId: string }) => Promise<{ cancelled: boolean }>;
   type AckHandler = (event: IpcMainEvent, payload: { streamId: string; count: number }) => void;
 
@@ -243,11 +246,12 @@ describe('STREAM_START', () => {
     expect(tokenCalls[0][1]).toMatchObject({ token: 'x' });
   });
 
-  it('sends STREAM_ERROR on SDK failure', async () => {
+  it('sends STREAM_ERROR when the SDK fails after streaming has started', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: {
         stream: () => {
           return (async function* () {
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'partial' } };
             throw new Error('API failure');
           })();
         },
@@ -256,11 +260,17 @@ describe('STREAM_START', () => {
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
+    expect(result).toMatchObject({ streamId: expect.any(String) });
+    const { streamId } = result as { streamId: string };
 
     await new Promise((r) => setTimeout(r, 0));
+
+    const tokenCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_TOKEN);
+    expect(tokenCalls).toHaveLength(1);
+    expect(tokenCalls[0][1]).toEqual({ streamId, token: 'partial' });
 
     const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
     expect(errorCalls).toHaveLength(1);
@@ -279,6 +289,7 @@ describe('STREAM_START', () => {
       messages: {
         stream: () => {
           return (async function* () {
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'partial' } };
             const e = new Error('The operation was aborted');
             e.name = 'AbortError';
             throw e;
@@ -748,7 +759,7 @@ describe('categorizeStreamError', () => {
   });
   it('maps 404 to model-unavailable message', () => {
     expect(categorizeStreamError(makeStatusError(404, 'Not Found'))).toBe(
-      STREAM_ERROR_CATEGORIES.INVALID_REQUEST,
+      STREAM_ERROR_CATEGORIES.MODEL_UNAVAILABLE,
     );
   });
   it('passes through raw message for unrecognised status (e.g. 500)', () => {
@@ -869,6 +880,16 @@ describe('categorizeStreamError', () => {
       'Invalid request — check the model and input parameters.',
     );
   });
+  it('returns configuration user message', () => {
+    expect(streamErrorUserMessage(STREAM_ERROR_CATEGORIES.CONFIGURATION)).toBe(
+      'Configuration error — check your AI provider settings and try again.',
+    );
+  });
+  it('returns model-unavailable user message', () => {
+    expect(streamErrorUserMessage(STREAM_ERROR_CATEGORIES.MODEL_UNAVAILABLE)).toBe(
+      'Model unavailable — the selected model may not be accessible on your account.',
+    );
+  });
   it('returns unknown user message', () => {
     expect(streamErrorUserMessage(STREAM_ERROR_CATEGORIES.UNKNOWN)).toBe(
       'An unexpected error occurred — check the logs for details.',
@@ -899,94 +920,78 @@ describe('Provider rejection before first content chunk', () => {
     })();
   }
 
-  it('sends categorized auth error on 401 rejection before first token', async () => {
+  it('returns categorized auth error on 401 rejection before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(401, 'Unauthorized')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    expect(result).toEqual({
+      error: STREAM_ERRORS.START_FAILED,
       category: STREAM_ERROR_CATEGORIES.AUTH,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.AUTH),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
     expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
-  it('sends categorized rate-limit error on 429 rejection before first token', async () => {
+  it('returns categorized rate-limit error on 429 rejection before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(429, 'Rate limit exceeded')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    expect(result).toEqual({
+      error: STREAM_ERRORS.START_FAILED,
       category: STREAM_ERROR_CATEGORIES.RATE_LIMITED,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.RATE_LIMITED),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
     expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
-  it('sends user-friendly model-unavailable error on 404 rejection before first token', async () => {
+  it('returns model-unavailable error on 404 rejection before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(404, 'Model not found')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
-      category: STREAM_ERROR_CATEGORIES.INVALID_REQUEST,
-      message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.INVALID_REQUEST),
+    expect(result).toEqual({
+      error: STREAM_ERRORS.START_FAILED,
+      category: STREAM_ERROR_CATEGORIES.MODEL_UNAVAILABLE,
+      message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.MODEL_UNAVAILABLE),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
   });
 
-  it('sends permission-denied message on 403 rejection before first token', async () => {
+  it('returns permission-denied message on 403 rejection before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(403, 'Permission denied')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    expect(result).toEqual({
+      error: STREAM_ERRORS.START_FAILED,
       category: STREAM_ERROR_CATEGORIES.AUTH,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.AUTH),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
   });
 
   it('cleans up registry entry after pre-stream rejection', async () => {
@@ -995,13 +1000,11 @@ describe('Provider rejection before first content chunk', () => {
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
-    const { streamId } = await startHandler(makeEvent(makeSender()), {
+    const result = await startHandler(makeEvent(makeSender()), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(reg.get(streamId)).toBeUndefined();
+    expect(result).toMatchObject({ error: STREAM_ERRORS.START_FAILED });
+    expect(reg.size).toBe(0);
   });
 
   it('sends no STREAM_TOKEN events when rejection fires before any content', async () => {
@@ -1013,9 +1016,27 @@ describe('Provider rejection before first content chunk', () => {
     const sender = makeSender();
     await startHandler(makeEvent(sender), { messages: [{ role: 'user', content: 'Hi' }] });
 
-    await new Promise((r) => setTimeout(r, 0));
-
     expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_TOKEN)).toHaveLength(0);
+  });
+
+  it('returns configuration error when API key lookup fails before stream start', async () => {
+    vi.clearAllMocks();
+    reg = new StreamRegistry();
+    registerStreamingHandlers(() => {
+      throw new Error('ANTHROPIC_API_KEY is not set.');
+    }, reg);
+
+    const { startHandler } = getHandlers(reg);
+    const result = await startHandler(makeEvent(makeSender()), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    expect(result).toEqual({
+      error: STREAM_ERRORS.START_FAILED,
+      category: STREAM_ERROR_CATEGORIES.CONFIGURATION,
+      message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.CONFIGURATION),
+    });
+    expect(reg.size).toBe(0);
   });
 });
 
