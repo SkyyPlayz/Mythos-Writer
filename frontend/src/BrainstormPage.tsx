@@ -43,8 +43,9 @@ const DRAFT_KEY = 'brainstorm:draft';
 const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
 
 interface BrainstormDraft {
-  v: 1;
+  v: 2;
   savedAt: string;
+  prompt: string;
   messages: Message[];
   facts: DetectedFact[];
 }
@@ -105,6 +106,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
+  const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
 
   const streamIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef<string>('');
@@ -118,24 +120,36 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
-        const draft: BrainstormDraft = JSON.parse(raw);
-        if (draft.v === 1 && Array.isArray(draft.messages) && draft.messages.length > 0) {
-          setMessages(draft.messages.map((m) => ({ ...m, streaming: false })));
-          setFacts(draft.facts ?? []);
+        const draft: Partial<BrainstormDraft> & { v?: number } = JSON.parse(raw);
+        const draftMessages = Array.isArray(draft.messages)
+          ? draft.messages.map((m) => ({ ...m, streaming: false }))
+          : [];
+        const draftFacts = Array.isArray(draft.facts) ? draft.facts : [];
+        const draftPrompt = typeof draft.prompt === 'string' ? draft.prompt : '';
+
+        if ((draft.v === 1 || draft.v === 2) && (draftMessages.length > 0 || draftFacts.length > 0 || draftPrompt.trim())) {
+          setMessages(draftMessages);
+          setFacts(draftFacts);
+          setPrompt(draftPrompt);
+          setShowRecoveryBanner(true);
         }
       }
     } catch { /* ignore malformed draft */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist draft whenever messages or facts change (completed messages only)
+  // Persist draft whenever prompt, messages, or facts change.
   useEffect(() => {
-    const completedMessages = messages.filter((m) => !m.streaming);
-    if (completedMessages.length === 0) return;
+    if (!prompt.trim() && messages.length === 0 && facts.length === 0) {
+      localStorage.removeItem(DRAFT_KEY);
+      setDraftSizeWarning(false);
+      return;
+    }
     const draft: BrainstormDraft = {
-      v: 1,
+      v: 2,
       savedAt: new Date().toISOString(),
-      messages: completedMessages,
+      prompt,
+      messages: messages.map((m) => ({ ...m, streaming: false })),
       facts,
     };
     const serialized = JSON.stringify(draft);
@@ -147,18 +161,18 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     try {
       localStorage.setItem(DRAFT_KEY, serialized);
     } catch { /* quota exceeded — silently skip */ }
-  }, [messages, facts]);
+  }, [prompt, messages, facts]);
 
   // Warn before window close when there is an active session
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (messages.length > 0) {
+      if (messages.length > 0 || facts.length > 0 || prompt.trim()) {
         e.preventDefault();
       }
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [messages.length]);
+  }, [messages.length, facts.length, prompt]);
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -208,9 +222,11 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     cleanupStreamRef.current?.();
     setMessages([]);
     setFacts([]);
+    setPrompt('');
     setError(null);
     setLoading(false);
     setDraftSizeWarning(false);
+    setShowRecoveryBanner(false);
     localStorage.removeItem(DRAFT_KEY);
   }, []);
 
@@ -583,6 +599,18 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
           </button>
         </div>
       </div>
+      {showRecoveryBanner && (
+        <div className="brainstorm-recovery-banner" role="status">
+          <span>Recovered your previous brainstorm draft from this browser.</span>
+          <button
+            className="brainstorm-recovery-dismiss-btn"
+            onClick={() => setShowRecoveryBanner(false)}
+            type="button"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {draftSizeWarning && (
         <div className="brainstorm-draft-warning" role="status">
           Session too large to auto-save — download to preserve your work.
