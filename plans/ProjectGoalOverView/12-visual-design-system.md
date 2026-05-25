@@ -7,8 +7,8 @@
 The board confirmed three points after reviewing the direction:
 
 - **Dark-only.** Liquid Glass Dark Neon is the **single app theme** — the previous light/system theme options are dropped. The WCAG **high-contrast** accessibility theme is retained (it composes with this theme; see [11-cross-cutting.md](11-cross-cutting.md#accessibility)).
-- **Timing: next milestone.** This is **not** an MVP-core feature. It is sequenced as the **immediate next milestone after the current core work lands** (see [10-releases-and-roadmap.md](10-releases-and-roadmap.md)). It does not block in-flight MVP work.
-- **Dedicated designer.** A **UX designer is being hired** to own the design-system spec; engineering implements.
+- **Timing: phased (foundation now, polish later).** The board approved starting the **foundation now** — the design-system spec and a dark-only **token layer** (CSS variables) that in-flight components adopt as they're built, avoiding a costly second restyle pass. The **full glass/neon visual polish** and the **Softness↔Contrast slider** are deferred to the **next milestone after current core work lands** (see [10-releases-and-roadmap.md](10-releases-and-roadmap.md)). Neither phase blocks in-flight MVP work.
+- **Dedicated designer.** A **UX designer** (already on the roster) owns the design-system spec; engineering implements.
 
 This document is the product-level direction. The full design brief lives in
 [`Ui-Disign-Goal`](Ui-Disign-Goal); annotated reference images live in
