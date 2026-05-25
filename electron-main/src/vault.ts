@@ -208,7 +208,7 @@ export function listVaultFiles(
 }
 
 export function deleteVaultFile(vaultRoot: string, filePath: string): { path: string; deleted: boolean } {
-  const fullPath = safePath(vaultRoot, filePath);
+  const fullPath = realSafePath(vaultRoot, filePath, true);
   const exists = fs.existsSync(fullPath);
   if (exists) fs.unlinkSync(fullPath);
   return { path: filePath, deleted: exists };
