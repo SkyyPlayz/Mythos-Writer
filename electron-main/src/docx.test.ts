@@ -1,0 +1,177 @@
+import { describe, it, expect } from 'vitest';
+import JSZip from 'jszip';
+import { buildDocx, type DocxInput } from './docx.js';
+
+// A DOCX file is a ZIP — we can inspect its internals.
+async function loadDocxZip(buf: Buffer): Promise<JSZip> {
+  return JSZip.loadAsync(buf);
+}
+
+describe('buildDocx', () => {
+  it('returns a non-empty Buffer', async () => {
+    const buf = await buildDocx({ title: 'Test', chapters: [] });
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(buf.length).toBeGreaterThan(0);
+  });
+
+  it('produces a valid ZIP (OOXML container)', async () => {
+    const buf = await buildDocx({ title: 'Test', chapters: [] });
+    const zip = await loadDocxZip(buf);
+    // Every valid .docx must contain [Content_Types].xml and word/document.xml
+    expect(zip.file('[Content_Types].xml')).not.toBeNull();
+    expect(zip.file('word/document.xml')).not.toBeNull();
+  });
+
+  it('empty manuscript: still produces a valid document', async () => {
+    const buf = await buildDocx({ title: 'Empty', chapters: [] });
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('Empty');
+  });
+
+  it('title appears in document.xml', async () => {
+    const buf = await buildDocx({ title: 'My Great Novel', chapters: [] });
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('My Great Novel');
+  });
+
+  it('author appears in document.xml', async () => {
+    const buf = await buildDocx({ title: 'T', author: 'Jane Doe', chapters: [] });
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('Jane Doe');
+  });
+
+  it('chapter title appears in document.xml', async () => {
+    const input: DocxInput = {
+      title: 'Novel',
+      chapters: [
+        { id: 'ch1', title: 'Chapter One', scenes: [] },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('Chapter One');
+  });
+
+  it('scene title appears in document.xml', async () => {
+    const input: DocxInput = {
+      title: 'Novel',
+      chapters: [
+        {
+          id: 'ch1',
+          title: 'Chapter One',
+          scenes: [{ id: 'sc1', title: 'The Arrival', prose: '' }],
+        },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('The Arrival');
+  });
+
+  it('prose text appears in document.xml', async () => {
+    const input: DocxInput = {
+      title: 'Novel',
+      chapters: [
+        {
+          id: 'ch1',
+          title: 'Ch1',
+          scenes: [{ id: 'sc1', title: 'Scene', prose: 'It was a dark and stormy night.' }],
+        },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('dark and stormy night');
+  });
+
+  it('multi-chapter + multi-scene all appear', async () => {
+    const input: DocxInput = {
+      title: 'Epic Tale',
+      author: 'Author Name',
+      chapters: [
+        {
+          id: 'ch1',
+          title: 'Chapter Alpha',
+          scenes: [
+            { id: 'sc1', title: 'Scene A1', prose: 'Prose alpha one.' },
+            { id: 'sc2', title: 'Scene A2', prose: 'Prose alpha two.' },
+          ],
+        },
+        {
+          id: 'ch2',
+          title: 'Chapter Beta',
+          scenes: [
+            { id: 'sc3', title: 'Scene B1', prose: 'Prose beta one.' },
+          ],
+        },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+
+    expect(docXml).toContain('Chapter Alpha');
+    expect(docXml).toContain('Chapter Beta');
+    expect(docXml).toContain('Scene A1');
+    expect(docXml).toContain('Scene B1');
+    expect(docXml).toContain('Prose alpha one');
+    expect(docXml).toContain('Prose beta one');
+  });
+
+  it('large manuscript (50 chapters × 10 scenes each) completes without error', async () => {
+    const chapters = Array.from({ length: 50 }, (_, ci) => ({
+      id: `ch${ci}`,
+      title: `Chapter ${ci + 1}`,
+      scenes: Array.from({ length: 10 }, (_, si) => ({
+        id: `sc${ci}-${si}`,
+        title: `Scene ${si + 1}`,
+        prose: `Lorem ipsum dolor sit amet. `.repeat(20),
+      })),
+    }));
+    const buf = await buildDocx({ title: 'Large Novel', chapters });
+    expect(buf.length).toBeGreaterThan(10_000);
+  });
+
+  it('bold inline formatting preserved in runs', async () => {
+    const input: DocxInput = {
+      title: 'T',
+      chapters: [
+        {
+          id: 'ch1',
+          title: 'Ch',
+          scenes: [{ id: 'sc1', title: 'S', prose: 'He was **very** afraid.' }],
+        },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    // The word "very" should appear and bold tag w:b should be present
+    expect(docXml).toContain('very');
+    expect(docXml).toContain('<w:b');
+  });
+
+  it('italic inline formatting preserved in runs', async () => {
+    const input: DocxInput = {
+      title: 'T',
+      chapters: [
+        {
+          id: 'ch1',
+          title: 'Ch',
+          scenes: [{ id: 'sc1', title: 'S', prose: 'She whispered _softly_.' }],
+        },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('softly');
+    expect(docXml).toContain('<w:i');
+  });
+});
