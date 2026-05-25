@@ -73,7 +73,9 @@ interface AppSettings {
     brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
-  theme: 'light' | 'dark' | 'system';
+  /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
+   *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
+  theme: 'dark' | 'high-contrast';
   snapshots?: {
     maxPerScene: number;
     maxAgeDays: number;

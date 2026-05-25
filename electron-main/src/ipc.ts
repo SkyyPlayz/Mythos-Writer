@@ -854,7 +854,7 @@ export interface AppSettings {
     brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
-  theme: 'light' | 'dark';
+  theme: 'dark' | 'high-contrast';
   snapshots?: {
     maxPerScene: number;
     maxAgeDays: number;

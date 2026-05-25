@@ -33,7 +33,23 @@ describe('SettingsPanel', () => {
     expect(screen.getByText(/writing assistant/i)).toBeInTheDocument();
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
     expect(screen.getByText(/archive agent/i)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /^theme$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
+  });
+
+  it('offers dark and high-contrast appearance choices and applies on change', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const dark = screen.getByRole('radio', { name: /dark \(liquid glass\)/i }) as HTMLInputElement;
+    const highContrast = screen.getByRole('radio', { name: /high contrast/i }) as HTMLInputElement;
+    expect(dark.checked).toBe(true);
+
+    fireEvent.click(highContrast);
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ theme: 'high-contrast' }));
   });
 
   it('loads settings from IPC on mount', async () => {
