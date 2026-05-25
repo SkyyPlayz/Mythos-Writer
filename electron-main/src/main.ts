@@ -292,15 +292,16 @@ function ensureNotesVaultDir() {
 // Notify renderer when vault changes so it can refresh state
 function notifyVaultChanged(filePath: string) {
   if (mainWindow) {
-    // Convert absolute chokidar path to vault-relative path (MYT-362 / L-2)
+    // MYT-445/MYT-362 L-2: convert chokidar's absolute path to a vault-relative
+    // path before sending to the renderer, and drop the event if the resolved
+    // path escapes the vault (defense in depth against symlink-based leaks).
     const vaultRoot = getVaultRoot();
     let relativePath: string;
     try {
       relativePath = path.relative(vaultRoot, filePath);
-      // Defense in depth: verify the path doesn't escape via symlink
+      if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return;
       safePath(vaultRoot, relativePath);
     } catch {
-      // Path escapes — drop the event
       return;
     }
     mainWindow.webContents.send('vault:file-changed', { path: relativePath });

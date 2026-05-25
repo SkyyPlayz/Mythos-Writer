@@ -677,3 +677,50 @@ describe('startVaultWatcher — symlink containment (MYT-362)', () => {
     expect(insideEvents.length).toBeGreaterThan(0);
   }, 10_000);
 });
+
+describe('startVaultWatcher — symlink containment (MYT-445 / MYT-362)', () => {
+  let vaultDir: string;
+  let outsideDir: string;
+
+  beforeEach(() => {
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-watcher-vault-'));
+    outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-watcher-outside-'));
+  });
+
+  afterEach(async () => {
+    await stopVaultWatcher();
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it('does not emit events for files under a symlinked directory inside the vault', async () => {
+    // Plant a symlink inside the vault pointing to an external directory.
+    fs.symlinkSync(outsideDir, path.join(vaultDir, 'external'));
+    // Seed a real file inside the vault so we can prove the watcher is otherwise alive.
+    const insideFile = path.join(vaultDir, 'inside.md');
+    fs.writeFileSync(insideFile, 'baseline');
+
+    const events: string[] = [];
+    await startVaultWatcher(vaultDir, (p) => events.push(p));
+
+    // Allow chokidar to complete its initial scan before mutating files.
+    await new Promise((r) => setTimeout(r, 400));
+
+    // Drop a file under the symlinked target (outside the vault).
+    fs.writeFileSync(path.join(outsideDir, 'leak.md'), 'secret');
+    // Modify the inside file as a positive-control signal.
+    fs.writeFileSync(insideFile, 'updated content');
+
+    // Wait past awaitWriteFinish (300ms) + slack for any straggling emissions.
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const realOutsideDir = fs.realpathSync.native(outsideDir);
+    const externalEvents = events.filter(
+      (p) => p.includes('leak.md') || p.startsWith(outsideDir) || p.startsWith(realOutsideDir),
+    );
+    expect(externalEvents).toEqual([]);
+
+    const insideEvents = events.filter((p) => p.endsWith('inside.md'));
+    expect(insideEvents.length).toBeGreaterThan(0);
+  }, 10_000);
+});

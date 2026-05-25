@@ -453,7 +453,7 @@ export default function DesktopShell() {
       if (m.layout) {
         setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
-      if (s) setAppSettings(s);
+      if (s) { setAppSettings(s); applyTheme(s.theme); }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
@@ -931,7 +931,7 @@ export default function DesktopShell() {
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
-          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme ?? 'system'); }}
+          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme); }}
         />
       )}
       {historyOpen && (

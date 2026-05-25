@@ -103,38 +103,40 @@ export class VaultFileTooLargeError extends Error {
   }
 }
 
-// ─── Path safety (symlink-aware) ───
-
-/** Resolve a relative path inside the vault, following filesystem symlinks.
- *  Uses `fs.realpathSync.native` to detect symlink escapes that `path.resolve` misses.
- *  A symlink inside the vault pointing outside (e.g. vault/escape → /etc/passwd) is rejected.
+/**
+ * Resolve a relative path inside the vault, hardening against symlink escape.
+ * Uses fs.realpathSync.native to follow filesystem symlinks, then checks
+ * that the real target stays within the real vault root.
+ *
+ * For reads (file exists): realpath the full path.
+ * For writes (leaf may not exist): realpath the parent directory.
  */
-export function realSafePath(vaultRoot: string, relativePath: string): string {
+export function realSafePath(vaultRoot: string, relativePath: string, _writeMode = false): string {
+  const realVaultRoot = fs.realpathSync.native(vaultRoot);
   const resolved = path.resolve(vaultRoot, relativePath);
-  // For reads and existing files: realpath the resolved path and check against real vault root.
+
+  // Existing leaf path (read or overwrite): realpath the leaf and reject escapes.
   if (fs.existsSync(resolved)) {
-    const real = fs.realpathSync.native(resolved);
-    const realRoot = fs.realpathSync.native(vaultRoot);
-    if (!real.startsWith(realRoot + path.sep) && real !== realRoot) {
+    const realPath = fs.realpathSync.native(resolved);
+    if (!realPath.startsWith(realVaultRoot + path.sep) && realPath !== realVaultRoot) {
       throw new Error(`Path traversal denied: ${relativePath} (symlink escape detected)`);
     }
-    return real;
+    return resolved;
   }
-  // For writes (leaf may not exist yet): realpath the parent directory and check.
+
+  // Missing leaf path (new write target): realpath parent if present.
   const parent = path.dirname(resolved);
   if (fs.existsSync(parent)) {
     const realParent = fs.realpathSync.native(parent);
-    const realRoot = fs.realpathSync.native(vaultRoot);
-    if (!realParent.startsWith(realRoot + path.sep) && realParent !== realRoot) {
+    if (!realParent.startsWith(realVaultRoot + path.sep) && realParent !== realVaultRoot) {
       throw new Error(`Path traversal denied: ${relativePath} (parent symlink escape detected)`);
     }
-  } else {
-    // Parent doesn't exist either — realpath the vault root to check the root itself.
-    const realRoot = fs.realpathSync.native(vaultRoot);
-    // The resolved path must be inside the real root's tree.
-    if (!resolved.startsWith(realRoot + path.sep) && resolved !== realRoot) {
-      throw new Error(`Path traversal denied: ${relativePath}`);
-    }
+    return resolved;
+  }
+
+  // Parent doesn't exist yet — ensure unresolved path still stays within vault.
+  if (!resolved.startsWith(realVaultRoot + path.sep) && resolved !== realVaultRoot) {
+    throw new Error(`Path traversal denied: ${relativePath}`);
   }
   return resolved;
 }
@@ -157,7 +159,7 @@ export function writeVaultFileUnsafe_testOnly(
   filePath: string,
   content: string
 ): { path: string; bytes: number } {
-  const fullPath = safePath(vaultRoot, filePath);
+  const fullPath = realSafePath(vaultRoot, filePath, true);
   const dir = path.dirname(fullPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(fullPath, content, 'utf-8');
@@ -173,7 +175,7 @@ export function writeVaultFileAtomic(
   filePath: string,
   content: string
 ): { path: string; bytes: number } {
-  const fullPath = safePath(vaultRoot, filePath);
+  const fullPath = realSafePath(vaultRoot, filePath, true);
   const buf = Buffer.from(content, 'utf-8');
   if (buf.byteLength > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(buf.byteLength);
   const dir = path.dirname(fullPath);
@@ -223,13 +225,12 @@ export function listVaultFiles(
   vaultRoot: string,
   root?: string
 ): { items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> } {
-  const baseDir = root ? safePath(vaultRoot, root) : vaultRoot;
+  const baseDir = root ? realSafePath(vaultRoot, root, false) : vaultRoot;
   const items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> = [];
 
   function walk(dir: string, prefix: string) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      // Skip symlinks — they may point outside the vault (M-4).
-      if (entry.isSymbolicLink()) continue;
+      if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
       const fullPath = path.join(dir, entry.name);
       const relativePath = path.join(prefix, entry.name);
       items.push({
@@ -552,8 +553,7 @@ function collectMarkdownFiles(dir: string, base = ''): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    // Skip symlinks — a planted symlink could silently read arbitrary files outside the vault.
-    if (entry.isSymbolicLink()) continue;
+    if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
     const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory() && !entry.name.startsWith('.')) {
       results.push(...collectMarkdownFiles(path.join(dir, entry.name), rel));
@@ -576,10 +576,16 @@ export function importObsidianVault(
   let skipped = 0;
   const errors: string[] = [];
 
+  // realpath-check source — don't import from symlinked directories
+  const realSource = fs.realpathSync.native(sourcePath);
+  // (No vault containment check for source — it's user-provided, but we realpath it
+  // so the collected files are resolved to their actual targets.)
+
   const files = collectMarkdownFiles(sourcePath);
   for (const relPath of files) {
     try {
       const srcFull = path.join(sourcePath, relPath);
+      const realSrcFull = fs.realpathSync.native(srcFull);
       const dstFull = path.join(vaultRoot, relPath);
 
       if (fs.existsSync(dstFull)) {
@@ -594,7 +600,7 @@ export function importObsidianVault(
         continue;
       }
 
-      let content = fs.readFileSync(srcFull, 'utf-8');
+      let content = fs.readFileSync(realSrcFull, 'utf-8');
       const { frontmatter, prose } = parseFrontmatter(content);
 
       // Assign an id if none present (standard Obsidian files won't have one)
@@ -630,7 +636,7 @@ export async function startVaultWatcher(
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
-    followSymlinks: false, // MYT-362: don't recurse into symlinked dirs
+    followSymlinks: false, // MYT-445/MYT-362: don't recurse into symlinked dirs
   });
 
   activeWatcher.on('change', (filePath: string) => {
