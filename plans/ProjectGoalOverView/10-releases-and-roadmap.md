@@ -11,7 +11,6 @@ These are the features you get right away — the foundation of Mythos Writer.
 - Smooth, continuous scrolling.
 - Focus Mode for distraction-free writing.
 - Header depth slider to switch between book, chapter, and scene views.
-- The **Liquid Glass Dark Neon** visual identity applied uniformly across the app, with a continuous Softness↔Contrast slider (see [12-visual-design-system.md](12-visual-design-system.md)).
 
 ### Two-vault system with Obsidian compatibility
 
@@ -56,6 +55,10 @@ These are the features you get right away — the foundation of Mythos Writer.
 ## Planned later features
 
 These features will arrive in future updates as the system grows more powerful.
+
+### Liquid Glass Dark Neon visual identity (next milestone after current core work)
+
+Per the board (MYT-516), the app's full visual identity — **Liquid Glass Dark Neon**, dark-only, applied uniformly across every surface, with a continuous Softness↔Contrast slider — is the **immediate next milestone once the current in-flight core work lands**. It is intentionally **not** an MVP-core item and does not block work already in progress. A dedicated UX designer owns the design-system spec; engineering implements. See [12-visual-design-system.md](12-visual-design-system.md).
 
 ### Full local-model and BYO-provider support (immediate post-MVP priority)
 
