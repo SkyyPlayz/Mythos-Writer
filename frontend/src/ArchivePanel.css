@@ -168,3 +168,26 @@
   background: rgba(248, 113, 113, 0.12);
   border-color: #f87171;
 }
+
+.ap-btn-resolve {
+  color: #f97316;
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.ap-btn-resolve:hover {
+  background: rgba(249, 115, 22, 0.12);
+  border-color: #f97316;
+}
+
+.archive-disabled {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.archive-disabled-msg {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  text-align: center;
+}

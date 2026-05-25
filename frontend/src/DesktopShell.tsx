@@ -15,6 +15,7 @@ import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import BetaReadMargin from './BetaReadMargin';
+import ProjectSwitcher from './ProjectSwitcher';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -86,9 +87,11 @@ interface AppMenuBarProps {
   onOpenHistory: () => void;
   onSearchNavigate: (result: SearchResultItem) => void;
   selectedStoryId?: string | null;
+  activeVaultRoot: string;
+  onProjectSwitched: (vaultRoot: string) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -123,6 +126,7 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
+      <ProjectSwitcher activeVaultRoot={activeVaultRoot} onSwitched={onProjectSwitched} />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -212,6 +216,7 @@ export default function DesktopShell() {
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<AppView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -309,26 +314,56 @@ export default function DesktopShell() {
     };
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [m, s] = await Promise.all([
-          (window as any).api.readManifest() as Promise<Manifest>,
-          (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
-        ]);
-        setManifest(m);
-        setStories(m.stories ?? []);
-        if (m.layout) {
-          setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
-        }
-        if (s) setAppSettings(s);
-      } catch (e) {
-        setError('Failed to load vault: ' + String(e));
-      } finally {
-        setLoading(false);
+  const loadVault = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [m, s, rootResult] = await Promise.all([
+        (window as any).api.readManifest() as Promise<Manifest>,
+        (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
+        ((window as any).api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
+      ]);
+      setManifest(m);
+      setStories(m.stories ?? []);
+      if (m.layout) {
+        setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
-    })();
+      if (s) setAppSettings(s);
+      if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
+    } catch (e) {
+      setError('Failed to load vault: ' + String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadVault();
+  }, [loadVault]);
+
+  // Handle project switches pushed from main process
+  useEffect(() => {
+    if (!(window as any).api?.onProjectSwitched) return;
+    const unsub = (window as any).api.onProjectSwitched((data: { vaultRoot: string }) => {
+      setActiveVaultRoot(data.vaultRoot);
+      // Reset selection state and reload vault content
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      loadVault();
+    });
+    return () => unsub?.();
+  }, [loadVault]);
+
+  const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    setActiveVaultRoot(vaultRoot);
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
+    setSelectedEntity(null);
+    loadVault();
+  }, [loadVault]);
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
@@ -623,7 +658,7 @@ export default function DesktopShell() {
   return (
     <div className="desktop-shell">
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} selectedStoryId={selectedStory?.id ?? null} />
+      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} selectedStoryId={selectedStory?.id ?? null} activeVaultRoot={activeVaultRoot} onProjectSwitched={handleProjectSwitched} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}

@@ -1,6 +1,8 @@
 // Manifest v1 schema — migration framework and atomic I/O.
 // No Electron dependency; fully testable in Node.
 import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 import type { Manifest } from './ipc.js';
 
 export const SCHEMA_VERSION = 1 as const;
@@ -38,6 +40,50 @@ export class ManifestVersionError extends Error {
   }
 }
 
+/**
+ * Thrown when a migration fails (including corrupted/unparseable manifests).
+ * Always includes the path of the pre-migration backup so the user can recover.
+ */
+export class ManifestMigrationError extends Error {
+  constructor(
+    public readonly fromVersion: number,
+    public readonly backupPath: string,
+    cause?: Error
+  ) {
+    super(
+      `Manifest migration from v${fromVersion} failed. ` +
+        `A backup was saved to: ${backupPath}` +
+        (cause ? `\nCause: ${cause.message}` : '')
+    );
+    this.name = 'ManifestMigrationError';
+  }
+}
+
+export interface OpenManifestOptions {
+  /** Vault root used to derive the backup directory (.mythos/backups). Defaults to dirname(manifestPath). */
+  vaultRoot?: string;
+  /** Called after a successful migration with details for audit logging. */
+  onMigrated?: (entry: {
+    id: string;
+    fromVersion: number;
+    toVersion: number;
+    backupPath: string;
+    createdAt: string;
+  }) => void;
+}
+
+/** Write the raw manifest content to .mythos/backups/manifest-<timestamp>.json and return the backup path. */
+function writeBackup(vaultRoot: string, rawContent: string): string {
+  const backupDir = path.join(vaultRoot, '.mythos', 'backups');
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(backupDir, `manifest-${timestamp}.json`);
+  fs.writeFileSync(backupPath, rawContent, 'utf-8');
+  return backupPath;
+}
+
 /** Pure migration: apply all pending steps in order. No I/O. */
 export function migrateManifest(raw: Raw): Manifest {
   const currentVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
@@ -65,19 +111,53 @@ export function writeManifestAtomic(manifestPath: string, manifest: Manifest): v
  * Read the manifest, run any pending migrations, and write back atomically
  * if the schema was upgraded. Returns the up-to-date manifest.
  *
- * Throws ManifestVersionError (recoverable) if the on-disk version is newer
- * than SCHEMA_VERSION — the file is never modified in that case.
+ * Before migrating: snapshots the original file to `.mythos/backups/manifest-<timestamp>.json`.
+ * After migrating: calls `options.onMigrated` so callers can persist an audit log entry.
+ *
+ * Throws ManifestVersionError if the on-disk version is newer than SCHEMA_VERSION (file untouched).
+ * Throws ManifestMigrationError (with backupPath) if parsing or migration fails.
  */
-export function openManifest(manifestPath: string): Manifest {
-  const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Raw;
+export function openManifest(manifestPath: string, options?: OpenManifestOptions): Manifest {
+  const vaultRoot = options?.vaultRoot ?? path.dirname(manifestPath);
+
+  let rawContent: string;
+  try {
+    rawContent = fs.readFileSync(manifestPath, 'utf-8');
+  } catch (err) {
+    throw err;
+  }
+
+  let raw: Raw;
+  try {
+    raw = JSON.parse(rawContent) as Raw;
+  } catch (parseErr) {
+    const backupPath = writeBackup(vaultRoot, rawContent);
+    throw new ManifestMigrationError(0, backupPath, parseErr as Error);
+  }
+
   const currentVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
   if (currentVersion > SCHEMA_VERSION) {
     throw new ManifestVersionError(currentVersion);
   }
   if (currentVersion < SCHEMA_VERSION) {
-    const migrated = migrateManifest(raw);
-    writeManifestAtomic(manifestPath, migrated);
-    return migrated;
+    const backupPath = writeBackup(vaultRoot, rawContent);
+    try {
+      const migrated = migrateManifest(raw);
+      writeManifestAtomic(manifestPath, migrated);
+      if (options?.onMigrated) {
+        options.onMigrated({
+          id: crypto.randomUUID(),
+          fromVersion: currentVersion,
+          toVersion: SCHEMA_VERSION,
+          backupPath,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      return migrated;
+    } catch (err) {
+      if (err instanceof ManifestMigrationError) throw err;
+      throw new ManifestMigrationError(currentVersion, backupPath, err as Error);
+    }
   }
   return raw as unknown as Manifest;
 }

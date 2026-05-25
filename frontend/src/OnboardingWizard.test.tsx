@@ -43,7 +43,11 @@ const BASE_SETTINGS: AppSettings = {
 
 beforeEach(() => {
   (window as unknown as { api: unknown }).api = {
-    pickFolder: vi.fn().mockResolvedValue({ vaultRoot: '/home/user/my-vault', cancelled: false }),
+    pickFolder: vi.fn().mockResolvedValue({
+      vaultRoot: '/home/user/my-vault',
+      cancelled: false,
+      registrationToken: 'token-abc',
+    }),
     obsidianDryRun: vi.fn().mockResolvedValue({
       notesCount: 5,
       brokenLinks: [],
@@ -121,7 +125,7 @@ describe('OnboardingWizard', () => {
 
     it('stays on step 2 if the folder dialog is cancelled', async () => {
       (window as unknown as { api: { pickFolder: ReturnType<typeof vi.fn>; settingsSet: ReturnType<typeof vi.fn> } }).api.pickFolder =
-        vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true });
+        vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null });
 
       render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
       fireEvent.click(screen.getByRole('button', { name: /get started/i }));
@@ -141,6 +145,38 @@ describe('OnboardingWizard', () => {
       fireEvent.click(screen.getByTestId('confirm-import'));
 
       await waitFor(() => expect(screen.getByTestId('step-apikey')).toBeInTheDocument());
+    });
+
+    it('forwards registrationToken from pickFolder to dry-run and register (MYT-367)', async () => {
+      const api = (window as unknown as { api: { pickFolder: ReturnType<typeof vi.fn>; obsidianDryRun: ReturnType<typeof vi.fn>; obsidianRegister: ReturnType<typeof vi.fn> } }).api;
+      render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: /get started/i }));
+      fireEvent.click(screen.getByLabelText(/use existing obsidian vault/i));
+      fireEvent.click(screen.getByRole('button', { name: /browse/i }));
+
+      await waitFor(() => expect(screen.getByTestId('step-dry-run')).toBeInTheDocument());
+      expect(api.obsidianDryRun).toHaveBeenCalledWith('/home/user/my-vault', 'token-abc');
+
+      fireEvent.click(screen.getByTestId('confirm-import'));
+      await waitFor(() => expect(api.obsidianRegister).toHaveBeenCalledWith('/home/user/my-vault', 'token-abc'));
+    });
+
+    it('shows error when register handler rejects the token (MYT-367)', async () => {
+      (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
+        vi.fn().mockResolvedValue({ error: 'registrationToken required — use vault:pick-folder first' });
+
+      render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: /get started/i }));
+      fireEvent.click(screen.getByLabelText(/use existing obsidian vault/i));
+      fireEvent.click(screen.getByRole('button', { name: /browse/i }));
+
+      await waitFor(() => expect(screen.getByTestId('step-dry-run')).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId('confirm-import'));
+
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+      expect(screen.getByRole('alert').textContent).toContain('registrationToken required');
+      // Stays on dry-run step rather than silently advancing
+      expect(screen.getByTestId('step-dry-run')).toBeInTheDocument();
     });
 
     it('can navigate back from dry-run to vault choice', async () => {

@@ -187,17 +187,26 @@ describe('ArchivePanel — accept wiki-link', () => {
 });
 
 describe('ArchivePanel — reject / dismiss', () => {
-  it('clicking Dismiss on an inconsistency calls suggestionsReject IPC', async () => {
+  it('clicking Resolve on an inconsistency opens the confirm dialog', async () => {
     render(<ArchivePanel {...defaultProps} />);
-    const btn = await screen.findByRole('button', { name: /dismiss inconsistency/i });
+    const btn = await screen.findByRole('button', { name: /resolve inconsistency/i });
     fireEvent.click(btn);
-    await waitFor(() => expect(mockSuggestionsReject).toHaveBeenCalledWith('arc-inc-1'));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: /archive continuity issue/i })).toBeInTheDocument(),
+    );
   });
 
-  it('dismissed inconsistency card is removed from the list', async () => {
+  it('inconsistency card is removed after dialog resolves', async () => {
+    const mockArchiveConfirm = vi.fn().mockResolvedValue({ ok: true, auditId: 'aud-1' });
+    setApi({ archiveConfirm: mockArchiveConfirm });
     render(<ArchivePanel {...defaultProps} />);
-    const btn = await screen.findByRole('button', { name: /dismiss inconsistency/i });
+
+    const btn = await screen.findByRole('button', { name: /resolve inconsistency/i });
     fireEvent.click(btn);
+
+    const ignoreBtn = await screen.findByRole('button', { name: /ignore this finding/i });
+    fireEvent.click(ignoreBtn);
+
     await waitFor(() =>
       expect(
         screen.queryByText('The Foundry appears here but was destroyed in chapter 1.'),
