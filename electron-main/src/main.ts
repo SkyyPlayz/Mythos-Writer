@@ -164,6 +164,7 @@ import {
   TELEMETRY_EVENT_TYPES,
   type TelemetryEventType,
 } from './telemetry.js';
+import { maskSettingsForRenderer, preserveMaskedSettingsSecrets } from './settingsSecrets.js';
 
 const require = createRequire(import.meta.url);
 
@@ -798,20 +799,17 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
     const s = loadAppSettings();
-    return { ...s, apiKey: maskApiKey(s.apiKey) };
+    return maskSettingsForRenderer(s);
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
     const current = loadAppSettings();
-    // Preserve the stored key when the renderer echoes back the masked preview unchanged.
-    const apiKey = payload.settings.apiKey === maskApiKey(current.apiKey)
-      ? current.apiKey
-      : payload.settings.apiKey;
+    const settings = preserveMaskedSettingsSecrets(current, payload.settings);
     // Regenerate sessionId when telemetry is being disabled (privacy: unlink future sessions).
-    let telemetry = payload.settings.telemetry;
+    let telemetry = settings.telemetry;
     if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
       telemetry = { enabled: false, sessionId: generateSessionId() };
     }
-    const updated = { ...payload.settings, apiKey, ...(telemetry !== undefined ? { telemetry } : {}) };
+    const updated = { ...settings, ...(telemetry !== undefined ? { telemetry } : {}) };
     saveAppSettings(updated);
     // Re-configure telemetry in-process immediately.
     if (updated.telemetry) {
@@ -2085,11 +2083,6 @@ function initTelemetry(): void {
   } else {
     configureTelemetry({ enabled: telemetry.enabled, sessionId: telemetry.sessionId });
   }
-}
-
-// Returns a masked preview (sk-ant-...XXXX) so the raw key never leaves the main process.
-function maskApiKey(key: string): string {
-  return key ? `sk-ant-...${key.slice(-4)}` : '';
 }
 
 // ─── Anthropic API key validation ───

@@ -2,8 +2,8 @@
 // Asserts that API key material never appears in generation logs, IPC response
 // payloads, error messages, or .env.example.
 //
-// F2 (settings:get returns raw key) is tracked in MYT-143.
-// Once MYT-143 is fixed, the .todo below should be promoted to a real test.
+// F2 was resolved in MYT-143; these tests cover the masking contract and ensure
+// it also applies to voice.openaiApiKey.
 
 import { describe, it, expect } from 'vitest';
 import crypto from 'crypto';
@@ -11,11 +11,56 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import type { AppSettings } from './ipc.js';
+import { maskSettingsForRenderer, preserveMaskedSettingsSecrets } from './settingsSecrets.js';
 import { writeVaultFile } from './vault.js';
 
 // A plausible-looking synthetic key — not a real credential.
 const FAKE_API_KEY = 'sk-ant-test-FakeKeyForTestingOnly000000000000000000000000000000';
+const FAKE_OPENAI_KEY = 'sk-openai-test-FakeKeyForVoiceOnly1234567890';
 const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), '../../../../..');
+
+function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
+  return {
+    apiKey: '',
+    agents: {
+      writingAssistant: {
+        enabled: true,
+        model: 'claude-sonnet-4-6',
+        scanIntervalSeconds: 30,
+        autoApply: false,
+        confidenceThreshold: 0.85,
+        maxTokensPerHour: 100_000,
+        maxSuggestionsPerHour: 50,
+        heartbeatIntervalMinutes: 5,
+        maxTokensPerDay: 500_000,
+      },
+      brainstorm: {
+        enabled: true,
+        model: 'claude-sonnet-4-6',
+        autoApply: false,
+        confidenceThreshold: 0.85,
+        maxTokensPerHour: 100_000,
+        maxSuggestionsPerHour: 50,
+        heartbeatIntervalMinutes: 5,
+        maxTokensPerDay: 500_000,
+      },
+      archive: {
+        enabled: true,
+        model: 'claude-sonnet-4-6',
+        continuityCheckIntervalSeconds: 60,
+        autoApply: false,
+        confidenceThreshold: 0.85,
+        maxTokensPerHour: 100_000,
+        maxSuggestionsPerHour: 50,
+        heartbeatIntervalMinutes: 5,
+        maxTokensPerDay: 500_000,
+      },
+    },
+    theme: 'dark',
+    ...overrides,
+  };
+}
 
 // ── Generation log payload_digest ──────────────────────────────────────────
 
@@ -81,14 +126,30 @@ describe('vault safePath errors — no API key in message', () => {
 // ── SETTINGS_GET — expected: renderer receives masked key ─────────────────
 
 describe('settings:get IPC response — API key must not reach renderer raw', () => {
-  it.todo(
-    // MYT-143: currently SETTINGS_GET returns the raw apiKey to the renderer.
-    // Once MYT-143 is resolved, replace this .todo with a real assertion:
-    //   const result = maskSettingsForRenderer({ apiKey: FAKE_API_KEY, ... });
-    //   expect(result.apiKey).not.toBe(FAKE_API_KEY);
-    //   expect(result.apiKey).toMatch(/sk-ant-\.\.\.\w{4}/);
-    'SETTINGS_GET should mask the apiKey field before returning it to the renderer [MYT-143]',
-  );
+  it('masks stored API keys before returning settings to the renderer', () => {
+    const result = maskSettingsForRenderer(makeSettings({
+      apiKey: FAKE_API_KEY,
+      voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+    }));
+
+    expect(result.apiKey).toBe('sk-ant-...0000');
+    expect(result.apiKey).not.toBe(FAKE_API_KEY);
+    expect(result.voice?.openaiApiKey).toBe('••••7890');
+    expect(result.voice?.openaiApiKey).not.toBe(FAKE_OPENAI_KEY);
+  });
+
+  it('preserves stored API keys when the renderer echoes masked previews unchanged', () => {
+    const current = makeSettings({
+      apiKey: FAKE_API_KEY,
+      voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+    });
+
+    const echoedMaskedSettings = maskSettingsForRenderer(current);
+    const updated = preserveMaskedSettingsSecrets(current, echoedMaskedSettings);
+
+    expect(updated.apiKey).toBe(FAKE_API_KEY);
+    expect(updated.voice?.openaiApiKey).toBe(FAKE_OPENAI_KEY);
+  });
 });
 
 // ── Streaming error — Anthropic SDK error must not echo the key ───────────
