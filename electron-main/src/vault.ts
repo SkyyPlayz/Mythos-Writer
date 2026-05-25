@@ -85,12 +85,50 @@ export function sceneVaultPath(
 
 // ─── Path safety ───
 
-export function safePath(vaultRoot: string, relativePath: string): string {
+/**
+ * Resolve a relative path inside the vault, hardening against symlink escape.
+ * Uses fs.realpathSync.native to follow filesystem symlinks, then checks
+ * that the real target stays within the real vault root.
+ *
+ * For reads (file exists): realpath the full path.
+ * For writes (leaf may not exist): realpath the parent directory.
+ */
+export function realSafePath(vaultRoot: string, relativePath: string, writeMode = false): string {
+  const realVaultRoot = fs.realpathSync.native(vaultRoot);
   const resolved = path.resolve(vaultRoot, relativePath);
-  if (!resolved.startsWith(path.resolve(vaultRoot) + path.sep) && resolved !== path.resolve(vaultRoot)) {
-    throw new Error(`Path traversal denied: ${relativePath}`);
+
+  if (writeMode) {
+    // Leaf file may not exist yet — realpath the parent directory
+    const parent = path.dirname(resolved);
+    if (!fs.existsSync(parent)) {
+      // Parent doesn't exist yet; check that the resolved parent path
+      // would stay within the vault (prefix check on unresolved path)
+      if (!resolved.startsWith(realVaultRoot + path.sep) && resolved !== realVaultRoot) {
+        throw new Error(`Path traversal denied: ${relativePath}`);
+      }
+      return resolved;
+    }
+    const realParent = fs.realpathSync.native(parent);
+    if (!realParent.startsWith(realVaultRoot + path.sep) && realParent !== realVaultRoot) {
+      throw new Error(`Path traversal denied: ${relativePath} (parent symlink escapes vault)`);
+    }
+    return resolved;
+  }
+
+  // Read mode: file must exist — realpath the full path
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`File not found: ${relativePath}`);
+  }
+  const realPath = fs.realpathSync.native(resolved);
+  if (!realPath.startsWith(realVaultRoot + path.sep) && realPath !== realVaultRoot) {
+    throw new Error(`Path traversal denied: ${relativePath} (symlink escapes vault)`);
   }
   return resolved;
+}
+
+/** Legacy alias — deprecated, use realSafePath. */
+export function safePath(vaultRoot: string, relativePath: string): string {
+  return realSafePath(vaultRoot, relativePath, false);
 }
 
 // ─── Basic R/W (used by legacy IPC channels) ───
@@ -105,7 +143,7 @@ export function writeVaultFile(
   filePath: string,
   content: string
 ): { path: string; bytes: number } {
-  const fullPath = safePath(vaultRoot, filePath);
+  const fullPath = realSafePath(vaultRoot, filePath, true);
   const dir = path.dirname(fullPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(fullPath, content, 'utf-8');
@@ -121,7 +159,7 @@ export function writeVaultFileAtomic(
   filePath: string,
   content: string
 ): { path: string; bytes: number } {
-  const fullPath = safePath(vaultRoot, filePath);
+  const fullPath = realSafePath(vaultRoot, filePath, true);
   const dir = path.dirname(fullPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const tmp = `${fullPath}.tmp`;
@@ -141,11 +179,12 @@ export function listVaultFiles(
   vaultRoot: string,
   root?: string
 ): { items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> } {
-  const baseDir = root ? safePath(vaultRoot, root) : vaultRoot;
+  const baseDir = root ? realSafePath(vaultRoot, root, false) : vaultRoot;
   const items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> = [];
 
   function walk(dir: string, prefix: string) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
       const fullPath = path.join(dir, entry.name);
       const relativePath = path.join(prefix, entry.name);
       items.push({
@@ -468,6 +507,7 @@ function collectMarkdownFiles(dir: string, base = ''): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
     const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory() && !entry.name.startsWith('.')) {
       results.push(...collectMarkdownFiles(path.join(dir, entry.name), rel));
@@ -490,10 +530,16 @@ export function importObsidianVault(
   let skipped = 0;
   const errors: string[] = [];
 
+  // realpath-check source — don't import from symlinked directories
+  const realSource = fs.realpathSync.native(sourcePath);
+  // (No vault containment check for source — it's user-provided, but we realpath it
+  // so the collected files are resolved to their actual targets.)
+
   const files = collectMarkdownFiles(sourcePath);
   for (const relPath of files) {
     try {
       const srcFull = path.join(sourcePath, relPath);
+      const realSrcFull = fs.realpathSync.native(srcFull);
       const dstFull = path.join(vaultRoot, relPath);
       const dstDir = path.dirname(dstFull);
 
@@ -504,7 +550,7 @@ export function importObsidianVault(
 
       if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true });
 
-      let content = fs.readFileSync(srcFull, 'utf-8');
+      let content = fs.readFileSync(realSrcFull, 'utf-8');
       const { frontmatter, prose } = parseFrontmatter(content);
 
       // Assign an id if none present (standard Obsidian files won't have one)
