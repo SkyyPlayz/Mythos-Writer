@@ -540,6 +540,7 @@ export async function startVaultWatcher(
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
+    followSymlinks: false, // MYT-445/MYT-362: don't recurse into symlinked dirs
   });
 
   activeWatcher.on('change', (filePath: string) => {
