@@ -102,7 +102,6 @@ export class VaultFileTooLargeError extends Error {
     this.limitBytes = limitBytes;
   }
 }
-
 /**
  * Resolve a relative path inside the vault, hardening against symlink escape.
  * Uses fs.realpathSync.native to follow filesystem symlinks, then checks
