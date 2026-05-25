@@ -32,6 +32,20 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
   },
+  "_comment_mac_arch": "arm64 only for now: better-sqlite3 is a native module and cross-building x64 on the arm64 runner needs extra prebuild setup. x64/universal is a follow-up.",
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64"]
+      }
+    ],
+    "category": "public.app-category.productivity",
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  },
+  "dmg": {
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  },
   "linux": {
     "target": [
       {

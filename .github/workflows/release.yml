@@ -8,8 +8,6 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    permissions:
-      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -38,36 +36,73 @@ jobs:
         env:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
-      - name: Upload NSIS installer artifact
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
-          path: dist-electron/*.exe
+          name: windows-artifacts
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.zip
+          if-no-files-found: error
 
-      - name: Upload ZIP artifact
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Python setuptools (node-gyp needs distutils, removed in Python 3.12+)
+        run: pip3 install setuptools --break-system-packages
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package (macOS DMG)
+        env:
+          # Unsigned build — notarization/code signing tracked separately (MYT-388).
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist:mac
+
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zip
-          path: dist-electron/*.zip
+          name: macos-artifacts
+          path: dist-electron/*.dmg
+          if-no-files-found: error
+
+  publish-release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Render release notes (substitute version)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed "s/\${version}/${VERSION}/g" .github/release-notes-template.md > "$RUNNER_TEMP/release-notes.md"
 
       - name: Create draft GitHub Release and attach assets
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          generate_release_notes: true
+          body_path: ${{ runner.temp }}/release-notes.md
+          fail_on_unmatched_files: true
           files: |
-            dist-electron/*.exe
-            dist-electron/*.zip
-
-  # Stubbed pending code signing setup (Phase 4)
-  build-mac:
-    if: false
-    runs-on: macos-latest
-    steps:
-      - run: echo "Mac build pending code signing setup (Phase 4)"
-
-  # Stubbed pending code signing setup (Phase 4)
-  build-linux:
-    if: false
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Linux build pending code signing setup (Phase 4)"
+            artifacts/windows-artifacts/*.exe
+            artifacts/windows-artifacts/*.zip
+            artifacts/macos-artifacts/*.dmg
