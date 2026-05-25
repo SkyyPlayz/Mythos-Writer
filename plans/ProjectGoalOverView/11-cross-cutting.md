@@ -38,6 +38,8 @@ Targeting **WCAG 2.1 AA** at MVP:
 - Screen-reader-friendly markup throughout the editor and sidebars.
 - A high-contrast theme.
 - Configurable font size and line spacing.
+- A reduced-motion mode that disables pulsing/parallax in the [Liquid Glass Dark Neon](12-visual-design-system.md) theme.
+- The Softness↔Contrast slider must keep body text ≥ 4.5:1 at every position, and compose with (not override) the discrete high-contrast theme. See [12-visual-design-system.md](12-visual-design-system.md).
 
 ## Internationalization
 
