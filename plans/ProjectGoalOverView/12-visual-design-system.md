@@ -2,6 +2,14 @@
 
 > **CEO decision (MYT-516):** Mythos Writer's official visual identity is **Liquid Glass Dark Neon** — translucent frosted-glass surfaces with restrained neon accents, applied consistently across every surface of the app.
 
+## Board decisions (MYT-516 follow-up)
+
+The board confirmed three points after reviewing the direction:
+
+- **Dark-only.** Liquid Glass Dark Neon is the **single app theme** — the previous light/system theme options are dropped. The WCAG **high-contrast** accessibility theme is retained (it composes with this theme; see [11-cross-cutting.md](11-cross-cutting.md#accessibility)).
+- **Timing: next milestone.** This is **not** an MVP-core feature. It is sequenced as the **immediate next milestone after the current core work lands** (see [10-releases-and-roadmap.md](10-releases-and-roadmap.md)). It does not block in-flight MVP work.
+- **Dedicated designer.** A **UX designer is being hired** to own the design-system spec; engineering implements.
+
 This document is the product-level direction. The full design brief lives in
 [`Ui-Disign-Goal`](Ui-Disign-Goal); annotated reference images live in
 [`Liduid-Glass-Dark-Neon- theme- exampels/`](<Liduid-Glass-Dark-Neon- theme- exampels/Example photos.md>).
@@ -53,6 +61,6 @@ Requirements:
 ## Workstream & ownership
 
 - **UX Design (UXDesigner):** translate the brief + images into a concrete design-system spec — tokens, component states, and the slider's interpolation model and UX.
-- **Engineering (CTO):** implement the token system and `backdrop-filter` glass, apply it across surfaces, build the slider control and wire it to `theme.ts` (today only dark/light/system), with reduced-motion/contrast fallbacks and perf budget adherence.
+- **Engineering (CTO):** implement the token system and `backdrop-filter` glass, apply it across surfaces, build the slider control and replace `theme.ts` (today dark/light/system) with a **dark-only** token-driven theme, with reduced-motion/contrast fallbacks and perf budget adherence.
 
 Tracked via child issues of MYT-516.
