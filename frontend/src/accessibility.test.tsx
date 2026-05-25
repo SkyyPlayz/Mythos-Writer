@@ -7,6 +7,7 @@
 import { render, fireEvent } from '@testing-library/react';
 import { configureAxe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
+import 'vitest-axe/extend-expect';
 import { expect, describe, it, beforeEach, vi } from 'vitest';
 
 // ─── vitest-axe matcher ────────────────────────────────────────────────────

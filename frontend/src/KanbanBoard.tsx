@@ -56,6 +56,8 @@ interface Props {
   boardPath: string;
   storyTitle: string;
   onBoardPathChange?: (path: string) => void;
+  onOpenNote?: (notePath: string) => void;
+  scenes?: Array<{ id: string; title: string; path: string }>;
 }
 
 export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange }: Props) {

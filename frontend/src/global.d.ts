@@ -108,6 +108,12 @@ interface BetaReadComment {
   dismissed_at: string | null;
 }
 
+interface BudgetCapHitEvent {
+  agent: string;
+  agentLabel: string;
+  reason: 'hourly_token_cap' | 'daily_token_cap';
+}
+
 interface BrainstormExtractedEntity {
   path: string;
   name: string;
@@ -210,6 +216,9 @@ interface Window {
 
     // Vault notes updated push event (MYT-156)
     onVaultNotesUpdated?: (cb: (data: { count: number }) => void) => () => void;
+
+    // Budget enforcement push subscription
+    onBudgetCapHit?: (cb: (event: BudgetCapHitEvent) => void) => () => void;
 
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
