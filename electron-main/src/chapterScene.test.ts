@@ -405,6 +405,16 @@ describe('writeVaultFileAtomic', () => {
     expect(() => writeVaultFileAtomic(tmpDir, '../../../etc/crontab', 'pwned')).toThrow('Path traversal denied');
   });
 
+  it('rejects symlink escape during write', () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-atomic-outside-'));
+    fs.symlinkSync(outsideDir, path.join(tmpDir, 'external'));
+    try {
+      expect(() => writeVaultFileAtomic(tmpDir, 'external/leak.txt', 'pwned')).toThrow('Path traversal denied');
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it('creates parent directories automatically', () => {
     writeVaultFileAtomic(tmpDir, 'deep/nested/file.txt', 'content');
     expect(fs.existsSync(path.join(tmpDir, 'deep/nested/file.txt'))).toBe(true);

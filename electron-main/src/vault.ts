@@ -96,23 +96,29 @@ export function sceneVaultPath(
 export function realSafePath(vaultRoot: string, relativePath: string, writeMode = false): string {
   const realVaultRoot = fs.realpathSync.native(vaultRoot);
   const resolved = path.resolve(vaultRoot, relativePath);
+  const isWithinVault = (candidate: string) =>
+    candidate === realVaultRoot || candidate.startsWith(realVaultRoot + path.sep);
 
   if (writeMode) {
-    // Leaf file may not exist yet — realpath the parent directory
-    const parent = path.dirname(resolved);
-    if (!fs.existsSync(parent)) {
-      // Parent doesn't exist yet; check that the resolved parent path
-      // would stay within the vault (prefix check on unresolved path)
-      if (!resolved.startsWith(realVaultRoot + path.sep) && resolved !== realVaultRoot) {
-        throw new Error(`Path traversal denied: ${relativePath}`);
-      }
-      return resolved;
+    // Leaf path may not exist yet — find nearest existing ancestor.
+    let ancestor = resolved;
+    while (!fs.existsSync(ancestor)) {
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
     }
-    const realParent = fs.realpathSync.native(parent);
-    if (!realParent.startsWith(realVaultRoot + path.sep) && realParent !== realVaultRoot) {
+    if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relativePath}`);
+
+    const realAncestor = fs.realpathSync.native(ancestor);
+    if (!isWithinVault(realAncestor)) {
       throw new Error(`Path traversal denied: ${relativePath} (parent symlink escapes vault)`);
     }
-    return resolved;
+
+    const remainder = path.relative(ancestor, resolved);
+    const realTarget = path.resolve(realAncestor, remainder);
+    if (!isWithinVault(realTarget)) throw new Error(`Path traversal denied: ${relativePath}`);
+
+    return realTarget;
   }
 
   // Read mode: file must exist — realpath the full path
@@ -120,7 +126,7 @@ export function realSafePath(vaultRoot: string, relativePath: string, writeMode 
     throw new Error(`File not found: ${relativePath}`);
   }
   const realPath = fs.realpathSync.native(resolved);
-  if (!realPath.startsWith(realVaultRoot + path.sep) && realPath !== realVaultRoot) {
+  if (!isWithinVault(realPath)) {
     throw new Error(`Path traversal denied: ${relativePath} (symlink escapes vault)`);
   }
   return resolved;
