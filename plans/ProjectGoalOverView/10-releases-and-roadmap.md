@@ -11,6 +11,7 @@ These are the features you get right away — the foundation of Mythos Writer.
 - Smooth, continuous scrolling.
 - Focus Mode for distraction-free writing.
 - Header depth slider to switch between book, chapter, and scene views.
+- The **Liquid Glass Dark Neon** visual identity applied uniformly across the app, with a continuous Softness↔Contrast slider (see [12-visual-design-system.md](12-visual-design-system.md)).
 
 ### Two-vault system with Obsidian compatibility
 
