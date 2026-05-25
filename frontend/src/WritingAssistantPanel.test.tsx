@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import WritingAssistantPanel from './WritingAssistantPanel';
 
 const mockAgentWritingAssistant = vi.fn();
@@ -13,6 +13,10 @@ beforeEach(() => {
 });
 
 describe('WritingAssistantPanel', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders prompt textarea and disabled Ask button initially', () => {
     render(<WritingAssistantPanel scene={null} />);
     expect(screen.getByLabelText(/writing assistant prompt/i)).toBeInTheDocument();
@@ -114,6 +118,56 @@ describe('WritingAssistantPanel', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('ANTHROPIC_API_KEY is not set.');
     });
     expect(screen.queryByLabelText(/writing assistant response/i)).not.toBeInTheDocument();
+  });
+
+  it('shows Cancel generation while loading and allows cancelling an in-flight request', async () => {
+    let resolveRequest: ((value: { text: string }) => void) | null = null;
+    mockAgentWritingAssistant.mockImplementationOnce(
+      () => new Promise<{ text: string }>((resolve) => { resolveRequest = resolve; }),
+    );
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'keep going' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel generation/i }));
+
+    expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Generation cancelled. You can retry now.');
+    expect(screen.queryByLabelText(/writing assistant response/i)).not.toBeInTheDocument();
+
+    resolveRequest?.({ text: 'late response should be ignored' });
+    await waitFor(() =>
+      expect(screen.queryByText(/late response should be ignored/i)).not.toBeInTheDocument(),
+    );
+  });
+
+  it('times out when no streaming progress arrives and shows retry guidance', async () => {
+    vi.useFakeTimers();
+    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'test timeout path' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20000);
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Generation timed out due to no progress. Please retry.',
+    );
+    expect(screen.queryByRole('button', { name: /cancel generation/i })).not.toBeInTheDocument();
   });
 
   it('does not modify scene content — no vault write', async () => {

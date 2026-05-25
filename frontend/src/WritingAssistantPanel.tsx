@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 
+const NO_PROGRESS_TIMEOUT_MS = 20000;
+
 interface WritingAssistantSuggestion {
   id: string;
   source_agent: 'writing-assistant';
@@ -30,13 +32,58 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
   const { announce, liveText } = useLiveAnnounce();
+
+  const clearStreamResources = useCallback(() => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const removePendingAssistantBubble = (prev: Message[]) => {
+    const updated = [...prev];
+    const last = updated[updated.length - 1];
+    if (last?.role === 'assistant' && last.streaming) {
+      updated.pop();
+    }
+    return updated;
+  };
+
+  const scheduleNoProgressTimeout = useCallback((requestId: number) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      if (requestIdRef.current !== requestId) return;
+      requestIdRef.current += 1;
+      clearStreamResources();
+      setMessages((prev) => removePendingAssistantBubble(prev));
+      setLoading(false);
+      const timeoutMessage = 'Generation timed out due to no progress. Please retry.';
+      setError(timeoutMessage);
+      announce(timeoutMessage);
+    }, NO_PROGRESS_TIMEOUT_MS);
+  }, [announce, clearStreamResources]);
+
+  const cancelGeneration = useCallback(() => {
+    if (!loading) return;
+    requestIdRef.current += 1;
+    clearStreamResources();
+    setMessages((prev) => removePendingAssistantBubble(prev));
+    setLoading(false);
+    const cancelMessage = 'Generation cancelled. You can retry now.';
+    setError(cancelMessage);
+    announce(cancelMessage);
+  }, [announce, clearStreamResources, loading]);
 
   useEffect(() => {
     return () => {
-      unsubscribeRef.current?.();
+      clearStreamResources();
     };
-  }, []);
+  }, [clearStreamResources]);
 
   const ask = useCallback(async () => {
     const trimmed = prompt.trim();
@@ -46,6 +93,8 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
     setError(null);
     setPrompt('');
     announce('Generating response…');
+    requestIdRef.current += 1;
+    const requestId = requestIdRef.current;
 
     const userMsg: Message = { role: 'user', text: trimmed };
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
@@ -57,8 +106,10 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
       : undefined;
 
     // Subscribe to streaming chunks before invoking
-    unsubscribeRef.current?.();
+    clearStreamResources();
     unsubscribeRef.current = window.api.onWritingAssistantChunk((chunk) => {
+      if (requestIdRef.current !== requestId) return;
+      scheduleNoProgressTimeout(requestId);
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -68,9 +119,11 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
         return updated;
       });
     });
+    scheduleNoProgressTimeout(requestId);
 
     try {
       const response = await window.api.agentWritingAssistant(trimmed, context);
+      if (requestIdRef.current !== requestId) return;
 
       const suggestion: WritingAssistantSuggestion = {
         id: `wa-${Date.now()}`,
@@ -92,17 +145,19 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
       });
       announce('Response ready.');
     } catch (err) {
+      if (requestIdRef.current !== requestId) return;
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => prev.slice(0, -1)); // remove the empty assistant bubble
       const errorMsg = msg || 'AI unavailable — check your API key in settings.';
       setError(errorMsg);
       announce(`Error: ${errorMsg}`);
     } finally {
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = null;
-      setLoading(false);
+      if (requestIdRef.current === requestId) {
+        clearStreamResources();
+        setLoading(false);
+      }
     }
-  }, [prompt, loading, scene]);
+  }, [announce, clearStreamResources, loading, prompt, scene, scheduleNoProgressTimeout]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -219,10 +274,11 @@ export default function WritingAssistantPanel({ scene, enabled = true }: Props) 
         />
         <button
           className="writing-assistant-btn"
-          onClick={ask}
-          disabled={!prompt.trim() || loading}
+          onClick={loading ? cancelGeneration : ask}
+          disabled={loading ? false : !prompt.trim()}
+          aria-label={loading ? 'Cancel generation' : undefined}
         >
-          {loading ? 'Thinking…' : 'Ask'}
+          {loading ? 'Cancel generation' : 'Ask'}
         </button>
       </div>
     </div>
