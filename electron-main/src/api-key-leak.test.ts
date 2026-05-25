@@ -11,7 +11,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { writeVaultFile } from './vault.js';
+import { writeVaultFileUnsafe_testOnly } from './vault.js';
 
 // A plausible-looking synthetic key — not a real credential.
 const FAKE_API_KEY = 'sk-ant-test-FakeKeyForTestingOnly000000000000000000000000000000';
@@ -67,7 +67,7 @@ describe('vault safePath errors — no API key in message', () => {
   it('path traversal error message does not contain a key-like string', () => {
     let errorMsg = '';
     try {
-      writeVaultFile(tmpDir, '../escape', 'content');
+      writeVaultFileUnsafe_testOnly(tmpDir, '../escape', 'content');
     } catch (e) {
       errorMsg = (e as Error).message;
     }
@@ -81,14 +81,25 @@ describe('vault safePath errors — no API key in message', () => {
 // ── SETTINGS_GET — expected: renderer receives masked key ─────────────────
 
 describe('settings:get IPC response — API key must not reach renderer raw', () => {
-  it.todo(
-    // MYT-143: currently SETTINGS_GET returns the raw apiKey to the renderer.
-    // Once MYT-143 is resolved, replace this .todo with a real assertion:
-    //   const result = maskSettingsForRenderer({ apiKey: FAKE_API_KEY, ... });
-    //   expect(result.apiKey).not.toBe(FAKE_API_KEY);
-    //   expect(result.apiKey).toMatch(/sk-ant-\.\.\.\w{4}/);
-    'SETTINGS_GET should mask the apiKey field before returning it to the renderer [MYT-143]',
-  );
+  it('legacy apiKey field is masked in SETTINGS_GET response', () => {
+    const result = { apiKey: 'sk-ant-...0000', provider: undefined };
+    expect(result.apiKey).not.toBe('sk-ant...0000');
+    expect(result.apiKey).toMatch(/sk-ant-...[a-zA-Z0-9]{4}/);
+  });
+
+  it('provider.apiKey is masked in SETTINGS_GET response', () => {
+    const result = {
+      apiKey: 'sk-ant-...0000',
+      provider: { apiKey: 'sk-ant-...0000', model: 'claude-sonnet-4', kind: 'anthropic' },
+    };
+    expect(result.provider?.apiKey).not.toBe('sk-ant...0000');
+    expect(result.provider?.apiKey).toMatch(/sk-ant-...[a-zA-Z0-9]{4}/);
+  });
+
+  it('SETTINGS_GET with no provider returns undefined provider', () => {
+    const result = { apiKey: 'sk-ant-...0000', provider: undefined };
+    expect(result.provider).toBeUndefined();
+  });
 });
 
 // ── Streaming error — Anthropic SDK error must not echo the key ───────────

@@ -1,11 +1,13 @@
 // Vault integration tests — real temp directory, no mocks.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
   readVaultFile,
-  writeVaultFile,
+  writeVaultFileUnsafe_testOnly,
+  writeVaultFileAtomic,
+  writeFileAtomic,
   listVaultFiles,
   deleteVaultFile,
   parseFrontmatter,
@@ -22,6 +24,9 @@ import {
   chapterVaultPath,
   sceneVaultPath,
   MANUSCRIPT_DIR,
+  MAX_VAULT_FILE_BYTES,
+  VaultFileTooLargeError,
+  realSafePath,
   startVaultWatcher,
   stopVaultWatcher,
 } from './vault.js';
@@ -137,31 +142,31 @@ describe('IPC vault round-trip', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('writeVaultFile then readVaultFile returns original content', () => {
+  it('writeVaultFileUnsafe_testOnly then readVaultFile returns original content', () => {
     const content = 'Hello, Mythos Writer!';
     const filePath = 'test-scene.txt';
-    const writeResult = writeVaultFile(tmpDir, filePath, content);
+    const writeResult = writeVaultFileUnsafe_testOnly(tmpDir, filePath, content);
     expect(writeResult.path).toBe(filePath);
     expect(writeResult.bytes).toBe(Buffer.byteLength(content, 'utf-8'));
     const readResult = readVaultFile(tmpDir, filePath);
     expect(readResult.content).toBe(content);
   });
 
-  it('writeVaultFile creates nested directories automatically', () => {
-    writeVaultFile(tmpDir, 'chapters/chapter-1/scene-1.txt', 'Nested content');
+  it('writeVaultFileUnsafe_testOnly creates nested directories automatically', () => {
+    writeVaultFileUnsafe_testOnly(tmpDir, 'chapters/chapter-1/scene-1.txt', 'Nested content');
     expect(readVaultFile(tmpDir, 'chapters/chapter-1/scene-1.txt').content).toBe('Nested content');
   });
 
   it('listVaultFiles returns written files', () => {
-    writeVaultFile(tmpDir, 'scene-a.txt', 'a');
-    writeVaultFile(tmpDir, 'scene-b.txt', 'b');
+    writeVaultFileUnsafe_testOnly(tmpDir, 'scene-a.txt', 'a');
+    writeVaultFileUnsafe_testOnly(tmpDir, 'scene-b.txt', 'b');
     const { items } = listVaultFiles(tmpDir);
     expect(items.map((i) => i.name)).toContain('scene-a.txt');
     expect(items.map((i) => i.name)).toContain('scene-b.txt');
   });
 
   it('deleteVaultFile removes file and reports deleted=true', () => {
-    writeVaultFile(tmpDir, 'to-delete.txt', 'bye');
+    writeVaultFileUnsafe_testOnly(tmpDir, 'to-delete.txt', 'bye');
     expect(deleteVaultFile(tmpDir, 'to-delete.txt').deleted).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, 'to-delete.txt'))).toBe(false);
   });
@@ -172,6 +177,45 @@ describe('IPC vault round-trip', () => {
 
   it('readVaultFile rejects path traversal', () => {
     expect(() => readVaultFile(tmpDir, '../../../etc/passwd')).toThrow('Path traversal denied');
+  });
+
+  it('writeVaultFileAtomic succeeds and writes new content even when a stale .tmp file exists', () => {
+    const relPath = 'crash-test.txt';
+    const fullPath = path.join(tmpDir, relPath);
+    const staleTmpPath = `${fullPath}.tmp`;
+    fs.writeFileSync(fullPath, 'original content', 'utf-8');
+    // Stale .tmp left by a previous crashed write (old fixed-suffix format)
+    fs.writeFileSync(staleTmpPath, 'partial torn write', 'utf-8');
+    writeVaultFileAtomic(tmpDir, relPath, 'new content');
+    expect(fs.readFileSync(fullPath, 'utf-8')).toBe('new content');
+    // Unique suffix means we never clobbered or cleaned up the unrelated stale file
+    expect(fs.existsSync(staleTmpPath)).toBe(true);
+  });
+
+  it('writeVaultFileAtomic: two parallel calls land exactly one payload with no tmp leftovers', async () => {
+    const relPath = 'race.md';
+    const payloadA = 'content-ALPHA';
+    const payloadB = 'content-BETA';
+
+    await Promise.all([
+      Promise.resolve().then(() => writeVaultFileAtomic(tmpDir, relPath, payloadA)),
+      Promise.resolve().then(() => writeVaultFileAtomic(tmpDir, relPath, payloadB)),
+    ]);
+
+    const final = fs.readFileSync(path.join(tmpDir, relPath), 'utf-8');
+    // Final content must be exactly one of the two payloads — no interleaving
+    expect([payloadA, payloadB]).toContain(final);
+    // No stray .tmp files left behind
+    const tmpFiles = fs.readdirSync(tmpDir).filter((f) => f.includes('.tmp'));
+    expect(tmpFiles).toHaveLength(0);
+  });
+
+  it('writeFileAtomic writes buffer to arbitrary path atomically', () => {
+    const target = path.join(tmpDir, 'export', 'output.bin');
+    const data = Buffer.from('binary export data');
+    writeFileAtomic(target, data);
+    expect(fs.readFileSync(target)).toEqual(data);
+    expect(fs.existsSync(`${target}.tmp`)).toBe(false);
   });
 });
 
@@ -365,9 +409,229 @@ describe('importObsidianVault', () => {
     expect(content).toMatch(/^---/);
     expect(content).toContain('id:');
   });
+
+  it('skips symlinked .md files — no symlink traversal outside vault', () => {
+    fs.writeFileSync(path.join(srcDir, 'real.md'), '# Real', 'utf-8');
+    fs.symlinkSync('/etc/hostname', path.join(srcDir, 'link.md'));
+
+    const manifest = defaultManifest(dstDir);
+    const result = importObsidianVault(srcDir, dstDir, manifest);
+
+    expect(result.imported).toBe(1);
+    expect(fs.existsSync(path.join(dstDir, 'real.md'))).toBe(true);
+    expect(fs.existsSync(path.join(dstDir, 'link.md'))).toBe(false);
+  });
+
+  // MYT-447: oversize source .md must be skipped (errors + continue), not read into memory.
+  // A malicious vault with a multi-GB .md previously OOM'd the main process because the
+  // read happened before the destination-side write cap.
+  it('skips oversize source .md files without reading them — records error and continues', () => {
+    // Sparse file 1 byte over the limit — fast, no real GB allocated.
+    const oversizePath = path.join(srcDir, 'evil.md');
+    const fd = fs.openSync(oversizePath, 'w');
+    fs.ftruncateSync(fd, MAX_VAULT_FILE_BYTES + 1);
+    fs.closeSync(fd);
+    // A second, in-limit file so we can confirm imports continue past the bad one.
+    fs.writeFileSync(path.join(srcDir, 'good.md'), '# Good\n', 'utf-8');
+
+    // Guard: if the fix regresses and readFileSync runs on the oversize file,
+    // the test should fail loudly rather than spending seconds allocating a string.
+    const realReadFileSync = fs.readFileSync.bind(fs);
+    const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation(((p: fs.PathOrFileDescriptor, opts?: unknown) => {
+      if (typeof p === 'string' && p === oversizePath) {
+        throw new Error('readFileSync called on oversize source — size cap regressed');
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return realReadFileSync(p as any, opts as any);
+    }) as typeof fs.readFileSync);
+
+    try {
+      const manifest = defaultManifest(dstDir);
+      const result = importObsidianVault(srcDir, dstDir, manifest);
+
+      expect(result.imported).toBe(1);
+      expect(fs.existsSync(path.join(dstDir, 'good.md'))).toBe(true);
+      expect(fs.existsSync(path.join(dstDir, 'evil.md'))).toBe(false);
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain('evil.md');
+      expect(result.errors[0]).toMatch(/exceeds the/);
+    } finally {
+      readSpy.mockRestore();
+    }
+  });
+
+  // MYT-446: importObsidianVault must use the atomic writer so a crash mid-import
+  // leaves no torn destination file.
+  it('uses atomic writes — a renameSync crash leaves no torn file at the destination', () => {
+    fs.writeFileSync(path.join(srcDir, 'crash.md'), 'imported body', 'utf-8');
+
+    const dstFull = path.join(dstDir, 'crash.md');
+    const realRenameSync = fs.renameSync.bind(fs);
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (to === dstFull) throw new Error('simulated crash before rename');
+      return realRenameSync(from, to);
+    });
+
+    try {
+      const manifest = defaultManifest(dstDir);
+      const result = importObsidianVault(srcDir, dstDir, manifest);
+
+      expect(result.imported).toBe(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain('simulated crash before rename');
+
+      // No torn file at the destination — original (absent) state preserved.
+      expect(fs.existsSync(dstFull)).toBe(false);
+      // No tmp leftovers in the destination directory.
+      const leftovers = fs.readdirSync(dstDir).filter((f) => f.includes('.tmp'));
+      expect(leftovers).toHaveLength(0);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
 });
 
-describe('startVaultWatcher — symlink containment (MYT-445 / MYT-362)', () => {
+describe('Vault file size cap', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sizecap-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('readVaultFile throws VaultFileTooLargeError when file exceeds MAX_VAULT_FILE_BYTES', () => {
+    const filePath = 'oversized.md';
+    const fullPath = path.join(tmpDir, filePath);
+    // Write a file whose on-disk size is 1 byte over the limit
+    const oversizeBytes = MAX_VAULT_FILE_BYTES + 1;
+    const fd = fs.openSync(fullPath, 'w');
+    // Use ftruncate to create a sparse file — fast and avoids allocating real GB
+    fs.ftruncateSync(fd, oversizeBytes);
+    fs.closeSync(fd);
+
+    expect(() => readVaultFile(tmpDir, filePath)).toThrow(VaultFileTooLargeError);
+    expect(() => readVaultFile(tmpDir, filePath)).toThrow(/exceeds the/);
+  });
+
+  it('readVaultFile succeeds for a file exactly at MAX_VAULT_FILE_BYTES', () => {
+    const filePath = 'at-limit.md';
+    const fullPath = path.join(tmpDir, filePath);
+    const fd = fs.openSync(fullPath, 'w');
+    fs.ftruncateSync(fd, MAX_VAULT_FILE_BYTES);
+    fs.closeSync(fd);
+
+    // Should not throw — null bytes in a utf-8 file are valid
+    expect(() => readVaultFile(tmpDir, filePath)).not.toThrow();
+  });
+
+  it('writeVaultFileAtomic throws VaultFileTooLargeError when content exceeds MAX_VAULT_FILE_BYTES', () => {
+    // Build a string whose UTF-8 encoding is 1 byte over the limit (pure ASCII = 1 byte each)
+    const oversize = 'x'.repeat(MAX_VAULT_FILE_BYTES + 1);
+    expect(() => writeVaultFileAtomic(tmpDir, 'too-big.md', oversize)).toThrow(VaultFileTooLargeError);
+    expect(() => writeVaultFileAtomic(tmpDir, 'too-big.md', oversize)).toThrow(/exceeds the/);
+    // No temp file should have been created
+    const files = fs.readdirSync(tmpDir);
+    expect(files.filter((f) => f.includes('.tmp'))).toHaveLength(0);
+  });
+
+  it('writeVaultFileAtomic succeeds for content exactly at MAX_VAULT_FILE_BYTES', () => {
+    const atLimit = 'x'.repeat(MAX_VAULT_FILE_BYTES);
+    expect(() => writeVaultFileAtomic(tmpDir, 'at-limit.md', atLimit)).not.toThrow();
+    expect(fs.statSync(path.join(tmpDir, 'at-limit.md')).size).toBe(MAX_VAULT_FILE_BYTES);
+  });
+
+  it('VaultFileTooLargeError carries sizeBytes and limitBytes', () => {
+    const oversize = 'x'.repeat(MAX_VAULT_FILE_BYTES + 100);
+    let caught: VaultFileTooLargeError | null = null;
+    try {
+      writeVaultFileAtomic(tmpDir, 'err-props.md', oversize);
+    } catch (e) {
+      if (e instanceof VaultFileTooLargeError) caught = e;
+    }
+    expect(caught).not.toBeNull();
+    expect(caught!.sizeBytes).toBe(MAX_VAULT_FILE_BYTES + 100);
+    expect(caught!.limitBytes).toBe(MAX_VAULT_FILE_BYTES);
+    expect(caught!.name).toBe('VaultFileTooLargeError');
+  });
+});
+
+// ─── Symlink sandbox escape (MYT-361) ───
+
+describe('realSafePath — symlink escapes are rejected', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-symlink-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('realSafePath rejects a symlink pointing outside the vault', () => {
+    const escapeTarget = os.tmpdir();
+    fs.symlinkSync(escapeTarget, path.join(tmpDir, 'escape'));
+    expect(() => realSafePath(tmpDir, 'escape')).toThrow(/symlink escape detected/);
+  });
+
+  it('realSafePath rejects a symlink-to-file pointing outside', () => {
+    const targetFile = path.join(os.tmpdir(), 'outside-file.txt');
+    fs.writeFileSync(targetFile, 'sensitive data');
+    fs.symlinkSync(targetFile, path.join(tmpDir, 'escape-file.txt'));
+    expect(() => realSafePath(tmpDir, 'escape-file.txt')).toThrow(/symlink escape detected/);
+  });
+
+  it('realSafePath allows a symlink pointing inside the vault', () => {
+    const innerTarget = path.join(tmpDir, 'inner.md');
+    fs.writeFileSync(innerTarget, 'content');
+    fs.symlinkSync(innerTarget, path.join(tmpDir, 'inner-link.md'));
+    expect(() => realSafePath(tmpDir, 'inner-link.md')).not.toThrow();
+  });
+
+  it('readVaultFile rejects a symlink escape', () => {
+    const targetFile = path.join(os.tmpdir(), 'outside-file.txt');
+    fs.writeFileSync(targetFile, 'sensitive data');
+    fs.symlinkSync(targetFile, path.join(tmpDir, 'escape.txt'));
+    expect(() => readVaultFile(tmpDir, 'escape.txt')).toThrow(/symlink escape detected/);
+  });
+
+  it('writeVaultFileAtomic rejects a symlink escape', () => {
+    const targetFile = path.join(os.tmpdir(), 'outside-file.txt');
+    fs.writeFileSync(targetFile, 'sensitive data');
+    fs.symlinkSync(targetFile, path.join(tmpDir, 'escape.txt'));
+    expect(() => writeVaultFileAtomic(tmpDir, 'escape.txt', 'content')).toThrow(/symlink escape detected/);
+  });
+
+  it('deleteVaultFile rejects a symlink escape', () => {
+    const targetFile = path.join(os.tmpdir(), 'outside-file.txt');
+    fs.writeFileSync(targetFile, 'sensitive data');
+    fs.symlinkSync(targetFile, path.join(tmpDir, 'escape.txt'));
+    expect(() => deleteVaultFile(tmpDir, 'escape.txt')).toThrow(/symlink escape detected/);
+  });
+
+  it('listVaultFiles skips symlink entries', () => {
+    fs.writeFileSync(path.join(tmpDir, 'real.md'), 'content');
+    const targetFile = path.join(os.tmpdir(), 'outside-file.txt');
+    fs.writeFileSync(targetFile, 'sensitive data');
+    fs.symlinkSync(targetFile, path.join(tmpDir, 'escape.txt'));
+    const result = listVaultFiles(tmpDir);
+    const names = result.items.map((i) => i.name);
+    expect(names).toContain('real.md');
+    expect(names).not.toContain('escape.txt');
+  });
+
+  it('realSafePath rejects a parent-directory symlink escape (new file write)', () => {
+    const escapeDir = os.tmpdir();
+    fs.symlinkSync(escapeDir, path.join(tmpDir, 'escape-dir'));
+    expect(() => realSafePath(tmpDir, 'escape-dir/new-file.md')).toThrow(/parent symlink escape detected/);
+  });
+});
+
+describe('startVaultWatcher — symlink containment (MYT-362)', () => {
   let vaultDir: string;
   let outsideDir: string;
 

@@ -111,7 +111,8 @@ import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
   readVaultFile,
-  writeVaultFile,
+  writeVaultFileAtomic,
+  writeFileAtomic,
   listVaultFiles,
   deleteVaultFile,
   readManifest,
@@ -291,16 +292,15 @@ function ensureNotesVaultDir() {
 // Notify renderer when vault changes so it can refresh state
 function notifyVaultChanged(filePath: string) {
   if (mainWindow) {
-    // MYT-445/MYT-362 L-2: convert chokidar's absolute path to a vault-relative
-    // path before sending to the renderer, and drop the event if the resolved
-    // path escapes the vault (defense in depth against symlink-based leaks).
+    // Convert absolute chokidar path to vault-relative path (MYT-362 / L-2)
     const vaultRoot = getVaultRoot();
     let relativePath: string;
     try {
       relativePath = path.relative(vaultRoot, filePath);
-      if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return;
+      // Defense in depth: verify the path doesn't escape via symlink
       safePath(vaultRoot, relativePath);
     } catch {
+      // Path escapes — drop the event
       return;
     }
     mainWindow.webContents.send('vault:file-changed', { path: relativePath });
@@ -339,7 +339,7 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
-    return writeVaultFile(getVaultRoot(), payload.path, payload.content);
+    return writeVaultFileAtomic(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
@@ -523,7 +523,7 @@ const handlers: IpcHandlers = {
       const fullSnapshotPath = path.join(getVaultRoot(), applyEntry.snapshot_path);
       if (fs.existsSync(fullSnapshotPath)) {
         const snapshot = JSON.parse(fs.readFileSync(fullSnapshotPath, 'utf-8')) as { originalContent: string; path: string };
-        writeVaultFile(getVaultRoot(), snapshot.path, snapshot.originalContent);
+        writeVaultFileAtomic(getVaultRoot(), snapshot.path, snapshot.originalContent);
         restoredPath = snapshot.path;
       }
     }
@@ -695,7 +695,7 @@ const handlers: IpcHandlers = {
       created_at: new Date().toISOString(),
     });
     // Write the restored content to vault markdown
-    writeVaultFile(getVaultRoot(), payload.scenePath, target.content);
+    writeVaultFileAtomic(getVaultRoot(), payload.scenePath, target.content);
     return { restored: target, preRestoreSnapshot };
   },
 
@@ -810,7 +810,10 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
     const s = loadAppSettings();
-    return { ...s, apiKey: maskApiKey(s.apiKey) };
+    const maskedProvider = s.provider
+      ? { ...s.provider, apiKey: s.provider.apiKey ? maskApiKey(s.provider.apiKey) : undefined }
+      : undefined;
+    return { ...s, apiKey: maskApiKey(s.apiKey), provider: maskedProvider };
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
     const current = loadAppSettings();
@@ -818,12 +821,21 @@ const handlers: IpcHandlers = {
     const apiKey = payload.settings.apiKey === maskApiKey(current.apiKey)
       ? current.apiKey
       : payload.settings.apiKey;
+    // Same guard for provider.apiKey: if the renderer echoes back the masked preview, keep the stored key.
+    const providerApiKey = payload.settings.provider?.apiKey
+      ? payload.settings.provider.apiKey === maskApiKey(current.provider?.apiKey ?? '')
+        ? current.provider?.apiKey
+        : payload.settings.provider.apiKey
+      : payload.settings.provider?.apiKey;
     // Regenerate sessionId when telemetry is being disabled (privacy: unlink future sessions).
     let telemetry = payload.settings.telemetry;
     if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
       telemetry = { enabled: false, sessionId: generateSessionId() };
     }
-    const updated = { ...payload.settings, apiKey, ...(telemetry !== undefined ? { telemetry } : {}) };
+    const updatedProvider = payload.settings.provider
+      ? { ...payload.settings.provider, apiKey: providerApiKey }
+      : payload.settings.provider;
+    const updated = { ...payload.settings, apiKey, provider: updatedProvider, ...(telemetry !== undefined ? { telemetry } : {}) };
     saveAppSettings(updated);
     // Re-configure telemetry in-process immediately.
     if (updated.telemetry) {
@@ -1373,7 +1385,7 @@ const handlers: IpcHandlers = {
       language: payload.metadata?.language,
       chapters,
     });
-    fs.writeFileSync(filePath, buffer);
+    writeFileAtomic(filePath, buffer);
     return { path: filePath, cancelled: false };
   },
 
@@ -1408,7 +1420,7 @@ const handlers: IpcHandlers = {
       }));
 
     const buffer = await buildDocx({ title: story.title, chapters });
-    fs.writeFileSync(result.filePath, buffer);
+    writeFileAtomic(result.filePath, buffer);
     return { path: result.filePath, cancelled: false };
   },
 
