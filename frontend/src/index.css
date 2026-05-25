@@ -5,9 +5,9 @@
 }
 
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0f0f0f;
-  color: #e8e8e8;
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text-body);
   min-height: 100vh;
 }
 
@@ -20,16 +20,8 @@ body {
   }
 }
 
-/* WCAG 1.4.11: high-contrast and forced-colors support */
-@media (prefers-contrast: more) {
-  :root {
-    --text-muted: #999999;
-    --text-faint: #888888;
-    --border-default: #666666;
-    --accent: #9d6eff;
-  }
-}
-
+/* WCAG 1.4.11: high-contrast handling lives in tokens.css (prefers-contrast +
+   [data-contrast="high"] overlay). forced-colors falls through to the UA. */
 @media (forced-colors: active) {
   * {
     forced-color-adjust: auto;
