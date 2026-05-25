@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { applyTheme, type ThemeMode } from './theme';
+import ThemeContrastSlider from './ThemeContrastSlider';
+import { applyThemeAxis, normalizeAxis, osWantsHighContrast, THEME_AXIS_DEFAULT } from './themeAxis';
 import './SettingsPanel.css';
 
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
@@ -30,6 +32,7 @@ const DEFAULTS: AppSettings = {
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
   },
   theme: 'dark',
+  themeAxis: THEME_AXIS_DEFAULT,
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
 };
 
@@ -631,6 +634,25 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               <p className="settings-hint">
                 Mythos Writer uses the dark Liquid Glass theme. High contrast switches to
                 opaque, AAA-contrast surfaces for accessibility.
+              </p>
+            </div>
+
+            {/* Softness ↔ Contrast slider (MYT-518) */}
+            <div className="settings-field">
+              <span className="settings-label" id="theme-axis-label">Softness ↔ Contrast</span>
+              <ThemeContrastSlider
+                value={normalizeAxis(settings.themeAxis)}
+                disabled={settings.theme === 'high-contrast'}
+                osHighContrast={osWantsHighContrast()}
+                onChange={(s) => {
+                  setSettings((p) => ({ ...p, themeAxis: s }));
+                  applyThemeAxis(s); // live preview, ≤100ms CSS-var swap
+                  setSavedOk(false);
+                }}
+              />
+              <p className="settings-hint">
+                Blends the dark theme from softer (lighter, gentler neon) to sharper
+                (darker, crisper neon). Body text stays legible at every position.
               </p>
             </div>
           </section>

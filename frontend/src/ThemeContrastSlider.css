@@ -1,0 +1,104 @@
+/* Softness ↔ Contrast slider (MYT-518). Gradient track: soft/blue on the left,
+   crisp cyan→magenta on the right. Thumb is a small glass disc. */
+
+.theme-axis-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.theme-axis-labels {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--text-xs, 12px);
+}
+
+.theme-axis-end {
+  color: var(--text-muted);
+}
+
+.theme-axis-value {
+  color: var(--text-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-axis-track-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px; /* 44px hit area / target size (touch) */
+}
+
+.theme-axis-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 200px; /* MYT-520 §4.3 min track length */
+  height: 8px;
+  border-radius: var(--radius-full, 999px);
+  background: linear-gradient(
+    90deg,
+    rgba(0, 240, 255, 0.35) 0%,
+    rgba(155, 95, 255, 0.4) 50%,
+    var(--neon-magenta, #ff4dff) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+/* Orientation ticks (≈0.25 soft, ≈0.80 sharp) — purely a visual hint. */
+.theme-axis-snap {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  background: var(--glass-rim, rgba(255, 255, 255, 0.5));
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* Thumb — glass disc with a neon rim. */
+.theme-axis-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--glass-fill-fallback, #1b2029);
+  border: 2px solid var(--neon-cyan, #00f0ff);
+  box-shadow: var(--glow-sm, 0 0 16px) rgba(0, 240, 255, calc(var(--neon-intensity, 0.75) * 0.6));
+  cursor: pointer;
+}
+
+.theme-axis-input::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--glass-fill-fallback, #1b2029);
+  border: 2px solid var(--neon-cyan, #00f0ff);
+  box-shadow: var(--glow-sm, 0 0 16px) rgba(0, 240, 255, calc(var(--neon-intensity, 0.75) * 0.6));
+  cursor: pointer;
+}
+
+.theme-axis-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--bg-app, #0e1116), 0 0 0 4px var(--focus-ring, #00f0ff);
+}
+
+.theme-axis-slider.is-disabled {
+  opacity: 0.55;
+}
+
+.theme-axis-slider.is-disabled .theme-axis-input {
+  cursor: not-allowed;
+}
+
+.theme-axis-note {
+  margin: 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted);
+}
+
+/* Reduced-motion: the global reset already neutralises transitions; the thumb
+   glow is static, so nothing animates here regardless. */

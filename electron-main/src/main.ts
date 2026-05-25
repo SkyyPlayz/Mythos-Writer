@@ -1981,6 +1981,7 @@ const SETTINGS_DEFAULTS: AppSettings = {
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
   },
   theme: 'dark',
+  themeAxis: 0.4,
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   updateChannel: 'stable',
 };

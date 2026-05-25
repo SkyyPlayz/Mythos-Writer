@@ -7,8 +7,13 @@
  *   - WCAG high-contrast accessibility theme composes on top via
  *     [data-contrast="high"] and the prefers-* media queries below.
  *   - Axis-driven tokens (color surfaces, glass opacity, blur, neon intensity)
- *     are pinned to their DEFAULT values here. The continuous Softness↔Contrast
- *     slider that interpolates them is MYT-518 and is intentionally NOT built yet.
+ *     are DERIVED from `--axis-*` source variables. Those source vars are
+ *     written by the continuous Softness↔Contrast slider (MYT-518,
+ *     `themeAxis.ts`); the `var(--axis-*, <default>)` fallbacks below are the
+ *     pinned default position (s≈0.40) used before/without the slider's JS.
+ *     Crucially the slider sets only the `--axis-*` SOURCE vars — never the
+ *     public tokens — so the high-contrast overlay and the prefers-* media
+ *     queries below (which override the public tokens) still win by cascade.
  *   - No heavy glass/neon visual treatment is applied to components in this
  *     phase — that is the polish pass (MYT-521). These tokens are the plumbing
  *     every surface reads from so the polish pass is a values-only change.
@@ -31,8 +36,8 @@
   --neon-violet: #9b5fff;      /* secondary accent / heading accent words      */
   --neon-magenta: #ff4dff;     /* tertiary accent / emphasis, destructive-hover */
 
-  --text-header: #edecf6;      /* titles, active labels (warm white)  13.3:1   */
-  --text-body: #bfd6e8;        /* paragraphs, UI copy (soft gray-blue) 10.4:1  */
+  --text-header: var(--axis-text-header, #edecf6); /* titles/active (warm white) */
+  --text-body: var(--axis-text-body, #bfd6e8);     /* paragraphs, UI copy        */
   --text-muted: #8a9bb0;       /* secondary/captions/disabled-adjacent; lowest
                                   legible text tier (≥ 4.5:1 on every surface) */
   /* Spec §1.1 stops at muted as the lowest-contrast TEXT tier; per §0 rule 1
@@ -48,12 +53,14 @@
       rgba(155, 95, 255, 0.6) 50%,
       rgba(255, 77, 255, 0.6) 100%);
 
-  /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
-  --bg-base: #0e1116;          /* app shell / canvas — deep charcoal, not black */
-  --bg-vignette: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%);
-  --glass-fill: rgba(255, 255, 255, 0.09);   /* translucent panel fill        */
-  --glass-fill-fallback: #1b2029;            /* opaque fill + contrast-guard bg */
-  --glass-rim: rgba(255, 255, 255, 0.12);    /* 1px bright inner rim           */
+  /* ---- 1.2 Color — axis-driven surfaces (default s≈0.40 fallbacks; the
+   *         Softness↔Contrast slider interpolates these via --axis-*) ------ */
+  --bg-base: var(--axis-bg-base, #0e1116);   /* app shell / canvas — deep charcoal */
+  --bg-vignette: radial-gradient(120% 120% at 50% 0%,
+      var(--axis-vignette-start, #141b26) 0%, var(--bg-base) 55%, #0b0e13 100%);
+  --glass-fill: rgba(255, 255, 255, var(--axis-glass-alpha, 0.09)); /* panel fill */
+  --glass-fill-fallback: var(--axis-glass-fallback, #1b2029); /* opaque + guard bg */
+  --glass-rim: rgba(255, 255, 255, var(--axis-glass-rim-alpha, 0.12)); /* inner rim */
   --glass-inner-shadow: inset 0 1px 24px rgba(20, 16, 40, 0.45);
 
   /* ---- 1.3 Radii ------------------------------------------------------- */
@@ -99,14 +106,14 @@
   --scrim: rgba(8, 10, 16, 0.55);
 
   /* ---- 1.7 Blur (axis-driven; perf-capped at 40px, MYT-520 §6) --------- */
-  --blur-panel: 28px;
+  --blur-panel: var(--axis-blur-panel, 28px);
   --blur-overlay: 40px;
   --blur-chip: 18px;
 
   /* ---- 1.8 Neon glow + frame (axis-driven intensity) ------------------- */
-  --neon-intensity: 0.75;      /* master 0–1 multiplier; 0 disables all glow  */
+  --neon-intensity: var(--axis-neon-intensity, 0.75); /* 0–1 master; 0 = no glow */
   --glow-sm: 0 0 16px;         /* compose with a color, e.g. var(--glow-sm) var(--neon-cyan) */
-  --glow-md: 0 0 28px;
+  --glow-md: 0 0 var(--axis-glow-md-blur, 28px);
   --glow-lg: 0 0 48px;
   --frame-width-rest: 1px;
   --frame-width-hover: 3px;

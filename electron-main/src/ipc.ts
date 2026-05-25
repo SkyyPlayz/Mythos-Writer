@@ -855,6 +855,8 @@ export interface AppSettings {
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
   theme: 'dark' | 'high-contrast';
+  /** Softness↔Contrast slider position, 0 (softer) … 1 (sharper). MYT-518. */
+  themeAxis?: number;
   snapshots?: {
     maxPerScene: number;
     maxAgeDays: number;

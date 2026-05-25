@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
 import { applyTheme } from './theme';
+import { applyThemeAxis, normalizeAxis } from './themeAxis';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -328,7 +329,7 @@ export default function DesktopShell() {
       if (m.layout) {
         setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
-      if (s) { setAppSettings(s); applyTheme(s.theme); }
+      if (s) { setAppSettings(s); applyTheme(s.theme); applyThemeAxis(normalizeAxis(s.themeAxis)); }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
@@ -662,7 +663,7 @@ export default function DesktopShell() {
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
-          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme); }}
+          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme); applyThemeAxis(normalizeAxis(s.themeAxis)); }}
         />
       )}
       {historyOpen && (

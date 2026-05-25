@@ -76,6 +76,9 @@ interface AppSettings {
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
   theme: 'dark' | 'high-contrast';
+  /** Softness↔Contrast slider position, 0 (softer) … 1 (sharper). MYT-518.
+   *  Default 0.4. Absent/garbage normalizes to the default. */
+  themeAxis?: number;
   snapshots?: {
     maxPerScene: number;
     maxAgeDays: number;
