@@ -56,9 +56,14 @@ These are the features you get right away — the foundation of Mythos Writer.
 
 These features will arrive in future updates as the system grows more powerful.
 
-### Liquid Glass Dark Neon visual identity (next milestone after current core work)
+### Liquid Glass Dark Neon visual identity (phased)
 
-Per the board (MYT-516), the app's full visual identity — **Liquid Glass Dark Neon**, dark-only, applied uniformly across every surface, with a continuous Softness↔Contrast slider — is the **immediate next milestone once the current in-flight core work lands**. It is intentionally **not** an MVP-core item and does not block work already in progress. A dedicated UX designer owns the design-system spec; engineering implements. See [12-visual-design-system.md](12-visual-design-system.md).
+Per the board (MYT-516), the app's visual identity — **Liquid Glass Dark Neon**, dark-only — is delivered in two phases:
+
+- **Foundation (now):** the design-system spec plus a dark-only **token layer** that in-flight components adopt as they're built, so we don't restyle everything twice.
+- **Polish (next milestone, after current core work):** the full glass/neon visual treatment applied uniformly across every surface, plus the continuous Softness↔Contrast slider.
+
+Neither phase blocks in-flight MVP work. A dedicated UX designer owns the design-system spec; engineering implements. See [12-visual-design-system.md](12-visual-design-system.md).
 
 ### Full local-model and BYO-provider support (immediate post-MVP priority)
 
