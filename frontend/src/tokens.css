@@ -33,8 +33,14 @@
 
   --text-header: #edecf6;      /* titles, active labels (warm white)  13.3:1   */
   --text-body: #bfd6e8;        /* paragraphs, UI copy (soft gray-blue) 10.4:1  */
-  --text-muted: #8a9bb0;       /* secondary/captions/disabled-adjacent         */
-  --text-faint: #6e7e92;       /* lowest-emphasis hints (still ≥ 4.5:1 on bg)  */
+  --text-muted: #8a9bb0;       /* secondary/captions/disabled-adjacent; lowest
+                                  legible text tier (≥ 4.5:1 on every surface) */
+  /* Spec §1.1 stops at muted as the lowest-contrast TEXT tier; per §0 rule 1
+     (legibility wins) there is no sub-muted text tier. The previous #6e7e92
+     failed the 4.5:1 floor on lighter surfaces (UX gate, MYT-517), so the
+     "faint" alias collapses up to muted rather than reintroducing a failing
+     tier. Use opacity, not a darker color, for purely decorative dimming. */
+  --text-faint: var(--text-muted);
 
   --grad-neon: linear-gradient(120deg, #00f0ff 0%, #9b5fff 50%, #ff4dff 100%);
   --grad-neon-soft: linear-gradient(120deg,
@@ -166,13 +172,13 @@
   --text-tertiary: var(--text-muted);
   --text-dim: var(--text-muted);
   --text: var(--text-body);
-  --text-placeholder: var(--text-faint);
+  --text-placeholder: var(--text-muted); /* placeholders carry meaning → ≥ 4.5:1 */
   --text-link: var(--neon-cyan);
 
   /* Surfaces */
   --surface: var(--glass-fill-fallback);
   --surface-2: var(--bg-elevated);
-  --surface-3: #2a3340;
+  --surface-3: #262d38;        /* kept dark enough that muted text holds ≥ 4.5:1 */
   --surface-alt: var(--bg-elevated);
   --bg-surface: var(--bg-panel);
   --bg-bar: var(--bg-canvas);

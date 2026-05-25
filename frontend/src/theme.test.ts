@@ -1,4 +1,18 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { applyTheme, normalizeTheme, THEME_MODES } from './theme';
+
+const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
+
+describe('token contrast floor (MYT-517 UX gate)', () => {
+  // The sub-muted text colour failed the 4.5:1 floor on lighter surfaces, so
+  // the faint/placeholder aliases must resolve to muted (the lowest legible
+  // tier), never to a darker literal. Guards against reintroducing a failing tier.
+  it('faint and placeholder text aliases collapse to --text-muted', () => {
+    expect(tokensCss).toMatch(/--text-faint:\s*var\(--text-muted\)/);
+    expect(tokensCss).toMatch(/--text-placeholder:\s*var\(--text-muted\)/);
+  });
+});
 
 describe('theme (dark-only, MYT-517)', () => {
   beforeEach(() => {
