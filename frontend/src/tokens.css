@@ -1,0 +1,323 @@
+/* =============================================================================
+ * Liquid Glass Dark Neon — Design Tokens (phase 1 foundation)
+ * Implements MYT-520 §1 at the default slider position (s ≈ 0.40, leaning soft).
+ *
+ * Scope (MYT-517, foundation only):
+ *   - Single dark-only token layer. No light/system theme.
+ *   - WCAG high-contrast accessibility theme composes on top via
+ *     [data-contrast="high"] and the prefers-* media queries below.
+ *   - Axis-driven tokens (color surfaces, glass opacity, blur, neon intensity)
+ *     are pinned to their DEFAULT values here. The continuous Softness↔Contrast
+ *     slider that interpolates them is MYT-518 and is intentionally NOT built yet.
+ *   - No heavy glass/neon visual treatment is applied to components in this
+ *     phase — that is the polish pass (MYT-521). These tokens are the plumbing
+ *     every surface reads from so the polish pass is a values-only change.
+ *
+ * Rules that override everything (MYT-520 §0):
+ *   1. Legibility wins: body text ≥ 4.5:1 on its panel at all times.
+ *   2. Neon is light, not paint: cyan/violet/magenta only as frames, glows,
+ *      rings, underlines, small accent words — never as body-text color.
+ *      (violet on glass = 4.06:1, below floor → accent-only by rule.)
+ *   3. Motion is subtle, composited (transform/opacity), and off in
+ *      reduced-motion.
+ * ========================================================================== */
+
+:root {
+  /* color-scheme keeps native form controls / scrollbars dark */
+  color-scheme: dark;
+
+  /* ---- 1.1 Color — base palette (static anchors) ----------------------- */
+  --neon-cyan: #00f0ff;        /* primary accent / hover frame / focus ring   */
+  --neon-violet: #9b5fff;      /* secondary accent / heading accent words      */
+  --neon-magenta: #ff4dff;     /* tertiary accent / emphasis, destructive-hover */
+
+  --text-header: #edecf6;      /* titles, active labels (warm white)  13.3:1   */
+  --text-body: #bfd6e8;        /* paragraphs, UI copy (soft gray-blue) 10.4:1  */
+  --text-muted: #8a9bb0;       /* secondary/captions/disabled-adjacent; lowest
+                                  legible text tier (≥ 4.5:1 on every surface) */
+  /* Spec §1.1 stops at muted as the lowest-contrast TEXT tier; per §0 rule 1
+     (legibility wins) there is no sub-muted text tier. The previous #6e7e92
+     failed the 4.5:1 floor on lighter surfaces (UX gate, MYT-517), so the
+     "faint" alias collapses up to muted rather than reintroducing a failing
+     tier. Use opacity, not a darker color, for purely decorative dimming. */
+  --text-faint: var(--text-muted);
+
+  --grad-neon: linear-gradient(120deg, #00f0ff 0%, #9b5fff 50%, #ff4dff 100%);
+  --grad-neon-soft: linear-gradient(120deg,
+      rgba(0, 240, 255, 0.6) 0%,
+      rgba(155, 95, 255, 0.6) 50%,
+      rgba(255, 77, 255, 0.6) 100%);
+
+  /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
+  --bg-base: #0e1116;          /* app shell / canvas — deep charcoal, not black */
+  --bg-vignette: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%);
+  --glass-fill: rgba(255, 255, 255, 0.09);   /* translucent panel fill        */
+  --glass-fill-fallback: #1b2029;            /* opaque fill + contrast-guard bg */
+  --glass-rim: rgba(255, 255, 255, 0.12);    /* 1px bright inner rim           */
+  --glass-inner-shadow: inset 0 1px 24px rgba(20, 16, 40, 0.45);
+
+  /* ---- 1.3 Radii ------------------------------------------------------- */
+  --radius-xs: 8px;            /* floating tabs, chips        */
+  --radius-sm: 12px;           /* inputs, small controls      */
+  --radius-md: 16px;           /* buttons, cards              */
+  --radius-lg: 20px;           /* panels, navigator rails     */
+  --radius-xl: 24px;           /* major surfaces, dialogs     */
+  --radius-full: 999px;        /* pills, circular popouts     */
+
+  /* ---- 1.4 Spacing (4px base, no off-scale values) --------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;             /* default panel padding       */
+  --space-6: 24px;             /* major panel padding         */
+  --space-8: 32px;
+  --space-10: 40px;            /* min control target          */
+  --space-12: 48px;
+
+  /* ---- 1.5 Type scale (base 16, Inter / system sans) ------------------- */
+  --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --text-xs: 12px;   --leading-xs: 1.4;   --weight-xs: 400;
+  --text-sm: 14px;   --leading-sm: 1.5;   --weight-sm: 400;
+  --text-base: 16px; --leading-base: 1.6; --weight-base: 400;
+  --text-lg: 18px;   --leading-lg: 1.4;   --weight-lg: 600;
+  --text-xl: 20px;   --leading-xl: 1.3;   --weight-xl: 600;
+  --text-2xl: 24px;  --leading-2xl: 1.25; --weight-2xl: 600;
+  --text-3xl: 28px;  --leading-3xl: 1.2;  --weight-3xl: 700;
+
+  --tracking-heading: -0.02em;
+  --weight-body: 400;
+  --weight-heading: 600;
+  --weight-emphasis: 700;
+
+  /* ---- 1.6 Elevation / shadow ------------------------------------------ */
+  --elev-0: none;
+  --elev-1: 0 8px 32px rgba(5, 8, 20, 0.45), inset 0 1px 24px rgba(20, 16, 40, 0.45);
+  --elev-2: 0 12px 48px rgba(5, 8, 20, 0.55);
+  --elev-3: 0 20px 64px rgba(5, 8, 20, 0.65);
+  --scrim: rgba(8, 10, 16, 0.55);
+
+  /* ---- 1.7 Blur (axis-driven; perf-capped at 40px, MYT-520 §6) --------- */
+  --blur-panel: 28px;
+  --blur-overlay: 40px;
+  --blur-chip: 18px;
+
+  /* ---- 1.8 Neon glow + frame (axis-driven intensity) ------------------- */
+  --neon-intensity: 0.75;      /* master 0–1 multiplier; 0 disables all glow  */
+  --glow-sm: 0 0 16px;         /* compose with a color, e.g. var(--glow-sm) var(--neon-cyan) */
+  --glow-md: 0 0 28px;
+  --glow-lg: 0 0 48px;
+  --frame-width-rest: 1px;
+  --frame-width-hover: 3px;
+
+  /* ---- 1.9 Motion curves + durations (all ≤ 320ms < Doherty 400ms) ----- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-press: 100ms;
+  --dur-hover-in: 180ms;
+  --dur-hover-out: 240ms;
+  --dur-panel: 280ms;
+
+  /* =========================================================================
+   * Semantic aliases — what components reference.
+   * Foundation phase keeps values visually close to today's UI so retargeting
+   * is non-breaking; the polish pass (MYT-521) shifts these toward full glass.
+   * ====================================================================== */
+
+  /* Surfaces (opaque, foundation-safe; glass treatment is the polish pass) */
+  --bg-app: var(--bg-base);          /* outermost app shell                  */
+  --bg-canvas: #0b0e13;              /* deepest layer behind content         */
+  --bg-panel: var(--glass-fill-fallback); /* default panel fill (opaque)     */
+  --bg-elevated: #222a36;            /* popovers, raised cards               */
+  --bg-inset: #15191f;               /* wells, inputs, code blocks           */
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.1);
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Brand accent — violet-forward today (keeps current identity); the polish
+     pass moves the primary accent to cyan per spec §1.1. */
+  --accent: var(--neon-violet);
+  --accent-soft: rgba(155, 95, 255, 0.18);
+  --accent-cyan: var(--neon-cyan);
+  --accent-magenta: var(--neon-magenta);
+  --focus-ring: var(--neon-cyan);
+
+  /* State colors (kept at today's values; ≥ 4.5:1 as text on dark surfaces) */
+  --state-danger: #f87171;
+  --state-danger-hover: var(--neon-magenta);   /* destructive-hover, §2.2     */
+  --state-success: #4ade80;
+  --state-warning: #fbbf24;
+  --state-info: var(--neon-cyan);
+
+  /* =========================================================================
+   * Compatibility aliases.
+   * The existing components were authored against a token vocabulary that was
+   * never committed (the token layer + theme.ts were both missing on main, so
+   * these resolved to nothing and the UI leaned on inline fallbacks). Defining
+   * them here is what actually makes every surface token-driven. Two legacy
+   * conventions are in use — bare (`--text-primary`) and `--color-`-prefixed —
+   * both are mapped onto the Liquid Glass palette above. The MYT-521 polish
+   * pass migrates components onto the canonical names and retires these.
+   * ====================================================================== */
+
+  /* Text */
+  --text-primary: var(--text-header);
+  --text-secondary: var(--text-body);
+  --text-tertiary: var(--text-muted);
+  --text-dim: var(--text-muted);
+  --text: var(--text-body);
+  --text-placeholder: var(--text-muted); /* placeholders carry meaning → ≥ 4.5:1 */
+  --text-link: var(--neon-cyan);
+
+  /* Surfaces */
+  --surface: var(--glass-fill-fallback);
+  --surface-2: var(--bg-elevated);
+  --surface-3: #262d38;        /* kept dark enough that muted text holds ≥ 4.5:1 */
+  --surface-alt: var(--bg-elevated);
+  --bg-surface: var(--bg-panel);
+  --bg-bar: var(--bg-canvas);
+  --bg-input: var(--bg-inset);
+  --input-bg: var(--bg-inset);
+  --bg-code: var(--bg-canvas);
+  --bg-card: var(--bg-panel);
+  --bg-detail: var(--bg-panel);
+  --bg-badge: var(--bg-elevated);
+  --badge-bg: var(--bg-elevated);
+  --bg-drag-over: var(--accent-soft);
+  --selected: var(--accent-soft);
+  --hover: var(--bg-hover);
+
+  /* Borders */
+  --border: var(--border-default);
+  --border-muted: var(--border-subtle);
+  --border-separator: var(--border-subtle);
+  --border-hover: var(--border-strong);
+
+  /* Accents */
+  --accent-hover: #b388ff;
+  --accent-light: #c9b6ff;
+  --accent-dim: #7b5fd6;
+  --accent-dark: #6d28d9;
+  --accent-border: var(--accent);
+  --accent-bg: var(--accent-soft);
+
+  /* States (bare names) */
+  --danger: var(--state-danger);
+  --error: var(--state-danger);
+  --success: var(--state-success);
+  --warning: var(--state-warning);
+
+  /* Elevation alias */
+  --shadow-md: var(--elev-2);
+
+  /* `--color-`-prefixed vocabulary */
+  --color-text: var(--text-body);
+  --color-text-primary: var(--text-header);
+  --color-text-secondary: var(--text-body);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border-default);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-surface-hover: var(--bg-hover);
+  --color-surface-subtle: var(--bg-inset);
+  --color-success: var(--state-success);
+  --color-danger: var(--state-danger);
+  --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-error: var(--state-danger);
+  --color-warning: var(--state-warning);
+  --color-warning-bg: rgba(251, 191, 36, 0.12);
+  --color-warning-border: rgba(251, 191, 36, 0.4);
+  --color-warning-text: #fbbf24;
+  --color-archive-hint: var(--neon-violet);
+}
+
+/* =============================================================================
+ * High-contrast accessibility theme (MYT-520 §5.2).
+ * Composes ON TOP of Liquid Glass — it is not a slider position. Triggered by:
+ *   - explicit app setting  -> [data-contrast="high"] (set by theme.ts)
+ *   - OS "increase contrast" -> prefers-contrast: more
+ *   - OS "reduce transparency" / forced-colors -> opaque fills
+ * Glass → opaque solid fills, neon → solid strokes, glows removed, text → AAA.
+ * ========================================================================== */
+:root[data-contrast="high"],
+:root[data-contrast="high"] :where(*) {
+  --glass-fill: #15191f;
+  --glass-fill-fallback: #15191f;
+  --glass-rim: rgba(255, 255, 255, 0.6);
+  --glass-inner-shadow: none;
+  --blur-panel: 0px;
+  --blur-overlay: 0px;
+  --blur-chip: 0px;
+  --neon-intensity: 0;
+
+  --text-header: #ffffff;
+  --text-body: #ffffff;       /* white on #15191f ≈ 16:1 (AAA)               */
+  --text-muted: #d6e0ec;      /* ≈ 12:1 (AAA)                                */
+  --text-faint: #b9c6d6;
+
+  --bg-app: #0a0c10;
+  --bg-canvas: #06080b;
+  --bg-panel: #15191f;
+  --bg-elevated: #1d232c;
+  --bg-inset: #0e1116;
+
+  --border-subtle: #6e7e92;
+  --border-default: #9fb3c8;  /* ≥ 3:1 for UI components (WCAG 1.4.11)        */
+  --border-strong: #ffffff;
+
+  --accent: #c9b6ff;          /* solid high-contrast stroke, no glow         */
+  --focus-ring: #ffffff;
+
+  /* Flatten the literal accent family onto the solid high-contrast accent. */
+  --accent-hover: #e0d4ff;
+  --accent-light: #e0d4ff;
+  --accent-dim: #c9b6ff;
+  --accent-dark: #c9b6ff;
+  --surface-3: #1d232c;
+}
+
+/* OS-level increased-contrast request → clamp toward the high-contrast theme. */
+@media (prefers-contrast: more) {
+  :root {
+    --text-muted: #c4d2e0;
+    --text-faint: #aebccd;
+    --border-default: #9fb3c8;
+    --glass-rim: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Transparency-averse users / unsupported backdrop-filter → opaque fills,
+   no blur (MYT-520 §5.4 / §6). Layout is unchanged. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-fill: var(--glass-fill-fallback);
+    --blur-panel: 0px;
+    --blur-overlay: 0px;
+    --blur-chip: 0px;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-fill: var(--glass-fill-fallback);
+  }
+}
+
+/* Reduced-motion (MYT-520 §5.3): kill pulses/parallax; keep instant feedback.
+   The base reduced-motion reset lives in index.css; this nulls the neon-pulse
+   intensity hook so any future pulse driven by it is static. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-press: 0.01ms;
+    --dur-hover-in: 0.01ms;
+    --dur-hover-out: 0.01ms;
+    --dur-panel: 0.01ms;
+  }
+}

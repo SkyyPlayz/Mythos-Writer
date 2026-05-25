@@ -37,6 +37,7 @@ You focus on telling your story. The app handles the rest.
 - **Local-first.** Your files live on your computer by default.
 - **Reversible by default.** Snapshots, history, and rollback for every change.
 - **Approachable.** Looks and feels like a word processor on day one.
+- **One coherent look.** A single visual identity — **Liquid Glass Dark Neon** — applied smoothly and uniformly across the whole app (see [12-visual-design-system.md](12-visual-design-system.md)).
 
 ## Obsidian compatibility (CEO decision)
 
