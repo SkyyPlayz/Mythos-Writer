@@ -16,12 +16,17 @@ const BUDGET_DEFAULTS: AgentBudgetSettings = {
   maxTokensPerDay: 500_000,
 };
 
+const AGENT_VOICE_DEFAULTS: AgentVoiceSettings = {
+  ttsEnabled: false,
+  sttEngine: 'local',
+};
+
 const DEFAULTS: AppSettings = {
   apiKey: '',
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS, ...AGENT_VOICE_DEFAULTS },
+    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS, ...AGENT_VOICE_DEFAULTS },
+    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS, ...AGENT_VOICE_DEFAULTS },
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
@@ -75,6 +80,13 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
       setMicPermission('denied');
     }
   }, []);
+
+  // Enumerate mics on load when voice is already enabled from a previous session
+  useEffect(() => {
+    if (!loading && settings.voice?.enabled) {
+      enumerateMics();
+    }
+  }, [loading, settings.voice?.enabled, enumerateMics]);
 
   const keyIsConfigured = Boolean(settings.apiKey);
   // Only validate when the user has touched the field; an untouched empty input is not an error.
@@ -300,6 +312,59 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
                     onChange={(e) => setAgentField('writingAssistant', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {settings.voice?.enabled && (
+                  <>
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-toggle" htmlFor="wa-tts-enabled">
+                        <input
+                          id="wa-tts-enabled"
+                          type="checkbox"
+                          aria-label="Enable TTS replies for Writing Assistant"
+                          checked={settings.agents.writingAssistant.ttsEnabled ?? false}
+                          onChange={(e) => setAgentField('writingAssistant', 'ttsEnabled', e.target.checked)}
+                        />
+                        <span className="settings-toggle-track" />
+                      </label>
+                      <span className="settings-label">Speak replies (TTS)</span>
+                    </div>
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-label" htmlFor="wa-stt-engine">STT engine</label>
+                      <select
+                        id="wa-stt-engine"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.writingAssistant.sttEngine ?? 'local'}
+                        aria-label="STT engine for Writing Assistant"
+                        onChange={(e) => setAgentField('writingAssistant', 'sttEngine', e.target.value as 'local' | 'cloud')}
+                      >
+                        <option value="local">Local (Web Speech API)</option>
+                        <option value="cloud">Cloud (Whisper)</option>
+                      </select>
+                    </div>
+                    {micPermission === 'granted' && micDevices.length > 0 && (
+                      <div className="settings-field settings-field-inline">
+                        <label className="settings-label" htmlFor="wa-agent-mic-device">Microphone</label>
+                        <select
+                          id="wa-agent-mic-device"
+                          className="settings-input settings-select"
+                          value={settings.agents.writingAssistant.micDeviceId ?? ''}
+                          aria-label="Microphone for Writing Assistant"
+                          onChange={(e) => {
+                            const val = e.target.value || undefined;
+                            setSettings((p) => ({ ...p, agents: { ...p.agents, writingAssistant: { ...p.agents.writingAssistant, micDeviceId: val } } }));
+                            setSavedOk(false);
+                          }}
+                        >
+                          <option value="">Use global default</option>
+                          {micDevices.map((d) => (
+                            <option key={d.deviceId} value={d.deviceId}>
+                              {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -410,6 +475,59 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
                     onChange={(e) => setAgentField('brainstorm', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {settings.voice?.enabled && (
+                  <>
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-toggle" htmlFor="brainstorm-tts-enabled">
+                        <input
+                          id="brainstorm-tts-enabled"
+                          type="checkbox"
+                          aria-label="Enable TTS replies for Brainstorm Agent"
+                          checked={settings.agents.brainstorm.ttsEnabled ?? false}
+                          onChange={(e) => setAgentField('brainstorm', 'ttsEnabled', e.target.checked)}
+                        />
+                        <span className="settings-toggle-track" />
+                      </label>
+                      <span className="settings-label">Speak replies (TTS)</span>
+                    </div>
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-label" htmlFor="brainstorm-stt-engine">STT engine</label>
+                      <select
+                        id="brainstorm-stt-engine"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.brainstorm.sttEngine ?? 'local'}
+                        aria-label="STT engine for Brainstorm Agent"
+                        onChange={(e) => setAgentField('brainstorm', 'sttEngine', e.target.value as 'local' | 'cloud')}
+                      >
+                        <option value="local">Local (Web Speech API)</option>
+                        <option value="cloud">Cloud (Whisper)</option>
+                      </select>
+                    </div>
+                    {micPermission === 'granted' && micDevices.length > 0 && (
+                      <div className="settings-field settings-field-inline">
+                        <label className="settings-label" htmlFor="brainstorm-agent-mic-device">Microphone</label>
+                        <select
+                          id="brainstorm-agent-mic-device"
+                          className="settings-input settings-select"
+                          value={settings.agents.brainstorm.micDeviceId ?? ''}
+                          aria-label="Microphone for Brainstorm Agent"
+                          onChange={(e) => {
+                            const val = e.target.value || undefined;
+                            setSettings((p) => ({ ...p, agents: { ...p.agents, brainstorm: { ...p.agents.brainstorm, micDeviceId: val } } }));
+                            setSavedOk(false);
+                          }}
+                        >
+                          <option value="">Use global default</option>
+                          {micDevices.map((d) => (
+                            <option key={d.deviceId} value={d.deviceId}>
+                              {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -532,6 +650,59 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
                     onChange={(e) => setAgentField('archive', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {settings.voice?.enabled && (
+                  <>
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-toggle" htmlFor="archive-tts-enabled">
+                        <input
+                          id="archive-tts-enabled"
+                          type="checkbox"
+                          aria-label="Enable TTS replies for Archive Agent"
+                          checked={settings.agents.archive.ttsEnabled ?? false}
+                          onChange={(e) => setAgentField('archive', 'ttsEnabled', e.target.checked)}
+                        />
+                        <span className="settings-toggle-track" />
+                      </label>
+                      <span className="settings-label">Speak replies (TTS)</span>
+                    </div>
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-label" htmlFor="archive-stt-engine">STT engine</label>
+                      <select
+                        id="archive-stt-engine"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.archive.sttEngine ?? 'local'}
+                        aria-label="STT engine for Archive Agent"
+                        onChange={(e) => setAgentField('archive', 'sttEngine', e.target.value as 'local' | 'cloud')}
+                      >
+                        <option value="local">Local (Web Speech API)</option>
+                        <option value="cloud">Cloud (Whisper)</option>
+                      </select>
+                    </div>
+                    {micPermission === 'granted' && micDevices.length > 0 && (
+                      <div className="settings-field settings-field-inline">
+                        <label className="settings-label" htmlFor="archive-agent-mic-device">Microphone</label>
+                        <select
+                          id="archive-agent-mic-device"
+                          className="settings-input settings-select"
+                          value={settings.agents.archive.micDeviceId ?? ''}
+                          aria-label="Microphone for Archive Agent"
+                          onChange={(e) => {
+                            const val = e.target.value || undefined;
+                            setSettings((p) => ({ ...p, agents: { ...p.agents, archive: { ...p.agents.archive, micDeviceId: val } } }));
+                            setSavedOk(false);
+                          }}
+                        >
+                          <option value="">Use global default</option>
+                          {micDevices.map((d) => (
+                            <option key={d.deviceId} value={d.deviceId}>
+                              {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </section>

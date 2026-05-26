@@ -68,6 +68,12 @@ interface AgentBudgetSettings {
   maxTokensPerDay: number;
 }
 
+interface AgentVoiceSettings {
+  ttsEnabled?: boolean;
+  sttEngine?: 'local' | 'cloud';
+  micDeviceId?: string;
+}
+
 interface VoiceSettings {
   enabled: boolean;
   cloudFallback: boolean;
@@ -78,9 +84,9 @@ interface VoiceSettings {
 interface AppSettings {
   apiKey: string;
   agents: {
-    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings;
-    brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings & AgentVoiceSettings;
+    brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings & AgentVoiceSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings & AgentVoiceSettings;
   };
   theme: 'light' | 'dark';
   writingMode?: 'normal' | 'focus' | 'edit';
