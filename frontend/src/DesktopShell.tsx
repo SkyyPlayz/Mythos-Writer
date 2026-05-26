@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
+import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
+import FocusModePrefsDialog from './FocusModePrefsDialog';
 import { applyTheme } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
@@ -89,9 +90,12 @@ interface AppMenuBarProps {
   selectedStoryId?: string | null;
   activeVaultRoot: string;
   onProjectSwitched: (vaultRoot: string) => void;
+  writingMode: WritingMode;
+  onSetWritingMode: (m: WritingMode) => void;
+  onOpenFocusPrefs: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -189,6 +193,42 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           Graph
         </button>
       </div>
+      <div className="writing-mode-selector" aria-label="Writing mode">
+        <button
+          className={`writing-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
+          onClick={() => onSetWritingMode('normal')}
+          aria-pressed={writingMode === 'normal'}
+          title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
+        >
+          N
+        </button>
+        <button
+          className={`writing-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
+          onClick={() => onSetWritingMode('focus')}
+          aria-pressed={writingMode === 'focus'}
+          title="Focus mode — distraction-free (Ctrl+Shift+F)"
+        >
+          F
+        </button>
+        {writingMode === 'focus' && (
+          <button
+            className="writing-mode-prefs-btn"
+            onClick={onOpenFocusPrefs}
+            title="Configure Focus mode panels"
+            aria-label="Focus mode preferences"
+          >
+            ⚙
+          </button>
+        )}
+        <button
+          className={`writing-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
+          onClick={() => onSetWritingMode('edit')}
+          aria-pressed={writingMode === 'edit'}
+          title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
+        >
+          E
+        </button>
+      </div>
       <button
         className="app-menu-gear-btn"
         onClick={onOpenSettings}
@@ -226,6 +266,7 @@ export default function DesktopShell() {
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
+  const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
@@ -397,6 +438,34 @@ export default function DesktopShell() {
     setManifest(updated);
     scheduleManifestSave(updated);
   }, [manifest, scheduleManifestSave]);
+
+  const setWritingMode = useCallback((mode: WritingMode) => {
+    let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
+    if (mode === 'edit') {
+      newLayout = { ...newLayout, leftTab: 'review', rightTab: 'ai' };
+    }
+    persistLayout(newLayout);
+  }, [layout, persistLayout]);
+
+  // ─── Writing mode keyboard shortcuts ───
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || !e.shiftKey) return;
+      if (e.key === 'F' || e.key === 'f') {
+        e.preventDefault();
+        setWritingMode('focus');
+      } else if (e.key === 'E' || e.key === 'e') {
+        e.preventDefault();
+        setWritingMode('edit');
+      } else if (e.key === 'N' || e.key === 'n') {
+        e.preventDefault();
+        setWritingMode('normal');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [setWritingMode]);
 
   // ─── Panel resize drag handlers ───
 
@@ -655,10 +724,28 @@ export default function DesktopShell() {
     archive: appSettings?.agents?.archive?.enabled ?? true,
   };
 
+  const writingMode: WritingMode = layout.writingMode ?? 'normal';
+  const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
+  const showLeftSidebar = writingMode !== 'focus' || focusPrefs.showLeftSidebar;
+  const showRightSidebar = writingMode !== 'focus' || focusPrefs.showRightSidebar;
+  const showBottomBar = writingMode !== 'focus' || focusPrefs.showBottomBar;
+
   return (
-    <div className="desktop-shell">
+    <div className={`desktop-shell writing-mode-${writingMode}`}>
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} selectedStoryId={selectedStory?.id ?? null} activeVaultRoot={activeVaultRoot} onProjectSwitched={handleProjectSwitched} />
+      <AppMenuBar
+        view={view}
+        onSetView={setView}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenHistory={() => setHistoryOpen(true)}
+        onSearchNavigate={handleSearchNavigate}
+        selectedStoryId={selectedStory?.id ?? null}
+        activeVaultRoot={activeVaultRoot}
+        onProjectSwitched={handleProjectSwitched}
+        writingMode={writingMode}
+        onSetWritingMode={setWritingMode}
+        onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
+      />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
@@ -667,6 +754,13 @@ export default function DesktopShell() {
       )}
       {historyOpen && (
         <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
+      )}
+      {focusModePrefsOpen && (
+        <FocusModePrefsDialog
+          prefs={focusPrefs}
+          onChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
+          onClose={() => setFocusModePrefsOpen(false)}
+        />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
@@ -702,41 +796,45 @@ export default function DesktopShell() {
       )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
-      <div className="shell-left" style={{ width: layout.leftWidth }}>
-        <LeftRail
-          activeTab={layout.leftTab}
-          onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
-          stories={stories}
-          selectedSceneId={selectedScene?.id ?? null}
-          selectedEntityId={selectedEntity?.id ?? null}
-          onSelectScene={handleSelectScene}
-          onSelectEntity={handleSelectEntity}
-          onCreateStory={createStory}
-          onCreateChapter={createChapter}
-          onCreateScene={createScene}
-          onReorderScenes={handleReorderScenes}
-          onOpenVaultPath={handleOpenSceneByPath}
-        />
-      </div>
+      {showLeftSidebar && (
+        <div className="shell-left" style={{ width: layout.leftWidth }}>
+          <LeftRail
+            activeTab={layout.leftTab}
+            onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
+            stories={stories}
+            selectedSceneId={selectedScene?.id ?? null}
+            selectedEntityId={selectedEntity?.id ?? null}
+            onSelectScene={handleSelectScene}
+            onSelectEntity={handleSelectEntity}
+            onCreateStory={createStory}
+            onCreateChapter={createChapter}
+            onCreateScene={createScene}
+            onReorderScenes={handleReorderScenes}
+            onOpenVaultPath={handleOpenSceneByPath}
+          />
+        </div>
+      )}
 
       {/* Left resize handle */}
-      <div
-        role="separator"
-        aria-label="Resize left panel"
-        aria-orientation="vertical"
-        aria-valuenow={layout.leftWidth}
-        aria-valuemin={160}
-        aria-valuemax={500}
-        tabIndex={0}
-        className="shell-divider shell-divider-left"
-        onMouseDown={(e) => startDrag('left', e)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('left', +8); }
-          else if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('left', -8); }
-          else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 160 }); }
-          else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 500 }); }
-        }}
-      />
+      {showLeftSidebar && (
+        <div
+          role="separator"
+          aria-label="Resize left panel"
+          aria-orientation="vertical"
+          aria-valuenow={layout.leftWidth}
+          aria-valuemin={160}
+          aria-valuemax={500}
+          tabIndex={0}
+          className="shell-divider shell-divider-left"
+          onMouseDown={(e) => startDrag('left', e)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('left', +8); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('left', -8); }
+            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 160 }); }
+            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 500 }); }
+          }}
+        />
+      )}
 
       {/* Center + bottom */}
       <div className="shell-center-column">
@@ -789,50 +887,56 @@ export default function DesktopShell() {
             </div>
           )}
         </div>
-        <BottomBar
-          selectedScene={selectedScene}
-          selectedChapter={selectedChapter}
-          selectedStory={selectedStory}
-          onNavigateScene={handleNavigateScene}
-        />
+        {showBottomBar && (
+          <BottomBar
+            selectedScene={selectedScene}
+            selectedChapter={selectedChapter}
+            selectedStory={selectedStory}
+            onNavigateScene={handleNavigateScene}
+          />
+        )}
       </div>
 
       {/* Right resize handle */}
-      <div
-        role="separator"
-        aria-label="Resize right panel"
-        aria-orientation="vertical"
-        aria-valuenow={layout.rightWidth}
-        aria-valuemin={160}
-        aria-valuemax={500}
-        tabIndex={0}
-        className="shell-divider shell-divider-right"
-        onMouseDown={(e) => startDrag('right', e)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
-          else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
-          else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
-          else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
-        }}
-      />
+      {showRightSidebar && (
+        <div
+          role="separator"
+          aria-label="Resize right panel"
+          aria-orientation="vertical"
+          aria-valuenow={layout.rightWidth}
+          aria-valuemin={160}
+          aria-valuemax={500}
+          tabIndex={0}
+          className="shell-divider shell-divider-right"
+          onMouseDown={(e) => startDrag('right', e)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
+            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
+            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
+          }}
+        />
+      )}
 
       {/* Right sidebar */}
-      <div className="shell-right" style={{ width: layout.rightWidth }}>
-        <RightSidebar
-          activeTab={layout.rightTab}
-          onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
-          selectedScene={selectedScene}
-          selectedChapter={selectedChapter}
-          selectedStory={selectedStory}
-          writingAssistantEnabled={agentFlags.writingAssistant}
-          archiveEnabled={agentFlags.archive}
-          scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
-          isPageFocused={view === 'editor'}
-          onJumpToText={handleJumpToText}
-          onInsertWikiLink={handleInsertWikiLink}
-          onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
-        />
-      </div>
+      {showRightSidebar && (
+        <div className="shell-right" style={{ width: layout.rightWidth }}>
+          <RightSidebar
+            activeTab={layout.rightTab}
+            onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
+            selectedScene={selectedScene}
+            selectedChapter={selectedChapter}
+            selectedStory={selectedStory}
+            writingAssistantEnabled={agentFlags.writingAssistant}
+            archiveEnabled={agentFlags.archive}
+            scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+            isPageFocused={view === 'editor'}
+            onJumpToText={handleJumpToText}
+            onInsertWikiLink={handleInsertWikiLink}
+            onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+          />
+        </div>
+      )}
       </div>}{/* end shell-panels */}
       {budgetToast && (
         <div className="budget-toast" role="alert" aria-live="assertive">
