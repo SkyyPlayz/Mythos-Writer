@@ -19,6 +19,7 @@ function makeEntry(overrides: Partial<GenerationLogRow> = {}): GenerationLogRow 
     payload_digest: 'abc123',
     prompt_text: 'Improve this scene.',
     response_text: 'Try adding more tension.',
+    scene_path: null,
     ...overrides,
   };
 }

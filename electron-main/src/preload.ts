@@ -37,8 +37,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('ai:archive', { manuscript, vaultPath }),
 
   // Agent channels (Epic 5)
-  agentWritingAssistant: (prompt: string, context?: string) =>
-    ipcRenderer.invoke('agent:writing-assistant', { prompt, context }),
+  agentWritingAssistant: (prompt: string, context?: string, scenePath?: string) =>
+    ipcRenderer.invoke('agent:writing-assistant', { prompt, context, scenePath }),
   onWritingAssistantChunk: (cb: (chunk: string) => void) => {
     const handler = (_: unknown, data: { chunk: string }) => cb(data.chunk);
     ipcRenderer.on('agent:writing-assistant:chunk', handler);

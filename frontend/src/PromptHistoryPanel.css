@@ -253,6 +253,11 @@
   color: var(--error, #f38ba8);
 }
 
+.phistory-scene-ref {
+  color: var(--accent-green, #a6e3a1);
+  font-style: italic;
+}
+
 .phistory-detail-section {
   margin-bottom: 12px;
 }

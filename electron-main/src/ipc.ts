@@ -517,6 +517,7 @@ export interface AgentBrainstormResponse {
 export interface AgentWritingAssistantPayload {
   prompt: string;
   context?: string;
+  scenePath?: string;
 }
 
 export interface AgentWritingAssistantResponse {
@@ -776,6 +777,7 @@ export interface GenerationLogRow {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+  scene_path: string | null;
 }
 
 export interface GenerationLogRecentPayload {

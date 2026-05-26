@@ -63,6 +63,7 @@ export interface DbGenerationLog {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+  scene_path: string | null;
 }
 
 // ─── Module state ───
@@ -189,6 +190,11 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma('user_version = 5');
   }
+
+  if (currentVersion < 6) {
+    db.exec(`ALTER TABLE generation_log ADD COLUMN scene_path TEXT;`);
+    db.pragma('user_version = 6');
+  }
 }
 
 // ─── Suggestions ───
@@ -301,17 +307,17 @@ export function listTimelineEntries(scenePath?: string): DbTimelineEntry[] {
 
 // ─── Generation log ───
 
-export function insertGenerationLog(entry: Omit<DbGenerationLog, 'prompt_text' | 'response_text'> & { prompt_text?: string | null; response_text?: string | null }): void {
+export function insertGenerationLog(entry: Omit<DbGenerationLog, 'prompt_text' | 'response_text' | 'scene_path'> & { prompt_text?: string | null; response_text?: string | null; scene_path?: string | null }): void {
   getDb()
     .prepare(
       `INSERT INTO generation_log
          (id, agent, model, endpoint, request_id, tokens_in, tokens_out,
-          latency_ms, error, created_at, payload_digest, prompt_text, response_text)
+          latency_ms, error, created_at, payload_digest, prompt_text, response_text, scene_path)
        VALUES
          (@id, @agent, @model, @endpoint, @request_id, @tokens_in, @tokens_out,
-          @latency_ms, @error, @created_at, @payload_digest, @prompt_text, @response_text)`
+          @latency_ms, @error, @created_at, @payload_digest, @prompt_text, @response_text, @scene_path)`
     )
-    .run({ prompt_text: null, response_text: null, ...entry });
+    .run({ prompt_text: null, response_text: null, scene_path: null, ...entry });
 }
 
 interface GenerationLogOpts {

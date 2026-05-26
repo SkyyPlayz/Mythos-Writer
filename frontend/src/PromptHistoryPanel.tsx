@@ -198,6 +198,11 @@ export default function PromptHistoryPanel({ onClose, initialTab }: Props) {
                             <span>{entry.tokens_in} in / {entry.tokens_out ?? 0} out tokens</span>
                           )}
                           <span>{entry.latency_ms} ms</span>
+                          {entry.scene_path && (
+                            <span className="phistory-scene-ref" title={entry.scene_path}>
+                              Scene: {entry.scene_path.split('/').pop()?.replace(/\.md$/, '') ?? entry.scene_path}
+                            </span>
+                          )}
                           {entry.error && <span className="phistory-detail-error">Error: {entry.error}</span>}
                         </div>
                         <section className="phistory-detail-section">

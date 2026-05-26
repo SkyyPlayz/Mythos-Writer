@@ -869,9 +869,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const promptText = payload.prompt;
-      const payloadDigest = process.env.PERSIST_PROMPTS === '1'
-        ? promptText
-        : crypto.createHash('sha256').update(promptText).digest('hex');
+      const persistPrompts = process.env.PERSIST_PROMPTS === '1';
       try {
         insertGenerationLog({
           id: crypto.randomUUID(),
@@ -884,7 +882,10 @@ Be creative, ask clarifying questions, and help the author think deeper about th
           latency_ms: Date.now() - startedAt,
           error: genError,
           created_at: new Date().toISOString(),
-          payload_digest: payloadDigest,
+          payload_digest: crypto.createHash('sha256').update(promptText).digest('hex'),
+          prompt_text: persistPrompts ? promptText : null,
+          response_text: persistPrompts ? fullText : null,
+          scene_path: null,
         });
       } catch { /* non-fatal — logging must not break agent response */ }
     }
@@ -951,9 +952,7 @@ function registerWritingAssistantHandler() {
     } finally {
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
-      const payloadDigest = process.env.PERSIST_PROMPTS === '1'
-        ? userContent
-        : crypto.createHash('sha256').update(userContent).digest('hex');
+      const persistPrompts = process.env.PERSIST_PROMPTS === '1';
       try {
         insertGenerationLog({
           id: crypto.randomUUID(),
@@ -966,7 +965,10 @@ function registerWritingAssistantHandler() {
           latency_ms: Date.now() - startedAt,
           error: genError,
           created_at: new Date().toISOString(),
-          payload_digest: payloadDigest,
+          payload_digest: crypto.createHash('sha256').update(userContent).digest('hex'),
+          prompt_text: persistPrompts ? userContent : null,
+          response_text: persistPrompts ? fullText : null,
+          scene_path: payload.scenePath ?? null,
         });
       } catch { /* non-fatal */ }
     }
@@ -1098,9 +1100,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     } finally {
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
-      const vaultPayloadDigest = process.env.PERSIST_PROMPTS === '1'
-        ? vaultCheckContent
-        : crypto.createHash('sha256').update(vaultCheckContent).digest('hex');
+      const persistPrompts = process.env.PERSIST_PROMPTS === '1';
       try {
         insertGenerationLog({
           id: crypto.randomUUID(),
@@ -1113,7 +1113,10 @@ Then write a short summary paragraph. If no issues are found, say so and output 
           latency_ms: Date.now() - vaultStartedAt,
           error: vaultGenError,
           created_at: new Date().toISOString(),
-          payload_digest: vaultPayloadDigest,
+          payload_digest: crypto.createHash('sha256').update(vaultCheckContent).digest('hex'),
+          prompt_text: persistPrompts ? vaultCheckContent : null,
+          response_text: persistPrompts ? fullText : null,
+          scene_path: null,
         });
       } catch { /* non-fatal */ }
     }

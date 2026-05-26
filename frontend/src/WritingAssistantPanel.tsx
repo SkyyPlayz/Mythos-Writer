@@ -193,7 +193,7 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
     });
 
     try {
-      const response = await window.api.agentWritingAssistant(trimmed, context);
+      const response = await window.api.agentWritingAssistant(trimmed, context, scene?.path);
 
       if (!isMine()) return;
 

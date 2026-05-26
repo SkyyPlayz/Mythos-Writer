@@ -117,6 +117,7 @@ interface GenerationLogRow {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+  scene_path: string | null;
 }
 
 interface BrainstormExtractedEntity {
@@ -144,7 +145,7 @@ interface Window {
     brainstormer: (topic: string, context?: string) => Promise<unknown>;
     writingAssistant: (manuscript: string, scenePath: string) => Promise<unknown>;
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;
-    agentWritingAssistant: (prompt: string, context?: string) => Promise<{ text: string }>;
+    agentWritingAssistant: (prompt: string, context?: string, scenePath?: string) => Promise<{ text: string }>;
     onWritingAssistantChunk: (cb: (chunk: string) => void) => () => void;
     agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
     onBrainstormChunk: (cb: (chunk: string) => void) => () => void;
