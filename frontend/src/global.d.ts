@@ -83,6 +83,7 @@ interface AppSettings {
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
   theme: 'light' | 'dark';
+  writingMode?: 'normal' | 'focus' | 'edit';
   snapshots?: {
     maxPerScene: number;
     maxAgeDays: number;

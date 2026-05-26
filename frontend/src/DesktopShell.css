@@ -142,6 +142,39 @@
   background: #27272a;
 }
 
+/* Writing mode toggle (Normal / Focus / Edit) */
+.app-menu-mode-toggle {
+  display: flex;
+  gap: 2px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid #3f3f46;
+  -webkit-app-region: no-drag;
+}
+
+.app-menu-mode-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #71717a;
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+.app-menu-mode-btn:hover {
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+
+.app-menu-mode-btn.active {
+  background: #3b3b5c;
+  border-color: #5b5bd6;
+  color: #a5b4fc;
+}
+
 /* Main panels row */
 .shell-panels {
   display: flex;

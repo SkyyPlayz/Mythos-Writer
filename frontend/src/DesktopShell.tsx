@@ -66,15 +66,18 @@ function blocksToMarkdown(scene: Scene): string {
 }
 
 type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'timeline';
+type WritingMode = 'normal' | 'focus' | 'edit';
 
 interface AppMenuBarProps {
   view: AppView;
   onSetView: (v: AppView) => void;
   onOpenSettings: () => void;
   onOpenHistory: () => void;
+  writingMode: WritingMode;
+  onSetWritingMode: (m: WritingMode) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, writingMode, onSetWritingMode }: AppMenuBarProps) {
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
@@ -123,6 +126,31 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory }: AppMenuB
           Timeline
         </button>
       </div>
+      {view === 'editor' && (
+        <div className="app-menu-mode-toggle" role="group" aria-label="Writing mode">
+          <button
+            className={`app-menu-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
+            onClick={() => onSetWritingMode('normal')}
+            title="Normal mode — sidebars visible"
+          >
+            Normal
+          </button>
+          <button
+            className={`app-menu-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
+            onClick={() => onSetWritingMode('focus')}
+            title="Focus mode — distraction-free writing"
+          >
+            Focus
+          </button>
+          <button
+            className={`app-menu-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
+            onClick={() => onSetWritingMode('edit')}
+            title="Edit mode — review suggestions and notes"
+          >
+            Edit
+          </button>
+        </div>
+      )}
       <button
         className="app-menu-gear-btn"
         onClick={onOpenSettings}
@@ -156,6 +184,7 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<AppView>('editor');
+  const [writingMode, setWritingMode] = useState<WritingMode>('normal');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyAgent, setHistoryAgent] = useState<'all' | 'writing-assistant' | 'brainstorm' | 'archive'>('all');
@@ -208,7 +237,10 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
         if (m.layout) {
           setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
         }
-        if (s) setAppSettings(s);
+        if (s) {
+          setAppSettings(s);
+          if (s.writingMode) setWritingMode(s.writingMode);
+        }
       } catch (e) {
         setError('Failed to load vault: ' + String(e));
       } finally {
@@ -249,6 +281,14 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
     setManifest(updated);
     scheduleManifestSave(updated);
   }, [manifest, scheduleManifestSave]);
+
+  const handleSetWritingMode = useCallback((mode: WritingMode) => {
+    setWritingMode(mode);
+    if (!appSettings) return;
+    const updated: AppSettings = { ...appSettings, writingMode: mode };
+    setAppSettings(updated);
+    window.api.settingsSet(updated).catch((e) => console.error('Failed to persist writing mode:', e));
+  }, [appSettings]);
 
   // ─── Panel resize drag handlers ───
 
@@ -479,7 +519,7 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
   return (
     <div className="desktop-shell">
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={handleSetView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
+      <AppMenuBar view={view} onSetView={handleSetView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} writingMode={writingMode} onSetWritingMode={handleSetWritingMode} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
@@ -536,31 +576,33 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
           </div>
         )
       )}
-      {view === 'editor' && <div className="shell-panels">
-      {/* Left rail */}
-      <div className="shell-left" style={{ width: layout.leftWidth }}>
-        <LeftRail
-          activeTab={layout.leftTab}
-          onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
-          stories={stories}
-          selectedSceneId={selectedScene?.id ?? null}
-          selectedEntityId={selectedEntity?.id ?? null}
-          onSelectScene={handleSelectScene}
-          onSelectEntity={handleSelectEntity}
-          onCreateStory={createStory}
-          onCreateChapter={createChapter}
-          onCreateScene={createScene}
-          onReorderScenes={handleReorderScenes}
-          onOpenVaultPath={handleOpenSceneByPath}
-          onOpenAuditTrail={(agent) => { setHistoryAgent(agent); setHistoryOpen(true); }}
-        />
-      </div>
-
-      {/* Left resize handle */}
-      <div
-        className="shell-divider shell-divider-left"
-        onMouseDown={(e) => startDrag('left', e)}
-      />
+      {view === 'editor' && <div className={`shell-panels${writingMode === 'focus' ? ' shell-panels--focus' : ''}`}>
+      {/* Left rail — hidden in Focus mode */}
+      {writingMode !== 'focus' && (
+        <>
+          <div className="shell-left" style={{ width: layout.leftWidth }}>
+            <LeftRail
+              activeTab={layout.leftTab}
+              onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
+              stories={stories}
+              selectedSceneId={selectedScene?.id ?? null}
+              selectedEntityId={selectedEntity?.id ?? null}
+              onSelectScene={handleSelectScene}
+              onSelectEntity={handleSelectEntity}
+              onCreateStory={createStory}
+              onCreateChapter={createChapter}
+              onCreateScene={createScene}
+              onReorderScenes={handleReorderScenes}
+              onOpenVaultPath={handleOpenSceneByPath}
+              onOpenAuditTrail={(agent) => { setHistoryAgent(agent); setHistoryOpen(true); }}
+            />
+          </div>
+          <div
+            className="shell-divider shell-divider-left"
+            onMouseDown={(e) => startDrag('left', e)}
+          />
+        </>
+      )}
 
       {/* Center + bottom */}
       <div className="shell-center-column">
@@ -601,27 +643,29 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
         />
       </div>
 
-      {/* Right resize handle */}
-      <div
-        className="shell-divider shell-divider-right"
-        onMouseDown={(e) => startDrag('right', e)}
-      />
-
-      {/* Right sidebar */}
-      <div className="shell-right" style={{ width: layout.rightWidth }}>
-        <RightSidebar
-          activeTab={layout.rightTab}
-          onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
-          selectedScene={selectedScene}
-          selectedChapter={selectedChapter}
-          selectedStory={selectedStory}
-          writingAssistantEnabled={agentFlags.writingAssistant}
-          archiveEnabled={agentFlags.archive}
-          micDeviceId={micDeviceId}
-          onJumpToText={handleJumpToText}
-          onInsertWikiLink={handleInsertWikiLink}
-        />
-      </div>
+      {/* Right sidebar — hidden in Focus mode */}
+      {writingMode !== 'focus' && (
+        <>
+          <div
+            className="shell-divider shell-divider-right"
+            onMouseDown={(e) => startDrag('right', e)}
+          />
+          <div className="shell-right" style={{ width: layout.rightWidth }}>
+            <RightSidebar
+              activeTab={layout.rightTab}
+              onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
+              selectedScene={selectedScene}
+              selectedChapter={selectedChapter}
+              selectedStory={selectedStory}
+              writingAssistantEnabled={agentFlags.writingAssistant}
+              archiveEnabled={agentFlags.archive}
+              micDeviceId={micDeviceId}
+              onJumpToText={handleJumpToText}
+              onInsertWikiLink={handleInsertWikiLink}
+            />
+          </div>
+        </>
+      )}
       </div>}{/* end shell-panels */}
     </div>
   );
