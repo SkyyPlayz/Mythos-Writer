@@ -1571,12 +1571,18 @@ const handlers: IpcHandlers = {
         '> **Writing Assistant tip:** Highlight "A figure sat at the far end of the room" and ask the Writing Assistant to add sensory detail.',
       ].join('\n'));
 
-      // ── Entities ─────────────────────────────────────────────────────────────
-      const entitiesDir = path.join(sampleRoot, 'Entities');
-      fs.mkdirSync(entitiesDir, { recursive: true });
+      // ── Universes / worldbuilding vault ──────────────────────────────────────
+      // Canonical Notes Vault structure: Universes/<World>/Characters, Locations, Lore
+      const worldName = 'The Sunken Age';
+      const charsDir = path.join(sampleRoot, 'Universes', worldName, 'Characters');
+      const locsDir  = path.join(sampleRoot, 'Universes', worldName, 'Locations');
+      const loreDir  = path.join(sampleRoot, 'Universes', worldName, 'Lore');
+      fs.mkdirSync(charsDir, { recursive: true });
+      fs.mkdirSync(locsDir,  { recursive: true });
+      fs.mkdirSync(loreDir,  { recursive: true });
 
       // Characters
-      fs.writeFileSync(path.join(entitiesDir, 'elara-voss.md'), [
+      fs.writeFileSync(path.join(charsDir, 'elara-voss.md'), [
         '---',
         'name: Elara Voss',
         'type: character',
@@ -1591,14 +1597,14 @@ const handlers: IpcHandlers = {
         'See also: [[Captain Renn]], [[The Archivist]]',
       ].join('\n'));
 
-      fs.writeFileSync(path.join(entitiesDir, 'captain-renn.md'), [
+      fs.writeFileSync(path.join(charsDir, 'captain-renn.md'), [
         '---',
         'name: Captain Renn',
         'type: character',
         'tags: [supporting]',
         '---',
         '',
-        'Weathered captain of the _[[Meridian Star]]_. Reluctant ally with a complicated past.',
+        'Weathered captain of the _Meridian Star_. Reluctant ally with a complicated past.',
         '',
         '**Secret:** He was on the original expedition with [[Dr. Harlan Voss]] and knows why it went wrong.',
         '**Arc:** Moves from self-protective silence to reluctant confession.',
@@ -1606,7 +1612,7 @@ const handlers: IpcHandlers = {
         'See also: [[Elara Voss]], [[Tidecallers\' Compact]]',
       ].join('\n'));
 
-      fs.writeFileSync(path.join(entitiesDir, 'dr-harlan-voss.md'), [
+      fs.writeFileSync(path.join(charsDir, 'dr-harlan-voss.md'), [
         '---',
         'name: Dr. Harlan Voss',
         'type: character',
@@ -1621,7 +1627,7 @@ const handlers: IpcHandlers = {
         'See also: [[Elara Voss]], [[Captain Renn]]',
       ].join('\n'));
 
-      fs.writeFileSync(path.join(entitiesDir, 'the-archivist.md'), [
+      fs.writeFileSync(path.join(charsDir, 'the-archivist.md'), [
         '---',
         'name: The Archivist',
         'type: character',
@@ -1637,7 +1643,7 @@ const handlers: IpcHandlers = {
       ].join('\n'));
 
       // Locations
-      fs.writeFileSync(path.join(entitiesDir, 'port-caelum.md'), [
+      fs.writeFileSync(path.join(locsDir, 'port-caelum.md'), [
         '---',
         'name: Port Caelum',
         'type: location',
@@ -1651,7 +1657,7 @@ const handlers: IpcHandlers = {
         '**Key sites:** The Cartographers\' Guild, Renn\'s dry-dock, the archive at Voss University.',
       ].join('\n'));
 
-      fs.writeFileSync(path.join(entitiesDir, 'aethons-cradle.md'), [
+      fs.writeFileSync(path.join(locsDir, 'aethons-cradle.md'), [
         '---',
         'name: Aethon\'s Cradle',
         'type: location',
@@ -1666,9 +1672,6 @@ const handlers: IpcHandlers = {
       ].join('\n'));
 
       // Lore / Concepts
-      const loreDir = path.join(sampleRoot, 'Lore');
-      fs.mkdirSync(loreDir, { recursive: true });
-
       fs.writeFileSync(path.join(loreDir, 'tidecallers-compact.md'), [
         '---',
         'name: Tidecallers\' Compact',
@@ -1706,11 +1709,47 @@ const handlers: IpcHandlers = {
         '> **Brainstorm tip:** Ask the Brainstorm agent "What caused the Third Tide?" to develop a backstory.',
       ].join('\n'));
 
-      // ── Scene Crafter board ───────────────────────────────────────────────────
-      const boardsDir = path.join(sampleRoot, 'Boards');
-      fs.mkdirSync(boardsDir, { recursive: true });
+      // ── Story ideas vault ─────────────────────────────────────────────────────
+      // Canonical Notes Vault structure: Story ideas/<Story>/synopsis.md + scene-crafter.md
+      const storyDisplayName = 'The Lost Horizon';
+      const storyIdeasDir = path.join(sampleRoot, 'Story ideas', storyDisplayName);
+      fs.mkdirSync(storyIdeasDir, { recursive: true });
 
-      fs.writeFileSync(path.join(boardsDir, 'the-lost-horizon-board.md'), [
+      // Synopsis note
+      fs.writeFileSync(path.join(storyIdeasDir, 'synopsis.md'), [
+        '---',
+        'title: The Lost Horizon',
+        'type: story-synopsis',
+        'world: The Sunken Age',
+        '---',
+        '',
+        '# The Lost Horizon',
+        '',
+        'A deep-sea mystery set in the world of [[The Sunken Age]].',
+        '',
+        '## Premise',
+        '',
+        '[[Elara Voss]], a marine archaeologist, charters [[Captain Renn]]\'s vessel to follow her',
+        'father\'s last known route. Her father, [[Dr. Harlan Voss]], vanished three years ago during',
+        'a dive to [[Aethon\'s Cradle]] — submerged ruins protected by the [[Tidecallers\' Compact]].',
+        '',
+        '## Themes',
+        '',
+        '- Knowledge versus safety: some truths are buried for good reason.',
+        '- Trust earned in extremis.',
+        '- The weight of inherited legacy.',
+        '',
+        '## Arc (three acts)',
+        '',
+        '1. **The Voyage** — Elara assembles allies and finds her father\'s trail.',
+        '2. **The Descent** — The crew reaches [[Aethon\'s Cradle]] and discovers [[The Archivist]].',
+        '3. **The Choice** — Elara must decide whether to bring the Cradle\'s secrets to the surface.',
+        '',
+        '> **Brainstorm tip:** Open the Brainstorm panel and ask "What should Elara discover in the Cradle?" to develop the plot.',
+      ].join('\n'));
+
+      // Scene Crafter board (Kanban — Obsidian-Kanban-plugin compatible)
+      fs.writeFileSync(path.join(storyIdeasDir, 'scene-crafter.md'), [
         '---',
         'kanban-plugin: board',
         'mythos-board-version: 1',
@@ -1718,22 +1757,26 @@ const handlers: IpcHandlers = {
         `last-modified: ${new Date().toISOString()}`,
         '---',
         '',
+        '## Idea',
+        '',
+        '',
         '## Outline',
         '',
-        `- [ ] [[Manuscript/${storySlug}/chapter-one/the-departure|The Departure]]`,
-        `- [ ] [[Manuscript/${storySlug}/chapter-one/first-night-at-sea|First Night at Sea]]`,
+        `- [ ] [[Manuscript/${storySlug}/chapter-one/the-departure|The Departure]] #act1`,
+        `- [ ] [[Manuscript/${storySlug}/chapter-one/first-night-at-sea|First Night at Sea]] #act1`,
         '',
         '## Draft',
         '',
-        `- [x] [[Manuscript/${storySlug}/chapter-two/the-sunken-archive|The Sunken Archive]] #action`,
-        `- [x] [[Manuscript/${storySlug}/chapter-two/the-archivist|The Archivist]] #reveal`,
+        `- [x] [[Manuscript/${storySlug}/chapter-two/the-sunken-archive|The Sunken Archive]] #act2 #action`,
+        `- [x] [[Manuscript/${storySlug}/chapter-two/the-archivist|The Archivist]] #act2 #reveal`,
         '',
         '## Revision',
+        '',
         '',
         '## Done',
         '',
         '',
-        '%%',
+        '%% kanban:settings',
         '{"kanban-plugin":"board"}',
         '%%',
       ].join('\n'));
@@ -1742,23 +1785,39 @@ const handlers: IpcHandlers = {
       fs.writeFileSync(path.join(sampleRoot, 'README.md'), [
         '# The Lost Horizon — Sample Project',
         '',
-        'Welcome to Mythos Writer! This sample project is designed to show you the main features.',
+        'Welcome to Mythos Writer! This sample project demonstrates the two-vault layout.',
+        '',
+        '## Vault layout',
+        '',
+        '```',
+        'Mythos Writer Sample/',
+        '├── Manuscript/the-lost-horizon/   ← Story Vault: chapters & scenes',
+        '│   ├── chapter-one/',
+        '│   └── chapter-two/',
+        '├── Universes/The Sunken Age/      ← Notes Vault: worldbuilding',
+        '│   ├── Characters/',
+        '│   ├── Locations/',
+        '│   └── Lore/',
+        '└── Story ideas/The Lost Horizon/  ← Notes Vault: story planning',
+        '    ├── synopsis.md',
+        '    └── scene-crafter.md',
+        '```',
         '',
         '## What\'s included',
         '',
         '- **Manuscript/** — Two chapters of _The Lost Horizon_, a deep-sea mystery.',
-        '  Each scene contains tips for the Writing Assistant and Archive agents.',
-        '- **Entities/** — Four characters and two locations with wiki-links between them.',
-        '- **Lore/** — Two lore pages (Tidecallers\' Compact, The Three Tides) demonstrating',
-        '  the Archive\'s wiki-link suggestion feature.',
-        '- **Boards/** — A Scene Crafter Kanban board tracking scenes through Outline → Draft → Revision → Done.',
+        '  Each scene includes tips for the Writing Assistant and Archive agents.',
+        '- **Universes/The Sunken Age/** — Four characters, two locations, and two lore notes',
+        '  with `[[wiki-links]]` between them, ready for the Archive agent\'s graph view.',
+        '- **Story ideas/The Lost Horizon/** — A synopsis note and a Scene Crafter Kanban board',
+        '  tracking scenes through Idea → Outline → Draft → Revision → Done.',
         '',
         '## Quick tour',
         '',
-        '1. **Writing Assistant** — Open any scene, select a sentence, and use the Writing Assistant panel.',
-        '2. **Archive** — Click a `[[wiki-link]]` in a scene to jump to or create an entity page.',
+        '1. **Writing Assistant** — Open any scene under `Manuscript/`, select a sentence, and use the Writing Assistant panel.',
+        '2. **Archive** — Click a `[[wiki-link]]` in a scene to jump to or create a note in `Universes/`.',
         '3. **Brainstorm** — Open the Brainstorm panel and ask a question about the story.',
-        '4. **Scene Crafter** — Open `Boards/the-lost-horizon-board.md` to see the scene board.',
+        '4. **Scene Crafter** — Open `Story ideas/The Lost Horizon/scene-crafter.md` to see the Kanban board.',
       ].join('\n'));
     }
     saveVaultSettings({ vaultRoot: sampleRoot });

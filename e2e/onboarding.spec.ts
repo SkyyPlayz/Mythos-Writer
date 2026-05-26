@@ -262,7 +262,9 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
 // and reindexes the vault. The test then verifies:
 //   • manifest.json exists in the sample vault
 //   • Manuscript/the-lost-horizon/ directory exists (the bundled story)
-//   • Entities/ directory exists (characters and locations)
+//   • Universes/The Sunken Age/Characters/ directory exists with character notes
+//   • Universes/The Sunken Age/Locations/ directory exists with location notes
+//   • Story ideas/The Lost Horizon/scene-crafter.md exists (Kanban board)
 //   • DesktopShell renders after wizard completion
 
 test.describe('TC-OB-03: Open sample project', () => {
@@ -286,7 +288,7 @@ test.describe('TC-OB-03: Open sample project', () => {
     }
   });
 
-  test('sample project: Manuscript + Entities scaffolded on disk, DesktopShell loads', async () => {
+  test('sample project: Manuscript + Universes/Story ideas scaffolded on disk, DesktopShell loads', async () => {
     await advanceToVaultChoice(page);
 
     // "Open sample project" is pre-selected (default); confirm it is checked
@@ -302,7 +304,7 @@ test.describe('TC-OB-03: Open sample project', () => {
       return pathMod.join(electronApp.getPath('documents'), 'Mythos Writer Sample');
     });
 
-    // vault:load-sample may take a moment to create ~15 files
+    // vault:load-sample may take a moment to create ~20 files
     await expect(page.locator('[data-testid="step-apikey"]')).toBeVisible({ timeout: 20_000 });
 
     // Skip API key → DesktopShell mounts
@@ -332,12 +334,22 @@ test.describe('TC-OB-03: Open sample project', () => {
     const ch1Files = fs.readdirSync(ch1).filter((f) => f.endsWith('.md'));
     expect(ch1Files.length, 'No scene .md files in chapter-one').toBeGreaterThan(0);
 
-    // Entities/ directory must exist (characters and locations)
-    const entitiesDir = path.join(sampleRoot, 'Entities');
-    expect(fs.existsSync(entitiesDir), `Entities/ directory not found: ${entitiesDir}`).toBe(true);
+    // Universes/The Sunken Age/Characters/ must exist with character notes
+    const charsDir = path.join(sampleRoot, 'Universes', 'The Sunken Age', 'Characters');
+    expect(fs.existsSync(charsDir), `Characters directory not found: ${charsDir}`).toBe(true);
+    const charFiles = fs.readdirSync(charsDir).filter((f) => f.endsWith('.md'));
+    expect(charFiles.length, 'No character .md files in Universes/The Sunken Age/Characters/').toBeGreaterThan(0);
 
-    // At least one entity .md file must be present
-    const entityFiles = fs.readdirSync(entitiesDir).filter((f) => f.endsWith('.md'));
-    expect(entityFiles.length, 'No entity .md files in Entities/').toBeGreaterThan(0);
+    // Universes/The Sunken Age/Locations/ must exist with location notes
+    const locsDir = path.join(sampleRoot, 'Universes', 'The Sunken Age', 'Locations');
+    expect(fs.existsSync(locsDir), `Locations directory not found: ${locsDir}`).toBe(true);
+    const locFiles = fs.readdirSync(locsDir).filter((f) => f.endsWith('.md'));
+    expect(locFiles.length, 'No location .md files in Universes/The Sunken Age/Locations/').toBeGreaterThan(0);
+
+    // Story ideas/The Lost Horizon/ must contain scene-crafter.md (Kanban board)
+    const storyIdeasDir = path.join(sampleRoot, 'Story ideas', 'The Lost Horizon');
+    expect(fs.existsSync(storyIdeasDir), `Story ideas directory not found: ${storyIdeasDir}`).toBe(true);
+    const boardPath = path.join(storyIdeasDir, 'scene-crafter.md');
+    expect(fs.existsSync(boardPath), `scene-crafter.md not found at: ${boardPath}`).toBe(true);
   });
 });
