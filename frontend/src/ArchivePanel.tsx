@@ -74,6 +74,7 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: 
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<ArchiveItem | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,9 +113,16 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: 
     } catch { /* optimistic update already applied */ }
   }, []);
 
-  const handleAcceptWikiLink = useCallback(async (item: ArchiveItem) => {
-    if (!item.wikiLink) return;
-    onInsertWikiLink(item.wikiLink, item.anchorText);
+  const handleRequestConfirm = useCallback((item: ArchiveItem) => {
+    setPendingConfirm(item);
+  }, []);
+
+  const handleConfirmAccept = useCallback(async () => {
+    if (!pendingConfirm?.wikiLink) return;
+    const item = pendingConfirm;
+    const wikiLink = item.wikiLink as string;
+    setPendingConfirm(null);
+    onInsertWikiLink(wikiLink, item.anchorText);
     setItems((prev) => prev.filter((i) => i.id !== item.id));
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,7 +131,25 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: 
         await api.suggestionsAccept(item.id);
       }
     } catch { /* optimistic update already applied */ }
-  }, [onInsertWikiLink]);
+  }, [pendingConfirm, onInsertWikiLink]);
+
+  const handleConfirmReject = useCallback(async () => {
+    if (!pendingConfirm) return;
+    const item = pendingConfirm;
+    setPendingConfirm(null);
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      if (typeof api?.suggestionsReject === 'function') {
+        await api.suggestionsReject(item.id);
+      }
+    } catch { /* optimistic update already applied */ }
+  }, [pendingConfirm]);
+
+  const handleConfirmCancel = useCallback(() => {
+    setPendingConfirm(null);
+  }, []);
 
   const handleJump = useCallback((anchorText: string) => {
     onJumpToText(anchorText);
@@ -230,8 +256,8 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: 
                 <div className="ap-actions">
                   <button
                     className="ap-btn ap-btn-accept"
-                    onClick={() => handleAcceptWikiLink(item)}
-                    aria-label={`Accept wiki-link ${item.wikiLink}`}
+                    onClick={() => handleRequestConfirm(item)}
+                    aria-label={`Review and accept wiki-link ${item.wikiLink}`}
                   >
                     Accept
                   </button>
@@ -248,6 +274,66 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink }: 
           </ul>
         )}
       </section>
+
+      {pendingConfirm && (
+        <div
+          className="ap-confirm-overlay"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="ap-confirm-title"
+          aria-describedby="ap-confirm-desc"
+          onClick={handleConfirmCancel}
+        >
+          <div
+            className="ap-confirm-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 id="ap-confirm-title" className="ap-confirm-title">
+              Insert wiki-link?
+            </h4>
+            <p id="ap-confirm-desc" className="ap-confirm-desc">
+              This will replace the matching text in the manuscript:
+            </p>
+            <div className="ap-confirm-context">
+              <span className="ap-confirm-context-label">Anchor text</span>
+              <blockquote className="ap-confirm-snippet">
+                &ldquo;{pendingConfirm.anchorText}&rdquo;
+              </blockquote>
+            </div>
+            <div className="ap-confirm-context">
+              <span className="ap-confirm-context-label">Proposed link</span>
+              <p className="ap-confirm-link">{pendingConfirm.wikiLink}</p>
+            </div>
+            {pendingConfirm.description && (
+              <p className="ap-confirm-rationale">{pendingConfirm.description}</p>
+            )}
+            <div className="ap-confirm-actions">
+              <button
+                className="ap-btn ap-btn-accept"
+                onClick={handleConfirmAccept}
+                autoFocus
+                aria-label={`Confirm insert ${pendingConfirm.wikiLink}`}
+              >
+                Accept
+              </button>
+              <button
+                className="ap-btn ap-btn-reject"
+                onClick={handleConfirmReject}
+                aria-label="Reject this wiki-link suggestion"
+              >
+                Reject
+              </button>
+              <button
+                className="ap-btn ap-btn-cancel"
+                onClick={handleConfirmCancel}
+                aria-label="Cancel, go back"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -168,3 +168,105 @@
   background: rgba(248, 113, 113, 0.12);
   border-color: #f87171;
 }
+
+.ap-btn-cancel {
+  color: var(--text-muted, #94a3b8);
+  border-color: var(--border, #2d3748);
+}
+
+.ap-btn-cancel:hover {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: var(--text-muted, #94a3b8);
+}
+
+/* Confirmation overlay */
+
+.ap-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ap-confirm-dialog {
+  background: var(--surface-1, #161b27);
+  border: 1px solid var(--border, #2d3748);
+  border-radius: 10px;
+  padding: 20px 22px;
+  max-width: 360px;
+  width: calc(100% - 32px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ap-confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  margin: 0;
+}
+
+.ap-confirm-desc {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ap-confirm-context {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ap-confirm-context-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #64748b);
+}
+
+.ap-confirm-snippet {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-secondary, #cbd5e1);
+  background: var(--surface-2, #1e2433);
+  border-left: 3px solid #818cf8;
+  border-radius: 0 4px 4px 0;
+  margin: 0;
+  padding: 6px 10px;
+  line-height: 1.5;
+}
+
+.ap-confirm-link {
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #818cf8;
+  background: var(--surface-2, #1e2433);
+  border-radius: 5px;
+  padding: 5px 10px;
+  margin: 0;
+}
+
+.ap-confirm-rationale {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  margin: 0;
+  line-height: 1.5;
+  border-top: 1px solid var(--border, #2d3748);
+  padding-top: 10px;
+}
+
+.ap-confirm-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
