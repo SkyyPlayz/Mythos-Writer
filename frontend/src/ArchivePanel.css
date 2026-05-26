@@ -9,14 +9,14 @@
 
 .ap-loading {
   font-size: 12px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   text-align: center;
   padding: 24px 0;
 }
 
 .ap-mock-banner {
   font-size: 11px;
-  color: #fbbf24;
+  color: var(--state-warning);
   background: rgba(251, 191, 36, 0.1);
   border: 1px solid rgba(251, 191, 36, 0.3);
   border-radius: 6px;
@@ -25,7 +25,7 @@
 
 .ap-no-scene {
   font-size: 12px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   text-align: center;
   padding: 12px 0 4px;
 }
@@ -42,7 +42,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted, #64748b);
+  color: var(--text-faint);
   margin: 0;
 }
 
@@ -54,7 +54,7 @@
   height: 16px;
   padding: 0 5px;
   border-radius: 8px;
-  background: var(--accent, #7c3aed);
+  background: var(--accent);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -62,10 +62,10 @@
 
 .ap-empty-section {
   font-size: 11px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   padding: 8px 10px;
-  background: var(--surface-2, #1e2433);
-  border: 1px dashed var(--border, #2d3748);
+  background: var(--bg-panel);
+  border: 1px dashed var(--border-default);
   border-radius: 6px;
 }
 
@@ -79,8 +79,8 @@
 }
 
 .ap-card {
-  background: var(--surface-2, #1e2433);
-  border: 1px solid var(--border, #2d3748);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 10px;
   display: flex;
@@ -88,10 +88,12 @@
   gap: 7px;
 }
 
+/* intentional: orange accent for inconsistency type, distinct from danger */
 .ap-card-inconsistency {
   border-left: 3px solid #f97316;
 }
 
+/* intentional: indigo wiki-link brand color */
 .ap-card-wikilink {
   border-left: 3px solid #818cf8;
 }
@@ -100,25 +102,25 @@
   font-family: monospace;
   font-size: 13px;
   font-weight: 600;
-  color: #818cf8;
+  color: #818cf8; /* intentional: wiki-link brand color */
   margin: 0;
 }
 
 .ap-card-description {
   font-size: 12px;
-  color: var(--text-secondary, #cbd5e1);
+  color: var(--text-body);
   margin: 0;
   line-height: 1.5;
 }
 
 .ap-card-anchor {
   font-size: 11px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   margin: 0;
 }
 
 .ap-card-anchor em {
-  color: var(--text-secondary, #cbd5e1);
+  color: var(--text-body);
   font-style: italic;
 }
 
@@ -133,50 +135,50 @@
   font-size: 11px;
   font-weight: 500;
   border-radius: 5px;
-  border: 1px solid var(--border, #2d3748);
+  border: 1px solid var(--border-default);
   background: transparent;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .ap-btn-jump {
-  color: #60a5fa;
+  color: var(--text-link);
   border-color: rgba(96, 165, 250, 0.4);
 }
 
 .ap-btn-jump:hover {
   background: rgba(96, 165, 250, 0.12);
-  border-color: #60a5fa;
+  border-color: var(--text-link);
 }
 
 .ap-btn-accept {
-  color: #4ade80;
+  color: var(--state-success);
   border-color: rgba(74, 222, 128, 0.4);
 }
 
 .ap-btn-accept:hover {
   background: rgba(74, 222, 128, 0.12);
-  border-color: #4ade80;
+  border-color: var(--state-success);
 }
 
 .ap-btn-reject {
-  color: #f87171;
+  color: var(--state-danger);
   border-color: rgba(248, 113, 113, 0.4);
 }
 
 .ap-btn-reject:hover {
   background: rgba(248, 113, 113, 0.12);
-  border-color: #f87171;
+  border-color: var(--state-danger);
 }
 
 .ap-btn-cancel {
-  color: var(--text-muted, #94a3b8);
-  border-color: var(--border, #2d3748);
+  color: var(--text-muted);
+  border-color: var(--border-default);
 }
 
 .ap-btn-cancel:hover {
   background: rgba(148, 163, 184, 0.1);
-  border-color: var(--text-muted, #94a3b8);
+  border-color: var(--text-muted);
 }
 
 /* Confirmation overlay */
@@ -192,8 +194,8 @@
 }
 
 .ap-confirm-dialog {
-  background: var(--surface-1, #161b27);
-  border: 1px solid var(--border, #2d3748);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 10px;
   padding: 20px 22px;
   max-width: 360px;
@@ -207,13 +209,13 @@
 .ap-confirm-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, #e2e8f0);
+  color: var(--text-header);
   margin: 0;
 }
 
 .ap-confirm-desc {
   font-size: 12px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.5;
 }
@@ -229,15 +231,15 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted, #64748b);
+  color: var(--text-faint);
 }
 
 .ap-confirm-snippet {
   font-size: 12px;
   font-style: italic;
-  color: var(--text-secondary, #cbd5e1);
-  background: var(--surface-2, #1e2433);
-  border-left: 3px solid #818cf8;
+  color: var(--text-body);
+  background: var(--bg-panel);
+  border-left: 3px solid #818cf8; /* intentional: wiki-link brand color */
   border-radius: 0 4px 4px 0;
   margin: 0;
   padding: 6px 10px;
@@ -248,8 +250,8 @@
   font-family: monospace;
   font-size: 14px;
   font-weight: 600;
-  color: #818cf8;
-  background: var(--surface-2, #1e2433);
+  color: #818cf8; /* intentional: wiki-link brand color */
+  background: var(--bg-panel);
   border-radius: 5px;
   padding: 5px 10px;
   margin: 0;
@@ -257,10 +259,10 @@
 
 .ap-confirm-rationale {
   font-size: 11px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.5;
-  border-top: 1px solid var(--border, #2d3748);
+  border-top: 1px solid var(--border-default);
   padding-top: 10px;
 }
 

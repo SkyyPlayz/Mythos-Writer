@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -25,7 +25,7 @@
   margin: 0 0 6px 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary, #eee);
+  color: var(--text-header);
 }
 
 .kanban-path-row {
@@ -36,7 +36,7 @@
 }
 
 .kanban-path-label {
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -49,9 +49,9 @@
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
-  border: 1px solid var(--border, #444);
-  background: var(--bg-input, #1a1a2e);
-  color: var(--text-primary, #eee);
+  border: 1px solid var(--border-default);
+  background: var(--bg-inset);
+  color: var(--text-header);
   min-width: 240px;
 }
 
@@ -61,21 +61,21 @@
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border-default);
   background: transparent;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   cursor: pointer;
 }
 
 .kanban-path-save-btn {
-  color: var(--accent, #7c8cf8);
-  border-color: var(--accent, #7c8cf8);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .kanban-path-edit-btn:hover,
 .kanban-path-save-btn:hover,
 .kanban-path-cancel-btn:hover {
-  background: var(--bg-hover, rgba(255,255,255,0.06));
+  background: var(--bg-elevated);
 }
 
 /* ─── Columns ─── */
@@ -92,8 +92,8 @@
 .kanban-column {
   flex: 0 0 220px;
   min-width: 220px;
-  background: var(--bg-panel, #1a1a2e);
-  border: 1px solid var(--border, #333);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -102,15 +102,15 @@
 }
 
 .kanban-column.drag-over {
-  border-color: var(--accent, #7c8cf8);
-  background: var(--bg-drag-over, rgba(124,140,248,0.07));
+  border-color: var(--accent);
+  background: rgba(124, 140, 248, 0.07);
 }
 
 .kanban-column-header {
   display: flex;
   align-items: center;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border, #333);
+  border-bottom: 1px solid var(--border-default);
   gap: 6px;
   flex-shrink: 0;
 }
@@ -119,7 +119,7 @@
   flex: 1;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #eee);
+  color: var(--text-header);
   cursor: default;
   user-select: none;
 }
@@ -130,16 +130,16 @@
   font-weight: 600;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--accent, #7c8cf8);
-  color: var(--text-primary, #eee);
+  border-bottom: 1px solid var(--accent);
+  color: var(--text-header);
   padding: 0;
   outline: none;
 }
 
 .kanban-col-count {
   font-size: 11px;
-  color: var(--text-muted, #888);
-  background: var(--bg-badge, rgba(255,255,255,0.08));
+  color: var(--text-muted);
+  background: var(--bg-elevated);
   border-radius: 10px;
   padding: 1px 7px;
   flex-shrink: 0;
@@ -148,7 +148,7 @@
 .kanban-col-remove-btn {
   background: none;
   border: none;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
@@ -159,7 +159,7 @@
 
 .kanban-col-remove-btn:hover {
   opacity: 1;
-  color: var(--danger, #f87171);
+  color: var(--state-danger);
 }
 
 /* ─── Cards ─── */
@@ -176,8 +176,8 @@
 .kanban-card {
   display: flex;
   align-items: center;
-  background: var(--bg-card, #242440);
-  border: 1px solid var(--border, #333);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   padding: 6px 8px;
   cursor: grab;
@@ -186,8 +186,8 @@
 }
 
 .kanban-card:hover {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  border-color: var(--border-hover, #555);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border-color: var(--border-strong);
 }
 
 .kanban-card.dragging {
@@ -197,7 +197,7 @@
 .kanban-card-link {
   flex: 1;
   font-size: 12px;
-  color: var(--text-link, #a5b4fc);
+  color: var(--text-link);
   font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -207,7 +207,7 @@
 .kanban-card-remove {
   background: none;
   border: none;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
@@ -222,7 +222,7 @@
 }
 
 .kanban-card-remove:hover {
-  color: var(--danger, #f87171);
+  color: var(--state-danger);
 }
 
 /* ─── Add column ─── */
@@ -232,9 +232,9 @@
   align-self: flex-start;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px dashed var(--border, #444);
+  border: 1px dashed var(--border-default);
   background: transparent;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 13px;
   white-space: nowrap;
@@ -242,6 +242,6 @@
 }
 
 .kanban-add-col-btn:hover {
-  border-color: var(--accent, #7c8cf8);
-  color: var(--accent, #7c8cf8);
+  border-color: var(--accent);
+  color: var(--accent);
 }

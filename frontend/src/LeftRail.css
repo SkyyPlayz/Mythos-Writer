@@ -2,14 +2,14 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #111113;
-  border-right: 1px solid #1f1f23;
+  background: var(--bg-inset);
+  border-right: 1px solid var(--border-subtle);
   overflow: hidden;
 }
 
 .rail-tabs {
   display: flex;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -18,7 +18,7 @@
   padding: 8px 4px;
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-faint);
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
@@ -27,12 +27,12 @@
 }
 
 .rail-tab:hover {
-  color: #a1a1aa;
+  color: var(--text-muted);
 }
 
 .rail-tab.active {
-  color: #e4e4e7;
-  border-bottom: 2px solid #7c3aed;
+  color: var(--text-header);
+  border-bottom: 2px solid var(--accent);
   margin-bottom: -1px;
 }
 
@@ -45,7 +45,7 @@
 /* Vault browser */
 .vault-loading {
   padding: 16px;
-  color: #52525b;
+  color: var(--text-faint);
   font-size: 0.85rem;
 }
 
@@ -57,7 +57,7 @@
   height: 100%;
   padding: 24px 16px;
   text-align: center;
-  color: #52525b;
+  color: var(--text-faint);
 }
 
 .vault-empty-icon {
@@ -69,12 +69,12 @@
 .vault-empty p {
   margin: 0 0 6px;
   font-size: 0.85rem;
-  color: #71717a;
+  color: var(--text-faint);
 }
 
 .vault-empty-sub {
   font-size: 0.78rem !important;
-  color: #3f3f46 !important;
+  color: var(--border-strong) !important;
 }
 
 /* Vault tree */
@@ -97,17 +97,17 @@
 }
 
 .vt-dir-row {
-  color: #a1a1aa;
+  color: var(--text-muted);
   cursor: pointer;
 }
 
 .vt-dir-row:hover {
-  background: #18181b;
-  color: #e4e4e7;
+  background: var(--bg-panel);
+  color: var(--text-header);
 }
 
 .vt-file-row {
-  color: #71717a;
+  color: var(--text-faint);
 }
 
 .vt-file-row.vt-md {
@@ -115,20 +115,20 @@
 }
 
 .vt-file-row.vt-md:hover {
-  background: #18181b;
-  color: #d4d4d8;
+  background: var(--bg-panel);
+  color: var(--text-body);
 }
 
 .vt-file-row.vt-selected {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--bg-elevated);
+  color: var(--text-header);
 }
 
 .vt-chevron {
   font-size: 0.6rem;
   width: 10px;
   flex-shrink: 0;
-  color: #52525b;
+  color: var(--text-faint);
 }
 
 .vt-icon {

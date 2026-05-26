@@ -1,8 +1,8 @@
 .story-navigator {
   width: 220px;
   flex-shrink: 0;
-  background: #0d0d0d;
-  border-right: 1px solid #1e1e1e;
+  background: var(--bg-canvas);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -13,7 +13,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .nav-title {
@@ -21,13 +21,13 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #52525b;
+  color: var(--text-faint);
 }
 
 .nav-add-btn {
   background: transparent;
-  border: 1px solid #3f3f46;
-  color: #71717a;
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
   border-radius: 4px;
   width: 22px;
   height: 22px;
@@ -40,8 +40,8 @@
 }
 
 .nav-add-btn:hover {
-  border-color: #7c3aed;
-  color: #a78bfa;
+  border-color: var(--accent);
+  color: var(--accent-light);
 }
 
 .nav-tree {
@@ -52,7 +52,7 @@
 
 .nav-empty {
   padding: 1rem;
-  color: #52525b;
+  color: var(--text-faint);
   font-size: 0.8rem;
   text-align: center;
 }
@@ -73,12 +73,12 @@
 }
 
 .nav-story-row:hover {
-  background: #161616;
+  background: var(--bg-panel);
 }
 
 .nav-chevron {
   font-size: 0.65rem;
-  color: #52525b;
+  color: var(--text-faint);
   width: 10px;
   flex-shrink: 0;
 }
@@ -87,7 +87,7 @@
   flex: 1;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #a78bfa;
+  color: var(--accent-light);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -96,7 +96,7 @@
 .nav-inline-add {
   background: transparent;
   border: none;
-  color: #3f3f46;
+  color: var(--border-strong);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 0 0.2rem;
@@ -110,7 +110,7 @@
 }
 
 .nav-inline-add:hover {
-  color: #a78bfa;
+  color: var(--accent-light);
 }
 
 /* Chapter */
@@ -129,13 +129,13 @@
 }
 
 .nav-chapter-row:hover {
-  background: #161616;
+  background: var(--bg-panel);
 }
 
 .nav-chapter-title {
   flex: 1;
   font-size: 0.82rem;
-  color: #a1a1aa;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -154,50 +154,50 @@
 }
 
 .nav-scene-row:hover {
-  background: #161616;
+  background: var(--bg-panel);
 }
 
 .nav-scene-row.active {
-  background: #1a1030;
-  border-right: 2px solid #7c3aed;
+  background: var(--accent-soft);
+  border-right: 2px solid var(--accent);
 }
 
 .nav-scene-icon {
   font-size: 0.45rem;
-  color: #3f3f46;
+  color: var(--border-strong);
 }
 
 .nav-scene-row.active .nav-scene-icon {
-  color: #7c3aed;
+  color: var(--accent);
 }
 
 .nav-scene-title {
   flex: 1;
   font-size: 0.8rem;
-  color: #71717a;
+  color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .nav-scene-row.active .nav-scene-title {
-  color: #c4b5fd;
+  color: var(--accent-very-light);
 }
 
 .nav-draft-badge {
   font-size: 0.65rem;
   padding: 0.1rem 0.35rem;
   border-radius: 10px;
-  background: #1a1a1a;
-  color: #52525b;
+  background: var(--bg-panel);
+  color: var(--text-faint);
 }
 
 .nav-draft-badge.draft-review {
-  background: #1c1007;
-  color: #fcd34d;
+  background: var(--draft-review-bg);
+  color: var(--draft-review-color);
 }
 
 .nav-draft-badge.draft-final {
-  background: #052e16;
-  color: #86efac;
+  background: var(--draft-final-bg);
+  color: var(--draft-final-color);
 }

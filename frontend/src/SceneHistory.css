@@ -9,8 +9,8 @@
 }
 
 .history-panel {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 10px;
   width: 90vw;
   max-width: 960px;
@@ -26,20 +26,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border-default);
 }
 
 .history-header h2 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: #cdd6f4;
+  color: var(--text-body);
 }
 
 .history-close {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 1.1rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -47,7 +47,7 @@
   line-height: 1;
 }
 
-.history-close:hover { color: #cdd6f4; background: #313244; }
+.history-close:hover { color: var(--text-body); background: var(--bg-elevated); }
 
 .history-body {
   display: flex;
@@ -59,7 +59,7 @@
 .history-list {
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid #313244;
+  border-right: 1px solid var(--border-default);
   overflow-y: auto;
   padding: 8px 0;
 }
@@ -78,26 +78,26 @@
   border-left: 3px solid transparent;
 }
 
-.history-item:hover { background: #313244; }
-.history-item.selected { background: #2a2b3d; border-left-color: #89b4fa; }
+.history-item:hover { background: var(--bg-elevated); }
+.history-item.selected { background: var(--bg-elevated); border-left-color: var(--text-link); }
 
 .history-date {
   font-size: 0.78rem;
-  color: #cdd6f4;
+  color: var(--text-body);
 }
 
 .history-wc {
   font-size: 0.72rem;
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .history-wc em { font-style: normal; margin-left: 4px; }
-.history-wc em.pos { color: #a6e3a1; }
-.history-wc em.neg { color: #f38ba8; }
+.history-wc em.pos { color: var(--state-success); }
+.history-wc em.neg { color: var(--state-danger); }
 
 .history-empty {
   padding: 20px 16px;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -125,9 +125,9 @@
   word-break: break-word;
 }
 
-.diff-same { color: #6c7086; }
-.diff-removed { background: rgba(243, 139, 168, 0.12); color: #f38ba8; }
-.diff-added { background: rgba(166, 227, 161, 0.12); color: #a6e3a1; }
+.diff-same { color: var(--text-muted); }
+.diff-removed { background: rgba(243, 139, 168, 0.12); color: var(--state-danger); }
+.diff-added { background: rgba(166, 227, 161, 0.12); color: var(--state-success); }
 
 .diff-gutter {
   width: 16px;
@@ -140,7 +140,7 @@
 
 .history-actions {
   padding: 12px 16px;
-  border-top: 1px solid #313244;
+  border-top: 1px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -149,13 +149,13 @@
 
 .history-meta {
   font-size: 0.78rem;
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .btn-restore {
   padding: 7px 16px;
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: var(--text-link);
+  color: var(--bg-panel);
   border: none;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -163,7 +163,7 @@
   cursor: pointer;
 }
 
-.btn-restore:hover { background: #74c7ec; }
+.btn-restore:hover { background: var(--accent-light); }
 .btn-restore:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Confirm rollback dialog */
@@ -179,8 +179,8 @@
 }
 
 .history-confirm-dialog {
-  background: #1e1e2e;
-  border: 1px solid #45475a;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 24px 28px;
   max-width: 380px;
@@ -191,7 +191,7 @@
 .history-confirm-msg {
   margin: 0 0 20px;
   font-size: 0.88rem;
-  color: #cdd6f4;
+  color: var(--text-body);
   line-height: 1.55;
 }
 
@@ -204,11 +204,11 @@
 .btn-cancel {
   padding: 7px 16px;
   background: transparent;
-  color: #6c7086;
-  border: 1px solid #45475a;
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 0.85rem;
   cursor: pointer;
 }
 
-.btn-cancel:hover { background: #313244; color: #cdd6f4; }
+.btn-cancel:hover { background: var(--bg-elevated); color: var(--text-body); }

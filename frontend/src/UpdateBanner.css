@@ -8,29 +8,32 @@
   gap: 12px;
   padding: 8px 16px;
   border-radius: 6px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #e2e8f0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  color: var(--text-header);
   font-size: 13px;
   z-index: 9000;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
 }
 
+/* intentional: green ready-to-install state */
 .update-banner--ready {
   border-color: #22c55e;
-  background: #14532d;
+  background: var(--state-success-bg);
 }
 
+/* intentional: blue downloading-in-progress state */
 .update-banner--downloading {
   border-color: #3b82f6;
-  background: #1e3a5f;
+  background: var(--bg-inset);
 }
 
 .update-banner__msg {
   flex: 1;
 }
 
+/* intentional: green install CTA button */
 .update-banner__install {
   background: #22c55e;
   border: none;
@@ -51,7 +54,7 @@
 .update-banner__close {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
   padding: 0 2px;
@@ -59,5 +62,5 @@
 }
 
 .update-banner__close:hover {
-  color: #e2e8f0;
+  color: var(--text-header);
 }

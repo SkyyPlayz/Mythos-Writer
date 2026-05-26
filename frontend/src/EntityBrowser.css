@@ -7,7 +7,7 @@
 
 .entity-browser-toolbar {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border, #2a2a2a);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -15,7 +15,7 @@
 .entity-empty {
   padding: 24px 16px;
   text-align: center;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -43,19 +43,19 @@
   user-select: none;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .entity-group-header:hover {
-  background: var(--hover, rgba(255,255,255,0.04));
+  background: var(--bg-elevated);
 }
 
 .entity-chevron {
   font-size: 10px;
   width: 12px;
-  color: var(--text-muted, #666);
+  color: var(--text-faint);
 }
 
 .entity-group-icon {
@@ -68,8 +68,8 @@
 
 .entity-count {
   font-size: 11px;
-  background: var(--badge-bg, rgba(255,255,255,0.08));
-  color: var(--text-muted, #888);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
   padding: 1px 6px;
   border-radius: 10px;
 }
@@ -84,18 +84,18 @@
   padding: 5px 10px 5px 28px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text, #ddd);
+  color: var(--text-body);
   gap: 4px;
   position: relative;
 }
 
 .entity-item:hover {
-  background: var(--hover, rgba(255,255,255,0.04));
+  background: var(--bg-elevated);
 }
 
 .entity-item.selected {
-  background: var(--selected, rgba(99, 102, 241, 0.18));
-  color: var(--accent, #a5b4fc);
+  background: var(--accent-soft);
+  color: var(--accent-light);
 }
 
 .entity-item-name {
@@ -109,7 +109,7 @@
   display: none;
   background: none;
   border: none;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
@@ -122,7 +122,7 @@
 }
 
 .entity-item-delete:hover {
-  color: #f87171;
+  color: var(--state-danger);
 }
 
 .entity-delete-confirm {
@@ -143,22 +143,22 @@
 }
 
 .entity-btn-primary {
-  background: var(--accent, #6366f1);
+  background: var(--accent);
   color: #fff;
 }
 
 .entity-btn-primary:hover {
-  background: var(--accent-hover, #818cf8);
+  background: var(--accent-hover);
 }
 
 .entity-btn-ghost {
   background: transparent;
-  color: var(--text-secondary, #aaa);
-  border: 1px solid var(--border, #444);
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
 }
 
 .entity-btn-ghost:hover {
-  background: var(--hover, rgba(255,255,255,0.06));
+  background: var(--bg-elevated);
 }
 
 .entity-btn-sm {
@@ -167,8 +167,8 @@
 }
 
 .entity-btn-danger-sm {
-  background: #7f1d1d;
-  color: #fca5a5;
+  background: var(--state-danger-border);
+  color: var(--state-danger);
   border: none;
   border-radius: 3px;
   cursor: pointer;
@@ -177,13 +177,13 @@
 }
 
 .entity-btn-danger-sm:hover {
-  background: #991b1b;
+  background: var(--state-danger-bg-alt);
 }
 
 .entity-btn-ghost-sm {
   background: transparent;
-  color: var(--text-muted, #888);
-  border: 1px solid var(--border, #444);
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
   border-radius: 3px;
   cursor: pointer;
   font-size: 11px;
@@ -202,19 +202,19 @@
 }
 
 .entity-dialog {
-  background: var(--surface, #1e1e2e);
-  border: 1px solid var(--border, #333);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 24px;
   width: 360px;
   max-width: 90vw;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
 }
 
 .entity-dialog-header {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text, #eee);
+  color: var(--text-header);
   margin-bottom: 16px;
 }
 
@@ -229,21 +229,21 @@
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 .entity-dialog-hint {
   font-weight: 400;
-  color: var(--text-muted, #777);
+  color: var(--text-faint);
 }
 
 .entity-dialog-input,
 .entity-dialog-select {
-  background: var(--input-bg, #111);
-  border: 1px solid var(--border, #444);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
-  color: var(--text, #eee);
+  color: var(--text-header);
   font-size: 13px;
   padding: 7px 10px;
   outline: none;
@@ -251,7 +251,7 @@
 
 .entity-dialog-input:focus,
 .entity-dialog-select:focus {
-  border-color: var(--accent, #6366f1);
+  border-color: var(--accent);
 }
 
 .entity-dialog-select {
@@ -261,7 +261,7 @@
 
 .entity-dialog-error {
   font-size: 12px;
-  color: #f87171;
+  color: var(--state-danger);
 }
 
 .entity-dialog-actions {

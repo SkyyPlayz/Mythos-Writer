@@ -9,8 +9,8 @@
 }
 
 .onboarding-card {
-  background: var(--color-surface, #1e1e2e);
-  color: var(--color-text, #cdd6f4);
+  background: var(--bg-panel);
+  color: var(--text-body);
   border-radius: 12px;
   padding: 2.5rem;
   width: 480px;
@@ -29,16 +29,16 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-surface-alt, #313244);
+  background: var(--bg-elevated);
   transition: background 0.2s;
 }
 
 .onboarding-step-dot.active {
-  background: var(--color-accent, #89b4fa);
+  background: var(--text-link);
 }
 
 .onboarding-step-dot.done {
-  background: var(--color-success, #a6e3a1);
+  background: var(--state-success);
 }
 
 .onboarding-step {
@@ -85,7 +85,7 @@
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.875rem 1rem;
-  border: 1px solid var(--color-border, #45475a);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   cursor: pointer;
   transition: border-color 0.15s;
@@ -98,7 +98,7 @@
 }
 
 .onboarding-choice.selected {
-  border-color: var(--color-accent, #89b4fa);
+  border-color: var(--text-link);
   background: rgba(137, 180, 250, 0.08);
 }
 
@@ -128,9 +128,9 @@
 .onboarding-input {
   width: 100%;
   padding: 0.625rem 0.75rem;
-  border: 1px solid var(--color-border, #45475a);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: var(--color-surface-alt, #313244);
+  background: var(--bg-elevated);
   color: inherit;
   font-size: 0.95rem;
   box-sizing: border-box;
@@ -138,12 +138,12 @@
 
 .onboarding-input:focus {
   outline: none;
-  border-color: var(--color-accent, #89b4fa);
+  border-color: var(--text-link);
 }
 
 .onboarding-error {
   font-size: 0.85rem;
-  color: var(--color-error, #f38ba8);
+  color: var(--state-danger);
   margin: 0;
 }
 
@@ -156,8 +156,8 @@
 
 .btn-primary {
   padding: 0.5rem 1.25rem;
-  background: var(--color-accent, #89b4fa);
-  color: #1e1e2e;
+  background: var(--text-link);
+  color: var(--bg-panel);
   border: none;
   border-radius: 6px;
   font-weight: 600;
@@ -174,7 +174,7 @@
   padding: 0.5rem 1.25rem;
   background: transparent;
   color: inherit;
-  border: 1px solid var(--color-border, #45475a);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-weight: 500;
   cursor: pointer;
@@ -209,7 +209,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1rem;
-  border: 1px solid var(--color-border, #45475a);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -235,11 +235,11 @@
   height: 1.1rem;
   flex-shrink: 0;
   cursor: pointer;
-  accent-color: var(--color-accent, #89b4fa);
+  accent-color: var(--text-link);
 }
 
 .onboarding-done-icon {
   font-size: 3rem;
   text-align: center;
-  color: var(--color-success, #a6e3a1);
+  color: var(--state-success);
 }

@@ -1,0 +1,69 @@
+/* Liquid Glass design tokens — dark theme */
+
+:root {
+  /* ── Backgrounds ─────────────────────────────────── */
+  --bg-app: #0a0a0a;          /* deepest app shell */
+  --bg-canvas: #0d0d0d;       /* canvas / dark side columns */
+  --bg-inset: #111113;        /* inset panels, editor toolbars */
+  --bg-panel: #18181b;        /* standard panel surfaces */
+  --bg-elevated: #27272a;     /* raised/elevated elements */
+
+  /* ── Text ────────────────────────────────────────── */
+  --text-header: #e4e4e7;     /* headings / primary white */
+  --text-body: #d4d4d8;       /* body reading text */
+  --text-muted: #a1a1aa;      /* secondary / muted labels */
+  --text-faint: #71717a;      /* ghost / very muted */
+  --text-placeholder: #3f3f46; /* input placeholders */
+  --text-link: #89b4fa;       /* links and interactive accent (blue) */
+
+  /* ── Borders ─────────────────────────────────────── */
+  --border-subtle: #1f1f23;   /* hairline dividers */
+  --border-default: #27272a;  /* standard borders */
+  --border-strong: #3f3f46;   /* strong borders / active outlines */
+
+  /* ── Accent (violet) ─────────────────────────────── */
+  --accent: #7c3aed;           /* base violet */
+  --accent-hover: #6d28d9;     /* violet hover */
+  --accent-light: #a78bfa;     /* light violet */
+  --accent-very-light: #c4b5fd; /* very light violet */
+  --accent-soft: #1e1030;      /* dark violet bg fill */
+  --accent-deep: #4c1d95;      /* deep violet (chat bubble bg) */
+
+  /* ── Focus ───────────────────────────────────────── */
+  --focus-ring: #06b6d4;       /* cyan focus ring */
+
+  /* ── State — text / icon colors ─────────────────── */
+  --state-danger: #f87171;
+  --danger: #f87171;           /* alias used by some components */
+  --state-success: #4ade80;
+  --success: #4ade80;          /* alias */
+  --state-warning: #fbbf24;
+  --warning: #fbbf24;          /* alias */
+
+  /* ── State — surface colors ──────────────────────── */
+  --state-danger-bg: #1f0a0a;
+  --state-danger-bg-alt: #3b0a0a;
+  --state-danger-border: #7f1d1d;
+  --state-success-bg: #052e16;
+  --state-success-border: #166534;
+  --state-warning-bg: #1c1407;
+  --state-warning-border: #78350f;
+
+  /* ── Draft status (semantic brand) ──────────────── */
+  --draft-progress-bg: #1c1917;
+  --draft-progress-color: #78716c;
+  --draft-progress-border: #44403c;
+  --draft-review-bg: #1c1400;
+  --draft-review-color: #fbbf24;
+  --draft-review-border: #92400e;
+  --draft-final-bg: #052e16;
+  --draft-final-color: #4ade80;
+  --draft-final-border: #166534;
+
+  /* ── Radii ───────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+}

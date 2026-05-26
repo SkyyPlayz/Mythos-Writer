@@ -9,8 +9,8 @@
 }
 
 .tl-panel {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 10px;
   width: min(1100px, 95vw);
   height: min(680px, 90vh);
@@ -24,20 +24,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
 .tl-title {
   font-size: 14px;
   font-weight: 600;
-  color: #cdd6f4;
+  color: var(--text-body);
 }
 
 .tl-close {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 16px;
   padding: 2px 6px;
@@ -46,8 +46,8 @@
 }
 
 .tl-close:hover {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--bg-elevated);
+  color: var(--text-body);
 }
 
 .tl-flow-wrap {
@@ -56,13 +56,13 @@
 }
 
 .tl-flow-wrap .react-flow {
-  background: #181825;
+  background: var(--bg-panel);
 }
 
 /* Timeline node cards */
 .tl-node {
-  background: #313244;
-  border: 1px solid #585b70;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 8px 10px;
   min-height: 64px;
@@ -74,24 +74,24 @@
 }
 
 .tl-node--planned {
-  background: #1e1e2e;
-  border-color: #45475a;
+  background: var(--bg-panel);
+  border-color: var(--border-strong);
   opacity: 0.6;
 }
 
 .tl-node--overlap {
-  border-color: #f38ba8;
+  border-color: var(--state-danger);
 }
 
 .tl-node-time {
   font-size: 10px;
-  color: #6c7086;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .tl-node-title {
   font-size: 12px;
-  color: #cdd6f4;
+  color: var(--text-body);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -100,13 +100,13 @@
 
 .tl-node-overlap-badge {
   font-size: 10px;
-  color: #f38ba8;
+  color: var(--state-danger);
   margin-top: 2px;
 }
 
 .tl-node-planned-badge {
   font-size: 10px;
-  color: #6c7086;
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -118,7 +118,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .tl-empty-icon {
@@ -129,10 +129,10 @@
 .tl-empty p {
   margin: 0;
   font-size: 14px;
-  color: #cdd6f4;
+  color: var(--text-body);
 }
 
 .tl-empty-sub {
   font-size: 12px !important;
-  color: #6c7086 !important;
+  color: var(--text-muted) !important;
 }

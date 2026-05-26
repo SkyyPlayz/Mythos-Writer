@@ -4,11 +4,11 @@
   gap: 12px;
   padding: 0 14px;
   height: 32px;
-  background: #0d0d0f;
-  border-top: 1px solid #1f1f23;
+  background: var(--bg-canvas);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
   font-size: 0.78rem;
-  color: #52525b;
+  color: var(--text-faint);
   user-select: none;
 }
 
@@ -20,9 +20,9 @@
 
 .bottom-nav-btn {
   background: none;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-default);
   border-radius: 4px;
-  color: #71717a;
+  color: var(--text-faint);
   padding: 2px 8px;
   font-size: 0.78rem;
   cursor: pointer;
@@ -30,8 +30,8 @@
 }
 
 .bottom-nav-btn:hover:not(:disabled) {
-  color: #a1a1aa;
-  border-color: #3f3f46;
+  color: var(--text-muted);
+  border-color: var(--border-strong);
 }
 
 .bottom-nav-btn:disabled {
@@ -52,26 +52,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #71717a;
+  color: var(--text-faint);
 }
 
 .bottom-sep {
   margin: 0 4px;
-  color: #3f3f46;
+  color: var(--border-strong);
 }
 
 .bottom-scene-name {
-  color: #a1a1aa;
+  color: var(--text-muted);
 }
 
 .bottom-stats {
   white-space: nowrap;
   flex-shrink: 0;
-  color: #52525b;
+  color: var(--text-faint);
 }
 
 .bottom-hint {
-  color: #3f3f46;
+  color: var(--border-strong);
 }
 
 .bottom-draft {
@@ -86,19 +86,19 @@
 }
 
 .draft-in-progress {
-  background: #1c1917;
-  color: #78716c;
-  border: 1px solid #44403c;
+  background: var(--draft-progress-bg);
+  color: var(--draft-progress-color);
+  border: 1px solid var(--draft-progress-border);
 }
 
 .draft-review {
-  background: #1c1400;
-  color: #fbbf24;
-  border: 1px solid #92400e;
+  background: var(--draft-review-bg);
+  color: var(--draft-review-color);
+  border: 1px solid var(--draft-review-border);
 }
 
 .draft-final {
-  background: #052e16;
-  color: #4ade80;
-  border: 1px solid #166534;
+  background: var(--draft-final-bg);
+  color: var(--draft-final-color);
+  border: 1px solid var(--draft-final-border);
 }

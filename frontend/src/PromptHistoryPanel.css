@@ -9,9 +9,9 @@
 }
 
 .phistory-panel {
-  background: var(--bg-panel, #1e1e2e);
-  border: 1px solid var(--border, #3a3a5c);
-  border-radius: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
   width: min(800px, 94vw);
   max-height: 85vh;
   display: flex;
@@ -25,7 +25,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border, #3a3a5c);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -33,23 +33,23 @@
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--text-primary, #cdd6f4);
+  color: var(--text-body);
 }
 
 .phistory-close {
   background: none;
   border: none;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
   font-size: 1.4rem;
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   line-height: 1;
 }
 
 .phistory-close:hover {
-  background: var(--hover, #313244);
-  color: var(--text-primary, #cdd6f4);
+  background: var(--bg-elevated);
+  color: var(--text-body);
 }
 
 .phistory-tabs {
@@ -57,7 +57,7 @@
   gap: 2px;
   padding: 8px 20px 0;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border, #3a3a5c);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .phistory-tab {
@@ -66,19 +66,19 @@
   border-bottom: 2px solid transparent;
   padding: 6px 12px 8px;
   cursor: pointer;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
   font-size: 0.85rem;
   transition: color 0.15s, border-color 0.15s;
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
 }
 
 .phistory-tab:hover {
-  color: var(--text-primary, #cdd6f4);
+  color: var(--text-body);
 }
 
 .phistory-tab.active {
-  color: var(--accent, #89b4fa);
-  border-bottom-color: var(--accent, #89b4fa);
+  color: var(--text-link);
+  border-bottom-color: var(--text-link);
 }
 
 .phistory-filters {
@@ -87,23 +87,23 @@
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border, #3a3a5c);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .phistory-search {
   width: 100%;
   padding: 6px 10px;
-  background: var(--bg-input, #181825);
-  border: 1px solid var(--border, #3a3a5c);
-  border-radius: 4px;
-  color: var(--text-primary, #cdd6f4);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  color: var(--text-body);
   font-size: 0.875rem;
   outline: none;
   box-sizing: border-box;
 }
 
 .phistory-search:focus {
-  border-color: var(--accent, #89b4fa);
+  border-color: var(--text-link);
 }
 
 .phistory-date-row {
@@ -118,31 +118,31 @@
   align-items: center;
   gap: 6px;
   font-size: 0.8rem;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
 }
 
 .phistory-date {
   padding: 4px 8px;
-  background: var(--bg-input, #181825);
-  border: 1px solid var(--border, #3a3a5c);
-  border-radius: 4px;
-  color: var(--text-primary, #cdd6f4);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  color: var(--text-body);
   font-size: 0.8rem;
 }
 
 .phistory-clear-dates {
   background: none;
-  border: 1px solid var(--border, #3a3a5c);
-  border-radius: 4px;
-  color: var(--text-muted, #6c7086);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
   font-size: 0.8rem;
   padding: 4px 8px;
   cursor: pointer;
 }
 
 .phistory-clear-dates:hover {
-  border-color: var(--text-muted, #6c7086);
-  color: var(--text-primary, #cdd6f4);
+  border-color: var(--text-muted);
+  color: var(--text-body);
 }
 
 .phistory-body {
@@ -155,13 +155,13 @@
 .phistory-empty {
   padding: 32px 20px;
   text-align: center;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
 .phistory-error {
   padding: 16px 20px;
-  color: var(--error, #f38ba8);
+  color: var(--state-danger);
   font-size: 0.875rem;
 }
 
@@ -172,7 +172,7 @@
 }
 
 .phistory-row {
-  border-bottom: 1px solid var(--border-subtle, #2a2a3e);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .phistory-row:last-child {
@@ -189,13 +189,13 @@
   border: none;
   cursor: pointer;
   text-align: left;
-  color: var(--text-primary, #cdd6f4);
+  color: var(--text-body);
   transition: background 0.1s;
   flex-wrap: wrap;
 }
 
 .phistory-row-summary:hover {
-  background: var(--hover, #313244);
+  background: var(--bg-elevated);
 }
 
 .phistory-agent-badge {
@@ -203,22 +203,22 @@
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 10px;
-  background: var(--accent-dim, #1e3a5f);
-  color: var(--accent, #89b4fa);
+  background: var(--accent-soft);
+  color: var(--text-link);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .phistory-timestamp {
   font-size: 0.75rem;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .phistory-prompt-snippet {
   font-size: 0.825rem;
-  color: var(--text-secondary, #a6adc8);
+  color: var(--text-muted);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -230,31 +230,31 @@
   padding: 2px 6px;
   border-radius: 10px;
   background: rgba(243, 139, 168, 0.15);
-  color: var(--error, #f38ba8);
+  color: var(--state-danger);
   flex-shrink: 0;
 }
 
 .phistory-row-detail {
   padding: 12px 20px 16px;
-  background: var(--bg-detail, #181825);
-  border-top: 1px solid var(--border-subtle, #2a2a3e);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .phistory-detail-meta {
   display: flex;
   gap: 16px;
   font-size: 0.75rem;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
 
 .phistory-detail-error {
-  color: var(--error, #f38ba8);
+  color: var(--state-danger);
 }
 
 .phistory-scene-ref {
-  color: var(--accent-green, #a6e3a1);
+  color: var(--state-success);
   font-style: italic;
 }
 
@@ -270,7 +270,7 @@
   margin: 0 0 4px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -278,11 +278,11 @@
 .phistory-detail-text {
   margin: 0;
   padding: 10px 12px;
-  background: var(--bg-code, #11111b);
-  border: 1px solid var(--border-subtle, #2a2a3e);
-  border-radius: 4px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
   font-size: 0.8rem;
-  color: var(--text-secondary, #a6adc8);
+  color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 200px;
@@ -296,23 +296,23 @@
   justify-content: center;
   gap: 16px;
   padding: 12px 20px;
-  border-top: 1px solid var(--border, #3a3a5c);
+  border-top: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
 .phistory-page-btn {
-  background: var(--bg-input, #181825);
-  border: 1px solid var(--border, #3a3a5c);
-  border-radius: 4px;
-  color: var(--text-primary, #cdd6f4);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  color: var(--text-body);
   font-size: 0.8rem;
   padding: 4px 10px;
   cursor: pointer;
 }
 
 .phistory-page-btn:hover:not(:disabled) {
-  border-color: var(--accent, #89b4fa);
-  color: var(--accent, #89b4fa);
+  border-color: var(--text-link);
+  color: var(--text-link);
 }
 
 .phistory-page-btn:disabled {
@@ -322,5 +322,5 @@
 
 .phistory-page-info {
   font-size: 0.8rem;
-  color: var(--text-muted, #6c7086);
+  color: var(--text-muted);
 }

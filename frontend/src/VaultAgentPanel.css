@@ -16,19 +16,19 @@
 .va-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #e2e8f0);
+  color: var(--text-header);
 }
 
 .va-subtitle {
   font-size: 11px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.4;
 }
 
 .va-check-btn {
   padding: 8px 14px;
-  background: var(--accent, #7c3aed);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -39,7 +39,7 @@
 }
 
 .va-check-btn:hover:not(:disabled) {
-  background: var(--accent-hover, #6d28d9);
+  background: var(--accent-hover);
 }
 
 .va-check-btn:disabled {
@@ -49,21 +49,21 @@
 
 .va-empty {
   font-size: 12px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   text-align: center;
   padding: 16px 0;
 }
 
 .va-stream {
-  background: var(--surface-2, #1e2433);
-  border: 1px solid var(--border, #2d3748);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   padding: 10px;
 }
 
 .va-stream-text {
   font-size: 12px;
-  color: var(--text-secondary, #cbd5e1);
+  color: var(--text-body);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -72,7 +72,7 @@
 .va-cursor {
   display: inline-block;
   animation: blink 1s step-end infinite;
-  color: var(--accent, #7c3aed);
+  color: var(--accent);
 }
 
 @keyframes blink {
@@ -82,8 +82,8 @@
 
 .va-error {
   font-size: 12px;
-  color: #f87171;
-  background: rgba(239, 68, 68, 0.1);
+  color: var(--state-danger);
+  background: var(--state-danger-bg);
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 6px;
   padding: 8px 10px;
@@ -97,7 +97,7 @@
 
 .va-clean {
   font-size: 12px;
-  color: #4ade80;
+  color: var(--state-success);
   background: rgba(74, 222, 128, 0.08);
   border: 1px solid rgba(74, 222, 128, 0.25);
   border-radius: 6px;
@@ -107,15 +107,15 @@
 .va-issues-header {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .va-issue-card {
-  background: var(--surface-2, #1e2433);
+  background: var(--bg-panel);
   border: 1px solid rgba(239, 68, 68, 0.35);
-  border-left: 3px solid #f87171;
+  border-left: 3px solid var(--state-danger);
   border-radius: 6px;
   padding: 10px;
   display: flex;
@@ -126,12 +126,12 @@
 .va-issue-entity {
   font-size: 12px;
   font-weight: 600;
-  color: #fca5a5;
+  color: var(--state-danger);
 }
 
 .va-issue-text {
   font-size: 12px;
-  color: var(--text-secondary, #cbd5e1);
+  color: var(--text-body);
   line-height: 1.45;
 }
 
@@ -144,14 +144,14 @@
 .va-badge {
   font-size: 10px;
   background: rgba(124, 58, 237, 0.25);
-  color: #a78bfa;
+  color: var(--accent-light);
   border-radius: 4px;
   padding: 1px 6px;
 }
 
 .va-timestamp {
   font-size: 10px;
-  color: var(--text-muted, #64748b);
+  color: var(--text-faint);
 }
 
 .va-dismiss-btn {
@@ -159,26 +159,26 @@
   padding: 3px 10px;
   font-size: 11px;
   background: transparent;
-  border: 1px solid var(--border, #2d3748);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
 
 .va-dismiss-btn:hover {
-  border-color: #f87171;
-  color: #f87171;
+  border-color: var(--state-danger);
+  color: var(--state-danger);
 }
 
 .va-dismissed-count {
   font-size: 11px;
-  color: var(--text-muted, #64748b);
+  color: var(--text-faint);
   text-align: center;
 }
 
 .va-last-checked {
   font-size: 10px;
-  color: var(--text-muted, #64748b);
+  color: var(--text-faint);
   text-align: right;
 }

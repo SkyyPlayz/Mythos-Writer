@@ -4,8 +4,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0a0a0b;
-  color: #e4e4e7;
+  background: var(--bg-app);
+  color: var(--text-header);
   overflow: hidden;
 }
 
@@ -15,16 +15,16 @@
   align-items: center;
   gap: 16px;
   padding: 12px 20px;
-  background: #0d0d0f;
-  border-bottom: 1px solid #1a1a1f;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .brainstorm-back-btn {
   background: none;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-default);
   border-radius: 6px;
-  color: #a1a1aa;
+  color: var(--text-muted);
   font-size: 0.82rem;
   padding: 4px 10px;
   cursor: pointer;
@@ -33,9 +33,9 @@
 }
 
 .brainstorm-back-btn:hover {
-  background: #18181b;
-  color: #e4e4e7;
-  border-color: #3f3f46;
+  background: var(--bg-panel);
+  color: var(--text-header);
+  border-color: var(--border-strong);
 }
 
 .brainstorm-header-text {
@@ -47,13 +47,13 @@
 .brainstorm-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-header);
   margin: 0;
 }
 
 .brainstorm-subtitle {
   font-size: 0.75rem;
-  color: #71717a;
+  color: var(--text-faint);
   margin: 0;
 }
 
@@ -71,7 +71,7 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  border-right: 1px solid #1a1a1f;
+  border-right: 1px solid var(--border-subtle);
   overflow: hidden;
 }
 
@@ -85,7 +85,7 @@
 }
 
 .brainstorm-empty {
-  color: #71717a;
+  color: var(--text-faint);
   font-size: 0.87rem;
   line-height: 1.6;
   padding: 40px 20px;
@@ -108,8 +108,8 @@
 }
 
 .bs-user-bubble {
-  background: #4c1d95;
-  color: #ede9fe;
+  background: var(--accent-deep);
+  color: var(--accent-very-light);
   border-radius: 14px 14px 4px 14px;
   padding: 10px 14px;
   max-width: 72%;
@@ -124,13 +124,13 @@
 }
 
 .bs-assistant-text {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 4px 14px 14px 14px;
   padding: 10px 14px;
   font-size: 0.88rem;
   line-height: 1.65;
-  color: #d4d4d8;
+  color: var(--text-body);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -142,7 +142,7 @@
 .bs-cursor {
   display: inline-block;
   animation: bs-blink 1s step-end infinite;
-  color: #7c3aed;
+  color: var(--accent);
   margin-left: 1px;
 }
 
@@ -152,10 +152,10 @@
 }
 
 .brainstorm-error {
-  background: #3b0a0a;
-  border: 1px solid #7f1d1d;
+  background: var(--state-danger-bg-alt);
+  border: 1px solid var(--state-danger-border);
   border-radius: 8px;
-  color: #fca5a5;
+  color: var(--state-danger);
   padding: 10px 14px;
   font-size: 0.84rem;
 }
@@ -166,8 +166,8 @@
   flex-direction: column;
   gap: 6px;
   padding: 14px 16px;
-  background: #0d0d0f;
-  border-top: 1px solid #1a1a1f;
+  background: var(--bg-canvas);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -185,9 +185,9 @@
   width: 38px;
   height: 38px;
   border-radius: 8px;
-  border: 1px solid #3f3f46;
-  background: #27272a;
-  color: #a1a1aa;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
   font-size: 1rem;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -195,17 +195,18 @@
 }
 
 .brainstorm-mic-btn:hover:not(:disabled) {
-  background: #3f3f46;
-  color: #e4e4e7;
+  background: var(--border-strong);
+  color: var(--text-header);
 }
 
 .brainstorm-mic-btn--recording {
-  background: #7f1d1d;
-  border-color: #ef4444;
-  color: #fca5a5;
+  background: var(--state-danger-border);
+  border-color: var(--state-danger);
+  color: var(--state-danger);
   animation: brainstorm-mic-pulse 1.2s ease-in-out infinite;
 }
 
+/* intentional: orange mic error distinct from red danger */
 .brainstorm-mic-btn--error {
   border-color: #f97316;
   color: #f97316;
@@ -218,10 +219,10 @@
 
 .brainstorm-input {
   flex: 1;
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
-  color: #e4e4e7;
+  color: var(--text-header);
   font-size: 0.88rem;
   padding: 8px 12px;
   resize: none;
@@ -231,7 +232,7 @@
 }
 
 .brainstorm-input:focus {
-  border-color: #4c1d95;
+  border-color: var(--accent-deep);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
 }
 
@@ -241,7 +242,7 @@
 }
 
 .brainstorm-send-btn {
-  background: #7c3aed;
+  background: var(--accent);
   border: none;
   border-radius: 8px;
   color: #fff;
@@ -255,7 +256,7 @@
 }
 
 .brainstorm-send-btn:hover:not(:disabled) {
-  background: #6d28d9;
+  background: var(--accent-hover);
 }
 
 .brainstorm-send-btn:disabled {
@@ -265,9 +266,9 @@
 
 .brainstorm-cancel-btn {
   background: none;
-  border: 1px solid #7f1d1d;
+  border: 1px solid var(--state-danger-border);
   border-radius: 8px;
-  color: #fca5a5;
+  color: var(--state-danger);
   font-size: 0.85rem;
   font-weight: 500;
   padding: 8px 14px;
@@ -277,15 +278,15 @@
 }
 
 .brainstorm-cancel-btn:hover {
-  background: #3b0a0a;
-  border-color: #ef4444;
+  background: var(--state-danger-bg-alt);
+  border-color: var(--state-danger);
 }
 
 .brainstorm-stalled {
-  background: #1c1407;
-  border: 1px solid #78350f;
+  background: var(--state-warning-bg);
+  border: 1px solid var(--state-warning-border);
   border-radius: 8px;
-  color: #fcd34d;
+  color: var(--state-warning);
   font-size: 0.82rem;
   padding: 8px 14px;
   margin: 0 16px;
@@ -294,7 +295,7 @@
 .brainstorm-stalled-cancel {
   background: none;
   border: none;
-  color: #fbbf24;
+  color: var(--state-warning);
   font-size: 0.82rem;
   cursor: pointer;
   text-decoration: underline;
@@ -302,7 +303,7 @@
 }
 
 .brainstorm-stalled-cancel:hover {
-  color: #fcd34d;
+  color: var(--state-warning);
 }
 
 /* Facts column */
@@ -312,7 +313,7 @@
   width: 300px;
   flex-shrink: 0;
   overflow: hidden;
-  background: #0d0d0f;
+  background: var(--bg-canvas);
 }
 
 .brainstorm-facts-header {
@@ -320,7 +321,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px 10px;
-  border-bottom: 1px solid #1a1a1f;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -329,14 +330,14 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #71717a;
+  color: var(--text-faint);
   flex: 1;
 }
 
 .brainstorm-facts-count {
-  background: #27272a;
+  background: var(--bg-elevated);
   border-radius: 10px;
-  color: #a1a1aa;
+  color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 600;
   padding: 2px 7px;
@@ -352,7 +353,7 @@
 }
 
 .brainstorm-facts-empty {
-  color: #52525b;
+  color: var(--text-faint);
   font-size: 0.81rem;
   line-height: 1.6;
   text-align: center;
@@ -361,8 +362,8 @@
 
 /* Fact cards */
 .bs-fact {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 10px 12px;
   display: flex;
@@ -372,15 +373,15 @@
 }
 
 .bs-fact:hover {
-  border-color: #3f3f46;
+  border-color: var(--border-strong);
 }
 
 .bs-fact-saved {
-  border-color: #14532d;
-  background: #0a1e12;
+  border-color: var(--state-success-border);
+  background: var(--state-success-bg);
 }
 
-/* Type badge */
+/* Intentional entity type badge colors — semantic brand palette */
 .bs-fact-type {
   font-size: 0.67rem;
   font-weight: 700;
@@ -395,23 +396,23 @@
 .bs-fact-type-location  { background: #0c2a1a; color: #6ee7b7; }
 .bs-fact-type-item      { background: #2a1a0c; color: #fcd34d; }
 .bs-fact-type-concept   { background: #1a0c2a; color: #d8b4fe; }
-.bs-fact-type-other     { background: #1a1a1f; color: #71717a; }
+.bs-fact-type-other     { background: var(--bg-inset); color: var(--text-faint); }
 
 .bs-fact-name {
   font-size: 0.87rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-header);
 }
 
 .bs-fact-desc {
   font-size: 0.78rem;
-  color: #a1a1aa;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
 .bs-fact-save-btn {
   margin-top: 4px;
-  background: #7c3aed;
+  background: var(--accent);
   border: none;
   border-radius: 6px;
   color: #fff;
@@ -423,7 +424,7 @@
 }
 
 .bs-fact-save-btn:hover:not(:disabled) {
-  background: #6d28d9;
+  background: var(--accent-hover);
 }
 
 .bs-fact-save-btn:disabled {
@@ -435,7 +436,7 @@
   margin-top: 4px;
   font-size: 0.76rem;
   font-weight: 500;
-  color: #4ade80;
+  color: var(--state-success);
   align-self: flex-start;
 }
 
@@ -454,7 +455,7 @@
 
 .brainstorm-disabled-msg {
   font-size: 0.875rem;
-  color: #52525b;
+  color: var(--text-faint);
   text-align: center;
 }
 
@@ -470,9 +471,9 @@
 .brainstorm-download-btn,
 .brainstorm-start-over-btn {
   background: none;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-default);
   border-radius: 6px;
-  color: #a1a1aa;
+  color: var(--text-muted);
   font-size: 0.78rem;
   padding: 4px 10px;
   cursor: pointer;
@@ -480,22 +481,22 @@
 }
 
 .brainstorm-download-btn:hover {
-  background: #18181b;
-  color: #e4e4e7;
-  border-color: #3f3f46;
+  background: var(--bg-panel);
+  color: var(--text-header);
+  border-color: var(--border-strong);
 }
 
 .brainstorm-start-over-btn:hover {
-  background: #3b0a0a;
-  color: #fca5a5;
-  border-color: #7f1d1d;
+  background: var(--state-danger-bg-alt);
+  color: var(--state-danger);
+  border-color: var(--state-danger-border);
 }
 
 /* Draft-restored banner */
 .brainstorm-draft-banner {
-  background: #0f172a;
-  border-bottom: 1px solid #1e3a5f;
-  color: #93c5fd;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--accent-deep);
+  color: var(--text-link);
   font-size: 0.8rem;
   padding: 6px 20px;
   display: flex;
@@ -507,7 +508,7 @@
 .brainstorm-draft-dismiss {
   background: none;
   border: none;
-  color: #60a5fa;
+  color: var(--text-link);
   font-size: 0.78rem;
   cursor: pointer;
   text-decoration: underline;
