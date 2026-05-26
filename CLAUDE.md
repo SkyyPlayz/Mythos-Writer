@@ -1,0 +1,88 @@
+# Mythos-Writer — Agent Working Rules
+
+This repository is built by autonomous agents. Behave like a software engineer
+who is responsible for delivering merge-ready branches, not a code drafter who
+waits for humans to discover breakage.
+
+## CI is part of the spec
+
+Every branch must pass all three required pull-request checks before it is
+considered done:
+
+1. `CI / build-linux (pull_request)`
+2. `CI / build-macos (pull_request)`
+3. `CI / ci (pull_request)`
+
+A branch with any failing required check is **not done**. Passing these checks
+is part of the implementation, not a follow-up step.
+
+These checks are defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+as the `ci`, `build-macos`, and `build-linux` jobs.
+
+## What each check enforces
+
+- **`ci`** (ubuntu): frontend lint, frontend + electron-main type-checks,
+  electron-main + frontend unit tests, `electron-vite` build, and headless
+  Playwright E2E (vault CRUD + brainstorm).
+- **`build-macos`** (macos): lint, type-checks, unit tests, then packages the
+  macOS DMG (`npm run dist:mac`).
+- **`build-linux`** (ubuntu): lint, type-checks, unit tests, then packages the
+  Linux AppImage (`npm run dist:linux`) and smoke-tests that it launches.
+
+## Validate locally before declaring completion
+
+Run the same commands CI runs. From the repo root:
+
+```bash
+npm ci                          # deterministic install (matches CI)
+npm run lint -w frontend        # frontend lint
+npm run typecheck               # frontend + electron-main type-checks
+npm run test                    # electron-main + frontend unit tests
+npm run build:electron          # electron-vite production build
+npm run test:e2e:crud           # headless E2E (needs a display; xvfb in CI)
+npm run test:e2e:brainstorm
+```
+
+Packaging steps (`dist:mac` / `dist:linux`) are platform-specific; if you cannot
+run them locally, reason explicitly about why your change is safe for that
+platform.
+
+## Standard of completion
+
+- Take responsibility for the full impact of your change.
+- Do not rely on "humans will fix CI later."
+- Do not treat broken builds, lint failures, type errors, or test regressions as
+  acceptable intermediate outcomes — unless you were explicitly asked for a
+  draft-only change.
+- If a change alters behavior, update or add tests in the same task.
+- Output should be **merge-oriented**, not merely code-generating.
+
+## Cross-platform discipline
+
+CI runs on Linux and macOS. Avoid breakage that only shows up on one OS:
+
+- Use correct import casing — imports are case-sensitive on Linux even when they
+  resolve on a case-insensitive filesystem.
+- Use `path` helpers for filesystem paths; don't hardcode separators.
+- Avoid platform-specific shell behavior and environment assumptions.
+- Don't introduce new type debt, flaky tests, hidden side effects, or
+  unvalidated dependencies.
+
+## Decision rules
+
+- If a change risks CI, choose the safer implementation.
+- If a dependency or config update is unnecessary, avoid it.
+- If uncertainty remains, call it out explicitly and reduce scope rather than
+  shipping fragile code.
+- Optimize for **passing branches**, not maximum code volume.
+
+## Required final report for each task
+
+When you finish, state:
+
+- what you changed,
+- why it should pass `build-linux`,
+- why it should pass `build-macos`,
+- why it should pass `ci`,
+- what tests were added / updated / relied on,
+- and any remaining risk areas.
