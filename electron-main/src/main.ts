@@ -153,6 +153,7 @@ import {
   type ArchiveIgnoreKey,
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
+import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
@@ -809,21 +810,20 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
-    const s = loadAppSettings();
-    return { ...s, apiKey: maskApiKey(s.apiKey) };
+    return maskSettingsForRenderer(loadAppSettings());
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
     const current = loadAppSettings();
-    // Preserve the stored key when the renderer echoes back the masked preview unchanged.
-    const apiKey = payload.settings.apiKey === maskApiKey(current.apiKey)
-      ? current.apiKey
-      : payload.settings.apiKey;
+    // Reconcile masked API key fields (apiKey, voice.openaiApiKey) — when the
+    // renderer echoes back the masked preview unchanged, preserve the stored
+    // raw key. See settings-masking.ts (MYT-424).
+    const reconciled = reconcileSettingsFromRenderer(payload.settings, current);
     // Regenerate sessionId when telemetry is being disabled (privacy: unlink future sessions).
-    let telemetry = payload.settings.telemetry;
+    let telemetry = reconciled.telemetry;
     if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
       telemetry = { enabled: false, sessionId: generateSessionId() };
     }
-    const updated = { ...payload.settings, apiKey, ...(telemetry !== undefined ? { telemetry } : {}) };
+    const updated = { ...reconciled, ...(telemetry !== undefined ? { telemetry } : {}) };
     saveAppSettings(updated);
     // Re-configure telemetry in-process immediately.
     if (updated.telemetry) {
@@ -2099,10 +2099,8 @@ function initTelemetry(): void {
   }
 }
 
-// Returns a masked preview (sk-ant-...XXXX) so the raw key never leaves the main process.
-function maskApiKey(key: string): string {
-  return key ? `sk-ant-...${key.slice(-4)}` : '';
-}
+// Settings masking helpers live in their own module so they can be unit-tested
+// without booting electron. See settings-masking.ts.
 
 // ─── Anthropic API key validation ───
 // Checks persisted settings first, then falls back to environment variable.
