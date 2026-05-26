@@ -6,3 +6,6 @@ out
 build/*.node
 .env
 *.local
+# Playwright run artifacts
+test-results
+playwright-report

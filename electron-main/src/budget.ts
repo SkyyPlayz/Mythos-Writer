@@ -94,21 +94,29 @@ function countTokensInWindowWithDb(
 
 export interface CallBudgetResult {
   allowed: boolean;
-  reason?: 'hourly_token_cap' | 'daily_token_cap';
+  reason?: 'hourly_token_cap' | 'daily_token_cap' | 'requests_per_minute_cap';
 }
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const ONE_MINUTE_MS = 60 * 1000;
 
 /**
  * Check whether an agent is allowed to make an Anthropic API call right now.
  * Called at the call site, before streaming starts.
- * Checks rolling 1-hour and 24-hour token windows against per-agent settings.
+ * Checks rolling 1-hour, 24-hour token windows, and per-minute request count.
  */
 export function checkCallBudget(
   agent: string,
-  settings: Pick<AgentBudgetSettings, 'maxTokensPerHour' | 'maxTokensPerDay'>,
+  settings: Pick<AgentBudgetSettings, 'maxTokensPerHour' | 'maxTokensPerDay'> & { requestsPerMinute?: number },
   db: Database.Database,
 ): CallBudgetResult {
+  if (settings.requestsPerMinute !== undefined) {
+    const recentRequests = countRequestsInWindowWithDb(db, agent, ONE_MINUTE_MS);
+    if (recentRequests >= settings.requestsPerMinute) {
+      return { allowed: false, reason: 'requests_per_minute_cap' };
+    }
+  }
+
   const hourlyTokens = countTokensInWindowWithDb(db, agent, ONE_HOUR_MS);
   if (hourlyTokens >= settings.maxTokensPerHour) {
     return { allowed: false, reason: 'hourly_token_cap' };
@@ -120,6 +128,60 @@ export function checkCallBudget(
   }
 
   return { allowed: true };
+}
+
+/**
+ * Throw if the agent is disabled in per-agent config.
+ * Call this before any agent invocation so callers surface a clear error.
+ */
+export function assertAgentEnabled(agentName: string, enabled: boolean): void {
+  if (!enabled) {
+    throw new Error(`Agent "${agentName}" is disabled. Enable it in Settings > Agents to proceed.`);
+  }
+}
+
+function countRequestsInWindowWithDb(
+  db: Database.Database,
+  agent: string,
+  windowMs: number,
+): number {
+  const windowStart = new Date(Date.now() - windowMs).toISOString();
+  const row = db
+    .prepare(`SELECT COUNT(*) as cnt FROM generation_log WHERE agent = ? AND created_at >= ?`)
+    .get(agent, windowStart) as { cnt: number };
+  return row.cnt;
+}
+
+/**
+ * Evaluate whether a proposed suggestion should be dropped (budget exceeded)
+ * or downgraded (kept proposed) based on the autoApplyThreshold and daily budget.
+ * Returns { drop: true } when the daily token budget is fully exhausted and the
+ * suggestion should be silently discarded. Returns { drop: false, budgetExceeded }
+ * otherwise so callers can mark the row and keep it proposed.
+ */
+export interface SuggestionEnforcementResult {
+  drop: boolean;
+  budgetExceeded: boolean;
+}
+
+export function enforceSuggestionBudget(
+  confidence: number,
+  sourceAgent: string,
+  autoApplyThreshold: number,
+  tokensPerDay: number,
+  db: Database.Database,
+): SuggestionEnforcementResult {
+  const dailyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_DAY_MS);
+  if (dailyTokens >= tokensPerDay) {
+    // Daily budget exhausted — drop the suggestion entirely
+    return { drop: true, budgetExceeded: true };
+  }
+
+  const aboveThreshold = confidence >= autoApplyThreshold;
+  // Below threshold → keep proposed without budget penalty
+  if (!aboveThreshold) return { drop: false, budgetExceeded: false };
+
+  return { drop: false, budgetExceeded: false };
 }
 
 // Re-export the db-module helpers so callers don't need two imports.

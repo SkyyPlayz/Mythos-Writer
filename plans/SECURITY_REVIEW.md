@@ -899,3 +899,122 @@ No P0 (RCE / direct unauthenticated exfiltration) findings. The three new HIGHs 
 ---
 
 *Phase 3 post-implementation review authored 2026-05-24 by SecurityEngineer (MYT-351). Child issues filed for F19, F20, F21.*
+
+---
+
+## MYT-352 Vault Sandbox Findings — Verification Pass ([MYT-382](/MYT/issues/MYT-382))
+
+Verification of fixes filed under MYT-352 (vault file IPC sandbox: path traversal, symlinks, atomic writes). Each finding below is marked **Closed** with a reproducer-now-fails reference or **Re-opened** with a new follow-up ticket.
+
+### H-1 — Closed: realpath check prevents symlink sandbox escape ([MYT-361](/MYT/issues/MYT-361))
+
+**Original:** `safePath` resolved with `path.resolve` only; a symlink inside the vault pointing outside (e.g. `vault/escape → /etc`) bypassed the prefix check.
+
+**Fix shipped:** `realSafePath` (`electron-main/src/vault.ts:108-140`) now uses `fs.realpathSync.native` on the resolved path (for reads/existing files) or the parent dir (for not-yet-created leaves), then asserts the real path starts with `realpath(vaultRoot) + sep`. `safePath` kept as legacy alias pointing to `realSafePath`. `listVaultFiles.walk()` (`vault.ts:230-232`) also skips `Dirent.isSymbolicLink()` entries.
+
+**Reproducer now fails:** `vault.test.ts` includes 8 unit tests covering symlink-to-directory escape, symlink-to-file escape, symlink-to-inner-vault (allowed), reader/writer/deleter rejection, `listVaultFiles` symlink-skip, and parent-directory symlink escape. `npx vitest run src/vault.test.ts` → 48/48 pass.
+
+**Status:** ✅ Closed. Severity: HIGH.
+
+---
+
+### H-2 — Re-opened: chokidar `followSymlinks` not disabled, watcher still emits absolute paths
+
+**Original:** `startVaultWatcher` and `startNotesVaultWatcher` (`vault.ts`) call `chokidar.watch(vaultRoot, …)` without `followSymlinks: false`. Chokidar default is `true`, so the watcher recurses into symlinked directories and emits absolute paths of files outside the vault. `notifyVaultChanged` (`main.ts:293-295`) forwards those absolute paths to the renderer.
+
+**Verification result:** The implementing ticket [MYT-361](/MYT/issues/MYT-361) was marked `done`, but the fix did not land:
+- `vault.ts:624-629` `chokidar.watch(vaultRoot, { ignored, persistent, ignoreInitial, awaitWriteFinish })` — no `followSymlinks: false`.
+- `vault.ts:678-683` (`startNotesVaultWatcher`) — same gap.
+- `main.ts:293-297` `notifyVaultChanged(filePath)` forwards `filePath` verbatim to `vault:file-changed` — no vault-relative conversion, no defense-in-depth escape check.
+- `vault.test.ts` contains no watcher symlink test (grep for `followSymlinks` / `startVaultWatcher.*symlink` returns no matches).
+
+The reproducer from the original H-2 (symlink-in-vault watcher emits paths outside the vault) is not exercised by any test and the watcher config is unchanged.
+
+**Re-opened as:** new finding ticket — see follow-up filed alongside this verification pass. Severity: HIGH. Also covers L-2 (absolute-path info leak in `vault:file-changed`).
+
+---
+
+### M-1 — Partially closed: vault writes through atomic writer, with one remaining gap ([MYT-363](/MYT/issues/MYT-363))
+
+**Original:** Several writers in `vault.ts`, `main.ts`, `entities.ts`, EPUB and DOCX exporters used non-atomic `fs.writeFileSync`.
+
+**Fix shipped:** `writeVaultFile` renamed to `writeVaultFileUnsafe_testOnly` (`vault.ts:155-165`). New `writeFileAtomic(absPath, data)` generic atomic helper (`vault.ts:202-220`). All vault writes (`writeSceneFile`, `writeEntityFile`, `VAULT_WRITE` IPC, snapshot rollback, suggestion version restore, EPUB and DOCX export targets) routed through atomic primitives.
+
+**Reproducer now fails:** `vault.test.ts` "writeVaultFileAtomic … overwrites stale .tmp left by a prior crash" and "writeFileAtomic … no residual .tmp on success" both pass. All other write call-sites grep-clean for direct `fs.writeFileSync` except the known-safe `_testOnly` helper and the one gap below.
+
+**Remaining gap:** `importObsidianVault` at `vault.ts:603` writes imported markdown via `fs.writeFileSync(dstFull, content, 'utf-8')` — direct, non-atomic. A crash mid-import or a concurrent process can leave torn files in the destination vault. This appears to be missed by the MYT-363 sweep (the closure comment lists scene/entity/IPC/snapshot/export sites but not the importer).
+
+**Status:** ⚠️ Closed for the original scope; **new MEDIUM finding re-opened** for the importer write — see follow-up filed alongside this verification pass.
+
+---
+
+### M-2 — Closed: unique tmp suffix prevents concurrent-write races ([MYT-364](/MYT/issues/MYT-364))
+
+**Original:** `writeVaultFileAtomic` used a fixed `.tmp` suffix — two concurrent writers to the same logical path raced on the same temp file, producing torn or partially-renamed output.
+
+**Fix shipped:** Temp suffix is now `${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp` (`vault.ts:181`). The same pattern is applied to `writeFileAtomic` (`vault.ts:205`). Both wrap `renameSync` in a `try/catch` that `unlinkSync`s the unique tmp on failure (`vault.ts:189-194`, `213-218`) so a failed write no longer litters the vault.
+
+**Reproducer now fails:** `vault.test.ts` "writeVaultFileAtomic: two parallel calls land exactly one final file with the last writer's content" passes. `npx vitest run src/vault.test.ts` → 48/48 pass.
+
+**Status:** ✅ Closed. Severity: MEDIUM.
+
+---
+
+### M-3 — Closed: symlinks skipped during Obsidian import scan ([MYT-365](/MYT/issues/MYT-365))
+
+**Original:** `collectMarkdownFiles` recursed via `readdirSync({ withFileTypes: true })` and treated `.md` symlinks as regular files. A planted `link.md → /etc/passwd` would be `readFileSync`-ed and written into the destination vault as legitimate user content.
+
+**Fix shipped:** `collectMarkdownFiles` (`vault.ts:554-556`) now does `if (entry.isSymbolicLink()) continue;` as the first check in the loop. Any symlink — `.md` or otherwise, file or directory — is skipped before its path is constructed or read.
+
+**Reproducer now fails:** `vault.test.ts` "skips symlinked .md files — no symlink traversal outside vault" creates `real.md` and `link.md → /etc/hostname` in the source dir, runs `importObsidianVault`, asserts `imported === 1` and that `link.md` is absent from the destination. Passes.
+
+**Status:** ✅ Closed. Severity: MEDIUM.
+
+---
+
+### M-5 — Partially closed: vault read/write capped, with one remaining gap ([MYT-366](/MYT/issues/MYT-366))
+
+**Original:** `readVaultFile` and `writeVaultFileAtomic` read/wrote files of unbounded size, allowing a single oversize file to OOM the main process.
+
+**Fix shipped:** `MAX_VAULT_FILE_BYTES = 25 * 1024 * 1024` (25 MB) constant added at `vault.ts:91`. `VaultFileTooLargeError` class exposes `sizeBytes` and `limitBytes` (`vault.ts:93-104`). `readVaultFile` stats before read and throws on oversize (`vault.ts:150`). `writeVaultFileAtomic` checks `Buffer.byteLength(content)` before opening the temp file so no `.tmp` leaks on rejection (`vault.ts:178`).
+
+**Reproducer now fails:** `vault.test.ts` "Vault file size cap" suite (5 tests: oversized read, at-limit read, oversized write with no .tmp leak, etc.) all pass.
+
+**Remaining gap:** `importObsidianVault` at `vault.ts:593` calls `fs.readFileSync(srcFull, 'utf-8')` with no size check. A malicious Obsidian vault containing a multi-GB `.md` file would still OOM the main process during import (the size cap on the destination write isn't reached because the source read OOMs first).
+
+**Status:** ⚠️ Closed for the original `readVaultFile` / `writeVaultFileAtomic` scope; **new MEDIUM finding re-opened** for the importer read — see follow-up filed alongside this verification pass.
+
+---
+
+### L-3 — Closed: dialog-validated path token required for `VAULT_OBSIDIAN_REGISTER` ([MYT-367](/MYT/issues/MYT-367))
+
+**Original:** `VAULT_OBSIDIAN_REGISTER` and `VAULT_OBSIDIAN_DRY_RUN` accepted `sourcePath` directly from renderer payload, allowing a compromised renderer to reassign the vault root to any path. Same root cause as F21.
+
+**Fix shipped:** Commit `8ce73a4` — `VAULT_OBSIDIAN_REGISTER` and `VAULT_OBSIDIAN_DRY_RUN` now require a one-shot path token issued by `VAULT_PICK_FOLDER` after a user-gesture `dialog.showOpenDialog`. Tokens are single-use and expire after ~60s. Tests cover token issue, single-use enforcement, expiry, and rejection of untokened registers.
+
+**Reproducer now fails:** Renderer-only call to `obsidianRegister('/etc')` without a dialog-issued token is rejected with `dialog-validated path token required`.
+
+**Status:** ✅ Closed. Severity: LOW (escalated to HIGH-equivalent because it also closes F21 / F6 / MYT-360).
+
+---
+
+### MYT-352 Findings Summary
+
+| ID | Area | Severity | Status | Implementing ticket |
+|---|---|---|---|---|
+| H-1 | `safePath` symlink escape | HIGH | ✅ Closed | [MYT-361](/MYT/issues/MYT-361) |
+| H-2 | chokidar `followSymlinks` + absolute paths | HIGH | ❌ **Re-opened** — fix not in code | [MYT-362](/MYT/issues/MYT-362) (closed in error) |
+| M-1 | vault writes through atomic writer | MEDIUM | ⚠️ Partially closed — importer write gap | [MYT-363](/MYT/issues/MYT-363) |
+| M-2 | unique tmp suffix in atomic writer | MEDIUM | ✅ Closed | [MYT-364](/MYT/issues/MYT-364) |
+| M-3 | skip symlinks during Obsidian import | MEDIUM | ✅ Closed | [MYT-365](/MYT/issues/MYT-365) |
+| M-5 | vault read/write size cap | MEDIUM | ⚠️ Partially closed — importer read gap | [MYT-366](/MYT/issues/MYT-366) |
+| L-3 | dialog-validated path token | LOW | ✅ Closed | [MYT-367](/MYT/issues/MYT-367) |
+
+Acceptance criterion from [MYT-382](/MYT/issues/MYT-382) — "every finding either marked Closed (with reproducer that now fails) or re-opened with a new finding ticket" — met. Three follow-up tickets filed:
+- [MYT-445](/MYT/issues/MYT-445) — H-2 watcher fix (re-open of [MYT-362](/MYT/issues/MYT-362)).
+- [MYT-446](/MYT/issues/MYT-446) — M-1 `importObsidianVault` atomic-write gap.
+- [MYT-447](/MYT/issues/MYT-447) — M-5 `importObsidianVault` read-size-cap gap.
+
+---
+
+*MYT-352 verification pass authored 2026-05-24 by SecurityEngineer ([MYT-382](/MYT/issues/MYT-382)).*
