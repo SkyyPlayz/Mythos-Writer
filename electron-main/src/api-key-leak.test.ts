@@ -2,8 +2,8 @@
 // Asserts that API key material never appears in generation logs, IPC response
 // payloads, error messages, or .env.example.
 //
-// F2 (settings:get returns raw key) is tracked in MYT-143.
-// Once MYT-143 is fixed, the .todo below should be promoted to a real test.
+// SETTINGS_GET masking originally tracked in MYT-143 (Anthropic apiKey) and
+// extended in MYT-424 to also cover voice.openaiApiKey.
 
 import { describe, it, expect } from 'vitest';
 import crypto from 'crypto';
@@ -12,6 +12,12 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { writeVaultFileUnsafe_testOnly } from './vault.js';
+import type { AppSettings } from './ipc.js';
+import {
+  maskApiKey,
+  maskSettingsForRenderer,
+  reconcileSettingsFromRenderer,
+} from './settings-masking.js';
 
 // A plausible-looking synthetic key — not a real credential.
 const FAKE_API_KEY = 'sk-ant-test-FakeKeyForTestingOnly000000000000000000000000000000';
@@ -80,25 +86,126 @@ describe('vault safePath errors — no API key in message', () => {
 
 // ── SETTINGS_GET — expected: renderer receives masked key ─────────────────
 
-describe('settings:get IPC response — API key must not reach renderer raw', () => {
-  it('legacy apiKey field is masked in SETTINGS_GET response', () => {
-    const result = { apiKey: 'sk-ant-...0000', provider: undefined };
-    expect(result.apiKey).not.toBe('sk-ant...0000');
-    expect(result.apiKey).toMatch(/sk-ant-...[a-zA-Z0-9]{4}/);
+const FAKE_OPENAI_KEY = 'sk-proj-TestOnlyVoiceWhisperKey00000000000000000000beef';
+const MASKED_PATTERN = /^sk-ant-\.\.\.\w{4}$/;
+
+function settingsFixture(overrides: Partial<AppSettings> = {}): AppSettings {
+  // Minimal fixture that satisfies the AppSettings shape for masking tests.
+  // Only the fields the masking helpers touch matter — the rest are stubbed.
+  const agentBudgets = {
+    autoApply: false,
+    confidenceThreshold: 0.8,
+    maxTokensPerHour: 0,
+    maxSuggestionsPerHour: 0,
+    heartbeatIntervalMinutes: 0,
+    maxTokensPerDay: 0,
+  };
+  return {
+    apiKey: FAKE_API_KEY,
+    agents: {
+      writingAssistant: { enabled: false, model: 'claude', scanIntervalSeconds: 0, ...agentBudgets },
+      brainstorm: { enabled: false, model: 'claude', ...agentBudgets },
+      archive: { enabled: false, model: 'claude', continuityCheckIntervalSeconds: 0, ...agentBudgets },
+    },
+    theme: 'light',
+    ...overrides,
+  };
+}
+
+describe('maskSettingsForRenderer — apiKey field (MYT-143)', () => {
+  it('masks the Anthropic apiKey before returning it to the renderer', () => {
+    const masked = maskSettingsForRenderer(settingsFixture());
+    expect(masked.apiKey).not.toBe(FAKE_API_KEY);
+    expect(masked.apiKey).toMatch(MASKED_PATTERN);
+    expect(masked.apiKey).not.toContain(FAKE_API_KEY.slice(8, -4));
   });
 
-  it('provider.apiKey is masked in SETTINGS_GET response', () => {
-    const result = {
-      apiKey: 'sk-ant-...0000',
-      provider: { apiKey: 'sk-ant-...0000', model: 'claude-sonnet-4', kind: 'anthropic' },
+  it('does not mutate the source settings object', () => {
+    const original = settingsFixture();
+    maskSettingsForRenderer(original);
+    expect(original.apiKey).toBe(FAKE_API_KEY);
+  });
+
+  it('collapses missing apiKey to empty string', () => {
+    const masked = maskSettingsForRenderer(settingsFixture({ apiKey: '' }));
+    expect(masked.apiKey).toBe('');
+  });
+});
+
+describe('maskSettingsForRenderer — voice.openaiApiKey field (MYT-424)', () => {
+  it('masks voice.openaiApiKey before returning it to the renderer', () => {
+    const masked = maskSettingsForRenderer(
+      settingsFixture({
+        voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+      }),
+    );
+    expect(masked.voice?.openaiApiKey).toBeDefined();
+    expect(masked.voice?.openaiApiKey).not.toBe(FAKE_OPENAI_KEY);
+    expect(masked.voice?.openaiApiKey).toMatch(MASKED_PATTERN);
+    // The mask must not leak the middle of the real key.
+    expect(masked.voice?.openaiApiKey).not.toContain(FAKE_OPENAI_KEY.slice(8, -4));
+    // And the full settings object serialized for IPC must not contain the raw key anywhere.
+    expect(JSON.stringify(masked)).not.toContain(FAKE_OPENAI_KEY);
+  });
+
+  it('uses the same masking helper as the Anthropic apiKey', () => {
+    // Acceptance criterion: "matching the masking format used for apiKey".
+    const masked = maskSettingsForRenderer(
+      settingsFixture({
+        voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+      }),
+    );
+    expect(masked.voice?.openaiApiKey).toBe(maskApiKey(FAKE_OPENAI_KEY));
+  });
+
+  it('does not mutate the source voice settings object', () => {
+    const original = settingsFixture({
+      voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+    });
+    maskSettingsForRenderer(original);
+    expect(original.voice?.openaiApiKey).toBe(FAKE_OPENAI_KEY);
+  });
+
+  it('leaves voice block unmasked when no openaiApiKey is configured', () => {
+    const masked = maskSettingsForRenderer(
+      settingsFixture({ voice: { enabled: true, cloudFallback: false } }),
+    );
+    // No raw key to mask — voice block stays structurally intact and the key field stays absent.
+    expect(masked.voice?.openaiApiKey).toBeUndefined();
+  });
+
+  it('leaves settings without a voice block untouched', () => {
+    const masked = maskSettingsForRenderer(settingsFixture());
+    expect(masked.voice).toBeUndefined();
+  });
+});
+
+describe('reconcileSettingsFromRenderer — preserve stored keys on echo (MYT-424)', () => {
+  it('keeps the stored voice.openaiApiKey when the renderer echoes the mask back unchanged', () => {
+    const stored = settingsFixture({
+      voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+    });
+    const incoming: AppSettings = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      voice: { ...stored.voice!, openaiApiKey: maskApiKey(FAKE_OPENAI_KEY) },
     };
-    expect(result.provider?.apiKey).not.toBe('sk-ant...0000');
-    expect(result.provider?.apiKey).toMatch(/sk-ant-...[a-zA-Z0-9]{4}/);
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.voice?.openaiApiKey).toBe(FAKE_OPENAI_KEY);
+    expect(reconciled.apiKey).toBe(FAKE_API_KEY);
   });
 
-  it('SETTINGS_GET with no provider returns undefined provider', () => {
-    const result = { apiKey: 'sk-ant-...0000', provider: undefined };
-    expect(result.provider).toBeUndefined();
+  it('saves a freshly entered voice.openaiApiKey verbatim', () => {
+    const stored = settingsFixture({
+      voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+    });
+    const newKey = 'sk-proj-NewKeyEntered00000000000000000000000000000000feed';
+    const incoming: AppSettings = {
+      ...stored,
+      voice: { ...stored.voice!, openaiApiKey: newKey },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.voice?.openaiApiKey).toBe(newKey);
   });
 });
 

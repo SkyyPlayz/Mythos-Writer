@@ -1,6 +1,6 @@
  # An explanation of the example photos 
  ## Liquid glass Dark Neon Agent, chat box example1.
-![Liquid glass Dark Neon Agent chat box example1.png](<Liquid glass Dark Neon Agent chat box example1.png>) is an example of what an ai chat box might look like. in the Liquid glass Dark Neon theme 
+![Liquid glass Dark Neon Agent chat box example1.png](<Liquid glass Dark Neon Agent chat box example1.png>) is an example of what an ai chat box might look like. in the Liquid glass Dark Neon theme
 
 
 ## Liquid glass Dark Neon, button hover example.
@@ -9,7 +9,19 @@ button hovers are supposed to use neon framse ![ ](<neon-frames- Example 1.jpg>)
 
 
 ## Liquid glass Dark Neon Obsidian example
-![alt text](<Liquid glass Dark Neon Obsidian example 1.png>) this is an example of that obsidian would look like in this theme and style. this should give you an idea oh how to make the notes section in Mythos writer look
+![alt text](<Liquid glass Dark Neon Obsidian example 1.png>) this is an example of that obsidian would look like in this theme and style. this should give you an idea oh how to make the notes section in Mythos writer look 
+the graph view is especally good. 
+
+
+## Mythos writer notes example
+![ notes ](<Mythos writer notes example 1.png>) this is an example of how the notes section in Mythos writer might look. i especally like how all the foulders and files in the left bar have boarders, making them easy to tell apart. please impliment this in Mythos writer. 
+
+I want the graph view to be a happy medium between this example, and the Liquid glass Dark Neon Obsidian example. 
+Bright and colorful, like neon stars connected with lines, without being too hard on the eyes. like the Cosmic neon grapgh view example
+
+
+## Cosmic neon grapgh view example
+![alt text](<Cosmic neon grapgh view example.png>) this is an example of how the graph view might look in Mythos writers notes section. 
 
 
 ## Liquid Glass Dark Neon writing app example 
