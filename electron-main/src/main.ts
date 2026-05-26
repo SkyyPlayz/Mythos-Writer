@@ -606,17 +606,54 @@ const handlers: IpcHandlers = {
     return { entries, total };
   },
 
-  // ─── Vault graph (MYT-163) ───
+  // ─── Vault graph (MYT-389) ───
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: async () => {
     ensureVaultDir();
+    const vaultRoot = getVaultRoot();
     const manifest = readManifest(getManifestPath());
+
+    // Build name/alias → entity lookup for edge resolution
+    const entityById = new Map(manifest.entities.map((e) => [e.id, e]));
+    const entityByName = new Map<string, string>(); // normalised name → id
+    for (const e of manifest.entities) {
+      entityByName.set(e.name.toLowerCase(), e.id);
+      for (const alias of e.aliases ?? []) {
+        entityByName.set(alias.toLowerCase(), e.id);
+      }
+    }
+
     const nodes = manifest.entities.map((e) => ({
       id: e.id,
       label: e.name,
-      type: e.type,
       path: e.path,
+      folder: e.path.includes('/') ? e.path.split('/')[0] : undefined,
+      tags: e.tags,
     }));
-    return { nodes, edges: [] };
+
+    // Extract [[wiki-link]] edges by reading each entity file
+    const wikiLinkRe = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+    const edges: Array<{ source: string; target: string }> = [];
+    for (const e of manifest.entities) {
+      if (!e.path) continue;
+      let content = '';
+      try {
+        content = readVaultFile(vaultRoot, e.path).content;
+      } catch {
+        continue;
+      }
+      const seen = new Set<string>();
+      let m: RegExpExecArray | null;
+      wikiLinkRe.lastIndex = 0;
+      while ((m = wikiLinkRe.exec(content)) !== null) {
+        const targetId = entityByName.get(m[1].trim().toLowerCase());
+        if (targetId && targetId !== e.id && !seen.has(targetId) && entityById.has(targetId)) {
+          seen.add(targetId);
+          edges.push({ source: e.id, target: targetId });
+        }
+      }
+    }
+
+    return { nodes, edges };
   },
 
   // ─── Archive Agent (MYT-157) ───
