@@ -30,6 +30,7 @@ const DEFAULTS: AppSettings = {
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+  telemetry: { enabled: false },
 };
 
 function validateApiKey(key: string): string | null {
@@ -866,6 +867,35 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
               </div>
             )}
             <p className="settings-hint">Voice input uses your browser's built-in Web Speech API by default, with no data sent to third parties.</p>
+          </section>
+
+          {/* ── Privacy & Telemetry ── */}
+          <section className="settings-section" aria-labelledby="section-telemetry">
+            <h3 className="settings-section-title" id="section-telemetry">Privacy &amp; Telemetry</h3>
+            <div className="settings-field settings-field-inline">
+              <label className="settings-toggle" htmlFor="telemetry-enabled">
+                <input
+                  id="telemetry-enabled"
+                  type="checkbox"
+                  aria-label="Send anonymous usage data"
+                  checked={settings.telemetry?.enabled ?? false}
+                  onChange={(e) => {
+                    setSettings((p) => ({ ...p, telemetry: { enabled: e.target.checked } }));
+                    setSavedOk(false);
+                  }}
+                />
+                <span className="settings-toggle-track" />
+              </label>
+              <span className="settings-label">Send anonymous usage data to help improve Mythos Writer</span>
+            </div>
+            <div className="settings-hint">
+              <p>When enabled, Mythos Writer collects:</p>
+              <ul className="settings-telemetry-list">
+                <li>Anonymized crash reports</li>
+                <li>Feature usage counts (e.g. "agent ran", "snapshot saved")</li>
+              </ul>
+              <p>Your vault content, story text, and personal information are <strong>never</strong> collected.</p>
+            </div>
           </section>
 
           {/* ── Theme ── */}

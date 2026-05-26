@@ -81,6 +81,10 @@ interface VoiceSettings {
   openaiApiKey?: string;
 }
 
+interface TelemetrySettings {
+  enabled: boolean;
+}
+
 interface AppSettings {
   apiKey: string;
   agents: {
@@ -96,6 +100,7 @@ interface AppSettings {
   };
   onboardingComplete?: boolean;
   voice?: VoiceSettings;
+  telemetry?: TelemetrySettings;
 }
 
 type TimelineSource = 'explicit_marker' | 'prose';

@@ -778,6 +778,7 @@ const SETTINGS_DEFAULTS: AppSettings = {
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+  telemetry: { enabled: false },
 };
 
 /** Maps source_agent DB value → settings key. Unknown agents have no budget enforcement. */

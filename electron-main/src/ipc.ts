@@ -608,6 +608,11 @@ export interface VoiceSettings {
   openaiApiKey?: string;
 }
 
+export interface TelemetrySettings {
+  /** Off by default. When true, sends anonymized crash reports + feature counts only — never vault content. */
+  enabled: boolean;
+}
+
 export interface AppSettings {
   apiKey: string;
   agents: {
@@ -623,6 +628,7 @@ export interface AppSettings {
   };
   onboardingComplete?: boolean;
   voice?: VoiceSettings;
+  telemetry?: TelemetrySettings;
 }
 
 export interface SettingsSetPayload {
