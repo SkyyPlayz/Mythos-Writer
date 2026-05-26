@@ -4,7 +4,7 @@ import WritingAssistantPanel from './WritingAssistantPanel';
 const WA_DRAFT_KEY_GLOBAL = 'mythos-wa-draft-global';
 
 const mockAgentWritingAssistant = vi.fn();
-const mockOnWritingAssistantChunk = vi.fn(() => vi.fn()); // returns unsub fn
+const mockOnWritingAssistantChunk = vi.fn((_cb: (c: string) => void) => vi.fn()); // returns unsub fn
 
 beforeEach(() => {
   vi.resetAllMocks();

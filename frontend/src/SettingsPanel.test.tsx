@@ -30,7 +30,7 @@ describe('SettingsPanel', () => {
   it('renders all sections after loading', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
-    expect(screen.getByText(/writing assistant/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/writing assistant/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
     expect(screen.getByText(/archive agent/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^theme$/i })).toBeInTheDocument();

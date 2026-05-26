@@ -4,7 +4,7 @@ import BrainstormPage from './BrainstormPage';
 const BRAINSTORM_DRAFT_KEY = 'mythos-brainstorm-draft';
 
 const mockAgentBrainstorm = vi.fn();
-const mockOnBrainstormChunk = vi.fn(() => vi.fn());
+const mockOnBrainstormChunk = vi.fn((_cb: (c: string) => void) => vi.fn());
 const mockEntityCreate = vi.fn();
 
 beforeEach(() => {

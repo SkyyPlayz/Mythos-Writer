@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { select } from 'd3-selection';
 import { zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from 'd3-zoom';
-import { drag, type DragBehavior } from 'd3-drag';
+import { drag } from 'd3-drag';
 import 'd3-transition';
 import './VaultGraphView.css';
 
@@ -233,7 +233,7 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     });
 
     // drag
-    const dragBehavior: DragBehavior<SVGGElement, NodeDatum, NodeDatum> = drag<SVGGElement, NodeDatum>()
+    const dragBehavior = drag<SVGGElement, NodeDatum>()
       .on('start', function (_event, d) {
         select(this).raise();
         d.vx = 0; d.vy = 0;
