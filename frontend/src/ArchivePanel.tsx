@@ -143,7 +143,7 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
     });
   }, []);
 
-  const handleDialogResolved = useCallback((_action: string) => {
+  const handleDialogResolved = useCallback(() => {
     if (!dialog) return;
     setItems((prev) => prev.filter((i) => i.id !== dialog.suggestionId));
     setDialog(null);

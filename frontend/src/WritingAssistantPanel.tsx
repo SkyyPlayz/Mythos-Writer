@@ -117,7 +117,7 @@ export default function WritingAssistantPanel({
       unsubscribeRef.current = null;
       setLoading(false);
     }
-  }, [prompt, loading, scene]);
+  }, [prompt, loading, scene, announce]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
