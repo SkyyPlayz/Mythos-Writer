@@ -162,6 +162,25 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSetView = useCallback((v: AppView) => {
+    if (view === 'brainstorm' && v !== 'brainstorm') {
+      try {
+        const draft = localStorage.getItem('mythos-brainstorm-draft');
+        if (draft) {
+          const msgs = JSON.parse(draft);
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            if (!window.confirm('Leave Brainstorm? Your session is saved and will be restored when you return.')) {
+              return;
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    setView(v);
+  }, [view]);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
@@ -460,7 +479,7 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
   return (
     <div className="desktop-shell">
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
+      <AppMenuBar view={view} onSetView={handleSetView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
@@ -475,7 +494,7 @@ export default function DesktopShell({ onRerunOnboarding }: DesktopShellProps = 
         />
       )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} micDeviceId={micDeviceId} />
+        <BrainstormPage onClose={() => handleSetView('editor')} enabled={agentFlags.brainstorm} micDeviceId={micDeviceId} />
       )}
       {view === 'kanban' && (
         <div className="shell-kanban">

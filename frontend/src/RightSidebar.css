@@ -556,3 +556,119 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
+
+/* Writing Assistant — header with clear button */
+.writing-assistant-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 0;
+  flex-shrink: 0;
+}
+
+.wa-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wa-download-btn {
+  background: none;
+  border: 1px solid #27272a;
+  border-radius: 5px;
+  color: #71717a;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wa-download-btn:hover {
+  background: #18181b;
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+
+.wa-clear-btn {
+  background: none;
+  border: 1px solid #27272a;
+  border-radius: 5px;
+  color: #71717a;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.wa-clear-btn:hover {
+  background: #3b0a0a;
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
+
+/* Draft-restored banner */
+.wa-draft-banner {
+  background: #0f172a;
+  border-bottom: 1px solid #1e3a5f;
+  color: #93c5fd;
+  font-size: 0.75rem;
+  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.wa-draft-dismiss {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.wa-cancel-btn {
+  background: none;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  height: 32px;
+}
+
+.wa-cancel-btn:hover {
+  background: #3b0a0a;
+  border-color: #ef4444;
+}
+
+.wa-stalled {
+  background: #1c1407;
+  border-top: 1px solid #78350f;
+  color: #fcd34d;
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  flex-shrink: 0;
+}
+
+.wa-stalled-cancel {
+  background: none;
+  border: none;
+  color: #fbbf24;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.wa-stalled-cancel:hover {
+  color: #fcd34d;
+}

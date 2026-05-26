@@ -263,6 +263,48 @@
   cursor: not-allowed;
 }
 
+.brainstorm-cancel-btn {
+  background: none;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  height: 38px;
+}
+
+.brainstorm-cancel-btn:hover {
+  background: #3b0a0a;
+  border-color: #ef4444;
+}
+
+.brainstorm-stalled {
+  background: #1c1407;
+  border: 1px solid #78350f;
+  border-radius: 8px;
+  color: #fcd34d;
+  font-size: 0.82rem;
+  padding: 8px 14px;
+  margin: 0 16px;
+}
+
+.brainstorm-stalled-cancel {
+  background: none;
+  border: none;
+  color: #fbbf24;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.brainstorm-stalled-cancel:hover {
+  color: #fcd34d;
+}
+
 /* Facts column */
 .brainstorm-facts-col {
   display: flex;
@@ -414,4 +456,60 @@
   font-size: 0.875rem;
   color: #52525b;
   text-align: center;
+}
+
+/* Header actions (download + start-over + close) */
+.brainstorm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.brainstorm-download-btn,
+.brainstorm-start-over-btn {
+  background: none;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  color: #a1a1aa;
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.brainstorm-download-btn:hover {
+  background: #18181b;
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+
+.brainstorm-start-over-btn:hover {
+  background: #3b0a0a;
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
+
+/* Draft-restored banner */
+.brainstorm-draft-banner {
+  background: #0f172a;
+  border-bottom: 1px solid #1e3a5f;
+  color: #93c5fd;
+  font-size: 0.8rem;
+  padding: 6px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.brainstorm-draft-dismiss {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
 }

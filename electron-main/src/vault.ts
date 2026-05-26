@@ -455,19 +455,28 @@ export async function startVaultWatcher(
   });
 
   activeWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md')) {
+      const relativePath = path.relative(vaultRoot, filePath);
+      onChanged(relativePath);
+    }
   });
   activeWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md')) {
+      const relativePath = path.relative(vaultRoot, filePath);
+      onChanged(relativePath);
+    }
   });
   activeWatcher.on('unlink', (filePath: string) => {
-    onChanged(filePath);
+    const relativePath = path.relative(vaultRoot, filePath);
+    onChanged(relativePath);
   });
   activeWatcher.on('addDir', (filePath: string) => {
-    onChanged(filePath);
+    const relativePath = path.relative(vaultRoot, filePath);
+    onChanged(relativePath);
   });
   activeWatcher.on('unlinkDir', (filePath: string) => {
-    onChanged(filePath);
+    const relativePath = path.relative(vaultRoot, filePath);
+    onChanged(relativePath);
   });
 }
 

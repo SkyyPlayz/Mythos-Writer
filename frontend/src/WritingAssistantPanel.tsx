@@ -3,6 +3,13 @@ import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useMicButton } from './hooks/useMicButton';
 
+const STALLED_TIMEOUT_MS = 30_000;
+
+const WA_DRAFT_PREFIX = 'mythos-wa-draft';
+function waDraftKey(sceneId: string | null) {
+  return `${WA_DRAFT_PREFIX}-${sceneId ?? 'global'}`;
+}
+
 interface WritingAssistantSuggestion {
   id: string;
   source_agent: 'writing-assistant';
@@ -26,12 +33,35 @@ interface Props {
   micDeviceId?: string;
 }
 
+function downloadConversation(messages: Message[], sceneName?: string) {
+  const lines = messages
+    .filter((m) => !m.streaming)
+    .map((m) =>
+      m.role === 'user'
+        ? `## You\n\n${m.text}`
+        : `## Writing Assistant\n\n${m.text}`
+    )
+    .join('\n\n---\n\n');
+  const blob = new Blob([lines], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const suffix = sceneName ? `-${sceneName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}` : '';
+  a.download = `writing-assistant${suffix}-${new Date().toISOString().slice(0, 10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function WritingAssistantPanel({ scene, enabled = true, micDeviceId }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const generationIdRef = useRef(0);
+  const stalledTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { announce, liveText } = useLiveAnnounce();
 
   const { micState, startRecording } = useMicButton({
@@ -49,11 +79,82 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
     };
   }, []);
 
+  // Warn on browser close/refresh when generation is in progress
+  useEffect(() => {
+    if (!loading) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [loading]);
+
+  // Restore draft when scene changes
+  useEffect(() => {
+    const key = waDraftKey(scene?.id ?? null);
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed: Message[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed.map((m) => ({ ...m, streaming: false })));
+          setDraftRestored(true);
+          return;
+        }
+      }
+    } catch {
+      // ignore corrupt draft
+    }
+    setMessages([]);
+    setDraftRestored(false);
+  }, [scene?.id]);
+
+  // Persist messages to localStorage on change
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const settled = messages.filter((m) => !m.streaming);
+    if (settled.length === 0) return;
+    const key = waDraftKey(scene?.id ?? null);
+    try {
+      localStorage.setItem(key, JSON.stringify(settled));
+    } catch {
+      // storage quota — silently ignore
+    }
+  }, [messages, scene?.id]);
+
+  const cancelGeneration = useCallback(() => {
+    generationIdRef.current++;
+    if (stalledTimerRef.current) {
+      clearTimeout(stalledTimerRef.current);
+      stalledTimerRef.current = null;
+    }
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    setStalled(false);
+    setLoading(false);
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === 'assistant' && last.streaming) {
+        if (last.text) {
+          return [...prev.slice(0, -1), { ...last, streaming: false }];
+        }
+        return prev.slice(0, -2);
+      }
+      return prev;
+    });
+    announce('Generation cancelled.');
+  }, [announce]);
+
   const ask = useCallback(async () => {
     const trimmed = prompt.trim();
     if (!trimmed || loading) return;
 
+    const myGen = ++generationIdRef.current;
+    const isMine = () => generationIdRef.current === myGen;
+
     setLoading(true);
+    setStalled(false);
     setError(null);
     setPrompt('');
     announce('Generating response…');
@@ -67,9 +168,20 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
       ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
       : undefined;
 
+    const resetStalledTimer = () => {
+      if (stalledTimerRef.current) clearTimeout(stalledTimerRef.current);
+      stalledTimerRef.current = setTimeout(() => {
+        if (isMine()) setStalled(true);
+      }, STALLED_TIMEOUT_MS);
+    };
+    resetStalledTimer();
+
     // Subscribe to streaming chunks before invoking
     unsubscribeRef.current?.();
     unsubscribeRef.current = window.api.onWritingAssistantChunk((chunk) => {
+      if (!isMine()) return;
+      resetStalledTimer();
+      setStalled(false);
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -82,6 +194,8 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
 
     try {
       const response = await window.api.agentWritingAssistant(trimmed, context);
+
+      if (!isMine()) return;
 
       const suggestion: WritingAssistantSuggestion = {
         id: `wa-${Date.now()}`,
@@ -103,17 +217,25 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
       });
       announce('Response ready.');
     } catch (err) {
+      if (!isMine()) return;
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => prev.slice(0, -1)); // remove the empty assistant bubble
       const errorMsg = msg || 'AI unavailable — check your API key in settings.';
       setError(errorMsg);
       announce(`Error: ${errorMsg}`);
     } finally {
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = null;
-      setLoading(false);
+      if (isMine()) {
+        unsubscribeRef.current?.();
+        unsubscribeRef.current = null;
+        if (stalledTimerRef.current) {
+          clearTimeout(stalledTimerRef.current);
+          stalledTimerRef.current = null;
+        }
+        setStalled(false);
+        setLoading(false);
+      }
     }
-  }, [prompt, loading, scene]);
+  }, [prompt, loading, scene, announce]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -157,7 +279,40 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
             ? <><strong>Writing Assistant</strong> — context: <em>{scene.title}</em></>
             : <><strong>Writing Assistant</strong> — no scene selected, asking freely.</>}
         </p>
+        {messages.length > 0 && (
+          <div className="wa-header-actions">
+            <button
+              className="wa-download-btn"
+              onClick={() => downloadConversation(messages, scene?.title)}
+              aria-label="Download conversation"
+              title="Download as Markdown"
+            >
+              Download
+            </button>
+            <button
+              className="wa-clear-btn"
+              onClick={() => {
+                localStorage.removeItem(waDraftKey(scene?.id ?? null));
+                setMessages([]);
+                setDraftRestored(false);
+              }}
+              aria-label="Clear conversation"
+              title="Clear conversation"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
+
+      {draftRestored && (
+        <div className="wa-draft-banner" role="status" aria-label="Draft restored">
+          Conversation restored from last session.{' '}
+          <button className="wa-draft-dismiss" onClick={() => setDraftRestored(false)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="writing-assistant-messages">
         {messages.map((msg, i) => (
@@ -217,6 +372,15 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
         </div>
       )}
 
+      {stalled && (
+        <div className="wa-stalled" role="status">
+          Generation appears stalled — no response for {STALLED_TIMEOUT_MS / 1000}s.{' '}
+          <button className="wa-stalled-cancel" onClick={cancelGeneration}>
+            Cancel and retry
+          </button>
+        </div>
+      )}
+
       <div className="writing-assistant-input-area">
         <textarea
           className="writing-assistant-input"
@@ -229,6 +393,15 @@ export default function WritingAssistantPanel({ scene, enabled = true, micDevice
           aria-label="Writing assistant prompt"
         />
         <div className="writing-assistant-input-actions">
+          {loading && (
+            <button
+              className="wa-cancel-btn"
+              onClick={cancelGeneration}
+              aria-label="Cancel generation"
+            >
+              Cancel
+            </button>
+          )}
           <button
             className={`wa-mic-btn${micState === 'recording' ? ' wa-mic-btn--recording' : ''}${micState === 'error' ? ' wa-mic-btn--error' : ''}`}
             onClick={startRecording}

@@ -3,6 +3,9 @@ import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useMicButton } from './hooks/useMicButton';
 import './BrainstormPage.css';
 
+const BRAINSTORM_DRAFT_KEY = 'mythos-brainstorm-draft';
+const STALLED_TIMEOUT_MS = 30_000;
+
 interface Message {
   role: 'user' | 'assistant';
   text: string;
@@ -48,14 +51,36 @@ interface Props {
   micDeviceId?: string;
 }
 
+function downloadSession(messages: Message[]) {
+  const lines = messages
+    .filter((m) => !m.streaming)
+    .map((m) =>
+      m.role === 'user'
+        ? `## You\n\n${m.text}`
+        : `## Brainstorm Agent\n\n${m.text}`
+    )
+    .join('\n\n---\n\n');
+  const blob = new Blob([lines], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `brainstorm-${new Date().toISOString().slice(0, 10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function BrainstormPage({ onClose, enabled = true, micDeviceId }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
   const [loading, setLoading] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const generationIdRef = useRef(0);
+  const stalledTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { announce, liveText } = useLiveAnnounce();
 
   const { micState, startRecording } = useMicButton({
@@ -66,6 +91,76 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
     },
     onError: (msg) => setError(msg),
   });
+
+  // Restore draft from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(BRAINSTORM_DRAFT_KEY);
+      if (saved) {
+        const parsed: Message[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed.map((m) => ({ ...m, streaming: false })));
+          setDraftRestored(true);
+        }
+      }
+    } catch {
+      // ignore corrupt draft
+    }
+  }, []);
+
+  // Persist messages to localStorage on change (skip in-progress streaming)
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const settled = messages.filter((m) => !m.streaming);
+    if (settled.length === 0) return;
+    try {
+      localStorage.setItem(BRAINSTORM_DRAFT_KEY, JSON.stringify(settled));
+    } catch {
+      // storage quota — silently ignore
+    }
+  }, [messages]);
+
+  // Warn on browser close/refresh when generation is in progress
+  useEffect(() => {
+    if (!loading) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [loading]);
+
+  const handleStartOver = useCallback(() => {
+    localStorage.removeItem(BRAINSTORM_DRAFT_KEY);
+    setMessages([]);
+    setFacts([]);
+    setDraftRestored(false);
+    setError(null);
+  }, []);
+
+  const cancelGeneration = useCallback(() => {
+    generationIdRef.current++;
+    if (stalledTimerRef.current) {
+      clearTimeout(stalledTimerRef.current);
+      stalledTimerRef.current = null;
+    }
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    setStalled(false);
+    setLoading(false);
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === 'assistant' && last.streaming) {
+        if (last.text) {
+          return [...prev.slice(0, -1), { ...last, streaming: false }];
+        }
+        return prev.slice(0, -2);
+      }
+      return prev;
+    });
+    announce('Generation cancelled.');
+  }, [announce]);
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -84,7 +179,11 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
     const trimmed = prompt.trim();
     if (!trimmed || loading) return;
 
+    const myGen = ++generationIdRef.current;
+    const isMine = () => generationIdRef.current === myGen;
+
     setLoading(true);
+    setStalled(false);
     setError(null);
     setPrompt('');
     announce('Generating response…');
@@ -96,8 +195,19 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
 
     const history = messages.map((m) => ({ role: m.role, content: m.text }));
 
+    const resetStalledTimer = () => {
+      if (stalledTimerRef.current) clearTimeout(stalledTimerRef.current);
+      stalledTimerRef.current = setTimeout(() => {
+        if (isMine()) setStalled(true);
+      }, STALLED_TIMEOUT_MS);
+    };
+    resetStalledTimer();
+
     unsubscribeRef.current?.();
     unsubscribeRef.current = window.api.onBrainstormChunk((chunk) => {
+      if (!isMine()) return;
+      resetStalledTimer();
+      setStalled(false);
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -110,6 +220,8 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
 
     try {
       const response = await window.api.agentBrainstorm(trimmed, history);
+
+      if (!isMine()) return;
 
       const extracted = extractFacts(response.text);
       if (extracted.length > 0) {
@@ -138,17 +250,25 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
       const factCount = extracted.length;
       announce(factCount > 0 ? `Response ready. ${factCount} fact${factCount !== 1 ? 's' : ''} detected.` : 'Response ready.');
     } catch (err) {
+      if (!isMine()) return;
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => prev.slice(0, -1));
       const errorMsg = msg || 'AI unavailable — check your API key in settings.';
       setError(errorMsg);
       announce(`Error: ${errorMsg}`);
     } finally {
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = null;
-      setLoading(false);
+      if (isMine()) {
+        unsubscribeRef.current?.();
+        unsubscribeRef.current = null;
+        if (stalledTimerRef.current) {
+          clearTimeout(stalledTimerRef.current);
+          stalledTimerRef.current = null;
+        }
+        setStalled(false);
+        setLoading(false);
+      }
     }
-  }, [prompt, loading, messages]);
+  }, [prompt, loading, messages, announce]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -210,10 +330,41 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
           <h2>Brainstorm Agent</h2>
           <span className="brainstorm-subtitle">Talk through your story — facts auto-extract to your vault</span>
         </div>
-        <button className="brainstorm-close-btn" onClick={onClose} aria-label="Close brainstorm">
-          ✕
-        </button>
+        <div className="brainstorm-header-actions">
+          {messages.length > 0 && (
+            <button
+              className="brainstorm-download-btn"
+              onClick={() => downloadSession(messages)}
+              aria-label="Download brainstorm session"
+              title="Download session as Markdown"
+            >
+              Download
+            </button>
+          )}
+          {messages.length > 0 && (
+            <button
+              className="brainstorm-start-over-btn"
+              onClick={handleStartOver}
+              aria-label="Start over and clear session"
+              title="Clear session"
+            >
+              Start Over
+            </button>
+          )}
+          <button className="brainstorm-close-btn" onClick={onClose} aria-label="Close brainstorm">
+            ✕
+          </button>
+        </div>
       </div>
+
+      {draftRestored && (
+        <div className="brainstorm-draft-banner" role="status" aria-label="Draft restored">
+          Session restored from last visit.{' '}
+          <button className="brainstorm-draft-dismiss" onClick={() => setDraftRestored(false)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="brainstorm-body">
         <div className="brainstorm-chat">
@@ -245,6 +396,15 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
             <div className="brainstorm-error" role="alert">{error}</div>
           )}
 
+          {stalled && (
+            <div className="brainstorm-stalled" role="status">
+              Generation appears stalled — no response for {STALLED_TIMEOUT_MS / 1000}s.{' '}
+              <button className="brainstorm-stalled-cancel" onClick={cancelGeneration}>
+                Cancel and retry
+              </button>
+            </div>
+          )}
+
           <div className="brainstorm-input-area">
             <textarea
               className="brainstorm-input"
@@ -257,6 +417,15 @@ export default function BrainstormPage({ onClose, enabled = true, micDeviceId }:
               aria-label="Brainstorm prompt"
             />
             <div className="brainstorm-input-actions">
+              {loading && (
+                <button
+                  className="brainstorm-cancel-btn"
+                  onClick={cancelGeneration}
+                  aria-label="Cancel generation"
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 className={`brainstorm-mic-btn${micState === 'recording' ? ' brainstorm-mic-btn--recording' : ''}${micState === 'error' ? ' brainstorm-mic-btn--error' : ''}`}
                 onClick={startRecording}
