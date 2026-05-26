@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
   startVaultWatch: () => ipcRenderer.invoke('vault:watch-start', undefined),
   stopVaultWatch: () => ipcRenderer.invoke('vault:watch-stop', undefined),
+  vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
 
   // Push-notification from main when a markdown file changes
   onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => {

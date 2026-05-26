@@ -23,6 +23,7 @@ const MOCK_DATA: VaultGraphData = {
 beforeEach(() => {
   (window as any).api = {
     vaultGraphData: vi.fn().mockResolvedValue(MOCK_DATA),
+    onVaultFileChanged: vi.fn().mockReturnValue(vi.fn()),
   };
 });
 
@@ -90,5 +91,44 @@ describe('VaultGraphView', () => {
     });
     // onOpenNote is wired to SVG node click; presence check suffices in jsdom
     expect(typeof onOpenNote).toBe('function');
+  });
+
+  it('subscribes to vault file changes on mount and unsubscribes on unmount', async () => {
+    const mockUnsub = vi.fn();
+    const onVaultFileChanged = vi.fn().mockReturnValue(mockUnsub);
+    (window as any).api = {
+      vaultGraphData: vi.fn().mockResolvedValue(MOCK_DATA),
+      onVaultFileChanged,
+    };
+    const { unmount } = render(<VaultGraphView />);
+    await waitFor(() => {
+      expect(screen.getByTestId('vault-graph-view')).toBeInTheDocument();
+    });
+    expect(onVaultFileChanged).toHaveBeenCalledOnce();
+    unmount();
+    expect(mockUnsub).toHaveBeenCalledOnce();
+  });
+
+  it('re-fetches graph data after vault file change (debounced)', async () => {
+    let capturedHandler: ((event: unknown, data: { path: string }) => void) | null = null;
+    const updatedData: VaultGraphData = {
+      nodes: [{ id: 'n1', label: 'Scene One', path: 'stories/s1.md' }],
+      edges: [],
+    };
+    const vaultGraphData = vi.fn()
+      .mockResolvedValueOnce(MOCK_DATA)
+      .mockResolvedValue(updatedData);
+    (window as any).api = {
+      vaultGraphData,
+      onVaultFileChanged: vi.fn((cb) => { capturedHandler = cb; return vi.fn(); }),
+    };
+
+    render(<VaultGraphView />);
+    await waitFor(() => expect(screen.getByTestId('vault-graph-view')).toBeInTheDocument());
+
+    capturedHandler!({}, { path: 'stories/new-note.md' });
+
+    await waitFor(() => expect(vaultGraphData).toHaveBeenCalledTimes(2), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/1 notes · 0 links/)).toBeInTheDocument());
   });
 });

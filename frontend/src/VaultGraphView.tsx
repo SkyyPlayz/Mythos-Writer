@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { select } from 'd3-selection';
 import { zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from 'd3-zoom';
 import { drag } from 'd3-drag';
@@ -114,19 +114,40 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await (window as any).api?.vaultGraphData?.() as VaultGraphData | undefined;
-        if (data) setGraphData(data);
-        else setError('VAULT_GRAPH_DATA IPC not available yet.');
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setLoading(false);
+  const fetchGraphData = useCallback(async () => {
+    try {
+      const data = await (window as any).api?.vaultGraphData?.() as VaultGraphData | undefined;
+      if (data) {
+        setGraphData(data);
+        setError(null);
+      } else {
+        setError('VAULT_GRAPH_DATA IPC not available yet.');
       }
-    })();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchGraphData();
+  }, [fetchGraphData]);
+
+  useEffect(() => {
+    const api = (window as any).api;
+    if (!api?.onVaultFileChanged) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const handler = (_event: unknown, _data: { path: string }) => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => { fetchGraphData(); }, 500);
+    };
+    const unsub = api.onVaultFileChanged(handler);
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [fetchGraphData]);
 
   const folders = useMemo(() => {
     if (!graphData) return [];
