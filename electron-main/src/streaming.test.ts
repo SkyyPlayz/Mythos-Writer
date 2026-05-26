@@ -31,6 +31,7 @@ import {
   MODEL_ALLOWLIST,
   STREAM_ERRORS,
   type StreamStartPayload,
+  type StreamErrorCategory,
 } from './streaming.js';
 
 // ─── Test helpers ───
@@ -65,7 +66,10 @@ function getHandlers(reg?: StreamRegistry) {
   const cancelEntry = [...handleCalls].reverse().find(([ch]) => ch === STREAM_CHANNELS.STREAM_CANCEL);
   const ackEntry = [...onCalls].reverse().find(([ch]) => ch === STREAM_CHANNELS.STREAM_ACK);
 
-  type StartHandler = (event: IpcMainInvokeEvent, payload: StreamStartPayload) => Promise<{ streamId: string }>;
+  type StartHandler = (event: IpcMainInvokeEvent, payload: StreamStartPayload) => Promise<
+    | { streamId: string }
+    | { error: string; category?: StreamErrorCategory; message?: string }
+  >;
   type CancelHandler = (event: IpcMainInvokeEvent, payload: { streamId: string }) => Promise<{ cancelled: boolean }>;
   type AckHandler = (event: IpcMainEvent, payload: { streamId: string; count: number }) => void;
 
@@ -243,7 +247,7 @@ describe('STREAM_START', () => {
     expect(tokenCalls[0][1]).toMatchObject({ token: 'x' });
   });
 
-  it('sends STREAM_ERROR on SDK failure', async () => {
+  it('returns PROVIDER_ERROR (not STREAM_ERROR IPC) for pre-flush SDK failure', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: {
         stream: () => {
@@ -256,25 +260,23 @@ describe('STREAM_START', () => {
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
 
     await new Promise((r) => setTimeout(r, 0));
 
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    // Pre-flush errors surface in the handler return, not via IPC.
+    expect(result).toEqual({
+      error: STREAM_ERRORS.PROVIDER_ERROR,
       category: STREAM_ERROR_CATEGORIES.UNKNOWN,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.UNKNOWN),
     });
-
-    const endCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END);
-    expect(endCalls).toHaveLength(0);
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
-  it('sends STREAM_END (not STREAM_ERROR) when stream throws AbortError', async () => {
+  it('returns PROVIDER_ERROR (no IPC) when AbortError fires before first chunk', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: {
         stream: () => {
@@ -289,12 +291,14 @@ describe('STREAM_START', () => {
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    await startHandler(makeEvent(sender), { messages: [{ role: 'user', content: 'Hi' }] });
+    const result = await startHandler(makeEvent(sender), { messages: [{ role: 'user', content: 'Hi' }] });
 
     await new Promise((r) => setTimeout(r, 0));
 
+    // Pre-flush abort — no stream was ever open, so no IPC events.
+    expect(result).toMatchObject({ error: STREAM_ERRORS.PROVIDER_ERROR });
     expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
-    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(1);
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
   it('cleans up registry entry after stream ends', async () => {
@@ -877,6 +881,10 @@ describe('categorizeStreamError', () => {
 });
 
 // ─── Provider rejection before first content chunk ───
+//
+// With the delayed-flush design, pre-flush provider errors surface in the
+// startHandler return value ({error: PROVIDER_ERROR, category, message}).
+// No IPC events (STREAM_ERROR / STREAM_END / STREAM_TOKEN) are emitted.
 
 describe('Provider rejection before first content chunk', () => {
   let reg: StreamRegistry;
@@ -899,109 +907,107 @@ describe('Provider rejection before first content chunk', () => {
     })();
   }
 
-  it('sends categorized auth error on 401 rejection before first token', async () => {
+  it('returns PROVIDER_ERROR with auth category on 401 rejection before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(401, 'Unauthorized')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
 
     await new Promise((r) => setTimeout(r, 0));
 
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    expect(result).toEqual({
+      error: STREAM_ERRORS.PROVIDER_ERROR,
       category: STREAM_ERROR_CATEGORIES.AUTH,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.AUTH),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
     expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
-  it('sends categorized rate-limit error on 429 rejection before first token', async () => {
+  it('returns PROVIDER_ERROR with rate_limited category on 429 rejection before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(429, 'Rate limit exceeded')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
 
     await new Promise((r) => setTimeout(r, 0));
 
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    expect(result).toEqual({
+      error: STREAM_ERRORS.PROVIDER_ERROR,
       category: STREAM_ERROR_CATEGORIES.RATE_LIMITED,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.RATE_LIMITED),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
     expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
-  it('sends user-friendly model-unavailable error on 404 rejection before first token', async () => {
+  it('returns PROVIDER_ERROR with invalid_request category on 404 (model not found) before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(404, 'Model not found')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
 
     await new Promise((r) => setTimeout(r, 0));
 
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    expect(result).toEqual({
+      error: STREAM_ERRORS.PROVIDER_ERROR,
       category: STREAM_ERROR_CATEGORIES.INVALID_REQUEST,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.INVALID_REQUEST),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
-  it('sends permission-denied message on 403 rejection before first token', async () => {
+  it('returns PROVIDER_ERROR with auth category on 403 rejection before first token', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(403, 'Permission denied')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
-    const { streamId } = await startHandler(makeEvent(sender), {
+    const result = await startHandler(makeEvent(sender), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
 
     await new Promise((r) => setTimeout(r, 0));
 
-    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
-    expect(errorCalls).toHaveLength(1);
-    expect(errorCalls[0][1]).toEqual({
-      streamId,
+    expect(result).toEqual({
+      error: STREAM_ERRORS.PROVIDER_ERROR,
       category: STREAM_ERROR_CATEGORIES.AUTH,
       message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.AUTH),
     });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
   });
 
-  it('cleans up registry entry after pre-stream rejection', async () => {
+  it('cleans up registry entry after pre-flush rejection', async () => {
     vi.mocked(Anthropic).mockImplementation(() => ({
       messages: { stream: () => rejectingStream(makeStatusError(401, 'Unauthorized')) },
     }) as unknown as Anthropic);
 
     const { startHandler } = getHandlers(reg);
-    const { streamId } = await startHandler(makeEvent(makeSender()), {
+    await startHandler(makeEvent(makeSender()), {
       messages: [{ role: 'user', content: 'Hi' }],
     });
 
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(reg.get(streamId)).toBeUndefined();
+    expect(reg.size).toBe(0);
   });
 
   it('sends no STREAM_TOKEN events when rejection fires before any content', async () => {
@@ -1019,6 +1025,153 @@ describe('Provider rejection before first content chunk', () => {
   });
 });
 
+// ─── Mid-stream provider failure ───
+//
+// Errors that arrive AFTER the first chunk (stream is already open) must emit a
+// structured STREAM_ERROR IPC event so the renderer can surface them on an
+// in-progress stream. This is the existing "mid-stream" path, distinct from the
+// pre-flush path above.
+
+describe('mid-stream provider failure (after first chunk)', () => {
+  let reg: StreamRegistry;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    reg = new StreamRegistry();
+    registerStreamingHandlers(() => 'sk-ant-test', reg);
+  });
+
+  function makeStatusError(status: number, message: string): Error & { status: number } {
+    const err = new Error(message) as Error & { status: number };
+    err.status = status;
+    return err;
+  }
+
+  // Yields one token then throws — simulates a mid-stream failure.
+  function streamWithMidError(token: string, err: Error) {
+    return (async function* () {
+      yield { type: 'content_block_delta', delta: { type: 'text_delta', text: token } };
+      throw err;
+    })();
+  }
+
+  it('emits STREAM_ERROR IPC event for a generic error after first chunk', async () => {
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: { stream: () => streamWithMidError('hello', new Error('mid-stream failure')) },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    const result = await startHandler(makeEvent(sender), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    // Stream opened — handler returns streamId.
+    expect((result as { streamId: string }).streamId).toBeDefined();
+    const { streamId } = result as { streamId: string };
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    // First token was delivered before the error.
+    const tokenCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_TOKEN);
+    expect(tokenCalls).toHaveLength(1);
+    expect((tokenCalls[0][1] as { token: string }).token).toBe('hello');
+
+    // Mid-stream error arrives via IPC (not handler return).
+    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
+    expect(errorCalls).toHaveLength(1);
+    expect(errorCalls[0][1]).toEqual({
+      streamId,
+      category: STREAM_ERROR_CATEGORIES.UNKNOWN,
+      message: streamErrorUserMessage(STREAM_ERROR_CATEGORIES.UNKNOWN),
+    });
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(0);
+  });
+
+  it('emits STREAM_ERROR with auth category for 401 error after first chunk', async () => {
+    const authErr = new Error('Unauthorized') as Error & { status: number };
+    authErr.status = 401;
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: { stream: () => streamWithMidError('token', authErr) },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    const result = await startHandler(makeEvent(sender), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    expect((result as { streamId: string }).streamId).toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
+    expect(errorCalls).toHaveLength(1);
+    expect((errorCalls[0][1] as { category: string }).category).toBe(STREAM_ERROR_CATEGORIES.AUTH);
+  });
+
+  it('emits STREAM_ERROR with rate_limited category for 429 error after first chunk', async () => {
+    const quotaErr = new Error('Rate limited') as Error & { status: number };
+    quotaErr.status = 429;
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: { stream: () => streamWithMidError('token', quotaErr) },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    const result = await startHandler(makeEvent(sender), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    expect((result as { streamId: string }).streamId).toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
+    expect(errorCalls).toHaveLength(1);
+    expect((errorCalls[0][1] as { category: string }).category).toBe(STREAM_ERROR_CATEGORIES.RATE_LIMITED);
+  });
+
+  it('emits STREAM_END (not STREAM_ERROR) for AbortError after first chunk', async () => {
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: {
+        stream: () => {
+          return (async function* () {
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'tok' } };
+            const e = new Error('aborted');
+            e.name = 'AbortError';
+            throw e;
+          })();
+        },
+      },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    const result = await startHandler(makeEvent(sender), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    expect((result as { streamId: string }).streamId).toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR)).toHaveLength(0);
+    expect(sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END)).toHaveLength(1);
+  });
+
+  it('cleans up registry entry after mid-stream error', async () => {
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: { stream: () => streamWithMidError('tok', new Error('oops')) },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    await startHandler(makeEvent(makeSender()), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(reg.size).toBe(0);
+  });
+});
+
 // ─── Concurrent stream cap ───
 
 describe('concurrent stream cap', () => {
@@ -1031,9 +1184,12 @@ describe('concurrent stream cap', () => {
   });
 
   it('rejects the (N+1)th concurrent STREAM_START from the same sender without invoking the SDK', async () => {
+    // Yield one chunk so startHandler can resolve its ready-signal, then hang to
+    // keep the stream registered (simulating a long-lived open stream).
     const streamSpy = vi.fn(() =>
       (async function* () {
-        await new Promise<never>(() => {}); // never resolves — keeps stream open
+        yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } };
+        await new Promise<never>(() => {});
       })(),
     );
     vi.mocked(Anthropic).mockImplementation(
@@ -1061,6 +1217,7 @@ describe('concurrent stream cap', () => {
   it('a stream from a different sender is not affected by another sender reaching the cap', async () => {
     const streamSpy = vi.fn(() =>
       (async function* () {
+        yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } };
         await new Promise<never>(() => {});
       })(),
     );

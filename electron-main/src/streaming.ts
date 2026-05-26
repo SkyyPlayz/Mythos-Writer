@@ -32,6 +32,8 @@ export const MODEL_ALLOWLIST = new Set([
 export const STREAM_ERRORS = {
   TOO_MANY_STREAMS: 'TOO_MANY_STREAMS',
   INVALID_PAYLOAD: 'INVALID_PAYLOAD',
+  // Provider rejected before the first chunk — surfaced in startHandler return, not via IPC.
+  PROVIDER_ERROR: 'PROVIDER_ERROR',
 } as const;
 
 // Typed error categories sent over IPC. These are safe for the renderer —
@@ -210,6 +212,26 @@ export class StreamRegistry {
 
 export const defaultRegistry = new StreamRegistry();
 
+// Internal result passed to the onReady callback in runStream.
+// ok:true  — stream is open, tokens will follow via IPC.
+// ok:false — provider rejected before the first chunk; caller surfaces this as a handler return error.
+type ReadyResult =
+  | { ok: true }
+  | { ok: false; category: StreamErrorCategory; message: string };
+
+// Runs the Anthropic stream for a given IPC request.
+//
+// onReady is called exactly once:
+//   - {ok:true}  when the first chunk is received (stream is confirmed open)
+//   - {ok:false} when the provider rejects before any chunk arrives
+//
+// After onReady({ok:true}), execution yields (await Promise.resolve()) so the
+// startHandler's continuation runs and the renderer receives the streamId before
+// any STREAM_TOKEN events are dispatched — matching the behaviour of an HTTP
+// server that flushes the status line before the body.
+//
+// Mid-stream errors (after onReady) continue to emit STREAM_ERROR via IPC so the
+// renderer can surface them on an already-open stream.
 async function runStream(
   sender: WebContents,
   streamId: string,
@@ -217,7 +239,9 @@ async function runStream(
   controller: AbortController,
   getApiKey: () => string,
   reg: StreamRegistry,
+  onReady: (result: ReadyResult) => void,
 ): Promise<void> {
+  let readySignaled = false;
   try {
     const apiKey = getApiKey();
     const client = new Anthropic({ apiKey });
@@ -232,6 +256,14 @@ async function runStream(
     );
 
     for await (const chunk of sdkStream) {
+      if (!readySignaled) {
+        readySignaled = true;
+        onReady({ ok: true });
+        // Yield so the startHandler's microtask continuation runs before we push
+        // any STREAM_TOKEN events — renderer gets streamId before first token.
+        await Promise.resolve();
+      }
+
       if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
         const entry = reg.get(streamId);
         if (!entry) continue;
@@ -250,23 +282,41 @@ async function runStream(
       }
     }
 
+    if (!readySignaled) {
+      // Stream completed with zero chunks (empty response) — not a provider error.
+      readySignaled = true;
+      onReady({ ok: true });
+    }
+
     if (!sender.isDestroyed()) {
       sender.send(STREAM_CHANNELS.STREAM_END, { streamId });
     }
   } catch (err: unknown) {
-    const isAbort = (err as Error)?.name === 'AbortError';
-    if (!sender.isDestroyed()) {
-      if (isAbort) {
-        sender.send(STREAM_CHANNELS.STREAM_END, { streamId });
-      } else {
-        // Log the raw SDK error in main process only — never forward to renderer.
-        console.error(`[stream:error] streamId=${streamId} error=${(err as Error)?.message ?? 'Unknown'}`);
-        const category = categorizeStreamError(err);
-        sender.send(STREAM_CHANNELS.STREAM_ERROR, {
-          streamId,
-          category,
-          message: streamErrorUserMessage(category),
-        });
+    if (!readySignaled) {
+      // Provider rejected before the first chunk.  Signal the error back to the
+      // startHandler so it can return a proper error response instead of a streamId.
+      // No IPC events are emitted at this point — the renderer has not committed to
+      // the stream yet.
+      readySignaled = true;
+      const category = categorizeStreamError(err);
+      onReady({ ok: false, category, message: streamErrorUserMessage(category) });
+    } else {
+      // Error after the stream was already open — emit a structured IPC event so
+      // the renderer can surface it on the in-progress stream.
+      const isAbort = (err as Error)?.name === 'AbortError';
+      if (!sender.isDestroyed()) {
+        if (isAbort) {
+          sender.send(STREAM_CHANNELS.STREAM_END, { streamId });
+        } else {
+          // Log raw SDK details in main process only — never forward to renderer.
+          console.error(`[stream:error][mid-stream] streamId=${streamId} error=${(err as Error)?.message ?? 'Unknown'}`);
+          const category = categorizeStreamError(err);
+          sender.send(STREAM_CHANNELS.STREAM_ERROR, {
+            streamId,
+            category,
+            message: streamErrorUserMessage(category),
+          });
+        }
       }
     }
   } finally {
@@ -305,7 +355,17 @@ export function registerStreamingHandlers(
     const controller = new AbortController();
     reg.start(streamId, controller, event.sender);
 
-    void runStream(event.sender, streamId, payload, controller, getApiKey, reg);
+    // Await the ready signal: runStream calls onReady once the provider confirms the
+    // stream is open (first chunk received) or rejects it (pre-flush error).
+    // This ensures the handler returns an accurate result — streamId on success,
+    // or a PROVIDER_ERROR on rejection — before any STREAM_TOKEN events are sent.
+    const ready = await new Promise<ReadyResult>((resolve) => {
+      void runStream(event.sender, streamId, payload, controller, getApiKey, reg, resolve);
+    });
+
+    if (!ready.ok) {
+      return { error: STREAM_ERRORS.PROVIDER_ERROR, category: ready.category, message: ready.message };
+    }
 
     return { streamId };
   });
