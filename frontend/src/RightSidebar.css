@@ -504,3 +504,90 @@
   font-size: 0.82rem;
   color: #52525b;
 }
+
+/* WritingAssistantPanel — stalled-stream warning + cancel */
+.wa-cancelled-toast {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #14532d;
+  border: 1px solid #166534;
+  border-radius: 8px;
+  color: #4ade80;
+  font-size: 0.82rem;
+  padding: 8px 16px;
+  z-index: 100;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.wa-stalled-panel {
+  margin: 8px 12px;
+  padding: 10px 14px;
+  background: var(--bg-surface, #18181b);
+  border: 1px solid var(--border-default, #3f3f46);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wa-stalled-msg {
+  margin: 0;
+  font-size: 0.79rem;
+  color: var(--text-secondary, #a1a1aa);
+}
+
+.wa-stalled-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wa-stalled-retry-btn,
+.wa-stalled-cancel-btn {
+  border-radius: 6px;
+  border: 1px solid var(--border-default, #3f3f46);
+  font-size: 0.77rem;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.wa-stalled-retry-btn {
+  background: #7c3aed;
+  color: #fff;
+  border-color: transparent;
+}
+
+.wa-stalled-retry-btn:hover {
+  background: #6d28d9;
+}
+
+.wa-stalled-cancel-btn {
+  background: none;
+  color: #a1a1aa;
+}
+
+.wa-stalled-cancel-btn:hover {
+  background: #27272a;
+  color: #e4e4e7;
+}
+
+.writing-assistant-cancel-btn {
+  background: #3b0a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: flex-end;
+  height: 38px;
+}
+
+.writing-assistant-cancel-btn:hover {
+  background: #7f1d1d;
+  color: #fff;
+}

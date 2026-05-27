@@ -30,6 +30,9 @@ function parseContinuityIssues(raw: Record<string, unknown>[]): ContinuityIssue[
   });
 }
 
+export const STALL_TIMEOUT_MS = 20_000;
+export const HARD_TIMEOUT_MS = 90_000;
+
 const BRAINSTORM_SYSTEM_PROMPT = `You are a creative writing assistant helping an author develop their story world. When the user mentions specific named characters, locations, items, or notable concepts, emit structured fact tags using this format:
 
 [FACT:type|Name|Brief description]
@@ -105,12 +108,15 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
+  const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
 
   const streamIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef<string>('');
   const cleanupStreamRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTokenAtRef = useRef<number>(0);
+  const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const { announce, liveText } = useLiveAnnounce();
 
   // Restore draft from localStorage on mount
@@ -192,66 +198,39 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     };
   }, []);
 
-  const cancelStream = useCallback(() => {
-    const sid = streamIdRef.current;
-    if (!sid) return;
-    void window.api.streamCancel(sid);
-    cleanupStreamRef.current?.();
-    setMessages((prev) => prev.slice(0, -1));
-    setLoading(false);
-  }, []);
+  // Stall detection: 20 s no-token → warn; 90 s → hard abort
+  useEffect(() => {
+    if (!loading) return;
+    const interval = setInterval(() => {
+      const sinceLastToken = Date.now() - lastTokenAtRef.current;
+      if (sinceLastToken >= HARD_TIMEOUT_MS) {
+        const sid = streamIdRef.current;
+        if (sid) void window.api.streamCancel(sid);
+        cleanupStreamRef.current?.();
+        setMessages((prev) => prev.slice(0, -1));
+        setError('Generation timed out after 90 seconds. Check your connection and try again.');
+        setLoading(false);
+        setStreamPhase('idle');
+        announce('Generation timed out.');
+      } else if (sinceLastToken >= STALL_TIMEOUT_MS) {
+        setStreamPhase((prev) => (prev === 'streaming' ? 'stalled' : prev));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [loading, announce]);
 
-  const handleNewSession = useCallback(() => {
-    if (streamIdRef.current) {
-      void window.api.streamCancel(streamIdRef.current);
-    }
-    cleanupStreamRef.current?.();
-    setMessages([]);
-    setFacts([]);
-    setError(null);
-    setLoading(false);
-    setDraftSizeWarning(false);
-    localStorage.removeItem(DRAFT_KEY);
-  }, []);
-
-  const handleDownload = useCallback(() => {
-    const lines: string[] = ['# Brainstorm Session\n'];
-    for (const msg of messages) {
-      lines.push(`## ${msg.role === 'user' ? 'You' : 'Assistant'}`);
-      lines.push(msg.text);
-      lines.push('');
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `brainstorm-${new Date().toISOString().slice(0, 10)}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [messages]);
-
-  const send = useCallback(async () => {
-    const trimmed = prompt.trim();
-    if (!trimmed || loading) return;
-
-    setLoading(true);
-    setError(null);
-    setPrompt('');
-    announce('Generating response…');
-
-    const userMsg: Message = { role: 'user', text: trimmed };
-    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-
-    const apiMessages = [...messages, userMsg].map((m) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.text,
-    }));
-
+  // Helper: subscribe to stream events and fire streamStart.
+  // Extracted so both send() and retryFromStalled() share the same logic.
+  const _runStream = useCallback(async (apiMessages: Array<{ role: 'user' | 'assistant'; content: string }>) => {
+    lastApiMessagesRef.current = apiMessages;
     streamingTextRef.current = '';
+    lastTokenAtRef.current = Date.now();
+    setStreamPhase('streaming');
 
     const unsubToken = window.api.onStreamToken(({ streamId: sid, token }) => {
       if (sid !== streamIdRef.current) return;
+      lastTokenAtRef.current = Date.now();
+      setStreamPhase((prev) => (prev === 'stalled' ? 'streaming' : prev));
       streamingTextRef.current += token;
       const currentText = streamingTextRef.current;
       setMessages((prev) => {
@@ -270,6 +249,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       const fullText = streamingTextRef.current;
       const extracted = extractFacts(fullText);
       cleanupStreamRef.current?.();
+      setStreamPhase('idle');
 
       setMessages((prev) => {
         const updated = [...prev];
@@ -360,6 +340,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       setError(msg);
       announce(`Error: ${msg}`);
       setLoading(false);
+      setStreamPhase('idle');
     });
 
     cleanupStreamRef.current = () => {
@@ -384,8 +365,89 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       setError(msg || 'AI unavailable — check your API key in settings.');
       announce(`Error: ${msg}`);
       setLoading(false);
+      setStreamPhase('idle');
     }
-  }, [prompt, loading, messages, announce]);
+  }, [announce]);
+
+  const cancelStream = useCallback(() => {
+    const sid = streamIdRef.current;
+    if (!sid) return;
+    void window.api.streamCancel(sid);
+    cleanupStreamRef.current?.();
+    setMessages((prev) => prev.slice(0, -1));
+    setLoading(false);
+    setStreamPhase('idle');
+    setToast('Generation cancelled.');
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  const retryFromStalled = useCallback(async () => {
+    const sid = streamIdRef.current;
+    if (sid) void window.api.streamCancel(sid);
+    cleanupStreamRef.current?.();
+    // Reset the streaming bubble text without removing it from history
+    setMessages((prev) => {
+      const updated = [...prev];
+      const last = updated[updated.length - 1];
+      if (last?.role === 'assistant') {
+        updated[updated.length - 1] = { ...last, text: '', streaming: true };
+      }
+      return updated;
+    });
+    announce('Retrying…');
+    await _runStream(lastApiMessagesRef.current);
+  }, [announce, _runStream]);
+
+  const handleNewSession = useCallback(() => {
+    if (streamIdRef.current) {
+      void window.api.streamCancel(streamIdRef.current);
+    }
+    cleanupStreamRef.current?.();
+    setMessages([]);
+    setFacts([]);
+    setError(null);
+    setLoading(false);
+    setDraftSizeWarning(false);
+    localStorage.removeItem(DRAFT_KEY);
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    const lines: string[] = ['# Brainstorm Session\n'];
+    for (const msg of messages) {
+      lines.push(`## ${msg.role === 'user' ? 'You' : 'Assistant'}`);
+      lines.push(msg.text);
+      lines.push('');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `brainstorm-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [messages]);
+
+  const send = useCallback(async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed || loading) return;
+
+    setLoading(true);
+    setError(null);
+    setPrompt('');
+    announce('Generating response…');
+
+    const userMsg: Message = { role: 'user', text: trimmed };
+    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+
+    const apiMessages = [...messages, userMsg].map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.text,
+    }));
+
+    await _runStream(apiMessages);
+  }, [prompt, loading, messages, announce, _runStream]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -617,6 +679,32 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
 
           {error && (
             <div className="brainstorm-error" role="alert">{error}</div>
+          )}
+
+          {streamPhase === 'stalled' && loading && (
+            <div className="bs-stalled-panel" role="status" aria-label="Generation stalled">
+              <p className="bs-stalled-msg">
+                This is taking longer than expected — the network or provider may be slow.
+              </p>
+              <div className="bs-stalled-actions">
+                <button
+                  className="bs-stalled-retry-btn"
+                  onClick={() => void retryFromStalled()}
+                  type="button"
+                  aria-label="Retry generation"
+                >
+                  Retry
+                </button>
+                <button
+                  className="bs-stalled-cancel-btn"
+                  onClick={cancelStream}
+                  type="button"
+                  aria-label="Cancel generation"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
 
           <div className="brainstorm-input-area">

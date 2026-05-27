@@ -697,3 +697,56 @@
   color: var(--text-faint);
   text-align: center;
 }
+
+/* Stalled-stream warning panel */
+.bs-stalled-panel {
+  margin: 8px 16px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bs-stalled-msg {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.bs-stalled-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.bs-stalled-retry-btn,
+.bs-stalled-cancel-btn {
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.bs-stalled-retry-btn {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+.bs-stalled-retry-btn:hover {
+  background: var(--accent-hover, var(--accent));
+  opacity: 0.9;
+}
+
+.bs-stalled-cancel-btn {
+  background: none;
+  color: var(--text-secondary);
+}
+
+.bs-stalled-cancel-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
