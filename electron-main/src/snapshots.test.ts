@@ -88,6 +88,34 @@ describe('getSnapshot', () => {
   });
 });
 
+describe('path traversal rejection', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-sec-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const traversalIds = ['../escape', '..\\escape', '/abs/path', 'a/b', 'a\\b', '.hidden', ''];
+
+  for (const badId of traversalIds) {
+    it(`saveSnapshot rejects sceneId "${badId}"`, () => {
+      expect(() => saveSnapshot(tmpDir, badId, 'content')).toThrow('Invalid sceneId');
+    });
+
+    it(`listSnapshots rejects sceneId "${badId}"`, () => {
+      expect(() => listSnapshots(tmpDir, badId)).toThrow('Invalid sceneId');
+    });
+
+    it(`getSnapshot rejects sceneId "${badId}"`, () => {
+      expect(() => getSnapshot(tmpDir, badId, 'some-id')).toThrow('Invalid sceneId');
+    });
+  }
+});
+
 describe('rollback round-trip', () => {
   let tmpDir: string;
 
