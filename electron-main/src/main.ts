@@ -2644,6 +2644,12 @@ function registerWritingScanHandler(): void {
 }
 
 // ─── App lifecycle ───
+// Use software rendering. Mythos Writer is a text app with no GPU-bound UI, and
+// GPU init fails in headless/virtualized environments (CI under Xvfb, some VMs),
+// where a failed GPU process otherwise blocks the window from ever appearing.
+// Must be called before the app 'ready' event.
+app.disableHardwareAcceleration();
+
 app.whenReady().then(async () => {
   ensureVaultDir();
   ensureNotesVaultDir();
