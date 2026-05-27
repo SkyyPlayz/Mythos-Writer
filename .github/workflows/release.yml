@@ -27,6 +27,8 @@ jobs:
           fi
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
+  # Windows build — artifacts retained for future signing gate (MYT-226).
+  # GH_TOKEN intentionally omitted; Windows publish is gated on signing.
   build-windows:
     needs: determine-release
     runs-on: windows-latest
@@ -60,11 +62,10 @@ jobs:
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
 
-      - name: Build and publish (NSIS + ZIP)
+      - name: Build Windows artifacts (NSIS + ZIP)
         run: npm run dist
         env:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -74,6 +75,8 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.zip
 
+  # macOS build — artifacts retained for future signing gate (MYT-226).
+  # GH_TOKEN intentionally omitted; macOS publish is gated on signing.
   build-mac:
     needs: determine-release
     runs-on: macos-latest
@@ -121,7 +124,7 @@ jobs:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
-      - name: Build and publish (macOS DMG + ZIP)
+      - name: Build macOS artifacts (DMG + ZIP)
         shell: bash
         run: |
           # Use Developer ID identity from keychain when cert was imported;
@@ -133,7 +136,6 @@ jobs:
           fi
           npm run dist:mac:release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Notarization gate — set APPLE_NOTARIZE secret to '1' once Apple ID
           # credentials are available. build/notarize.js is a no-op otherwise.
           APPLE_NOTARIZE: ${{ secrets.APPLE_NOTARIZE }}
@@ -150,6 +152,7 @@ jobs:
             dist-electron/*.zip
 
   build-linux:
+    needs: [determine-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -168,10 +171,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish (Linux AppImage + deb + rpm)
-        run: npm run dist:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Linux AppImage — stable channel
+        if: needs.determine-release.outputs.is-beta == 'false'
+        run: npx electron-vite build && npx electron-builder --linux AppImage --publish never
+
+      - name: Build Linux AppImage — beta channel
+        if: needs.determine-release.outputs.is-beta == 'true'
+        run: npx electron-vite build && npx electron-builder --linux AppImage --publish never --config.publish.channel=beta
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -179,11 +185,10 @@ jobs:
           name: linux-dist
           path: |
             dist-electron/*.AppImage
-            dist-electron/*.deb
-            dist-electron/*.rpm
+            dist-electron/*.yml
 
   publish-release:
-    needs: [determine-release, build-windows, build-linux, build-mac]
+    needs: [determine-release, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -193,8 +198,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download Linux artifacts
         uses: actions/download-artifact@v4
+        with:
+          name: linux-dist
+          path: linux-dist
 
       - name: Generate release notes
         id: changelog
@@ -215,14 +223,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (draft)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.determine-release.outputs.version }}
-          draft: false
+          draft: true
           prerelease: ${{ needs.determine-release.outputs.is-beta == 'true' }}
-          files: |
-            windows-dist/**/*
-            linux-dist/**/*
-            macos-dist/**/*
+          files: linux-dist/**/*
           body: ${{ steps.changelog.outputs.notes }}
