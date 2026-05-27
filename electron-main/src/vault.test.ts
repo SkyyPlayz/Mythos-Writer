@@ -629,6 +629,21 @@ describe('realSafePath — symlink escapes are rejected', () => {
     fs.symlinkSync(escapeDir, path.join(tmpDir, 'escape-dir'));
     expect(() => realSafePath(tmpDir, 'escape-dir/new-file.md')).toThrow(/parent symlink escape detected/);
   });
+
+  it('realSafePath allows nested write when no parent directories exist yet (MYT-641)', () => {
+    // Grandparent and parent don't exist — a fresh vault writing its first nested scene.
+    // On macOS the tmpDir itself resolves through a symlink (/var → /private/var), so
+    // the old code (resolved against vaultRoot) compared a /var/... path against a
+    // /private/var/... prefix and wrongly threw Path traversal denied.
+    const nestedPath = 'Manuscript/my-story/chapter-one/scene-1.md';
+    expect(() => realSafePath(tmpDir, nestedPath)).not.toThrow();
+    const result = realSafePath(tmpDir, nestedPath);
+    expect(result).toContain('scene-1.md');
+  });
+
+  it('realSafePath still rejects path traversal when no parent exists (MYT-641)', () => {
+    expect(() => realSafePath(tmpDir, '../../../etc/shadow')).toThrow(/Path traversal denied/);
+  });
 });
 
 describe('startVaultWatcher — symlink containment (MYT-362)', () => {
