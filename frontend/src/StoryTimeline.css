@@ -1,0 +1,241 @@
+.timeline-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Toolbar ─── */
+
+.timeline-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border, #3a3a5c);
+  background: var(--color-surface, #1e1e2e);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.timeline-story-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text, #eee);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-infer-btn {
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-accent, #7c6af7);
+  background: transparent;
+  color: var(--color-accent, #7c6af7);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.timeline-infer-btn:hover:not(:disabled) {
+  background: var(--color-accent, #7c6af7);
+  color: #fff;
+}
+
+.timeline-infer-btn--loading,
+.timeline-infer-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.timeline-infer-summary {
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #888);
+}
+
+.timeline-infer-error {
+  font-size: 0.72rem;
+  color: var(--color-danger, #f87171);
+}
+
+/* ─── React Flow wrapper ─── */
+
+.timeline-root .react-flow {
+  flex: 1;
+}
+
+/* ─── Empty state ─── */
+
+.timeline-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.5rem;
+  color: var(--color-text-muted, #888);
+  text-align: center;
+  padding: 2rem;
+}
+
+.timeline-empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.timeline-empty h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--color-text, #eee);
+}
+
+.timeline-empty p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* ─── Scene node card ─── */
+
+.tl-node {
+  width: 200px;
+  min-height: 96px;
+  background: var(--color-surface, #1e1e2e);
+  border: 1.5px solid var(--color-border, #3a3a5c);
+  border-radius: 8px;
+  padding: 10px 12px 8px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tl-node--matched {
+  border-color: var(--color-accent, #7c6af7);
+  background: color-mix(in srgb, var(--color-accent, #7c6af7) 8%, var(--color-surface, #1e1e2e));
+}
+
+.tl-node-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text, #eee);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-node-time {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  color: var(--color-accent, #7c6af7);
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-node-source {
+  font-size: 0.6rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tl-node-source--explicit_marker {
+  background: color-mix(in srgb, var(--color-accent, #7c6af7) 18%, transparent);
+  color: var(--color-accent, #7c6af7);
+}
+
+.tl-node-source--prose {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #f59e0b;
+}
+
+/* Confidence badge */
+.tl-node-conf {
+  font-size: 0.6rem;
+  color: var(--color-text-muted, #888);
+}
+
+.tl-node-conf--high { color: #4ade80; }
+.tl-node-conf--medium { color: #f59e0b; }
+.tl-node-conf--low { color: var(--color-text-muted, #888); }
+
+.tl-node-chapter {
+  font-size: 0.65rem;
+  color: var(--color-text-muted, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+/* ─── Action buttons ─── */
+
+.tl-node-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.tl-btn {
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 0.6rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tl-btn--match {
+  background: color-mix(in srgb, var(--color-accent, #7c6af7) 15%, transparent);
+  border-color: var(--color-accent, #7c6af7);
+  color: var(--color-accent, #7c6af7);
+}
+
+.tl-btn--match:hover {
+  background: var(--color-accent, #7c6af7);
+  color: #fff;
+}
+
+.tl-btn--suggest {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+.tl-btn--suggest:hover,
+.tl-btn--suggest.tl-btn--active {
+  background: #f59e0b;
+  color: #000;
+}
+
+.tl-btn--ignore {
+  background: color-mix(in srgb, var(--color-text-muted, #888) 12%, transparent);
+  border-color: var(--color-text-muted, #888);
+  color: var(--color-text-muted, #888);
+}
+
+.tl-btn--ignore:hover {
+  background: var(--color-text-muted, #888);
+  color: var(--color-surface, #1e1e2e);
+}
+
+/* ─── Matched badge ─── */
+
+.tl-node-matched-badge {
+  margin-top: 4px;
+  font-size: 0.6rem;
+  color: var(--color-accent, #7c6af7);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}

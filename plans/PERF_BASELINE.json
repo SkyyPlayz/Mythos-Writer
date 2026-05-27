@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-24T11:07:39.764Z",
+  "measurements": {
+    "db_open_ms": 3.968900000000076,
+    "vault_reindex_ms": 187.10799900000006,
+    "fts5_build_ms": 165.67719999999986,
+    "fts5_search_median_ms": 2.1205999999999676,
+    "archive_index_ms": 111.68579999999997,
+    "archive_scan_10_ms": 768.2655029999999
+  }
+}

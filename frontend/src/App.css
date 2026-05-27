@@ -1,17 +1,17 @@
-/* Root layout with tab bar */
+/* Root layout with tab bar — retargeted to Liquid Glass tokens (MYT-517). */
 
 .root-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: #0a0a0a;
+  background: var(--bg-app);
 }
 
 .top-tabs {
   display: flex;
-  background: #0d0d0d;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
   padding: 0 1rem;
 }
@@ -21,21 +21,21 @@
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--dur-hover-in) var(--ease-standard);
   margin-bottom: -1px;
 }
 
 .top-tab:hover {
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 .top-tab.active {
-  color: #c4b5fd;
-  border-bottom-color: #7c3aed;
+  color: var(--text-header);
+  border-bottom-color: var(--accent);
 }
 
 .app {
@@ -55,11 +55,11 @@ header {
 header h1 {
   font-size: 2.4rem;
   font-weight: 700;
-  color: #c084fc;
+  color: var(--text-header);
 }
 
 header p {
-  color: #a1a1aa;
+  color: var(--text-muted);
   margin-top: 0.5rem;
 }
 
@@ -73,17 +73,17 @@ header p {
 
 .field-label {
   font-size: 0.9rem;
-  color: #a1a1aa;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 textarea {
   width: 100%;
   padding: 1rem;
-  background: #1a1a1a;
-  border: 1px solid #3f3f46;
-  border-radius: 8px;
-  color: #e8e8e8;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
   font-size: 1rem;
   font-family: inherit;
   resize: vertical;
@@ -92,7 +92,7 @@ textarea {
 
 textarea:focus {
   outline: none;
-  border-color: #c084fc;
+  border-color: var(--focus-ring);
 }
 
 .selectors {
@@ -111,20 +111,20 @@ textarea:focus {
 
 .selector-group label {
   font-size: 0.85rem;
-  color: #a1a1aa;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 select {
   padding: 0.55rem 0.9rem;
-  background: #1a1a1a;
-  border: 1px solid #3f3f46;
-  border-radius: 6px;
-  color: #e8e8e8;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
   font-size: 0.95rem;
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a1a1aa' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a9bb0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   padding-right: 2.2rem;
@@ -132,7 +132,7 @@ select {
 
 select:focus {
   outline: none;
-  border-color: #c084fc;
+  border-color: var(--focus-ring);
 }
 
 /* Buttons */
@@ -140,18 +140,18 @@ select:focus {
 .btn-primary {
   align-self: flex-end;
   padding: 0.65rem 1.8rem;
-  background: #7c3aed;
-  color: white;
+  background: var(--accent);
+  color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: filter var(--dur-hover-in) var(--ease-standard);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #6d28d9;
+  filter: brightness(1.12);
 }
 
 .btn-primary:disabled {
@@ -162,24 +162,25 @@ select:focus {
 .btn-secondary {
   padding: 0.45rem 1rem;
   background: transparent;
-  color: #a78bfa;
-  border: 1px solid #4c1d95;
-  border-radius: 6px;
+  color: var(--accent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--dur-hover-in) var(--ease-standard),
+    color var(--dur-hover-in) var(--ease-standard);
   white-space: nowrap;
 }
 
 .btn-secondary:hover {
-  background: #1e1030;
-  color: #c4b5fd;
+  background: var(--accent-soft);
+  color: var(--text-header);
 }
 
 /* Error */
 
 .error {
-  color: #f87171;
+  color: var(--state-danger);
   font-size: 0.9rem;
 }
 
@@ -200,7 +201,7 @@ select:focus {
 
 .output-header h2 {
   font-size: 1.15rem;
-  color: #a78bfa;
+  color: var(--accent);
 }
 
 .output-actions {
@@ -210,14 +211,14 @@ select:focus {
 }
 
 .story-content {
-  background: #131313;
-  border: 1px solid #3f3f46;
-  border-radius: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   padding: 2rem 2.5rem;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.05rem;
   line-height: 1.85;
-  color: #ddd8cc;
+  color: var(--text-body);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -228,7 +229,7 @@ select:focus {
   display: inline-block;
   width: 2px;
   height: 1.1em;
-  background: #c084fc;
+  background: var(--accent);
   margin-left: 2px;
   vertical-align: text-bottom;
   animation: blink 0.85s step-end infinite;

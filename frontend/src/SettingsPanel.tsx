@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { applyTheme, type ThemeMode } from './theme';
 import './SettingsPanel.css';
+
+const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
+  { value: 'dark', label: 'Dark (Liquid Glass)' },
+  { value: 'high-contrast', label: 'High contrast' },
+];
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku' },
@@ -602,23 +608,30 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
 
           {/* ── Theme ── */}
           <section className="settings-section" aria-labelledby="section-theme">
-            <h3 className="settings-section-title" id="section-theme">Theme</h3>
+            <h3 className="settings-section-title" id="section-theme">Appearance</h3>
             <div className="settings-field">
-              <div className="settings-radio-group" role="radiogroup" aria-label="App theme">
-                {(['dark', 'light'] as const).map((t) => (
-                  <label key={t} className="settings-radio-label">
+              <div className="settings-radio-group" role="radiogroup" aria-label="Appearance">
+                {THEME_CHOICES.map(({ value, label }) => (
+                  <label key={value} className="settings-radio-label">
                     <input
                       type="radio"
                       name="theme"
-                      value={t}
-                      checked={settings.theme === t}
-                      onChange={() => { setSettings((p) => ({ ...p, theme: t })); setSavedOk(false); }}
+                      value={value}
+                      checked={settings.theme === value}
+                      onChange={() => {
+                        setSettings((p) => ({ ...p, theme: value }));
+                        applyTheme(value); // live preview
+                        setSavedOk(false);
+                      }}
                     />
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                    {label}
                   </label>
                 ))}
               </div>
-              <p className="settings-hint">Theme switching UI is a placeholder — the value is persisted for future use.</p>
+              <p className="settings-hint">
+                Mythos Writer uses the dark Liquid Glass theme. High contrast switches to
+                opaque, AAA-contrast surfaces for accessibility.
+              </p>
             </div>
           </section>
 
