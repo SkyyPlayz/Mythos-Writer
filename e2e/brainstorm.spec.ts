@@ -103,8 +103,11 @@ function seedUserData(userData: string, vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
+  // --headless when no X display; --no-sandbox so Electron can spawn its renderer
+  // under Xvfb in CI (matches the packaged-app smoke test in ci.yml).
+  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   return electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`],
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
     timeout: 30_000,
   });
 }
