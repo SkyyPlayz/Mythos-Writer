@@ -3,7 +3,7 @@ import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS } from './BrainstormP
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; error: string }) => void;
+type ErrorHandler = (data: { streamId: string; category: string; message: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -48,14 +48,14 @@ function buildApi(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function simulateStream(tokens: string[], error?: string) {
+async function simulateStream(tokens: string[], errorMessage?: string) {
   await waitFor(() => expect(tokenCb).not.toBeNull());
   act(() => {
     for (const t of tokens) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
-    if (error) {
-      errorCb?.({ streamId: 'test-stream-1', error });
+    if (errorMessage) {
+      errorCb?.({ streamId: 'test-stream-1', category: 'unknown', message: errorMessage });
     } else {
       endCb?.({ streamId: 'test-stream-1' });
     }
@@ -281,12 +281,12 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     // Fire error immediately — no tokens precede it.
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: 'Invalid API key — check your API key in Settings.' });
+      errorCb?.({ streamId: 'test-stream-1', category: 'auth', message: 'Authentication error — check your API key in Settings.' });
     });
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Invalid API key — check your API key in Settings.',
+        'Authentication error — check your API key in Settings.',
       ),
     );
     // Pending assistant bubble should be gone.
@@ -304,16 +304,17 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Invalid API key — check your API key in Settings.',
+        category: 'auth',
+        message: 'Authentication error — check your API key in Settings.',
       });
     });
 
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Invalid API key'),
+      expect(screen.getByRole('alert')).toHaveTextContent('Authentication error'),
     );
   });
 
-  it('displays user-friendly rate-limit message when STREAM_ERROR carries 429 message', async () => {
+  it('displays user-friendly rate-limit message when STREAM_ERROR carries 429 category', async () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'test' },
@@ -324,7 +325,8 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Rate limit reached — too many requests. Try again shortly.',
+        category: 'rate_limited',
+        message: 'Rate limit reached — try again shortly.',
       });
     });
 
@@ -333,7 +335,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     );
   });
 
-  it('displays model-unavailable message when STREAM_ERROR carries 404 message', async () => {
+  it('displays model-unavailable message when STREAM_ERROR carries invalid_request category', async () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'test' },
@@ -344,16 +346,17 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Model unavailable — the selected model may not be accessible on your account.',
+        category: 'invalid_request',
+        message: 'Invalid request — check the model and input parameters.',
       });
     });
 
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Model unavailable'),
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid request'),
     );
   });
 
-  it('falls back to generic message when STREAM_ERROR has empty error string', async () => {
+  it('falls back to generic message when STREAM_ERROR has empty message string', async () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'test' },
@@ -362,7 +365,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: '' });
+      errorCb?.({ streamId: 'test-stream-1', category: 'unknown', message: '' });
     });
 
     await waitFor(() =>
@@ -378,7 +381,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: 'Rate limit reached — too many requests. Try again shortly.' });
+      errorCb?.({ streamId: 'test-stream-1', category: 'rate_limited', message: 'Rate limit reached — try again shortly.' });
     });
 
     await waitFor(() =>
@@ -681,5 +684,149 @@ describe('Mic button', () => {
     await waitFor(() =>
       expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('hello world'),
     );
+  });
+});
+
+// ─── Archive: continuity issues in Brainstorm sidebar ────────────────────────
+
+function makeInconsistencySuggestion(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'cont-1',
+    source_agent: 'archive',
+    confidence: 0.92,
+    rationale: 'Elara has blonde hair in the vault but dark hair in this scene.',
+    target_kind: 'manuscript',
+    target_path: 'scenes/ch1/scene1.md',
+    target_anchor: null,
+    payload_json: JSON.stringify({
+      kind: 'inconsistency',
+      entityName: 'Elara',
+      anchorText: 'her dark hair',
+    }),
+    status: 'proposed',
+    created_at: new Date().toISOString(),
+    applied_at: null,
+    applied_run_id: null,
+    budget_exceeded: 0,
+    ...overrides,
+  };
+}
+
+describe('BrainstormPage — continuity issues (Archive)', () => {
+  it('loads continuity issues from suggestionsList on mount', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() => expect(mockSuggestionsList).toHaveBeenCalledWith(undefined, 'archive'));
+  });
+
+  it('renders a continuity issue as a checkbox with its description', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const checkbox = await screen.findByRole('checkbox', { name: /continuity issue: elara has blonde hair/i });
+    expect(checkbox).toBeInTheDocument();
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it('renders the issue description text in the sidebar', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Elara has blonde hair in the vault but dark hair in this scene\./i),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it('shows empty state when no continuity issues exist', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({ suggestions: [] });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('clicking "Send to Chat" on an expanded issue marks it resolved and calls suggestionsAccept', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
+    (window as unknown as { api: unknown }).api = buildApi({
+      suggestionsList: mockSuggestionsList,
+      suggestionsAccept: mockSuggestionsAccept,
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    // Click the label button to expand the issue form
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+
+    // Click "Send to Chat" to resolve and call suggestionsAccept
+    const sendBtn = await screen.findByRole('button', { name: /send to chat/i });
+    fireEvent.click(sendBtn);
+
+    await waitFor(() => expect(mockSuggestionsAccept).toHaveBeenCalledWith('cont-1'));
+  });
+
+  it('renders multiple continuity issues as separate checkboxes', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [
+        makeInconsistencySuggestion({ id: 'cont-1', rationale: 'Hair colour mismatch.' }),
+        makeInconsistencySuggestion({
+          id: 'cont-2',
+          rationale: 'Eye colour mismatch.',
+          payload_json: JSON.stringify({ kind: 'inconsistency', entityName: 'Kira', anchorText: 'brown eyes' }),
+        }),
+      ],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const checkboxes = await screen.findAllByRole('checkbox', { name: /continuity issue/i });
+    expect(checkboxes).toHaveLength(2);
+  });
+
+  it('wiki-link suggestions from archive are not shown as continuity issues', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [
+        {
+          id: 'wl-1',
+          source_agent: 'archive',
+          rationale: 'Entity mention without wiki-link.',
+          payload_json: JSON.stringify({ kind: 'wiki-link', link: '[[Elara]]', anchorText: 'Elara' }),
+          status: 'proposed',
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
   });
 });

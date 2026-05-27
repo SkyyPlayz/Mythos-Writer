@@ -417,3 +417,164 @@
   font-size: 12px;
   color: var(--text-secondary, #aaa);
 }
+
+/* ─── Chapter doc view (MYT-378) ─── */
+
+.chapter-doc-view {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chapter-doc-header {
+  padding: 20px 32px 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.chapter-doc-scenes {
+  padding: 16px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chapter-doc-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.chapter-doc-scene {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  background: var(--bg-surface);
+}
+
+.chapter-doc-scene:hover {
+  background: var(--bg-overlay);
+  border-color: var(--border-strong);
+}
+
+.chapter-doc-scene.active {
+  border-color: var(--accent-primary, var(--accent));
+  background: var(--bg-overlay);
+}
+
+.chapter-doc-scene:focus-visible {
+  outline: 2px solid var(--accent-primary, var(--accent));
+  outline-offset: 2px;
+}
+
+.chapter-doc-scene-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.chapter-doc-scene-excerpt {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+/* ─── Book outline view (MYT-378) ─── */
+
+.book-outline-view {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.book-outline-header {
+  padding: 20px 32px 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.book-outline-body {
+  padding: 16px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.book-outline-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.book-outline-chapter {
+  border-left: 2px solid var(--border-subtle);
+  padding-left: 14px;
+}
+
+.book-outline-chapter.active-chapter {
+  border-left-color: var(--accent-primary, var(--accent));
+}
+
+.book-outline-chapter-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.book-outline-scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.book-outline-no-scenes {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  padding: 4px 0;
+}
+
+.book-outline-scene {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.book-outline-scene:hover {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+}
+
+.book-outline-scene.active-scene {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.book-outline-scene:focus-visible {
+  outline: 2px solid var(--accent-primary, var(--accent));
+  outline-offset: 2px;
+}

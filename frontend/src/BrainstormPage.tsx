@@ -332,11 +332,11 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       setLoading(false);
     });
 
-    const unsubError = window.api.onStreamError(({ streamId: sid, error: err }) => {
+    const unsubError = window.api.onStreamError(({ streamId: sid, message }) => {
       if (sid !== streamIdRef.current) return;
       cleanupStreamRef.current?.();
       setMessages((prev) => prev.slice(0, -1));
-      const msg = err || 'AI unavailable — check your API key in settings.';
+      const msg = message || 'AI unavailable — check your API key in settings.';
       setError(msg);
       announce(`Error: ${msg}`);
       setLoading(false);

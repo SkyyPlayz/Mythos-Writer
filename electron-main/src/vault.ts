@@ -11,6 +11,9 @@ import type {
   SceneEntry,
   BlockEntry,
   EntityEntry,
+  VaultObsidianDryRunReport,
+  ObsidianBrokenLink,
+  ObsidianNameCollision,
 } from './ipc.js';
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 
@@ -83,8 +86,22 @@ export function sceneVaultPath(
   return resolveSlugCollision(vaultRoot, chapterDir, toSlug(sceneTitle), '.md');
 }
 
-// ─── Path safety ───
+// ─── Size limits ───
 
+export const MAX_VAULT_FILE_BYTES = 25 * 1024 * 1024; // 25 MB — well above any scene
+
+export class VaultFileTooLargeError extends Error {
+  readonly sizeBytes: number;
+  readonly limitBytes: number;
+  constructor(sizeBytes: number, limitBytes = MAX_VAULT_FILE_BYTES) {
+    super(
+      `File too large: ${(sizeBytes / 1024 / 1024).toFixed(1)} MB exceeds the ${(limitBytes / 1024 / 1024).toFixed(0)} MB limit.`
+    );
+    this.name = 'VaultFileTooLargeError';
+    this.sizeBytes = sizeBytes;
+    this.limitBytes = limitBytes;
+  }
+}
 /**
  * Resolve a relative path inside the vault, hardening against symlink escape.
  * Uses fs.realpathSync.native to follow filesystem symlinks, then checks
@@ -93,52 +110,50 @@ export function sceneVaultPath(
  * For reads (file exists): realpath the full path.
  * For writes (leaf may not exist): realpath the parent directory.
  */
-export function realSafePath(vaultRoot: string, relativePath: string, writeMode = false): string {
+export function realSafePath(vaultRoot: string, relativePath: string, _writeMode = false): string {
   const realVaultRoot = fs.realpathSync.native(vaultRoot);
   const resolved = path.resolve(vaultRoot, relativePath);
 
-  if (writeMode) {
-    // Leaf file may not exist yet — realpath the parent directory
-    const parent = path.dirname(resolved);
-    if (!fs.existsSync(parent)) {
-      // Parent doesn't exist yet; check that the resolved parent path
-      // would stay within the vault (prefix check on unresolved path)
-      if (!resolved.startsWith(realVaultRoot + path.sep) && resolved !== realVaultRoot) {
-        throw new Error(`Path traversal denied: ${relativePath}`);
-      }
-      return resolved;
-    }
-    const realParent = fs.realpathSync.native(parent);
-    if (!realParent.startsWith(realVaultRoot + path.sep) && realParent !== realVaultRoot) {
-      throw new Error(`Path traversal denied: ${relativePath} (parent symlink escapes vault)`);
+  // Existing leaf path (read or overwrite): realpath the leaf and reject escapes.
+  if (fs.existsSync(resolved)) {
+    const realPath = fs.realpathSync.native(resolved);
+    if (!realPath.startsWith(realVaultRoot + path.sep) && realPath !== realVaultRoot) {
+      throw new Error(`Path traversal denied: ${relativePath} (symlink escape detected)`);
     }
     return resolved;
   }
 
-  // Read mode: file must exist — realpath the full path
-  if (!fs.existsSync(resolved)) {
-    throw new Error(`File not found: ${relativePath}`);
+  // Missing leaf path (new write target): realpath parent if present.
+  const parent = path.dirname(resolved);
+  if (fs.existsSync(parent)) {
+    const realParent = fs.realpathSync.native(parent);
+    if (!realParent.startsWith(realVaultRoot + path.sep) && realParent !== realVaultRoot) {
+      throw new Error(`Path traversal denied: ${relativePath} (parent symlink escape detected)`);
+    }
+    return resolved;
   }
-  const realPath = fs.realpathSync.native(resolved);
-  if (!realPath.startsWith(realVaultRoot + path.sep) && realPath !== realVaultRoot) {
-    throw new Error(`Path traversal denied: ${relativePath} (symlink escapes vault)`);
+
+  // Parent doesn't exist yet — ensure unresolved path still stays within vault.
+  if (!resolved.startsWith(realVaultRoot + path.sep) && resolved !== realVaultRoot) {
+    throw new Error(`Path traversal denied: ${relativePath}`);
   }
   return resolved;
 }
 
-/** Legacy alias — deprecated, use realSafePath. */
-export function safePath(vaultRoot: string, relativePath: string): string {
-  return realSafePath(vaultRoot, relativePath, false);
-}
+// Legacy alias — deprecated, use realSafePath.
+export const safePath = realSafePath;
 
 // ─── Basic R/W (used by legacy IPC channels) ───
 
 export function readVaultFile(vaultRoot: string, filePath: string): { content: string; path: string } {
   const fullPath = safePath(vaultRoot, filePath);
+  const size = fs.statSync(fullPath).size;
+  if (size > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(size);
   return { content: fs.readFileSync(fullPath, 'utf-8'), path: filePath };
 }
 
-export function writeVaultFile(
+/** Non-atomic write — leaves a torn file if the process crashes mid-write. Only for tests. */
+export function writeVaultFileUnsafe_testOnly(
   vaultRoot: string,
   filePath: string,
   content: string
@@ -160,10 +175,11 @@ export function writeVaultFileAtomic(
   content: string
 ): { path: string; bytes: number } {
   const fullPath = realSafePath(vaultRoot, filePath, true);
+  const buf = Buffer.from(content, 'utf-8');
+  if (buf.byteLength > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(buf.byteLength);
   const dir = path.dirname(fullPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${fullPath}.tmp`;
-  const buf = Buffer.from(content, 'utf-8');
+  const tmp = `${fullPath}.${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`;
   const fd = fs.openSync(tmp, 'w');
   try {
     fs.writeSync(fd, buf);
@@ -171,8 +187,37 @@ export function writeVaultFileAtomic(
   } finally {
     fs.closeSync(fd);
   }
-  fs.renameSync(tmp, fullPath);
+  try {
+    fs.renameSync(tmp, fullPath);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
+    throw err;
+  }
   return { path: filePath, bytes: buf.byteLength };
+}
+
+/**
+ * Generic atomic write for arbitrary absolute paths (e.g. export targets outside the vault).
+ * Does NOT enforce the vault sandbox — callers are responsible for path safety.
+ */
+export function writeFileAtomic(absPath: string, data: Buffer | string): void {
+  const dir = path.dirname(absPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${absPath}.${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`;
+  const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeSync(fd, buf);
+    fs.fdatasyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.renameSync(tmp, absPath);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
+    throw err;
+  }
 }
 
 export function listVaultFiles(
@@ -291,7 +336,7 @@ export function writeSceneFile(vaultRoot: string, relativePath: string, data: Sc
     updatedAt: new Date().toISOString(),
   };
   const content = serializeFrontmatter(fm, data.prose);
-  writeVaultFile(vaultRoot, relativePath, content);
+  writeVaultFileAtomic(vaultRoot, relativePath, content);
 }
 
 /** Atomic variant of writeSceneFile — temp + fdatasync + rename. */
@@ -354,7 +399,7 @@ export function writeEntityFile(vaultRoot: string, relativePath: string, data: E
     ...(data.tags?.length ? { tags: data.tags } : {}),
     updatedAt: new Date().toISOString(),
   };
-  writeVaultFile(vaultRoot, relativePath, serializeFrontmatter(fm, data.prose));
+  writeVaultFileAtomic(vaultRoot, relativePath, serializeFrontmatter(fm, data.prose));
 }
 
 export function readEntityFile(vaultRoot: string, relativePath: string): EntityFileData {
@@ -541,14 +586,18 @@ export function importObsidianVault(
       const srcFull = path.join(sourcePath, relPath);
       const realSrcFull = fs.realpathSync.native(srcFull);
       const dstFull = path.join(vaultRoot, relPath);
-      const dstDir = path.dirname(dstFull);
 
       if (fs.existsSync(dstFull)) {
         skipped++;
         continue;
       }
 
-      if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true });
+      // MYT-447: cap source file size before reading so a multi-GB .md doesn't OOM the main process.
+      const srcSize = fs.statSync(srcFull).size;
+      if (srcSize > MAX_VAULT_FILE_BYTES) {
+        errors.push(`${relPath}: ${new VaultFileTooLargeError(srcSize).message}`);
+        continue;
+      }
 
       let content = fs.readFileSync(realSrcFull, 'utf-8');
       const { frontmatter, prose } = parseFrontmatter(content);
@@ -560,7 +609,7 @@ export function importObsidianVault(
         content = serializeFrontmatter(frontmatter, prose);
       }
 
-      fs.writeFileSync(dstFull, content, 'utf-8');
+      writeVaultFileAtomic(vaultRoot, relPath, content);
       imported++;
     } catch (err) {
       errors.push(`${relPath}: ${(err as Error).message}`);
@@ -582,7 +631,7 @@ export async function startVaultWatcher(
 
   const { default: chokidar } = await import('chokidar');
   activeWatcher = chokidar.watch(vaultRoot, {
-    ignored: /(^|[/\\])\../, // ignore dotfiles
+    ignored: /(^|[/\\\\])\\../, // ignore dotfiles
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
@@ -611,4 +660,191 @@ export async function stopVaultWatcher(): Promise<void> {
     await activeWatcher.close();
     activeWatcher = null;
   }
+}
+
+// ─── Notes Vault scaffold ───
+// Creates the standard subdirectory structure for a new Notes Vault.
+
+const NOTES_VAULT_DIRS = ['Characters', 'Locations', 'Items', 'Concepts', 'Notes'];
+
+export function scaffoldNotesVault(vaultRoot: string): void {
+  for (const dir of NOTES_VAULT_DIRS) {
+    const full = path.join(vaultRoot, dir);
+    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+  }
+}
+
+// ─── Notes Vault watcher (separate instance from Story Vault watcher) ───
+
+let activeNotesWatcher: FSWatcher | null = null;
+
+export async function startNotesVaultWatcher(
+  vaultRoot: string,
+  onChanged: (filePath: string) => void
+): Promise<void> {
+  if (activeNotesWatcher) return;
+
+  const { default: chokidar } = await import('chokidar');
+  activeNotesWatcher = chokidar.watch(vaultRoot, {
+    ignored: /(^|[/\\\\])\\../,
+    persistent: true,
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
+    followSymlinks: false, // MYT-362: don't recurse into symlinked dirs
+  });
+
+  activeNotesWatcher.on('change', (filePath: string) => {
+    if (filePath.endsWith('.md')) onChanged(filePath);
+  });
+  activeNotesWatcher.on('add', (filePath: string) => {
+    if (filePath.endsWith('.md')) onChanged(filePath);
+  });
+  activeNotesWatcher.on('unlink', (filePath: string) => onChanged(filePath));
+  activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
+  activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
+}
+
+export async function stopNotesVaultWatcher(): Promise<void> {
+  if (activeNotesWatcher) {
+    await activeNotesWatcher.close();
+    activeNotesWatcher = null;
+  }
+}
+
+// ─── Obsidian dry-run ───
+// Scans an Obsidian vault directory and reports potential import issues
+// without making any changes to disk.
+
+export function obsidianDryRun(
+  sourcePath: string,
+  existingManifest: Manifest | null
+): VaultObsidianDryRunReport {
+  if (!fs.existsSync(sourcePath)) {
+    return {
+      notesCount: 0,
+      brokenLinks: [],
+      nameCollisions: [],
+      missingFrontmatter: [],
+      fatalError: `Path does not exist: ${sourcePath}`,
+    };
+  }
+
+  let fatalError: string | null = null;
+  const files: string[] = [];
+
+  try {
+    const allFiles = collectMarkdownFiles(sourcePath);
+    files.push(...allFiles);
+  } catch (err) {
+    fatalError = (err as Error).message;
+    return {
+      notesCount: 0,
+      brokenLinks: [],
+      nameCollisions: [],
+      missingFrontmatter: [],
+      fatalError,
+    };
+  }
+
+  // Build set of file stems for broken-link detection
+  const stemSet = new Set(
+    files.map((f) => path.basename(f, '.md').toLowerCase()),
+  );
+
+  // Build set of existing entity names for collision detection
+  const existingNames = new Set<string>();
+  if (existingManifest) {
+    for (const entity of existingManifest.entities ?? []) {
+      existingNames.add(entity.name.toLowerCase());
+    }
+  }
+
+  const brokenLinks: ObsidianBrokenLink[] = [];
+  const nameCollisions: ObsidianNameCollision[] = [];
+  const missingFrontmatter: string[] = [];
+  const WIKI_LINK_RE = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+
+  for (const relPath of files) {
+    let raw = '';
+    try {
+      raw = fs.readFileSync(path.join(sourcePath, relPath), 'utf-8');
+    } catch {
+      continue;
+    }
+
+    // Check for missing frontmatter
+    if (!/^---\r?\n/.test(raw)) {
+      missingFrontmatter.push(relPath);
+    }
+
+    // Check for broken wiki-links
+    let m: RegExpExecArray | null;
+    WIKI_LINK_RE.lastIndex = 0;
+    while ((m = WIKI_LINK_RE.exec(raw)) !== null) {
+      const target = m[1].trim();
+      if (!stemSet.has(target.toLowerCase())) {
+        brokenLinks.push({ file: relPath, target: `[[${target}]]` });
+      }
+    }
+
+    // Check for name collisions with existing entities
+    const stem = path.basename(relPath, '.md');
+    if (existingNames.has(stem.toLowerCase())) {
+      nameCollisions.push({ name: stem, file: relPath });
+    }
+  }
+
+  return {
+    notesCount: files.length,
+    brokenLinks,
+    nameCollisions,
+    missingFrontmatter,
+    fatalError,
+  };
+}
+
+// ─── Provenance frontmatter merge ───
+// Merges agent provenance metadata into an existing vault file's frontmatter
+// while preserving (or replacing) the prose body.
+
+interface ProvenanceFields {
+  source_agent: string;
+  confidence: number;
+  rationale: string;
+  timestamp: string;
+  run_id?: string;
+  suggestion_id?: string;
+}
+
+export function mergeProvenanceFrontmatter(
+  vaultRoot: string,
+  filePath: string,
+  provenance: ProvenanceFields,
+  newProse: string
+): void {
+  const fullPath = safePath(vaultRoot, filePath);
+
+  let existingFm: Frontmatter = {};
+  try {
+    const raw = fs.readFileSync(fullPath, 'utf-8');
+    existingFm = parseFrontmatter(raw).frontmatter;
+  } catch {
+    // New file — start with empty frontmatter
+  }
+
+  const merged: Frontmatter = {
+    ...existingFm,
+    provenance_source_agent: provenance.source_agent,
+    provenance_confidence: provenance.confidence,
+    provenance_rationale: provenance.rationale,
+    provenance_timestamp: provenance.timestamp,
+    ...(provenance.run_id ? { provenance_run_id: provenance.run_id } : {}),
+    ...(provenance.suggestion_id
+      ? { provenance_suggestion_id: provenance.suggestion_id }
+      : {}),
+    updatedAt: provenance.timestamp,
+  };
+
+  const content = serializeFrontmatter(merged, newProse);
+  writeVaultFileAtomic(vaultRoot, filePath, content);
 }

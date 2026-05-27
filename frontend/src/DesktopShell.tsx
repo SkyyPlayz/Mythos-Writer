@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import { applyTheme } from './theme';
@@ -17,6 +17,7 @@ import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
+import DepthSlider, { type ViewDepth } from './DepthSlider';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -241,6 +242,129 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
   );
 }
 
+// ─── Chapter doc view ───
+
+interface ChapterDocViewProps {
+  chapter: Chapter;
+  selectedSceneId: string | null;
+  onSelectScene: (scene: Scene) => void;
+}
+
+function ChapterDocView({ chapter, selectedSceneId, onSelectScene }: ChapterDocViewProps) {
+  const sortedScenes = useMemo(
+    () => [...chapter.scenes].sort((a, b) => a.order - b.order),
+    [chapter.scenes],
+  );
+  const selectedRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedSceneId]);
+
+  return (
+    <div className="chapter-doc-view">
+      <div className="chapter-doc-header">{chapter.title}</div>
+      <div className="chapter-doc-scenes">
+        {sortedScenes.length === 0 ? (
+          <div className="chapter-doc-empty">No scenes in this chapter yet.</div>
+        ) : (
+          sortedScenes.map((scene) => {
+            const isActive = scene.id === selectedSceneId;
+            const bodyText = scene.blocks
+              .slice()
+              .sort((a, b) => a.order - b.order)
+              .map((b) => b.content)
+              .join('\n\n')
+              .trim();
+            return (
+              <div
+                key={scene.id}
+                ref={isActive ? selectedRef : null}
+                className={`chapter-doc-scene${isActive ? ' active' : ''}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectScene(scene)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSelectScene(scene); } }}
+                aria-pressed={isActive}
+              >
+                <div className="chapter-doc-scene-title">{scene.title}</div>
+                {bodyText && (
+                  <div className="chapter-doc-scene-excerpt">
+                    {bodyText.slice(0, 300)}{bodyText.length > 300 ? '…' : ''}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Book outline view ───
+
+interface BookOutlineViewProps {
+  story: Story;
+  selectedChapterId: string | null;
+  selectedSceneId: string | null;
+  onSelectScene: (scene: Scene, chapter: Chapter) => void;
+}
+
+function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectScene }: BookOutlineViewProps) {
+  const sortedChapters = useMemo(
+    () => [...story.chapters].sort((a, b) => a.order - b.order),
+    [story.chapters],
+  );
+
+  return (
+    <div className="book-outline-view">
+      <div className="book-outline-header">{story.title}</div>
+      <div className="book-outline-body">
+        {sortedChapters.length === 0 ? (
+          <div className="book-outline-empty">No chapters yet.</div>
+        ) : (
+          sortedChapters.map((chapter) => {
+            const isActiveChapter = chapter.id === selectedChapterId;
+            const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
+            return (
+              <div key={chapter.id} className={`book-outline-chapter${isActiveChapter ? ' active-chapter' : ''}`}>
+                <div className="book-outline-chapter-title">{chapter.title}</div>
+                <div className="book-outline-scene-list">
+                  {sortedScenes.length === 0 ? (
+                    <div className="book-outline-no-scenes">No scenes</div>
+                  ) : (
+                    sortedScenes.map((scene) => {
+                      const isActiveScene = scene.id === selectedSceneId;
+                      return (
+                        <div
+                          key={scene.id}
+                          className={`book-outline-scene${isActiveScene ? ' active-scene' : ''}`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => onSelectScene(scene, chapter)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); onSelectScene(scene, chapter); }
+                          }}
+                          aria-pressed={isActiveScene}
+                        >
+                          {scene.title}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────
+
 interface DragState {
   target: 'left' | 'right';
   startX: number;
@@ -267,6 +391,7 @@ export default function DesktopShell() {
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
+  const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
@@ -699,6 +824,150 @@ export default function DesktopShell() {
     }
   }, [selectedStory, selectedScene, handleSelectScene]);
 
+  // ─── Header depth slider navigation (MYT-378) ───
+
+  const depthCanPrev = useMemo(() => {
+    if (!selectedStory) return false;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return false;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      return sorted.findIndex((s) => s.id === selectedScene.id) > 0;
+    }
+    if (viewDepth === 'chapter') {
+      if (!selectedChapter) return false;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      return sorted.findIndex((c) => c.id === selectedChapter.id) > 0;
+    }
+    return stories.findIndex((s) => s.id === selectedStory.id) > 0;
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories]);
+
+  const depthCanNext = useMemo(() => {
+    if (!selectedStory) return false;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return false;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
+      return idx >= 0 && idx < sorted.length - 1;
+    }
+    if (viewDepth === 'chapter') {
+      if (!selectedChapter) return false;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      return idx >= 0 && idx < sorted.length - 1;
+    }
+    const idx = stories.findIndex((s) => s.id === selectedStory.id);
+    return idx >= 0 && idx < stories.length - 1;
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories]);
+
+  const depthContextLabel = useMemo(() => {
+    if (!selectedStory) return '';
+    if (viewDepth === 'scene' && selectedChapter && selectedScene) {
+      return `${selectedChapter.title} › ${selectedScene.title}`;
+    }
+    if (viewDepth === 'chapter' && selectedChapter) {
+      return `${selectedStory.title} › ${selectedChapter.title}`;
+    }
+    return selectedStory.title;
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
+
+  const handleDepthPrev = useCallback(() => {
+    if (!selectedStory) return;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
+      if (idx > 0) handleSelectScene(sorted[idx - 1], selectedChapter, selectedStory);
+    } else if (viewDepth === 'chapter') {
+      if (!selectedChapter) return;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      if (idx > 0) {
+        const prev = sorted[idx - 1];
+        const firstScene = [...prev.scenes].sort((a, b) => a.order - b.order)[0];
+        if (firstScene) {
+          handleSelectScene(firstScene, prev, selectedStory);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(prev);
+          setSelectedEntity(null);
+        }
+      }
+    } else {
+      const idx = stories.findIndex((s) => s.id === selectedStory.id);
+      if (idx > 0) {
+        const prev = stories[idx - 1];
+        const firstCh = [...prev.chapters].sort((a, b) => a.order - b.order)[0];
+        const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
+        if (firstSc && firstCh) {
+          handleSelectScene(firstSc, firstCh, prev);
+        } else if (firstCh) {
+          setSelectedScene(null);
+          setSelectedChapter(firstCh);
+          setSelectedStory(prev);
+          setSelectedEntity(null);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(null);
+          setSelectedStory(prev);
+          setSelectedEntity(null);
+        }
+      }
+    }
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
+
+  const handleDepthNext = useCallback(() => {
+    if (!selectedStory) return;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
+      if (idx >= 0 && idx < sorted.length - 1) handleSelectScene(sorted[idx + 1], selectedChapter, selectedStory);
+    } else if (viewDepth === 'chapter') {
+      if (!selectedChapter) return;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      if (idx >= 0 && idx < sorted.length - 1) {
+        const next = sorted[idx + 1];
+        const firstScene = [...next.scenes].sort((a, b) => a.order - b.order)[0];
+        if (firstScene) {
+          handleSelectScene(firstScene, next, selectedStory);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(next);
+          setSelectedEntity(null);
+        }
+      }
+    } else {
+      const idx = stories.findIndex((s) => s.id === selectedStory.id);
+      if (idx >= 0 && idx < stories.length - 1) {
+        const next = stories[idx + 1];
+        const firstCh = [...next.chapters].sort((a, b) => a.order - b.order)[0];
+        const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
+        if (firstSc && firstCh) {
+          handleSelectScene(firstSc, firstCh, next);
+        } else if (firstCh) {
+          setSelectedScene(null);
+          setSelectedChapter(firstCh);
+          setSelectedStory(next);
+          setSelectedEntity(null);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(null);
+          setSelectedStory(next);
+          setSelectedEntity(null);
+        }
+      }
+    }
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
+
+  const handleViewDepthChange = useCallback((newDepth: ViewDepth) => {
+    setViewDepth(newDepth);
+    if (newDepth === 'scene' && !selectedScene && selectedChapter && selectedStory) {
+      const first = [...selectedChapter.scenes].sort((a, b) => a.order - b.order)[0];
+      if (first) handleSelectScene(first, selectedChapter, selectedStory);
+    }
+  }, [selectedScene, selectedChapter, selectedStory, handleSelectScene]);
+
   if (loading) {
     return (
       <div className="shell-loading">
@@ -839,7 +1108,39 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {selectedScene ? (
+          {selectedStory && (
+            <DepthSlider
+              depth={viewDepth}
+              onDepthChange={handleViewDepthChange}
+              canPrev={depthCanPrev}
+              canNext={depthCanNext}
+              onPrev={handleDepthPrev}
+              onNext={handleDepthNext}
+              contextLabel={depthContextLabel}
+            />
+          )}
+          {viewDepth === 'book' && selectedStory ? (
+            <BookOutlineView
+              story={selectedStory}
+              selectedChapterId={selectedChapter?.id ?? null}
+              selectedSceneId={selectedScene?.id ?? null}
+              onSelectScene={(sc, ch) => {
+                handleSelectScene(sc, ch, selectedStory);
+                setViewDepth('scene');
+              }}
+            />
+          ) : viewDepth === 'chapter' && selectedChapter ? (
+            <ChapterDocView
+              chapter={selectedChapter}
+              selectedSceneId={selectedScene?.id ?? null}
+              onSelectScene={(sc) => {
+                if (selectedStory) {
+                  handleSelectScene(sc, selectedChapter, selectedStory);
+                  setViewDepth('scene');
+                }
+              }}
+            />
+          ) : selectedScene ? (
             <div className="shell-editor-beta-wrap">
               <BlockEditor
                 key={selectedScene.id}

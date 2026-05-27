@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import {
-  writeVaultFile,
+  writeVaultFileAtomic,
   readVaultFile,
   deleteVaultFile,
   parseFrontmatter,
@@ -119,7 +119,7 @@ export function createEntity(
   };
 
   const content = serializeEntityFrontmatter(fm, opts.prose ?? '');
-  writeVaultFile(vaultRoot, relPath, content);
+  writeVaultFileAtomic(vaultRoot, relPath, content);
 
   const entry = fmToEntry(fm, relPath);
 
@@ -197,7 +197,7 @@ export function updateEntity(
 
   const prose = changes.prose !== undefined ? changes.prose : existingProse;
   const content = serializeEntityFrontmatter(updatedFm, prose);
-  writeVaultFile(vaultRoot, entry.path, content);
+  writeVaultFileAtomic(vaultRoot, entry.path, content);
 
   const updated = fmToEntry(updatedFm, entry.path);
 

@@ -11,7 +11,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { writeVaultFile } from './vault.js';
+import { writeVaultFileUnsafe_testOnly } from './vault.js';
 import type { AppSettings } from './ipc.js';
 import {
   maskApiKey,
@@ -73,7 +73,7 @@ describe('vault safePath errors — no API key in message', () => {
   it('path traversal error message does not contain a key-like string', () => {
     let errorMsg = '';
     try {
-      writeVaultFile(tmpDir, '../escape', 'content');
+      writeVaultFileUnsafe_testOnly(tmpDir, '../escape', 'content');
     } catch (e) {
       errorMsg = (e as Error).message;
     }
