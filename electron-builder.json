@@ -20,7 +20,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "build/icon.icns",
+    "icon": "build/icon.png",
     "hardenedRuntime": true,
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
@@ -69,7 +69,9 @@
         "arch": ["x64"]
       }
     ],
-    "artifactName": "${productName}-${version}.${ext}"
+    "artifactName": "${productName}-${version}.${ext}",
+    "icon": "build/icon.png",
+    "category": "Office"
   },
   "publish": {
     "provider": "github",
