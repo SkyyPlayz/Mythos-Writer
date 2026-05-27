@@ -19,13 +19,20 @@ interface Migration {
 const migrations: Migration[] = [
   {
     toVersion: 1,
-    migrate: (m) => ({
-      ...m,
-      schemaVersion: 1,
-      provenance: (m.provenance as Record<string, string>) ?? {},
-      boardReferences: (m.boardReferences as string[]) ?? [],
-      migratedAt: new Date().toISOString(),
-    }),
+    migrate: (m) => {
+      const now = new Date().toISOString();
+      const vaultRoot = typeof m.vaultRoot === 'string' ? m.vaultRoot : '';
+      return {
+        ...m,
+        schemaVersion: 1,
+        name: typeof m.name === 'string' && m.name ? m.name : path.basename(vaultRoot) || 'Vault',
+        createdAt: typeof m.createdAt === 'string' && m.createdAt ? m.createdAt : now,
+        updatedAt: now,
+        provenance: (m.provenance as Record<string, string>) ?? {},
+        boardReferences: (m.boardReferences as string[]) ?? [],
+        migratedAt: now,
+      };
+    },
   },
 ];
 
@@ -98,12 +105,14 @@ export function migrateManifest(raw: Raw): Manifest {
 
 /**
  * Atomic write: serialise to a temp file then rename into place.
+ * Always stamps `updatedAt` to the current time before writing.
  * A process crash after writeFileSync but before renameSync leaves the
  * original file intact (the .tmp is orphaned but harmless).
  */
 export function writeManifestAtomic(manifestPath: string, manifest: Manifest): void {
+  const stamped: Manifest = { ...manifest, updatedAt: new Date().toISOString() };
   const tmp = `${manifestPath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2), 'utf-8');
+  fs.writeFileSync(tmp, JSON.stringify(stamped, null, 2), 'utf-8');
   fs.renameSync(tmp, manifestPath);
 }
 

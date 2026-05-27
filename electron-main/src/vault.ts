@@ -432,10 +432,14 @@ export function writeManifest(manifestPath: string, manifest: Manifest): void {
 }
 
 export function defaultManifest(vaultRoot: string): Manifest {
+  const now = new Date().toISOString();
   return {
     schemaVersion: SCHEMA_VERSION,
     version: '2.0.0',
     vaultRoot,
+    name: path.basename(vaultRoot),
+    createdAt: now,
+    updatedAt: now,
     stories: [],
     entities: [],
     suggestions: [],

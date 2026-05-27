@@ -329,6 +329,12 @@ export interface Manifest {
   schemaVersion: number;
   version: string;
   vaultRoot: string;
+  /** Human-readable vault name (defaults to vault root directory basename). */
+  name: string;
+  /** ISO timestamp of vault creation. */
+  createdAt: string;
+  /** ISO timestamp of last manifest write. */
+  updatedAt: string;
   stories: StoryEntry[];
   entities: EntityEntry[];
   suggestions: SuggestionEntry[];

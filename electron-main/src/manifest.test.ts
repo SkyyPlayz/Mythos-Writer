@@ -53,6 +53,26 @@ describe('defaultManifest', () => {
     expect(m.provenance).toEqual({});
     expect(m.boardReferences).toEqual([]);
   });
+
+  it('includes name derived from vault root basename', () => {
+    const m = defaultManifest('/tmp/my-vault');
+    expect(m.name).toBe('my-vault');
+  });
+
+  it('includes valid ISO createdAt and updatedAt timestamps', () => {
+    const before = Date.now();
+    const m = defaultManifest('/tmp/vault');
+    const after = Date.now();
+    expect(new Date(m.createdAt).getTime()).toBeGreaterThanOrEqual(before);
+    expect(new Date(m.createdAt).getTime()).toBeLessThanOrEqual(after);
+    expect(new Date(m.updatedAt).getTime()).toBeGreaterThanOrEqual(before);
+    expect(new Date(m.updatedAt).getTime()).toBeLessThanOrEqual(after);
+  });
+
+  it('createdAt and updatedAt are equal on a fresh manifest', () => {
+    const m = defaultManifest('/tmp/vault');
+    expect(m.createdAt).toBe(m.updatedAt);
+  });
 });
 
 describe('migrateManifest', () => {
@@ -87,10 +107,36 @@ describe('migrateManifest', () => {
     expect(migrated.boardReferences).toEqual(['board/scene.md']);
   });
 
+  it('sets name from vaultRoot basename during v0→v1 migration', () => {
+    const raw = legacyManifest('/tmp/my-legacy-vault');
+    const migrated = migrateManifest(raw as Record<string, unknown>);
+    expect(migrated.name).toBe('my-legacy-vault');
+  });
+
+  it('sets createdAt and updatedAt during v0→v1 migration', () => {
+    const raw = legacyManifest('/tmp/vault');
+    const before = Date.now();
+    const migrated = migrateManifest(raw as Record<string, unknown>);
+    const after = Date.now();
+    expect(new Date(migrated.createdAt).getTime()).toBeGreaterThanOrEqual(before);
+    expect(new Date(migrated.createdAt).getTime()).toBeLessThanOrEqual(after);
+    expect(new Date(migrated.updatedAt).getTime()).toBeGreaterThanOrEqual(before);
+    expect(new Date(migrated.updatedAt).getTime()).toBeLessThanOrEqual(after);
+  });
+
+  it('preserves existing createdAt when already present in legacy manifest', () => {
+    const existingCreatedAt = '2025-01-01T00:00:00.000Z';
+    const raw = { ...legacyManifest('/tmp/vault'), createdAt: existingCreatedAt };
+    const migrated = migrateManifest(raw as Record<string, unknown>);
+    expect(migrated.createdAt).toBe(existingCreatedAt);
+  });
+
   it('is idempotent when schemaVersion is already 1', () => {
     const already = defaultManifest('/tmp/vault');
     const migrated = migrateManifest(already as unknown as Record<string, unknown>);
     expect(migrated.schemaVersion).toBe(1);
+    expect(migrated.name).toBe(already.name);
+    expect(migrated.createdAt).toBe(already.createdAt);
   });
 
   it('preserves all legacy fields after migration', () => {
@@ -121,6 +167,18 @@ describe('writeManifestAtomic', () => {
     expect(fs.existsSync(manifestPath)).toBe(true);
     const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
     expect(parsed.schemaVersion).toBe(1);
+  });
+
+  it('stamps updatedAt on write', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const m = defaultManifest(tmpDir);
+    const before = Date.now();
+    writeManifestAtomic(manifestPath, m);
+    const after = Date.now();
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Record<string, unknown>;
+    const ts = new Date(parsed.updatedAt as string).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after);
   });
 
   it('does not leave a .tmp file behind after a successful write', () => {
