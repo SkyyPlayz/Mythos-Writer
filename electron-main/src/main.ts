@@ -1872,6 +1872,7 @@ const handlers: IpcHandlers = {
 
 // ─── Create BrowserWindow ───
 function createWindow() {
+  console.error('DBG createWindow:enter');
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -1882,13 +1883,16 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  console.error('DBG createWindow:BrowserWindow created');
 
   // Load the Vite-built renderer
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
     // electron-vite outputs renderer to out/renderer/ relative to out/main/
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    const rendererPath = path.join(__dirname, '../renderer/index.html');
+    console.error('DBG createWindow:loadFile ' + rendererPath + ' exists=' + require('fs').existsSync(rendererPath));
+    mainWindow.loadFile(rendererPath);
   }
 
   mainWindow.on('closed', () => {
@@ -2651,6 +2655,7 @@ function registerWritingScanHandler(): void {
 app.disableHardwareAcceleration();
 
 app.whenReady().then(async () => {
+  console.error('DBG whenReady:start');
   ensureVaultDir();
   ensureNotesVaultDir();
   // Track current vault in recent projects list on every launch
@@ -2668,7 +2673,9 @@ app.whenReady().then(async () => {
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
   );
+  console.error('DBG whenReady:before createWindow');
   createWindow();
+  console.error('DBG whenReady:after createWindow');
   initAutoUpdater();
   // Build initial FTS index (non-fatal)
   try {
