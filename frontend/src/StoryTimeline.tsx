@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -67,6 +67,7 @@ function formatTime(iso: string): string {
 export default function StoryTimeline({ storyPath, storyTitle, onClose }: StoryTimelineProps) {
   const [entries, setEntries] = useNodesState<Node>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
+  const [sortedRows, setSortedRows] = useState<TimelineEntry[]>([]);
 
   const loadEntries = useCallback(async () => {
     try {
@@ -75,6 +76,7 @@ export default function StoryTimeline({ storyPath, storyTitle, onClose }: StoryT
       const sorted = [...rows].sort(
         (a, b) => new Date(a.inferred_time).getTime() - new Date(b.inferred_time).getTime()
       );
+      setSortedRows(sorted);
       const overlaps = detectOverlaps(sorted);
       const CARD_W = 200;
       const GAP_X = 60;
@@ -140,19 +142,41 @@ export default function StoryTimeline({ storyPath, storyTitle, onClose }: StoryT
             <p className="tl-empty-sub">The Archive Agent will populate entries as it processes scenes.</p>
           </div>
         ) : (
-          <div className="tl-flow-wrap">
-            <ReactFlow
-              nodes={entries}
-              edges={edges}
-              fitView
-              minZoom={0.3}
-              maxZoom={2}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background color="#313244" gap={20} />
-              <Controls />
-            </ReactFlow>
-          </div>
+          <>
+            <div className="tl-flow-wrap" aria-hidden="true">
+              <ReactFlow
+                nodes={entries}
+                edges={edges}
+                fitView
+                minZoom={0.3}
+                maxZoom={2}
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background color="#313244" gap={20} />
+                <Controls />
+              </ReactFlow>
+            </div>
+            <table className="sr-only" aria-label={`Story timeline — ${storyTitle}`}>
+              <thead>
+                <tr>
+                  <th scope="col">Scene</th>
+                  <th scope="col">Time</th>
+                  <th scope="col">Confidence</th>
+                  <th scope="col">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRows.map(entry => (
+                  <tr key={entry.id}>
+                    <td>{sceneLabel(entry.scene_path)}</td>
+                    <td>{formatTime(entry.inferred_time)}</td>
+                    <td>{Math.round(entry.confidence * 100)}%</td>
+                    <td>{entry.source === 'explicit_marker' ? 'Explicit marker' : 'Prose inference'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
     </div>
