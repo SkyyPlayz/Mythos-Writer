@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { applyTheme, type ThemeMode } from './theme';
 import './SettingsPanel.css';
 
+interface MicDevice {
+  deviceId: string;
+  label: string;
+}
+
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
   { value: 'dark', label: 'Dark (Liquid Glass)' },
   { value: 'high-contrast', label: 'High contrast' },
@@ -68,6 +73,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
 
   useEffect(() => {
     window.api.settingsGet().then((s) => {
@@ -77,6 +83,16 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     }).catch(() => {
       setLoading(false);
     });
+  }, []);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+      const mics = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+      setMicDevices(mics);
+    }).catch(() => {});
   }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
@@ -631,6 +647,60 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               <p className="settings-hint">
                 Mythos Writer uses the dark Liquid Glass theme. High contrast switches to
                 opaque, AAA-contrast surfaces for accessibility.
+              </p>
+            </div>
+          </section>
+
+          {/* ── Voice ── */}
+          <section className="settings-section" aria-labelledby="section-voice">
+            <h3 className="settings-section-title" id="section-voice">Voice</h3>
+            <div className="settings-field">
+              <div className="settings-agent-header">
+                <span className="settings-label">Enable voice input</span>
+                <label className="settings-toggle" htmlFor="voice-enabled">
+                  <input
+                    id="voice-enabled"
+                    type="checkbox"
+                    aria-label="Enable voice input"
+                    checked={settings.voice?.enabled ?? false}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setSettings((p) => ({
+                        ...p,
+                        voice: { enabled, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: p.voice?.micDeviceId },
+                      }));
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+              {micDevices.length > 0 && (
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="voice-mic">Microphone</label>
+                  <select
+                    id="voice-mic"
+                    className="settings-input settings-select"
+                    value={settings.voice?.micDeviceId ?? ''}
+                    aria-label="Microphone selection"
+                    onChange={(e) => {
+                      const val = e.target.value || undefined;
+                      setSettings((p) => ({
+                        ...p,
+                        voice: { enabled: p.voice?.enabled ?? false, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: val },
+                      }));
+                      setSavedOk(false);
+                    }}
+                  >
+                    <option value="">System default</option>
+                    {micDevices.map((d) => (
+                      <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <p className="settings-hint">
+                Voice input lets you dictate text into the editor. Requires microphone permission.
               </p>
             </div>
           </section>
