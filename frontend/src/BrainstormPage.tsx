@@ -120,7 +120,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
-        const draft: Partial<BrainstormDraft> & { v?: number } = JSON.parse(raw);
+        const draft: { v?: number; messages?: Message[]; facts?: DetectedFact[]; prompt?: string } = JSON.parse(raw);
         const draftMessages = Array.isArray(draft.messages)
           ? draft.messages.map((m) => ({ ...m, streaming: false }))
           : [];
