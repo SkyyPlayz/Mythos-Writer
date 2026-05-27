@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import SuggestionReview from './SuggestionReview';
 
 const mockSuggestions = [
@@ -138,7 +138,12 @@ describe('SuggestionReview', () => {
     await waitFor(() => {
       expect(mockSuggestionsAccept).toHaveBeenCalledWith('sug-1');
     });
-    expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+    // Row removed from inbox
+    const inbox = screen.getByRole('list', { name: 'Pending suggestions' });
+    expect(within(inbox).queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+    // Optimistic audit entry appears in the audit trail
+    const auditList = screen.getByRole('list', { name: 'Audit trail entries' });
+    expect(within(auditList).getByText('Pacing is slow in the opening.')).toBeInTheDocument();
   });
 
   it('reject button calls IPC and removes row from proposed list', async () => {
@@ -151,7 +156,12 @@ describe('SuggestionReview', () => {
     await waitFor(() => {
       expect(mockSuggestionsReject).toHaveBeenCalledWith('sug-1');
     });
-    expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+    // Row removed from inbox
+    const inbox = screen.getByRole('list', { name: 'Pending suggestions' });
+    expect(within(inbox).queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+    // Optimistic audit entry appears in the audit trail
+    const auditList = screen.getByRole('list', { name: 'Audit trail entries' });
+    expect(within(auditList).getByText('Pacing is slow in the opening.')).toBeInTheDocument();
   });
 
   it('ignore button calls IPC and removes row from proposed list', async () => {

@@ -340,3 +340,82 @@
   text-align: center;
   padding: 24px 0;
 }
+
+/* ─── Audit Trail section ─── */
+
+.sr-section-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+}
+
+.sr-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+
+.sr-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.sr-count-muted {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.sr-audit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sr-audit-row {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0.85;
+}
+
+.sr-target-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.sr-audit-action-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.sr-audit-accepted {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--state-success);
+}
+
+.sr-audit-rejected {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--state-danger);
+}
+
+.sr-audit-summary {
+  color: var(--text-muted);
+}
