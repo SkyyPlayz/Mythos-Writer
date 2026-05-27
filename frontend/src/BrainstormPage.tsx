@@ -764,6 +764,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                   <div className="bs-fact-name">{fact.name}</div>
                   <p className="bs-fact-desc">{fact.content}</p>
                   <div className="bs-fact-actions">
+                    {fact.savedStatus === 'unsaved' && (
+                      <button
+                        className="bs-fact-save-btn"
+                        onClick={() => saveFactToVault(fact.id)}
+                      >
+                        Save to Vault
+                      </button>
+                    )}
                     {fact.savedStatus === 'saving' && (
                       <span className="bs-fact-saving">Saving…</span>
                     )}
