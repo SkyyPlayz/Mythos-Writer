@@ -27,7 +27,6 @@ import {
   _electron as electron,
   type ElectronApplication,
   type Page,
-  type Dialog,
 } from '@playwright/test';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -111,20 +110,16 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-/** Wait for a single native prompt() dialog and accept it with `response`. */
-async function acceptNextDialog(pg: Page, response: string): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const handler = async (dialog: Dialog) => {
-      pg.off('dialog', handler);
-      if (dialog.type() === 'prompt') {
-        await dialog.accept(response);
-      } else {
-        await dialog.dismiss();
-      }
-      resolve();
-    };
-    pg.on('dialog', handler);
-  });
+/**
+ * Fill and confirm the in-app text prompt modal (the app uses a custom modal
+ * rather than window.prompt(), which Electron does not support).
+ */
+async function fillPrompt(pg: Page, response: string): Promise<void> {
+  const input = pg.locator('.prompt-modal-input');
+  await input.waitFor({ state: 'visible', timeout: 6_000 });
+  await input.fill(response);
+  await pg.locator('.prompt-modal-ok').click();
+  await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
 /** Recursively collect all *.md files under `dir`. */
@@ -224,18 +219,16 @@ test('TC-V-02: create story + chapter, both appear in Stories navigator', async 
   if (await storiesTab.isVisible()) await storiesTab.click();
 
   // ── Create story ──────────────────────────────────────────────────────────
-  const storyDialogP = acceptNextDialog(page, STORY_TITLE);
   await page.locator('.nav-add-btn').first().click();
-  await storyDialogP;
+  await fillPrompt(page, STORY_TITLE);
 
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
   await expect(storyRow).toContainText(STORY_TITLE);
 
   // ── Create chapter ────────────────────────────────────────────────────────
-  const chapterDialogP = acceptNextDialog(page, CHAPTER_TITLE);
   await storyRow.locator('.nav-inline-add').click();
-  await chapterDialogP;
+  await fillPrompt(page, CHAPTER_TITLE);
 
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
@@ -253,9 +246,8 @@ test('TC-V-03: create scene, scene .md file written to Story Vault on disk', asy
   await expect(chapterRow).toBeVisible({ timeout: 4_000 });
 
   // Create scene under the chapter
-  const sceneDialogP = acceptNextDialog(page, SCENE_TITLE);
   await chapterRow.locator('.nav-inline-add').click();
-  await sceneDialogP;
+  await fillPrompt(page, SCENE_TITLE);
 
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
