@@ -114,6 +114,11 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
   const page = await app.firstWindow();
+  // Auto-accept any dialog (notably the beforeunload "leave session?" prompt the
+  // BrainstormPage installs once messages exist) so teardown close doesn't hang.
+  page.on('dialog', (dialog) => {
+    void dialog.accept().catch(() => undefined);
+  });
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
@@ -185,7 +190,18 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => {});
+  // Bound the graceful close — a beforeunload prompt can otherwise block it — and
+  // force-kill the Electron process if it does not exit in time.
+  const proc = app.process();
+  await Promise.race([
+    app.close().catch(() => undefined),
+    new Promise<void>((r) => setTimeout(r, 5_000)),
+  ]);
+  try {
+    if (proc && !proc.killed) proc.kill('SIGKILL');
+  } catch {
+    /* already exited */
+  }
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
 });
