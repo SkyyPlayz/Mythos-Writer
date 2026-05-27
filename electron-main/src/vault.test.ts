@@ -27,6 +27,7 @@ import {
   chapterVaultPath,
   sceneVaultPath,
   scaffoldNotesVault,
+  scaffoldStoryVault,
   obsidianDryRun,
   mergeProvenanceFrontmatter,
   MANUSCRIPT_DIR,
@@ -1015,6 +1016,31 @@ describe('scaffoldNotesVault', () => {
   it('is idempotent — running twice does not throw', () => {
     scaffoldNotesVault(tmpDir);
     expect(() => scaffoldNotesVault(tmpDir)).not.toThrow();
+  });
+});
+
+// ─── scaffoldStoryVault ───
+
+describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-vault-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates Projects/ subfolder', () => {
+    scaffoldStoryVault(tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, 'Projects'))).toBe(true);
+    expect(fs.statSync(path.join(tmpDir, 'Projects')).isDirectory()).toBe(true);
+  });
+
+  it('is idempotent — does not throw when called twice', () => {
+    scaffoldStoryVault(tmpDir);
+    expect(() => scaffoldStoryVault(tmpDir)).not.toThrow();
   });
 });
 

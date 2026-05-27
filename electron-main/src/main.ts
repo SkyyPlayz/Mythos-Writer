@@ -79,6 +79,7 @@ import {
   type ProjectEntry,
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
+  type VaultSetPathsPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -125,6 +126,7 @@ import {
   stopVaultWatcher,
   startNotesVaultWatcher,
   stopNotesVaultWatcher,
+  scaffoldStoryVault,
   scaffoldNotesVault,
   parseFrontmatter,
   serializeFrontmatter,
@@ -217,6 +219,14 @@ function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
 }
 
+function defaultVaultRoot(): string {
+  return path.join(app.getPath('home'), 'MythosWriter', 'StoryVault');
+}
+
+function defaultNotesVaultRoot(): string {
+  return path.join(app.getPath('home'), 'MythosWriter', 'NotesVault');
+}
+
 function loadVaultSettings(): VaultSettings {
   const settingsPath = getVaultSettingsPath();
   if (fs.existsSync(settingsPath)) {
@@ -226,7 +236,7 @@ function loadVaultSettings(): VaultSettings {
       // fall through to default
     }
   }
-  return { vaultRoot: path.join(app.getPath('userData'), 'vault') };
+  return { vaultRoot: defaultVaultRoot() };
 }
 
 // Merges `updates` into the persisted settings so partial writes don't clobber other fields.
@@ -239,12 +249,14 @@ function saveVaultSettings(updates: Partial<VaultSettings>): void {
 const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
 const getNotesVaultRoot = () =>
-  loadVaultSettings().notesVaultRoot ?? path.join(app.getPath('userData'), 'notes-vault');
+  loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
-  if (!fs.existsSync(vaultRoot)) {
+  const isNew = !fs.existsSync(vaultRoot);
+  if (isNew) {
     fs.mkdirSync(vaultRoot, { recursive: true });
+    scaffoldStoryVault(vaultRoot);
   }
   // Open DB before manifest migration so the audit callback can log immediately.
   openDb(vaultRoot);
@@ -332,6 +344,47 @@ function scheduleReindex() {
 
 // Registration token gate lives in ./registrationToken.ts (MYT-360 / MYT-367)
 // so unit tests can exercise it without pulling in Electron.
+
+/**
+ * Validate a proposed vault path for vault:setPaths.
+ * Throws a descriptive Error if the path is invalid so setupIpcMain
+ * can convert it to { error: message } for the renderer.
+ */
+function validateVaultPath(p: string, field: string): void {
+  if (!p || typeof p !== 'string') {
+    throw new Error(`${field}: path must be a non-empty string`);
+  }
+  if (!path.isAbsolute(p)) {
+    throw new Error(`${field}: path must be absolute (got: ${p})`);
+  }
+  // If it already exists, check it is a directory and writable.
+  if (fs.existsSync(p)) {
+    const stat = fs.statSync(p);
+    if (!stat.isDirectory()) {
+      throw new Error(`${field}: path exists but is not a directory: ${p}`);
+    }
+    try {
+      fs.accessSync(p, fs.constants.W_OK);
+    } catch {
+      throw new Error(`${field}: directory is not writable: ${p}`);
+    }
+    return;
+  }
+  // Path does not exist — check that the first existing ancestor is writable
+  // so we can create it on first use.
+  let ancestor = path.dirname(p);
+  while (ancestor !== path.dirname(ancestor)) {
+    if (fs.existsSync(ancestor)) {
+      try {
+        fs.accessSync(ancestor, fs.constants.W_OK);
+      } catch {
+        throw new Error(`${field}: parent directory is not writable: ${ancestor}`);
+      }
+      return;
+    }
+    ancestor = path.dirname(ancestor);
+  }
+}
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
@@ -1866,6 +1919,23 @@ const handlers: IpcHandlers = {
       mainWindow.webContents.send('project:switched', { vaultRoot: newRoot });
     }
     return { vaultRoot: newRoot, switched: true };
+  },
+
+  // ─── Two-vault paths (MYT-608) ───
+
+  [IPC_CHANNELS.VAULT_GET_PATHS]: () => {
+    return {
+      storyVaultPath: getVaultRoot(),
+      notesVaultPath: getNotesVaultRoot(),
+    };
+  },
+
+  [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
+    const { storyVaultPath, notesVaultPath } = payload;
+    validateVaultPath(storyVaultPath, 'storyVaultPath');
+    validateVaultPath(notesVaultPath, 'notesVaultPath');
+    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
+    return { storyVaultPath, notesVaultPath, saved: true };
   },
 
 };
