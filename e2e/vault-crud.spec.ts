@@ -90,10 +90,16 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
   // --no-sandbox is required for Electron to spawn its renderer under Xvfb in CI
   // (matches the packaged-app smoke test in ci.yml).
   const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
-  return electron.launch({
+  const app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
     timeout: 30_000,
   });
+  // Surface main-process stdout/stderr so a startup crash (which otherwise just
+  // manifests as a firstWindow timeout) is visible in CI logs.
+  const proc = app.process();
+  proc.stdout?.on('data', (d: Buffer) => console.log('[main:out]', d.toString().trimEnd()));
+  proc.stderr?.on('data', (d: Buffer) => console.log('[main:err]', d.toString().trimEnd()));
+  return app;
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
