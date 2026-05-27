@@ -246,28 +246,24 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
   const factDesc = factsPanel.locator('.bs-fact-desc').first();
   await expect(factDesc).toContainText(MOCK_FACT_DESC);
 
-  // "Save to Vault" button must be present (fact is still unsaved at this point).
-  const saveBtn = factsPanel.locator('.bs-fact-save-btn').first();
-  await expect(saveBtn).toBeVisible();
-  await expect(saveBtn).toContainText('Save to Vault');
+  // Facts auto-extract to the vault; the panel reflects the saved state.
+  const savedLabel = factsPanel.locator('.bs-fact-saved-label').first();
+  await expect(savedLabel).toBeVisible({ timeout: 8_000 });
+  await expect(savedLabel).toContainText('Saved');
 });
 
 // ─── TC-BST-03: Vault note creation ──────────────────────────────────────────
 //
-// Click "Save to Vault" for the detected fact. Verify:
-//   - The UI transitions to "Saved ✓" state.
+// The detected fact auto-extracts to the vault. Verify:
+//   - The fact shows the "Saved ✓" state.
 //   - An entity .md file is created on disk under <vaultDir>/entities/characters/.
 //   - The file has correct YAML frontmatter: id, name, type, tags (brainstorm), timestamps.
 //   - The prose body contains the fact description.
 
-test('TC-BST-03: "Save to Vault" creates entity file with correct frontmatter', async () => {
+test('TC-BST-03: detected fact is auto-saved as an entity file with correct frontmatter', async () => {
   const factsPanel = page.locator('.brainstorm-facts-list');
 
-  // Click the "Save to Vault" button for the first (and only) detected fact.
-  const saveBtn = factsPanel.locator('.bs-fact-save-btn').first();
-  await saveBtn.click();
-
-  // UI must update to "Saved ✓".
+  // The fact auto-saves; UI shows "Saved ✓".
   const savedLabel = factsPanel.locator('.bs-fact-saved-label').first();
   await expect(savedLabel).toBeVisible({ timeout: 8_000 });
   await expect(savedLabel).toContainText('Saved');
