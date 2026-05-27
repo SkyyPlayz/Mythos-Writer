@@ -631,6 +631,65 @@ describe('realSafePath — symlink escapes are rejected', () => {
   });
 });
 
+describe('realSafePath — traversal & absolute-path hardening (MYT-672 / MYT-641)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-traversal-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // ── MYT-641 Case-3: leaf AND parent don't exist yet ──
+  // A fresh vault writing its first deeply nested scene exercises the "parent
+  // doesn't exist" branch. On macOS tmpDir resolves through a symlink
+  // (/var → /private/var); regression guard for the realSafePath fix landed in
+  // da24bfe (lexical check vs un-realpath'd root) so nested writes are allowed
+  // while traversal is still denied on that same branch.
+  it('allows a nested write when no parent directories exist yet', () => {
+    const nestedPath = 'Manuscript/my-story/chapter-one/scene-1.md';
+    expect(() => realSafePath(tmpDir, nestedPath)).not.toThrow();
+    expect(realSafePath(tmpDir, nestedPath)).toContain('scene-1.md');
+  });
+
+  it('still rejects "../" traversal when no parent exists', () => {
+    expect(() => realSafePath(tmpDir, '../../../etc/shadow')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a "../" escape whose parent DOES exist (lands on existing-parent branch)', () => {
+    fs.mkdirSync(path.join(tmpDir, 'sub'), { recursive: true });
+    expect(() => realSafePath(tmpDir, 'sub/../../escape.md')).toThrow(/Path traversal denied/);
+  });
+
+  // ── Absolute paths: path.resolve(root, '/abs') === '/abs', escaping the vault ──
+  it('rejects an absolute path that escapes the vault', () => {
+    expect(() => realSafePath(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+
+  // ── Whole-channel coverage: read / write / delete reject both vectors ──
+  it('readVaultFile rejects an absolute path', () => {
+    expect(() => readVaultFile(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+
+  it('writeVaultFileAtomic rejects a "../" traversal', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '../escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+
+  it('writeVaultFileAtomic rejects an absolute path', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '/tmp/escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+
+  it('deleteVaultFile rejects a "../" traversal', () => {
+    expect(() => deleteVaultFile(tmpDir, '../../etc/passwd')).toThrow(/Path traversal denied/);
+  });
+
+  it('deleteVaultFile rejects an absolute path', () => {
+    expect(() => deleteVaultFile(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+});
+
 describe('startVaultWatcher — symlink containment (MYT-362)', () => {
   let vaultDir: string;
   let outsideDir: string;
