@@ -46,11 +46,13 @@ export function useIpcStream(streamId: string | null): IpcStreamResult {
       setDone(true);
     });
 
-    const unsubError = window.api.onStreamError(({ streamId: sid, error: err }: { streamId: string; error: string }) => {
-      if (sid !== streamId || cancelledRef.current) return;
-      setError(err);
-      setDone(true);
-    });
+    const unsubError = window.api.onStreamError(
+      ({ streamId: sid, message }: { streamId: string; category: string; message: string }) => {
+        if (sid !== streamId || cancelledRef.current) return;
+        setError(message);
+        setDone(true);
+      },
+    );
 
     return () => {
       unsubToken();

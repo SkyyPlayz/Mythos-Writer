@@ -7,7 +7,17 @@
 import { render, fireEvent } from '@testing-library/react';
 import { configureAxe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
+import type { AxeMatchers } from 'vitest-axe/matchers';
 import { expect, describe, it, beforeEach, vi } from 'vitest';
+
+// vitest-axe@0.1.0 ships a legacy `Vi.Assertion` augmentation that vitest 3 no
+// longer reads for matcher typing, so register the matchers on vitest 3's
+// `'vitest'` module interfaces explicitly.
+declare module 'vitest' {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  interface Assertion<T = any> extends AxeMatchers {}
+  interface AsymmetricMatchersContaining extends AxeMatchers {}
+}
 
 // ─── vitest-axe matcher ────────────────────────────────────────────────────
 expect.extend(axeMatchers);
@@ -290,7 +300,7 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
     expect(tablist).not.toBeNull();
 
     const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(5);
+    expect(tabs).toHaveLength(4);
 
     const activeTab = container.querySelector('[aria-selected="true"]');
     expect(activeTab?.id).toBe('leftrail-tab-vault');

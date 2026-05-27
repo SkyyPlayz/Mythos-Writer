@@ -8,6 +8,7 @@
     "out/**/*",
     "package.json"
   ],
+  "afterSign": "build/notarize.js",
   "mac": {
     "target": [
       {
@@ -19,12 +20,11 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "build/icon.icns",
+    "icon": "build/icon.png",
     "hardenedRuntime": true,
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
-    "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
-    "afterSign": "build/notarize.js"
+    "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
   },
   "dmg": {
     "contents": [
@@ -69,7 +69,9 @@
         "arch": ["x64"]
       }
     ],
-    "artifactName": "${productName}-${version}.${ext}"
+    "artifactName": "${productName}-${version}.${ext}",
+    "icon": "build/icon.png",
+    "category": "Office"
   },
   "publish": {
     "provider": "github",

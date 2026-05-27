@@ -107,7 +107,7 @@ function settingsFixture(overrides: Partial<AppSettings> = {}): AppSettings {
       brainstorm: { enabled: false, model: 'claude', ...agentBudgets },
       archive: { enabled: false, model: 'claude', continuityCheckIntervalSeconds: 0, ...agentBudgets },
     },
-    theme: 'light',
+    theme: 'dark',
     ...overrides,
   };
 }

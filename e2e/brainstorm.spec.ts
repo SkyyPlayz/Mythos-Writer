@@ -103,14 +103,22 @@ function seedUserData(userData: string, vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
+  // --headless when no X display; --no-sandbox so Electron can spawn its renderer
+  // under Xvfb in CI (matches the packaged-app smoke test in ci.yml).
+  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   return electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`],
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
     timeout: 30_000,
   });
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
   const page = await app.firstWindow();
+  // Auto-accept any dialog (notably the beforeunload "leave session?" prompt the
+  // BrainstormPage installs once messages exist) so teardown close doesn't hang.
+  page.on('dialog', (dialog) => {
+    void dialog.accept().catch(() => undefined);
+  });
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
@@ -182,7 +190,18 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => {});
+  // Bound the graceful close — a beforeunload prompt can otherwise block it — and
+  // force-kill the Electron process if it does not exit in time.
+  const proc = app.process();
+  await Promise.race([
+    app.close().catch(() => undefined),
+    new Promise<void>((r) => setTimeout(r, 5_000)),
+  ]);
+  try {
+    if (proc && !proc.killed) proc.kill('SIGKILL');
+  } catch {
+    /* already exited */
+  }
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
 });
@@ -243,28 +262,24 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
   const factDesc = factsPanel.locator('.bs-fact-desc').first();
   await expect(factDesc).toContainText(MOCK_FACT_DESC);
 
-  // "Save to Vault" button must be present (fact is still unsaved at this point).
-  const saveBtn = factsPanel.locator('.bs-fact-save-btn').first();
-  await expect(saveBtn).toBeVisible();
-  await expect(saveBtn).toContainText('Save to Vault');
+  // Facts auto-extract to the vault; the panel reflects the saved state.
+  const savedLabel = factsPanel.locator('.bs-fact-saved-label').first();
+  await expect(savedLabel).toBeVisible({ timeout: 8_000 });
+  await expect(savedLabel).toContainText('Saved');
 });
 
 // ─── TC-BST-03: Vault note creation ──────────────────────────────────────────
 //
-// Click "Save to Vault" for the detected fact. Verify:
-//   - The UI transitions to "Saved ✓" state.
+// The detected fact auto-extracts to the vault. Verify:
+//   - The fact shows the "Saved ✓" state.
 //   - An entity .md file is created on disk under <vaultDir>/entities/characters/.
 //   - The file has correct YAML frontmatter: id, name, type, tags (brainstorm), timestamps.
 //   - The prose body contains the fact description.
 
-test('TC-BST-03: "Save to Vault" creates entity file with correct frontmatter', async () => {
+test('TC-BST-03: detected fact is auto-saved as an entity file with correct frontmatter', async () => {
   const factsPanel = page.locator('.brainstorm-facts-list');
 
-  // Click the "Save to Vault" button for the first (and only) detected fact.
-  const saveBtn = factsPanel.locator('.bs-fact-save-btn').first();
-  await saveBtn.click();
-
-  // UI must update to "Saved ✓".
+  // The fact auto-saves; UI shows "Saved ✓".
   const savedLabel = factsPanel.locator('.bs-fact-saved-label').first();
   await expect(savedLabel).toBeVisible({ timeout: 8_000 });
   await expect(savedLabel).toContainText('Saved');

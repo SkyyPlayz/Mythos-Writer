@@ -836,7 +836,10 @@ const handlers: IpcHandlers = {
   // MYT-343: per-agent config get/set
   [IPC_CHANNELS.SETTINGS_GET_AGENT_CONFIG]: (): import('./ipc.js').AgentConfigMap => {
     const s = loadAppSettings();
-    const toConfig = (a: typeof s.agents.writingAssistant): import('./ipc.js').AgentConfig => ({
+    // Common shape across all three agents (brainstorm has no extra interval
+    // field); toConfig only reads enabled/model/budget, never the per-agent
+    // interval fields, so the narrowest shared type accepts all of them.
+    const toConfig = (a: typeof s.agents.brainstorm): import('./ipc.js').AgentConfig => ({
       enabled: a.enabled,
       model: a.model,
       autoApplyThreshold: (a as { autoApplyThreshold?: number }).autoApplyThreshold ?? 0.85,
@@ -1874,7 +1877,9 @@ function createWindow() {
     height: 800,
     title: 'Mythos Writer',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      // electron-vite emits the preload to out/preload/preload.js, while this
+      // file runs from out/main/. (The packaged app preserves the same layout.)
+      preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -2641,6 +2646,12 @@ function registerWritingScanHandler(): void {
 }
 
 // ─── App lifecycle ───
+// Use software rendering. Mythos Writer is a text app with no GPU-bound UI, and
+// GPU init fails in headless/virtualized environments (CI under Xvfb, some VMs),
+// where a failed GPU process otherwise blocks the window from ever appearing.
+// Must be called before the app 'ready' event.
+app.disableHardwareAcceleration();
+
 app.whenReady().then(async () => {
   ensureVaultDir();
   ensureNotesVaultDir();
