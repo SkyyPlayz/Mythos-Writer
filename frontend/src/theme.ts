@@ -1,7 +1,12 @@
 import defaultBg from './assets/default-bg.webp';
 
-export function applyTheme(theme: 'light' | 'dark'): void {
-  document.documentElement.dataset.theme = theme;
+export function applyTheme(theme: 'light' | 'dark' | 'system'): void {
+  if (theme === 'system') {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
+  } else {
+    document.documentElement.dataset.theme = theme;
+  }
 }
 
 export const DEFAULT_BG_GRADIENT =

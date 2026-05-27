@@ -341,6 +341,92 @@ describe('SettingsPanel', () => {
     expect(saved.agents.archive.continuityCheckIntervalSeconds).toBe(120);
   });
 
+  // ── MYT-616 acceptance criteria ──
+
+  it('renders System theme option alongside Light and Dark', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(screen.getByRole('radio', { name: /^dark$/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^light$/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^system$/i })).toBeInTheDocument();
+  });
+
+  it('applies theme immediately via CSS on radio change', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('radio', { name: /^light$/i }));
+
+    fireEvent.click(screen.getByRole('radio', { name: /^light$/i }));
+    expect(document.documentElement.dataset.theme).toBe('light');
+
+    fireEvent.click(screen.getByRole('radio', { name: /^dark$/i }));
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('renders OpenAI API key field', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/openai api key/i));
+    const input = screen.getByLabelText(/openai api key/i) as HTMLInputElement;
+    expect(input.type).toBe('password');
+    expect(input.value).toBe('');
+  });
+
+  it('saves openaiApiKey when OpenAI key field is filled in', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/openai api key/i));
+
+    fireEvent.change(screen.getByLabelText(/openai api key/i), { target: { value: 'sk-openai-test' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ openaiApiKey: 'sk-openai-test' }));
+  });
+
+  it('renders global heartbeat interval input', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(document.getElementById('heartbeat-interval')).toBeInTheDocument();
+  });
+
+  it('shows error alert when heartbeat interval < 10 seconds', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => document.getElementById('heartbeat-interval'));
+
+    fireEvent.change(document.getElementById('heartbeat-interval')!, { target: { value: '5' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/at least 10/i);
+    expect(screen.getByRole('button', { name: /save settings/i })).toBeDisabled();
+  });
+
+  it('saves heartbeatIntervalMs as seconds × 1000', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => document.getElementById('heartbeat-interval'));
+
+    fireEvent.change(document.getElementById('heartbeat-interval')!, { target: { value: '30' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ heartbeatIntervalMs: 30000 }));
+  });
+
+  it('populates heartbeat field from settings on load', async () => {
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, heartbeatIntervalMs: 120000 });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => document.getElementById('heartbeat-interval'));
+
+    const input = document.getElementById('heartbeat-interval') as HTMLInputElement;
+    expect(Number(input.value)).toBe(120);
+  });
+
+  it('shows *** placeholder for configured OpenAI key', async () => {
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, openaiApiKey: 'sk-configured' });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('openai-key-configured-hint'));
+
+    const input = screen.getByLabelText(/openai api key/i) as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(input.placeholder).toBe('***');
+  });
+
   it('max tokens per day change is saved via IPC', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));

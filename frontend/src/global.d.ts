@@ -99,12 +99,14 @@ interface LiquidGlassPrefs {
 
 interface AppSettings {
   apiKey: string;
+  openaiApiKey?: string;
   agents: {
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings & AgentVoiceSettings;
     brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings & AgentVoiceSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings & AgentVoiceSettings;
   };
-  theme: 'light' | 'dark';
+  theme: 'light' | 'dark' | 'system';
+  heartbeatIntervalMs?: number;
   writingMode?: 'normal' | 'focus' | 'edit';
   snapshots?: {
     maxPerScene: number;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import defaultBg from './assets/default-bg.webp';
-import { applyLiquidGlassTokens, LG_DEFAULTS } from './theme';
+import { applyLiquidGlassTokens, applyTheme, LG_DEFAULTS } from './theme';
 import './SettingsPanel.css';
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
@@ -25,12 +25,14 @@ const AGENT_VOICE_DEFAULTS: AgentVoiceSettings = {
 
 const DEFAULTS: AppSettings = {
   apiKey: '',
+  openaiApiKey: '',
   agents: {
     writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS, ...AGENT_VOICE_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS, ...AGENT_VOICE_DEFAULTS },
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS, ...AGENT_VOICE_DEFAULTS },
   },
   theme: 'dark',
+  heartbeatIntervalMs: 60000,
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   telemetry: { enabled: false },
   liquidGlass: LG_DEFAULTS,
@@ -50,9 +52,12 @@ interface Props {
 
 export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: Props) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
-  // Separate input state so the masked value from settingsGet never appears in the writable field.
+  // Separate input state so the masked value from settingsGet never appears in the writable fields.
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
+  const [openaiKeyInput, setOpenaiKeyInput] = useState('');
+  const [openaiKeyDirty, setOpenaiKeyDirty] = useState(false);
+  const [heartbeatSecondsInput, setHeartbeatSecondsInput] = useState(60);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
@@ -62,10 +67,13 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const micEnumeratedRef = useRef(false);
 
+  const heartbeatError = heartbeatSecondsInput < 10 ? 'Interval must be at least 10 seconds' : null;
+
   useEffect(() => {
     window.api.settingsGet().then((s) => {
       setSettings(s);
-      // Do not populate the input — masked value stays in settings state only
+      // Do not populate the key inputs — masked values stay in settings state only
+      setHeartbeatSecondsInput(s.heartbeatIntervalMs ? Math.round(s.heartbeatIntervalMs / 1000) : 60);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -93,6 +101,7 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
   }, [loading, settings.voice?.enabled, enumerateMics]);
 
   const keyIsConfigured = Boolean(settings.apiKey);
+  const openaiKeyIsConfigured = Boolean(settings.openaiApiKey);
   // Only validate when the user has touched the field; an untouched empty input is not an error.
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
 
@@ -127,16 +136,18 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (apiKeyError) return;
+    if (apiKeyError || heartbeatError) return;
     setSaving(true);
     setSaveError(null);
     setSavedOk(false);
     try {
       const payload: AppSettings = {
         ...settings,
-        // When dirty: send the typed value ('' clears the key; a new sk-ant-... value updates it).
+        // When dirty: send the typed value ('' clears the key; a new value updates it).
         // When not dirty: echo the masked value back so the backend guard preserves the stored key.
         apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
+        openaiApiKey: openaiKeyDirty ? openaiKeyInput : settings.openaiApiKey,
+        heartbeatIntervalMs: heartbeatSecondsInput * 1000,
       };
       await window.api.settingsSet(payload);
       applyLiquidGlassTokens(payload.liquidGlass ?? LG_DEFAULTS);
@@ -147,7 +158,7 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, onSaved]);
+  }, [settings, apiKeyInput, apiKeyDirty, openaiKeyInput, openaiKeyDirty, heartbeatSecondsInput, apiKeyError, heartbeatError, onSaved]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
@@ -173,9 +184,9 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
 
         <div className="settings-body">
 
-          {/* ── API Key ── */}
+          {/* ── API Keys ── */}
           <section className="settings-section" aria-labelledby="section-api-key">
-            <h3 className="settings-section-title" id="section-api-key">API Key</h3>
+            <h3 className="settings-section-title" id="section-api-key">API Keys</h3>
             <div className="settings-field">
               <label className="settings-label" htmlFor="api-key-input">Anthropic API Key</label>
               <div className="settings-input-row">
@@ -185,7 +196,7 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
                   type={showApiKey ? 'text' : 'password'}
                   value={apiKeyInput}
                   onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
-                  placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : 'sk-ant-…'}
+                  placeholder={keyIsConfigured ? '***' : 'sk-ant-…'}
                   aria-describedby={apiKeyError ? 'api-key-error' : undefined}
                   autoComplete="off"
                   spellCheck={false}
@@ -206,6 +217,25 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
                 <p className="settings-hint" data-testid="key-configured-hint">Key is already configured.</p>
               )}
               <p className="settings-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
+            </div>
+            <div className="settings-field">
+              <label className="settings-label" htmlFor="openai-key-input">OpenAI API Key</label>
+              <div className="settings-input-row">
+                <input
+                  id="openai-key-input"
+                  className="settings-input"
+                  type="password"
+                  value={openaiKeyInput}
+                  onChange={(e) => { setOpenaiKeyInput(e.target.value); setOpenaiKeyDirty(true); setSavedOk(false); }}
+                  placeholder={openaiKeyIsConfigured ? '***' : 'sk-…'}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              {!openaiKeyDirty && openaiKeyIsConfigured && (
+                <p className="settings-hint" data-testid="openai-key-configured-hint">OpenAI key is configured.</p>
+              )}
+              <p className="settings-hint">Used for cloud STT (Whisper) and OpenAI integrations. Falls back to the OPENAI_API_KEY environment variable if left empty.</p>
             </div>
           </section>
 
@@ -917,18 +947,15 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
             </div>
           </section>
 
-          {/* ── Appearance ── */}
-          <section className="settings-section" aria-labelledby="section-appearance">
-            <h3 className="settings-section-title" id="section-appearance">Appearance</h3>
-
-            {/* Theme sub-group */}
+          {/* ── Theme ── */}
+          <section className="settings-section" aria-labelledby="section-theme">
+            <h3 className="settings-section-title" id="section-theme">Theme</h3>
             <div className="settings-field">
-              <span className="settings-label">Color theme</span>
-              {/* P3: flex-wrap + row-gap so "High contrast" never top-aligns on 390px */}
               <div className="settings-radio-group" role="radiogroup" aria-label="App theme">
                 {([
                   { value: 'dark', label: 'Dark' },
                   { value: 'light', label: 'Light' },
+                  { value: 'system', label: 'System' },
                 ] as const).map(({ value, label }) => (
                   <label key={value} className="settings-radio-label">
                     <input
@@ -936,14 +963,48 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
                       name="theme"
                       value={value}
                       checked={settings.theme === value}
-                      onChange={() => { setSettings((p) => ({ ...p, theme: value })); setSavedOk(false); }}
+                      onChange={() => {
+                        setSettings((p) => ({ ...p, theme: value }));
+                        applyTheme(value);
+                        setSavedOk(false);
+                      }}
                     />
                     {label}
                   </label>
                 ))}
               </div>
-              <p className="settings-hint">Theme switching is persisted for future use.</p>
+              <p className="settings-hint">System follows your OS preference. Theme is applied immediately and persisted on save.</p>
             </div>
+          </section>
+
+          {/* ── Heartbeat Interval ── */}
+          <section className="settings-section" aria-labelledby="section-heartbeat">
+            <h3 className="settings-section-title" id="section-heartbeat">Heartbeat Interval</h3>
+            <div className="settings-field">
+              <label className="settings-label" htmlFor="heartbeat-interval">Global heartbeat interval (seconds)</label>
+              <input
+                id="heartbeat-interval"
+                className={`settings-input settings-input-sm settings-input-number${heartbeatError ? ' settings-input-error' : ''}`}
+                type="number"
+                min={10}
+                max={3600}
+                value={heartbeatSecondsInput}
+                aria-describedby={heartbeatError ? 'heartbeat-error' : undefined}
+                onChange={(e) => {
+                  setHeartbeatSecondsInput(Number(e.target.value));
+                  setSavedOk(false);
+                }}
+              />
+              {heartbeatError && (
+                <p className="settings-error-msg" id="heartbeat-error" role="alert">{heartbeatError}</p>
+              )}
+              <p className="settings-hint">Minimum 10 seconds. Controls how frequently agents check in.</p>
+            </div>
+          </section>
+
+          {/* ── Appearance ── */}
+          <section className="settings-section" aria-labelledby="section-appearance">
+            <h3 className="settings-section-title" id="section-appearance">Appearance</h3>
 
             {/* P2: Liquid Glass sub-group divider */}
             <div className="lg-subgroup-divider" role="separator">
@@ -1104,7 +1165,7 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
             <button
               className="settings-btn settings-btn-save"
               onClick={handleSave}
-              disabled={saving || !!apiKeyError}
+              disabled={saving || !!apiKeyError || !!heartbeatError}
               aria-label="Save settings"
             >
               {saving ? 'Saving…' : 'Save'}
