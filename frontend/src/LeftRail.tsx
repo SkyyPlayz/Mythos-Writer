@@ -227,26 +227,42 @@ export default function LeftRail({
 }: Props) {
   return (
     <div className="left-rail">
-      <div className="rail-tabs">
+      <div className="rail-tabs" role="tablist" aria-label="Primary navigation">
         <button
+          id="leftrail-tab-stories"
+          role="tab"
+          aria-selected={activeTab === 'stories'}
+          aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'stories' ? ' active' : ''}`}
           onClick={() => onTabChange('stories')}
         >
           Stories
         </button>
         <button
+          id="leftrail-tab-entities"
+          role="tab"
+          aria-selected={activeTab === 'entities'}
+          aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'entities' ? ' active' : ''}`}
           onClick={() => onTabChange('entities')}
         >
           Entities
         </button>
         <button
+          id="leftrail-tab-vault"
+          role="tab"
+          aria-selected={activeTab === 'vault'}
+          aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'vault' ? ' active' : ''}`}
           onClick={() => onTabChange('vault')}
         >
           Vault
         </button>
         <button
+          id="leftrail-tab-review"
+          role="tab"
+          aria-selected={activeTab === 'review'}
+          aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'review' ? ' active' : ''}`}
           onClick={() => onTabChange('review')}
           aria-label="Suggestion Review inbox"
@@ -254,7 +270,12 @@ export default function LeftRail({
           Review
         </button>
       </div>
-      <div className="rail-content">
+      <div
+        className="rail-content"
+        id="leftrail-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`leftrail-tab-${activeTab}`}
+      >
         {activeTab === 'stories' && (
           <StoryNavigator
             stories={stories}

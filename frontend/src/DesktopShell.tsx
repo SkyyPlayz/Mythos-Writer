@@ -947,13 +947,6 @@ export default function DesktopShell() {
               key={selectedStory.id}
               boardPath={`${selectedStory.path}/kanban.md`}
               storyTitle={selectedStory.title}
-              onOpenNote={(notePath) => {
-                handleOpenSceneByPath(notePath);
-                setView('editor');
-              }}
-              scenes={selectedStory.chapters.flatMap((ch) =>
-                ch.scenes.map((sc) => ({ id: sc.id, title: sc.title, path: sc.path }))
-              )}
             />
           ) : (
             <div className="shell-editor-empty">

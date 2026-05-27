@@ -836,7 +836,10 @@ const handlers: IpcHandlers = {
   // MYT-343: per-agent config get/set
   [IPC_CHANNELS.SETTINGS_GET_AGENT_CONFIG]: (): import('./ipc.js').AgentConfigMap => {
     const s = loadAppSettings();
-    const toConfig = (a: typeof s.agents.writingAssistant): import('./ipc.js').AgentConfig => ({
+    // Common shape across all three agents (brainstorm has no extra interval
+    // field); toConfig only reads enabled/model/budget, never the per-agent
+    // interval fields, so the narrowest shared type accepts all of them.
+    const toConfig = (a: typeof s.agents.brainstorm): import('./ipc.js').AgentConfig => ({
       enabled: a.enabled,
       model: a.model,
       autoApplyThreshold: (a as { autoApplyThreshold?: number }).autoApplyThreshold ?? 0.85,

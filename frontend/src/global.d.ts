@@ -203,7 +203,7 @@ interface Window {
     streamAck: (streamId: string, count: number) => void;
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
-    onStreamError: (cb: (data: { streamId: string; error: string }) => void) => () => void;
+    onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => () => void;
 
     // STT (MYT-156)
     sttStart?: () => void;
@@ -234,6 +234,11 @@ interface Window {
     betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
+
+    // Budget cap notifications (MYT-499) — agent paused on hourly/daily token cap
+    onBudgetCapHit?: (
+      cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void,
+    ) => () => void;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

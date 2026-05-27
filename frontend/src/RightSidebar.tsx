@@ -185,8 +185,7 @@ function AiPanel({
           scene={scene}
           enabled={writingAssistantEnabled}
           scanIntervalSeconds={scanIntervalSeconds}
-          isPageFocused={isPageFocused}
-          onJumpToText={onJumpToText}
+          isActive={isPageFocused}
         />
       )}
       {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
