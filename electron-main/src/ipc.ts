@@ -592,6 +592,18 @@ export interface AgentArchiveResponse {
 
 // ─── App settings types ───
 
+export interface LiquidGlassPrefs {
+  background: 'default' | 'none';
+  style: number;
+  glass: number;
+  blur: number;
+  neon: number;
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  textHeader?: string;
+  textBody?: string;
+  textMuted?: string;
+}
+
 export interface AgentBudgetSettings {
   autoApply: boolean;
   confidenceThreshold: number;
@@ -635,6 +647,7 @@ export interface AppSettings {
   onboardingComplete?: boolean;
   voice?: VoiceSettings;
   telemetry?: TelemetrySettings;
+  liquidGlass?: LiquidGlassPrefs;
 }
 
 export interface SettingsSetPayload {

@@ -295,11 +295,13 @@
   outline-offset: 2px;
 }
 
-/* Theme radio group */
+/* Theme radio group — P3: flex-wrap so labels don't top-align on narrow viewports */
 
 .settings-radio-group {
   display: flex;
   gap: 20px;
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
 
 .settings-radio-label {
@@ -408,4 +410,217 @@
   padding: 0;
   font-size: 0.82rem;
   color: var(--text-faint);
+}
+
+/* ── Liquid Glass Appearance panel ── */
+
+/* P2: Liquid Glass sub-group divider */
+.lg-subgroup-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+
+.lg-subgroup-divider span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lg-subgroup-divider::before,
+.lg-subgroup-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* Background option buttons */
+.lg-bg-options {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lg-bg-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 5px;
+  background: var(--bg-panel);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.lg-bg-option:hover {
+  border-color: var(--border-strong);
+  color: var(--text-body);
+}
+
+.lg-bg-option--active {
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
+/* Thumbnail preview inside background option */
+.lg-bg-preview {
+  width: 80px;
+  height: 48px;
+  border-radius: 3px;
+  background-size: cover;
+  background-position: center;
+  background-color: #0a0a0a;
+}
+
+.lg-bg-preview--none {
+  background-color: #0a0a0a;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--border-subtle) 0px,
+    var(--border-subtle) 1px,
+    transparent 1px,
+    transparent 8px
+  );
+}
+
+/* P1: All LG sliders use var(--accent) so they track the selected neon accent */
+.lg-slider-main,
+.lg-advanced-row .settings-slider {
+  accent-color: var(--accent);
+}
+
+/* Axis labels beside sliders */
+.lg-axis-label {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Sub-heading label variant */
+.settings-label--subheading {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* P1 mobile: stack advanced slider rows below 420px */
+@media (max-width: 420px) {
+  .lg-advanced-row.settings-field-inline {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .lg-advanced-row.settings-field-inline .settings-slider {
+    width: 100%;
+  }
+
+  .lg-advanced-row.settings-field-inline .lg-axis-label {
+    display: none;
+  }
+}
+
+/* Neon accent selector */
+.lg-accent-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lg-accent-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--bg-panel);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.lg-accent-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-body);
+}
+
+.lg-accent-btn--active {
+  border-color: var(--swatch, var(--accent));
+  color: var(--text-header);
+}
+
+.lg-accent-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--swatch, var(--accent));
+  flex-shrink: 0;
+}
+
+/* P3: Aa text preview chip */
+.lg-text-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Color picker input */
+.lg-color-input {
+  width: 36px;
+  height: 26px;
+  padding: 2px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--bg-panel);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.lg-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.lg-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+/* P2: Reset Liquid Glass button */
+.lg-reset-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 5px 14px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.lg-reset-btn:hover {
+  border-color: var(--state-danger-border);
+  color: var(--state-danger);
 }

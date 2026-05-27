@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import defaultBg from './assets/default-bg.webp';
+import { applyLiquidGlassTokens, LG_DEFAULTS } from './theme';
 import './SettingsPanel.css';
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
@@ -31,6 +33,7 @@ const DEFAULTS: AppSettings = {
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   telemetry: { enabled: false },
+  liquidGlass: LG_DEFAULTS,
 };
 
 function validateApiKey(key: string): string | null {
@@ -108,6 +111,21 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
     setSavedOk(false);
   }, []);
 
+  const setLgField = useCallback(<K extends keyof LiquidGlassPrefs>(field: K, value: LiquidGlassPrefs[K]) => {
+    setSettings((prev) => {
+      const next = { ...prev, liquidGlass: { ...(prev.liquidGlass ?? LG_DEFAULTS), [field]: value } };
+      applyLiquidGlassTokens(next.liquidGlass!);
+      return next;
+    });
+    setSavedOk(false);
+  }, []);
+
+  const handleResetLg = useCallback(() => {
+    setSettings((prev) => ({ ...prev, liquidGlass: LG_DEFAULTS }));
+    applyLiquidGlassTokens(LG_DEFAULTS);
+    setSavedOk(false);
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (apiKeyError) return;
     setSaving(true);
@@ -121,6 +139,7 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
         apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
       };
       await window.api.settingsSet(payload);
+      applyLiquidGlassTokens(payload.liquidGlass ?? LG_DEFAULTS);
       setSavedOk(true);
       onSaved?.(payload);
     } catch (e) {
@@ -898,26 +917,181 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
             </div>
           </section>
 
-          {/* ── Theme ── */}
-          <section className="settings-section" aria-labelledby="section-theme">
-            <h3 className="settings-section-title" id="section-theme">Theme</h3>
+          {/* ── Appearance ── */}
+          <section className="settings-section" aria-labelledby="section-appearance">
+            <h3 className="settings-section-title" id="section-appearance">Appearance</h3>
+
+            {/* Theme sub-group */}
             <div className="settings-field">
+              <span className="settings-label">Color theme</span>
+              {/* P3: flex-wrap + row-gap so "High contrast" never top-aligns on 390px */}
               <div className="settings-radio-group" role="radiogroup" aria-label="App theme">
-                {(['dark', 'light'] as const).map((t) => (
-                  <label key={t} className="settings-radio-label">
+                {([
+                  { value: 'dark', label: 'Dark' },
+                  { value: 'light', label: 'Light' },
+                ] as const).map(({ value, label }) => (
+                  <label key={value} className="settings-radio-label">
                     <input
                       type="radio"
                       name="theme"
-                      value={t}
-                      checked={settings.theme === t}
-                      onChange={() => { setSettings((p) => ({ ...p, theme: t })); setSavedOk(false); }}
+                      value={value}
+                      checked={settings.theme === value}
+                      onChange={() => { setSettings((p) => ({ ...p, theme: value })); setSavedOk(false); }}
                     />
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                    {label}
                   </label>
                 ))}
               </div>
-              <p className="settings-hint">Theme switching UI is a placeholder — the value is persisted for future use.</p>
+              <p className="settings-hint">Theme switching is persisted for future use.</p>
             </div>
+
+            {/* P2: Liquid Glass sub-group divider */}
+            <div className="lg-subgroup-divider" role="separator">
+              <span>Liquid Glass</span>
+            </div>
+
+            {/* Background */}
+            <div className="settings-field">
+              <span className="settings-label">Background</span>
+              <div className="lg-bg-options">
+                <button
+                  className={`lg-bg-option${(settings.liquidGlass?.background ?? 'default') === 'default' ? ' lg-bg-option--active' : ''}`}
+                  onClick={() => setLgField('background', 'default')}
+                  aria-pressed={(settings.liquidGlass?.background ?? 'default') === 'default'}
+                >
+                  {/* lg-bg-preview thumbnail showing the nebula asset */}
+                  <div
+                    className="lg-bg-preview"
+                    style={{ backgroundImage: `url(${defaultBg})` }}
+                    aria-hidden="true"
+                  />
+                  <span>Default</span>
+                </button>
+                <button
+                  className={`lg-bg-option${settings.liquidGlass?.background === 'none' ? ' lg-bg-option--active' : ''}`}
+                  onClick={() => setLgField('background', 'none')}
+                  aria-pressed={settings.liquidGlass?.background === 'none'}
+                >
+                  <div className="lg-bg-preview lg-bg-preview--none" aria-hidden="true" />
+                  <span>None</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Style slider (main — lg-slider-main, P1: accent-color via var(--accent)) */}
+            <div className="settings-field">
+              <label className="settings-label" htmlFor="lg-style">Style</label>
+              <div className="settings-slider-row">
+                <span className="lg-axis-label">Off</span>
+                <input
+                  id="lg-style"
+                  type="range"
+                  className="settings-slider lg-slider-main"
+                  min={0} max={100} step={1}
+                  value={settings.liquidGlass?.style ?? LG_DEFAULTS.style}
+                  onChange={(e) => setLgField('style', Number(e.target.value))}
+                  aria-label="Liquid Glass style intensity"
+                />
+                <span className="lg-axis-label">Full</span>
+                <span className="settings-slider-value">{settings.liquidGlass?.style ?? LG_DEFAULTS.style}</span>
+              </div>
+            </div>
+
+            {/* Advanced sliders (P1: accent-color via var(--accent); P1 mobile: stack below 420px via CSS) */}
+            <div className="settings-field">
+              <span className="settings-label settings-label--subheading">Advanced</span>
+            </div>
+            {(
+              [
+                { id: 'lg-glass', field: 'glass', label: 'Glass' },
+                { id: 'lg-blur',  field: 'blur',  label: 'Blur'  },
+                { id: 'lg-neon',  field: 'neon',  label: 'Neon'  },
+              ] as const
+            ).map(({ id, field, label }) => (
+              <div key={id} className="settings-field settings-field-inline lg-advanced-row">
+                <label className="settings-label" htmlFor={id}>{label}</label>
+                <span className="lg-axis-label">0</span>
+                <input
+                  id={id}
+                  type="range"
+                  className="settings-slider"
+                  min={0} max={100} step={1}
+                  value={settings.liquidGlass?.[field] ?? LG_DEFAULTS[field]}
+                  onChange={(e) => setLgField(field, Number(e.target.value))}
+                  aria-label={`Liquid Glass ${label.toLowerCase()} level`}
+                />
+                <span className="lg-axis-label">100</span>
+                <span className="settings-slider-value">{settings.liquidGlass?.[field] ?? LG_DEFAULTS[field]}</span>
+              </div>
+            ))}
+
+            {/* Neon Accent */}
+            <div className="settings-field">
+              <span className="settings-label">Neon Accent</span>
+              <div className="lg-accent-options" role="group" aria-label="Neon accent color">
+                {(
+                  [
+                    { value: 'cyan',    label: 'Cyan',    color: '#00f0ff' },
+                    { value: 'violet',  label: 'Violet',  color: '#7c3aed' },
+                    { value: 'magenta', label: 'Magenta', color: '#e040fb' },
+                  ] as const
+                ).map(({ value, label, color }) => (
+                  <button
+                    key={value}
+                    className={`lg-accent-btn${(settings.liquidGlass?.neonAccent ?? LG_DEFAULTS.neonAccent) === value ? ' lg-accent-btn--active' : ''}`}
+                    style={{ '--swatch': color } as React.CSSProperties}
+                    onClick={() => setLgField('neonAccent', value)}
+                    aria-pressed={(settings.liquidGlass?.neonAccent ?? LG_DEFAULTS.neonAccent) === value}
+                    aria-label={`${label} neon accent`}
+                  >
+                    <span className="lg-accent-swatch" aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Text color overrides (P3: Aa live preview chip) */}
+            <div className="settings-field">
+              <span className="settings-label settings-label--subheading">Text colors</span>
+            </div>
+            {(
+              [
+                { id: 'lg-text-header', field: 'textHeader', label: 'Header', fallback: '#e4e4e7' },
+                { id: 'lg-text-body',   field: 'textBody',   label: 'Body',   fallback: '#d4d4d8' },
+                { id: 'lg-text-muted',  field: 'textMuted',  label: 'Muted',  fallback: '#a1a1aa' },
+              ] as const
+            ).map(({ id, field, label, fallback }) => {
+              const currentColor = settings.liquidGlass?.[field] ?? fallback;
+              return (
+                <div key={id} className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor={id}>{label}</label>
+                  {/* P3: Aa glyph chip showing actual resolved color */}
+                  <span
+                    className="lg-text-preview-chip"
+                    style={{ color: currentColor }}
+                    aria-hidden="true"
+                    title={currentColor}
+                  >Aa</span>
+                  <input
+                    id={id}
+                    type="color"
+                    className="lg-color-input"
+                    value={currentColor}
+                    onChange={(e) => setLgField(field, e.target.value)}
+                    aria-label={`${label} text color`}
+                  />
+                </div>
+              );
+            })}
+
+            {/* P2: Reset Liquid Glass (scoped label — does not reset theme) */}
+            <div className="settings-field">
+              <button className="lg-reset-btn" onClick={handleResetLg} type="button">
+                Reset Liquid Glass
+              </button>
+            </div>
+
           </section>
 
         </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import DesktopShell from './DesktopShell';
 import OnboardingWizard from './OnboardingWizard';
+import { applyLiquidGlassTokens, LG_DEFAULTS } from './theme';
 import './App.css';
 
 function App() {
@@ -9,6 +10,7 @@ function App() {
 
   useEffect(() => {
     window.api.settingsGet().then((s) => {
+      applyLiquidGlassTokens(s.liquidGlass ?? LG_DEFAULTS);
       setSettings(s);
       setLoading(false);
     });

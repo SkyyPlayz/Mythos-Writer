@@ -8,7 +8,11 @@
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background: var(--bg-app);
+  background-color: var(--bg-app);
+  background-image: var(--bg-app-image, none);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: var(--text-header);
   min-height: 100vh;
 }

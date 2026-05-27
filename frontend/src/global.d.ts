@@ -85,6 +85,18 @@ interface TelemetrySettings {
   enabled: boolean;
 }
 
+interface LiquidGlassPrefs {
+  background: 'default' | 'none';
+  style: number;
+  glass: number;
+  blur: number;
+  neon: number;
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  textHeader?: string;
+  textBody?: string;
+  textMuted?: string;
+}
+
 interface AppSettings {
   apiKey: string;
   agents: {
@@ -101,6 +113,7 @@ interface AppSettings {
   onboardingComplete?: boolean;
   voice?: VoiceSettings;
   telemetry?: TelemetrySettings;
+  liquidGlass?: LiquidGlassPrefs;
 }
 
 type TimelineSource = 'explicit_marker' | 'prose';
