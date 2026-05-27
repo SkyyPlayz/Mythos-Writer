@@ -93,8 +93,8 @@ const BOARD_MD = [
 
 function makeApi(overrides: Record<string, unknown> = {}) {
   return {
-    readVault: vi.fn().mockResolvedValue({ content: BOARD_MD }),
-    writeVault: vi.fn().mockResolvedValue({ path: 'kanban.md', bytes: 100 }),
+    readBoard: vi.fn().mockResolvedValue({ content: BOARD_MD }),
+    writeBoard: vi.fn().mockResolvedValue({ path: 'kanban.md', bytes: 100 }),
     ...overrides,
   };
 }
@@ -138,11 +138,11 @@ describe('KanbanBoard — rendering', () => {
   });
 
   it('creates default columns when the board file does not exist', async () => {
-    ((window as any).api).readVault = vi.fn().mockRejectedValue(new Error('not found'));
+    ((window as any).api).readBoard = vi.fn().mockRejectedValue(new Error('not found'));
     await renderBoard();
     expect(screen.getByTestId('kanban-column-Idea')).toBeInTheDocument();
     expect(screen.getByTestId('kanban-column-Drafted')).toBeInTheDocument();
-    expect(((window as any).api).writeVault).toHaveBeenCalled();
+    expect(((window as any).api).writeBoard).toHaveBeenCalled();
   });
 });
 
@@ -158,10 +158,10 @@ describe('KanbanBoard — card drag-to-column (board persistence)', () => {
     fireEvent.drop(targetCol, { dataTransfer: { getData: () => '' } });
 
     await waitFor(() => {
-      expect(((window as any).api).writeVault).toHaveBeenCalled();
+      expect(((window as any).api).writeBoard).toHaveBeenCalled();
     });
 
-    const savedContent: string = ((window as any).api).writeVault.mock.calls.at(-1)[1];
+    const savedContent: string = ((window as any).api).writeBoard.mock.calls.at(-1)[1];
     expect(savedContent).toContain('## Drafted');
     expect(savedContent).toContain('[[Notes/Scene Alpha]]');
     // no longer in Idea column
@@ -179,10 +179,10 @@ describe('KanbanBoard — card drag-to-column (board persistence)', () => {
     });
 
     await waitFor(() => {
-      expect(((window as any).api).writeVault).toHaveBeenCalled();
+      expect(((window as any).api).writeBoard).toHaveBeenCalled();
     });
 
-    const savedContent: string = ((window as any).api).writeVault.mock.calls.at(-1)[1];
+    const savedContent: string = ((window as any).api).writeBoard.mock.calls.at(-1)[1];
     expect(savedContent).toContain('[[Notes/New Scene]]');
   });
 });
@@ -194,10 +194,10 @@ describe('KanbanBoard — column CRUD', () => {
     fireEvent.click(screen.getByRole('button', { name: /add column/i }));
 
     await waitFor(() => {
-      expect(((window as any).api).writeVault).toHaveBeenCalled();
+      expect(((window as any).api).writeBoard).toHaveBeenCalled();
     });
 
-    const savedContent: string = ((window as any).api).writeVault.mock.calls.at(-1)[1];
+    const savedContent: string = ((window as any).api).writeBoard.mock.calls.at(-1)[1];
     expect(savedContent).toContain('## New Column');
   });
 
@@ -208,12 +208,12 @@ describe('KanbanBoard — column CRUD', () => {
     fireEvent.click(removeBtn);
 
     await waitFor(() => {
-      expect(((window as any).api).writeVault).toHaveBeenCalled();
+      expect(((window as any).api).writeBoard).toHaveBeenCalled();
     });
 
     expect(screen.queryByTestId('kanban-column-Idea')).not.toBeInTheDocument();
 
-    const savedContent: string = ((window as any).api).writeVault.mock.calls.at(-1)[1];
+    const savedContent: string = ((window as any).api).writeBoard.mock.calls.at(-1)[1];
     expect(savedContent).not.toContain('## Idea');
   });
 
@@ -231,7 +231,7 @@ describe('KanbanBoard — column CRUD', () => {
       expect(screen.getByText('Brainstorm')).toBeInTheDocument();
     });
 
-    const savedContent: string = ((window as any).api).writeVault.mock.calls.at(-1)[1];
+    const savedContent: string = ((window as any).api).writeBoard.mock.calls.at(-1)[1];
     expect(savedContent).toContain('## Brainstorm');
     expect(savedContent).not.toContain('## Idea');
   });
@@ -243,12 +243,12 @@ describe('KanbanBoard — column CRUD', () => {
     fireEvent.click(removeCardBtn);
 
     await waitFor(() => {
-      expect(((window as any).api).writeVault).toHaveBeenCalled();
+      expect(((window as any).api).writeBoard).toHaveBeenCalled();
     });
 
     expect(screen.queryByTestId('kanban-card-Notes/Scene Alpha')).not.toBeInTheDocument();
 
-    const savedContent: string = ((window as any).api).writeVault.mock.calls.at(-1)[1];
+    const savedContent: string = ((window as any).api).writeBoard.mock.calls.at(-1)[1];
     expect(savedContent).not.toContain('Notes/Scene Alpha');
   });
 });

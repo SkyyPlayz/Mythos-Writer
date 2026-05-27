@@ -58,6 +58,8 @@ import {
   type TimelineUpsertPayload,
   type GenerationLogRecentPayload,
   type ArchiveScanPayload,
+  type KanbanReadPayload,
+  type KanbanWritePayload,
 } from './ipc.js';
 import {
   openDb,
@@ -113,6 +115,7 @@ import {
   runArchiveScan,
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
+import { readBoard, writeBoard } from './sceneCrafterBoard.js';
 
 const require = createRequire(import.meta.url);
 
@@ -682,6 +685,20 @@ const handlers: IpcHandlers = {
       wikiLinksFound: result.wikiLinksFound,
       timelineEntriesFound: result.timelineEntriesFound,
     };
+  },
+
+  // ─── Scene Crafter board (MYT-392) ───
+  [IPC_CHANNELS.KANBAN_READ]: (payload: KanbanReadPayload) => {
+    ensureVaultDir();
+    return readBoard(getVaultRoot(), payload.path);
+  },
+
+  [IPC_CHANNELS.KANBAN_WRITE]: (payload: KanbanWritePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const result = writeBoard(getVaultRoot(), payload.path, payload.content, manifest);
+    writeManifest(getManifestPath(), manifest);
+    return result;
   },
 
 };

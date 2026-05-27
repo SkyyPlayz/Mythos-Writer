@@ -83,6 +83,10 @@ export const IPC_CHANNELS = {
   // Vault graph (Phase 5 — MYT-163)
   VAULT_GRAPH_DATA: 'vault:graph-data',
 
+  // Scene Crafter board (Phase 5 — MYT-392)
+  KANBAN_READ: 'kanban:read',
+  KANBAN_WRITE: 'kanban:write',
+
   // Auto-updater (MYT-210) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
@@ -165,6 +169,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
+  [IPC_CHANNELS.KANBAN_READ]: (payload: KanbanReadPayload) => KanbanReadResponse | null;
+  [IPC_CHANNELS.KANBAN_WRITE]: (payload: KanbanWritePayload) => KanbanWriteResponse;
 }
 
 // ─── Payload / Response types ───
@@ -825,6 +831,27 @@ export interface ArchiveStatusResponse {
   count: number;
   total: number;
   builtAt: string | null;
+}
+
+// ─── Scene Crafter board IPC types (Phase 5 — MYT-392) ───
+
+export interface KanbanReadPayload {
+  path: string;
+}
+
+export interface KanbanReadResponse {
+  content: string;
+  path: string;
+}
+
+export interface KanbanWritePayload {
+  path: string;
+  content: string;
+}
+
+export interface KanbanWriteResponse {
+  path: string;
+  bytes: number;
 }
 
 // ─── Vault Graph types (Phase 5 — MYT-163) ───

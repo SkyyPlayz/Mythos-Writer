@@ -73,7 +73,7 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange }
     async (cols: KanbanColumn[], path = customBoardPath) => {
       const content = serializeBoard(cols);
       try {
-        await (window as any).api.writeVault(path, content);
+        await (window as any).api.writeBoard(path, content);
       } catch (e) {
         console.error('Failed to save kanban board:', e);
       }
@@ -87,7 +87,7 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange }
     setPendingPath(boardPath);
     (async () => {
       try {
-        const result = await (window as any).api.readVault(boardPath);
+        const result = await (window as any).api.readBoard(boardPath);
         if (result?.content) {
           const parsed = parseBoard(result.content);
           setColumns(

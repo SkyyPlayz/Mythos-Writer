@@ -227,6 +227,10 @@ interface Window {
     timelineList: (scenePath?: string) => Promise<{ entries: TimelineEntryRow[] }>;
     timelineUpsert: (entry: TimelineEntryRow) => Promise<{ id: string }>;
 
+    // Scene Crafter board (MYT-392)
+    readBoard: (boardPath: string) => Promise<{ content: string; path: string } | null>;
+    writeBoard: (boardPath: string, content: string) => Promise<{ path: string; bytes: number }>;
+
     // Voice IO (MYT-205)
     voiceStart: (micDeviceId?: string) => Promise<{ sessionId: string }>;
     voiceStop: (sessionId: string) => Promise<{ ok: boolean }>;

@@ -174,6 +174,11 @@ contextBridge.exposeInMainWorld('api', {
   // Timeline entries (MYT-216)
   timelineList: (scenePath?: string) => ipcRenderer.invoke('timeline:list', { scenePath }),
   timelineUpsert: (entry: unknown) => ipcRenderer.invoke('timeline:upsert', { entry }),
+
+  // Scene Crafter board (MYT-392)
+  readBoard: (boardPath: string) => ipcRenderer.invoke('kanban:read', { path: boardPath }),
+  writeBoard: (boardPath: string, content: string) =>
+    ipcRenderer.invoke('kanban:write', { path: boardPath, content }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
