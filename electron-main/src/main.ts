@@ -1877,7 +1877,9 @@ function createWindow() {
     height: 800,
     title: 'Mythos Writer',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      // electron-vite emits the preload to out/preload/preload.js, while this
+      // file runs from out/main/. (The packaged app preserves the same layout.)
+      preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
