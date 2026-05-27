@@ -102,9 +102,19 @@ jobs:
       - name: Test (frontend)
         run: npm run test -w frontend
 
+      - name: Log signing status
+        run: |
+          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
+            echo "APPLE_CERT_P12_BASE64 not set — building unsigned DMG (Gatekeeper warning expected)."
+            echo "Signing + notarization activates automatically once MYT-642 secrets are provisioned."
+          fi
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+
       - name: Build and package (macOS DMG)
         env:
-          # Skip code signing — notarization is a later step
+          # CI always builds unsigned — signing happens in the release workflow
+          # when APPLE_CERT_P12_BASE64 is provisioned (MYT-642).
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run dist:mac
 
