@@ -104,6 +104,9 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
   const pg = await app.firstWindow();
+  // Surface renderer console + errors so a blank/errored UI is diagnosable in CI.
+  pg.on('console', (m) => console.log('[renderer:' + m.type() + ']', m.text()));
+  pg.on('pageerror', (e) => console.log('[renderer:pageerror]', e.message));
   await pg.waitForLoadState('domcontentloaded');
   return pg;
 }
