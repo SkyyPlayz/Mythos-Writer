@@ -112,12 +112,10 @@ export class VaultFileTooLargeError extends Error {
  */
 export function realSafePath(vaultRoot: string, relativePath: string, _writeMode = false): string {
   const realVaultRoot = fs.realpathSync.native(vaultRoot);
-  // Resolve relative to the *real* vault root so containment checks stay valid
-  // even when the leaf/parent does not exist yet. On platforms where the temp
-  // or vault root is itself a symlink (e.g. macOS /var → /private/var), resolving
-  // against the un-realpath'd root would make the "parent doesn't exist" branch
-  // below compare a /var path against a /private/var root and wrongly deny it.
-  const resolved = path.resolve(realVaultRoot, relativePath);
+  // Keep the returned path anchored to the caller's vault root (not the realpath'd
+  // form) so callers and the I/O they perform see the path they expect.
+  const normalizedRoot = path.resolve(vaultRoot);
+  const resolved = path.resolve(vaultRoot, relativePath);
 
   // Existing leaf path (read or overwrite): realpath the leaf and reject escapes.
   if (fs.existsSync(resolved)) {
@@ -138,8 +136,11 @@ export function realSafePath(vaultRoot: string, relativePath: string, _writeMode
     return resolved;
   }
 
-  // Parent doesn't exist yet — ensure unresolved path still stays within vault.
-  if (!resolved.startsWith(realVaultRoot + path.sep) && resolved !== realVaultRoot) {
+  // Parent doesn't exist yet — nothing on disk to symlink-escape through, so a
+  // lexical containment check against the (un-realpath'd) vault root is correct.
+  // Comparing against realVaultRoot here would wrongly deny valid nested paths
+  // when the root itself is a symlink (e.g. macOS /var → /private/var).
+  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
     throw new Error(`Path traversal denied: ${relativePath}`);
   }
   return resolved;
