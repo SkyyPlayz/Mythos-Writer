@@ -2,7 +2,8 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import WritingAssistantPanel, { STALL_WARNING_MS, HARD_TIMEOUT_MS } from './WritingAssistantPanel';
 
 const mockAgentWritingAssistant = vi.fn();
-const mockOnWritingAssistantChunk = vi.fn(() => vi.fn()); // returns unsub fn
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnWritingAssistantChunk = vi.fn<any>(() => vi.fn()); // returns unsub fn
 const mockWritingScan = vi.fn();
 
 beforeEach(() => {
@@ -222,7 +223,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     expect(screen.queryByLabelText(/writing assistant response/i)).not.toBeInTheDocument();
 
     // Late response arriving after cancel must be ignored
-    resolveRequest?.({ text: 'late response should be ignored' });
+    resolveRequest!({ text: 'late response should be ignored' });
     await waitFor(() =>
       expect(screen.queryByText(/late response should be ignored/i)).not.toBeInTheDocument(),
     );
@@ -300,7 +301,8 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
   it('stall timers reset on each incoming token so fast streams never stall', async () => {
     vi.useFakeTimers();
     let emitChunk: ((chunk: string) => void) | null = null;
-    mockOnWritingAssistantChunk.mockImplementationOnce((cb: (chunk: string) => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockOnWritingAssistantChunk as any).mockImplementationOnce((cb: (chunk: string) => void) => {
       emitChunk = cb;
       return () => {};
     });
