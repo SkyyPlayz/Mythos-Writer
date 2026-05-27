@@ -40,6 +40,7 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder="Scene notes, reminders, loose ideas…"
+        aria-label="Scene notes"
       />
     </div>
   );
@@ -154,35 +155,53 @@ function AiPanel({
 
   return (
     <div className="ai-panel">
-      <div className="ai-subtabs">
+      <div className="ai-subtabs" role="tablist" aria-label="AI assistant sections">
         <button
+          role="tab"
+          id="ai-subtab-writing"
+          aria-selected={subTab === 'writing'}
+          aria-controls="ai-panel-writing"
           className={`ai-subtab${subTab === 'writing' ? ' active' : ''}`}
           onClick={() => setSubTab('writing')}
         >
           Writing
         </button>
         <button
+          role="tab"
+          id="ai-subtab-vault"
+          aria-selected={subTab === 'vault'}
+          aria-controls="ai-panel-vault"
           className={`ai-subtab${subTab === 'vault' ? ' active' : ''}`}
           onClick={() => setSubTab('vault')}
         >
           Vault
         </button>
         <button
+          role="tab"
+          id="ai-subtab-archive"
+          aria-selected={subTab === 'archive'}
+          aria-controls="ai-panel-archive"
           className={`ai-subtab${subTab === 'archive' ? ' active' : ''}`}
           onClick={() => setSubTab('archive')}
         >
           Archive
         </button>
       </div>
-      {subTab === 'writing' && <WritingAssistantPanel scene={scene} enabled={writingAssistantEnabled} micDeviceId={micDeviceId} />}
-      {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
-      {subTab === 'archive' && (
-        <ArchivePanel
-          scene={scene}
-          onJumpToText={onJumpToText}
-          onInsertWikiLink={onInsertWikiLink}
-        />
-      )}
+      <div
+        id={`ai-panel-${subTab}`}
+        role="tabpanel"
+        aria-labelledby={`ai-subtab-${subTab}`}
+      >
+        {subTab === 'writing' && <WritingAssistantPanel scene={scene} enabled={writingAssistantEnabled} micDeviceId={micDeviceId} />}
+        {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
+        {subTab === 'archive' && (
+          <ArchivePanel
+            scene={scene}
+            onJumpToText={onJumpToText}
+            onInsertWikiLink={onInsertWikiLink}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -207,10 +226,14 @@ export default function RightSidebar({
 
   return (
     <div className="right-sidebar">
-      <div className="sidebar-tabs">
+      <div className="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
         {tabs.map((t) => (
           <button
             key={t.id}
+            role="tab"
+            id={`sidebar-tab-${t.id}`}
+            aria-selected={activeTab === t.id}
+            aria-controls={`sidebar-panel-${t.id}`}
             className={`sidebar-tab${activeTab === t.id ? ' active' : ''}`}
             onClick={() => onTabChange(t.id)}
           >
@@ -218,7 +241,12 @@ export default function RightSidebar({
           </button>
         ))}
       </div>
-      <div className="sidebar-content">
+      <div
+        id={`sidebar-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`sidebar-tab-${activeTab}`}
+        className="sidebar-content"
+      >
         {activeTab === 'notes' && <NotesPanel scene={selectedScene} />}
         {activeTab === 'properties' && (
           <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
