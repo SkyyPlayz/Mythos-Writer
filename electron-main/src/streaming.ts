@@ -291,12 +291,12 @@ export function registerStreamingHandlers(
       !Array.isArray(payload.messages) ||
       payload.messages.length === 0 ||
       payload.messages.some(
-        (m) => (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string',
+        (m) => !m || typeof m !== 'object' || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string',
       ) ||
       (payload.model !== undefined && !MODEL_ALLOWLIST.has(payload.model)) ||
       (payload.maxTokens !== undefined &&
         (!Number.isInteger(payload.maxTokens) || payload.maxTokens < 1 || payload.maxTokens > MAX_TOKENS_CAP)) ||
-      (payload.system !== undefined && payload.system.length > MAX_SYSTEM_LENGTH)
+      (payload.system !== undefined && (typeof payload.system !== 'string' || payload.system.length > MAX_SYSTEM_LENGTH))
     ) {
       return { error: STREAM_ERRORS.INVALID_PAYLOAD };
     }
@@ -310,12 +310,14 @@ export function registerStreamingHandlers(
     return { streamId };
   });
 
-  ipcMain.handle(STREAM_CHANNELS.STREAM_CANCEL, (_event, { streamId }: { streamId: string }) => {
+  ipcMain.handle(STREAM_CHANNELS.STREAM_CANCEL, (event, { streamId }: { streamId: string }) => {
+    const entry = reg.get(streamId);
+    if (!entry || entry.senderId !== event.sender.id) return { cancelled: false };
     const cancelled = reg.cancel(streamId);
     return { cancelled };
   });
 
-  ipcMain.on(STREAM_CHANNELS.STREAM_ACK, (_event, data: unknown) => {
+  ipcMain.on(STREAM_CHANNELS.STREAM_ACK, (event, data: unknown) => {
     // F20: validate ack payload to prevent prototype-pollution or type confusion
     if (
       !data ||
@@ -324,6 +326,8 @@ export function registerStreamingHandlers(
       (data as { count: number }).count < 1
     ) return;
     const { streamId, count } = data as { streamId: string; count: number };
+    const entry = reg.get(streamId);
+    if (!entry || entry.senderId !== event.sender.id) return;
     reg.ack(streamId, count);
   });
 }
