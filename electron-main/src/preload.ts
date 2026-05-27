@@ -344,6 +344,10 @@ contextBridge.exposeInMainWorld('api', {
   archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>
     ipcRenderer.invoke('archive:confirm', { suggestionId, action }),
   archiveIgnoreList: () => ipcRenderer.invoke('archive:ignore-list', undefined),
+
+  // Liquid Glass background image (MYT-613)
+  pickBgImage: () => ipcRenderer.invoke('bg:pick', undefined),
+  loadBgImage: (filePath: string) => ipcRenderer.invoke('bg:load', { filePath }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
-import { applyTheme } from './theme';
+import { applyTheme, applyLiquidGlassTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -453,7 +453,19 @@ export default function DesktopShell() {
       if (m.layout) {
         setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
-      if (s) { setAppSettings(s); applyTheme(s.theme); }
+      if (s) {
+        setAppSettings(s);
+        applyTheme(s.theme);
+        // Load background image data URL if a custom path is stored
+        const lg = s.liquidGlass;
+        if (lg?.background && lg.background !== 'default') {
+          (window.api as any).loadBgImage?.(lg.background)
+            .then((res: { dataUrl: string | null }) => applyLiquidGlassTokens(lg, res?.dataUrl))
+            .catch(() => applyLiquidGlassTokens(lg));
+        } else {
+          applyLiquidGlassTokens(lg);
+        }
+      }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
@@ -931,7 +943,11 @@ export default function DesktopShell() {
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
-          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme); }}
+          onSaved={(s) => {
+            setAppSettings(s);
+            applyTheme(s.theme);
+            applyLiquidGlassTokens(s.liquidGlass);
+          }}
         />
       )}
       {historyOpen && (

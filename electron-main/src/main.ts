@@ -79,6 +79,7 @@ import {
   type ProjectEntry,
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
+  type BgLoadPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -1329,6 +1330,37 @@ const handlers: IpcHandlers = {
         createdAt: r.created_at,
       })),
     };
+  },
+
+  // ─── Liquid Glass background image (MYT-613) ───
+  [IPC_CHANNELS.BG_PICK]: async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose App Background Image',
+      buttonLabel: 'Set Background',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { filePath: null, cancelled: true };
+    }
+    return { filePath: result.filePaths[0], cancelled: false };
+  },
+
+  [IPC_CHANNELS.BG_LOAD]: async (payload: BgLoadPayload) => {
+    try {
+      const { filePath } = payload;
+      if (!filePath || !fs.existsSync(filePath)) return { dataUrl: null };
+      const ext = path.extname(filePath).toLowerCase().slice(1);
+      const mimeMap: Record<string, string> = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
+      };
+      const mime = mimeMap[ext] ?? 'image/jpeg';
+      const data = fs.readFileSync(filePath);
+      return { dataUrl: `data:${mime};base64,${data.toString('base64')}` };
+    } catch {
+      return { dataUrl: null };
+    }
   },
 
   // ─── EPUB export (MYT-342) ───

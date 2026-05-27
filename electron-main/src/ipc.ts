@@ -78,6 +78,10 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
 
+  // Liquid Glass background image (MYT-613)
+  BG_PICK: 'bg:pick',
+  BG_LOAD: 'bg:load',
+
   // Generation log
   GENERATION_LOG_RECENT: 'generationLog:recent',
   GENERATION_LOG_LIST: 'generationLog:list',
@@ -276,6 +280,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
+  [IPC_CHANNELS.BG_PICK]: (payload: never) => Promise<BgPickResponse>;
+  [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -844,6 +850,20 @@ export interface ProviderSettings {
   model: string;
 }
 
+/** Liquid Glass advanced theme customization (MYT-613). All values are optional;
+ *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
+export interface LiquidGlassPrefs {
+  softnessContrast: number;
+  glass: number;
+  blur: number;
+  neonIntensity: number;
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  textHeader: string;
+  textBody: string;
+  textMuted: string;
+  background: 'default' | string;
+}
+
 export interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
@@ -872,6 +892,8 @@ export interface AppSettings {
     enabled: boolean;
     sessionId: string;
   };
+  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
+  liquidGlass?: LiquidGlassPrefs;
 }
 
 export interface SettingsSetPayload {
@@ -1446,6 +1468,21 @@ export interface ArchiveIgnoreEntry {
 
 export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
+}
+
+// ─── Liquid Glass background image (MYT-613) ───
+
+export interface BgPickResponse {
+  filePath: string | null;
+  cancelled: boolean;
+}
+
+export interface BgLoadPayload {
+  filePath: string;
+}
+
+export interface BgLoadResponse {
+  dataUrl: string | null;
 }
 
 // ─── Auto-updater Phase 4 (MYT-337) ───

@@ -49,6 +49,10 @@
       rgba(255, 77, 255, 0.6) 100%);
 
   /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
+  /* Background image override — set by applyLiquidGlassTokens (MYT-613).
+     'none' keeps the plain --bg-base colour; any other value shows as a
+     full-cover wallpaper behind all glass panels. */
+  --bg-app-image: none;
   --bg-base: #0e1116;          /* app shell / canvas — deep charcoal, not black */
   --bg-vignette: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%);
   --glass-fill: rgba(255, 255, 255, 0.09);   /* translucent panel fill        */

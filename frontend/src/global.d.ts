@@ -66,6 +66,29 @@ interface AgentBudgetSettings {
   maxTokensPerDay: number;
 }
 
+/** Liquid Glass advanced theme customization (MYT-613). All values are optional;
+ *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
+interface LiquidGlassPrefs {
+  /** Master softness↔contrast (0=soft/glassy, 1=contrast/opaque). Default 0.4. */
+  softnessContrast: number;
+  /** Glass fill lightness (0=lighter/transparent, 1=darker/opaque). Default 0.4. */
+  glass: number;
+  /** Backdrop blur amount (0=more blur, 1=less blur). Default 0.4. */
+  blur: number;
+  /** Neon glow intensity (0=strong, 1=soft). Default 0.4. */
+  neonIntensity: number;
+  /** Primary neon accent colour. Default 'cyan'. */
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  /** Header text hex colour. Default '#edecf6'. */
+  textHeader: string;
+  /** Body text hex colour. Default '#bfd6e8'. */
+  textBody: string;
+  /** Muted text hex colour (must be ≥ 4.5:1 on panel). Default '#8a9bb0'. */
+  textMuted: string;
+  /** 'default' = built-in CSS gradient; any other string = file path for bg image. */
+  background: 'default' | string;
+}
+
 interface AppSettings {
   apiKey: string;
   agents: {
@@ -83,6 +106,8 @@ interface AppSettings {
   onboardingComplete?: boolean;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
+  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
+  liquidGlass?: LiquidGlassPrefs;
 }
 
 interface GenerationLogRow {
@@ -234,6 +259,10 @@ interface Window {
     betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
+
+    // Liquid Glass background image (MYT-613)
+    pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
+    loadBgImage: (filePath: string) => Promise<{ dataUrl: string | null }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
