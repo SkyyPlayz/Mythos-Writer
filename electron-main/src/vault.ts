@@ -16,6 +16,14 @@ import type {
   ObsidianNameCollision,
 } from './ipc.js';
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
+import { safeVaultJoin } from './vault/safeVaultJoin.js';
+
+export {
+  safeVaultJoin,
+  safeVaultIpcJoin,
+  VAULT_IPC_ALLOWED_EXTENSIONS,
+} from './vault/safeVaultJoin.js';
+export type { SafeVaultJoinOptions } from './vault/safeVaultJoin.js';
 
 // ─── Manuscript layout ───
 
@@ -103,80 +111,16 @@ export class VaultFileTooLargeError extends Error {
   }
 }
 /**
- * Resolve a relative path inside the vault, hardening against symlink escape.
- * Uses fs.realpathSync.native to follow filesystem symlinks, then checks
- * that the real target stays within the real vault root.
+ * Resolve a relative path inside the vault, hardening against escape vectors
+ * (traversal, symlinks, null bytes, encoded ".." and cross-OS payloads).
  *
- * For reads (file exists): realpath the full path.
- * For writes (leaf may not exist): realpath the parent directory.
+ * Thin wrapper around {@link safeVaultJoin} (MYT-774) so existing call sites
+ * and the `safePath` legacy alias keep working; new code should call
+ * `safeVaultJoin` directly to expose the option surface (dotfile + extension
+ * allow-list) at the call site.
  */
 export function realSafePath(vaultRoot: string, relativePath: string, writeMode = false): string {
-  const realVaultRoot = fs.realpathSync.native(vaultRoot);
-  const resolved = path.resolve(vaultRoot, relativePath);
-  const isWithinVault = (candidate: string) =>
-    candidate === realVaultRoot || candidate.startsWith(realVaultRoot + path.sep);
-
-  if (writeMode) {
-    // Leaf path may not exist yet — walk up to the nearest existing ancestor,
-    // realpath that ancestor, then reattach the remaining suffix. This correctly
-    // handles symlinked vault roots and deeply-nested paths in empty directories.
-    let ancestor = resolved;
-    while (!fs.existsSync(ancestor)) {
-      const parent = path.dirname(ancestor);
-      if (parent === ancestor) break;
-      ancestor = parent;
-    }
-    if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relativePath}`);
-
-    const realAncestor = fs.realpathSync.native(ancestor);
-    if (!isWithinVault(realAncestor)) {
-      // Use "symlink escape detected" when the leaf itself is the escape vector so
-      // existing tests that check for that phrase continue to pass.
-      const msg =
-        ancestor === resolved
-          ? `Path traversal denied: ${relativePath} (symlink escape detected)`
-          : `Path traversal denied: ${relativePath} (parent symlink escapes vault)`;
-      throw new Error(msg);
-    }
-
-    const remainder = path.relative(ancestor, resolved);
-    const realTarget = path.resolve(realAncestor, remainder);
-    if (!isWithinVault(realTarget)) throw new Error(`Path traversal denied: ${relativePath}`);
-
-    return realTarget;
-  }
-
-  // Read mode: keep the returned path anchored to the caller's vault root so
-  // callers see the path they expect.
-  const normalizedRoot = path.resolve(vaultRoot);
-
-  // Existing leaf path: realpath the full path and reject symlink escapes.
-  if (fs.existsSync(resolved)) {
-    const realPath = fs.realpathSync.native(resolved);
-    if (!isWithinVault(realPath)) {
-      throw new Error(`Path traversal denied: ${relativePath} (symlink escape detected)`);
-    }
-    return resolved;
-  }
-
-  // Missing leaf, parent exists: realpath the parent and reject escapes.
-  const parent = path.dirname(resolved);
-  if (fs.existsSync(parent)) {
-    const realParent = fs.realpathSync.native(parent);
-    if (!isWithinVault(realParent)) {
-      throw new Error(`Path traversal denied: ${relativePath} (parent symlink escape detected)`);
-    }
-    return resolved;
-  }
-
-  // Neither exists — lexical check against un-realpath'd root is correct here
-  // because nothing on disk can symlink-escape. Comparing against realVaultRoot
-  // would wrongly deny valid nested paths when the root is a symlink
-  // (e.g. macOS /var → /private/var).
-  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
-    throw new Error(`Path traversal denied: ${relativePath}`);
-  }
-  return resolved;
+  return safeVaultJoin(vaultRoot, relativePath, { writeMode });
 }
 
 // Legacy alias — deprecated, use realSafePath.

@@ -61,6 +61,12 @@ export interface Story {
 
 export type WritingMode = 'normal' | 'focus' | 'edit';
 
+export interface FocusPrefs {
+  showLeftSidebar: boolean;
+  showRightSidebar: boolean;
+  showBottomBar: boolean;
+}
+
 export interface LayoutPrefs {
   leftWidth: number;
   rightWidth: number;
@@ -68,6 +74,7 @@ export interface LayoutPrefs {
   rightTab: 'notes' | 'properties' | 'ai';
   leftTab: 'stories' | 'vault' | 'entities' | 'review';
   writingMode?: WritingMode;
+  focusPrefs?: FocusPrefs;
 }
 
 export interface Manifest {

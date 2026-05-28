@@ -47,6 +47,7 @@ mythos-writer/
 - Node.js 20+
 - npm 10+
 - An [Anthropic API key](https://console.anthropic.com/) — set in-app via Settings, or via `ANTHROPIC_API_KEY` env var
+- Build tools for native modules: `python3`, `make`, `g++` (Linux/macOS usually have these; Windows needs Visual Studio Build Tools or `npm install --global windows-build-tools`)
 
 ## Local setup
 
@@ -69,36 +70,65 @@ npm run dev
 
 Starts `electron-vite dev`: hot-reloads the React renderer in a live Electron window, watches the main process, and sets `VITE_DEV_SERVER_URL` so Electron loads the Vite dev server instead of the built renderer.
 
+> **Native module note:** `npm run dev` automatically rebuilds `better-sqlite3` for Electron's Node ABI before launching. This takes a few seconds on the first run after `npm install`. If you run `npm test` after `npm run dev`, first restore the Node ABI with `npm run rebuild:node`.
+
 ## Production build and start
 
 ```bash
-# 1. Compile main process + renderer to out/
+# 1. Install dependencies
+npm install
+
+# 2. Rebuild the native SQLite module for Electron
+npm run rebuild:native
+
+# 3. Compile main process + renderer to out/
 npm run build:electron
 
-# 2. Launch the compiled app (no packaging — fast local test of prod mode)
+# 4. Launch the compiled app (no packaging — fast local test of prod mode)
 npm start
 
-# 3. (Optional) Package as a distributable Windows zip
+# 5. (Optional) Package as a distributable Windows zip
 npm run build         # → dist-electron/Mythos Writer-<version>.zip
 
-# 4. (Optional) Build a Windows NSIS installer
+# 6. (Optional) Build a Windows NSIS installer
 npm run build:installer  # → dist-electron/Mythos Writer-<version>.exe
 ```
 
-`npm start` runs `electron .` against the files in `out/` (built by the previous step). In production mode, `VITE_DEV_SERVER_URL` is not set, so Electron loads `out/renderer/index.html` directly — no HTTP server involved.
+`npm start` runs `electron .` against the files in `out/` (built by step 3). In production mode, `VITE_DEV_SERVER_URL` is not set, so Electron loads `out/renderer/index.html` directly — no HTTP server involved.
+
+**Why the rebuild step?** `better-sqlite3` is a native Node.js addon. `npm install` compiles it for the system Node.js ABI. Electron embeds its own Node.js with a different ABI — without the rebuild step, the app crashes immediately on launch with a `NODE_MODULE_VERSION` error. `npm run rebuild:native` recompiles the addon for Electron's ABI. (Unit tests run under system Node.js; use `npm run rebuild:node` to switch back if needed.)
 
 ## Available scripts (run from repo root)
 
-| Script                  | What it does                                          |
-| ----------------------- | ----------------------------------------------------- |
-| `npm run dev`           | Start Electron app in hot-reload dev mode             |
-| `npm run build:electron`| Compile main + preload + renderer to `out/`           |
-| `npm start`             | Launch the already-built app from `out/` (prod mode)  |
-| `npm run build`         | Compile + package as Windows zip to `dist-electron/`  |
-| `npm run build:installer` | Compile + package as Windows NSIS installer         |
-| `npm run lint`          | ESLint across frontend                                |
-| `npm run test`          | Vitest across both packages                           |
-| `npm run typecheck`     | `tsc --noEmit` across both packages                   |
+| Script                  | What it does                                                        |
+| ----------------------- | ------------------------------------------------------------------- |
+| `npm run dev`           | Rebuild native modules for Electron, then start hot-reload dev mode |
+| `npm run rebuild:native`| Rebuild `better-sqlite3` for Electron's ABI (required before launch)|
+| `npm run rebuild:node`  | Rebuild `better-sqlite3` for system Node.js ABI (for unit tests)    |
+| `npm run build:electron`| Compile main + preload + renderer to `out/`                         |
+| `npm start`             | Launch the already-built app from `out/` (prod mode)                |
+| `npm run build`         | Compile + package as Windows zip to `dist-electron/`                |
+| `npm run build:installer` | Compile + package as Windows NSIS installer                       |
+| `npm run lint`          | ESLint across frontend                                              |
+| `npm run test`          | Vitest across both packages                                         |
+| `npm run typecheck`     | `tsc --noEmit` across both packages                                 |
+
+## Troubleshooting
+
+### App crashes with `NODE_MODULE_VERSION` error on launch
+
+```
+Error: The module '…/better-sqlite3/build/Release/better_sqlite3.node'
+was compiled against a different Node.js version…
+```
+
+**Cause:** `better-sqlite3` was compiled for system Node.js but Electron uses a different internal ABI.  
+**Fix:** Run `npm run rebuild:native`, then relaunch.
+
+### Unit tests fail with `NODE_MODULE_VERSION` error
+
+`npm run dev` rebuilds for Electron's ABI, which breaks unit tests running under system Node.js.  
+**Fix:** Run `npm run rebuild:node` before `npm test`.
 
 ## Update Channels
 

@@ -18,6 +18,8 @@ import {
   maskSettingsForRenderer,
   reconcileSettingsFromRenderer,
 } from './settings-masking.js';
+import { SecretsStore, type SafeStorageLike } from './secrets/store.js';
+import { persistSecretsAndStripSettings } from './secrets/migration.js';
 
 // A plausible-looking synthetic key — not a real credential.
 const FAKE_API_KEY = 'sk-ant-test-FakeKeyForTestingOnly000000000000000000000000000000';
@@ -206,6 +208,46 @@ describe('reconcileSettingsFromRenderer — preserve stored keys on echo (MYT-42
     };
     const reconciled = reconcileSettingsFromRenderer(incoming, stored);
     expect(reconciled.voice?.openaiApiKey).toBe(newKey);
+  });
+});
+
+// ── app-settings.json — no plaintext API keys on disk after save (MYT-777) ─
+
+describe('app-settings.json on-disk payload — no plaintext keys (MYT-777)', () => {
+  function makeSafeStorage(): SafeStorageLike {
+    return {
+      isEncryptionAvailable: () => true,
+      encryptString: (s: string) => Buffer.from(`enc:${s}`, 'utf-8'),
+      decryptString: (buf: Buffer) => buf.toString('utf-8').replace(/^enc:/, ''),
+    };
+  }
+
+  function mkStore(): { store: SecretsStore; settingsPath: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-leak-disk-'));
+    const settingsPath = path.join(dir, 'app-settings.json');
+    const secretsPath = path.join(dir, 'secrets.json');
+    return {
+      store: new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage() }),
+      settingsPath,
+    };
+  }
+
+  it('saveAppSettings-equivalent flow leaves no key material in the JSON file', () => {
+    const { store, settingsPath } = mkStore();
+    const incoming = settingsFixture({
+      apiKey: FAKE_API_KEY,
+      provider: { kind: 'anthropic', apiKey: FAKE_API_KEY, model: 'claude-haiku-4-5-20251001' },
+      voice: { enabled: true, cloudFallback: true, openaiApiKey: FAKE_OPENAI_KEY },
+    });
+    // Mirrors saveAppSettings() in main.ts: strip secrets, then write.
+    const stripped = persistSecretsAndStripSettings(incoming, store);
+    fs.writeFileSync(settingsPath, JSON.stringify(stripped, null, 2), 'utf-8');
+
+    const onDisk = fs.readFileSync(settingsPath, 'utf-8');
+    expect(onDisk).not.toContain(FAKE_API_KEY);
+    expect(onDisk).not.toContain('sk-ant-test');
+    expect(onDisk).not.toContain(FAKE_OPENAI_KEY);
+    expect(onDisk).not.toContain('sk-proj-TestOnly');
   });
 });
 

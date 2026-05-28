@@ -109,6 +109,8 @@ contextBridge.exposeInMainWorld('api', {
   // Suggestions lifecycle
   suggestionsList: (status?: string, sourceAgent?: string) =>
     ipcRenderer.invoke('suggestions:list', { status, sourceAgent }),
+  suggestionsGet: (id: string) =>
+    ipcRenderer.invoke('suggestions:get', { id }),
   suggestionsUpsert: (suggestion: unknown) =>
     ipcRenderer.invoke('suggestions:upsert', { suggestion }),
   suggestionsAccept: (id: string, actor?: string) =>
@@ -119,6 +121,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suggestions:rollback', { id, actor }),
   auditList: (suggestionId?: string) =>
     ipcRenderer.invoke('audit:list', { suggestionId }),
+  provenanceUpsert: (entityId: string, entityKind: string, agentId: string, agentType: string, runId?: string | null) =>
+    ipcRenderer.invoke('provenance:upsert', { entityId, entityKind, agentId, agentType, runId }),
 
   // Generalized token streaming — stream:* channels (MYT-156)
   streamStart: (payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; system?: string; model?: string; maxTokens?: number }) =>

@@ -1,5 +1,6 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
+import { secureWebPreferences, createWindowOpenHandler } from './security.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -48,6 +49,7 @@ import {
   type AppSettings,
   type SettingsSetPayload,
   type SuggestionsListPayload,
+  type SuggestionsGetPayload,
   type SuggestionsUpsertPayload,
   type SuggestionsAcceptPayload,
   type SuggestionsApplyPayload,
@@ -56,6 +58,7 @@ import {
   type AuditListPayload,
   type TimelineListPayload,
   type TimelineUpsertPayload,
+  type ProvenanceUpsertPayload,
   type GenerationLogRecentPayload,
   type GenerationLogListPayload,
   type GenerationLogGetPayload,
@@ -85,6 +88,8 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  isFromTopFrame,
+  UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
 import {
   openDb,
@@ -112,6 +117,7 @@ import {
   listArchiveIgnores,
   countTokensInWindow,
   countSuggestionsInWindow,
+  insertProvenance,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -138,6 +144,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  safeVaultIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -165,6 +172,12 @@ import {
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
+import { initSecretsStore, getSecretsStore } from './secrets/index.js';
+import {
+  hydrateSecretsIntoSettings,
+  migrateSecretsFromSettingsFile,
+  persistSecretsAndStripSettings,
+} from './secrets/migration.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
@@ -200,7 +213,8 @@ function registerAgentCancelHandlers(): void {
     'agent:brainstorm:stream-cancel',
     'agent:vault-check:stream-cancel',
   ] as const) {
-    ipcMain.on(channel, (_event, { requestId }: { requestId: string }) => {
+    ipcMain.on(channel, (event, { requestId }: { requestId: string }) => {
+      if (!isFromTopFrame(event)) return;
       agentControllers.get(requestId)?.abort();
       agentControllers.delete(requestId);
     });
@@ -404,20 +418,29 @@ function validateVaultPath(p: string, field: string): void {
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
+  // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
+  // at the IPC boundary. The low-level helpers also re-check traversal, so a
+  // bad path is rejected twice independently.
   [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, false);
     return readVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return writeVaultFileAtomic(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
+    // LIST takes a directory — enforce traversal/symlink only, not the
+    // file-extension allow-list.
+    if (payload.root) safePath(getVaultRoot(), payload.root);
     return listVaultFiles(getVaultRoot(), payload.root);
   },
   [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return deleteVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: () => {
@@ -489,6 +512,10 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
     ensureVaultDir();
     return { suggestions: listSuggestions(payload.status, payload.sourceAgent) };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => {
+    ensureVaultDir();
+    return { suggestion: getSuggestion(payload.id) };
   },
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => {
     ensureVaultDir();
@@ -615,6 +642,23 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => {
     ensureVaultDir();
     return { entries: listAuditLog(payload.suggestionId) };
+  },
+
+  // ─── Provenance ───
+  [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => {
+    ensureVaultDir();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    insertProvenance({
+      id,
+      entity_id: payload.entityId,
+      entity_kind: payload.entityKind,
+      agent_id: payload.agentId,
+      agent_type: payload.agentType,
+      run_id: payload.runId ?? null,
+      created_at: now,
+    });
+    return { id };
   },
 
   // ─── Timeline ───
@@ -2086,17 +2130,32 @@ const handlers: IpcHandlers = {
 
 // ─── Create BrowserWindow ───
 function createWindow() {
+  // electron-vite emits the preload to out/preload/preload.js, while this
+  // file runs from out/main/. (The packaged app preserves the same layout.)
+  const preloadPath = path.join(__dirname, '../preload/preload.js');
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: 'Mythos Writer',
-    webPreferences: {
-      // electron-vite emits the preload to out/preload/preload.js, while this
-      // file runs from out/main/. (The packaged app preserves the same layout.)
-      preload: path.join(__dirname, '../preload/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+    webPreferences: secureWebPreferences({ preloadPath }),
+  });
+
+  // MYT-776: deny renderer-initiated popups by default; route http(s) URLs to
+  // the user's system browser via shell.openExternal instead of opening an
+  // Electron window with unfettered privileges.
+  mainWindow.webContents.setWindowOpenHandler(
+    createWindowOpenHandler((url) => { shell.openExternal(url).catch(() => {}); }),
+  );
+
+  // Block in-place navigations to anything other than the loaded renderer —
+  // protects against a compromised renderer redirecting to a remote origin
+  // that would then inherit the preload bridge.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const devServer = process.env.VITE_DEV_SERVER_URL;
+    const isAllowed =
+      (devServer && url.startsWith(devServer)) ||
+      url.startsWith('file://');
+    if (!isAllowed) event.preventDefault();
   });
 
   // Load the Vite-built renderer
@@ -2153,24 +2212,30 @@ function normalizeReleaseNotes(
 
 function initAutoUpdater() {
   // Always register IPC handlers — safe no-ops when flag is off or not packaged.
-  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, () => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
     applyUpdateChannel();
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     return { queued: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (_event, payload?: { quit: boolean }) => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (event, payload?: { quit: boolean }) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
     const quit = payload?.quit !== false; // default true = restart immediately
     autoUpdater.quitAndInstall(false, quit);
     return { ok: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, () => lastUpdateInfo);
+  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    return lastUpdateInfo;
+  });
 
   // MYT-337: app:checkForUpdate — async check that returns { available, version, releaseNotes }
-  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async () => {
+  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) {
       return { available: false, version: null, releaseNotes: null };
     }
@@ -2198,7 +2263,8 @@ function initAutoUpdater() {
 
   // MYT-337: app:installUpdate — schedules install on next quit (autoInstallOnAppQuit=true).
   // Does NOT trigger an immediate restart; the downloaded update is applied when the user quits normally.
-  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, () => {
+  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { scheduled: false };
     return { scheduled: updateDownloaded };
   });
@@ -2338,12 +2404,13 @@ function getAppSettingsPath(): string {
 
 function loadAppSettings(): AppSettings {
   const settingsPath = getAppSettingsPath();
+  let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
-      return {
+      base = {
         ...SETTINGS_DEFAULTS,
         ...raw,
         agents: {
@@ -2353,14 +2420,42 @@ function loadAppSettings(): AppSettings {
         },
       };
     } catch {
-      // fall through to defaults
+      base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
+  } else {
+    base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
   }
-  return { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
+  // MYT-777: overlay decrypted credentials from the SecretsStore so the rest
+  // of the main-process code keeps reading settings.apiKey / provider.apiKey /
+  // voice.openaiApiKey unchanged. The on-disk JSON file holds empty strings
+  // for those fields after the one-shot migration in app-ready.
+  try {
+    return hydrateSecretsIntoSettings(base, getSecretsStore());
+  } catch {
+    // Store not yet initialized (very early boot path). Caller will see the
+    // post-migration empty key strings; the env-var fallback in
+    // getValidatedApiKey still serves as a last resort for CLI/CI scenarios.
+    return base;
+  }
 }
 
 function saveAppSettings(settings: AppSettings): void {
-  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+  // MYT-777: never persist plaintext API keys to app-settings.json. Route
+  // secret-shaped fields into the encrypted store and write the cleared
+  // payload to disk. If the store is unavailable, still strip the fields so
+  // we never regress to plaintext-at-rest.
+  let toWrite: AppSettings = settings;
+  try {
+    toWrite = persistSecretsAndStripSettings(settings, getSecretsStore());
+  } catch {
+    toWrite = {
+      ...settings,
+      apiKey: '',
+      ...(settings.provider ? { provider: { ...settings.provider, apiKey: '' } } : {}),
+      ...(settings.voice ? { voice: { ...settings.voice, openaiApiKey: '' } } : {}),
+    };
+  }
+  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(toWrite, null, 2), 'utf-8');
 }
 
 // ─── Telemetry bootstrap ───────────────────────────────────────────────────
@@ -2382,7 +2477,10 @@ function initTelemetry(): void {
 // without booting electron. See settings-masking.ts.
 
 // ─── Anthropic API key validation ───
-// Checks persisted settings first, then falls back to environment variable.
+// MYT-777: settings.apiKey is hydrated from the encrypted secrets store. The
+// process.env.ANTHROPIC_API_KEY fallback is retained as a dev/CI escape hatch
+// (and for headless CLI runs) and is intentionally NOT written into the store
+// — that would silently persist a key the user did not explicitly opt into.
 function getValidatedApiKey(): string {
   const settings = loadAppSettings();
   const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY;
@@ -2398,6 +2496,7 @@ function getValidatedApiKey(): string {
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.brainstorm;
     if (!agentSettings.enabled) {
       throw new Error('Brainstorm agent is disabled in settings.');
@@ -2513,6 +2612,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.writingAssistant;
     if (!agentSettings.enabled) {
       throw new Error('Writing Assistant is disabled in settings.');
@@ -2615,7 +2715,8 @@ function registerWritingAssistantHandler() {
 // ─── Vault Agent handlers ───
 function registerVaultAgentHandlers() {
   // agent:vault-index — builds in-memory index of all vault entities
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, () => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     reindexEntities(getVaultRoot(), manifest);
@@ -2652,6 +2753,7 @@ function registerVaultAgentHandlers() {
 
   // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
   ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const apiKey = getValidatedApiKey();
 
     ensureVaultDir();
@@ -2848,7 +2950,8 @@ async function runWritingScan(
 
 // ─── Writing Assistant scheduled scan handler (MYT-233 / MYT-711) ───
 function registerWritingScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (_event, payload: WritingScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
       return { tips: [], suggestionsUpserted: 0, scannedAt: new Date().toISOString() };
@@ -2968,7 +3071,8 @@ function startWritingScanScheduler(): void {
 // ─── Beta-Read Mode on-demand scan handler (MYT-711) ───
 // Runs an LLM analysis of a scene and auto-generates anchored BetaReadComments.
 function registerBetaReadScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (_event, payload: BetaReadScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
       return { comments: [], scannedAt: new Date().toISOString() };
@@ -3064,6 +3168,18 @@ app.whenReady().then(async () => {
   ensureNotesVaultDir();
   // Track current vault in recent projects list on every launch
   addToRecentProjects(getVaultRoot());
+  // MYT-777: initialise the encrypted credential store, then run the one-shot
+  // migration that lifts any plaintext API keys out of app-settings.json into
+  // safeStorage. Must precede initTelemetry — that path can rewrite settings.
+  initSecretsStore({ userDataDir: app.getPath('userData'), safeStorage });
+  try {
+    migrateSecretsFromSettingsFile(getAppSettingsPath(), getSecretsStore());
+  } catch (e) {
+    // On hosts without a usable OS keychain, safeStorage.encryptString throws
+    // and the migration would re-throw. Leave the file untouched so existing
+    // env-var workflows keep working; settings UI will surface the error.
+    console.warn('[secrets] migration skipped: safeStorage unavailable —', (e as Error).message);
+  }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
   setupIpcMain(handlers);

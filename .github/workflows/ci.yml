@@ -80,6 +80,12 @@ jobs:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
 
+      - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
+        run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
+
+      - name: E2E — Two-vault layout Story + Notes CRUD (MYT-769)
+        run: xvfb-run --auto-servernum npm run test:e2e:two-vault
+
       - name: Upload E2E report on failure
         if: failure()
         uses: actions/upload-artifact@v4

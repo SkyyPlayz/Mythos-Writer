@@ -1,5 +1,33 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import './SearchBar.css';
+
+// Splits a raw FTS5 snippet (with [[…]] highlight markers) into React nodes.
+// Text segments are plain strings (React escapes them); matched terms become <mark>.
+// This avoids dangerouslySetInnerHTML and any possibility of HTML injection.
+export function renderSnippet(snippet: string): ReactNode {
+  const parts: ReactNode[] = [];
+  let remaining = snippet;
+  let key = 0;
+  while (remaining.length > 0) {
+    const start = remaining.indexOf('[[');
+    if (start === -1) {
+      parts.push(<span key={key++}>{remaining}</span>);
+      break;
+    }
+    if (start > 0) {
+      parts.push(<span key={key++}>{remaining.slice(0, start)}</span>);
+    }
+    const end = remaining.indexOf(']]', start + 2);
+    if (end === -1) {
+      // Unclosed marker — treat the rest as plain text
+      parts.push(<span key={key++}>{remaining.slice(start)}</span>);
+      break;
+    }
+    parts.push(<mark key={key++}>{remaining.slice(start + 2, end)}</mark>);
+    remaining = remaining.slice(end + 2);
+  }
+  return <>{parts}</>;
+}
 
 type SearchScope = 'story' | 'notes' | 'both';
 
@@ -174,10 +202,9 @@ export default function SearchBar({ onNavigate }: Props) {
               <div className="search-result-body">
                 <span className="search-result-title">{result.title}</span>
                 {result.snippet && (
-                  <span
-                    className="search-result-snippet"
-                    dangerouslySetInnerHTML={{ __html: result.snippet.replace(/\[\[/g, '<mark>').replace(/\]\]/g, '</mark>') }}
-                  />
+                  <span className="search-result-snippet">
+                    {renderSnippet(result.snippet)}
+                  </span>
                 )}
               </div>
               <span className={`search-result-vault search-result-vault-${result.vault}`}>

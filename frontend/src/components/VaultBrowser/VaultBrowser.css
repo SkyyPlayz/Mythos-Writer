@@ -1,0 +1,289 @@
+/* VaultBrowser — Phase 2 vault sidebar (MYT-778) */
+
+.vault-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ─── Scope toggle bar ─── */
+
+.vb-scope-bar {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 4px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+}
+
+.vb-scope-btn {
+  flex: 1;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 3px);
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  font-size: var(--text-xs, 0.7rem);
+  font-weight: 500;
+  padding: 3px 6px;
+  cursor: pointer;
+  transition: color 80ms ease, background 80ms ease;
+  line-height: 1.4;
+}
+
+.vb-scope-btn:hover {
+  color: var(--text-body, rgba(255,255,255,0.85));
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+}
+
+.vb-scope-btn.vb-scope-active {
+  color: var(--neon-cyan, #00f0ff);
+  border-color: var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.06);
+}
+
+/* ─── Content area ─── */
+
+.vb-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.vb-section {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.vb-section-full {
+  flex: 1;
+}
+
+.vb-section-story-split {
+  flex-shrink: 0;
+  max-height: 50%;
+}
+
+.vb-section-notes-split {
+  flex: 1;
+  min-height: 0;
+}
+
+.vb-divider {
+  height: 1px;
+  background: var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+}
+
+/* ─── Section header ─── */
+
+.vb-section-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 8px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+}
+
+.vb-section-label {
+  flex: 1;
+  font-size: var(--text-xs, 0.7rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vb-section-add {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  font-size: 1rem;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs, 3px);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 80ms ease;
+}
+
+.vb-section-add:hover {
+  color: var(--text-header, #fff);
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+}
+
+/* ─── Story vault tree ─── */
+
+.vb-story-vault {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.vb-story-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.vb-item-row {
+  display: flex;
+  align-items: center;
+}
+
+.vb-tree-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-body, rgba(255,255,255,0.85));
+  font-size: var(--text-sm, 0.8rem);
+  padding: 3px 4px;
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+  transition: background 80ms ease;
+}
+
+.vb-tree-toggle:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+  color: var(--text-header, #fff);
+}
+
+.vb-inline-add {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  opacity: 0;
+  transition: opacity 80ms ease;
+  flex-shrink: 0;
+}
+
+.vb-item-row:hover .vb-inline-add {
+  opacity: 1;
+}
+
+.vb-inline-add:hover {
+  color: var(--text-header, #fff);
+}
+
+/* ─── Shared row elements ─── */
+
+.vb-chevron {
+  font-size: 0.55rem;
+  width: 10px;
+  flex-shrink: 0;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+}
+
+.vb-icon {
+  font-size: 0.78rem;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.vb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* ─── Rows (story scene + virtualized notes) ─── */
+
+.vb-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
+  font-size: var(--text-sm, 0.8rem);
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+  cursor: default;
+  transition: background 80ms ease;
+}
+
+.vb-row.vb-dir,
+.vb-row.vb-md,
+.vb-row.vb-scene-row {
+  cursor: pointer;
+}
+
+.vb-row:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+  color: var(--text-body, rgba(255,255,255,0.85));
+}
+
+.vb-row.vb-selected {
+  background: rgba(0, 240, 255, 0.1);
+  color: var(--text-header, #fff);
+}
+
+.vb-row.vb-dir {
+  color: var(--text-body, rgba(255,255,255,0.85));
+}
+
+/* ─── Notes vault ─── */
+
+.vb-notes-vault {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ─── Empty / loading ─── */
+
+.vb-empty,
+.vb-loading {
+  padding: 8px 12px;
+  font-size: var(--text-sm, 0.8rem);
+  color: var(--text-muted, rgba(255,255,255,0.5));
+}
+
+/* ─── Context menu ─── */
+
+.vb-context-menu {
+  background: var(--glass-fill-fallback, rgba(24,24,32,0.96));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-sm, 6px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  padding: 4px 0;
+  min-width: 140px;
+}
+
+.vb-context-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 14px;
+  text-align: left;
+  font-size: var(--text-sm, 0.8rem);
+  color: var(--text-body, rgba(255,255,255,0.85));
+  transition: background 80ms ease;
+}
+
+.vb-context-item:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+  color: var(--text-header, #fff);
+}

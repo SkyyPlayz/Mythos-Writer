@@ -2,6 +2,7 @@
 // All IPC calls go through this module for type safety.
 
 import { ipcMain, ipcRenderer } from 'electron';
+import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -23,6 +24,7 @@ export const IPC_CHANNELS = {
 
   // Suggestions
   SUGGESTIONS_LIST: 'suggestions:list',
+  SUGGESTIONS_GET: 'suggestions:get',
   SUGGESTIONS_UPSERT: 'suggestions:upsert',
   SUGGESTIONS_ACCEPT: 'suggestions:accept',
   SUGGESTIONS_APPLY: 'suggestions:apply',
@@ -31,6 +33,9 @@ export const IPC_CHANNELS = {
 
   // Audit log
   AUDIT_LIST: 'audit:list',
+
+  // Provenance
+  PROVENANCE_UPSERT: 'provenance:upsert',
 
   // Timeline
   TIMELINE_LIST: 'timeline:list',
@@ -192,12 +197,41 @@ export const IPC_CHANNELS = {
   APP_RESTORE_APP_DATA: 'app:restoreAppData',
 } as const;
 
+// ─── Sender-frame guard (MYT-791) ───
+// Defense-in-depth: reject IPC messages whose origin is not the top-level
+// renderer frame. With contextIsolation on and nodeIntegration off the
+// practical exposure today is low, but this blocks future preview iframes,
+// embedded help panes, or third-party WebViews from invoking any IPC channel.
+
+export interface IpcUntrustedFrameRejection {
+  /** Generic user-facing message — never includes frame URLs or origins. */
+  error: string;
+  category: 'untrusted_frame';
+}
+
+export const UNTRUSTED_FRAME_REJECTION: IpcUntrustedFrameRejection = {
+  error: 'IPC request rejected: not from the top-level renderer frame.',
+  category: 'untrusted_frame',
+};
+
+/**
+ * Returns true when `event.senderFrame` is the top-level frame. Designed for
+ * both `ipcMain.handle` (IpcMainInvokeEvent) and `ipcMain.on` (IpcMainEvent),
+ * which both expose `senderFrame`. Returns false when senderFrame is null
+ * (frame already destroyed) or originates from a nested frame.
+ */
+export function isFromTopFrame(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
+  const frame = event.senderFrame;
+  return !!frame && frame === frame.top;
+}
+
 // ─── Main process handlers ───
 // Each handler: receive request → process → send response via IPC
 
 export function setupIpcMain(handlers: IpcHandlers) {
   for (const [channel, handler] of Object.entries(handlers)) {
-    ipcMain.handle(channel, (_event, payload) => {
+    ipcMain.handle(channel, (event, payload) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       try {
         return handler(payload);
       } catch (error) {
@@ -255,12 +289,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
+  [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => SuggestionsGetResponse;
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
   [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => SuggestionsAcceptResponse;
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => SuggestionsApplyResponse;
   [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => SuggestionsRejectResponse;
   [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => SuggestionsRollbackResponse;
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => AuditListResponse;
+  [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => ProvenanceUpsertResponse;
   [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
@@ -1081,6 +1117,38 @@ export interface SuggestionsRollbackResponse {
   id: string;
   auditId: string;
   restoredPath: string | null;
+}
+
+export interface SuggestionsGetPayload {
+  id: string;
+}
+
+export interface SuggestionsGetResponse {
+  suggestion: SuggestionRow | null;
+}
+
+// ─── Provenance IPC payload / response types ───
+
+export interface ProvenanceRow {
+  id: string;
+  entity_id: string;
+  entity_kind: string;
+  agent_id: string;
+  agent_type: string;
+  run_id: string | null;
+  created_at: string;
+}
+
+export interface ProvenanceUpsertPayload {
+  entityId: string;
+  entityKind: string;
+  agentId: string;
+  agentType: string;
+  runId?: string | null;
+}
+
+export interface ProvenanceUpsertResponse {
+  id: string;
 }
 
 // ─── Audit IPC payload / response types ───
