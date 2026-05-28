@@ -155,3 +155,15 @@
   text-overflow: ellipsis;
   flex: 1;
 }
+
+.vt-dir[role="treeitem"] {
+  outline: none;
+}
+
+.vt-dir[role="treeitem"]:focus-visible > .vt-row.vt-dir-row,
+.vt-row.vt-file-row[role="treeitem"]:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: -2px;
+  background: #27272a;
+  color: #e4e4e7;
+}

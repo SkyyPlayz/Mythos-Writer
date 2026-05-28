@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, EntityEntry } from './types';
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -49,6 +49,17 @@ function buildTree(items: VaultListItem[]): TreeNode[] {
   return roots;
 }
 
+function getVisibleNodes(nodes: TreeNode[], expanded: Set<string>): TreeNode[] {
+  const result: TreeNode[] = [];
+  for (const node of nodes) {
+    result.push(node);
+    if (node.isDirectory && expanded.has(node.path)) {
+      result.push(...getVisibleNodes(node.children, expanded));
+    }
+  }
+  return result;
+}
+
 interface VaultTreeNodeProps {
   node: TreeNode;
   depth: number;
@@ -56,46 +67,125 @@ interface VaultTreeNodeProps {
   selected: string | null;
   onToggle: (path: string) => void;
   onOpenFile: (path: string) => void;
+  focusedPath: string | null;
+  onMoveFocus: (path: string) => void;
+  visibleNodes: TreeNode[];
+  parentPath: string | null;
+  registerNode: (path: string, el: HTMLElement | null) => void;
 }
 
-function VaultTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }: VaultTreeNodeProps) {
+function VaultTreeNode({
+  node, depth, expanded, selected, onToggle, onOpenFile,
+  focusedPath, onMoveFocus, visibleNodes, parentPath, registerNode,
+}: VaultTreeNodeProps) {
   const isExpanded = expanded.has(node.path);
   const isSelected = selected === node.path;
+  const isFocused = focusedPath === node.path;
+  const isMd = !node.isDirectory && node.name.endsWith('.md');
+
+  const rowRef = useCallback((el: HTMLElement | null) => {
+    registerNode(node.path, el);
+  }, [node.path, registerNode]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    switch (e.key) {
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (node.isDirectory) onToggle(node.path);
+        else if (isMd) onOpenFile(node.path);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (node.isDirectory) {
+          if (!isExpanded) {
+            onToggle(node.path);
+          } else if (node.children.length > 0) {
+            onMoveFocus(node.children[0].path);
+          }
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (node.isDirectory && isExpanded) {
+          onToggle(node.path);
+        } else if (parentPath) {
+          onMoveFocus(parentPath);
+        }
+        break;
+      case 'ArrowDown': {
+        e.preventDefault();
+        const idx = visibleNodes.findIndex(n => n.path === node.path);
+        if (idx < visibleNodes.length - 1) onMoveFocus(visibleNodes[idx + 1].path);
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        const idx = visibleNodes.findIndex(n => n.path === node.path);
+        if (idx > 0) onMoveFocus(visibleNodes[idx - 1].path);
+        break;
+      }
+    }
+  }, [node, isMd, isExpanded, parentPath, visibleNodes, onToggle, onOpenFile, onMoveFocus]);
 
   if (node.isDirectory) {
     return (
-      <div className="vt-dir">
+      <div
+        ref={rowRef as React.RefCallback<HTMLDivElement>}
+        role="treeitem"
+        aria-expanded={isExpanded}
+        aria-level={depth + 1}
+        tabIndex={isFocused ? 0 : -1}
+        className="vt-dir"
+        title={node.path}
+        onKeyDown={handleKeyDown}
+        onFocus={(e) => { if (e.target === e.currentTarget) onMoveFocus(node.path); }}
+      >
         <div
           className="vt-row vt-dir-row"
           style={{ paddingLeft: 8 + depth * 16 }}
           onClick={() => onToggle(node.path)}
-          title={node.path}
         >
           <span className="vt-chevron">{isExpanded ? '▾' : '▸'}</span>
           <span className="vt-icon vt-icon-dir">{isExpanded ? '📂' : '📁'}</span>
           <span className="vt-name">{node.name}</span>
         </div>
-        {isExpanded && node.children.map((child) => (
-          <VaultTreeNode
-            key={child.path}
-            node={child}
-            depth={depth + 1}
-            expanded={expanded}
-            selected={selected}
-            onToggle={onToggle}
-            onOpenFile={onOpenFile}
-          />
-        ))}
+        {isExpanded && (
+          <div role="group">
+            {node.children.map((child) => (
+              <VaultTreeNode
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                expanded={expanded}
+                selected={selected}
+                onToggle={onToggle}
+                onOpenFile={onOpenFile}
+                focusedPath={focusedPath}
+                onMoveFocus={onMoveFocus}
+                visibleNodes={visibleNodes}
+                parentPath={node.path}
+                registerNode={registerNode}
+              />
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
-  const isMd = node.name.endsWith('.md');
   return (
     <div
+      ref={rowRef as React.RefCallback<HTMLDivElement>}
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-selected={isSelected}
+      tabIndex={isFocused ? 0 : -1}
       className={`vt-row vt-file-row${isSelected ? ' vt-selected' : ''}${isMd ? ' vt-md' : ''}`}
       style={{ paddingLeft: 8 + depth * 16 }}
       onClick={() => isMd && onOpenFile(node.path)}
+      onKeyDown={handleKeyDown}
+      onFocus={() => onMoveFocus(node.path)}
       title={node.path}
     >
       <span className="vt-chevron" />
@@ -114,7 +204,19 @@ function VaultBrowser({ onOpenPath }: VaultBrowserProps) {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
+  const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nodeRefs = useRef<Map<string, HTMLElement>>(new Map());
+
+  const registerNode = useCallback((path: string, el: HTMLElement | null) => {
+    if (el) nodeRefs.current.set(path, el);
+    else nodeRefs.current.delete(path);
+  }, []);
+
+  const onMoveFocus = useCallback((path: string) => {
+    setFocusedPath(path);
+    nodeRefs.current.get(path)?.focus();
+  }, []);
 
   const loadTree = useCallback(async () => {
     try {
@@ -167,6 +269,8 @@ function VaultBrowser({ onOpenPath }: VaultBrowserProps) {
     onOpenPath?.(path);
   }, [onOpenPath]);
 
+  const visibleNodes = useMemo(() => getVisibleNodes(tree, expanded), [tree, expanded]);
+
   if (loading) return <div className="vault-loading">Loading vault…</div>;
 
   if (tree.length === 0) {
@@ -179,8 +283,10 @@ function VaultBrowser({ onOpenPath }: VaultBrowserProps) {
     );
   }
 
+  const effectiveFocusedPath = focusedPath ?? visibleNodes[0]?.path ?? null;
+
   return (
-    <div className="vault-tree">
+    <div className="vault-tree" role="tree" aria-label="Vault files">
       {tree.map((node) => (
         <VaultTreeNode
           key={node.path}
@@ -190,6 +296,11 @@ function VaultBrowser({ onOpenPath }: VaultBrowserProps) {
           selected={selected}
           onToggle={toggleDir}
           onOpenFile={handleOpenFile}
+          focusedPath={effectiveFocusedPath}
+          onMoveFocus={onMoveFocus}
+          visibleNodes={visibleNodes}
+          parentPath={null}
+          registerNode={registerNode}
         />
       ))}
     </div>
