@@ -80,6 +80,7 @@ import {
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
   type VaultSetPathsPayload,
+  type WritingModeSetPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -171,6 +172,7 @@ import {
   TELEMETRY_EVENT_TYPES,
   type TelemetryEventType,
 } from './telemetry.js';
+import { getWritingModeState, setWritingModeState } from './writingMode.js';
 
 const require = createRequire(import.meta.url);
 
@@ -1957,6 +1959,21 @@ const handlers: IpcHandlers = {
     validateVaultPath(notesVaultPath, 'notesVaultPath');
     saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
     return { storyVaultPath, notesVaultPath, saved: true };
+  },
+
+  // ─── Writing modes (MYT-347) ───
+  [IPC_CHANNELS.WRITING_MODE_GET]: () => {
+    ensureVaultDir();
+    return getWritingModeState();
+  },
+
+  [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => {
+    ensureVaultDir();
+    const state = setWritingModeState(payload);
+    if (mainWindow) {
+      mainWindow.webContents.send('writingMode:changed', state);
+    }
+    return state;
   },
 
 };
