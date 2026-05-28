@@ -376,3 +376,533 @@
 .settings-btn-save:hover:not(:disabled) {
   background: #6d28d9;
 }
+
+/* ── Liquid Glass appearance controls (MYT-613) ─────────────────────────── */
+
+/* Background preview */
+.lg-bg-field {
+  gap: 8px;
+}
+
+.lg-bg-preview-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.lg-bg-preview {
+  width: 128px;
+  height: 64px;
+  border-radius: 6px;
+  border: 1px solid #27272a;
+  flex-shrink: 0;
+  background-color: #08091a;
+}
+
+.lg-bg-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lg-btn-secondary {
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 5px;
+  color: #a1a1aa;
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.lg-btn-secondary:hover:not(:disabled) {
+  background: #27272a;
+  color: #e4e4e7;
+}
+
+.lg-btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Main softness/contrast slider */
+.lg-slider-labeled-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.lg-slider-main {
+  flex: 1;
+  accent-color: #00f0ff;
+}
+
+.lg-axis-label {
+  font-size: 0.72rem;
+  color: #52525b;
+  white-space: nowrap;
+  min-width: 40px;
+}
+
+.lg-axis-right {
+  text-align: right;
+}
+
+/* Advanced options section */
+.lg-advanced-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.lg-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 4px 0;
+  font-family: inherit;
+  text-align: left;
+}
+
+.lg-advanced-toggle:hover {
+  color: #a1a1aa;
+}
+
+.lg-chevron {
+  display: inline-block;
+  font-size: 1rem;
+  transition: transform 0.15s;
+  line-height: 1;
+}
+
+.lg-chevron-open {
+  transform: rotate(90deg);
+}
+
+.lg-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 0 4px 12px;
+  border-left: 2px solid #27272a;
+  margin-left: 4px;
+}
+
+.lg-adv-label {
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+.lg-adv-slider-row {
+  flex: 1;
+}
+
+/* Neon accent swatches */
+.lg-swatch-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lg-swatch-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: #a1a1aa;
+}
+
+.lg-swatch-label input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.lg-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #27272a;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.lg-swatch-cyan    { background: #00f0ff; }
+.lg-swatch-violet  { background: #9b5fff; }
+.lg-swatch-magenta { background: #ff4dff; }
+
+.lg-swatch.lg-swatch-active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.2);
+}
+
+.lg-swatch-name {
+  font-size: 0.78rem;
+  color: #71717a;
+}
+
+/* Text color swatches */
+.lg-text-color-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lg-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lg-color-row-label {
+  font-size: 0.75rem;
+  color: #52525b;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.lg-text-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.lg-text-swatch.lg-swatch-active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
+}
+
+/* Reset row */
+.lg-reset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.lg-btn-reset {
+  background: transparent;
+  border: 1px solid #3f3f46;
+  border-radius: 5px;
+  color: #71717a;
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.lg-btn-reset:hover {
+  background: #18181b;
+  color: #a1a1aa;
+  border-color: #52525b;
+}
+
+/* ── Slider band with Advanced pill (MYT-716) ─────────────────────────────── */
+
+.lg-slider-band {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.lg-slider-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.lg-advanced-pill {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 999px;
+  color: #00f0ff;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.lg-advanced-pill:hover {
+  background: rgba(0, 240, 255, 0.14);
+  border-color: rgba(0, 240, 255, 0.45);
+}
+
+.lg-relink-btn {
+  background: none;
+  border: none;
+  color: #52525b;
+  font-size: 0.72rem;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 2px 6px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lg-relink-btn:hover {
+  color: #a1a1aa;
+}
+
+/* ── Advanced popover overlay (MYT-716) ──────────────────────────────────── */
+
+.lg-popover-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.lg-popover {
+  background: #131316;
+  border: 1px solid #2a2a2f;
+  border-radius: 12px;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8),
+              0 0 0 1px rgba(0, 240, 255, 0.06);
+  overflow: hidden;
+}
+
+.lg-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid #1f1f24;
+  flex-shrink: 0;
+}
+
+.lg-popover-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e4e4e7;
+  margin: 0;
+}
+
+.lg-popover-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.lg-popover-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lg-popover-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 2px;
+}
+
+.lg-decouple-notice {
+  margin: 0;
+}
+
+.lg-link-btn {
+  background: none;
+  border: none;
+  color: #00f0ff;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lg-popover-reset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid #1f1f24;
+}
+
+/* ── Background section ───────────────────────────────────────────────────── */
+
+.lg-bg-image-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #18181b;
+  border-radius: 6px;
+  border: 1px solid #27272a;
+}
+
+/* Mode toggle */
+.lg-mode-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #27272a;
+  width: fit-content;
+}
+
+.lg-mode-btn {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  color: #71717a;
+  cursor: pointer;
+  background: #18181b;
+  transition: background 0.1s, color 0.1s;
+}
+
+.lg-mode-btn input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.lg-mode-btn + .lg-mode-btn {
+  border-left: 1px solid #27272a;
+}
+
+.lg-mode-btn-active {
+  background: #27272a;
+  color: #e4e4e7;
+}
+
+/* Position 9-grid */
+.lg-position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 28px);
+  grid-template-rows: repeat(3, 28px);
+  gap: 2px;
+  width: fit-content;
+}
+
+.lg-position-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: #18181b;
+  border: 1px solid #27272a;
+  font-size: 0.75rem;
+  color: #52525b;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.lg-position-cell input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.lg-position-cell-active {
+  background: #27272a;
+  color: #e4e4e7;
+  border-color: #3f3f46;
+}
+
+.lg-position-cell:hover:not(.lg-position-cell-active) {
+  background: #1e1e22;
+  color: #a1a1aa;
+}
+
+/* ── Color picker control (MYT-716) ──────────────────────────────────────── */
+
+.lg-color-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lg-color-picker-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.lg-color-input {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #27272a;
+  border-radius: 4px;
+  padding: 2px;
+  background: #18181b;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.lg-hex-input {
+  width: 80px;
+  flex-shrink: 0;
+  font-family: monospace;
+  font-size: 0.78rem;
+  padding: 4px 6px;
+  flex: 0 0 80px;
+}
+
+/* Contrast ratio badge */
+.tcs-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tcs-badge-pass {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.tcs-badge-warn {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.tcs-badge-fail {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.lg-clamp-notice {
+  font-size: 0.68rem;
+  color: #fbbf24;
+  white-space: nowrap;
+}

@@ -294,7 +294,23 @@
   background: #0a1e12;
 }
 
-/* Type badge */
+/* Grouped fact sections */
+.bs-fact-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bs-fact-group-header {
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+
+/* Type badge (kept for backwards compatibility) */
 .bs-fact-type {
   font-size: 0.67rem;
   font-weight: 700;

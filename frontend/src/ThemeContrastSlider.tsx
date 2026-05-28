@@ -64,6 +64,7 @@ export default function ThemeContrastSlider({ value, onChange }: Props) {
           value={value}
           onChange={(e) => handleChange(Number(e.target.value))}
           className="tcs-slider"
+          data-testid="theme-contrast-slider"
           aria-label="Softness to contrast axis"
           aria-valuemin={0}
           aria-valuemax={100}

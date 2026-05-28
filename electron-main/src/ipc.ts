@@ -78,6 +78,10 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
 
+  // Liquid Glass background image (MYT-613)
+  BG_PICK: 'bg:pick',
+  BG_LOAD: 'bg:load',
+
   // Generation log
   GENERATION_LOG_RECENT: 'generationLog:recent',
   GENERATION_LOG_LIST: 'generationLog:list',
@@ -131,6 +135,8 @@ export const IPC_CHANNELS = {
   BETA_READ_CREATE: 'betaRead:create',
   BETA_READ_LIST: 'betaRead:list',
   BETA_READ_DISMISS: 'betaRead:dismiss',
+  // Beta-Read on-demand LLM scan (MYT-711) — auto-generates anchored comments
+  BETA_READ_SCAN: 'betaRead:scan',
 
   // EPUB export (MYT-253)
   EXPORT_EPUB: 'export:epub',
@@ -173,6 +179,17 @@ export const IPC_CHANNELS = {
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
+
+  // Per-agent budget usage (MYT-722) — rolling 1-hour token + suggestion totals
+  AGENT_BUDGET_USAGE: 'agent:budgetUsage',
+
+  // Writing modes (MYT-347) — Normal / Focus / Edit per-project state
+  WRITING_MODE_GET: 'writingMode:get',
+  WRITING_MODE_SET: 'writingMode:set',
+
+  // App data backup / restore (MYT-346)
+  APP_BACKUP_APP_DATA: 'app:backupAppData',
+  APP_RESTORE_APP_DATA: 'app:restoreAppData',
 } as const;
 
 // ─── Main process handlers ───
@@ -264,6 +281,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
   [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
+  // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
@@ -280,8 +298,15 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
+  [IPC_CHANNELS.BG_PICK]: (payload: never) => Promise<BgPickResponse>;
+  [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
+  [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
+  [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
+  [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
+  [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -850,6 +875,34 @@ export interface ProviderSettings {
   model: string;
 }
 
+/** Liquid Glass advanced theme customization (MYT-613 / MYT-716). All values optional;
+ *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
+export interface LiquidGlassPrefs {
+  softnessContrast: number;
+  glass: number;
+  blur: number;
+  neonIntensity: number;
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  textHeader: string;
+  textBody: string;
+  textMuted: string;
+  background: 'default' | string;
+
+  // Advanced overrides (MYT-716)
+  advancedDecoupled?: boolean;
+  textContrast?: number;
+  neonFrameWidth?: number;
+  borderStrength?: number;
+  bgMode?: 'color' | 'image';
+  bgFit?: 'cover' | 'contain' | 'tile';
+  bgPosition?: string;
+  bgScrim?: number;
+  bgVignette?: number;
+  bgBaseColor?: string;
+  accentColor?: string;
+  neonBorderColor?: 'cyan' | 'violet' | 'magenta';
+}
+
 export interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
@@ -878,6 +931,8 @@ export interface AppSettings {
     enabled: boolean;
     sessionId: string;
   };
+  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
+  liquidGlass?: LiquidGlassPrefs;
 }
 
 export interface SettingsSetPayload {
@@ -1323,6 +1378,17 @@ export interface BetaReadDismissResponse {
   dismissed: boolean;
 }
 
+export interface BetaReadScanPayload {
+  sceneId: string;
+  prose: string;
+  scenePath: string;
+}
+
+export interface BetaReadScanResponse {
+  comments: BetaReadComment[];
+  scannedAt: string;
+}
+
 // ─── EPUB export (MYT-253 / MYT-342) ───
 
 export interface ExportEpubMetadata {
@@ -1335,7 +1401,11 @@ export interface ExportEpubPayload {
   storyId: string;
   /** Override title/author/language embedded in the EPUB metadata block. */
   metadata?: ExportEpubMetadata;
-  /** Write directly to this path instead of showing a save dialog. */
+  /**
+   * Headless export escape hatch: write directly here instead of showing a save
+   * dialog. MYT-675: constrained to a vault-relative `.epub` path — absolute
+   * paths, `../` traversal, and symlink escapes are rejected.
+   */
   targetPath?: string;
 }
 
@@ -1454,6 +1524,21 @@ export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
 }
 
+// ─── Liquid Glass background image (MYT-613) ───
+
+export interface BgPickResponse {
+  filePath: string | null;
+  cancelled: boolean;
+}
+
+export interface BgLoadPayload {
+  filePath: string;
+}
+
+export interface BgLoadResponse {
+  dataUrl: string | null;
+}
+
 // ─── Auto-updater Phase 4 (MYT-337) ───
 
 export interface CheckForUpdateResponse {
@@ -1494,6 +1579,19 @@ export interface VoiceSpeakResponse {
   speakId: string;
 }
 
+// ─── Per-agent budget usage (MYT-722) ───
+
+export interface AgentBudgetWindowUsage {
+  tokensLastHour: number;
+  suggestionsLastHour: number;
+}
+
+export interface AgentBudgetUsageResponse {
+  writingAssistant: AgentBudgetWindowUsage;
+  brainstorm: AgentBudgetWindowUsage;
+  archive: AgentBudgetWindowUsage;
+}
+
 // ─── Two-vault layout (MYT-608) ───
 
 export interface VaultGetPathsResponse {
@@ -1510,4 +1608,69 @@ export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+}
+
+// ─── Writing modes (MYT-347) ───
+
+export type WritingMode = 'normal' | 'focus' | 'edit';
+
+export interface FocusModeFlags {
+  /** Show the entity/notes sidebar. */
+  sidebar: boolean;
+  /** Show the formatting toolbar. */
+  toolbar: boolean;
+  /** Show the word count bar. */
+  wordCount: boolean;
+  /** Show the document minimap. */
+  minimap: boolean;
+}
+
+export interface EditModeConfig {
+  /** Surface Writing Assistant suggestion layer. */
+  showWritingAssistant: boolean;
+  /** Surface Archive Agent continuity notes. */
+  showArchive: boolean;
+  /** Surface Beta-Read inline comments. */
+  showBetaRead: boolean;
+}
+
+export interface WritingModeState {
+  mode: WritingMode;
+  focusFlags: FocusModeFlags;
+  editConfig: EditModeConfig;
+}
+
+export interface WritingModeSetPayload {
+  mode?: WritingMode;
+  focusFlags?: Partial<FocusModeFlags>;
+  editConfig?: Partial<EditModeConfig>;
+}
+
+// ─── App data backup / restore (MYT-346) ───
+
+export interface BackupAppDataPayload {
+  /** If provided, write the archive here instead of showing a save dialog. */
+  outputPath?: string;
+}
+
+export interface BackupAppDataResponse {
+  /** Absolute path to the created archive; null when cancelled. */
+  path: string | null;
+  bytes: number;
+  cancelled: boolean;
+}
+
+export interface RestoreAppDataPayload {
+  /** If provided, read from this path instead of showing an open dialog. */
+  archivePath?: string;
+  /** Must be true when app data already exists; absent/false → reject with requiresConfirmation. */
+  confirmed?: boolean;
+}
+
+export interface RestoreAppDataResponse {
+  restored: boolean;
+  details: string[];
+  /** True when the caller must re-call with confirmed: true to proceed. */
+  requiresConfirmation?: boolean;
+  cancelled?: boolean;
 }

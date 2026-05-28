@@ -4,6 +4,12 @@
   height: 100vh;
   overflow: hidden;
   background: var(--bg-base);
+  /* Background image wallpaper (MYT-613) — layered behind all glass panels.
+     --bg-app-image is 'none' (transparent) by default; set by applyLiquidGlassTokens. */
+  background-image: var(--bg-app-image, none);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: var(--text-primary);
 }
 

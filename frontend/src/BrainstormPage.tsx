@@ -92,6 +92,8 @@ const FACT_TYPE_LABELS: Record<DetectedFact['type'], string> = {
   note: 'Note',
 };
 
+const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item', 'note'];
+
 interface Props {
   onClose: () => void;
   enabled?: boolean;
@@ -388,11 +390,11 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       setLoading(false);
     });
 
-    const unsubError = window.api.onStreamError(({ streamId: sid, message }) => {
+    const unsubError = window.api.onStreamError(({ streamId: sid, error }) => {
       if (sid !== streamIdRef.current) return;
       cleanupStreamRef.current?.();
       setMessages((prev) => prev.slice(0, -1));
-      const msg = message || 'AI unavailable — check your API key in settings.';
+      const msg = error || 'AI unavailable — check your API key in settings.';
       setError(msg);
       announce(`Error: ${msg}`);
       setLoading(false);
@@ -866,40 +868,46 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                 Named facts will appear here as Claude identifies them.
               </div>
             ) : (
-              facts.map((fact) => (
-                <div
-                  key={fact.id}
-                  className={`bs-fact${fact.savedStatus === 'saved' ? ' bs-fact-saved' : ''}`}
-                >
-                  <span className={`bs-fact-type bs-fact-type-${fact.type === 'note' ? 'other' : fact.type}`}>
-                    {FACT_TYPE_LABELS[fact.type]}
-                  </span>
-                  <div className="bs-fact-name">{fact.name}</div>
-                  <p className="bs-fact-desc">{fact.content}</p>
-                  <div className="bs-fact-actions">
-                    {fact.savedStatus === 'saving' && (
-                      <span className="bs-fact-saving">Saving…</span>
-                    )}
-                    {fact.savedStatus === 'saved' && (
-                      <span className="bs-fact-saved-label">Saved ✓</span>
-                    )}
-                    {fact.savedStatus === 'pending_review' && (
-                      <span className="bs-fact-pending-review">Pending review →</span>
-                    )}
-                    {fact.savedStatus === 'error' && (
-                      <span className="bs-fact-save-error">
-                        Failed —{' '}
-                        <button
-                          className="bs-fact-retry-btn"
-                          onClick={() => saveFactToVault(fact.id)}
-                        >
-                          retry
-                        </button>
-                      </span>
-                    )}
+              FACT_TYPE_ORDER.map((type) => {
+                const group = facts.filter((f) => f.type === type);
+                if (group.length === 0) return null;
+                return (
+                  <div key={type} className="bs-fact-group">
+                    <div className="bs-fact-group-header">{FACT_TYPE_LABELS[type]}s</div>
+                    {group.map((fact) => (
+                      <div
+                        key={fact.id}
+                        className={`bs-fact${fact.savedStatus === 'saved' ? ' bs-fact-saved' : ''}`}
+                      >
+                        <div className="bs-fact-name">{fact.name}</div>
+                        <p className="bs-fact-desc">{fact.content}</p>
+                        <div className="bs-fact-actions">
+                          {fact.savedStatus === 'saving' && (
+                            <span className="bs-fact-saving">Saving…</span>
+                          )}
+                          {fact.savedStatus === 'saved' && (
+                            <span className="bs-fact-saved-label">Saved ✓</span>
+                          )}
+                          {fact.savedStatus === 'pending_review' && (
+                            <span className="bs-fact-pending-review">Pending review →</span>
+                          )}
+                          {fact.savedStatus === 'error' && (
+                            <span className="bs-fact-save-error">
+                              Failed —{' '}
+                              <button
+                                className="bs-fact-retry-btn"
+                                onClick={() => saveFactToVault(fact.id)}
+                              >
+                                retry
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
