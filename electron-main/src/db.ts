@@ -277,6 +277,31 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma('user_version = 10');
   }
+
+  if (currentVersion < 11) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS project_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+    db.pragma('user_version = 11');
+  }
+}
+
+// ─── Project settings (key-value store for per-project state) ───
+
+export function getProjectSetting(key: string): string | null {
+  const row = getDb()
+    .prepare('SELECT value FROM project_settings WHERE key = ?')
+    .get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setProjectSetting(key: string, value: string): void {
+  getDb()
+    .prepare('INSERT OR REPLACE INTO project_settings (key, value) VALUES (?, ?)')
+    .run(key, value);
 }
 
 // ─── Suggestions ───

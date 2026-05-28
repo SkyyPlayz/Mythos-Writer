@@ -344,6 +344,16 @@ contextBridge.exposeInMainWorld('api', {
   archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>
     ipcRenderer.invoke('archive:confirm', { suggestionId, action }),
   archiveIgnoreList: () => ipcRenderer.invoke('archive:ignore-list', undefined),
+
+  // Writing modes (MYT-347) — Normal / Focus / Edit backend state
+  writingModeGet: () => ipcRenderer.invoke('writingMode:get', undefined),
+  writingModeSet: (payload: { mode?: string; focusFlags?: Record<string, boolean>; editConfig?: Record<string, boolean> }) =>
+    ipcRenderer.invoke('writingMode:set', payload),
+  onWritingModeChanged: (cb: (data: { mode: string; focusFlags: Record<string, boolean>; editConfig: Record<string, boolean> }) => void) => {
+    const handler = (_: unknown, data: { mode: string; focusFlags: Record<string, boolean>; editConfig: Record<string, boolean> }) => cb(data);
+    ipcRenderer.on('writingMode:changed', handler);
+    return () => ipcRenderer.removeListener('writingMode:changed', handler);
+  },
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

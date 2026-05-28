@@ -173,6 +173,10 @@ export const IPC_CHANNELS = {
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
+
+  // Writing modes (MYT-347) — Normal / Focus / Edit per-project state
+  WRITING_MODE_GET: 'writingMode:get',
+  WRITING_MODE_SET: 'writingMode:set',
 } as const;
 
 // ─── Main process handlers ───
@@ -282,6 +286,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
+  [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
 }
 
 // ─── Payload / Response types ───
@@ -1514,4 +1520,40 @@ export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+}
+
+// ─── Writing modes (MYT-347) ───
+
+export type WritingMode = 'normal' | 'focus' | 'edit';
+
+export interface FocusModeFlags {
+  /** Show the entity/notes sidebar. */
+  sidebar: boolean;
+  /** Show the formatting toolbar. */
+  toolbar: boolean;
+  /** Show the word count bar. */
+  wordCount: boolean;
+  /** Show the document minimap. */
+  minimap: boolean;
+}
+
+export interface EditModeConfig {
+  /** Surface Writing Assistant suggestion layer. */
+  showWritingAssistant: boolean;
+  /** Surface Archive Agent continuity notes. */
+  showArchive: boolean;
+  /** Surface Beta-Read inline comments. */
+  showBetaRead: boolean;
+}
+
+export interface WritingModeState {
+  mode: WritingMode;
+  focusFlags: FocusModeFlags;
+  editConfig: EditModeConfig;
+}
+
+export interface WritingModeSetPayload {
+  mode?: WritingMode;
+  focusFlags?: Partial<FocusModeFlags>;
+  editConfig?: Partial<EditModeConfig>;
 }
