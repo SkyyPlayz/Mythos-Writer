@@ -186,6 +186,10 @@ export const IPC_CHANNELS = {
   VAULT_DELETE_DOCUMENT: 'vault:deleteDocument',
   VAULT_WATCH_DOCUMENT: 'vault:watchDocument',
   VAULT_UNWATCH_DOCUMENT: 'vault:unwatchDocument',
+
+  // Versioned drafts — file-based history (MYT-611)
+  VAULT_LIST_HISTORY: 'vault:listHistory',
+  VAULT_RESTORE_SNAPSHOT: 'vault:restoreSnapshot',
 } as const;
 
 // ─── Main process handlers ───
@@ -305,6 +309,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_DELETE_DOCUMENT]: (payload: VaultDeleteDocumentPayload) => VaultDeleteDocumentResponse;
   [IPC_CHANNELS.VAULT_WATCH_DOCUMENT]: (payload: VaultWatchDocumentPayload) => Promise<VaultWatchDocumentResponse | VaultDocumentError>;
   [IPC_CHANNELS.VAULT_UNWATCH_DOCUMENT]: (payload: VaultUnwatchDocumentPayload) => Promise<VaultUnwatchDocumentResponse>;
+  // Versioned drafts (MYT-611)
+  [IPC_CHANNELS.VAULT_LIST_HISTORY]: (payload: VaultListHistoryPayload) => VaultListHistoryResponse;
+  [IPC_CHANNELS.VAULT_RESTORE_SNAPSHOT]: (payload: VaultRestoreSnapshotPayload) => VaultRestoreSnapshotResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1651,3 +1658,38 @@ export interface VaultUnwatchDocumentResponse {
 export interface VaultDocumentChangedEvent {
   filePath: string;
 }
+
+// ─── Versioned drafts types (MYT-611) ───
+
+export interface HistorySnapshot {
+  /** Vault-relative path to the snapshot file, e.g. ".history/Projects/Novel/Chapter-01/Scene-01.md/2026-05-27T00-00-00-000Z.md" */
+  snapshotPath: string;
+  /** ISO timestamp of when this snapshot was written. */
+  createdAt: string;
+  sizeBytes: number;
+}
+
+export interface VaultListHistoryPayload {
+  filePath: string;
+}
+
+export interface VaultListHistorySuccess {
+  snapshots: HistorySnapshot[];
+}
+
+export type VaultListHistoryResponse = VaultListHistorySuccess | VaultDocumentError;
+
+export interface VaultRestoreSnapshotPayload {
+  filePath: string;
+  /** Vault-relative path to the snapshot to restore (must be inside .history/). */
+  snapshotPath: string;
+}
+
+export interface VaultRestoreSnapshotSuccess {
+  filePath: string;
+  snapshotPath: string;
+  /** Snapshot created from the pre-restore content (for reversibility). */
+  preRestoreSnapshot: HistorySnapshot;
+}
+
+export type VaultRestoreSnapshotResponse = VaultRestoreSnapshotSuccess | VaultDocumentError;

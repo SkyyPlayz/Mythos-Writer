@@ -89,6 +89,8 @@ import {
   type VaultDeleteDocumentPayload,
   type VaultWatchDocumentPayload,
   type VaultUnwatchDocumentPayload,
+  type VaultListHistoryPayload,
+  type VaultRestoreSnapshotPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -154,6 +156,9 @@ import {
   watchDocument,
   unwatchDocument,
   VaultFileNotFoundError,
+  snapshotDocument,
+  listDocumentHistory,
+  restoreDocumentSnapshot,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
 import {
@@ -2004,7 +2009,16 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_WRITE_DOCUMENT]: (payload: VaultWriteDocumentPayload) => {
     ensureVaultDir();
     try {
-      const { bytes } = writeVaultFileAtomic(getVaultRoot(), payload.filePath, payload.content);
+      // Snapshot the existing content before overwriting (non-fatal — never blocks the write)
+      const vaultRoot = getVaultRoot();
+      try {
+        const fullPath = path.join(vaultRoot, payload.filePath);
+        if (fs.existsSync(fullPath)) {
+          const current = fs.readFileSync(fullPath, 'utf-8');
+          snapshotDocument(vaultRoot, payload.filePath, current);
+        }
+      } catch { /* snapshot failure is non-fatal */ }
+      const { bytes } = writeVaultFileAtomic(vaultRoot, payload.filePath, payload.content);
       return { filePath: payload.filePath, bytes };
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
@@ -2061,6 +2075,47 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_UNWATCH_DOCUMENT]: async (payload: VaultUnwatchDocumentPayload) => {
     await unwatchDocument(getVaultRoot(), payload.filePath);
     return { watching: false, filePath: payload.filePath };
+  },
+
+  // ─── Versioned drafts (MYT-611) ───
+
+  [IPC_CHANNELS.VAULT_LIST_HISTORY]: (payload: VaultListHistoryPayload) => {
+    ensureVaultDir();
+    try {
+      const snapshots = listDocumentHistory(getVaultRoot(), payload.filePath);
+      return { snapshots };
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      if (msg.includes('Path traversal denied')) {
+        return { error: 'OUTSIDE_VAULT' as const, message: msg };
+      }
+      throw err;
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_RESTORE_SNAPSHOT]: (payload: VaultRestoreSnapshotPayload) => {
+    ensureVaultDir();
+    try {
+      const preRestoreSnapshot = restoreDocumentSnapshot(
+        getVaultRoot(),
+        payload.filePath,
+        payload.snapshotPath
+      );
+      return { filePath: payload.filePath, snapshotPath: payload.snapshotPath, preRestoreSnapshot };
+    } catch (err) {
+      if (err instanceof VaultFileNotFoundError) {
+        return { error: 'NOT_FOUND' as const, message: err.message };
+      }
+      const msg = (err as Error).message ?? String(err);
+      if (msg.includes('Path traversal denied') || msg.includes('must be inside')) {
+        return { error: 'OUTSIDE_VAULT' as const, message: msg };
+      }
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        return { error: 'PERMISSION_DENIED' as const, message: msg };
+      }
+      throw err;
+    }
   },
 
 };

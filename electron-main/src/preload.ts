@@ -376,6 +376,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('vault:documentChanged', handler);
     return () => ipcRenderer.removeListener('vault:documentChanged', handler);
   },
+
+  // Versioned drafts (MYT-611)
+  listHistory: (filePath: string) =>
+    ipcRenderer.invoke('vault:listHistory', { filePath }),
+  restoreSnapshot: (filePath: string, snapshotPath: string) =>
+    ipcRenderer.invoke('vault:restoreSnapshot', { filePath, snapshotPath }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

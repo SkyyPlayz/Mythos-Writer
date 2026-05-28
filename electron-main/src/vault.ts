@@ -254,9 +254,14 @@ export function listVaultFiles(
 
 export function deleteVaultFile(vaultRoot: string, filePath: string): { path: string; deleted: boolean } {
   const fullPath = safePath(vaultRoot, filePath);
-  const exists = fs.existsSync(fullPath);
-  if (exists) fs.unlinkSync(fullPath);
-  return { path: filePath, deleted: exists };
+  try {
+    fs.unlinkSync(fullPath);
+    return { path: filePath, deleted: true };
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === 'ENOENT') return { path: filePath, deleted: false };
+    throw err;
+  }
 }
 
 // ─── YAML frontmatter helpers ───
@@ -1126,6 +1131,128 @@ export async function unwatchDocument(
     await watcher.close();
     documentWatchers.delete(resolved);
   }
+}
+
+// ─── Document history snapshots (MYT-611) ───
+// On every vault:writeDocument, the previous file content is snapped to
+// .history/<filePath>/<ISO-timestamp>-<rand>.md. Cap at 50 snapshots per file.
+
+export const VAULT_HISTORY_DIR = '.history';
+export const VAULT_HISTORY_CAP = 50;
+
+export interface HistorySnapshot {
+  snapshotPath: string;
+  createdAt: string;
+  sizeBytes: number;
+}
+
+/**
+ * Write a snapshot of `content` into `.history/<filePath>/<timestamp>-<rand>.md`
+ * inside the vault, then prune the oldest entries when the cap is exceeded.
+ * Returns snapshot metadata.
+ */
+export function snapshotDocument(
+  vaultRoot: string,
+  filePath: string,
+  content: string
+): HistorySnapshot {
+  const normalizedRoot = path.resolve(vaultRoot);
+  const resolved = path.resolve(vaultRoot, filePath);
+  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
+    throw new Error(`Path traversal denied: ${filePath}`);
+  }
+
+  const historyDir = path.join(vaultRoot, VAULT_HISTORY_DIR, filePath);
+  if (!fs.existsSync(historyDir)) fs.mkdirSync(historyDir, { recursive: true });
+
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/:/g, '-').replace(/\./g, '-');
+  const rand = crypto.randomBytes(3).toString('hex');
+  const snapshotName = `${timestamp}-${rand}.md`;
+  const snapshotFullPath = path.join(historyDir, snapshotName);
+  const buf = Buffer.from(content, 'utf-8');
+  fs.writeFileSync(snapshotFullPath, buf);
+
+  // Prune oldest snapshots beyond the cap
+  const all = fs.readdirSync(historyDir).filter((n) => n.endsWith('.md')).sort();
+  if (all.length > VAULT_HISTORY_CAP) {
+    for (const old of all.slice(0, all.length - VAULT_HISTORY_CAP)) {
+      try { fs.unlinkSync(path.join(historyDir, old)); } catch { /* ignore */ }
+    }
+  }
+
+  const relSnapshotPath = path.join(VAULT_HISTORY_DIR, filePath, snapshotName);
+  return { snapshotPath: relSnapshotPath, createdAt: now.toISOString(), sizeBytes: buf.byteLength };
+}
+
+/**
+ * List history snapshots for a vault document, newest first.
+ * Returns an empty array if no history exists.
+ * Throws a path-traversal error for paths that escape the vault.
+ */
+export function listDocumentHistory(vaultRoot: string, filePath: string): HistorySnapshot[] {
+  const normalizedRoot = path.resolve(vaultRoot);
+  const resolved = path.resolve(vaultRoot, filePath);
+  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
+    throw new Error(`Path traversal denied: ${filePath}`);
+  }
+
+  const historyDir = path.join(vaultRoot, VAULT_HISTORY_DIR, filePath);
+  if (!fs.existsSync(historyDir)) return [];
+
+  const snapshots: HistorySnapshot[] = [];
+  for (const name of fs.readdirSync(historyDir)) {
+    if (!name.endsWith('.md')) continue;
+    const fullPath = path.join(historyDir, name);
+    try {
+      const stat = fs.statSync(fullPath);
+      snapshots.push({
+        snapshotPath: path.join(VAULT_HISTORY_DIR, filePath, name),
+        createdAt: stat.mtime.toISOString(),
+        sizeBytes: stat.size,
+      });
+    } catch { /* skip unreadable entries */ }
+  }
+
+  return snapshots.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Restore a snapshot to `filePath`. Before overwriting, creates a pre-restore
+ * snapshot of the current content so the rollback is itself reversible.
+ * Returns metadata about the pre-restore snapshot.
+ * Throws VaultFileNotFoundError when the snapshot path does not exist.
+ * Throws path-traversal errors for paths that escape the vault.
+ */
+export function restoreDocumentSnapshot(
+  vaultRoot: string,
+  filePath: string,
+  snapshotPath: string
+): HistorySnapshot {
+  const normalizedRoot = path.resolve(vaultRoot);
+
+  const resolvedFile = path.resolve(vaultRoot, filePath);
+  if (!resolvedFile.startsWith(normalizedRoot + path.sep) && resolvedFile !== normalizedRoot) {
+    throw new Error(`Path traversal denied: ${filePath}`);
+  }
+
+  const historyPrefix = path.join(normalizedRoot, VAULT_HISTORY_DIR) + path.sep;
+  const resolvedSnap = path.resolve(vaultRoot, snapshotPath);
+  if (!resolvedSnap.startsWith(historyPrefix)) {
+    throw new Error(`Snapshot path must be inside ${VAULT_HISTORY_DIR}/: ${snapshotPath}`);
+  }
+
+  if (!fs.existsSync(resolvedSnap)) throw new VaultFileNotFoundError(snapshotPath);
+
+  const currentContent = fs.existsSync(resolvedFile)
+    ? fs.readFileSync(resolvedFile, 'utf-8')
+    : '';
+  const preRestoreSnapshot = snapshotDocument(vaultRoot, filePath, currentContent);
+
+  const snapshotContent = fs.readFileSync(resolvedSnap, 'utf-8');
+  writeVaultFileAtomic(vaultRoot, filePath, snapshotContent);
+
+  return preRestoreSnapshot;
 }
 
 // ─── Provenance frontmatter merge ───

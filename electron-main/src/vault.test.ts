@@ -40,6 +40,11 @@ import {
   unwatchDocument,
   VaultFileNotFoundError,
   VAULT_TRASH_DIR,
+  VAULT_HISTORY_DIR,
+  VAULT_HISTORY_CAP,
+  snapshotDocument,
+  listDocumentHistory,
+  restoreDocumentSnapshot,
   MANUSCRIPT_DIR,
   PROJECTS_DIR,
   MAX_VAULT_FILE_BYTES,
@@ -1545,5 +1550,168 @@ describe('watchDocument — per-file watcher', () => {
 
   it('unwatchDocument is a no-op for a file that was never watched', async () => {
     await expect(unwatchDocument(vaultDir, 'not-watched.md')).resolves.toBeUndefined();
+  });
+});
+
+// ─── Document history snapshots (MYT-611) ───
+
+describe('snapshotDocument — write to .history/', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes snapshot into .history/<filePath>/<timestamp>.md', () => {
+    const snap = snapshotDocument(tmpDir, 'scene.md', 'v1 content');
+    expect(snap.snapshotPath).toMatch(new RegExp(`^${VAULT_HISTORY_DIR}/scene\\.md/`));
+    expect(snap.snapshotPath).toMatch(/\.md$/);
+    expect(fs.existsSync(path.join(tmpDir, snap.snapshotPath))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, snap.snapshotPath), 'utf-8')).toBe('v1 content');
+  });
+
+  it('returns correct sizeBytes and createdAt', () => {
+    const content = 'Hello world';
+    const snap = snapshotDocument(tmpDir, 'size.md', content);
+    expect(snap.sizeBytes).toBe(Buffer.byteLength(content, 'utf-8'));
+    expect(new Date(snap.createdAt).getTime()).toBeGreaterThan(0);
+  });
+
+  it('snapshot filename contains no colons (filesystem-safe)', () => {
+    const snap = snapshotDocument(tmpDir, 'scene.md', 'x');
+    const snapshotName = path.basename(snap.snapshotPath);
+    expect(snapshotName).not.toContain(':');
+  });
+
+  it('preserves subdirectory structure inside .history/', () => {
+    const relPath = 'Projects/Novel/Chapter-01/Scene-01.md';
+    const snap = snapshotDocument(tmpDir, relPath, 'prose');
+    expect(snap.snapshotPath).toContain('Projects/Novel/Chapter-01/Scene-01.md');
+    expect(fs.existsSync(path.join(tmpDir, snap.snapshotPath))).toBe(true);
+  });
+
+  it('prunes oldest snapshots when count exceeds VAULT_HISTORY_CAP', () => {
+    const filePath = 'capped.md';
+    const histDir = path.join(tmpDir, VAULT_HISTORY_DIR, filePath);
+
+    // Write VAULT_HISTORY_CAP + 5 snapshots
+    for (let i = 0; i < VAULT_HISTORY_CAP + 5; i++) {
+      snapshotDocument(tmpDir, filePath, `v${i}`);
+    }
+
+    const remaining = fs.readdirSync(histDir).filter((n) => n.endsWith('.md'));
+    expect(remaining.length).toBe(VAULT_HISTORY_CAP);
+  });
+
+  it('rejects path traversal', () => {
+    expect(() => snapshotDocument(tmpDir, '../escape.md', 'bad')).toThrow(/Path traversal denied/);
+  });
+
+  it('creates .history/ and subdirs if absent', () => {
+    const relPath = 'deep/nested/file.md';
+    expect(fs.existsSync(path.join(tmpDir, VAULT_HISTORY_DIR))).toBe(false);
+    snapshotDocument(tmpDir, relPath, 'content');
+    expect(fs.existsSync(path.join(tmpDir, VAULT_HISTORY_DIR, relPath))).toBe(true);
+  });
+});
+
+describe('listDocumentHistory — returns snapshots newest-first', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-hist-list-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns empty array when no history exists', () => {
+    expect(listDocumentHistory(tmpDir, 'nonexistent.md')).toEqual([]);
+  });
+
+  it('returns one snapshot after one write', () => {
+    snapshotDocument(tmpDir, 'scene.md', 'content');
+    const list = listDocumentHistory(tmpDir, 'scene.md');
+    expect(list).toHaveLength(1);
+    expect(list[0].snapshotPath).toMatch(new RegExp(`^${VAULT_HISTORY_DIR}/scene\\.md/`));
+    expect(list[0].sizeBytes).toBe(Buffer.byteLength('content', 'utf-8'));
+  });
+
+  it('returns snapshots newest-first after multiple writes', async () => {
+    snapshotDocument(tmpDir, 'doc.md', 'first');
+    // small delay to ensure distinct mtimes
+    await new Promise((r) => setTimeout(r, 50));
+    snapshotDocument(tmpDir, 'doc.md', 'second');
+    const list = listDocumentHistory(tmpDir, 'doc.md');
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    // Newest first: last written should be at index 0
+    expect(new Date(list[0].createdAt) >= new Date(list[1].createdAt)).toBe(true);
+  });
+
+  it('rejects path traversal', () => {
+    expect(() => listDocumentHistory(tmpDir, '../../../etc')).toThrow(/Path traversal denied/);
+  });
+});
+
+describe('restoreDocumentSnapshot — restores content + creates pre-restore snapshot', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-restore-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('restores file content from snapshot', () => {
+    const filePath = 'scene.md';
+    fs.writeFileSync(path.join(tmpDir, filePath), 'current', 'utf-8');
+    const snap = snapshotDocument(tmpDir, filePath, 'original content');
+
+    // Overwrite with something different
+    fs.writeFileSync(path.join(tmpDir, filePath), 'modified', 'utf-8');
+
+    restoreDocumentSnapshot(tmpDir, filePath, snap.snapshotPath);
+
+    expect(fs.readFileSync(path.join(tmpDir, filePath), 'utf-8')).toBe('original content');
+  });
+
+  it('creates a pre-restore snapshot so the rollback is reversible', () => {
+    const filePath = 'scene.md';
+    fs.writeFileSync(path.join(tmpDir, filePath), 'before restore', 'utf-8');
+    const snap = snapshotDocument(tmpDir, filePath, 'snapshot content');
+
+    const pre = restoreDocumentSnapshot(tmpDir, filePath, snap.snapshotPath);
+
+    // The pre-restore snapshot must exist and contain the content that was in the file
+    expect(fs.existsSync(path.join(tmpDir, pre.snapshotPath))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, pre.snapshotPath), 'utf-8')).toBe('before restore');
+  });
+
+  it('throws VaultFileNotFoundError when the snapshot does not exist', () => {
+    const filePath = 'scene.md';
+    fs.writeFileSync(path.join(tmpDir, filePath), 'current', 'utf-8');
+    const fakePath = `${VAULT_HISTORY_DIR}/scene.md/9999-01-01T00-00-00-000Z.md`;
+    expect(() => restoreDocumentSnapshot(tmpDir, filePath, fakePath)).toThrow(VaultFileNotFoundError);
+  });
+
+  it('rejects snapshotPath outside .history/', () => {
+    const filePath = 'scene.md';
+    fs.writeFileSync(path.join(tmpDir, filePath), 'current', 'utf-8');
+    expect(() =>
+      restoreDocumentSnapshot(tmpDir, filePath, 'Projects/Novel/Chapter-01/Scene-01.md')
+    ).toThrow(/must be inside/);
+  });
+
+  it('rejects filePath path traversal', () => {
+    expect(() =>
+      restoreDocumentSnapshot(tmpDir, '../escape.md', `${VAULT_HISTORY_DIR}/escape.md/fake.md`)
+    ).toThrow(/Path traversal denied/);
   });
 });
