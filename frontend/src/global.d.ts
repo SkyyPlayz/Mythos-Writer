@@ -264,6 +264,9 @@ interface Window {
     // Vault notes updated push event (MYT-156)
     onVaultNotesUpdated?: (cb: (data: { count: number }) => void) => () => void;
 
+    // Agent budget cap toast (feature-flagged)
+    onBudgetCapHit?: (cb: (data: { agentLabel: string; reason: 'daily_token_cap' | 'hourly_token_cap' }) => void) => () => void;
+
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
     sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<import('./types').Scene>;
