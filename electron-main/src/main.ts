@@ -103,6 +103,7 @@ import {
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
+import { wrapIpcHandler } from './ipcErrors.js';
 import {
   buildAgentSystemPrompt,
   loadPersonaFile,
@@ -2924,7 +2925,7 @@ function getValidatedApiKey(): string {
 
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
-  ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, wrapIpcHandler(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.brainstorm;
     if (!agentSettings.enabled) {
@@ -3025,13 +3026,13 @@ function registerBrainstormHandler() {
     }
 
     return { text: fullText, requestId };
-  });
+  }));
 }
 
 // ─── Writing Assistant streaming handler ───
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
-  ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, wrapIpcHandler(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.writingAssistant;
     if (!agentSettings.enabled) {
@@ -3129,13 +3130,13 @@ function registerWritingAssistantHandler() {
     }
 
     return { text: fullText, requestId };
-  });
+  }));
 }
 
 // ─── Vault Agent handlers ───
 function registerVaultAgentHandlers() {
   // agent:vault-index — builds in-memory index of all vault entities
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
@@ -3169,10 +3170,10 @@ function registerVaultAgentHandlers() {
     });
 
     return { entities: indexed };
-  });
+  }));
 
   // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const apiKey = getValidatedApiKey();
 
@@ -3299,7 +3300,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     }
 
     return { text: fullText, inconsistencies, requestId };
-  });
+  }));
 }
 
 // ─── Writing Assistant scan core (MYT-711) ───
@@ -3370,7 +3371,7 @@ async function runWritingScan(
 
 // ─── Writing Assistant scheduled scan handler (MYT-233 / MYT-711) ───
 function registerWritingScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, wrapIpcHandler(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
@@ -3394,7 +3395,7 @@ function registerWritingScanHandler(): void {
     const model = settings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
 
     return runWritingScan(payload.prose, payload.scenePath, payload.sceneId, client, model);
-  });
+  }));
 }
 
 // ─── Writing Assistant scheduled heartbeat (MYT-711) ───
@@ -3491,7 +3492,7 @@ function startWritingScanScheduler(): void {
 // ─── Beta-Read Mode on-demand scan handler (MYT-711) ───
 // Runs an LLM analysis of a scene and auto-generates anchored BetaReadComments.
 function registerBetaReadScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, wrapIpcHandler(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
@@ -3573,7 +3574,7 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
         });
       } catch { /* non-fatal */ }
     }
-  });
+  }));
 }
 
 // ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────

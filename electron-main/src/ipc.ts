@@ -3,6 +3,7 @@
 
 import { ipcMain, ipcRenderer } from 'electron';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
+import { sanitizeIpcError } from './ipcErrors.js';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -275,12 +276,15 @@ export function isFromTopFrame(event: IpcMainInvokeEvent | IpcMainEvent): boolea
 
 export function setupIpcMain(handlers: IpcHandlers) {
   for (const [channel, handler] of Object.entries(handlers)) {
-    ipcMain.handle(channel, (event, payload) => {
+    // `await` is required so async rejections are caught here and sanitized
+    // before they reach the renderer. Previously thrown fs errors (ENOENT,
+    // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
+    ipcMain.handle(channel, async (event, payload) => {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       try {
-        return handler(payload);
+        return await handler(payload);
       } catch (error) {
-        return { error: (error as Error).message };
+        return sanitizeIpcError(channel, error);
       }
     });
   }
