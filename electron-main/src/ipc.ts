@@ -174,6 +174,9 @@ export const IPC_CHANNELS = {
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
 
+  // Per-agent budget usage (MYT-722) — rolling 1-hour token + suggestion totals
+  AGENT_BUDGET_USAGE: 'agent:budgetUsage',
+
   // Writing modes (MYT-347) — Normal / Focus / Edit per-project state
   WRITING_MODE_GET: 'writingMode:get',
   WRITING_MODE_SET: 'writingMode:set',
@@ -286,6 +289,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
 }
@@ -1502,6 +1506,19 @@ export interface VoiceSpeakPayload {
 export interface VoiceSpeakResponse {
   /** Unique id for this synthesis; correlates voice:speak:chunk / done / error push events. */
   speakId: string;
+}
+
+// ─── Per-agent budget usage (MYT-722) ───
+
+export interface AgentBudgetWindowUsage {
+  tokensLastHour: number;
+  suggestionsLastHour: number;
+}
+
+export interface AgentBudgetUsageResponse {
+  writingAssistant: AgentBudgetWindowUsage;
+  brainstorm: AgentBudgetWindowUsage;
+  archive: AgentBudgetWindowUsage;
 }
 
 // ─── Two-vault layout (MYT-608) ───

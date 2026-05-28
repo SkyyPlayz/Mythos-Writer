@@ -106,6 +106,8 @@ import {
   insertManifestMigrationLog,
   insertArchiveIgnore,
   listArchiveIgnores,
+  countTokensInWindow,
+  countSuggestionsInWindow,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -928,6 +930,21 @@ const handlers: IpcHandlers = {
       agents: { ...current.agents, [agentKey]: updated },
     });
     return { saved: true };
+  },
+
+  // MYT-722: rolling 1-hour token + suggestion usage per agent
+  [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (): import('./ipc.js').AgentBudgetUsageResponse => {
+    ensureVaultDir();
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const usage = (agent: string) => ({
+      tokensLastHour: countTokensInWindow(agent, ONE_HOUR_MS),
+      suggestionsLastHour: countSuggestionsInWindow(agent, ONE_HOUR_MS),
+    });
+    return {
+      writingAssistant: usage('writing-assistant'),
+      brainstorm: usage('brainstorm'),
+      archive: usage('archive'),
+    };
   },
 
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => {

@@ -254,9 +254,9 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
   const factName = factsPanel.locator('.bs-fact-name', { hasText: MOCK_FACT_NAME });
   await expect(factName).toBeVisible({ timeout: 6_000 });
 
-  // The type badge must show "Character".
-  const factType = factsPanel.locator('.bs-fact-type').first();
-  await expect(factType).toContainText('Character');
+  // The type group header must show "Characters".
+  const factGroup = factsPanel.locator('.bs-fact-group').first();
+  await expect(factGroup.locator('.bs-fact-group-header')).toContainText('Character');
 
   // The description must match the mock FACT tag content.
   const factDesc = factsPanel.locator('.bs-fact-desc').first();
