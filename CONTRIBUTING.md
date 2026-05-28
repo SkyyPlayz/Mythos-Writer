@@ -13,7 +13,7 @@ Three jobs must be green before a PR can merge:
 |---|---|
 | `CI / ci (pull_request)` | Lint, type-checks, unit tests, Electron build, Playwright E2E |
 | `CI / build-macos (pull_request)` | Same checks + macOS DMG packaging |
-| `CI / build-linux (pull_request)` | Same checks + Linux AppImage packaging + smoke test |
+| `CI / build-linux (pull_request)` | Same checks + Linux AppImage/deb/rpm packaging + AppImage smoke test + deb/rpm format verification |
 
 These are defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 **Do not bypass or skip these checks.**
@@ -75,6 +75,45 @@ For E2E (requires a display or `xvfb`):
 ```bash
 npm run test:e2e:crud
 npm run test:e2e:brainstorm
+```
+
+## Linux packaging
+
+`npm run dist:linux` produces three artifacts in `dist-electron/`:
+
+| Format | Filename pattern | Targets |
+|---|---|---|
+| AppImage | `Mythos Writer-<version>.AppImage` | All distributions |
+| Debian package | `Mythos Writer-<version>.deb` | Ubuntu / Debian |
+| RPM package | `Mythos Writer-<version>.rpm` | Fedora / openSUSE |
+
+### Install paths
+
+**AppImage** — runs in-place, no installation needed:
+```bash
+chmod +x "Mythos Writer-*.AppImage"
+./"Mythos Writer-*.AppImage"
+```
+User data lives in `~/.config/Mythos Writer/`.
+
+**deb** — installs to `/opt/Mythos Writer/` with a desktop entry at `/usr/share/applications/mythos-writer.desktop`:
+```bash
+sudo dpkg -i "Mythos Writer-*.deb"
+```
+
+**rpm** — installs to `/opt/Mythos Writer/` with a desktop entry at `/usr/share/applications/mythos-writer.desktop`:
+```bash
+sudo rpm -i "Mythos Writer-*.rpm"
+```
+
+### Uninstall
+
+```bash
+# AppImage: delete the file; user data in ~/.config/Mythos Writer/ must be removed manually
+# deb:
+sudo dpkg -r mythos-writer
+# rpm:
+sudo rpm -e mythos-writer
 ```
 
 ## Branch naming
