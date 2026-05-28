@@ -80,6 +80,10 @@ import {
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
   type VaultSetPathsPayload,
+  type VaultCreateChapterPayload,
+  type VaultCreateScenePayload,
+  type VaultListChaptersPayload,
+  type VaultListScenesPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -137,6 +141,10 @@ import {
   chapterVaultPath,
   sceneVaultPath,
   mergeProvenanceFrontmatter,
+  createChapter as vaultCreateChapter,
+  createScene as vaultCreateScene,
+  listChapters as vaultListChapters,
+  listScenes as vaultListScenes,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
 import {
@@ -1936,6 +1944,28 @@ const handlers: IpcHandlers = {
     validateVaultPath(notesVaultPath, 'notesVaultPath');
     saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
     return { storyVaultPath, notesVaultPath, saved: true };
+  },
+
+  // ─── Per-chapter/per-scene layout (MYT-609) ───
+
+  [IPC_CHANNELS.VAULT_CREATE_CHAPTER]: (payload: VaultCreateChapterPayload) => {
+    ensureVaultDir();
+    return vaultCreateChapter(getVaultRoot(), payload.projectPath, payload.chapterName);
+  },
+
+  [IPC_CHANNELS.VAULT_CREATE_SCENE]: (payload: VaultCreateScenePayload) => {
+    ensureVaultDir();
+    return vaultCreateScene(getVaultRoot(), payload.chapterPath, payload.sceneName);
+  },
+
+  [IPC_CHANNELS.VAULT_LIST_CHAPTERS]: (payload: VaultListChaptersPayload) => {
+    ensureVaultDir();
+    return { chapters: vaultListChapters(getVaultRoot(), payload.projectPath) };
+  },
+
+  [IPC_CHANNELS.VAULT_LIST_SCENES]: (payload: VaultListScenesPayload) => {
+    ensureVaultDir();
+    return { scenes: vaultListScenes(getVaultRoot(), payload.chapterPath) };
   },
 
 };

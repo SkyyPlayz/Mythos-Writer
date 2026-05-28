@@ -30,7 +30,13 @@ import {
   scaffoldStoryVault,
   obsidianDryRun,
   mergeProvenanceFrontmatter,
+  sanitizeName,
+  createChapter,
+  createScene,
+  listChapters,
+  listScenes,
   MANUSCRIPT_DIR,
+  PROJECTS_DIR,
   MAX_VAULT_FILE_BYTES,
   VaultFileTooLargeError,
   realSafePath,
@@ -1112,5 +1118,271 @@ describe('readManifest / writeManifest', () => {
     expect(loaded.stories).toHaveLength(1);
     expect(loaded.stories[0].id).toBe('story-1');
     expect(loaded.schemaVersion).toBe(original.schemaVersion);
+  });
+});
+
+// ─── Per-chapter/per-scene layout (MYT-609) ───
+
+describe('sanitizeName', () => {
+  it('strips reserved filesystem characters', () => {
+    expect(sanitizeName('Hello: World/File*')).toBe('Hello World File');
+  });
+
+  it('collapses multiple spaces', () => {
+    expect(sanitizeName('Too   Many   Spaces')).toBe('Too Many Spaces');
+  });
+
+  it('returns Untitled for empty or all-stripped input', () => {
+    expect(sanitizeName('')).toBe('Untitled');
+    expect(sanitizeName('///')).toBe('Untitled');
+  });
+
+  it('trims leading and trailing spaces', () => {
+    expect(sanitizeName('  My Chapter  ')).toBe('My Chapter');
+  });
+
+  it('strips control characters', () => {
+    expect(sanitizeName('Bad\x00\x1fChar')).toBe('BadChar');
+  });
+
+  it('truncates at 200 characters', () => {
+    const long = 'a'.repeat(250);
+    expect(sanitizeName(long)).toHaveLength(200);
+  });
+});
+
+describe('createChapter — MYT-609', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ch-create-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates Chapter-01 when no chapters exist', () => {
+    const projPath = `${PROJECTS_DIR}/My Novel`;
+    const info = createChapter(tmpDir, projPath, 'The Beginning');
+    expect(info.dirName).toBe('Chapter-01');
+    expect(info.order).toBe(1);
+    expect(info.title).toBe('The Beginning');
+    expect(info.path).toBe(`${projPath}/Chapter-01`);
+    expect(fs.existsSync(path.join(tmpDir, projPath, 'Chapter-01'))).toBe(true);
+  });
+
+  it('writes _meta.json with title and order', () => {
+    const projPath = `${PROJECTS_DIR}/My Novel`;
+    createChapter(tmpDir, projPath, 'Part One');
+    const meta = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, projPath, 'Chapter-01', '_meta.json'), 'utf-8')
+    );
+    expect(meta.title).toBe('Part One');
+    expect(meta.order).toBe(1);
+  });
+
+  it('auto-numbers Chapter-02 after Chapter-01 exists', () => {
+    const projPath = `${PROJECTS_DIR}/My Novel`;
+    createChapter(tmpDir, projPath, 'First');
+    const second = createChapter(tmpDir, projPath, 'Second');
+    expect(second.dirName).toBe('Chapter-02');
+    expect(second.order).toBe(2);
+  });
+
+  it('auto-creates the project directory if it does not exist', () => {
+    const projPath = `${PROJECTS_DIR}/Brand New Project`;
+    expect(fs.existsSync(path.join(tmpDir, projPath))).toBe(false);
+    createChapter(tmpDir, projPath, 'Intro');
+    expect(fs.existsSync(path.join(tmpDir, projPath))).toBe(true);
+  });
+
+  it('sanitizes chapterName before storing in _meta.json', () => {
+    const projPath = `${PROJECTS_DIR}/My Novel`;
+    const info = createChapter(tmpDir, projPath, 'Bad: Ch/Name*');
+    expect(info.title).toBe('Bad Ch Name');
+  });
+
+  it('rejects projectPath that escapes the vault', () => {
+    expect(() => createChapter(tmpDir, '../../../etc', 'Evil')).toThrow(/Path traversal denied/);
+  });
+});
+
+describe('createScene — MYT-609', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-create-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates Scene-01.md as the first scene in a chapter', () => {
+    const chapterPath = `${PROJECTS_DIR}/Novel/Chapter-01`;
+    fs.mkdirSync(path.join(tmpDir, chapterPath), { recursive: true });
+    const info = createScene(tmpDir, chapterPath, 'The Arrival');
+    expect(info.fileName).toBe('Scene-01.md');
+    expect(info.order).toBe(1);
+    expect(info.title).toBe('The Arrival');
+    expect(fs.existsSync(path.join(tmpDir, chapterPath, 'Scene-01.md'))).toBe(true);
+  });
+
+  it('writes Obsidian-compatible frontmatter with title and order', () => {
+    const chapterPath = `${PROJECTS_DIR}/Novel/Chapter-01`;
+    fs.mkdirSync(path.join(tmpDir, chapterPath), { recursive: true });
+    createScene(tmpDir, chapterPath, 'Opening');
+    const raw = fs.readFileSync(path.join(tmpDir, chapterPath, 'Scene-01.md'), 'utf-8');
+    expect(raw).toMatch(/^---/);
+    expect(raw).toContain('title: Opening');
+    expect(raw).toContain('order: 1');
+  });
+
+  it('auto-numbers Scene-02 after Scene-01 exists', () => {
+    const chapterPath = `${PROJECTS_DIR}/Novel/Chapter-01`;
+    fs.mkdirSync(path.join(tmpDir, chapterPath), { recursive: true });
+    createScene(tmpDir, chapterPath, 'First');
+    const second = createScene(tmpDir, chapterPath, 'Second');
+    expect(second.fileName).toBe('Scene-02.md');
+    expect(second.order).toBe(2);
+  });
+
+  it('throws when chapterPath does not exist', () => {
+    expect(() =>
+      createScene(tmpDir, `${PROJECTS_DIR}/Novel/Chapter-99`, 'Ghost')
+    ).toThrow(/Chapter not found/);
+  });
+
+  it('sanitizes sceneName in frontmatter', () => {
+    const chapterPath = `${PROJECTS_DIR}/Novel/Chapter-01`;
+    fs.mkdirSync(path.join(tmpDir, chapterPath), { recursive: true });
+    const info = createScene(tmpDir, chapterPath, 'Bad: Scene*Name');
+    expect(info.title).toBe('Bad Scene Name');
+  });
+});
+
+describe('listChapters — MYT-609', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-list-ch-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns chapters sorted by order', () => {
+    const projPath = `${PROJECTS_DIR}/Novel`;
+    createChapter(tmpDir, projPath, 'Alpha');
+    createChapter(tmpDir, projPath, 'Beta');
+    createChapter(tmpDir, projPath, 'Gamma');
+    const chapters = listChapters(tmpDir, projPath);
+    expect(chapters).toHaveLength(3);
+    expect(chapters[0].dirName).toBe('Chapter-01');
+    expect(chapters[1].dirName).toBe('Chapter-02');
+    expect(chapters[2].dirName).toBe('Chapter-03');
+  });
+
+  it('returns empty array when project directory does not exist', () => {
+    expect(listChapters(tmpDir, `${PROJECTS_DIR}/NonExistent`)).toEqual([]);
+  });
+
+  it('ignores non-Chapter-NN directories', () => {
+    const projPath = `${PROJECTS_DIR}/Novel`;
+    fs.mkdirSync(path.join(tmpDir, projPath, 'SomeOtherDir'), { recursive: true });
+    createChapter(tmpDir, projPath, 'Real Chapter');
+    const chapters = listChapters(tmpDir, projPath);
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].dirName).toBe('Chapter-01');
+  });
+
+  it('skips symlinks', () => {
+    const projPath = `${PROJECTS_DIR}/Novel`;
+    createChapter(tmpDir, projPath, 'Real');
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-'));
+    try {
+      fs.mkdirSync(path.join(outsideDir, 'Chapter-99'), { recursive: true });
+      fs.symlinkSync(
+        path.join(outsideDir, 'Chapter-99'),
+        path.join(tmpDir, projPath, 'Chapter-99')
+      );
+      const chapters = listChapters(tmpDir, projPath);
+      expect(chapters.every((c) => c.dirName !== 'Chapter-99')).toBe(true);
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads title from _meta.json', () => {
+    const projPath = `${PROJECTS_DIR}/Novel`;
+    createChapter(tmpDir, projPath, 'The Real Title');
+    const [ch] = listChapters(tmpDir, projPath);
+    expect(ch.title).toBe('The Real Title');
+  });
+
+  it('falls back to dirName title when _meta.json is absent', () => {
+    const projPath = `${PROJECTS_DIR}/Novel`;
+    const chDir = path.join(tmpDir, projPath, 'Chapter-01');
+    fs.mkdirSync(chDir, { recursive: true });
+    // No _meta.json written
+    const [ch] = listChapters(tmpDir, projPath);
+    expect(ch.title).toBe('Chapter-01');
+  });
+});
+
+describe('listScenes — MYT-609', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-list-sc-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns scenes sorted by order', () => {
+    const chapterPath = `${PROJECTS_DIR}/Novel/Chapter-01`;
+    fs.mkdirSync(path.join(tmpDir, chapterPath), { recursive: true });
+    createScene(tmpDir, chapterPath, 'One');
+    createScene(tmpDir, chapterPath, 'Two');
+    createScene(tmpDir, chapterPath, 'Three');
+    const scenes = listScenes(tmpDir, chapterPath);
+    expect(scenes).toHaveLength(3);
+    expect(scenes[0].fileName).toBe('Scene-01.md');
+    expect(scenes[1].fileName).toBe('Scene-02.md');
+    expect(scenes[2].fileName).toBe('Scene-03.md');
+  });
+
+  it('returns empty array when chapter directory does not exist', () => {
+    expect(listScenes(tmpDir, `${PROJECTS_DIR}/Novel/Chapter-99`)).toEqual([]);
+  });
+
+  it('ignores non-Scene-NN.md files', () => {
+    const chapterPath = `${PROJECTS_DIR}/Novel/Chapter-01`;
+    fs.mkdirSync(path.join(tmpDir, chapterPath), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, chapterPath, '_meta.json'), '{}', 'utf-8');
+    fs.writeFileSync(path.join(tmpDir, chapterPath, 'README.md'), 'readme', 'utf-8');
+    createScene(tmpDir, chapterPath, 'Real Scene');
+    const scenes = listScenes(tmpDir, chapterPath);
+    expect(scenes).toHaveLength(1);
+    expect(scenes[0].fileName).toBe('Scene-01.md');
+  });
+
+  it('reads title and order from frontmatter', () => {
+    const chapterPath = `${PROJECTS_DIR}/Novel/Chapter-01`;
+    fs.mkdirSync(path.join(tmpDir, chapterPath), { recursive: true });
+    createScene(tmpDir, chapterPath, 'Dramatic Title');
+    const [scene] = listScenes(tmpDir, chapterPath);
+    expect(scene.title).toBe('Dramatic Title');
+    expect(scene.order).toBe(1);
+  });
+});
+
+describe('PROJECTS_DIR constant — MYT-609', () => {
+  it('equals Projects', () => {
+    expect(PROJECTS_DIR).toBe('Projects');
   });
 });

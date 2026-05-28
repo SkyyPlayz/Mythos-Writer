@@ -173,6 +173,12 @@ export const IPC_CHANNELS = {
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
+
+  // Per-chapter/per-scene layout (MYT-609) — path-based, no manifest required
+  VAULT_CREATE_CHAPTER: 'vault:createChapter',
+  VAULT_CREATE_SCENE: 'vault:createScene',
+  VAULT_LIST_CHAPTERS: 'vault:listChapters',
+  VAULT_LIST_SCENES: 'vault:listScenes',
 } as const;
 
 // ─── Main process handlers ───
@@ -282,6 +288,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.VAULT_CREATE_CHAPTER]: (payload: VaultCreateChapterPayload) => VaultCreateChapterResponse;
+  [IPC_CHANNELS.VAULT_CREATE_SCENE]: (payload: VaultCreateScenePayload) => VaultCreateSceneResponse;
+  [IPC_CHANNELS.VAULT_LIST_CHAPTERS]: (payload: VaultListChaptersPayload) => VaultListChaptersResponse;
+  [IPC_CHANNELS.VAULT_LIST_SCENES]: (payload: VaultListScenesPayload) => VaultListScenesResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1510,4 +1520,54 @@ export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+}
+
+// ─── Per-chapter/per-scene layout (MYT-609) ───
+
+export interface ChapterInfo {
+  dirName: string;
+  /** Vault-relative path to the chapter directory */
+  path: string;
+  title: string;
+  order: number;
+}
+
+export interface SceneInfo {
+  fileName: string;
+  /** Vault-relative path to the scene .md file */
+  path: string;
+  title: string;
+  order: number;
+}
+
+export interface VaultCreateChapterPayload {
+  /** Vault-relative path to the project directory, e.g. "Projects/My Novel" */
+  projectPath: string;
+  chapterName: string;
+}
+
+export type VaultCreateChapterResponse = ChapterInfo;
+
+export interface VaultCreateScenePayload {
+  /** Vault-relative path to the chapter directory, e.g. "Projects/My Novel/Chapter-01" */
+  chapterPath: string;
+  sceneName: string;
+}
+
+export type VaultCreateSceneResponse = SceneInfo;
+
+export interface VaultListChaptersPayload {
+  projectPath: string;
+}
+
+export interface VaultListChaptersResponse {
+  chapters: ChapterInfo[];
+}
+
+export interface VaultListScenesPayload {
+  chapterPath: string;
+}
+
+export interface VaultListScenesResponse {
+  scenes: SceneInfo[];
 }

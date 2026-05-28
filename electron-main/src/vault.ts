@@ -671,8 +671,10 @@ export async function stopVaultWatcher(): Promise<void> {
 // ─── Vault scaffold ───
 // Creates the standard subdirectory structure for each vault type on first run.
 
+export const PROJECTS_DIR = 'Projects';
+
 export function scaffoldStoryVault(storyVaultRoot: string): void {
-  const dirs = ['Projects'];
+  const dirs = [PROJECTS_DIR];
   for (const dir of dirs) {
     const full = path.join(storyVaultRoot, dir);
     if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
@@ -723,6 +725,206 @@ export async function stopNotesVaultWatcher(): Promise<void> {
     await activeNotesWatcher.close();
     activeNotesWatcher = null;
   }
+}
+
+// ─── Per-chapter/per-scene file layout (MYT-609) ───
+// Projects/  <ProjectName>/  Chapter-01/  Scene-01.md
+
+export interface ChapterMeta {
+  title: string;
+  order: number;
+}
+
+export interface ChapterInfo {
+  dirName: string;
+  /** Vault-relative path to the chapter directory */
+  path: string;
+  title: string;
+  order: number;
+}
+
+export interface SceneInfo {
+  fileName: string;
+  /** Vault-relative path to the scene .md file */
+  path: string;
+  title: string;
+  order: number;
+}
+
+/** Strip filesystem-unsafe characters and control codes from a user-provided name. */
+export function sanitizeName(name: string): string {
+  return (
+    name
+      // Strip C0 control characters (null bytes, etc.) — invisible, not word separators
+      .replace(/[\x00-\x1f]/g, '')
+      // Replace filesystem-reserved ASCII chars with a space (they often appear between words)
+      .replace(/[<>:"/\\|?*]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 200) || 'Untitled'
+  );
+}
+
+function parseChapterNumber(dirName: string): number | null {
+  const m = dirName.match(/^Chapter-(\d+)$/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function parseSceneNumber(fileName: string): number | null {
+  const m = fileName.match(/^Scene-(\d+)\.md$/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function formatChapterDirName(n: number): string {
+  return `Chapter-${String(n).padStart(2, '0')}`;
+}
+
+function formatSceneFileName(n: number): string {
+  return `Scene-${String(n).padStart(2, '0')}.md`;
+}
+
+/**
+ * Create a chapter subdirectory under projectPath, auto-numbering it (Chapter-01, Chapter-02…).
+ * Writes a `_meta.json` sidecar with the sanitized title and order.
+ * Auto-creates the project directory if it does not exist.
+ */
+export function createChapter(
+  storyVaultRoot: string,
+  projectPath: string,
+  chapterName: string
+): ChapterInfo {
+  const safeTitle = sanitizeName(chapterName);
+  // Validate the project path is inside the vault (handles traversal + symlink escapes)
+  const projFullPath = realSafePath(storyVaultRoot, projectPath, true);
+  if (!fs.existsSync(projFullPath)) fs.mkdirSync(projFullPath, { recursive: true });
+
+  const existingNums = fs
+    .readdirSync(projFullPath, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.isSymbolicLink())
+    .map((e) => parseChapterNumber(e.name))
+    .filter((n): n is number => n !== null);
+  const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+  const dirName = formatChapterDirName(nextNum);
+
+  const chapterFullPath = path.join(projFullPath, dirName);
+  fs.mkdirSync(chapterFullPath, { recursive: true });
+
+  const meta: ChapterMeta = { title: safeTitle, order: nextNum };
+  writeFileAtomic(path.join(chapterFullPath, '_meta.json'), JSON.stringify(meta, null, 2));
+
+  return {
+    dirName,
+    path: `${projectPath}/${dirName}`,
+    title: safeTitle,
+    order: nextNum,
+  };
+}
+
+/**
+ * Create a scene .md file in chapterPath, auto-numbering it (Scene-01, Scene-02…).
+ * Writes Obsidian-compatible YAML frontmatter (title, order, id).
+ */
+export function createScene(
+  storyVaultRoot: string,
+  chapterPath: string,
+  sceneName: string
+): SceneInfo {
+  const safeTitle = sanitizeName(sceneName);
+  const chapterFullPath = realSafePath(storyVaultRoot, chapterPath, false);
+  if (!fs.existsSync(chapterFullPath)) throw new Error(`Chapter not found: ${chapterPath}`);
+
+  const existingNums = fs
+    .readdirSync(chapterFullPath, { withFileTypes: true })
+    .filter((e) => e.isFile() && !e.isSymbolicLink())
+    .map((e) => parseSceneNumber(e.name))
+    .filter((n): n is number => n !== null);
+  const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+  const fileName = formatSceneFileName(nextNum);
+  const sceneRelPath = `${chapterPath}/${fileName}`;
+
+  writeSceneFile(storyVaultRoot, sceneRelPath, {
+    id: crypto.randomUUID(),
+    title: safeTitle,
+    order: nextNum,
+    prose: '',
+  });
+
+  return {
+    fileName,
+    path: sceneRelPath,
+    title: safeTitle,
+    order: nextNum,
+  };
+}
+
+/**
+ * List all chapter subdirectories under projectPath, sorted by order.
+ * Returns an empty array when the project directory does not exist.
+ */
+export function listChapters(
+  storyVaultRoot: string,
+  projectPath: string
+): ChapterInfo[] {
+  const fullPath = path.join(storyVaultRoot, projectPath);
+  if (!fs.existsSync(fullPath)) return [];
+
+  const result: ChapterInfo[] = [];
+  for (const entry of fs.readdirSync(fullPath, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const n = parseChapterNumber(entry.name);
+    if (n === null) continue;
+
+    let title = entry.name;
+    let order = n;
+    try {
+      const raw = fs.readFileSync(
+        path.join(fullPath, entry.name, '_meta.json'),
+        'utf-8'
+      );
+      const meta = JSON.parse(raw) as ChapterMeta;
+      if (meta.title) title = meta.title;
+      if (meta.order) order = meta.order;
+    } catch { /* meta absent or corrupt — use dir-name defaults */ }
+
+    result.push({
+      dirName: entry.name,
+      path: `${projectPath}/${entry.name}`,
+      title,
+      order,
+    });
+  }
+  return result.sort((a, b) => a.order - b.order);
+}
+
+/**
+ * List all scene .md files under chapterPath, sorted by order.
+ * Returns an empty array when the chapter directory does not exist.
+ */
+export function listScenes(
+  storyVaultRoot: string,
+  chapterPath: string
+): SceneInfo[] {
+  const fullPath = path.join(storyVaultRoot, chapterPath);
+  if (!fs.existsSync(fullPath)) return [];
+
+  const result: SceneInfo[] = [];
+  for (const entry of fs.readdirSync(fullPath, { withFileTypes: true })) {
+    if (!entry.isFile() || entry.isSymbolicLink()) continue;
+    const n = parseSceneNumber(entry.name);
+    if (n === null) continue;
+
+    const sceneRelPath = `${chapterPath}/${entry.name}`;
+    let title = entry.name.replace(/\.md$/, '');
+    let order = n;
+    try {
+      const data = readSceneFile(storyVaultRoot, sceneRelPath);
+      if (data.title) title = data.title;
+      if (data.order !== undefined) order = data.order;
+    } catch { /* file missing or corrupt */ }
+
+    result.push({ fileName: entry.name, path: sceneRelPath, title, order });
+  }
+  return result.sort((a, b) => a.order - b.order);
 }
 
 // ─── Obsidian dry-run ───
