@@ -127,6 +127,13 @@ jobs:
       - name: Test (frontend)
         run: npm run test -w frontend
 
+      # Rebuild better-sqlite3 for Electron ABI before packaging. npm ci builds it
+      # for Node ABI (needed by the unit tests above); electron-builder bundles
+      # whatever is in node_modules, so the AppImage would crash on startup if we
+      # skip this step (ABI mismatch between Node 20 and Electron 39+).
+      - name: Rebuild native modules for Electron (packaging)
+        run: npm run rebuild:native
+
       - name: Build and package (Linux AppImage)
         run: npm run dist:linux
 
