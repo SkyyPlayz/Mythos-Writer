@@ -66,6 +66,38 @@ interface AgentBudgetSettings {
   maxTokensPerDay: number;
 }
 
+interface AgentVoiceSettings {
+  ttsEnabled?: boolean;
+  sttEngine?: 'local' | 'cloud';
+  micDeviceId?: string;
+}
+
+interface VoiceSettings {
+  enabled: boolean;
+  cloudFallback: boolean;
+  micDeviceId?: string;
+  openaiApiKey?: string;
+}
+
+interface TelemetrySettings {
+  enabled: boolean;
+}
+
+interface LiquidGlassPrefs {
+  background: 'default' | 'none';
+  style: number;
+  glass: number;
+  blur: number;
+  neon: number;
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  /** Softness↔Contrast axis (0 = soft/max-blur, 100 = sharp/min-blur). MYT-518 */
+  softness?: number;
+  textHeader?: string;
+  textBody?: string;
+  textMuted?: string;
+}
+
+
 interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;

@@ -10,9 +10,19 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.6rem 1.2rem;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-default);
+  background: var(--glass-fill-fallback);
+  border-bottom: 1px solid var(--glass-border);
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .block-editor-toolbar {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+  }
 }
 
 .scene-name {

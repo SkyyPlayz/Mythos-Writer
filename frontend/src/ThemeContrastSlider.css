@@ -1,0 +1,144 @@
+.tcs-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tcs-labels-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.tcs-label-end {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tcs-label-end--right {
+  text-align: right;
+}
+
+.tcs-track-wrap {
+  position: relative;
+  padding-bottom: 24px;
+}
+
+.tcs-slider {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--accent) calc(var(--pct, 50%) * 1%),
+    var(--border-strong) calc(var(--pct, 50%) * 1%)
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.tcs-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--neon-glow);
+  cursor: pointer;
+  border: 2px solid var(--bg-app);
+  transition: box-shadow 0.15s;
+}
+
+.tcs-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--neon-glow);
+  cursor: pointer;
+  border: 2px solid var(--bg-app);
+}
+
+.tcs-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--neon-glow-strong), 0 0 0 3px var(--focus-ring);
+}
+
+.tcs-markers {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+.tcs-marker {
+  position: absolute;
+  transform: translateX(-50%);
+  background: none;
+  border: none;
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  cursor: pointer;
+  pointer-events: all;
+  padding: 0;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.tcs-marker:hover {
+  color: var(--text-muted);
+}
+
+.tcs-marker--active {
+  color: var(--accent-light);
+  text-shadow: var(--neon-glow);
+}
+
+.tcs-floors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.tcs-floors-label {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tcs-floors-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tcs-floor-name {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.tcs-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.tcs-badge--pass {
+  background: var(--state-success-bg);
+  color: var(--state-success);
+  border: 1px solid var(--state-success-border);
+}
+
+.tcs-badge--fail {
+  background: var(--state-danger-bg);
+  color: var(--state-danger);
+  border: 1px solid var(--state-danger-border);
+}

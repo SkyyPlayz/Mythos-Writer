@@ -4,12 +4,22 @@
   gap: 12px;
   padding: 0 14px;
   height: 32px;
-  background: #0d0d0f;
-  border-top: 1px solid #1f1f23;
+  background: var(--glass-fill-fallback);
+  border-top: 1px solid var(--glass-border);
   flex-shrink: 0;
   font-size: 0.78rem;
   color: #52525b;
   user-select: none;
+  position: relative;
+  z-index: 10;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .bottom-bar {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+  }
 }
 
 .bottom-nav {
