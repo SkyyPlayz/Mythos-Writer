@@ -251,6 +251,32 @@
   gap: 6px;
 }
 
+/* Budget usage counters */
+
+.settings-budget-usage {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-muted, #71717a);
+}
+
+.settings-budget-label {
+  font-weight: 500;
+  color: var(--text-muted, #71717a);
+  flex-shrink: 0;
+}
+
+.settings-budget-stat {
+  color: var(--text-body, #a1a1aa);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Toggle switch */
 
 .settings-toggle {

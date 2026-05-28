@@ -13,16 +13,25 @@ const defaultSettings: AppSettings = {
 
 const mockSettingsGet = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockAgentBudgetUsage = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
+
+const defaultBudgetUsage = {
+  writingAssistant: { tokensLastHour: 1234, suggestionsLastHour: 3 },
+  brainstorm: { tokensLastHour: 5678, suggestionsLastHour: 7 },
+  archive: { tokensLastHour: 9012, suggestionsLastHour: 2 },
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
   mockSettingsGet.mockResolvedValue(defaultSettings);
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockAgentBudgetUsage.mockResolvedValue(defaultBudgetUsage);
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
+    agentBudgetUsage: mockAgentBudgetUsage,
   };
 });
 
@@ -369,6 +378,33 @@ describe('SettingsPanel', () => {
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
     expect(saved.agents.archive.maxTokensPerDay).toBe(2000000);
+  });
+
+  // ── MYT-722 budget usage counters ──
+
+  it('displays budget usage counters for all three agents', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-budget-usage'));
+
+    expect(screen.getByTestId('wa-budget-usage')).toHaveTextContent('1,234 tokens');
+    expect(screen.getByTestId('wa-budget-usage')).toHaveTextContent('3 suggestions');
+    expect(screen.getByTestId('brainstorm-budget-usage')).toHaveTextContent('5,678 tokens');
+    expect(screen.getByTestId('brainstorm-budget-usage')).toHaveTextContent('7 suggestions');
+    expect(screen.getByTestId('archive-budget-usage')).toHaveTextContent('9,012 tokens');
+    expect(screen.getByTestId('archive-budget-usage')).toHaveTextContent('2 suggestions');
+  });
+
+  it('hides budget usage counters when agentBudgetUsage is unavailable', async () => {
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+    };
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(screen.queryByTestId('wa-budget-usage')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brainstorm-budget-usage')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-budget-usage')).not.toBeInTheDocument();
   });
 
   it('full settings round-trip via IPC mock', async () => {

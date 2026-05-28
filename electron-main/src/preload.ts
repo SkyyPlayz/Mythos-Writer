@@ -99,6 +99,8 @@ contextBridge.exposeInMainWorld('api', {
   getAgentConfig: () => ipcRenderer.invoke('settings:getAgentConfig', undefined),
   setAgentConfig: (agent: string, config: unknown) =>
     ipcRenderer.invoke('settings:setAgentConfig', { agent, config }),
+  // Per-agent budget usage (MYT-722) — rolling 1-hour token + suggestion totals
+  agentBudgetUsage: () => ipcRenderer.invoke('agent:budgetUsage', undefined),
 
   // Generation log (prompt history)
   generationLogRecent: (payload: { limit?: number; offset?: number; agent?: string; dateFrom?: string; dateTo?: string; search?: string }) =>

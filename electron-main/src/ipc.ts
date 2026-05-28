@@ -173,6 +173,9 @@ export const IPC_CHANNELS = {
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
+
+  // Per-agent budget usage (MYT-722) — rolling 1-hour token + suggestion totals
+  AGENT_BUDGET_USAGE: 'agent:budgetUsage',
 } as const;
 
 // ─── Main process handlers ───
@@ -282,6 +285,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1510,4 +1514,17 @@ export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+}
+
+// ─── Per-agent budget usage (MYT-722) ────────────────────────────────────────
+
+export interface AgentBudgetWindowUsage {
+  tokensLastHour: number;
+  suggestionsLastHour: number;
+}
+
+export interface AgentBudgetUsageResponse {
+  writingAssistant: AgentBudgetWindowUsage;
+  brainstorm: AgentBudgetWindowUsage;
+  archive: AgentBudgetWindowUsage;
 }

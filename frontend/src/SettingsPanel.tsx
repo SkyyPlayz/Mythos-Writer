@@ -68,6 +68,11 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [budgetUsage, setBudgetUsage] = useState<{
+    writingAssistant: { tokensLastHour: number; suggestionsLastHour: number };
+    brainstorm: { tokensLastHour: number; suggestionsLastHour: number };
+    archive: { tokensLastHour: number; suggestionsLastHour: number };
+  } | null>(null);
 
   useEffect(() => {
     window.api.settingsGet().then((s) => {
@@ -77,6 +82,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     }).catch(() => {
       setLoading(false);
     });
+    window.api.agentBudgetUsage?.().then((u) => setBudgetUsage(u)).catch(() => {});
   }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
@@ -304,6 +310,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     onChange={(e) => setAgentField('writingAssistant', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {budgetUsage && (
+                  <div className="settings-budget-usage" data-testid="wa-budget-usage">
+                    <span className="settings-budget-label">Usage (last hour):</span>
+                    <span className="settings-budget-stat">{budgetUsage.writingAssistant.tokensLastHour.toLocaleString()} tokens</span>
+                    <span className="settings-budget-stat">{budgetUsage.writingAssistant.suggestionsLastHour} suggestions</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -414,6 +427,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     onChange={(e) => setAgentField('brainstorm', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {budgetUsage && (
+                  <div className="settings-budget-usage" data-testid="brainstorm-budget-usage">
+                    <span className="settings-budget-label">Usage (last hour):</span>
+                    <span className="settings-budget-stat">{budgetUsage.brainstorm.tokensLastHour.toLocaleString()} tokens</span>
+                    <span className="settings-budget-stat">{budgetUsage.brainstorm.suggestionsLastHour} suggestions</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -536,6 +556,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     onChange={(e) => setAgentField('archive', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {budgetUsage && (
+                  <div className="settings-budget-usage" data-testid="archive-budget-usage">
+                    <span className="settings-budget-label">Usage (last hour):</span>
+                    <span className="settings-budget-stat">{budgetUsage.archive.tokensLastHour.toLocaleString()} tokens</span>
+                    <span className="settings-budget-stat">{budgetUsage.archive.suggestionsLastHour} suggestions</span>
+                  </div>
+                )}
               </div>
             </div>
           </section>
