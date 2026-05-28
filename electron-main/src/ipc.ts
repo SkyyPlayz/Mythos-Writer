@@ -169,6 +169,10 @@ export const IPC_CHANNELS = {
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
   ARCHIVE_IGNORE_LIST: 'archive:ignore-list',
+
+  // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
+  VAULT_GET_PATHS: 'vault:getPaths',
+  VAULT_SET_PATHS: 'vault:setPaths',
 } as const;
 
 // ─── Main process handlers ───
@@ -276,6 +280,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
+  [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
+  [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1486,4 +1492,22 @@ export interface VoiceSpeakPayload {
 export interface VoiceSpeakResponse {
   /** Unique id for this synthesis; correlates voice:speak:chunk / done / error push events. */
   speakId: string;
+}
+
+// ─── Two-vault layout (MYT-608) ───
+
+export interface VaultGetPathsResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+}
+
+export interface VaultSetPathsPayload {
+  storyVaultPath: string;
+  notesVaultPath: string;
+}
+
+export interface VaultSetPathsResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+  saved: boolean;
 }

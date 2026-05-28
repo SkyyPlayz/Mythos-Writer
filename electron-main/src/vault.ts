@@ -668,10 +668,18 @@ export async function stopVaultWatcher(): Promise<void> {
   }
 }
 
-// ─── Notes Vault scaffold ───
-// Creates the standard subdirectory structure for a new Notes Vault.
+// ─── Vault scaffold ───
+// Creates the standard subdirectory structure for each vault type on first run.
 
-const NOTES_VAULT_DIRS = ['Characters', 'Locations', 'Items', 'Concepts', 'Notes'];
+export function scaffoldStoryVault(storyVaultRoot: string): void {
+  const dirs = ['Projects'];
+  for (const dir of dirs) {
+    const full = path.join(storyVaultRoot, dir);
+    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+  }
+}
+
+const NOTES_VAULT_DIRS = ['Notes', 'Characters', 'Locations', 'Items', 'Concepts'];
 
 export function scaffoldNotesVault(vaultRoot: string): void {
   for (const dir of NOTES_VAULT_DIRS) {
