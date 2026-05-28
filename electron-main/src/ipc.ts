@@ -974,6 +974,8 @@ export interface TelemetryReportPayload {
 
 export interface TelemetryReportResponse {
   queued: boolean;
+  /** Set when validation rejects the payload (MYT-794). */
+  error?: string;
 }
 
 // ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
