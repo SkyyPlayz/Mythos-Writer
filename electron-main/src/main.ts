@@ -1,5 +1,6 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { secureWebPreferences, createWindowOpenHandler } from './security.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -48,6 +49,7 @@ import {
   type AppSettings,
   type SettingsSetPayload,
   type SuggestionsListPayload,
+  type SuggestionsGetPayload,
   type SuggestionsUpsertPayload,
   type SuggestionsAcceptPayload,
   type SuggestionsApplyPayload,
@@ -56,6 +58,7 @@ import {
   type AuditListPayload,
   type TimelineListPayload,
   type TimelineUpsertPayload,
+  type ProvenanceUpsertPayload,
   type GenerationLogRecentPayload,
   type GenerationLogListPayload,
   type GenerationLogGetPayload,
@@ -112,6 +115,7 @@ import {
   listArchiveIgnores,
   countTokensInWindow,
   countSuggestionsInWindow,
+  insertProvenance,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -138,6 +142,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  safeVaultIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -404,20 +409,29 @@ function validateVaultPath(p: string, field: string): void {
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
+  // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
+  // at the IPC boundary. The low-level helpers also re-check traversal, so a
+  // bad path is rejected twice independently.
   [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, false);
     return readVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return writeVaultFileAtomic(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
+    // LIST takes a directory — enforce traversal/symlink only, not the
+    // file-extension allow-list.
+    if (payload.root) safePath(getVaultRoot(), payload.root);
     return listVaultFiles(getVaultRoot(), payload.root);
   },
   [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return deleteVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: () => {
@@ -489,6 +503,10 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
     ensureVaultDir();
     return { suggestions: listSuggestions(payload.status, payload.sourceAgent) };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => {
+    ensureVaultDir();
+    return { suggestion: getSuggestion(payload.id) };
   },
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => {
     ensureVaultDir();
@@ -615,6 +633,23 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => {
     ensureVaultDir();
     return { entries: listAuditLog(payload.suggestionId) };
+  },
+
+  // ─── Provenance ───
+  [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => {
+    ensureVaultDir();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    insertProvenance({
+      id,
+      entity_id: payload.entityId,
+      entity_kind: payload.entityKind,
+      agent_id: payload.agentId,
+      agent_type: payload.agentType,
+      run_id: payload.runId ?? null,
+      created_at: now,
+    });
+    return { id };
   },
 
   // ─── Timeline ───
@@ -2086,17 +2121,32 @@ const handlers: IpcHandlers = {
 
 // ─── Create BrowserWindow ───
 function createWindow() {
+  // electron-vite emits the preload to out/preload/preload.js, while this
+  // file runs from out/main/. (The packaged app preserves the same layout.)
+  const preloadPath = path.join(__dirname, '../preload/preload.js');
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: 'Mythos Writer',
-    webPreferences: {
-      // electron-vite emits the preload to out/preload/preload.js, while this
-      // file runs from out/main/. (The packaged app preserves the same layout.)
-      preload: path.join(__dirname, '../preload/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+    webPreferences: secureWebPreferences({ preloadPath }),
+  });
+
+  // MYT-776: deny renderer-initiated popups by default; route http(s) URLs to
+  // the user's system browser via shell.openExternal instead of opening an
+  // Electron window with unfettered privileges.
+  mainWindow.webContents.setWindowOpenHandler(
+    createWindowOpenHandler((url) => { shell.openExternal(url).catch(() => {}); }),
+  );
+
+  // Block in-place navigations to anything other than the loaded renderer —
+  // protects against a compromised renderer redirecting to a remote origin
+  // that would then inherit the preload bridge.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const devServer = process.env.VITE_DEV_SERVER_URL;
+    const isAllowed =
+      (devServer && url.startsWith(devServer)) ||
+      url.startsWith('file://');
+    if (!isAllowed) event.preventDefault();
   });
 
   // Load the Vite-built renderer
