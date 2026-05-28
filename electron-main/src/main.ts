@@ -1,5 +1,5 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler } from './security.js';
 import { createRequire } from 'node:module';
 import path from 'path';
@@ -172,6 +172,12 @@ import {
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
+import { initSecretsStore, getSecretsStore } from './secrets/index.js';
+import {
+  hydrateSecretsIntoSettings,
+  migrateSecretsFromSettingsFile,
+  persistSecretsAndStripSettings,
+} from './secrets/migration.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
@@ -2398,12 +2404,13 @@ function getAppSettingsPath(): string {
 
 function loadAppSettings(): AppSettings {
   const settingsPath = getAppSettingsPath();
+  let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
-      return {
+      base = {
         ...SETTINGS_DEFAULTS,
         ...raw,
         agents: {
@@ -2413,14 +2420,42 @@ function loadAppSettings(): AppSettings {
         },
       };
     } catch {
-      // fall through to defaults
+      base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
+  } else {
+    base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
   }
-  return { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
+  // MYT-777: overlay decrypted credentials from the SecretsStore so the rest
+  // of the main-process code keeps reading settings.apiKey / provider.apiKey /
+  // voice.openaiApiKey unchanged. The on-disk JSON file holds empty strings
+  // for those fields after the one-shot migration in app-ready.
+  try {
+    return hydrateSecretsIntoSettings(base, getSecretsStore());
+  } catch {
+    // Store not yet initialized (very early boot path). Caller will see the
+    // post-migration empty key strings; the env-var fallback in
+    // getValidatedApiKey still serves as a last resort for CLI/CI scenarios.
+    return base;
+  }
 }
 
 function saveAppSettings(settings: AppSettings): void {
-  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+  // MYT-777: never persist plaintext API keys to app-settings.json. Route
+  // secret-shaped fields into the encrypted store and write the cleared
+  // payload to disk. If the store is unavailable, still strip the fields so
+  // we never regress to plaintext-at-rest.
+  let toWrite: AppSettings = settings;
+  try {
+    toWrite = persistSecretsAndStripSettings(settings, getSecretsStore());
+  } catch {
+    toWrite = {
+      ...settings,
+      apiKey: '',
+      ...(settings.provider ? { provider: { ...settings.provider, apiKey: '' } } : {}),
+      ...(settings.voice ? { voice: { ...settings.voice, openaiApiKey: '' } } : {}),
+    };
+  }
+  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(toWrite, null, 2), 'utf-8');
 }
 
 // ─── Telemetry bootstrap ───────────────────────────────────────────────────
@@ -2442,7 +2477,10 @@ function initTelemetry(): void {
 // without booting electron. See settings-masking.ts.
 
 // ─── Anthropic API key validation ───
-// Checks persisted settings first, then falls back to environment variable.
+// MYT-777: settings.apiKey is hydrated from the encrypted secrets store. The
+// process.env.ANTHROPIC_API_KEY fallback is retained as a dev/CI escape hatch
+// (and for headless CLI runs) and is intentionally NOT written into the store
+// — that would silently persist a key the user did not explicitly opt into.
 function getValidatedApiKey(): string {
   const settings = loadAppSettings();
   const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY;
@@ -3130,6 +3168,18 @@ app.whenReady().then(async () => {
   ensureNotesVaultDir();
   // Track current vault in recent projects list on every launch
   addToRecentProjects(getVaultRoot());
+  // MYT-777: initialise the encrypted credential store, then run the one-shot
+  // migration that lifts any plaintext API keys out of app-settings.json into
+  // safeStorage. Must precede initTelemetry — that path can rewrite settings.
+  initSecretsStore({ userDataDir: app.getPath('userData'), safeStorage });
+  try {
+    migrateSecretsFromSettingsFile(getAppSettingsPath(), getSecretsStore());
+  } catch (e) {
+    // On hosts without a usable OS keychain, safeStorage.encryptString throws
+    // and the migration would re-throw. Leave the file untouched so existing
+    // env-var workflows keep working; settings UI will surface the error.
+    console.warn('[secrets] migration skipped: safeStorage unavailable —', (e as Error).message);
+  }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
   setupIpcMain(handlers);
