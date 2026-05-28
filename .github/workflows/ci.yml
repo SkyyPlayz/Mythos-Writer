@@ -40,9 +40,6 @@ jobs:
       - name: Build (electron-vite)
         run: npm run build:electron
 
-      - name: Install Xvfb (virtual display for Electron E2E)
-        run: sudo apt-get install -y xvfb
-
       # better-sqlite3 is built for the Node ABI by `npm ci`; the E2E launches
       # Electron, which has a different ABI. Rebuild the native module against
       # Electron so the main process can load it (otherwise the app crashes on
@@ -167,11 +164,6 @@ jobs:
         with:
           name: linux-appimage
           path: dist-electron/*.AppImage
-
-      - name: Install AppImage runtime dependencies
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y libfuse2 xvfb
 
       - name: Smoke-test AppImage (start / stop)
         run: |
