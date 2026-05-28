@@ -169,10 +169,12 @@ jobs:
           path: dist-electron/*.AppImage
 
       - name: Smoke-test AppImage (start / stop)
+        # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
+        # FUSE, so libfuse2 does not need to be installed on the self-hosted runner.
         run: |
           APPIMAGE=$(ls dist-electron/*.AppImage | head -1)
           chmod +x "$APPIMAGE"
-          xvfb-run --auto-servernum "$APPIMAGE" --no-sandbox &
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run --auto-servernum "$APPIMAGE" --no-sandbox &
           APP_PID=$!
           sleep 8
           if ! kill -0 "$APP_PID" 2>/dev/null; then
