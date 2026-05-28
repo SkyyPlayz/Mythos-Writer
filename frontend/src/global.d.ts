@@ -276,12 +276,12 @@ interface Window {
     onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => () => void;
 
     // STT (MYT-156)
-    sttStart?: () => void;
-    sttStop?: () => void;
-    onSttResult?: (cb: (text: string) => void) => () => void;
+    sttStart: () => void;
+    sttStop: () => void;
+    onSttResult: (cb: (text: string) => void) => () => void;
 
     // Vault notes updated push event (MYT-156)
-    onVaultNotesUpdated?: (cb: (data: { count: number }) => void) => () => void;
+    onVaultNotesUpdated: (cb: (data: { count: number }) => void) => () => void;
 
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
@@ -340,6 +340,28 @@ interface Window {
     // Archive confirmation dialog (MYT-376)
     archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') => Promise<unknown>;
     archiveIgnoreList: () => Promise<unknown>;
+
+    // Two-vault path management (MYT-608) — Story Vault + Notes Vault
+    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
+    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+
+    // Per-chapter/per-scene file layout (MYT-609)
+    vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;
+    vaultCreateScene: (chapterPath: string, sceneName: string) => Promise<unknown>;
+    vaultListChapters: (projectPath: string) => Promise<unknown>;
+    vaultListScenes: (chapterPath: string) => Promise<unknown>;
+
+    // Document-level IPC with typed errors, soft-delete, and per-file watching (MYT-610)
+    readDocument: (filePath: string) => Promise<unknown>;
+    writeDocument: (filePath: string, content: string) => Promise<unknown>;
+    deleteDocument: (filePath: string) => Promise<unknown>;
+    watchDocument: (filePath: string) => Promise<unknown>;
+    unwatchDocument: (filePath: string) => Promise<unknown>;
+    onDocumentChanged: (cb: (event: { filePath: string }) => void) => () => void;
+
+    // Versioned drafts (MYT-611)
+    listHistory: (filePath: string) => Promise<unknown>;
+    restoreSnapshot: (filePath: string, snapshotPath: string) => Promise<unknown>;
 
     // Stream-start push events
     onWritingAssistantStreamStart: (cb: (requestId: string) => void) => () => void;
