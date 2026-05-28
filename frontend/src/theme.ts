@@ -1,16 +1,4 @@
-/**
- * Liquid Glass Dark Neon — theme controller (phase 1 foundation, MYT-517).
- *
- * The app is DARK-ONLY. The previous dark/light/system model is gone: there is
- * a single dark theme whose look is defined entirely by the design tokens in
- * `tokens.css`. The only user-facing variant is the WCAG high-contrast
- * accessibility theme, which composes on top of the tokens (it is not a
- * separate palette — see tokens.css §5.2).
- *
- * The continuous Softness↔Contrast slider that will interpolate the
- * axis-driven tokens lives in MYT-518; this module only switches the discrete
- * accessibility overlay on/off.
- */
+import { resolveAxisTokens, applyAxisTokens } from './themeAxis';
 
 /** The only theme modes the app supports. */
 export type ThemeMode = 'dark' | 'high-contrast';
@@ -48,6 +36,71 @@ export function applyTheme(mode: ThemeMode | string | null | undefined): ThemeMo
   }
 
   return resolved;
+}
+
+export const LG_DEFAULTS: LiquidGlassPrefs = {
+  background: 'default',
+  style: 50,
+  glass: 50,
+  blur: 40,
+  neon: 50,
+  neonAccent: 'cyan',
+  softness: 50,
+};
+
+const NEON_TOKENS: Record<LiquidGlassPrefs['neonAccent'], Record<string, string>> = {
+  cyan: {
+    '--accent': '#00f0ff',
+    '--accent-hover': '#00cfe0',
+    '--accent-light': '#67f5ff',
+    '--accent-very-light': '#a0f9ff',
+    '--accent-soft': '#001c20',
+    '--accent-deep': '#004a55',
+  },
+  violet: {
+    '--accent': '#7c3aed',
+    '--accent-hover': '#6d28d9',
+    '--accent-light': '#a78bfa',
+    '--accent-very-light': '#c4b5fd',
+    '--accent-soft': '#1e1030',
+    '--accent-deep': '#4c1d95',
+  },
+  magenta: {
+    '--accent': '#e040fb',
+    '--accent-hover': '#c026d3',
+    '--accent-light': '#f0abfc',
+    '--accent-very-light': '#f5d0fe',
+    '--accent-soft': '#1a0020',
+    '--accent-deep': '#6b0070',
+  },
+};
+
+export function applyLiquidGlassTokens(prefs: LiquidGlassPrefs): void {
+  const root = document.documentElement;
+
+  const tokens = NEON_TOKENS[prefs.neonAccent];
+  for (const [prop, val] of Object.entries(tokens)) {
+    root.style.setProperty(prop, val);
+  }
+
+  // Softness↔Contrast axis (MYT-518) takes priority over legacy per-slider blur/glass
+  if (prefs.softness != null) {
+    applyAxisTokens(resolveAxisTokens(prefs.softness));
+  } else {
+    root.style.setProperty('--lg-style', String(prefs.style / 100));
+    root.style.setProperty('--lg-glass', String(prefs.glass / 100));
+    root.style.setProperty('--lg-blur', `${Math.round(prefs.blur * 0.4)}px`);
+    root.style.setProperty('--lg-neon', String(prefs.neon / 100));
+  }
+
+  if (prefs.textHeader) root.style.setProperty('--text-header', prefs.textHeader);
+  else root.style.removeProperty('--text-header');
+
+  if (prefs.textBody) root.style.setProperty('--text-body', prefs.textBody);
+  else root.style.removeProperty('--text-body');
+
+  if (prefs.textMuted) root.style.setProperty('--text-muted', prefs.textMuted);
+  else root.style.removeProperty('--text-muted');
 }
 
 export { VALID_MODES as THEME_MODES };
