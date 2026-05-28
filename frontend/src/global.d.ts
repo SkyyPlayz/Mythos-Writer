@@ -87,6 +87,32 @@ interface LiquidGlassPrefs {
   textMuted: string;
   /** 'default' = built-in CSS gradient; any other string = file path for bg image. */
   background: 'default' | string;
+
+  // ── Advanced overrides (MYT-716) ────────────────────────────────────────
+  /** True when B1–B3 have been manually decoupled from the main axis slider. */
+  advancedDecoupled?: boolean;
+  /** Text contrast boost 0–100; hard-clamped so body text stays ≥ 4.5:1. Default 50. */
+  textContrast?: number;
+  /** Neon frame width 0–100 → 0–2px rest / 1–4px hover. Default 50. */
+  neonFrameWidth?: number;
+  /** Border alpha strength 0–100 → 0.06–0.24. Default 50. */
+  borderStrength?: number;
+  /** Background mode: colour swatch or image wallpaper. Default 'color'. */
+  bgMode?: 'color' | 'image';
+  /** Image fit when bgMode='image'. Default 'cover'. */
+  bgFit?: 'cover' | 'contain' | 'tile';
+  /** Image anchor (CSS background-position). Default 'center'. */
+  bgPosition?: string;
+  /** Darkening scrim 0–100 → 0.20–0.85 alpha; auto-floors body text ≥ 4.5:1. Default 40. */
+  bgScrim?: number;
+  /** Vignette strength 0–100 → 0–0.9 alpha. Default 40. */
+  bgVignette?: number;
+  /** Base canvas hex colour (used when no image set). Default '#0e1116'. */
+  bgBaseColor?: string;
+  /** Accent / button hex colour. Default '#00f0ff'. */
+  accentColor?: string;
+  /** Neon border colour slot. Default 'cyan'. */
+  neonBorderColor?: 'cyan' | 'violet' | 'magenta';
 }
 
 interface AppSettings {

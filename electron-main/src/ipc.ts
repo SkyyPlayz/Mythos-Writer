@@ -853,7 +853,7 @@ export interface ProviderSettings {
   model: string;
 }
 
-/** Liquid Glass advanced theme customization (MYT-613). All values are optional;
+/** Liquid Glass advanced theme customization (MYT-613 / MYT-716). All values optional;
  *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
 export interface LiquidGlassPrefs {
   softnessContrast: number;
@@ -865,6 +865,20 @@ export interface LiquidGlassPrefs {
   textBody: string;
   textMuted: string;
   background: 'default' | string;
+
+  // Advanced overrides (MYT-716)
+  advancedDecoupled?: boolean;
+  textContrast?: number;
+  neonFrameWidth?: number;
+  borderStrength?: number;
+  bgMode?: 'color' | 'image';
+  bgFit?: 'cover' | 'contain' | 'tile';
+  bgPosition?: string;
+  bgScrim?: number;
+  bgVignette?: number;
+  bgBaseColor?: string;
+  accentColor?: string;
+  neonBorderColor?: 'cyan' | 'violet' | 'magenta';
 }
 
 export interface AppSettings {

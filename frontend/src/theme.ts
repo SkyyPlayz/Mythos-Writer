@@ -52,7 +52,67 @@ export function applyTheme(mode: ThemeMode | string | null | undefined): ThemeMo
 
 export { VALID_MODES as THEME_MODES };
 
-// ─── Liquid Glass token customization (MYT-613) ─────────────────────────────
+// ─── Contrast guard (MYT-716) ────────────────────────────────────────────────
+
+/**
+ * Compute WCAG relative luminance for a hex colour string (#rrggbb or #rgb).
+ * Returns a value in [0, 1]. Returns 0 for unparseable input.
+ */
+export function relativeLuminance(hex: string): number {
+  const h = hex.replace('#', '');
+  const full = h.length === 3
+    ? h.split('').map((c) => c + c).join('')
+    : h;
+  if (full.length !== 6) return 0;
+
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+
+  const lin = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * WCAG contrast ratio between two hex colours.
+ * Returns a value ≥ 1.0.
+ */
+export function contrastRatio(fg: string, bg: string): number {
+  const l1 = relativeLuminance(fg);
+  const l2 = relativeLuminance(bg);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Lighten a hex colour until it achieves `minRatio` against `bgHex`.
+ * Increments lightness in HSL space 1% at a time, up to pure white.
+ * Returns the original colour if it already passes, or if bgHex is unparseable.
+ */
+export function enforceContrastFloor(textHex: string, bgHex: string, minRatio = 4.5): string {
+  if (contrastRatio(textHex, bgHex) >= minRatio) return textHex;
+
+  const h = textHex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  if (full.length !== 6) return textHex;
+
+  let r = parseInt(full.slice(0, 2), 16);
+  let g = parseInt(full.slice(2, 4), 16);
+  let b = parseInt(full.slice(4, 6), 16);
+
+  for (let step = 0; step < 100; step++) {
+    r = Math.min(255, r + 3);
+    g = Math.min(255, g + 3);
+    b = Math.min(255, b + 3);
+    const candidate = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    if (contrastRatio(candidate, bgHex) >= minRatio) return candidate;
+  }
+
+  return '#ffffff';
+}
+
+// ─── Liquid Glass token customization (MYT-613 / MYT-716) ───────────────────
 
 export const LIQUID_GLASS_DEFAULTS: LiquidGlassPrefs = {
   softnessContrast: 0.4,
@@ -64,6 +124,19 @@ export const LIQUID_GLASS_DEFAULTS: LiquidGlassPrefs = {
   textBody: '#bfd6e8',
   textMuted: '#8a9bb0',
   background: 'default',
+  // Advanced defaults (MYT-716)
+  advancedDecoupled: false,
+  textContrast: 50,
+  neonFrameWidth: 50,
+  borderStrength: 50,
+  bgMode: 'color',
+  bgFit: 'cover',
+  bgPosition: 'center',
+  bgScrim: 40,
+  bgVignette: 40,
+  bgBaseColor: '#0e1116',
+  accentColor: '#00f0ff',
+  neonBorderColor: 'cyan',
 };
 
 /** CSS multi-gradient approximating the dark space/nebula aesthetic of the example art. */
@@ -128,24 +201,93 @@ export function applyLiquidGlassTokens(
   root.style.setProperty('--focus-ring', accentDef.accent);
   root.style.setProperty('--color-accent', accentDef.accent);
 
-  // Text colors
-  root.style.setProperty('--text-header',  p.textHeader);
-  root.style.setProperty('--text-body',    p.textBody);
-  root.style.setProperty('--text-muted',   p.textMuted);
-  root.style.setProperty('--text-faint',   p.textMuted);
-  root.style.setProperty('--text-primary', p.textHeader);
-  root.style.setProperty('--text-secondary', p.textBody);
-  root.style.setProperty('--text-tertiary', p.textMuted);
+  // Text colors (enforce contrast floor ≥ 4.5:1)
+  const effectiveBg = p.bgBaseColor ?? LIQUID_GLASS_DEFAULTS.bgBaseColor!;
+  const safeHeader = enforceContrastFloor(p.textHeader, effectiveBg);
+  const safeBody   = enforceContrastFloor(p.textBody, effectiveBg);
+  const safeMuted  = enforceContrastFloor(p.textMuted, effectiveBg);
 
-  // Background
-  if (bgDataUrl) {
+  root.style.setProperty('--text-header',  safeHeader);
+  root.style.setProperty('--text-body',    safeBody);
+  root.style.setProperty('--text-muted',   safeMuted);
+  root.style.setProperty('--text-faint',   safeMuted);
+  root.style.setProperty('--text-primary', safeHeader);
+  root.style.setProperty('--text-secondary', safeBody);
+  root.style.setProperty('--text-tertiary', safeMuted);
+
+  // Accent color override (MYT-716)
+  if (p.accentColor) {
+    root.style.setProperty('--accent', p.accentColor);
+    root.style.setProperty('--focus-ring', p.accentColor);
+    root.style.setProperty('--color-accent', p.accentColor);
+    root.style.setProperty('--accent-soft', hexToRgba(p.accentColor, 0.18));
+  }
+
+  // Neon border color override (MYT-716)
+  if (p.neonBorderColor) {
+    const borderDef = NEON_ACCENT_MAP[p.neonBorderColor] ?? NEON_ACCENT_MAP.cyan;
+    root.style.setProperty('--neon-cyan', borderDef.accent);
+  }
+
+  // Frame width: neonFrameWidth 0–100 → rest 0–2px, hover 1–4px
+  if (p.neonFrameWidth !== undefined) {
+    const t = p.neonFrameWidth / 100;
+    root.style.setProperty('--frame-width-rest',  `${lerp(0, 2, t).toFixed(1)}px`);
+    root.style.setProperty('--frame-width-hover', `${lerp(1, 4, t).toFixed(1)}px`);
+  }
+
+  // Border strength: 0–100 → alpha 0.06–0.24
+  if (p.borderStrength !== undefined) {
+    const t = p.borderStrength / 100;
+    const alpha = lerp(0.06, 0.24, t);
+    root.style.setProperty('--border-default', `rgba(255,255,255,${alpha.toFixed(3)})`);
+    root.style.setProperty('--border-strong',  `rgba(255,255,255,${(alpha * 1.6).toFixed(3)})`);
+  }
+
+  // Background base color
+  if (p.bgBaseColor) {
+    root.style.setProperty('--bg-base', p.bgBaseColor);
+    root.style.setProperty('--bg-canvas', p.bgBaseColor);
+    root.style.setProperty('--bg-app', p.bgBaseColor);
+  }
+
+  // Background image + layout tokens
+  if (bgDataUrl && p.bgMode === 'image') {
     root.style.setProperty('--bg-app-image', `url("${bgDataUrl}")`);
+    const fit = p.bgFit ?? 'cover';
+    root.style.setProperty('--bg-image-size',   fit === 'tile' ? 'auto' : fit);
+    root.style.setProperty('--bg-image-repeat',  fit === 'tile' ? 'repeat' : 'no-repeat');
+    root.style.setProperty('--bg-image-position', p.bgPosition ?? 'center');
+
+    // Scrim: 0–100 → 0.20–0.85
+    const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
+    root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
+  } else if (p.bgMode === 'color') {
+    root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
+    root.style.setProperty('--bg-scrim-alpha', '0');
   } else if (p.background === 'default') {
     root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
+    root.style.setProperty('--bg-scrim-alpha', '0');
   } else {
-    // Path stored but dataUrl not yet loaded — keep previous value or use default
     root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
+    root.style.setProperty('--bg-scrim-alpha', '0');
   }
+
+  // Vignette: 0–100 → 0–0.9
+  if (p.bgVignette !== undefined) {
+    root.style.setProperty('--bg-vignette-alpha', lerp(0, 0.9, p.bgVignette / 100).toFixed(3));
+  }
+}
+
+/** Convert a hex colour to rgba(r, g, b, alpha) string. */
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  if (full.length !== 6) return `rgba(0,240,255,${alpha})`;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 /**
@@ -163,6 +305,13 @@ export function resetLiquidGlassTokens(): void {
     '--text-header', '--text-body', '--text-muted', '--text-faint',
     '--text-primary', '--text-secondary', '--text-tertiary',
     '--bg-app-image',
+    // MYT-716 additions
+    '--bg-image-size', '--bg-image-repeat', '--bg-image-position',
+    '--bg-scrim-alpha', '--bg-vignette-alpha',
+    '--bg-base', '--bg-canvas', '--bg-app',
+    '--frame-width-rest', '--frame-width-hover',
+    '--border-default', '--border-strong',
+    '--neon-cyan',
   ];
   for (const v of vars) root.style.removeProperty(v);
 }
