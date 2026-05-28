@@ -88,9 +88,18 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  type AgentPersonaReadPayload,
+  type AgentPersonaResetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
+import {
+  buildAgentSystemPrompt,
+  loadPersonaFile,
+  resetPersonaFile,
+  type AgentPersonaName,
+  type PersonaKey,
+} from './agentPersona.js';
 import {
   openDb,
   closeDb,
@@ -2478,16 +2487,7 @@ function registerBrainstormHandler() {
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
-    const systemPrompt = `You are a Brainstorm Agent for fiction authors. Help the author develop their story world through conversation. You discuss story ideas, characters, locations, themes, plot arcs, world-building, and narrative goals.
-
-When you identify or introduce a specific named story fact — a character, location, item, or worldbuilding note — include a structured tag so the app can extract it:
-
-[FACT:character|Character Name|One-sentence description]
-[FACT:location|Place Name|One-sentence description]
-[FACT:item|Item Name|One-sentence description]
-[FACT:note|Note Title|Key content of the note]
-
-Be creative, ask clarifying questions, and help the author think deeper about their story. These FACT tags will appear in a "Detected Facts" panel so the author can save them to their vault.`;
+    const systemPrompt = buildAgentSystemPrompt(app.getPath('userData'), 'brainstorm');
 
     const messages = [
       ...(payload.history ?? []).map((m) => ({
@@ -2618,7 +2618,7 @@ function registerWritingAssistantHandler() {
       {
         model,
         max_tokens: 1024,
-        system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
+        system: buildAgentSystemPrompt(app.getPath('userData'), 'writingAssistant'),
         messages: [{ role: 'user', content: userContent }],
       },
       { signal: controller.signal },
@@ -3118,6 +3118,21 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
   });
 }
 
+// ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
+function registerAgentPersonaHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (_event, payload: AgentPersonaReadPayload) => {
+    const { agentName, key } = payload;
+    const file = loadPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { content: file.content, isCustom: file.isCustom };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (_event, payload: AgentPersonaResetPayload) => {
+    const { agentName, key } = payload;
+    resetPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { success: true };
+  });
+}
+
 // ─── App lifecycle ───
 // Use software rendering. Mythos Writer is a text app with no GPU-bound UI, and
 // GPU init fails in headless/virtualized environments (CI under Xvfb, some VMs),
@@ -3136,6 +3151,7 @@ app.whenReady().then(async () => {
   registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();
+  registerAgentPersonaHandlers();
   registerVaultAgentHandlers();
   registerWritingScanHandler();
   registerBetaReadScanHandler();

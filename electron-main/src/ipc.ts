@@ -57,6 +57,10 @@ export const IPC_CHANNELS = {
   AGENT_VAULT_CHECK: 'agent:vault-check',
   AGENT_ARCHIVE: 'agent:archive',
 
+  // Agent persona files (MYT-816)
+  AGENT_PERSONA_READ: 'agent:persona:read',
+  AGENT_PERSONA_RESET: 'agent:persona:reset',
+
   // System
   SYSTEM_INFO: 'system:info',
 
@@ -1560,6 +1564,30 @@ export interface SetAgentConfigPayload {
 
 export interface SetAgentConfigResponse {
   saved: boolean;
+}
+
+// ─── Agent persona IPC types (MYT-816) ───
+
+export type AgentPersonaName = 'writingAssistant' | 'brainstorm';
+export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
+
+export interface AgentPersonaReadPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaReadResponse {
+  content: string;
+  isCustom: boolean;
+}
+
+export interface AgentPersonaResetPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaResetResponse {
+  success: boolean;
 }
 
 // ─── Archive confirmation dialog (MYT-376) ───
