@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import './SearchBar.css';
 
 type SearchScope = 'story' | 'notes' | 'both';
@@ -14,6 +14,19 @@ interface SearchResultItem {
 
 interface Props {
   onNavigate: (result: SearchResultItem) => void;
+}
+
+// Split a snippet on [[…]] highlight markers, returning safe React nodes.
+// The document body may contain arbitrary user content including HTML characters;
+// never use dangerouslySetInnerHTML on snippets.
+function renderSnippet(snippet: string): ReactNode {
+  const parts = snippet.split(/(\[\[.*?\]\])/);
+  return parts.map((part, i) => {
+    if (part.startsWith('[[') && part.endsWith(']]')) {
+      return <mark key={i}>{part.slice(2, -2)}</mark>;
+    }
+    return <span key={i}>{part}</span>;
+  });
 }
 
 const KIND_ICONS: Record<string, string> = {
@@ -174,10 +187,9 @@ export default function SearchBar({ onNavigate }: Props) {
               <div className="search-result-body">
                 <span className="search-result-title">{result.title}</span>
                 {result.snippet && (
-                  <span
-                    className="search-result-snippet"
-                    dangerouslySetInnerHTML={{ __html: result.snippet.replace(/\[\[/g, '<mark>').replace(/\]\]/g, '</mark>') }}
-                  />
+                  <span className="search-result-snippet">
+                    {renderSnippet(result.snippet)}
+                  </span>
                 )}
               </div>
               <span className={`search-result-vault search-result-vault-${result.vault}`}>
