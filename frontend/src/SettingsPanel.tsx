@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { applyTheme, type ThemeMode } from './theme';
+import ThemeContrastSlider from './ThemeContrastSlider';
+import { resolveAxisTokens, applyAxisTokens } from './themeAxis';
 import './SettingsPanel.css';
 
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
@@ -60,6 +62,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, []);
 
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
+  const [contrastPosition, setContrastPosition] = useState(50);
   // Separate input state so the masked value from settingsGet never appears in the writable field.
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
@@ -659,6 +662,16 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 Mythos Writer uses the dark Liquid Glass theme. High contrast switches to
                 opaque, AAA-contrast surfaces for accessibility.
               </p>
+            </div>
+            <div className="settings-field">
+              <label className="settings-label">Glass softness / contrast</label>
+              <ThemeContrastSlider
+                value={contrastPosition}
+                onChange={(v) => {
+                  setContrastPosition(v);
+                  applyAxisTokens(resolveAxisTokens(v));
+                }}
+              />
             </div>
           </section>
 
