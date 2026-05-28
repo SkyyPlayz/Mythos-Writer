@@ -182,6 +182,31 @@ export function realSafePath(vaultRoot: string, relativePath: string, writeMode 
 // Legacy alias — deprecated, use realSafePath.
 export const safePath = realSafePath;
 
+/**
+ * Resolve an EPUB export target (MYT-675).
+ *
+ * `export:epub` accepts an optional renderer-supplied `targetPath` as a headless
+ * export escape hatch. Left unconstrained it allowed writing EPUB bytes to an
+ * arbitrary absolute path (out-of-vault write), so a compromised/buggy renderer
+ * could clobber files anywhere on disk. We constrain it to a vault-relative
+ * `.epub` path and reuse the realSafePath containment hardening (MYT-672 /
+ * MYT-641) so `..` traversal, absolute paths, and symlink escapes are all
+ * rejected before any bytes are written.
+ *
+ * Returns the contained absolute path to write to.
+ */
+export function resolveEpubExportPath(vaultRoot: string, targetPath: string): string {
+  if (typeof targetPath !== 'string' || targetPath.trim().length === 0) {
+    throw new Error('export:epub targetPath must be a non-empty string');
+  }
+  if (path.extname(targetPath).toLowerCase() !== '.epub') {
+    throw new Error('export:epub targetPath must end in .epub');
+  }
+  // realSafePath rejects absolute paths and "../" escapes (and symlink escapes),
+  // anchoring the write inside the vault root.
+  return realSafePath(vaultRoot, targetPath, true);
+}
+
 // ─── Basic R/W (used by legacy IPC channels) ───
 
 export function readVaultFile(vaultRoot: string, filePath: string): { content: string; path: string } {
