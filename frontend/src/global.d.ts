@@ -251,11 +251,13 @@ interface Window {
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;
+    suggestionsGet: (id: string) => Promise<{ suggestion: Suggestion | null }>;
     suggestionsUpsert: (suggestion: unknown) => Promise<unknown>;
     suggestionsAccept: (id: string, actor?: string) => Promise<{ id: string; status: 'accepted' }>;
     suggestionsReject: (id: string, reason?: string, actor?: string) => Promise<{ id: string; status: 'rejected' }>;
     suggestionsRollback: (id: string, actor?: string) => Promise<unknown>;
     auditList: (suggestionId?: string) => Promise<unknown>;
+    provenanceUpsert: (entityId: string, entityKind: string, agentId: string, agentType: string, runId?: string | null) => Promise<{ id: string }>;
 
     // Generation log
     generationLogList: (page?: number, pageSize?: number, agent?: string) => Promise<{ entries: GenerationLogRow[]; total: number; page: number; pageSize: number }>;

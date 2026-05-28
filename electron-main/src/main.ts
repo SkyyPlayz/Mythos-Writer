@@ -49,6 +49,7 @@ import {
   type AppSettings,
   type SettingsSetPayload,
   type SuggestionsListPayload,
+  type SuggestionsGetPayload,
   type SuggestionsUpsertPayload,
   type SuggestionsAcceptPayload,
   type SuggestionsApplyPayload,
@@ -57,6 +58,7 @@ import {
   type AuditListPayload,
   type TimelineListPayload,
   type TimelineUpsertPayload,
+  type ProvenanceUpsertPayload,
   type GenerationLogRecentPayload,
   type GenerationLogListPayload,
   type GenerationLogGetPayload,
@@ -111,6 +113,7 @@ import {
   listArchiveIgnores,
   countTokensInWindow,
   countSuggestionsInWindow,
+  insertProvenance,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -493,6 +496,10 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     return { suggestions: listSuggestions(payload.status, payload.sourceAgent) };
   },
+  [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => {
+    ensureVaultDir();
+    return { suggestion: getSuggestion(payload.id) };
+  },
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => {
     ensureVaultDir();
     upsertSuggestion(payload.suggestion);
@@ -618,6 +625,23 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => {
     ensureVaultDir();
     return { entries: listAuditLog(payload.suggestionId) };
+  },
+
+  // ─── Provenance ───
+  [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => {
+    ensureVaultDir();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    insertProvenance({
+      id,
+      entity_id: payload.entityId,
+      entity_kind: payload.entityKind,
+      agent_id: payload.agentId,
+      agent_type: payload.agentType,
+      run_id: payload.runId ?? null,
+      created_at: now,
+    });
+    return { id };
   },
 
   // ─── Timeline ───
