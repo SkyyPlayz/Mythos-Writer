@@ -79,7 +79,12 @@ export default function DepthSlider({
   }
 
   return (
-    <div className="depth-slider-bar" data-writing-mode={writingMode} data-testid="depth-slider">
+    <div
+      className="depth-slider-bar"
+      data-writing-mode={writingMode}
+      data-testid="depth-slider"
+      aria-label="Document view depth"
+    >
       <button
         className="depth-nav-btn"
         onClick={onPrev}
