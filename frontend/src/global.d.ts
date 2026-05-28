@@ -251,6 +251,11 @@ interface Window {
     settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
     getAgentConfig: () => Promise<unknown>;
     setAgentConfig: (agent: string, config: unknown) => Promise<unknown>;
+    agentBudgetUsage: () => Promise<{
+      writingAssistant: { tokensLastHour: number; suggestionsLastHour: number };
+      brainstorm: { tokensLastHour: number; suggestionsLastHour: number };
+      archive: { tokensLastHour: number; suggestionsLastHour: number };
+    }>;
 
     // Generation log (prompt history viewer)
     generationLogRecent: (payload: {
