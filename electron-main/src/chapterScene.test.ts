@@ -409,4 +409,14 @@ describe('writeVaultFileAtomic', () => {
     writeVaultFileAtomic(tmpDir, 'deep/nested/file.txt', 'content');
     expect(fs.existsSync(path.join(tmpDir, 'deep/nested/file.txt'))).toBe(true);
   });
+
+  it('rejects symlink escape during write', () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-atomic-outside-'));
+    fs.symlinkSync(outsideDir, path.join(tmpDir, 'external'));
+    try {
+      expect(() => writeVaultFileAtomic(tmpDir, 'external/leak.txt', 'pwned')).toThrow('Path traversal denied');
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
 });

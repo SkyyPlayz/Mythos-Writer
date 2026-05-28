@@ -110,31 +110,70 @@ export class VaultFileTooLargeError extends Error {
  * For reads (file exists): realpath the full path.
  * For writes (leaf may not exist): realpath the parent directory.
  */
-export function realSafePath(vaultRoot: string, relativePath: string, _writeMode = false): string {
+export function realSafePath(vaultRoot: string, relativePath: string, writeMode = false): string {
   const realVaultRoot = fs.realpathSync.native(vaultRoot);
   const resolved = path.resolve(vaultRoot, relativePath);
+  const isWithinVault = (candidate: string) =>
+    candidate === realVaultRoot || candidate.startsWith(realVaultRoot + path.sep);
 
-  // Existing leaf path (read or overwrite): realpath the leaf and reject escapes.
+  if (writeMode) {
+    // Leaf path may not exist yet — walk up to the nearest existing ancestor,
+    // realpath that ancestor, then reattach the remaining suffix. This correctly
+    // handles symlinked vault roots and deeply-nested paths in empty directories.
+    let ancestor = resolved;
+    while (!fs.existsSync(ancestor)) {
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
+    }
+    if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relativePath}`);
+
+    const realAncestor = fs.realpathSync.native(ancestor);
+    if (!isWithinVault(realAncestor)) {
+      // Use "symlink escape detected" when the leaf itself is the escape vector so
+      // existing tests that check for that phrase continue to pass.
+      const msg =
+        ancestor === resolved
+          ? `Path traversal denied: ${relativePath} (symlink escape detected)`
+          : `Path traversal denied: ${relativePath} (parent symlink escapes vault)`;
+      throw new Error(msg);
+    }
+
+    const remainder = path.relative(ancestor, resolved);
+    const realTarget = path.resolve(realAncestor, remainder);
+    if (!isWithinVault(realTarget)) throw new Error(`Path traversal denied: ${relativePath}`);
+
+    return realTarget;
+  }
+
+  // Read mode: keep the returned path anchored to the caller's vault root so
+  // callers see the path they expect.
+  const normalizedRoot = path.resolve(vaultRoot);
+
+  // Existing leaf path: realpath the full path and reject symlink escapes.
   if (fs.existsSync(resolved)) {
     const realPath = fs.realpathSync.native(resolved);
-    if (!realPath.startsWith(realVaultRoot + path.sep) && realPath !== realVaultRoot) {
+    if (!isWithinVault(realPath)) {
       throw new Error(`Path traversal denied: ${relativePath} (symlink escape detected)`);
     }
     return resolved;
   }
 
-  // Missing leaf path (new write target): realpath parent if present.
+  // Missing leaf, parent exists: realpath the parent and reject escapes.
   const parent = path.dirname(resolved);
   if (fs.existsSync(parent)) {
     const realParent = fs.realpathSync.native(parent);
-    if (!realParent.startsWith(realVaultRoot + path.sep) && realParent !== realVaultRoot) {
+    if (!isWithinVault(realParent)) {
       throw new Error(`Path traversal denied: ${relativePath} (parent symlink escape detected)`);
     }
     return resolved;
   }
 
-  // Parent doesn't exist yet — ensure unresolved path still stays within vault.
-  if (!resolved.startsWith(realVaultRoot + path.sep) && resolved !== realVaultRoot) {
+  // Neither exists — lexical check against un-realpath'd root is correct here
+  // because nothing on disk can symlink-escape. Comparing against realVaultRoot
+  // would wrongly deny valid nested paths when the root is a symlink
+  // (e.g. macOS /var → /private/var).
+  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
     throw new Error(`Path traversal denied: ${relativePath}`);
   }
   return resolved;
@@ -142,6 +181,31 @@ export function realSafePath(vaultRoot: string, relativePath: string, _writeMode
 
 // Legacy alias — deprecated, use realSafePath.
 export const safePath = realSafePath;
+
+/**
+ * Resolve an EPUB export target (MYT-675).
+ *
+ * `export:epub` accepts an optional renderer-supplied `targetPath` as a headless
+ * export escape hatch. Left unconstrained it allowed writing EPUB bytes to an
+ * arbitrary absolute path (out-of-vault write), so a compromised/buggy renderer
+ * could clobber files anywhere on disk. We constrain it to a vault-relative
+ * `.epub` path and reuse the realSafePath containment hardening (MYT-672 /
+ * MYT-641) so `..` traversal, absolute paths, and symlink escapes are all
+ * rejected before any bytes are written.
+ *
+ * Returns the contained absolute path to write to.
+ */
+export function resolveEpubExportPath(vaultRoot: string, targetPath: string): string {
+  if (typeof targetPath !== 'string' || targetPath.trim().length === 0) {
+    throw new Error('export:epub targetPath must be a non-empty string');
+  }
+  if (path.extname(targetPath).toLowerCase() !== '.epub') {
+    throw new Error('export:epub targetPath must end in .epub');
+  }
+  // realSafePath rejects absolute paths and "../" escapes (and symlink escapes),
+  // anchoring the write inside the vault root.
+  return realSafePath(vaultRoot, targetPath, true);
+}
 
 // ─── Basic R/W (used by legacy IPC channels) ───
 
@@ -247,7 +311,7 @@ export function listVaultFiles(
 }
 
 export function deleteVaultFile(vaultRoot: string, filePath: string): { path: string; deleted: boolean } {
-  const fullPath = safePath(vaultRoot, filePath);
+  const fullPath = realSafePath(vaultRoot, filePath, true);
   const exists = fs.existsSync(fullPath);
   if (exists) fs.unlinkSync(fullPath);
   return { path: filePath, deleted: exists };
@@ -662,10 +726,18 @@ export async function stopVaultWatcher(): Promise<void> {
   }
 }
 
-// ─── Notes Vault scaffold ───
-// Creates the standard subdirectory structure for a new Notes Vault.
+// ─── Vault scaffold ───
+// Creates the standard subdirectory structure for each vault type on first run.
 
-const NOTES_VAULT_DIRS = ['Characters', 'Locations', 'Items', 'Concepts', 'Notes'];
+export function scaffoldStoryVault(storyVaultRoot: string): void {
+  const dirs = ['Projects'];
+  for (const dir of dirs) {
+    const full = path.join(storyVaultRoot, dir);
+    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+  }
+}
+
+const NOTES_VAULT_DIRS = ['Notes', 'Characters', 'Locations', 'Items', 'Concepts'];
 
 export function scaffoldNotesVault(vaultRoot: string): void {
   for (const dir of NOTES_VAULT_DIRS) {

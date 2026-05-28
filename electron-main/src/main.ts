@@ -81,6 +81,7 @@ import {
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
   type BgLoadPayload,
+  type VaultSetPathsPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -127,10 +128,12 @@ import {
   stopVaultWatcher,
   startNotesVaultWatcher,
   stopNotesVaultWatcher,
+  scaffoldStoryVault,
   scaffoldNotesVault,
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
   readSceneFile,
@@ -225,6 +228,14 @@ function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
 }
 
+function defaultVaultRoot(): string {
+  return path.join(app.getPath('home'), 'MythosWriter', 'StoryVault');
+}
+
+function defaultNotesVaultRoot(): string {
+  return path.join(app.getPath('home'), 'MythosWriter', 'NotesVault');
+}
+
 function loadVaultSettings(): VaultSettings {
   const settingsPath = getVaultSettingsPath();
   if (fs.existsSync(settingsPath)) {
@@ -234,7 +245,7 @@ function loadVaultSettings(): VaultSettings {
       // fall through to default
     }
   }
-  return { vaultRoot: path.join(app.getPath('userData'), 'vault') };
+  return { vaultRoot: defaultVaultRoot() };
 }
 
 // Merges `updates` into the persisted settings so partial writes don't clobber other fields.
@@ -247,12 +258,14 @@ function saveVaultSettings(updates: Partial<VaultSettings>): void {
 const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
 const getNotesVaultRoot = () =>
-  loadVaultSettings().notesVaultRoot ?? path.join(app.getPath('userData'), 'notes-vault');
+  loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
-  if (!fs.existsSync(vaultRoot)) {
+  const isNew = !fs.existsSync(vaultRoot);
+  if (isNew) {
     fs.mkdirSync(vaultRoot, { recursive: true });
+    scaffoldStoryVault(vaultRoot);
   }
   // Open DB before manifest migration so the audit callback can log immediately.
   openDb(vaultRoot);
@@ -340,6 +353,47 @@ function scheduleReindex() {
 
 // Registration token gate lives in ./registrationToken.ts (MYT-360 / MYT-367)
 // so unit tests can exercise it without pulling in Electron.
+
+/**
+ * Validate a proposed vault path for vault:setPaths.
+ * Throws a descriptive Error if the path is invalid so setupIpcMain
+ * can convert it to { error: message } for the renderer.
+ */
+function validateVaultPath(p: string, field: string): void {
+  if (!p || typeof p !== 'string') {
+    throw new Error(`${field}: path must be a non-empty string`);
+  }
+  if (!path.isAbsolute(p)) {
+    throw new Error(`${field}: path must be absolute (got: ${p})`);
+  }
+  // If it already exists, check it is a directory and writable.
+  if (fs.existsSync(p)) {
+    const stat = fs.statSync(p);
+    if (!stat.isDirectory()) {
+      throw new Error(`${field}: path exists but is not a directory: ${p}`);
+    }
+    try {
+      fs.accessSync(p, fs.constants.W_OK);
+    } catch {
+      throw new Error(`${field}: directory is not writable: ${p}`);
+    }
+    return;
+  }
+  // Path does not exist — check that the first existing ancestor is writable
+  // so we can create it on first use.
+  let ancestor = path.dirname(p);
+  while (ancestor !== path.dirname(ancestor)) {
+    if (fs.existsSync(ancestor)) {
+      try {
+        fs.accessSync(ancestor, fs.constants.W_OK);
+      } catch {
+        throw new Error(`${field}: parent directory is not writable: ${ancestor}`);
+      }
+      return;
+    }
+    ancestor = path.dirname(ancestor);
+  }
+}
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
@@ -852,7 +906,8 @@ const handlers: IpcHandlers = {
   // MYT-343: per-agent config get/set
   [IPC_CHANNELS.SETTINGS_GET_AGENT_CONFIG]: (): import('./ipc.js').AgentConfigMap => {
     const s = loadAppSettings();
-    const toConfig = (a: typeof s.agents.writingAssistant | typeof s.agents.brainstorm | typeof s.agents.archive): import('./ipc.js').AgentConfig => ({
+    // Common shape across all three agents; toConfig only reads enabled/model/budget.
+    const toConfig = (a: typeof s.agents.brainstorm): import('./ipc.js').AgentConfig => ({
       enabled: a.enabled,
       model: a.model,
       autoApplyThreshold: (a as { autoApplyThreshold?: number }).autoApplyThreshold ?? 0.85,
@@ -1387,7 +1442,10 @@ const handlers: IpcHandlers = {
 
     let filePath: string;
     if (payload.targetPath) {
-      filePath = payload.targetPath;
+      // MYT-675: the headless targetPath escape hatch must stay inside the vault.
+      // resolveEpubExportPath rejects absolute paths, "../" traversal, symlink
+      // escapes, and non-.epub targets before any bytes are written.
+      filePath = resolveEpubExportPath(getVaultRoot(), payload.targetPath);
     } else {
       const result = await dialog.showSaveDialog({
         title: 'Export EPUB',
@@ -1914,6 +1972,23 @@ const handlers: IpcHandlers = {
     return { vaultRoot: newRoot, switched: true };
   },
 
+  // ─── Two-vault paths (MYT-608) ───
+
+  [IPC_CHANNELS.VAULT_GET_PATHS]: () => {
+    return {
+      storyVaultPath: getVaultRoot(),
+      notesVaultPath: getNotesVaultRoot(),
+    };
+  },
+
+  [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
+    const { storyVaultPath, notesVaultPath } = payload;
+    validateVaultPath(storyVaultPath, 'storyVaultPath');
+    validateVaultPath(notesVaultPath, 'notesVaultPath');
+    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
+    return { storyVaultPath, notesVaultPath, saved: true };
+  },
+
 };
 
 // ─── Create BrowserWindow ───
@@ -1923,7 +1998,9 @@ function createWindow() {
     height: 800,
     title: 'Mythos Writer',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      // electron-vite emits the preload to out/preload/preload.js, while this
+      // file runs from out/main/. (The packaged app preserves the same layout.)
+      preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -2883,6 +2960,12 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
 }
 
 // ─── App lifecycle ───
+// Use software rendering. Mythos Writer is a text app with no GPU-bound UI, and
+// GPU init fails in headless/virtualized environments (CI under Xvfb, some VMs),
+// where a failed GPU process otherwise blocks the window from ever appearing.
+// Must be called before the app 'ready' event.
+app.disableHardwareAcceleration();
+
 app.whenReady().then(async () => {
   ensureVaultDir();
   ensureNotesVaultDir();

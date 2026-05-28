@@ -3,6 +3,9 @@ import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
 
+export const STALL_WARNING_MS = 20_000;
+export const HARD_TIMEOUT_MS = 90_000;
+
 interface WritingAssistantSuggestion {
   id: string;
   source_agent: 'writing-assistant';
@@ -38,8 +41,13 @@ export default function WritingAssistantPanel({
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+  const lastPromptRef = useRef('');
   const { announce, liveText } = useLiveAnnounce();
 
   const { result: scheduledResult } = useWritingScheduler({
@@ -49,33 +57,102 @@ export default function WritingAssistantPanel({
     isActive,
   });
 
-  useEffect(() => {
-    return () => {
-      unsubscribeRef.current?.();
-    };
+  const clearStreamResources = useCallback(() => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+    if (hardTimerRef.current) {
+      clearTimeout(hardTimerRef.current);
+      hardTimerRef.current = null;
+    }
   }, []);
 
-  const ask = useCallback(async () => {
-    const trimmed = prompt.trim();
+  useEffect(() => {
+    return () => {
+      clearStreamResources();
+    };
+  }, [clearStreamResources]);
+
+  const removePendingAssistantBubble = (prev: Message[]) => {
+    const updated = [...prev];
+    const last = updated[updated.length - 1];
+    if (last?.role === 'assistant' && last.streaming) {
+      updated.pop();
+    }
+    return updated;
+  };
+
+  const scheduleStallTimers = useCallback((requestId: number) => {
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    if (hardTimerRef.current) clearTimeout(hardTimerRef.current);
+
+    stallTimerRef.current = setTimeout(() => {
+      if (requestIdRef.current !== requestId) return;
+      setStalled(true);
+      announce('Generation is taking longer than expected. You can retry or cancel.');
+    }, STALL_WARNING_MS);
+
+    hardTimerRef.current = setTimeout(() => {
+      if (requestIdRef.current !== requestId) return;
+      requestIdRef.current += 1;
+      clearStreamResources();
+      setMessages((prev) => removePendingAssistantBubble(prev));
+      setLoading(false);
+      setStalled(false);
+      const timeoutMessage = 'Generation timed out. The network or provider may be slow — please retry.';
+      setError(timeoutMessage);
+      announce(timeoutMessage);
+    }, HARD_TIMEOUT_MS);
+  }, [announce, clearStreamResources]);
+
+  const cancelGeneration = useCallback(() => {
+    if (!loading) return;
+    requestIdRef.current += 1;
+    clearStreamResources();
+    setMessages((prev) => removePendingAssistantBubble(prev));
+    setLoading(false);
+    setStalled(false);
+    const msg = 'Generation cancelled. You can retry now.';
+    setError(msg);
+    announce(msg);
+  }, [announce, clearStreamResources, loading]);
+
+  const ask = useCallback(async (overridePrompt?: string) => {
+    const trimmed = (overridePrompt ?? prompt).trim();
     if (!trimmed || loading) return;
 
+    requestIdRef.current += 1;
+    const requestId = requestIdRef.current;
+    lastPromptRef.current = trimmed;
+
     setLoading(true);
+    setStalled(false);
     setError(null);
-    setPrompt('');
+    if (!overridePrompt) setPrompt('');
     announce('Generating response…');
 
     const userMsg: Message = { role: 'user', text: trimmed };
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
 
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => {
+      const base = overridePrompt ? removePendingAssistantBubble(prev) : prev;
+      return [...base, userMsg, assistantMsg];
+    });
 
     const context = scene
       ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
       : undefined;
 
     // Subscribe to streaming chunks before invoking
-    unsubscribeRef.current?.();
+    clearStreamResources();
     unsubscribeRef.current = window.api.onWritingAssistantChunk((chunk) => {
+      if (requestIdRef.current !== requestId) return;
+      // Reset stall timers on each received token
+      setStalled(false);
+      scheduleStallTimers(requestId);
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -85,9 +162,11 @@ export default function WritingAssistantPanel({
         return updated;
       });
     });
+    scheduleStallTimers(requestId);
 
     try {
       const response = await window.api.agentWritingAssistant(trimmed, context);
+      if (requestIdRef.current !== requestId) return;
 
       const suggestion: WritingAssistantSuggestion = {
         id: `wa-${Date.now()}`,
@@ -109,17 +188,30 @@ export default function WritingAssistantPanel({
       });
       announce('Response ready.');
     } catch (err) {
+      if (requestIdRef.current !== requestId) return;
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => prev.slice(0, -1)); // remove the empty assistant bubble
       const errorMsg = msg || 'AI unavailable — check your API key in settings.';
       setError(errorMsg);
       announce(`Error: ${errorMsg}`);
     } finally {
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = null;
-      setLoading(false);
+      if (requestIdRef.current === requestId) {
+        clearStreamResources();
+        setLoading(false);
+        setStalled(false);
+      }
     }
-  }, [prompt, loading, scene, announce]);
+  }, [announce, clearStreamResources, loading, prompt, scene, scheduleStallTimers]);
+
+  const retryGeneration = useCallback(() => {
+    const retryPrompt = lastPromptRef.current;
+    if (!retryPrompt) return;
+    requestIdRef.current += 1;
+    clearStreamResources();
+    setStalled(false);
+    setLoading(false);
+    ask(retryPrompt);
+  }, [ask, clearStreamResources]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -228,6 +320,30 @@ export default function WritingAssistantPanel({
         )}
       </div>
 
+      {stalled && loading && (
+        <div className="wa-stall-panel" role="status" aria-label="Generation stalled">
+          <p className="wa-stall-message">
+            This is taking longer than expected. The network or AI provider may be slow.
+          </p>
+          <div className="wa-stall-actions">
+            <button
+              className="wa-btn wa-btn-retry"
+              onClick={retryGeneration}
+              aria-label="Retry generation"
+            >
+              Retry
+            </button>
+            <button
+              className="wa-btn wa-btn-cancel"
+              onClick={cancelGeneration}
+              aria-label="Cancel generation"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="writing-assistant-error" role="alert">
           {error}
@@ -245,13 +361,24 @@ export default function WritingAssistantPanel({
           disabled={loading}
           aria-label="Writing assistant prompt"
         />
-        <button
-          className="writing-assistant-btn"
-          onClick={ask}
-          disabled={!prompt.trim() || loading}
-        >
-          {loading ? 'Thinking…' : 'Ask'}
-        </button>
+        {loading ? (
+          <button
+            className="writing-assistant-btn wa-btn-cancel-inline"
+            onClick={cancelGeneration}
+            aria-label="Cancel generation"
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            className="writing-assistant-btn"
+            onClick={() => ask()}
+            disabled={!prompt.trim()}
+            aria-label="Ask"
+          >
+            Ask
+          </button>
+        )}
       </div>
     </div>
   );

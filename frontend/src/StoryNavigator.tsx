@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Story, Chapter, Scene } from './types';
 import './StoryNavigator.css';
 
@@ -26,6 +26,38 @@ export default function StoryNavigator({
     new Set(stories.flatMap((s) => s.chapters.map((c) => c.id)))
   );
   const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
+
+  // Auto-expand newly created stories/chapters so their children are visible
+  // immediately (otherwise a just-created chapter/scene stays hidden under a
+  // collapsed parent). Only acts on ids not seen before, so user collapses stick.
+  const seenStoryIds = useRef<Set<string>>(new Set(stories.map((s) => s.id)));
+  const seenChapterIds = useRef<Set<string>>(
+    new Set(stories.flatMap((s) => s.chapters.map((c) => c.id)))
+  );
+  useEffect(() => {
+    const newStoryIds = stories
+      .map((s) => s.id)
+      .filter((id) => !seenStoryIds.current.has(id));
+    const newChapterIds = stories
+      .flatMap((s) => s.chapters.map((c) => c.id))
+      .filter((id) => !seenChapterIds.current.has(id));
+    if (newStoryIds.length) {
+      setExpandedStories((prev) => {
+        const next = new Set(prev);
+        newStoryIds.forEach((id) => next.add(id));
+        return next;
+      });
+      newStoryIds.forEach((id) => seenStoryIds.current.add(id));
+    }
+    if (newChapterIds.length) {
+      setExpandedChapters((prev) => {
+        const next = new Set(prev);
+        newChapterIds.forEach((id) => next.add(id));
+        return next;
+      });
+      newChapterIds.forEach((id) => seenChapterIds.current.add(id));
+    }
+  }, [stories]);
 
   const toggleStory = (id: string) =>
     setExpandedStories((prev) => {

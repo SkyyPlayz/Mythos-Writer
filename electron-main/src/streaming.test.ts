@@ -335,7 +335,7 @@ describe('STREAM_START', () => {
 
     // Ack all pending tokens to unblock the loop.
     const { ackHandler } = getHandlers(reg);
-    ackHandler({} as IpcMainEvent, { streamId, count: MAX_PENDING_TOKENS });
+    ackHandler(makeEvent(sender) as unknown as IpcMainEvent, { streamId, count: MAX_PENDING_TOKENS });
 
     // Flush remaining tokens and STREAM_END through the now-unblocked generator.
     await new Promise((r) => setTimeout(r, 0));
@@ -503,6 +503,40 @@ describe('STREAM_START payload validation (F19)', () => {
     expect(result).toEqual({ error: STREAM_ERRORS.INVALID_PAYLOAD });
   });
 
+  it('rejects null message array element with INVALID_PAYLOAD (MYT-635 type-guard)', async () => {
+    const { startHandler } = getHandlers(reg);
+    const result = await startHandler(makeEvent(makeSender()), {
+      messages: [null as unknown as { role: 'user'; content: string }],
+    });
+    expect(result).toEqual({ error: STREAM_ERRORS.INVALID_PAYLOAD });
+  });
+
+  it('rejects non-object message array element with INVALID_PAYLOAD (MYT-635 type-guard)', async () => {
+    const { startHandler } = getHandlers(reg);
+    const result = await startHandler(makeEvent(makeSender()), {
+      messages: [42 as unknown as { role: 'user'; content: string }],
+    });
+    expect(result).toEqual({ error: STREAM_ERRORS.INVALID_PAYLOAD });
+  });
+
+  it('rejects non-string system field with INVALID_PAYLOAD (MYT-635 type-guard)', async () => {
+    const { startHandler } = getHandlers(reg);
+    const result = await startHandler(makeEvent(makeSender()), {
+      messages: [{ role: 'user', content: 'Hi' }],
+      system: 42 as unknown as string,
+    });
+    expect(result).toEqual({ error: STREAM_ERRORS.INVALID_PAYLOAD });
+  });
+
+  it('rejects object system field with INVALID_PAYLOAD (MYT-635 type-guard)', async () => {
+    const { startHandler } = getHandlers(reg);
+    const result = await startHandler(makeEvent(makeSender()), {
+      messages: [{ role: 'user', content: 'Hi' }],
+      system: { prompt: 'bad' } as unknown as string,
+    });
+    expect(result).toEqual({ error: STREAM_ERRORS.INVALID_PAYLOAD });
+  });
+
   it('rejects payload exceeding MAX_PAYLOAD_BYTES with INVALID_PAYLOAD', async () => {
     const { startHandler } = getHandlers(reg);
     const result = await startHandler(makeEvent(makeSender()), {
@@ -641,6 +675,16 @@ describe('STREAM_CANCEL', () => {
     expect(endCalls).toHaveLength(1);
     expect((endCalls[0][1] as { streamId: string }).streamId).toBe(streamId);
   });
+
+  it('returns { cancelled: false } when sender does not own the stream (MYT-635 sender-ownership)', async () => {
+    const owner = makeSender(1);
+    const other = makeSender(2);
+    reg.start('s1', new AbortController(), owner as unknown as import("electron").WebContents);
+    const { cancelHandler } = getHandlers(reg);
+    const result = await cancelHandler(makeEvent(other), { streamId: 's1' });
+    expect(result).toEqual({ cancelled: false });
+    expect(reg.get('s1')?.controller.signal.aborted).toBe(false);
+  });
 });
 
 // ─── STREAM_ACK ───
@@ -655,11 +699,12 @@ describe('STREAM_ACK', () => {
   });
 
   it('decrements pendingTokens by count', () => {
-    reg.start('s1', new AbortController(), makeSender(1) as unknown as import("electron").WebContents);
+    const sender = makeSender(1);
+    reg.start('s1', new AbortController(), sender as unknown as import("electron").WebContents);
     reg.get('s1')!.pendingTokens = 20;
 
     const { ackHandler } = getHandlers(reg);
-    ackHandler({} as IpcMainEvent, { streamId: 's1', count: 7 });
+    ackHandler(makeEvent(sender) as unknown as IpcMainEvent, { streamId: 's1', count: 7 });
 
     expect(reg.get('s1')!.pendingTokens).toBe(13);
   });
@@ -667,6 +712,18 @@ describe('STREAM_ACK', () => {
   it('ack on unknown streamId is a no-op', () => {
     const { ackHandler } = getHandlers(reg);
     expect(() => ackHandler({} as IpcMainEvent, { streamId: 'ghost', count: 1 })).not.toThrow();
+  });
+
+  it('ack from a different sender is a no-op (MYT-635 sender-ownership)', () => {
+    const owner = makeSender(1);
+    const other = makeSender(2);
+    reg.start('s1', new AbortController(), owner as unknown as import("electron").WebContents);
+    reg.get('s1')!.pendingTokens = 20;
+
+    const { ackHandler } = getHandlers(reg);
+    ackHandler(makeEvent(other) as unknown as IpcMainEvent, { streamId: 's1', count: 7 });
+
+    expect(reg.get('s1')!.pendingTokens).toBe(20); // unchanged
   });
 });
 

@@ -407,4 +407,32 @@ describe('SettingsPanel', () => {
     expect(saved.agents.writingAssistant.autoApply).toBe(true);
     expect(saved.agents.writingAssistant.confidenceThreshold).toBeCloseTo(0.75);
   });
+
+  // ── MYT-668: voice settings ──
+
+  it('renders voice section with enable toggle', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(screen.getByRole('heading', { name: /^voice$/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /enable voice input/i })).toBeInTheDocument();
+  });
+
+  it('voice toggle is off by default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    const toggle = screen.getByRole('checkbox', { name: /enable voice input/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('voice toggle change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.enabled).toBe(true);
+  });
 });

@@ -56,11 +56,13 @@ interface Props {
   boardPath: string;
   storyTitle: string;
   onBoardPathChange?: (path: string) => void;
+  /** Called when the user clicks a card link to navigate to the note/scene. */
   onOpenNote?: (notePath: string) => void;
+  /** Scenes available in the current story, used for adding cards from the scene list. */
   scenes?: Array<{ id: string; title: string; path: string }>;
 }
 
-export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange }: Props) {
+export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, onOpenNote }: Props) {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragCard, setDragCard] = useState<{ colIdx: number; cardIdx: number } | null>(null);
@@ -301,7 +303,13 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange }
                   data-testid={`kanban-card-${card.notePath}`}
                   aria-label={`Card: ${card.notePath}`}
                 >
-                  <span className="kanban-card-link">[[{card.notePath}]]</span>
+                  <span
+                    className="kanban-card-link"
+                    onClick={() => onOpenNote?.(card.notePath)}
+                    role={onOpenNote ? 'button' : undefined}
+                    tabIndex={onOpenNote ? 0 : undefined}
+                    onKeyDown={onOpenNote ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenNote(card.notePath); } } : undefined}
+                  >[[{card.notePath}]]</span>
                   <button
                     className="kanban-card-remove"
                     onClick={() => removeCard(colIdx, cardIdx)}

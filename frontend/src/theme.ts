@@ -1,16 +1,3 @@
-/**
- * Liquid Glass Dark Neon — theme controller (phase 1 foundation, MYT-517).
- *
- * The app is DARK-ONLY. The previous dark/light/system model is gone: there is
- * a single dark theme whose look is defined entirely by the design tokens in
- * `tokens.css`. The only user-facing variant is the WCAG high-contrast
- * accessibility theme, which composes on top of the tokens (it is not a
- * separate palette — see tokens.css §5.2).
- *
- * The continuous Softness↔Contrast slider that will interpolate the
- * axis-driven tokens lives in MYT-518; this module only switches the discrete
- * accessibility overlay on/off.
- */
 
 /** The only theme modes the app supports. */
 export type ThemeMode = 'dark' | 'high-contrast';
@@ -49,6 +36,17 @@ export function applyTheme(mode: ThemeMode | string | null | undefined): ThemeMo
 
   return resolved;
 }
+
+export const LG_DEFAULTS: LiquidGlassPrefs = {
+  background: 'default',
+  style: 50,
+  glass: 50,
+  blur: 40,
+  neon: 50,
+  neonAccent: 'cyan',
+  softness: 50,
+};
+
 
 export { VALID_MODES as THEME_MODES };
 
@@ -120,6 +118,8 @@ export const LIQUID_GLASS_DEFAULTS: LiquidGlassPrefs = {
   blur: 0.4,
   neonIntensity: 0.4,
   neonAccent: 'cyan',
+  style: 50,
+  neon: 50,
   textHeader: '#edecf6',
   textBody: '#bfd6e8',
   textMuted: '#8a9bb0',
@@ -191,7 +191,7 @@ export function applyLiquidGlassTokens(
   root.style.setProperty('--blur-chip',    `${Math.round(lerp(24, 8,  p.blur))}px`);
 
   // Neon intensity: neonIntensity=0 → strong (1.0), neonIntensity=1 → soft (0.25)
-  const intensity = lerp(1.0, 0.25, p.neonIntensity);
+  const intensity = lerp(1.0, 0.25, p.neonIntensity ?? LIQUID_GLASS_DEFAULTS.neonIntensity!);
   root.style.setProperty('--neon-intensity', intensity.toFixed(3));
 
   // Neon accent
@@ -203,9 +203,9 @@ export function applyLiquidGlassTokens(
 
   // Text colors (enforce contrast floor ≥ 4.5:1)
   const effectiveBg = p.bgBaseColor ?? LIQUID_GLASS_DEFAULTS.bgBaseColor!;
-  const safeHeader = enforceContrastFloor(p.textHeader, effectiveBg);
-  const safeBody   = enforceContrastFloor(p.textBody, effectiveBg);
-  const safeMuted  = enforceContrastFloor(p.textMuted, effectiveBg);
+  const safeHeader = enforceContrastFloor(p.textHeader ?? LIQUID_GLASS_DEFAULTS.textHeader!, effectiveBg);
+  const safeBody   = enforceContrastFloor(p.textBody   ?? LIQUID_GLASS_DEFAULTS.textBody!,   effectiveBg);
+  const safeMuted  = enforceContrastFloor(p.textMuted  ?? LIQUID_GLASS_DEFAULTS.textMuted!,  effectiveBg);
 
   root.style.setProperty('--text-header',  safeHeader);
   root.style.setProperty('--text-body',    safeBody);

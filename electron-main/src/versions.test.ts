@@ -6,6 +6,44 @@ import os from 'os';
 import path from 'path';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 
+// ─── PATH TRAVERSAL SECURITY ───
+
+describe('path traversal rejection', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vsec-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const traversalIds = ['../escape', '..\\escape', '/abs/path', 'a/b', 'a\\b', '.hidden', ''];
+
+  for (const badId of traversalIds) {
+    it(`saveVersion rejects sceneId "${badId}"`, () => {
+      expect(() => saveVersion(tmpDir, badId, 'content')).toThrow('Invalid sceneId');
+    });
+
+    it(`listVersions rejects sceneId "${badId}"`, () => {
+      expect(() => listVersions(tmpDir, badId)).toThrow('Invalid sceneId');
+    });
+
+    it(`getVersion rejects sceneId "${badId}"`, () => {
+      expect(() => getVersion(tmpDir, badId, 'safe-ts')).toThrow('Invalid sceneId');
+    });
+  }
+
+  const traversalTs = ['../escape', '..\\escape', '/abs/path', 'a/b', 'a\\b', '.hidden', ''];
+
+  for (const badTs of traversalTs) {
+    it(`getVersion rejects ts "${badTs}"`, () => {
+      expect(() => getVersion(tmpDir, 'scene-valid', badTs)).toThrow('Invalid ts');
+    });
+  }
+});
+
 // ─── VERSION_LIST ───
 
 describe('VERSION_LIST (listVersions)', () => {

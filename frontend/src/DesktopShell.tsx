@@ -10,6 +10,7 @@ import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
+import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
@@ -332,6 +333,7 @@ interface DragState {
 }
 
 export default function DesktopShell() {
+  const { requestText, promptModal } = useTextPrompt();
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
@@ -630,8 +632,8 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
 
-  const createStory = useCallback(() => {
-    const title = prompt('Story title:');
+  const createStory = useCallback(async () => {
+    const title = await requestText('Story title:');
     if (!title?.trim()) return;
     const id = generateId();
     const story: Story = {
@@ -639,10 +641,10 @@ export default function DesktopShell() {
       chapters: [], createdAt: now(), updatedAt: now(),
     };
     updateManifest([...stories, story]);
-  }, [stories, updateManifest]);
+  }, [stories, updateManifest, requestText]);
 
-  const createChapter = useCallback((storyId: string) => {
-    const title = prompt('Chapter title:');
+  const createChapter = useCallback(async (storyId: string) => {
+    const title = await requestText('Chapter title:');
     if (!title?.trim()) return;
     const id = generateId();
     const chapter: Chapter = {
@@ -654,10 +656,10 @@ export default function DesktopShell() {
     updateManifest(stories.map((s) =>
       s.id !== storyId ? s : { ...s, chapters: [...s.chapters, chapter] }
     ));
-  }, [stories, updateManifest]);
+  }, [stories, updateManifest, requestText]);
 
-  const createScene = useCallback((storyId: string, chapterId: string) => {
-    const title = prompt('Scene title:');
+  const createScene = useCallback(async (storyId: string, chapterId: string) => {
+    const title = await requestText('Scene title:');
     if (!title?.trim()) return;
     const id = generateId();
     const story = stories.find((s) => s.id === storyId)!;
@@ -678,7 +680,7 @@ export default function DesktopShell() {
       }
     ));
     (window as any).api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, updateManifest]);
+  }, [stories, updateManifest, requestText]);
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
     const updatedStories = stories.map((s) =>
@@ -963,13 +965,6 @@ export default function DesktopShell() {
               key={selectedStory.id}
               boardPath={`${selectedStory.path}/kanban.md`}
               storyTitle={selectedStory.title}
-              onOpenNote={(notePath) => {
-                handleOpenSceneByPath(notePath);
-                setView('editor');
-              }}
-              scenes={selectedStory.chapters.flatMap((ch) =>
-                ch.scenes.map((sc) => ({ id: sc.id, title: sc.title, path: sc.path }))
-              )}
             />
           ) : (
             <div className="shell-editor-empty">
@@ -1156,6 +1151,7 @@ export default function DesktopShell() {
           {budgetToast}
         </div>
       )}
+      {promptModal}
     </div>
   );
 }

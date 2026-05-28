@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { applyTheme, applyLiquidGlassTokens, resetLiquidGlassTokens, LIQUID_GLASS_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import './SettingsPanel.css';
 
+interface MicDevice {
+  deviceId: string;
+  label: string;
+}
+
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
   { value: 'dark', label: 'Dark (Liquid Glass)' },
   { value: 'high-contrast', label: 'High contrast' },
@@ -162,6 +167,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
 
   // Liquid Glass customization state (MYT-613 / MYT-716)
   const [lg, setLg] = useState<LiquidGlassPrefs>({ ...LG_DEFAULTS });
@@ -204,6 +210,16 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     );
     first?.focus();
   }, [lgAdvancedOpen]);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+      const mics = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+      setMicDevices(mics);
+    }).catch(() => {});
+  }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
@@ -278,7 +294,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const handleRelinkToSlider = useCallback(() => {
     setLg((prev) => {
       const s = prev.softnessContrast;
-      const next: LiquidGlassPrefs = { ...prev, advancedDecoupled: false, glass: s, blur: s, neonIntensity: s };
+      const next: LiquidGlassPrefs = { ...prev, advancedDecoupled: false, glass: s ?? LG_DEFAULTS.glass, blur: s ?? LG_DEFAULTS.blur, neonIntensity: s ?? LG_DEFAULTS.neonIntensity };
       applyLiquidGlassTokens(next, bgPreviewUrl);
       return next;
     });
@@ -907,6 +923,60 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
 
           </section>
 
+          {/* ── Voice ── */}
+          <section className="settings-section" aria-labelledby="section-voice">
+            <h3 className="settings-section-title" id="section-voice">Voice</h3>
+            <div className="settings-field">
+              <div className="settings-agent-header">
+                <span className="settings-label">Enable voice input</span>
+                <label className="settings-toggle" htmlFor="voice-enabled">
+                  <input
+                    id="voice-enabled"
+                    type="checkbox"
+                    aria-label="Enable voice input"
+                    checked={settings.voice?.enabled ?? false}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setSettings((p) => ({
+                        ...p,
+                        voice: { enabled, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: p.voice?.micDeviceId },
+                      }));
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+              {micDevices.length > 0 && (
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="voice-mic">Microphone</label>
+                  <select
+                    id="voice-mic"
+                    className="settings-input settings-select"
+                    value={settings.voice?.micDeviceId ?? ''}
+                    aria-label="Microphone selection"
+                    onChange={(e) => {
+                      const val = e.target.value || undefined;
+                      setSettings((p) => ({
+                        ...p,
+                        voice: { enabled: p.voice?.enabled ?? false, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: val },
+                      }));
+                      setSavedOk(false);
+                    }}
+                  >
+                    <option value="">System default</option>
+                    {micDevices.map((d) => (
+                      <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <p className="settings-hint">
+                Voice input lets you dictate text into the editor. Requires microphone permission.
+              </p>
+            </div>
+          </section>
+
         </div>
 
         <div className="settings-footer">
@@ -1256,7 +1326,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 <ColorPicker
                   id="adv-text-header"
                   label="Header text"
-                  value={lg.textHeader}
+                  value={lg.textHeader ?? LG_DEFAULTS.textHeader!}
                   bgForContrast={effectiveBg}
                   minRatio={4.5}
                   onChange={(v) => setLgField('textHeader', v)}
@@ -1264,7 +1334,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 <ColorPicker
                   id="adv-text-body"
                   label="Body text"
-                  value={lg.textBody}
+                  value={lg.textBody ?? LG_DEFAULTS.textBody!}
                   bgForContrast={effectiveBg}
                   minRatio={4.5}
                   onChange={(v) => setLgField('textBody', v)}
@@ -1272,7 +1342,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 <ColorPicker
                   id="adv-text-muted"
                   label="Muted text"
-                  value={lg.textMuted}
+                  value={lg.textMuted ?? LG_DEFAULTS.textMuted!}
                   bgForContrast={effectiveBg}
                   minRatio={4.5}
                   onChange={(v) => setLgField('textMuted', v)}

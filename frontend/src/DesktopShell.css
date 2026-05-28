@@ -20,12 +20,22 @@
   gap: 8px;
   height: 28px;
   padding: 0 12px;
-  background: var(--bg-bar);
-  border-bottom: 1px solid var(--border-subtle);
+  background: var(--glass-fill-fallback);
+  border-bottom: 1px solid var(--glass-border);
   flex-shrink: 0;
   -webkit-app-region: drag;
   user-select: none;
   font-size: 0.78rem;
+  position: relative;
+  z-index: 50;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .app-menu-bar {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
+  }
 }
 
 .app-menu-brand {
@@ -34,6 +44,7 @@
   letter-spacing: 0.06em;
   margin-right: 8px;
   -webkit-app-region: no-drag;
+  text-shadow: var(--neon-glow);
 }
 
 .app-menu-items {
@@ -84,12 +95,26 @@
   top: 100%;
   left: 0;
   min-width: 160px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
+  background: var(--glass-fill-fallback);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
   padding: 4px;
   z-index: 100;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .app-menu-dropdown {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+  }
+}
+
+.app-menu-item:focus-within .app-menu-dropdown,
+.app-menu-item:hover .app-menu-dropdown {
+  display: flex;
+  flex-direction: column;
 }
 
 .app-menu-dropdown-item {
@@ -159,8 +184,42 @@
 }
 
 .app-menu-gear-btn:hover {
-  color: var(--text-primary);
-  background: var(--border-default);
+  color: var(--text-header);
+  background: var(--bg-elevated);
+}
+
+/* Writing mode toggle (Normal / Focus / Edit) */
+.app-menu-mode-toggle {
+  display: flex;
+  gap: 2px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-strong);
+  -webkit-app-region: no-drag;
+}
+
+.app-menu-mode-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+.app-menu-mode-btn:hover {
+  color: var(--text-header);
+  border-color: var(--border-strong);
+}
+
+.app-menu-mode-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-light);
+  box-shadow: var(--neon-glow);
 }
 
 /* Main panels row */
@@ -529,4 +588,56 @@
 .book-outline-scene:focus-visible {
   outline: 2px solid var(--accent-primary, var(--accent));
   outline-offset: 2px;
+}
+
+/* Text prompt modal (replaces window.prompt, unsupported in Electron) */
+.prompt-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+.prompt-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 320px;
+  padding: 20px;
+  border-radius: 10px;
+  background: var(--surface, #1e1b29);
+  border: 1px solid var(--border, #353048);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.prompt-modal-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.prompt-modal-input {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #353048);
+  background: var(--bg, #15131f);
+  color: inherit;
+  font-size: 14px;
+}
+.prompt-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.prompt-modal-actions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #353048);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.prompt-modal-ok {
+  background: var(--accent, #7c5cff);
+  border-color: var(--accent, #7c5cff);
+  color: #fff;
 }

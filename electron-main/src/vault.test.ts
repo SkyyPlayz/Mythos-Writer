@@ -13,20 +13,28 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   writeSceneFile,
+  writeSceneFileAtomic,
   readSceneFile,
   writeEntityFile,
   readEntityFile,
   reindexVault,
   importObsidianVault,
   defaultManifest,
+  readManifest,
+  writeManifest,
   toSlug,
   resolveSlugCollision,
   chapterVaultPath,
   sceneVaultPath,
+  scaffoldNotesVault,
+  scaffoldStoryVault,
+  obsidianDryRun,
+  mergeProvenanceFrontmatter,
   MANUSCRIPT_DIR,
   MAX_VAULT_FILE_BYTES,
   VaultFileTooLargeError,
   realSafePath,
+  resolveEpubExportPath,
   startVaultWatcher,
   stopVaultWatcher,
 } from './vault.js';
@@ -155,6 +163,17 @@ describe('IPC vault round-trip', () => {
   it('writeVaultFileUnsafe_testOnly creates nested directories automatically', () => {
     writeVaultFileUnsafe_testOnly(tmpDir, 'chapters/chapter-1/scene-1.txt', 'Nested content');
     expect(readVaultFile(tmpDir, 'chapters/chapter-1/scene-1.txt').content).toBe('Nested content');
+  });
+
+  it('writeVaultFileAtomic allows nested writes when vault root is a symlink', () => {
+    const linkedRoot = `${tmpDir}-link`;
+    fs.symlinkSync(tmpDir, linkedRoot);
+    try {
+      writeVaultFileAtomic(linkedRoot, 'chapters/chapter-1/scene-1.txt', 'Nested content');
+      expect(fs.readFileSync(path.join(tmpDir, 'chapters/chapter-1/scene-1.txt'), 'utf-8')).toBe('Nested content');
+    } finally {
+      fs.rmSync(linkedRoot, { force: true });
+    }
   });
 
   it('listVaultFiles returns written files', () => {
@@ -631,6 +650,127 @@ describe('realSafePath — symlink escapes are rejected', () => {
   });
 });
 
+describe('realSafePath — traversal & absolute-path hardening (MYT-672 / MYT-641)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-traversal-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // ── MYT-641 Case-3: leaf AND parent don't exist yet ──
+  // A fresh vault writing its first deeply nested scene exercises the "parent
+  // doesn't exist" branch. On macOS tmpDir resolves through a symlink
+  // (/var → /private/var); regression guard for the realSafePath fix landed in
+  // da24bfe (lexical check vs un-realpath'd root) so nested writes are allowed
+  // while traversal is still denied on that same branch.
+  it('allows a nested write when no parent directories exist yet', () => {
+    const nestedPath = 'Manuscript/my-story/chapter-one/scene-1.md';
+    expect(() => realSafePath(tmpDir, nestedPath)).not.toThrow();
+    expect(realSafePath(tmpDir, nestedPath)).toContain('scene-1.md');
+  });
+
+  it('still rejects "../" traversal when no parent exists', () => {
+    expect(() => realSafePath(tmpDir, '../../../etc/shadow')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a "../" escape whose parent DOES exist (lands on existing-parent branch)', () => {
+    fs.mkdirSync(path.join(tmpDir, 'sub'), { recursive: true });
+    expect(() => realSafePath(tmpDir, 'sub/../../escape.md')).toThrow(/Path traversal denied/);
+  });
+
+  // ── Absolute paths: path.resolve(root, '/abs') === '/abs', escaping the vault ──
+  it('rejects an absolute path that escapes the vault', () => {
+    expect(() => realSafePath(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+
+  // ── Whole-channel coverage: read / write / delete reject both vectors ──
+  it('readVaultFile rejects an absolute path', () => {
+    expect(() => readVaultFile(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+
+  it('writeVaultFileAtomic rejects a "../" traversal', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '../escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+
+  it('writeVaultFileAtomic rejects an absolute path', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '/tmp/escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+
+  it('deleteVaultFile rejects a "../" traversal', () => {
+    expect(() => deleteVaultFile(tmpDir, '../../etc/passwd')).toThrow(/Path traversal denied/);
+  });
+
+  it('deleteVaultFile rejects an absolute path', () => {
+    expect(() => deleteVaultFile(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+});
+
+describe('resolveEpubExportPath — export:epub targetPath containment (MYT-675)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-epub-target-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('accepts a vault-relative .epub path and anchors it inside the vault', () => {
+    const resolved = resolveEpubExportPath(tmpDir, 'exports/book.epub');
+    // realSafePath in write-mode returns the realpath-resolved target, so
+    // anchor the expectation on the real tmpDir (macOS /var → /private/var).
+    const realTmp = fs.realpathSync.native(tmpDir);
+    expect(resolved).toBe(path.join(realTmp, 'exports', 'book.epub'));
+    expect(resolved.startsWith(realTmp + path.sep)).toBe(true);
+  });
+
+  it('accepts a bare .epub filename at the vault root', () => {
+    const realTmp = fs.realpathSync.native(tmpDir);
+    expect(resolveEpubExportPath(tmpDir, 'My Story.epub')).toBe(path.join(realTmp, 'My Story.epub'));
+  });
+
+  it('rejects an absolute out-of-vault target path', () => {
+    expect(() => resolveEpubExportPath(tmpDir, '/tmp/evil.epub')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a "../" traversal escape (no existing parent)', () => {
+    expect(() => resolveEpubExportPath(tmpDir, '../../escape.epub')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a "../" escape whose parent exists', () => {
+    fs.mkdirSync(path.join(tmpDir, 'sub'));
+    expect(() => resolveEpubExportPath(tmpDir, 'sub/../../escape.epub')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a non-.epub extension (cannot clobber arbitrary file types)', () => {
+    expect(() => resolveEpubExportPath(tmpDir, 'notes.txt')).toThrow(/must end in \.epub/);
+    expect(() => resolveEpubExportPath(tmpDir, '.bashrc')).toThrow(/must end in \.epub/);
+    expect(() => resolveEpubExportPath(tmpDir, 'no-extension')).toThrow(/must end in \.epub/);
+  });
+
+  it('accepts a case-insensitive .EPUB extension', () => {
+    const realTmp = fs.realpathSync.native(tmpDir);
+    expect(resolveEpubExportPath(tmpDir, 'Book.EPUB')).toBe(path.join(realTmp, 'Book.EPUB'));
+  });
+
+  it('rejects an empty or whitespace target path', () => {
+    expect(() => resolveEpubExportPath(tmpDir, '')).toThrow(/non-empty string/);
+    expect(() => resolveEpubExportPath(tmpDir, '   ')).toThrow(/non-empty string/);
+  });
+
+  it('rejects a symlink-escape .epub target (parent symlinks outside the vault)', () => {
+    fs.symlinkSync(os.tmpdir(), path.join(tmpDir, 'link'));
+    // MYT-641 reworded the write-mode parent-escape error from
+    // "parent symlink escape detected" to "parent symlink escapes vault".
+    expect(() => resolveEpubExportPath(tmpDir, 'link/escape.epub')).toThrow(/parent symlink escapes vault/);
+  });
+});
+
 describe('startVaultWatcher — symlink containment (MYT-362)', () => {
   let vaultDir: string;
   let outsideDir: string;
@@ -770,4 +910,281 @@ describe('startVaultWatcher — symlink containment (MYT-445 / MYT-362)', () => 
     const insideEvents = events.filter((p) => p.endsWith('inside.md'));
     expect(insideEvents.length).toBeGreaterThan(0);
   }, 10_000);
+});
+
+// ─── obsidianDryRun ───
+
+describe('obsidianDryRun', () => {
+  let srcDir: string;
+
+  beforeEach(() => {
+    srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-dry-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(srcDir, { recursive: true, force: true });
+  });
+
+  it('returns fatalError when source path does not exist', () => {
+    const result = obsidianDryRun('/nonexistent-path-xyz-does-not-exist', null);
+    expect(result.fatalError).toMatch(/does not exist/);
+    expect(result.notesCount).toBe(0);
+  });
+
+  it('reports notesCount for all .md files', () => {
+    fs.writeFileSync(path.join(srcDir, 'a.md'), '# A', 'utf-8');
+    fs.writeFileSync(path.join(srcDir, 'b.md'), '# B', 'utf-8');
+    const result = obsidianDryRun(srcDir, null);
+    expect(result.notesCount).toBe(2);
+    expect(result.fatalError).toBeNull();
+  });
+
+  it('detects broken wiki-links', () => {
+    fs.writeFileSync(path.join(srcDir, 'note.md'), '[[NoSuchFile]]', 'utf-8');
+    const result = obsidianDryRun(srcDir, null);
+    expect(result.brokenLinks).toHaveLength(1);
+    expect(result.brokenLinks[0].target).toBe('[[NoSuchFile]]');
+    expect(result.brokenLinks[0].file).toBe('note.md');
+  });
+
+  it('does not report broken link when target exists', () => {
+    fs.writeFileSync(path.join(srcDir, 'source.md'), '[[target]]', 'utf-8');
+    fs.writeFileSync(path.join(srcDir, 'target.md'), '# Target', 'utf-8');
+    const result = obsidianDryRun(srcDir, null);
+    expect(result.brokenLinks).toHaveLength(0);
+  });
+
+  it('detects name collisions with existing manifest entities', () => {
+    fs.writeFileSync(path.join(srcDir, 'Hero.md'), '# Hero', 'utf-8');
+    const manifest = defaultManifest('/tmp');
+    manifest.entities.push({
+      id: 'e1',
+      name: 'Hero',
+      type: 'character',
+      path: 'Characters/Hero.md',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    const result = obsidianDryRun(srcDir, manifest);
+    expect(result.nameCollisions).toHaveLength(1);
+    expect(result.nameCollisions[0].name).toBe('Hero');
+  });
+
+  it('detects missing frontmatter', () => {
+    fs.writeFileSync(path.join(srcDir, 'plain.md'), 'No frontmatter.', 'utf-8');
+    const result = obsidianDryRun(srcDir, null);
+    expect(result.missingFrontmatter).toContain('plain.md');
+  });
+
+  it('does not flag missing frontmatter when --- is present', () => {
+    fs.writeFileSync(path.join(srcDir, 'with-fm.md'), '---\ntitle: X\n---\nProse.', 'utf-8');
+    const result = obsidianDryRun(srcDir, null);
+    expect(result.missingFrontmatter).toHaveLength(0);
+  });
+
+  it('returns empty collections and no error for a clean vault', () => {
+    fs.writeFileSync(path.join(srcDir, 'clean.md'), '---\ntitle: Clean\n---\nNo issues.', 'utf-8');
+    const result = obsidianDryRun(srcDir, null);
+    expect(result.brokenLinks).toHaveLength(0);
+    expect(result.nameCollisions).toHaveLength(0);
+    expect(result.missingFrontmatter).toHaveLength(0);
+    expect(result.fatalError).toBeNull();
+  });
+
+  it('ignores symlinked files during dry run', () => {
+    fs.writeFileSync(path.join(srcDir, 'real.md'), '# Real', 'utf-8');
+    fs.symlinkSync('/etc/hostname', path.join(srcDir, 'link.md'));
+    const result = obsidianDryRun(srcDir, null);
+    expect(result.notesCount).toBe(1);
+  });
+});
+
+// ─── mergeProvenanceFrontmatter ───
+
+describe('mergeProvenanceFrontmatter', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-prov-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes provenance into a new file', () => {
+    mergeProvenanceFrontmatter(tmpDir, 'scene.md', {
+      source_agent: 'archive',
+      confidence: 0.9,
+      rationale: 'Inferred from context',
+      timestamp: '2024-01-01T00:00:00.000Z',
+    }, 'Updated prose.');
+    const raw = fs.readFileSync(path.join(tmpDir, 'scene.md'), 'utf-8');
+    expect(raw).toContain('provenance_source_agent: archive');
+    expect(raw).toContain('provenance_confidence: 0.9');
+    expect(raw).toContain('Updated prose.');
+  });
+
+  it('merges provenance into an existing file preserving other frontmatter keys', () => {
+    fs.writeFileSync(path.join(tmpDir, 'scene.md'), '---\ntitle: My Scene\nid: s1\n---\nOriginal.', 'utf-8');
+    mergeProvenanceFrontmatter(tmpDir, 'scene.md', {
+      source_agent: 'brainstorm',
+      confidence: 0.75,
+      rationale: 'Creative suggestion',
+      timestamp: '2024-06-01T00:00:00.000Z',
+      run_id: 'run-abc',
+      suggestion_id: 'sug-123',
+    }, 'New prose.');
+    const raw = fs.readFileSync(path.join(tmpDir, 'scene.md'), 'utf-8');
+    const { frontmatter, prose } = parseFrontmatter(raw);
+    expect(frontmatter.title).toBe('My Scene');
+    expect(frontmatter.id).toBe('s1');
+    expect(frontmatter.provenance_source_agent).toBe('brainstorm');
+    expect(frontmatter.provenance_run_id).toBe('run-abc');
+    expect(frontmatter.provenance_suggestion_id).toBe('sug-123');
+    expect(prose).toBe('New prose.');
+  });
+
+  it('overwrites existing provenance fields on re-apply', () => {
+    mergeProvenanceFrontmatter(tmpDir, 'scene.md', {
+      source_agent: 'v1',
+      confidence: 0.5,
+      rationale: 'first',
+      timestamp: '2024-01-01T00:00:00.000Z',
+    }, 'prose v1');
+    mergeProvenanceFrontmatter(tmpDir, 'scene.md', {
+      source_agent: 'v2',
+      confidence: 0.99,
+      rationale: 'second',
+      timestamp: '2024-06-01T00:00:00.000Z',
+    }, 'prose v2');
+    const raw = fs.readFileSync(path.join(tmpDir, 'scene.md'), 'utf-8');
+    const { frontmatter, prose } = parseFrontmatter(raw);
+    expect(frontmatter.provenance_source_agent).toBe('v2');
+    expect(frontmatter.provenance_confidence).toBe(0.99);
+    expect(prose).toBe('prose v2');
+  });
+});
+
+// ─── scaffoldNotesVault ───
+
+describe('scaffoldNotesVault', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-scaffold-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates the standard Notes Vault directory structure', () => {
+    scaffoldNotesVault(tmpDir);
+    for (const dir of ['Characters', 'Locations', 'Items', 'Concepts', 'Notes']) {
+      expect(fs.existsSync(path.join(tmpDir, dir))).toBe(true);
+      expect(fs.statSync(path.join(tmpDir, dir)).isDirectory()).toBe(true);
+    }
+  });
+
+  it('is idempotent — running twice does not throw', () => {
+    scaffoldNotesVault(tmpDir);
+    expect(() => scaffoldNotesVault(tmpDir)).not.toThrow();
+  });
+});
+
+// ─── scaffoldStoryVault ───
+
+describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-vault-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates Projects/ subfolder', () => {
+    scaffoldStoryVault(tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, 'Projects'))).toBe(true);
+    expect(fs.statSync(path.join(tmpDir, 'Projects')).isDirectory()).toBe(true);
+  });
+
+  it('is idempotent — does not throw when called twice', () => {
+    scaffoldStoryVault(tmpDir);
+    expect(() => scaffoldStoryVault(tmpDir)).not.toThrow();
+  });
+});
+
+// ─── writeSceneFileAtomic ───
+
+describe('writeSceneFileAtomic', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-scene-atomic-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes scene with frontmatter and round-trips via readSceneFile', () => {
+    writeSceneFileAtomic(tmpDir, 'atomic.md', {
+      id: 'scene-atomic-1',
+      title: 'Atomic Scene',
+      order: 0,
+      tags: ['test'],
+      prose: 'Atomic prose.',
+    });
+    const read = readSceneFile(tmpDir, 'atomic.md');
+    expect(read.id).toBe('scene-atomic-1');
+    expect(read.title).toBe('Atomic Scene');
+    expect(read.tags).toEqual(['test']);
+    expect(read.prose).toBe('Atomic prose.');
+  });
+
+  it('leaves no tmp files on success', () => {
+    writeSceneFileAtomic(tmpDir, 'clean.md', {
+      id: 's1',
+      title: 'Clean',
+      prose: 'body',
+    });
+    const leftovers = fs.readdirSync(tmpDir).filter((f) => f.includes('.tmp'));
+    expect(leftovers).toHaveLength(0);
+  });
+});
+
+// ─── readManifest / writeManifest round-trip ───
+
+describe('readManifest / writeManifest', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-manifest-rw-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('round-trips a manifest through writeManifest and readManifest', () => {
+    const manifestPath = path.join(tmpDir, 'mythos.json');
+    const original = defaultManifest(tmpDir);
+    original.stories.push({
+      id: 'story-1',
+      title: 'My Story',
+      path: 'Manuscript/my-story',
+      chapters: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    writeManifest(manifestPath, original);
+    const loaded = readManifest(manifestPath);
+    expect(loaded.stories).toHaveLength(1);
+    expect(loaded.stories[0].id).toBe('story-1');
+    expect(loaded.schemaVersion).toBe(original.schemaVersion);
+  });
 });
