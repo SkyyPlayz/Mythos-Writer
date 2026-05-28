@@ -347,6 +347,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('archive:confirm', { suggestionId, action }),
   archiveIgnoreList: () => ipcRenderer.invoke('archive:ignore-list', undefined),
 
+  // Liquid Glass background image (MYT-613)
+  pickBgImage: () => ipcRenderer.invoke('bg:pick', undefined),
+  loadBgImage: (filePath: string) => ipcRenderer.invoke('bg:load', { filePath }),
+
   // Writing modes (MYT-347) — Normal / Focus / Edit backend state
   writingModeGet: () => ipcRenderer.invoke('writingMode:get', undefined),
   writingModeSet: (payload: { mode?: string; focusFlags?: Record<string, boolean>; editConfig?: Record<string, boolean> }) =>

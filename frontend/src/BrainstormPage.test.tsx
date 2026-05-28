@@ -3,7 +3,7 @@ import BrainstormPage from './BrainstormPage';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; category: string; message: string }) => void;
+type ErrorHandler = (data: { streamId: string; error: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -55,7 +55,7 @@ async function simulateStream(tokens: string[], errorMessage?: string) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
     if (errorMessage) {
-      errorCb?.({ streamId: 'test-stream-1', category: 'unknown', message: errorMessage });
+      errorCb?.({ streamId: 'test-stream-1', error: errorMessage });
     } else {
       endCb?.({ streamId: 'test-stream-1' });
     }
@@ -281,7 +281,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     // Fire error immediately — no tokens precede it.
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', category: 'auth', message: 'Authentication error — check your API key in Settings.' });
+      errorCb?.({ streamId: 'test-stream-1', error: 'Authentication error — check your API key in Settings.' });
     });
 
     await waitFor(() =>
@@ -304,8 +304,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        category: 'auth',
-        message: 'Authentication error — check your API key in Settings.',
+        error: 'Authentication error — check your API key in Settings.',
       });
     });
 
@@ -325,8 +324,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        category: 'rate_limited',
-        message: 'Rate limit reached — try again shortly.',
+        error: 'Rate limit reached — try again shortly.',
       });
     });
 
@@ -346,8 +344,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        category: 'invalid_request',
-        message: 'Invalid request — check the model and input parameters.',
+        error: 'Invalid request — check the model and input parameters.',
       });
     });
 
@@ -365,7 +362,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', category: 'unknown', message: '' });
+      errorCb?.({ streamId: 'test-stream-1', error: '' });
     });
 
     await waitFor(() =>
@@ -381,7 +378,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', category: 'rate_limited', message: 'Rate limit reached — try again shortly.' });
+      errorCb?.({ streamId: 'test-stream-1', error: 'Rate limit reached — try again shortly.' });
     });
 
     await waitFor(() =>

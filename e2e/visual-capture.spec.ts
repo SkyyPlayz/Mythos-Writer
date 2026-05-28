@@ -4,7 +4,7 @@
  * Captures render artifacts for the MYT-531 Liquid Glass visual gate:
  *
  *   §9.2  9 surfaces × 2 viewports (1440×900 desktop, 390×844 mobile) = 18 shots
- *   §9.3  ThemeContrastSlider at 0 / 50 / 100 × 2 viewports             = 6 shots
+ *   §9.3  Style slider (lg-softness) at 0 / 0.5 / 1 × 2 viewports       = 6 shots
  *
  * Screenshots land in e2e-visual-artifacts/visual-capture/ for manual inspection
  * and attachment to MYT-531.
@@ -317,7 +317,7 @@ test('§9.2 — 18 surface screenshots', async () => {
 
 // ─── §9.3 — 6 slider sweep shots ─────────────────────────────────────────────
 
-test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
+test('§9.3 — slider sweep at 0 / 0.5 / 1 (2 viewports)', async () => {
   // Return to editor view so glass surfaces are visible
   const editorBtn = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
   if (await editorBtn.isVisible()) await editorBtn.click();
@@ -327,14 +327,15 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
     await page.setViewportSize(vp);
     await page.waitForTimeout(200);
 
-    // Open settings to access ThemeContrastSlider
+    // Open settings to access the main Style (softness↔contrast) slider
     const gearBtn = page.locator('.app-menu-gear-btn');
     if (await gearBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await gearBtn.click();
       await page.waitForTimeout(600);
     }
 
-    const slider = page.locator('[data-testid="theme-contrast-slider"]');
+    // MYT-716: ThemeContrastSlider replaced by #lg-softness (range 0–1)
+    const slider = page.locator('#lg-softness');
     if (!(await slider.isVisible({ timeout: 3_000 }).catch(() => false))) {
       // Settings panel loaded but slider not visible — screenshot as-is
       await shot(page, `slider-no-slider-${vpLabel}`);
@@ -343,7 +344,7 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
       continue;
     }
 
-    for (const pos of [0, 50, 100] as const) {
+    for (const pos of [0, 0.5, 1] as const) {
       await slider.fill(String(pos));
       await slider.dispatchEvent('input');
       await slider.dispatchEvent('change');
@@ -351,8 +352,8 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
       await shot(page, `slider-pos${pos}-${vpLabel}`);
     }
 
-    // Reset to default before closing
-    await slider.fill('50');
+    // Reset to default (0.5 = midpoint) before closing
+    await slider.fill('0.5');
     await slider.dispatchEvent('input');
     await slider.dispatchEvent('change');
 

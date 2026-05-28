@@ -98,8 +98,10 @@ interface EditModeConfig {
   showBetaRead: boolean;
 }
 
+/** Liquid Glass theme customization. All values optional; absent = LIQUID_GLASS_DEFAULTS. */
 interface LiquidGlassPrefs {
-  background: 'default' | 'none';
+  /** 'default' = built-in CSS gradient; file path = background image (MYT-716). */
+  background: 'default' | string;
   style: number;
   glass: number;
   blur: number;
@@ -110,6 +112,36 @@ interface LiquidGlassPrefs {
   textHeader?: string;
   textBody?: string;
   textMuted?: string;
+  /** Legacy 0–1 alias for softness (MYT-613). Prefer softness (0–100) in new code. */
+  softnessContrast?: number;
+  /** Legacy 0–1 alias for neon (MYT-613). Prefer neon (0–100) in new code. */
+  neonIntensity?: number;
+
+  // ── Advanced overrides (MYT-716) ─────────────────────────────────────────
+  /** True when B1–B3 have been manually decoupled from the main axis slider. */
+  advancedDecoupled?: boolean;
+  /** Text contrast boost 0–100; hard-clamped so body text stays ≥ 4.5:1. Default 50. */
+  textContrast?: number;
+  /** Neon frame width 0–100 → 0–2px rest / 1–4px hover. Default 50. */
+  neonFrameWidth?: number;
+  /** Border alpha strength 0–100 → 0.06–0.24. Default 50. */
+  borderStrength?: number;
+  /** Background mode: colour swatch or image wallpaper. Default 'color'. */
+  bgMode?: 'color' | 'image';
+  /** Image fit when bgMode='image'. Default 'cover'. */
+  bgFit?: 'cover' | 'contain' | 'tile';
+  /** Image anchor (CSS background-position). Default 'center'. */
+  bgPosition?: string;
+  /** Darkening scrim 0–100 → 0.20–0.85 alpha; auto-floors body text ≥ 4.5:1. Default 40. */
+  bgScrim?: number;
+  /** Vignette strength 0–100 → 0–0.9 alpha. Default 40. */
+  bgVignette?: number;
+  /** Base canvas hex colour (used when no image set). Default '#0e1116'. */
+  bgBaseColor?: string;
+  /** Accent / button hex colour. Default '#00f0ff'. */
+  accentColor?: string;
+  /** Neon border colour slot. Default 'cyan'. */
+  neonBorderColor?: 'cyan' | 'violet' | 'magenta';
 }
 
 
@@ -138,6 +170,8 @@ interface AppSettings {
   onboardingComplete?: boolean;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
+  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
+  liquidGlass?: LiquidGlassPrefs;
   /** Voice IO settings (MYT-205). */
   voice?: {
     enabled: boolean;
@@ -293,7 +327,7 @@ interface Window {
     streamAck: (streamId: string, count: number) => void;
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
-    onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => () => void;
+    onStreamError: (cb: (data: { streamId: string; category: string; error: string }) => void) => () => void;
 
     // STT (MYT-156)
     sttStart: () => void;
@@ -302,6 +336,9 @@ interface Window {
 
     // Vault notes updated push event (MYT-156)
     onVaultNotesUpdated: (cb: (data: { count: number }) => void) => () => void;
+
+    // Agent budget cap toast (feature-flagged)
+    onBudgetCapHit?: (cb: (data: { agentLabel: string; reason: 'daily_token_cap' | 'hourly_token_cap' }) => void) => () => void;
 
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
@@ -328,6 +365,10 @@ interface Window {
     betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
+
+    // Liquid Glass background image (MYT-716)
+    pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
+    loadBgImage: (filePath: string) => Promise<{ dataUrl: string | null }>;
 
     // Budget cap notifications (MYT-207) — agent paused on hourly/daily token cap
     onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => () => void;

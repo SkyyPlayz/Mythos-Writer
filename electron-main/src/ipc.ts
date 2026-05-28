@@ -78,6 +78,10 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
 
+  // Liquid Glass background image (MYT-613)
+  BG_PICK: 'bg:pick',
+  BG_LOAD: 'bg:load',
+
   // Generation log
   GENERATION_LOG_RECENT: 'generationLog:recent',
   GENERATION_LOG_LIST: 'generationLog:list',
@@ -131,6 +135,8 @@ export const IPC_CHANNELS = {
   BETA_READ_CREATE: 'betaRead:create',
   BETA_READ_LIST: 'betaRead:list',
   BETA_READ_DISMISS: 'betaRead:dismiss',
+  // Beta-Read on-demand LLM scan (MYT-711) — auto-generates anchored comments
+  BETA_READ_SCAN: 'betaRead:scan',
 
   // EPUB export (MYT-253)
   EXPORT_EPUB: 'export:epub',
@@ -275,6 +281,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
   [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
+  // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
@@ -291,6 +298,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
+  [IPC_CHANNELS.BG_PICK]: (payload: never) => Promise<BgPickResponse>;
+  [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
@@ -866,6 +875,34 @@ export interface ProviderSettings {
   model: string;
 }
 
+/** Liquid Glass advanced theme customization (MYT-613 / MYT-716). All values optional;
+ *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
+export interface LiquidGlassPrefs {
+  softnessContrast: number;
+  glass: number;
+  blur: number;
+  neonIntensity: number;
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  textHeader: string;
+  textBody: string;
+  textMuted: string;
+  background: 'default' | string;
+
+  // Advanced overrides (MYT-716)
+  advancedDecoupled?: boolean;
+  textContrast?: number;
+  neonFrameWidth?: number;
+  borderStrength?: number;
+  bgMode?: 'color' | 'image';
+  bgFit?: 'cover' | 'contain' | 'tile';
+  bgPosition?: string;
+  bgScrim?: number;
+  bgVignette?: number;
+  bgBaseColor?: string;
+  accentColor?: string;
+  neonBorderColor?: 'cyan' | 'violet' | 'magenta';
+}
+
 export interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
@@ -894,6 +931,8 @@ export interface AppSettings {
     enabled: boolean;
     sessionId: string;
   };
+  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
+  liquidGlass?: LiquidGlassPrefs;
 }
 
 export interface SettingsSetPayload {
@@ -1339,6 +1378,17 @@ export interface BetaReadDismissResponse {
   dismissed: boolean;
 }
 
+export interface BetaReadScanPayload {
+  sceneId: string;
+  prose: string;
+  scenePath: string;
+}
+
+export interface BetaReadScanResponse {
+  comments: BetaReadComment[];
+  scannedAt: string;
+}
+
 // ─── EPUB export (MYT-253 / MYT-342) ───
 
 export interface ExportEpubMetadata {
@@ -1472,6 +1522,21 @@ export interface ArchiveIgnoreEntry {
 
 export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
+}
+
+// ─── Liquid Glass background image (MYT-613) ───
+
+export interface BgPickResponse {
+  filePath: string | null;
+  cancelled: boolean;
+}
+
+export interface BgLoadPayload {
+  filePath: string;
+}
+
+export interface BgLoadResponse {
+  dataUrl: string | null;
 }
 
 // ─── Auto-updater Phase 4 (MYT-337) ───
