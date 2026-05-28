@@ -41,7 +41,13 @@ jobs:
         run: npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
-        run: sudo apt-get install -y xvfb
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
 
       # better-sqlite3 is built for the Node ABI by `npm ci`; the E2E launches
       # Electron, which has a different ABI. Rebuild the native module against
@@ -168,16 +174,22 @@ jobs:
           name: linux-appimage
           path: dist-electron/*.AppImage
 
-      - name: Install AppImage runtime dependencies
+      - name: Install Xvfb (virtual display for AppImage smoke test)
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y libfuse2 xvfb
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
 
       - name: Smoke-test AppImage (start / stop)
+        # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
+        # FUSE, so libfuse2 does not need to be installed on the self-hosted runner.
         run: |
           APPIMAGE=$(ls dist-electron/*.AppImage | head -1)
           chmod +x "$APPIMAGE"
-          xvfb-run --auto-servernum "$APPIMAGE" --no-sandbox &
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run --auto-servernum "$APPIMAGE" --no-sandbox &
           APP_PID=$!
           sleep 8
           if ! kill -0 "$APP_PID" 2>/dev/null; then
