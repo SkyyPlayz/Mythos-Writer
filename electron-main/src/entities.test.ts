@@ -75,6 +75,18 @@ describe('createEntity', () => {
     expect(entry.aliases).toBeUndefined();
     expect(entry.tags).toBeUndefined();
   });
+
+  it('creates entities/characters/<uuid>.md when vault root is a symlink', () => {
+    const linkedRoot = `${tmpDir}-link`;
+    fs.symlinkSync(tmpDir, linkedRoot);
+    try {
+      const entry = createEntity(linkedRoot, manifest, { name: 'Aria Voss', type: 'character' });
+      expect(entry.path).toBe(`entities/characters/${entry.id}.md`);
+      expect(fs.existsSync(path.join(tmpDir, entry.path))).toBe(true);
+    } finally {
+      fs.rmSync(linkedRoot, { force: true });
+    }
+  });
 });
 
 describe('readEntity', () => {

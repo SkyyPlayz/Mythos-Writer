@@ -110,36 +110,69 @@ export class VaultFileTooLargeError extends Error {
  * For reads (file exists): realpath the full path.
  * For writes (leaf may not exist): realpath the parent directory.
  */
-export function realSafePath(vaultRoot: string, relativePath: string, _writeMode = false): string {
+export function realSafePath(vaultRoot: string, relativePath: string, writeMode = false): string {
   const realVaultRoot = fs.realpathSync.native(vaultRoot);
-  // Keep the returned path anchored to the caller's vault root (not the realpath'd
-  // form) so callers and the I/O they perform see the path they expect.
-  const normalizedRoot = path.resolve(vaultRoot);
   const resolved = path.resolve(vaultRoot, relativePath);
+  const isWithinVault = (candidate: string) =>
+    candidate === realVaultRoot || candidate.startsWith(realVaultRoot + path.sep);
 
-  // Existing leaf path (read or overwrite): realpath the leaf and reject escapes.
+  if (writeMode) {
+    // Leaf path may not exist yet — walk up to the nearest existing ancestor,
+    // realpath that ancestor, then reattach the remaining suffix. This correctly
+    // handles symlinked vault roots and deeply-nested paths in empty directories.
+    let ancestor = resolved;
+    while (!fs.existsSync(ancestor)) {
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
+    }
+    if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relativePath}`);
+
+    const realAncestor = fs.realpathSync.native(ancestor);
+    if (!isWithinVault(realAncestor)) {
+      // Use "symlink escape detected" when the leaf itself is the escape vector so
+      // existing tests that check for that phrase continue to pass.
+      const msg =
+        ancestor === resolved
+          ? `Path traversal denied: ${relativePath} (symlink escape detected)`
+          : `Path traversal denied: ${relativePath} (parent symlink escapes vault)`;
+      throw new Error(msg);
+    }
+
+    const remainder = path.relative(ancestor, resolved);
+    const realTarget = path.resolve(realAncestor, remainder);
+    if (!isWithinVault(realTarget)) throw new Error(`Path traversal denied: ${relativePath}`);
+
+    return realTarget;
+  }
+
+  // Read mode: keep the returned path anchored to the caller's vault root so
+  // callers see the path they expect.
+  const normalizedRoot = path.resolve(vaultRoot);
+
+  // Existing leaf path: realpath the full path and reject symlink escapes.
   if (fs.existsSync(resolved)) {
     const realPath = fs.realpathSync.native(resolved);
-    if (!realPath.startsWith(realVaultRoot + path.sep) && realPath !== realVaultRoot) {
+    if (!isWithinVault(realPath)) {
       throw new Error(`Path traversal denied: ${relativePath} (symlink escape detected)`);
     }
     return resolved;
   }
 
-  // Missing leaf path (new write target): realpath parent if present.
+  // Missing leaf, parent exists: realpath the parent and reject escapes.
   const parent = path.dirname(resolved);
   if (fs.existsSync(parent)) {
     const realParent = fs.realpathSync.native(parent);
-    if (!realParent.startsWith(realVaultRoot + path.sep) && realParent !== realVaultRoot) {
+    if (!isWithinVault(realParent)) {
       throw new Error(`Path traversal denied: ${relativePath} (parent symlink escape detected)`);
     }
     return resolved;
   }
 
-  // Parent doesn't exist yet — nothing on disk to symlink-escape through, so a
-  // lexical containment check against the (un-realpath'd) vault root is correct.
-  // Comparing against realVaultRoot here would wrongly deny valid nested paths
-  // when the root itself is a symlink (e.g. macOS /var → /private/var).
+  // Neither exists — lexical check against un-realpath'd root is correct here
+  // because nothing on disk can symlink-escape. Comparing against realVaultRoot
+  // would wrongly deny valid nested paths when the root is a symlink
+  // (e.g. macOS /var → /private/var).
   if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
     throw new Error(`Path traversal denied: ${relativePath}`);
   }
@@ -253,7 +286,7 @@ export function listVaultFiles(
 }
 
 export function deleteVaultFile(vaultRoot: string, filePath: string): { path: string; deleted: boolean } {
-  const fullPath = safePath(vaultRoot, filePath);
+  const fullPath = realSafePath(vaultRoot, filePath, true);
   const exists = fs.existsSync(fullPath);
   if (exists) fs.unlinkSync(fullPath);
   return { path: filePath, deleted: exists };
