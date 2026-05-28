@@ -1,4 +1,5 @@
 import defaultBg from './assets/default-bg.webp';
+import { resolveAxisTokens, applyAxisTokens } from './themeAxis';
 
 export function applyTheme(theme: 'light' | 'dark' | 'system'): void {
   if (theme === 'system') {
@@ -21,6 +22,7 @@ export const LG_DEFAULTS: LiquidGlassPrefs = {
   blur: 40,
   neon: 50,
   neonAccent: 'cyan',
+  softness: 50,
 };
 
 const NEON_TOKENS: Record<LiquidGlassPrefs['neonAccent'], Record<string, string>> = {
@@ -64,10 +66,15 @@ export function applyLiquidGlassTokens(prefs: LiquidGlassPrefs): void {
     root.style.setProperty(prop, val);
   }
 
-  root.style.setProperty('--lg-style', String(prefs.style / 100));
-  root.style.setProperty('--lg-glass', String(prefs.glass / 100));
-  root.style.setProperty('--lg-blur', `${Math.round(prefs.blur * 0.4)}px`);
-  root.style.setProperty('--lg-neon', String(prefs.neon / 100));
+  // Softness↔Contrast axis (MYT-518) takes priority over legacy per-slider blur/glass
+  if (prefs.softness != null) {
+    applyAxisTokens(resolveAxisTokens(prefs.softness));
+  } else {
+    root.style.setProperty('--lg-style', String(prefs.style / 100));
+    root.style.setProperty('--lg-glass', String(prefs.glass / 100));
+    root.style.setProperty('--lg-blur', `${Math.round(prefs.blur * 0.4)}px`);
+    root.style.setProperty('--lg-neon', String(prefs.neon / 100));
+  }
 
   if (prefs.textHeader) root.style.setProperty('--text-header', prefs.textHeader);
   else root.style.removeProperty('--text-header');

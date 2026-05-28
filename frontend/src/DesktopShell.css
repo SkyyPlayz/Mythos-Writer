@@ -14,12 +14,22 @@
   gap: 8px;
   height: 28px;
   padding: 0 12px;
-  background: var(--bg-canvas);
-  border-bottom: 1px solid var(--border-subtle);
+  background: var(--glass-fill-fallback);
+  border-bottom: 1px solid var(--glass-border);
   flex-shrink: 0;
   -webkit-app-region: drag;
   user-select: none;
   font-size: 0.78rem;
+  position: relative;
+  z-index: 50;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .app-menu-bar {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
+  }
 }
 
 .app-menu-brand {
@@ -28,6 +38,7 @@
   letter-spacing: 0.06em;
   margin-right: 8px;
   -webkit-app-region: no-drag;
+  text-shadow: var(--neon-glow);
 }
 
 .app-menu-items {
@@ -57,12 +68,20 @@
   top: 100%;
   left: 0;
   min-width: 160px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-default);
+  background: var(--glass-fill-fallback);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   padding: 4px;
   z-index: 100;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .app-menu-dropdown {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+  }
 }
 
 .app-menu-item:focus-within .app-menu-dropdown,
@@ -173,6 +192,7 @@
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent-light);
+  box-shadow: var(--neon-glow);
 }
 
 /* Main panels row */

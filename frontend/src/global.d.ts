@@ -92,6 +92,8 @@ interface LiquidGlassPrefs {
   blur: number;
   neon: number;
   neonAccent: 'cyan' | 'violet' | 'magenta';
+  /** Softness↔Contrast axis (0 = soft/max-blur, 100 = sharp/min-blur). MYT-518 */
+  softness?: number;
   textHeader?: string;
   textBody?: string;
   textMuted?: string;

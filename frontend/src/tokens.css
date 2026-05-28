@@ -5,8 +5,18 @@
   --bg-app: #0a0a0a;          /* deepest app shell */
   --bg-canvas: #0d0d0d;       /* canvas / dark side columns */
   --bg-inset: #111113;        /* inset panels, editor toolbars */
-  --bg-panel: #18181b;        /* standard panel surfaces */
+  --bg-panel: #18181b;        /* standard panel surfaces (opaque fallback) */
   --bg-elevated: #27272a;     /* raised/elevated elements */
+
+  /* ── Glass fill ──────────────────────────────────── */
+  --glass-fill-fallback: rgba(18, 18, 20, 0.92); /* opaque fallback for no-backdrop-filter */
+  --glass-fill: rgba(14, 14, 18, 0.72);          /* live glass panel fill */
+  --glass-border: rgba(255, 255, 255, 0.07);     /* glass edge highlight */
+  --glass-highlight: rgba(255, 255, 255, 0.04);  /* glass inner glow */
+  --lg-blur: 16px;            /* overridden at runtime by applyLiquidGlassTokens */
+  --lg-glass: 0.72;           /* glass opacity multiplier (0–1) */
+  --lg-neon: 0.5;             /* neon glow intensity (0–1) */
+  --lg-style: 0.5;            /* style softness (0–1) */
 
   /* ── Text ────────────────────────────────────────── */
   --text-header: #e4e4e7;     /* headings / primary white */
@@ -21,16 +31,16 @@
   --border-default: #27272a;  /* standard borders */
   --border-strong: #3f3f46;   /* strong borders / active outlines */
 
-  /* ── Accent (violet) ─────────────────────────────── */
-  --accent: #7c3aed;           /* base violet */
-  --accent-hover: #6d28d9;     /* violet hover */
-  --accent-light: #a78bfa;     /* light violet */
-  --accent-very-light: #c4b5fd; /* very light violet */
-  --accent-soft: #1e1030;      /* dark violet bg fill */
-  --accent-deep: #4c1d95;      /* deep violet (chat bubble bg) */
+  /* ── Accent (neon cyan — default per Liquid Glass spec §1.1) ──── */
+  --accent: #00f0ff;           /* neon cyan */
+  --accent-hover: #00cfe0;     /* cyan hover */
+  --accent-light: #67f5ff;     /* light cyan */
+  --accent-very-light: #a0f9ff; /* very light cyan */
+  --accent-soft: #001c20;      /* dark cyan bg fill */
+  --accent-deep: #004a55;      /* deep cyan (chat bubble bg) */
 
   /* ── Focus ───────────────────────────────────────── */
-  --focus-ring: #06b6d4;       /* cyan focus ring */
+  --focus-ring: #00f0ff;       /* cyan focus ring (matches accent) */
 
   /* ── State — text / icon colors ─────────────────── */
   --state-danger: #f87171;
@@ -66,4 +76,17 @@
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-xl: 20px;
+}
+
+/* Glass surface mixin — applied to panels that support backdrop-filter */
+@supports (backdrop-filter: blur(1px)) {
+  :root {
+    --bg-panel: var(--glass-fill);
+  }
+}
+
+/* Neon glow utility — used on accent elements */
+:root {
+  --neon-glow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+  --neon-glow-strong: 0 0 16px color-mix(in srgb, var(--accent) 80%, transparent), 0 0 4px var(--accent);
 }

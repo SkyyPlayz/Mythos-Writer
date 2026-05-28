@@ -9,15 +9,23 @@
 }
 
 .settings-panel {
-  background: var(--bg-inset);
-  border: 1px solid var(--border-default);
+  background: var(--glass-fill-fallback);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   width: 520px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 var(--glass-highlight);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .settings-panel {
+    background: var(--glass-fill);
+    backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
+    -webkit-backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
+  }
 }
 
 .settings-header {

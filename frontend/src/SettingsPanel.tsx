@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import defaultBg from './assets/default-bg.webp';
 import { applyLiquidGlassTokens, applyTheme, LG_DEFAULTS } from './theme';
+import ThemeContrastSlider from './ThemeContrastSlider';
 import './SettingsPanel.css';
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
@@ -1085,6 +1086,17 @@ export default function SettingsPanel({ onClose, onSaved, onRerunOnboarding }: P
                 <span className="settings-slider-value">{settings.liquidGlass?.[field] ?? LG_DEFAULTS[field]}</span>
               </div>
             ))}
+
+            {/* Softness↔Contrast axis (MYT-518) */}
+            <div className="settings-field">
+              <span className="settings-label settings-label--subheading">Softness ↔ Contrast</span>
+            </div>
+            <div className="settings-field">
+              <ThemeContrastSlider
+                value={settings.liquidGlass?.softness ?? LG_DEFAULTS.softness ?? 50}
+                onChange={(v) => setLgField('softness', v)}
+              />
+            </div>
 
             {/* Neon Accent */}
             <div className="settings-field">
