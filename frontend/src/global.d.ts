@@ -136,8 +136,8 @@ interface EditModeConfig {
   showBetaRead: boolean;
 }
 
-/** Liquid Glass theme customization. All values optional; absent = LIQUID_GLASS_DEFAULTS. */
-interface LiquidGlassPrefs {
+/** Liquid Neon theme customization. All values optional; absent = LIQUID_NEON_DEFAULTS. */
+interface LiquidNeonPrefs {
   /** 'default' = built-in CSS gradient; file path = background image (MYT-716). */
   background: 'default' | string;
   style: number;
@@ -208,8 +208,8 @@ interface AppSettings {
   onboardingComplete?: boolean;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
-  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
-  liquidGlass?: LiquidGlassPrefs;
+  /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
+  liquidNeon?: LiquidNeonPrefs;
   /** Voice IO settings (MYT-205). */
   voice?: {
     enabled: boolean;
@@ -415,7 +415,7 @@ interface Window {
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
 
-    // Liquid Glass background image (MYT-716)
+    // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
     loadBgImage: (filePath: string) => Promise<{ dataUrl: string | null }>;
 

@@ -1648,7 +1648,7 @@ const handlers: IpcHandlers = {
     };
   },
 
-  // ─── Liquid Glass background image (MYT-613) ───
+  // ─── Liquid Neon background image (MYT-613) ────
   [IPC_CHANNELS.BG_PICK]: async () => {
     const result = await dialog.showOpenDialog({
       title: 'Choose App Background Image',
@@ -2836,12 +2836,15 @@ function loadAppSettings(): AppSettings {
   let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
-      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
+      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings> & { liquidGlass?: AppSettings['liquidNeon'] };
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
+      // One-shot migration: legacy key liquidGlass → liquidNeon (MYT-814)
+      const liquidNeon = raw.liquidNeon ?? raw.liquidGlass;
       base = {
         ...SETTINGS_DEFAULTS,
         ...raw,
+        ...(liquidNeon ? { liquidNeon } : {}),
         agents: {
           writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, ...(rawAgents.writingAssistant ?? {}) },
           brainstorm: { ...SETTINGS_DEFAULTS.agents.brainstorm, ...(rawAgents.brainstorm ?? {}) },

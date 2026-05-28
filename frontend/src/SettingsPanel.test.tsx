@@ -56,7 +56,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    const dark = screen.getByRole('radio', { name: /dark \(liquid glass\)/i }) as HTMLInputElement;
+    const dark = screen.getByRole('radio', { name: /liquid neon/i }) as HTMLInputElement;
     const highContrast = screen.getByRole('radio', { name: /high contrast/i }) as HTMLInputElement;
     expect(dark.checked).toBe(true);
 

@@ -1,5 +1,5 @@
 /**
- * themeAxis.ts — Softness↔Contrast axis for Liquid Glass phase-2 (MYT-518)
+ * themeAxis.ts — Softness↔Contrast axis for Liquid Neon phase-2 (MYT-518)
  *
  * Maps a single 0–100 slider value to coordinated blur/opacity/contrast
  * CSS token overrides. Also provides runtime contrast-floor measurement
