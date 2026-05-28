@@ -27,6 +27,8 @@ jobs:
           fi
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
+  # Windows build — artifacts retained for future signing gate (MYT-226).
+  # GH_TOKEN intentionally omitted; Windows publish is gated on signing.
   build-windows:
     needs: determine-release
     runs-on: windows-latest
@@ -60,11 +62,10 @@ jobs:
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
 
-      - name: Build and publish (NSIS + ZIP)
+      - name: Build Windows artifacts (NSIS + ZIP)
         run: npm run dist
         env:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -74,6 +75,8 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.zip
 
+  # macOS build — artifacts retained for future signing gate (MYT-226).
+  # GH_TOKEN intentionally omitted; macOS publish is gated on signing.
   build-mac:
     needs: determine-release
     runs-on: macos-latest
@@ -98,34 +101,35 @@ jobs:
         run: npm ci
 
       - name: Import Apple Developer ID certificate
-        # Gracefully skipped when the secret is absent — unsigned build continues.
-        # Add APPLE_CERTIFICATE_BASE64 + APPLE_CERTIFICATE_PASSWORD secrets to
-        # enable Developer ID signing (board action required to purchase cert).
+        # Secret-gated: activates automatically when APPLE_CERT_P12_BASE64 is set.
+        # Board action MYT-642 provisions the secret; no code change required then.
+        # When absent the step logs clearly and the build continues unsigned.
         shell: bash
         run: |
-          if [ -z "$APPLE_CERTIFICATE_BASE64" ]; then
-            echo "No Apple Developer ID certificate configured; building unsigned (dev signing)."
+          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
+            echo "APPLE_CERT_P12_BASE64 not set — building unsigned DMG (Gatekeeper warning expected)."
+            echo "Add Apple Developer ID secrets (see MYT-642) to enable signing + notarization."
             exit 0
           fi
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
-          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
           security create-keychain -p actions "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
           security unlock-keychain -p actions "$KEYCHAIN_PATH"
           security import "$CERT_PATH" -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            -P "$APPLE_CERT_P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN_PATH"
           echo "APPLE_CERT_IMPORTED=1" >> "$GITHUB_ENV"
         env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
 
-      - name: Build and publish (macOS DMG + ZIP)
+      - name: Build macOS artifacts (DMG + ZIP)
         shell: bash
         run: |
           # Use Developer ID identity from keychain when cert was imported;
-          # otherwise fall back to ad-hoc (CSC_IDENTITY_AUTO_DISCOVERY=false).
+          # otherwise fall back to ad-hoc signing (unsigned DMG, Gatekeeper warning).
           if [ "${APPLE_CERT_IMPORTED:-}" = "1" ]; then
             export CSC_IDENTITY_AUTO_DISCOVERY=true
           else
@@ -133,13 +137,17 @@ jobs:
           fi
           npm run dist:mac:release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Notarization gate — set APPLE_NOTARIZE secret to '1' once Apple ID
-          # credentials are available. build/notarize.js is a no-op otherwise.
-          APPLE_NOTARIZE: ${{ secrets.APPLE_NOTARIZE }}
+          # Notarization is handled by build/notarize.js (afterSign hook).
+          # It activates automatically when APPLE_CERT_P12_BASE64 is set above.
+          # Supports both app-specific-password auth (APPLE_APP_PASSWORD) and
+          # API-key auth (APPLE_API_KEY_PATH + APPLE_API_KEY_ID + APPLE_API_ISSUER_ID).
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -150,6 +158,7 @@ jobs:
             dist-electron/*.zip
 
   build-linux:
+    needs: [determine-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -168,10 +177,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish (Linux AppImage + deb + rpm)
-        run: npm run dist:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Linux AppImage — stable channel
+        if: needs.determine-release.outputs.is-beta == 'false'
+        run: npx electron-vite build && npx electron-builder --linux AppImage --publish never
+
+      - name: Build Linux AppImage — beta channel
+        if: needs.determine-release.outputs.is-beta == 'true'
+        run: npx electron-vite build && npx electron-builder --linux AppImage --publish never --config.publish.channel=beta
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -179,11 +191,10 @@ jobs:
           name: linux-dist
           path: |
             dist-electron/*.AppImage
-            dist-electron/*.deb
-            dist-electron/*.rpm
+            dist-electron/*.yml
 
   publish-release:
-    needs: [determine-release, build-windows, build-linux, build-mac]
+    needs: [determine-release, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -193,8 +204,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download Linux artifacts
         uses: actions/download-artifact@v4
+        with:
+          name: linux-dist
+          path: linux-dist
 
       - name: Generate release notes
         id: changelog
@@ -215,14 +229,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (draft)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.determine-release.outputs.version }}
-          draft: false
+          draft: true
           prerelease: ${{ needs.determine-release.outputs.is-beta == 'true' }}
-          files: |
-            windows-dist/**/*
-            linux-dist/**/*
-            macos-dist/**/*
+          files: linux-dist/**/*
           body: ${{ steps.changelog.outputs.notes }}

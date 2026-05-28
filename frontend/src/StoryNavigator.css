@@ -1,11 +1,22 @@
 .story-navigator {
   width: 220px;
   flex-shrink: 0;
-  background: #0d0d0d;
-  border-right: 1px solid #1e1e1e;
+  background: var(--glass-fill-fallback);
+  border-right: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .story-navigator {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    border-right: 1px solid var(--glass-border);
+  }
 }
 
 .nav-header {

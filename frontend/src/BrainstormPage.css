@@ -409,6 +409,34 @@
   flex-shrink: 0;
 }
 
+.brainstorm-recovery-banner {
+  background: var(--bg-surface, #111827);
+  border-bottom: 1px solid var(--border-default, #374151);
+  color: var(--text-secondary, #d1d5db);
+  font-size: 0.78rem;
+  padding: 6px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.brainstorm-recovery-dismiss-btn {
+  background: none;
+  border: 1px solid var(--border-default, #4b5563);
+  border-radius: 6px;
+  color: var(--text-muted, #9ca3af);
+  font-size: 0.74rem;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.brainstorm-recovery-dismiss-btn:hover {
+  border-color: var(--border-strong, #6b7280);
+  color: var(--text-primary, #f3f4f6);
+}
+
 /* Mic button */
 .brainstorm-mic-btn {
   background: var(--bg-surface);

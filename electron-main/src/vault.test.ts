@@ -27,6 +27,7 @@ import {
   chapterVaultPath,
   sceneVaultPath,
   scaffoldNotesVault,
+  scaffoldStoryVault,
   obsidianDryRun,
   mergeProvenanceFrontmatter,
   MANUSCRIPT_DIR,
@@ -161,6 +162,17 @@ describe('IPC vault round-trip', () => {
   it('writeVaultFileUnsafe_testOnly creates nested directories automatically', () => {
     writeVaultFileUnsafe_testOnly(tmpDir, 'chapters/chapter-1/scene-1.txt', 'Nested content');
     expect(readVaultFile(tmpDir, 'chapters/chapter-1/scene-1.txt').content).toBe('Nested content');
+  });
+
+  it('writeVaultFileAtomic allows nested writes when vault root is a symlink', () => {
+    const linkedRoot = `${tmpDir}-link`;
+    fs.symlinkSync(tmpDir, linkedRoot);
+    try {
+      writeVaultFileAtomic(linkedRoot, 'chapters/chapter-1/scene-1.txt', 'Nested content');
+      expect(fs.readFileSync(path.join(tmpDir, 'chapters/chapter-1/scene-1.txt'), 'utf-8')).toBe('Nested content');
+    } finally {
+      fs.rmSync(linkedRoot, { force: true });
+    }
   });
 
   it('listVaultFiles returns written files', () => {
@@ -1015,6 +1027,31 @@ describe('scaffoldNotesVault', () => {
   it('is idempotent — running twice does not throw', () => {
     scaffoldNotesVault(tmpDir);
     expect(() => scaffoldNotesVault(tmpDir)).not.toThrow();
+  });
+});
+
+// ─── scaffoldStoryVault ───
+
+describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-vault-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates Projects/ subfolder', () => {
+    scaffoldStoryVault(tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, 'Projects'))).toBe(true);
+    expect(fs.statSync(path.join(tmpDir, 'Projects')).isDirectory()).toBe(true);
+  });
+
+  it('is idempotent — does not throw when called twice', () => {
+    scaffoldStoryVault(tmpDir);
+    expect(() => scaffoldStoryVault(tmpDir)).not.toThrow();
   });
 });
 

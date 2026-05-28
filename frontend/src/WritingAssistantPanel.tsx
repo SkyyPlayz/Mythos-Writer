@@ -3,7 +3,7 @@ import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
 
-export const STALL_TIMEOUT_MS = 20_000;
+export const STALL_WARNING_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
 
 interface WritingAssistantSuggestion {
@@ -39,16 +39,13 @@ export default function WritingAssistantPanel({
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
-  const [cancelledToast, setCancelledToast] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  // Generation counter: each _doAsk call owns a unique gen; incrementing invalidates older calls.
-  const askGenRef = useRef(0);
-  const lastTokenAtRef = useRef<number>(0);
-  const lastPromptRef = useRef<string>('');
-  const lastContextRef = useRef<string | undefined>(undefined);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+  const lastPromptRef = useRef('');
   const { announce, liveText } = useLiveAnnounce();
 
   const { result: scheduledResult } = useWritingScheduler({
@@ -58,48 +55,102 @@ export default function WritingAssistantPanel({
     isActive,
   });
 
-  useEffect(() => {
-    return () => {
-      unsubscribeRef.current?.();
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
+  const clearStreamResources = useCallback(() => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+    if (hardTimerRef.current) {
+      clearTimeout(hardTimerRef.current);
+      hardTimerRef.current = null;
+    }
   }, []);
 
-  // Stall detection: 20 s no-token → warn; 90 s → hard abort (flag-based, no IPC cancel)
   useEffect(() => {
+    return () => {
+      clearStreamResources();
+    };
+  }, [clearStreamResources]);
+
+  const removePendingAssistantBubble = (prev: Message[]) => {
+    const updated = [...prev];
+    const last = updated[updated.length - 1];
+    if (last?.role === 'assistant' && last.streaming) {
+      updated.pop();
+    }
+    return updated;
+  };
+
+  const scheduleStallTimers = useCallback((requestId: number) => {
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    if (hardTimerRef.current) clearTimeout(hardTimerRef.current);
+
+    stallTimerRef.current = setTimeout(() => {
+      if (requestIdRef.current !== requestId) return;
+      setStalled(true);
+      announce('Generation is taking longer than expected. You can retry or cancel.');
+    }, STALL_WARNING_MS);
+
+    hardTimerRef.current = setTimeout(() => {
+      if (requestIdRef.current !== requestId) return;
+      requestIdRef.current += 1;
+      clearStreamResources();
+      setMessages((prev) => removePendingAssistantBubble(prev));
+      setLoading(false);
+      setStalled(false);
+      const timeoutMessage = 'Generation timed out. The network or provider may be slow — please retry.';
+      setError(timeoutMessage);
+      announce(timeoutMessage);
+    }, HARD_TIMEOUT_MS);
+  }, [announce, clearStreamResources]);
+
+  const cancelGeneration = useCallback(() => {
     if (!loading) return;
-    const interval = setInterval(() => {
-      const sinceLastToken = Date.now() - lastTokenAtRef.current;
-      if (sinceLastToken >= HARD_TIMEOUT_MS) {
-        askGenRef.current++; // invalidate running _doAsk
-        unsubscribeRef.current?.();
-        unsubscribeRef.current = null;
-        setMessages((prev) => prev.slice(0, -1));
-        setError('Generation timed out after 90 seconds. Check your connection and try again.');
-        setLoading(false);
-        setStreamPhase('idle');
-        announce('Generation timed out.');
-      } else if (sinceLastToken >= STALL_TIMEOUT_MS) {
-        setStreamPhase((prev) => (prev === 'streaming' ? 'stalled' : prev));
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [loading, announce]);
+    requestIdRef.current += 1;
+    clearStreamResources();
+    setMessages((prev) => removePendingAssistantBubble(prev));
+    setLoading(false);
+    setStalled(false);
+    const msg = 'Generation cancelled. You can retry now.';
+    setError(msg);
+    announce(msg);
+  }, [announce, clearStreamResources, loading]);
 
-  // Core ask logic — shared by ask() and retryFromStalled().
-  // Each call takes a snapshot of the gen counter; stale calls are silently discarded.
-  const _doAsk = useCallback(async (askPrompt: string, context: string | undefined) => {
-    const myGen = ++askGenRef.current;
-    lastTokenAtRef.current = Date.now();
-    lastPromptRef.current = askPrompt;
-    lastContextRef.current = context;
-    setStreamPhase('streaming');
+  const ask = useCallback(async (overridePrompt?: string) => {
+    const trimmed = (overridePrompt ?? prompt).trim();
+    if (!trimmed || loading) return;
 
-    unsubscribeRef.current?.();
+    requestIdRef.current += 1;
+    const requestId = requestIdRef.current;
+    lastPromptRef.current = trimmed;
+
+    setLoading(true);
+    setStalled(false);
+    setError(null);
+    if (!overridePrompt) setPrompt('');
+    announce('Generating response…');
+
+    const userMsg: Message = { role: 'user', text: trimmed };
+    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
+
+    setMessages((prev) => {
+      const base = overridePrompt ? removePendingAssistantBubble(prev) : prev;
+      return [...base, userMsg, assistantMsg];
+    });
+
+    const context = scene
+      ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
+      : undefined;
+
+    // Subscribe to streaming chunks before invoking
+    clearStreamResources();
     unsubscribeRef.current = window.api.onWritingAssistantChunk((chunk) => {
-      if (myGen !== askGenRef.current) return; // stale call
-      lastTokenAtRef.current = Date.now();
-      setStreamPhase((prev) => (prev === 'stalled' ? 'streaming' : prev));
+      if (requestIdRef.current !== requestId) return;
+      // Reset stall timers on each received token
+      setStalled(false);
+      scheduleStallTimers(requestId);
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -109,11 +160,11 @@ export default function WritingAssistantPanel({
         return updated;
       });
     });
+    scheduleStallTimers(requestId);
 
     try {
-      const response = await window.api.agentWritingAssistant(askPrompt, context);
-
-      if (myGen !== askGenRef.current) return; // stale — cancelled or superseded
+      const response = await window.api.agentWritingAssistant(trimmed, context);
+      if (requestIdRef.current !== requestId) return;
 
       const suggestion: WritingAssistantSuggestion = {
         id: `wa-${Date.now()}`,
@@ -135,70 +186,30 @@ export default function WritingAssistantPanel({
       });
       announce('Response ready.');
     } catch (err) {
-      if (myGen !== askGenRef.current) return; // stale
+      if (requestIdRef.current !== requestId) return;
       const msg = err instanceof Error ? err.message : String(err);
-      setMessages((prev) => prev.slice(0, -1));
+      setMessages((prev) => prev.slice(0, -1)); // remove the empty assistant bubble
       const errorMsg = msg || 'AI unavailable — check your API key in settings.';
       setError(errorMsg);
       announce(`Error: ${errorMsg}`);
     } finally {
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = null;
-      if (myGen === askGenRef.current) {
+      if (requestIdRef.current === requestId) {
+        clearStreamResources();
         setLoading(false);
-        setStreamPhase('idle');
+        setStalled(false);
       }
     }
-  }, [announce]);
+  }, [announce, clearStreamResources, loading, prompt, scene, scheduleStallTimers]);
 
-  const ask = useCallback(async () => {
-    const trimmed = prompt.trim();
-    if (!trimmed || loading) return;
-
-    setLoading(true);
-    setError(null);
-    setPrompt('');
-    announce('Generating response…');
-
-    const userMsg: Message = { role: 'user', text: trimmed };
-    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-
-    const context = scene
-      ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
-      : undefined;
-
-    await _doAsk(trimmed, context);
-  }, [prompt, loading, scene, announce, _doAsk]);
-
-  const cancelAsk = useCallback(() => {
-    askGenRef.current++; // invalidate any running _doAsk
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = null;
-    setMessages((prev) => prev.slice(0, -1));
+  const retryGeneration = useCallback(() => {
+    const retryPrompt = lastPromptRef.current;
+    if (!retryPrompt) return;
+    requestIdRef.current += 1;
+    clearStreamResources();
+    setStalled(false);
     setLoading(false);
-    setStreamPhase('idle');
-    setCancelledToast(true);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setCancelledToast(false), 3000);
-  }, []);
-
-  const retryFromStalled = useCallback(async () => {
-    // _doAsk will bump askGenRef, invalidating the old call automatically
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = null;
-    // Reset the streaming bubble without removing it
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === 'assistant') {
-        updated[updated.length - 1] = { ...last, text: '', streaming: true };
-      }
-      return updated;
-    });
-    announce('Retrying…');
-    await _doAsk(lastPromptRef.current, lastContextRef.current);
-  }, [announce, _doAsk]);
+    ask(retryPrompt);
+  }, [ask, clearStreamResources]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -235,12 +246,6 @@ export default function WritingAssistantPanel({
       >
         {liveText}
       </span>
-
-      {cancelledToast && (
-        <div className="wa-cancelled-toast" role="status" aria-live="polite">
-          Generation cancelled.
-        </div>
-      )}
 
       <div className="writing-assistant-header">
         <p className="writing-assistant-hint">
@@ -313,35 +318,33 @@ export default function WritingAssistantPanel({
         )}
       </div>
 
-      {error && (
-        <div className="writing-assistant-error" role="alert">
-          {error}
-        </div>
-      )}
-
-      {streamPhase === 'stalled' && loading && (
-        <div className="wa-stalled-panel" role="status" aria-label="Generation stalled">
-          <p className="wa-stalled-msg">
-            This is taking longer than expected — the network or provider may be slow.
+      {stalled && loading && (
+        <div className="wa-stall-panel" role="status" aria-label="Generation stalled">
+          <p className="wa-stall-message">
+            This is taking longer than expected. The network or AI provider may be slow.
           </p>
-          <div className="wa-stalled-actions">
+          <div className="wa-stall-actions">
             <button
-              className="wa-stalled-retry-btn"
-              onClick={() => void retryFromStalled()}
-              type="button"
+              className="wa-btn wa-btn-retry"
+              onClick={retryGeneration}
               aria-label="Retry generation"
             >
               Retry
             </button>
             <button
-              className="wa-stalled-cancel-btn"
-              onClick={cancelAsk}
-              type="button"
+              className="wa-btn wa-btn-cancel"
+              onClick={cancelGeneration}
               aria-label="Cancel generation"
             >
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="writing-assistant-error" role="alert">
+          {error}
         </div>
       )}
 
@@ -358,9 +361,8 @@ export default function WritingAssistantPanel({
         />
         {loading ? (
           <button
-            className="writing-assistant-cancel-btn"
-            onClick={cancelAsk}
-            type="button"
+            className="writing-assistant-btn wa-btn-cancel-inline"
+            onClick={cancelGeneration}
             aria-label="Cancel generation"
           >
             Cancel
@@ -368,8 +370,9 @@ export default function WritingAssistantPanel({
         ) : (
           <button
             className="writing-assistant-btn"
-            onClick={ask}
+            onClick={() => ask()}
             disabled={!prompt.trim()}
+            aria-label="Ask"
           >
             Ask
           </button>

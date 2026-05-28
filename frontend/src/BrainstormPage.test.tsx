@@ -395,8 +395,9 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 describe('Draft persistence', () => {
   it('restores messages and facts from localStorage draft on mount', () => {
     const draft = {
-      v: 1,
+      v: 2,
       savedAt: new Date().toISOString(),
+      prompt: '',
       messages: [
         { role: 'user', text: 'Restored user message' },
         { role: 'assistant', text: 'Restored assistant reply', streaming: false },
@@ -409,6 +410,22 @@ describe('Draft persistence', () => {
 
     expect(screen.getByText('Restored user message')).toBeInTheDocument();
     expect(screen.getByText('Restored assistant reply')).toBeInTheDocument();
+    expect(screen.getByText(/recovered your previous brainstorm draft/i)).toBeInTheDocument();
+  });
+
+  it('restores unsent prompt text from localStorage draft on mount', () => {
+    const draft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: 'Keep this idea for later',
+      messages: [],
+      facts: [],
+    };
+    localStorage.setItem('brainstorm:draft', JSON.stringify(draft));
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('Keep this idea for later');
   });
 
   it('saves a completed message to localStorage after stream ends', async () => {
@@ -427,15 +444,28 @@ describe('Draft persistence', () => {
     const stored = localStorage.getItem('brainstorm:draft');
     expect(stored).not.toBeNull();
     const parsed = JSON.parse(stored!);
-    expect(parsed.v).toBe(1);
+    expect(parsed.v).toBe(2);
     expect(parsed.messages.some((m: { text: string }) => m.text === 'Save this conversation')).toBe(true);
     expect(parsed.messages.some((m: { text: string }) => m.text === 'Saved response text.')).toBe(true);
   });
 
+  it('persists unsent prompt text to localStorage while drafting', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Unsent but important premise' },
+    });
+
+    const stored = localStorage.getItem('brainstorm:draft');
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(parsed.prompt).toBe('Unsent but important premise');
+  });
+
   it('New Session clears localStorage draft and removes messages from view', () => {
     const draft = {
-      v: 1,
+      v: 2,
       savedAt: new Date().toISOString(),
+      prompt: 'unsent draft prompt',
       messages: [
         { role: 'user', text: 'Prior session message' },
         { role: 'assistant', text: 'Prior session reply' },
@@ -451,12 +481,14 @@ describe('Draft persistence', () => {
 
     expect(screen.queryByText('Prior session message')).not.toBeInTheDocument();
     expect(localStorage.getItem('brainstorm:draft')).toBeNull();
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('');
   });
 
   it('shows Download button when messages are present', () => {
     const draft = {
-      v: 1,
+      v: 2,
       savedAt: new Date().toISOString(),
+      prompt: '',
       messages: [
         { role: 'user', text: 'A question' },
         { role: 'assistant', text: 'An answer' },
@@ -483,8 +515,9 @@ describe('Draft persistence', () => {
     const mockClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
     const draft = {
-      v: 1,
+      v: 2,
       savedAt: new Date().toISOString(),
+      prompt: '',
       messages: [
         { role: 'user', text: 'My question' },
         { role: 'assistant', text: 'My answer' },

@@ -5,6 +5,14 @@ import os from 'os';
 import path from 'path';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 
+const INVALID_SCENE_IDS = [
+  '../outside',
+  '..\\outside',
+  'nested/scene',
+  'nested\\scene',
+  '/absolute/path',
+];
+
 describe('saveSnapshot', () => {
   let tmpDir: string;
 
@@ -37,6 +45,10 @@ describe('saveSnapshot', () => {
     const b = saveSnapshot(tmpDir, 'scene-diff', 'Text B');
     expect(a.contentHash).not.toBe(b.contentHash);
   });
+
+  it.each(INVALID_SCENE_IDS)('rejects invalid sceneId %s', (sceneId) => {
+    expect(() => saveSnapshot(tmpDir, sceneId, 'blocked')).toThrow(`Invalid sceneId: ${sceneId}`);
+  });
 });
 
 describe('listSnapshots', () => {
@@ -62,6 +74,10 @@ describe('listSnapshots', () => {
     expect(snaps[0].content).toBe('Second save');
     expect(snaps[1].content).toBe('First save');
   });
+
+  it.each(INVALID_SCENE_IDS)('rejects invalid sceneId %s', (sceneId) => {
+    expect(() => listSnapshots(tmpDir, sceneId)).toThrow(`Invalid sceneId: ${sceneId}`);
+  });
 });
 
 describe('getSnapshot', () => {
@@ -86,6 +102,38 @@ describe('getSnapshot', () => {
     saveSnapshot(tmpDir, 'scene-missing', 'Something');
     expect(getSnapshot(tmpDir, 'scene-missing', 'non-existent-id')).toBeNull();
   });
+
+  it.each(INVALID_SCENE_IDS)('rejects invalid sceneId %s', (sceneId) => {
+    expect(() => getSnapshot(tmpDir, sceneId, 'any-id')).toThrow(`Invalid sceneId: ${sceneId}`);
+  });
+});
+
+describe('path traversal rejection', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-sec-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const traversalIds = ['../escape', '..\\escape', '/abs/path', 'a/b', 'a\\b', '.hidden', ''];
+
+  for (const badId of traversalIds) {
+    it(`saveSnapshot rejects sceneId "${badId}"`, () => {
+      expect(() => saveSnapshot(tmpDir, badId, 'content')).toThrow('Invalid sceneId');
+    });
+
+    it(`listSnapshots rejects sceneId "${badId}"`, () => {
+      expect(() => listSnapshots(tmpDir, badId)).toThrow('Invalid sceneId');
+    });
+
+    it(`getSnapshot rejects sceneId "${badId}"`, () => {
+      expect(() => getSnapshot(tmpDir, badId, 'some-id')).toThrow('Invalid sceneId');
+    });
+  }
 });
 
 describe('path traversal rejection', () => {
@@ -140,6 +188,10 @@ describe('rollback round-trip', () => {
 
     // The "restored" snapshot's content matches the original
     expect(target!.content).toBe('Original content');
+  });
+
+  it('rejects invalid sceneId in restore-like flow', () => {
+    expect(() => getSnapshot(tmpDir, '../escape', 'snapshot-id')).toThrow('Invalid sceneId: ../escape');
   });
 });
 
