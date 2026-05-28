@@ -49,6 +49,7 @@ platform.
 
 ## Standard of completion
 
+- A code issue may only move to `done` when its PR is **merged to main** (closed-unmerged PRs and absent commits do not count).
 - Take responsibility for the full impact of your change.
 - Do not rely on "humans will fix CI later."
 - Do not treat broken builds, lint failures, type errors, or test regressions as
