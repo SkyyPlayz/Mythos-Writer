@@ -1,8 +1,8 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { useRef, useState, useEffect } from 'react';
-import type { Block, Scene, DraftState } from './types';
+import { useRef, useState, useEffect, useCallback } from 'react';
+import type { Block, Scene, DraftState, WritingMode, HeaderDepth } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import SceneHistory from './SceneHistory';
 import './BlockEditor.css';
@@ -12,11 +12,164 @@ export interface BlockEditorApi {
   insertWikiLink: (link: string, anchorText: string) => void;
 }
 
+type AgentSource = 'writing-assistant' | 'brainstorm' | 'archive';
+
+const AGENT_LABELS: Record<AgentSource, string> = {
+  'writing-assistant': 'Writing Assistant',
+  brainstorm: 'Brainstorm',
+  archive: 'Archive',
+};
+
+interface InlineSuggestion {
+  id: string;
+  source_agent: AgentSource;
+  target: string;
+  confidence: number;
+  rationale: string;
+  payload?: string;
+  status: string;
+}
+
+interface EditOverlayProps {
+  scenePath: string;
+}
+
+function EditSuggestionOverlay({ scenePath }: EditOverlayProps) {
+  const [suggestions, setSuggestions] = useState<InlineSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const api = (window as unknown as Window).api;
+        if (typeof api?.suggestionsList === 'function') {
+          const result = await api.suggestionsList();
+          if (!cancelled) {
+            const proposed = (result.suggestions ?? []).filter(
+              (s: Suggestion) => s.status === 'proposed'
+            );
+            setSuggestions(proposed as InlineSuggestion[]);
+          }
+        }
+      } catch {
+        // non-fatal — overlay stays empty
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [scenePath]);
+
+  const handleAction = useCallback(async (id: string, action: 'accept' | 'reject') => {
+    setSuggestions((prev) => prev.filter((s) => s.id !== id));
+    try {
+      const api = (window as unknown as Window).api;
+      if (action === 'accept') {
+        await api.suggestionsAccept?.(id);
+      } else {
+        await api.suggestionsReject?.(id);
+      }
+    } catch {
+      // optimistic update already applied
+    }
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="edit-overlay edit-overlay-loading" aria-label="Loading suggestions" aria-live="polite">
+        <span className="edit-overlay-spinner" aria-hidden="true" /> Loading suggestions…
+      </div>
+    );
+  }
+
+  if (suggestions.length === 0) {
+    return (
+      <div className="edit-overlay edit-overlay-empty" role="status">
+        <span className="edit-overlay-check" aria-hidden="true">✓</span>
+        No pending suggestions — all caught up!
+      </div>
+    );
+  }
+
+  return (
+    <div className="edit-overlay" role="region" aria-label="Edit mode suggestions">
+      <div className="edit-overlay-header">
+        <button
+          className="edit-overlay-toggle"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse suggestions' : 'Expand suggestions'}
+        >
+          <span className="edit-overlay-toggle-icon" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+          Suggestions
+        </button>
+        <span className="edit-overlay-count" aria-label={`${suggestions.length} pending`}>
+          {suggestions.length}
+        </span>
+      </div>
+      {expanded && (
+        <ul className="edit-overlay-list" aria-label="Pending suggestions">
+          {suggestions.map((s) => {
+            const confidencePct = Math.round(s.confidence * 100);
+            return (
+              <li key={s.id} className="edit-suggestion-item" aria-label={`${AGENT_LABELS[s.source_agent] ?? s.source_agent} suggestion`}>
+                <div className="edit-suggestion-meta">
+                  <span className={`edit-agent-badge edit-agent-${s.source_agent}`}>
+                    {AGENT_LABELS[s.source_agent] ?? s.source_agent}
+                  </span>
+                  <span className="edit-suggestion-confidence" aria-label={`Confidence ${confidencePct}%`}>
+                    {confidencePct}%
+                  </span>
+                </div>
+                <p className="edit-suggestion-rationale">{s.rationale}</p>
+                {s.payload && (
+                  <p className="edit-suggestion-payload">{s.payload}</p>
+                )}
+                <div className="edit-suggestion-actions">
+                  <button
+                    className="edit-btn edit-btn-accept"
+                    onClick={() => handleAction(s.id, 'accept')}
+                    aria-label={`Accept ${AGENT_LABELS[s.source_agent] ?? s.source_agent} suggestion`}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className="edit-btn edit-btn-reject"
+                    onClick={() => handleAction(s.id, 'reject')}
+                    aria-label={`Reject ${AGENT_LABELS[s.source_agent] ?? s.source_agent} suggestion`}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   scene: Scene;
   onBlocksChange: (blocks: Block[]) => void;
   onDraftStateChange: (state: DraftState) => void;
   onEditorReady?: (api: BlockEditorApi) => void;
+  writingMode?: WritingMode;
+  // Beta-read and wiki-link props passed from DesktopShell (consumed there, not in this component)
+  onBetaReadRequest?: (selectedText: string) => void;
+  wikiLinkSuggestions?: unknown[];
+  onAcceptWikiLink?: (id: string, link: string, anchorText: string) => void;
+  onRejectWikiLink?: (id: string) => void;
+  // Header depth slider
+  headerDepth?: HeaderDepth;
+  onHeaderDepthChange?: (depth: HeaderDepth) => void;
+  onNavigate?: (direction: 'prev' | 'next') => void;
+  canNavigatePrev?: boolean;
+  canNavigateNext?: boolean;
+  sectionLabel?: string;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -43,7 +196,13 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
   return lines.join('\n').trim();
 }
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady }: Props) {
+const DEPTH_LABELS: Record<HeaderDepth, string> = {
+  book: 'Book',
+  chapter: 'Chapter',
+  scene: 'Scene',
+};
+
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, writingMode, headerDepth, onHeaderDepthChange, onNavigate, canNavigatePrev, canNavigateNext, sectionLabel }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [showHistory, setShowHistory] = useState(false);
   const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,23 +293,68 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     ? (editor.storage as any).markdown?.getMarkdown?.() ?? ''
     : blocksToMarkdownBody(scene.blocks);
 
+  const activeDepth: HeaderDepth = headerDepth ?? 'scene';
+  const displayLabel = sectionLabel ?? scene.title;
+
   return (
     <div className="block-editor">
       <div className="block-editor-toolbar">
-        <span className="scene-name">{scene.title}</span>
-        <div className="draft-state-group">
-          {(Object.keys(DRAFT_STATE_LABELS) as DraftState[]).map((s) => (
+        <div className="toolbar-left">
+          <div className="depth-nav-group">
             <button
-              key={s}
-              className={`draft-btn draft-${s}${draftState === s ? ' active' : ''}`}
-              onClick={() => handleDraftChange(s)}
+              className="depth-nav-arrow"
+              disabled={!canNavigatePrev}
+              onClick={() => onNavigate?.('prev')}
+              aria-label="Previous section"
+              title="Previous section"
             >
-              {DRAFT_STATE_LABELS[s]}
+              ‹
             </button>
-          ))}
+            <span className="depth-section-label" title={displayLabel}>{displayLabel}</span>
+            <button
+              className="depth-nav-arrow"
+              disabled={!canNavigateNext}
+              onClick={() => onNavigate?.('next')}
+              aria-label="Next section"
+              title="Next section"
+            >
+              ›
+            </button>
+          </div>
+          {onHeaderDepthChange && (
+            <div className="depth-selector" role="group" aria-label="View depth">
+              {(Object.keys(DEPTH_LABELS) as HeaderDepth[]).map((d) => (
+                <button
+                  key={d}
+                  className={`depth-btn${activeDepth === d ? ' active' : ''}`}
+                  onClick={() => onHeaderDepthChange(d)}
+                  aria-pressed={activeDepth === d}
+                  title={`${DEPTH_LABELS[d]} view`}
+                >
+                  {DEPTH_LABELS[d]}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <button className="btn-history" onClick={() => setShowHistory(true)}>History</button>
+        <div className="toolbar-right">
+          <div className="draft-state-group">
+            {(Object.keys(DRAFT_STATE_LABELS) as DraftState[]).map((s) => (
+              <button
+                key={s}
+                className={`draft-btn draft-${s}${draftState === s ? ' active' : ''}`}
+                onClick={() => handleDraftChange(s)}
+              >
+                {DRAFT_STATE_LABELS[s]}
+              </button>
+            ))}
+          </div>
+          <button className="btn-history" onClick={() => setShowHistory(true)}>History</button>
+        </div>
       </div>
+      {writingMode === 'edit' && (
+        <EditSuggestionOverlay scenePath={scene.path} />
+      )}
       <div className="tiptap-editor-wrap">
         <EditorContent editor={editor} className="tiptap-content" />
       </div>

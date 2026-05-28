@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
+import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs, HeaderDepth } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import { applyTheme } from './theme';
 import LeftRail from './LeftRail';
@@ -699,6 +699,24 @@ export default function DesktopShell() {
     }
   }, [selectedStory, selectedScene, handleSelectScene]);
 
+  const handleNavigateChapter = useCallback((direction: 'prev' | 'next') => {
+    if (!selectedStory || !selectedChapter) return;
+    const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+    const idx = chapters.findIndex((c) => c.id === selectedChapter.id);
+    const nextIdx = direction === 'prev' ? idx - 1 : idx + 1;
+    if (nextIdx >= 0 && nextIdx < chapters.length) {
+      const chapter = chapters[nextIdx];
+      const firstScene = [...chapter.scenes].sort((a, b) => a.order - b.order)[0];
+      if (firstScene) handleSelectScene(firstScene, chapter, selectedStory);
+    }
+  }, [selectedStory, selectedChapter, handleSelectScene]);
+
+  const handleNavigateByDepth = useCallback((direction: 'prev' | 'next') => {
+    const depth: HeaderDepth = layout.headerDepth ?? 'scene';
+    if (depth === 'scene') handleNavigateScene(direction);
+    else if (depth === 'chapter') handleNavigateChapter(direction);
+  }, [layout.headerDepth, handleNavigateScene, handleNavigateChapter]);
+
   if (loading) {
     return (
       <div className="shell-loading">
@@ -729,6 +747,35 @@ export default function DesktopShell() {
   const showLeftSidebar = writingMode !== 'focus' || focusPrefs.showLeftSidebar;
   const showRightSidebar = writingMode !== 'focus' || focusPrefs.showRightSidebar;
   const showBottomBar = writingMode !== 'focus' || focusPrefs.showBottomBar;
+
+  // Compute header depth nav state
+  const headerDepth: HeaderDepth = layout.headerDepth ?? 'scene';
+  const sortedAllScenes: { scene: Scene; chapter: Chapter }[] = [];
+  if (selectedStory) {
+    for (const ch of [...selectedStory.chapters].sort((a, b) => a.order - b.order)) {
+      for (const sc of [...ch.scenes].sort((a, b) => a.order - b.order)) {
+        sortedAllScenes.push({ scene: sc, chapter: ch });
+      }
+    }
+  }
+  const sceneNavIdx = selectedScene ? sortedAllScenes.findIndex((s) => s.scene.id === selectedScene.id) : -1;
+  const sortedChapters = selectedStory ? [...selectedStory.chapters].sort((a, b) => a.order - b.order) : [];
+  const chapterNavIdx = selectedChapter ? sortedChapters.findIndex((c) => c.id === selectedChapter.id) : -1;
+
+  let depthCanPrev = false;
+  let depthCanNext = false;
+  let depthSectionLabel = '';
+  if (headerDepth === 'scene') {
+    depthCanPrev = sceneNavIdx > 0;
+    depthCanNext = sceneNavIdx >= 0 && sceneNavIdx < sortedAllScenes.length - 1;
+    depthSectionLabel = selectedScene?.title ?? '';
+  } else if (headerDepth === 'chapter') {
+    depthCanPrev = chapterNavIdx > 0;
+    depthCanNext = chapterNavIdx >= 0 && chapterNavIdx < sortedChapters.length - 1;
+    depthSectionLabel = selectedChapter?.title ?? '';
+  } else {
+    depthSectionLabel = selectedStory?.title ?? '';
+  }
 
   return (
     <div className={`desktop-shell writing-mode-${writingMode}`}>
@@ -851,6 +898,13 @@ export default function DesktopShell() {
                 wikiLinkSuggestions={wikiLinkSuggestions}
                 onAcceptWikiLink={handleEditorAcceptWikiLink}
                 onRejectWikiLink={handleEditorRejectWikiLink}
+                writingMode={writingMode}
+                headerDepth={headerDepth}
+                onHeaderDepthChange={(depth) => persistLayout({ ...layout, headerDepth: depth })}
+                onNavigate={handleNavigateByDepth}
+                canNavigatePrev={depthCanPrev}
+                canNavigateNext={depthCanNext}
+                sectionLabel={depthSectionLabel}
               />
               {(betaReadComments.length > 0 || betaReadLoading) && (
                 <div className="shell-beta-margin">

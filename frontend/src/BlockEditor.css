@@ -9,10 +9,99 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.6rem 1.2rem;
   background: var(--bg-canvas);
   border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.depth-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.depth-nav-arrow {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+
+.depth-nav-arrow:hover:not(:disabled) {
+  color: var(--accent-light);
+  background: var(--bg-inset);
+}
+
+.depth-nav-arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.depth-section-label {
+  font-size: 0.95rem;
+  color: var(--accent-light);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.depth-selector {
+  display: flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.depth-btn {
+  padding: 0.22rem 0.55rem;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border-strong);
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+
+.depth-btn:last-child {
+  border-right: none;
+}
+
+.depth-btn:hover {
+  color: var(--accent-light);
+  background: var(--bg-inset);
+}
+
+.depth-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-very-light);
 }
 
 .scene-name {
@@ -74,6 +163,191 @@
 .btn-history:hover {
   border-color: var(--accent-hover);
   color: var(--accent-light);
+}
+
+/* Edit mode suggestion overlay */
+
+.edit-overlay {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-inset);
+  font-size: 0.85rem;
+}
+
+.edit-overlay-loading,
+.edit-overlay-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.2rem;
+  color: var(--text-faint);
+}
+
+.edit-overlay-spinner {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: edit-spin 0.6s linear infinite;
+}
+
+@keyframes edit-spin {
+  to { transform: rotate(360deg); }
+}
+
+.edit-overlay-check {
+  color: var(--state-success);
+  font-weight: 600;
+}
+
+.edit-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1.2rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.edit-overlay-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: none;
+  border: none;
+  color: var(--accent-light);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.edit-overlay-toggle:hover {
+  color: var(--accent-very-light);
+}
+
+.edit-overlay-toggle-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.edit-overlay-count {
+  background: var(--accent-soft);
+  color: var(--accent-very-light);
+  border-radius: 10px;
+  padding: 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.edit-overlay-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.edit-suggestion-item {
+  padding: 0.5rem 1.2rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.edit-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.edit-suggestion-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.edit-agent-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.edit-agent-writing-assistant {
+  background: var(--accent-soft);
+  color: var(--accent-very-light);
+}
+
+.edit-agent-archive {
+  background: var(--state-warning-bg);
+  color: var(--state-warning);
+}
+
+.edit-agent-brainstorm {
+  background: var(--state-success-bg);
+  color: var(--state-success);
+}
+
+.edit-suggestion-confidence {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  margin-left: auto;
+}
+
+.edit-suggestion-rationale {
+  margin: 0 0 0.2rem;
+  color: var(--text-header);
+  line-height: 1.45;
+}
+
+.edit-suggestion-payload {
+  margin: 0 0 0.3rem;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.edit-suggestion-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.edit-btn {
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.12s;
+}
+
+.edit-btn-accept {
+  background: var(--state-success-bg);
+  border-color: var(--state-success-border);
+  color: var(--state-success);
+}
+
+.edit-btn-accept:hover {
+  background: var(--state-success);
+  color: var(--bg-canvas);
+}
+
+.edit-btn-reject {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-faint);
+}
+
+.edit-btn-reject:hover {
+  border-color: var(--state-danger, #f87171);
+  color: var(--state-danger, #f87171);
 }
 
 /* TipTap editor wrapper */
