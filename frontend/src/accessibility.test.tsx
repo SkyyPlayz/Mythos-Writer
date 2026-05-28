@@ -309,4 +309,69 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
     expect(panel).not.toBeNull();
     expect(panel?.getAttribute('aria-labelledby')).toBe('leftrail-tab-vault');
   });
+
+  it('active tab has tabIndex=0 and inactive tabs have tabIndex=-1', () => {
+    const { getAllByRole } = render(
+      <LeftRail
+        activeTab="vault"
+        onTabChange={() => {}}
+        stories={[]}
+        selectedSceneId={null}
+        selectedEntityId={null}
+        onSelectScene={() => {}}
+        onSelectEntity={() => {}}
+        onCreateStory={() => {}}
+        onCreateChapter={() => {}}
+        onCreateScene={() => {}}
+        onReorderScenes={() => {}}
+      />,
+    );
+    // Tab order: stories(0), entities(1), vault(2), review(3)
+    const tabs = getAllByRole('tab');
+    expect(tabs[0]).toHaveAttribute('tabindex', '-1'); // stories
+    expect(tabs[1]).toHaveAttribute('tabindex', '-1'); // entities
+    expect(tabs[2]).toHaveAttribute('tabindex', '0');  // vault (active)
+    expect(tabs[3]).toHaveAttribute('tabindex', '-1'); // review
+  });
+
+  it('arrow key navigation moves focus and activates tabs', () => {
+    const onTabChange = vi.fn();
+    const { getAllByRole } = render(
+      <LeftRail
+        activeTab="stories"
+        onTabChange={onTabChange}
+        stories={[]}
+        selectedSceneId={null}
+        selectedEntityId={null}
+        onSelectScene={() => {}}
+        onSelectEntity={() => {}}
+        onCreateStory={() => {}}
+        onCreateChapter={() => {}}
+        onCreateScene={() => {}}
+        onReorderScenes={() => {}}
+      />,
+    );
+    // Tab order: stories(0), entities(1), vault(2), review(3)
+    const tabs = getAllByRole('tab');
+
+    // ArrowRight from stories → entities
+    fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
+    expect(onTabChange).toHaveBeenLastCalledWith('entities');
+
+    // ArrowLeft from stories → review (wrap)
+    fireEvent.keyDown(tabs[0], { key: 'ArrowLeft' });
+    expect(onTabChange).toHaveBeenLastCalledWith('review');
+
+    // Home from stories → stories
+    fireEvent.keyDown(tabs[0], { key: 'Home' });
+    expect(onTabChange).toHaveBeenLastCalledWith('stories');
+
+    // End from stories → review
+    fireEvent.keyDown(tabs[0], { key: 'End' });
+    expect(onTabChange).toHaveBeenLastCalledWith('review');
+
+    // ArrowRight from review(3) → stories(0) (wrap)
+    fireEvent.keyDown(tabs[3], { key: 'ArrowRight' });
+    expect(onTabChange).toHaveBeenLastCalledWith('stories');
+  });
 });
