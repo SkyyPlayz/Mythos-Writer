@@ -81,6 +81,8 @@ import {
   type ArchiveConfirmPayload,
   type VaultSetPathsPayload,
   type WritingModeSetPayload,
+  type BackupAppDataPayload,
+  type RestoreAppDataPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -173,6 +175,7 @@ import {
   type TelemetryEventType,
 } from './telemetry.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
+import { backupAppData, restoreAppData } from './backup.js';
 
 const require = createRequire(import.meta.url);
 
@@ -1974,6 +1977,62 @@ const handlers: IpcHandlers = {
       mainWindow.webContents.send('writingMode:changed', state);
     }
     return state;
+  },
+
+  // ─── App data backup / restore (MYT-346) ───
+
+  [IPC_CHANNELS.APP_BACKUP_APP_DATA]: async (payload: BackupAppDataPayload) => {
+    let outputPath = payload?.outputPath;
+    if (!outputPath) {
+      const res = await dialog.showSaveDialog({
+        title: 'Save App Data Backup',
+        defaultPath: `mythos-backup-${new Date().toISOString().slice(0, 10)}.mwbackup`,
+        filters: [{ name: 'Mythos Backup', extensions: ['mwbackup'] }],
+      });
+      if (res.canceled || !res.filePath) return { path: null, bytes: 0, cancelled: true };
+      outputPath = res.filePath;
+    }
+    closeDb();
+    try {
+      const manifest = fs.existsSync(getManifestPath()) ? readManifest(getManifestPath()) : null;
+      const result = await backupAppData({
+        userDataPath: app.getPath('userData'),
+        storyVaultRoot: getVaultRoot(),
+        notesVaultRoot: getNotesVaultRoot(),
+        appVersion: app.getVersion(),
+        manifestSchemaVersion: manifest?.schemaVersion ?? 0,
+        outputPath,
+      });
+      return { ...result, cancelled: false };
+    } finally {
+      ensureVaultDir();
+    }
+  },
+
+  [IPC_CHANNELS.APP_RESTORE_APP_DATA]: async (payload: RestoreAppDataPayload) => {
+    let archivePath = payload?.archivePath;
+    if (!archivePath) {
+      const res = await dialog.showOpenDialog({
+        title: 'Restore App Data from Backup',
+        filters: [{ name: 'Mythos Backup', extensions: ['mwbackup'] }],
+        properties: ['openFile'],
+      });
+      if (res.canceled || !res.filePaths[0]) return { restored: false, cancelled: true, details: [] };
+      archivePath = res.filePaths[0];
+    }
+    closeDb();
+    try {
+      const result = await restoreAppData({
+        archivePath,
+        userDataPath: app.getPath('userData'),
+        storyVaultRoot: getVaultRoot(),
+        notesVaultRoot: getNotesVaultRoot(),
+        overwrite: payload?.confirmed ?? false,
+      });
+      return result;
+    } finally {
+      ensureVaultDir();
+    }
   },
 
 };

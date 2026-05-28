@@ -180,6 +180,10 @@ export const IPC_CHANNELS = {
   // Writing modes (MYT-347) — Normal / Focus / Edit per-project state
   WRITING_MODE_GET: 'writingMode:get',
   WRITING_MODE_SET: 'writingMode:set',
+
+  // App data backup / restore (MYT-346)
+  APP_BACKUP_APP_DATA: 'app:backupAppData',
+  APP_RESTORE_APP_DATA: 'app:restoreAppData',
 } as const;
 
 // ─── Main process handlers ───
@@ -292,6 +296,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
+  [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
+  [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -1573,4 +1579,33 @@ export interface WritingModeSetPayload {
   mode?: WritingMode;
   focusFlags?: Partial<FocusModeFlags>;
   editConfig?: Partial<EditModeConfig>;
+}
+
+// ─── App data backup / restore (MYT-346) ───
+
+export interface BackupAppDataPayload {
+  /** If provided, write the archive here instead of showing a save dialog. */
+  outputPath?: string;
+}
+
+export interface BackupAppDataResponse {
+  /** Absolute path to the created archive; null when cancelled. */
+  path: string | null;
+  bytes: number;
+  cancelled: boolean;
+}
+
+export interface RestoreAppDataPayload {
+  /** If provided, read from this path instead of showing an open dialog. */
+  archivePath?: string;
+  /** Must be true when app data already exists; absent/false → reject with requiresConfirmation. */
+  confirmed?: boolean;
+}
+
+export interface RestoreAppDataResponse {
+  restored: boolean;
+  details: string[];
+  /** True when the caller must re-call with confirmed: true to proceed. */
+  requiresConfirmation?: boolean;
+  cancelled?: boolean;
 }

@@ -356,6 +356,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('writingMode:changed', handler);
     return () => ipcRenderer.removeListener('writingMode:changed', handler);
   },
+
+  // App data backup / restore (MYT-346)
+  backupAppData: (outputPath?: string) =>
+    ipcRenderer.invoke('app:backupAppData', outputPath ? { outputPath } : {}),
+  restoreAppData: (archivePath?: string, confirmed?: boolean) =>
+    ipcRenderer.invoke('app:restoreAppData', { archivePath, confirmed }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
