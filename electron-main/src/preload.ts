@@ -285,8 +285,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('voice:speak', { text, voiceId }),
   voiceSpeakCancel: (speakId: string) =>
     ipcRenderer.send('voice:speak:cancel', { speakId }),
-  onVoiceSpeakChunk: (cb: (event: { speakId: string; chunk: Buffer }) => void) => {
-    const handler = (_: unknown, data: { speakId: string; chunk: Buffer }) => cb(data);
+  onVoiceSpeakChunk: (cb: (event: { speakId: string; chunk: Uint8Array }) => void) => {
+    const handler = (_: unknown, data: { speakId: string; chunk: Uint8Array }) => cb(data);
     ipcRenderer.on('voice:speak:chunk', handler);
     return () => ipcRenderer.removeListener('voice:speak:chunk', handler);
   },
