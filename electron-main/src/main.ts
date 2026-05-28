@@ -79,7 +79,13 @@ import {
   type BetaReadScanPayload,
   type VaultObsidianDryRunPayload,
   type VaultObsidianRegisterPayload,
+  type VaultLoadSamplePayload,
   type VaultLoadSampleResponse,
+  type VaultCreateBlankPayload,
+  type VaultCreateBlankResponse,
+  type VaultValidatePathPayload,
+  type VaultValidatePathResponse,
+  type VaultPickFolderByPathPayload,
   type ProjectEntry,
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
@@ -1633,8 +1639,10 @@ const handlers: IpcHandlers = {
     return { vaultRoot: validated.vaultRoot, notesIndexed: scanned };
   },
 
-  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (): Promise<VaultLoadSampleResponse> => {
-    const sampleRoot = path.join(app.getPath('documents'), 'Mythos Writer Sample');
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (payload: VaultLoadSamplePayload): Promise<VaultLoadSampleResponse> => {
+    const defaultRoot = path.join(app.getPath('documents'), 'Mythos Sample');
+    const rawPath = payload?.targetPath ?? defaultRoot;
+    const sampleRoot = rawPath.replace(/^~/, app.getPath('home'));
     if (!fs.existsSync(sampleRoot)) {
       fs.mkdirSync(sampleRoot, { recursive: true });
 
@@ -1982,6 +1990,62 @@ const handlers: IpcHandlers = {
     await stopVaultWatcher();
     await startVaultWatcher(sampleRoot, notifyVaultChanged);
     return { vaultRoot: sampleRoot };
+  },
+
+  // ─── First-run onboarding (MYT-820) ───
+
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: async (payload: VaultValidatePathPayload): Promise<VaultValidatePathResponse> => {
+    const raw = payload?.path ?? '';
+    const resolved = raw.replace(/^~/, app.getPath('home'));
+    try {
+      const exists = fs.existsSync(resolved);
+      if (!exists) {
+        // Check parent is writable so we can create it
+        const parent = path.dirname(resolved);
+        const parentExists = fs.existsSync(parent);
+        if (!parentExists) return { exists: false, isEmpty: true, writable: false };
+        const probe = path.join(parent, `.mythos-probe-${Date.now()}`);
+        try {
+          fs.writeFileSync(probe, '');
+          fs.unlinkSync(probe);
+          return { exists: false, isEmpty: true, writable: true };
+        } catch {
+          return { exists: false, isEmpty: true, writable: false };
+        }
+      }
+      const entries = fs.readdirSync(resolved);
+      const isEmpty = entries.length === 0;
+      const probe = path.join(resolved, `.mythos-probe-${Date.now()}`);
+      try {
+        fs.writeFileSync(probe, '');
+        fs.unlinkSync(probe);
+        return { exists: true, isEmpty, writable: true };
+      } catch {
+        return { exists: true, isEmpty, writable: false };
+      }
+    } catch {
+      return { exists: false, isEmpty: true, writable: false };
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: async (payload: VaultCreateBlankPayload): Promise<VaultCreateBlankResponse> => {
+    const raw = payload?.targetPath ?? '';
+    const resolved = raw.replace(/^~/, app.getPath('home'));
+    fs.mkdirSync(resolved, { recursive: true });
+    saveVaultSettings({ vaultRoot: resolved });
+    ensureVaultDir();
+    await stopVaultWatcher();
+    await startVaultWatcher(resolved, notifyVaultChanged);
+    return { vaultRoot: resolved };
+  },
+
+  [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: async (payload: VaultPickFolderByPathPayload): Promise<import('./ipc.js').VaultPickFolderResponse> => {
+    const { sourcePath } = payload;
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return { vaultRoot: null, cancelled: false, registrationToken: null };
+    }
+    const token = generateRegistrationToken(sourcePath);
+    return { vaultRoot: sourcePath, cancelled: false, registrationToken: token };
   },
 
   // ─── Telemetry (MYT-344) ───

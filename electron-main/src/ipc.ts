@@ -195,6 +195,11 @@ export const IPC_CHANNELS = {
   // App data backup / restore (MYT-346)
   APP_BACKUP_APP_DATA: 'app:backupAppData',
   APP_RESTORE_APP_DATA: 'app:restoreAppData',
+
+  // First-run onboarding (MYT-820)
+  VAULT_CREATE_BLANK: 'vault:create-blank',
+  VAULT_VALIDATE_PATH: 'vault:validate-path',
+  VAULT_PICK_FOLDER_BY_PATH: 'vault:pick-folder-by-path',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -323,7 +328,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
-  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: never) => Promise<VaultLoadSampleResponse>;
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse>;
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse>;
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => Promise<VaultValidatePathResponse>;
+  [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: (payload: VaultPickFolderByPathPayload) => Promise<VaultPickFolderResponse>;
   [IPC_CHANNELS.TIMELINE_INFER]: (payload: TimelineInferPayload) => TimelineInferResponse;
   // APP_CHECK_FOR_UPDATE and APP_INSTALL_UPDATE are registered directly in initAutoUpdater()
   // (async handlers — not routed through setupIpcMain)
@@ -1524,6 +1532,11 @@ export interface ObsidianNameCollision {
   file: string;
 }
 
+export interface ObsidianRestructuredEntry {
+  from: string;
+  to: string;
+}
+
 export interface VaultObsidianDryRunReport {
   /** Total .md files found */
   notesCount: number;
@@ -1535,6 +1548,10 @@ export interface VaultObsidianDryRunReport {
   missingFrontmatter: string[];
   /** Non-null when the folder is unreadable (e.g. permissions) */
   fatalError: string | null;
+  /** Notes that will be moved to match the Notes Vault layout (MYT-820) */
+  restructured?: ObsidianRestructuredEntry[];
+  /** Notes that keep their current path unchanged (MYT-820) */
+  leftAsIs?: string[];
 }
 
 export interface VaultObsidianRegisterPayload {
@@ -1547,8 +1564,37 @@ export interface VaultObsidianRegisterResponse {
   notesIndexed: number;
 }
 
+export interface VaultLoadSamplePayload {
+  /** Optional custom destination; defaults to ~/Documents/Mythos Sample if omitted */
+  targetPath?: string;
+}
+
 export interface VaultLoadSampleResponse {
   vaultRoot: string;
+}
+
+// ─── First-run onboarding (MYT-820) ───
+
+export interface VaultCreateBlankPayload {
+  targetPath: string;
+}
+
+export interface VaultCreateBlankResponse {
+  vaultRoot: string;
+}
+
+export interface VaultValidatePathPayload {
+  path: string;
+}
+
+export interface VaultValidatePathResponse {
+  exists: boolean;
+  isEmpty: boolean;
+  writable: boolean;
+}
+
+export interface VaultPickFolderByPathPayload {
+  sourcePath: string;
 }
 
 // ─── Per-agent config IPC types (MYT-343) ───

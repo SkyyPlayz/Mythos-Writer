@@ -21,7 +21,15 @@ contextBridge.exposeInMainWorld('api', {
   pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
   obsidianDryRun: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath, registrationToken }),
   obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
-  loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', undefined),
+  loadSampleProject: (targetPath?: string) => ipcRenderer.invoke('vault:load-sample', { targetPath }),
+  createBlankVault: (targetPath: string) => ipcRenderer.invoke('vault:create-blank', { targetPath }),
+  validatePath: (vaultPath: string) => ipcRenderer.invoke('vault:validate-path', { path: vaultPath }),
+  obsidianPickFolderByPath: (sourcePath: string) => ipcRenderer.invoke('vault:pick-folder-by-path', { sourcePath }),
+  onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => {
+    const handler = (_: unknown, data: { current: number; total: number; lastAction: string }) => cb(data);
+    ipcRenderer.on('vault:obsidian:import:progress', handler);
+    return () => ipcRenderer.removeListener('vault:obsidian:import:progress', handler);
+  },
   startVaultWatch: () => ipcRenderer.invoke('vault:watch-start', undefined),
   stopVaultWatch: () => ipcRenderer.invoke('vault:watch-stop', undefined),
 
