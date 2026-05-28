@@ -74,7 +74,7 @@ describe('reportEvent — enabled', () => {
 
     expect(mockHttpsRequest).toHaveBeenCalledOnce();
     const [opts] = mockHttpsRequest.mock.calls[0];
-    expect((opts as { method: string }).method).toBe('POST');
+    expect((opts as unknown as { method: string }).method).toBe('POST');
     expect(req.write).toHaveBeenCalledOnce();
     expect(req.end).toHaveBeenCalledOnce();
   });

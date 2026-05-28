@@ -14,13 +14,28 @@ export interface SceneVersion {
   content: string;
 }
 
-function versionsDir(vaultRoot: string, sceneId: string): string {
-  return path.join(vaultRoot, '.versions', sceneId);
+// Allowlist: UUIDs (the actual format) and any safe alphanumeric/hyphen/underscore id.
+// Also covers ts strings (ISO stamp + seq, separators replaced with hyphens).
+const SAFE_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+function assertSafeId(value: string, label: string): void {
+  if (!SAFE_ID_RE.test(value)) throw new Error(`Invalid ${label}: ${value}`);
+}
+
+function safeVersionsDir(vaultRoot: string, sceneId: string): string {
+  assertSafeId(sceneId, 'sceneId');
+  const versionsRoot = path.resolve(vaultRoot, '.versions');
+  const resolved = path.resolve(versionsRoot, sceneId);
+  const rootWithSep = versionsRoot.endsWith(path.sep) ? versionsRoot : `${versionsRoot}${path.sep}`;
+  if (resolved !== versionsRoot && !resolved.startsWith(rootWithSep)) {
+    throw new Error(`Invalid sceneId: ${sceneId}`);
+  }
+  return resolved;
 }
 
 /** Write a new version snapshot. Returns the stored version with its ts. */
 export function saveVersion(vaultRoot: string, sceneId: string, content: string): SceneVersion {
-  const dir = versionsDir(vaultRoot, sceneId);
+  const dir = safeVersionsDir(vaultRoot, sceneId);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -32,7 +47,7 @@ export function saveVersion(vaultRoot: string, sceneId: string, content: string)
 
 /** List all versions for a scene, newest first. */
 export function listVersions(vaultRoot: string, sceneId: string): SceneVersion[] {
-  const dir = versionsDir(vaultRoot, sceneId);
+  const dir = safeVersionsDir(vaultRoot, sceneId);
   if (!fs.existsSync(dir)) return [];
 
   // Filenames embed timestamp + padded seq, so reverse lexicographic == newest-first.
@@ -53,7 +68,8 @@ export function listVersions(vaultRoot: string, sceneId: string): SceneVersion[]
 
 /** Get a specific version by its ts string. Returns null if not found. */
 export function getVersion(vaultRoot: string, sceneId: string, ts: string): SceneVersion | null {
-  const dir = versionsDir(vaultRoot, sceneId);
+  assertSafeId(ts, 'ts');
+  const dir = safeVersionsDir(vaultRoot, sceneId);
   const fullPath = path.join(dir, `${ts}.md`);
   if (!fs.existsSync(fullPath)) return null;
   try {

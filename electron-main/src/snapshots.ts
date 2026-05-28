@@ -26,8 +26,18 @@ const DEFAULT_RETENTION: SnapshotRetention = { maxPerScene: 100, maxAgeDays: 30 
 // even when multiple snapshots are taken within the same millisecond.
 let _seq = 0;
 
-function snapshotDir(vaultRoot: string, sceneId: string): string {
-  return path.join(vaultRoot, '.snapshots', sceneId);
+// Allowlist: UUIDs (the actual format) and any safe alphanumeric/hyphen/underscore id.
+const SAFE_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+function safeSnapshotDir(vaultRoot: string, sceneId: string): string {
+  if (!SAFE_ID_RE.test(sceneId)) throw new Error(`Invalid sceneId: ${sceneId}`);
+  const snapshotsRoot = path.resolve(vaultRoot, '.snapshots');
+  const resolved = path.resolve(snapshotsRoot, sceneId);
+  const rootWithSep = snapshotsRoot.endsWith(path.sep) ? snapshotsRoot : `${snapshotsRoot}${path.sep}`;
+  if (resolved !== snapshotsRoot && !resolved.startsWith(rootWithSep)) {
+    throw new Error(`Invalid sceneId: ${sceneId}`);
+  }
+  return resolved;
 }
 
 function countWords(text: string): number {
@@ -40,7 +50,7 @@ export function saveSnapshot(
   content: string,
   retention?: Partial<SnapshotRetention>,
 ): SceneSnapshot {
-  const dir = snapshotDir(vaultRoot, sceneId);
+  const dir = safeSnapshotDir(vaultRoot, sceneId);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const contentHash = crypto.createHash('sha256').update(content, 'utf-8').digest('hex');
@@ -64,7 +74,7 @@ export function saveSnapshot(
 }
 
 export function listSnapshots(vaultRoot: string, sceneId: string): SceneSnapshot[] {
-  const dir = snapshotDir(vaultRoot, sceneId);
+  const dir = safeSnapshotDir(vaultRoot, sceneId);
   if (!fs.existsSync(dir)) return [];
 
   // Sort filenames descending (timestamp_seq guarantees creation order) then parse.
