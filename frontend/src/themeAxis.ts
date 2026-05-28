@@ -82,6 +82,36 @@ function parseRgb(colour: string): [number, number, number] | null {
   return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])];
 }
 
+/** Parse a CSS hex colour string (#rgb or #rrggbb) → [r, g, b] (0–255) */
+function parseHex(colour: string): [number, number, number] | null {
+  const h = colour.trim().replace(/^#/, '');
+  if (h.length === 6) {
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  if (h.length === 3) {
+    return [parseInt(h[0] + h[0], 16), parseInt(h[1] + h[1], 16), parseInt(h[2] + h[2], 16)];
+  }
+  return null;
+}
+
+/** Parse a CSS colour string (rgb/rgba or #hex) → [r, g, b] (0–255) */
+function parseColor(colour: string): [number, number, number] | null {
+  return parseRgb(colour) ?? parseHex(colour);
+}
+
+/** Alpha-composite fg RGB at fgAlpha over an opaque canvas RGB → solid [r, g, b] */
+function compositeOver(
+  fg: [number, number, number],
+  fgAlpha: number,
+  canvas: [number, number, number],
+): [number, number, number] {
+  return [
+    Math.round(fgAlpha * fg[0] + (1 - fgAlpha) * canvas[0]),
+    Math.round(fgAlpha * fg[1] + (1 - fgAlpha) * canvas[1]),
+    Math.round(fgAlpha * fg[2] + (1 - fgAlpha) * canvas[2]),
+  ];
+}
+
 /** Compute WCAG contrast ratio between two resolved CSS colour strings */
 export function contrastRatio(fg: string, bg: string): number {
   const fgRgb = parseRgb(fg);
@@ -105,15 +135,28 @@ export interface ContrastFloors {
 export function readContrastFloors(): ContrastFloors {
   const root = document.documentElement;
   const cs = getComputedStyle(root);
-  const textHeader = cs.getPropertyValue('--text-header').trim() || '#e4e4e7';
-  const textBody = cs.getPropertyValue('--text-body').trim() || '#d4d4d8';
+  const textHeader = cs.getPropertyValue('--text-header').trim() || '#edecf6';
+  const textBody = cs.getPropertyValue('--text-body').trim() || '#bfd6e8';
+
+  // Canvas background for compositing; fall back to --bg-base default
+  const canvasStr = cs.getPropertyValue('--bg-base').trim() || '#0e1116';
+  const canvasRgb = parseColor(canvasStr) ?? [14, 17, 22];
+
+  // Glass fill base colour — matches applyAxisTokens's rgba(14, 14, 18, glass)
+  const glassFill: [number, number, number] = [14, 14, 18];
 
   function measureAt(preset: ContrastPreset): number {
     const tokens = AXIS_PRESETS[preset];
-    const panelBg = `rgba(14, 14, 18, ${tokens.glass.toFixed(2)})`;
-    // Use the lower of header/body contrast against the panel
-    const r1 = contrastRatio(textHeader, panelBg);
-    const r2 = contrastRatio(textBody, panelBg);
+    // Composite the semi-transparent glass fill over the canvas to get the actual
+    // visible panel colour — each preset's distinct alpha produces a distinct RGB.
+    const panelRgb = compositeOver(glassFill, tokens.glass, canvasRgb);
+    const panelSolid = `rgb(${panelRgb[0]}, ${panelRgb[1]}, ${panelRgb[2]})`;
+    // Convert text tokens (may be hex) to rgb() strings for contrastRatio
+    const fgH = parseColor(textHeader);
+    const fgB = parseColor(textBody);
+    if (!fgH || !fgB) return 0;
+    const r1 = contrastRatio(`rgb(${fgH[0]}, ${fgH[1]}, ${fgH[2]})`, panelSolid);
+    const r2 = contrastRatio(`rgb(${fgB[0]}, ${fgB[1]}, ${fgB[2]})`, panelSolid);
     return Math.min(r1, r2);
   }
 
