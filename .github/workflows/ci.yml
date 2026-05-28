@@ -58,8 +58,12 @@ jobs:
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y xvfb
+          if command -v xvfb-run >/dev/null 2>&1; then
+            echo "xvfb-run already available — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
 
       - name: E2E — vault CRUD (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:crud
