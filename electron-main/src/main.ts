@@ -136,6 +136,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  safeVaultIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -396,20 +397,29 @@ function validateVaultPath(p: string, field: string): void {
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
+  // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
+  // at the IPC boundary. The low-level helpers also re-check traversal, so a
+  // bad path is rejected twice independently.
   [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, false);
     return readVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return writeVaultFileAtomic(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
+    // LIST takes a directory — enforce traversal/symlink only, not the
+    // file-extension allow-list.
+    if (payload.root) safePath(getVaultRoot(), payload.root);
     return listVaultFiles(getVaultRoot(), payload.root);
   },
   [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return deleteVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: () => {
