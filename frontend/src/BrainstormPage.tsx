@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import ArchiveConfirmDialog from './ArchiveConfirmDialog';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -9,11 +10,10 @@ interface ContinuityIssue {
   resolved: boolean;
 }
 
-type AnswerKind = 'fix-note' | 'suggest-change' | 'free-text';
-
-interface ContinuityAnswerDraft {
-  kind: AnswerKind;
-  text: string;
+interface ContinuityDialog {
+  suggestionId: string;
+  rationale: string;
+  anchorText: string;
 }
 
 function parseContinuityIssues(raw: Record<string, unknown>[]): ContinuityIssue[] {
@@ -62,6 +62,7 @@ interface DetectedFact {
   name: string;
   content: string;
   savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review';
+  entityId?: string;
 }
 
 function extractFacts(text: string): Omit<DetectedFact, 'id' | 'savedStatus'>[] {
@@ -92,9 +93,12 @@ const FACT_TYPE_LABELS: Record<DetectedFact['type'], string> = {
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  onOpenEntity?: (entityId: string) => void;
 }
 
-export default function BrainstormPage({ onClose, enabled = true }: Props) {
+const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item', 'note'];
+
+export default function BrainstormPage({ onClose, enabled = true, onOpenEntity }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -103,8 +107,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
-  const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
-  const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
+  const [continuityDialog, setContinuityDialog] = useState<ContinuityDialog | null>(null);
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
 
@@ -340,14 +343,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                   prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'pending_review' } : f2)),
                 );
               } else {
-                await window.api.entityCreate({
+                const created = await window.api.entityCreate({
                   name: fact.name,
                   type: fact.type === 'note' ? 'other' : fact.type,
                   prose: fact.content,
                   tags: ['brainstorm'],
                 });
                 setFacts((prev) =>
-                  prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'saved' } : f2)),
+                  prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'saved', entityId: created.id } : f2)),
                 );
               }
             } catch {
@@ -462,14 +465,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'pending_review' } : f)),
           );
         } else {
-          await window.api.entityCreate({
+          const created = await window.api.entityCreate({
             name: fact.name,
             type: fact.type === 'note' ? 'other' : fact.type,
             prose: fact.content,
             tags: ['brainstorm'],
           });
           setFacts((prev) =>
-            prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
+            prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved', entityId: created.id } : f)),
           );
         }
       } catch {
@@ -498,53 +501,11 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  const submitContinuityAnswer = useCallback(async (issueId: string) => {
-    const issue = continuityIssues.find((i) => i.id === issueId);
-    if (!issue) return;
-    const draft = answerDrafts[issueId] ?? { kind: 'free-text' as AnswerKind, text: '' };
-    const kindLabel: Record<AnswerKind, string> = {
-      'fix-note': 'Fix note',
-      'suggest-change': 'Suggest story change',
-      'free-text': 'Note',
-    };
-    const msgText = [
-      `[Continuity issue] ${issue.description}`,
-      draft.text ? `${kindLabel[draft.kind]}: ${draft.text}` : `${kindLabel[draft.kind]}`,
-    ].join('\n');
-
-    setContinuityIssues((prev) =>
-      prev.map((i) => (i.id === issueId ? { ...i, resolved: true } : i)),
-    );
-    setExpandedIssueId(null);
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api;
-      if (typeof api?.suggestionsAccept === 'function') {
-        await api.suggestionsAccept(issueId);
-      }
-    } catch { /* optimistic already applied */ }
-
-    setPrompt(msgText);
-  }, [continuityIssues, answerDrafts]);
-
-  const toggleIssue = useCallback((id: string) => {
-    setExpandedIssueId((prev) => (prev === id ? null : id));
-  }, []);
-
-  const setDraftKind = useCallback((issueId: string, kind: AnswerKind) => {
-    setAnswerDrafts((prev) => ({
-      ...prev,
-      [issueId]: { kind, text: prev[issueId]?.text ?? '' },
-    }));
-  }, []);
-
-  const setDraftText = useCallback((issueId: string, text: string) => {
-    setAnswerDrafts((prev) => ({
-      ...prev,
-      [issueId]: { kind: prev[issueId]?.kind ?? 'free-text', text },
-    }));
-  }, []);
+  const handleContinuityResolve = useCallback(() => {
+    if (!continuityDialog) return;
+    setContinuityIssues((prev) => prev.filter((i) => i.id !== continuityDialog.suggestionId));
+    setContinuityDialog(null);
+  }, [continuityDialog]);
 
   if (!enabled) {
     return (
@@ -559,6 +520,15 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
 
   return (
     <div className="brainstorm-page">
+      {continuityDialog && (
+        <ArchiveConfirmDialog
+          suggestionId={continuityDialog.suggestionId}
+          rationale={continuityDialog.rationale}
+          anchorText={continuityDialog.anchorText}
+          onClose={() => setContinuityDialog(null)}
+          onResolved={handleContinuityResolve}
+        />
+      )}
       <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {liveText}
       </span>
@@ -704,68 +674,34 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
               {continuityIssues.length === 0 && (
                 <li className="brainstorm-facts-empty bs-continuity-empty">No continuity issues flagged.</li>
               )}
-              {continuityIssues.map((issue) => {
-                const draft = answerDrafts[issue.id] ?? { kind: 'free-text' as AnswerKind, text: '' };
-                const isExpanded = expandedIssueId === issue.id;
-                return (
-                  <li
-                    key={issue.id}
-                    className={`bs-cont-item${issue.resolved ? ' bs-cont-item-resolved' : ''}`}
-                  >
-                    <label className="bs-cont-row">
-                      <input
-                        type="checkbox"
-                        className="bs-cont-checkbox"
-                        checked={issue.resolved}
-                        readOnly
-                        aria-label={`Continuity issue: ${issue.description}`}
-                      />
-                      <button
-                        className="bs-cont-label-btn"
-                        onClick={() => !issue.resolved && toggleIssue(issue.id)}
-                        disabled={issue.resolved}
-                        type="button"
-                      >
-                        {issue.description}
-                      </button>
-                    </label>
-                    {isExpanded && !issue.resolved && (
-                      <div className="bs-cont-expand">
-                        {issue.anchorText && (
-                          <p className="bs-cont-anchor">Near: <em>&ldquo;{issue.anchorText}&rdquo;</em></p>
-                        )}
-                        <div className="bs-cont-answer-kinds">
-                          {(['fix-note', 'suggest-change', 'free-text'] as AnswerKind[]).map((k) => (
-                            <button
-                              key={k}
-                              type="button"
-                              className={`bs-cont-kind-btn${draft.kind === k ? ' active' : ''}`}
-                              onClick={() => setDraftKind(issue.id, k)}
-                            >
-                              {k === 'fix-note' ? 'Fix note' : k === 'suggest-change' ? 'Suggest change' : 'Free text'}
-                            </button>
-                          ))}
-                        </div>
-                        <textarea
-                          className="bs-cont-textarea"
-                          value={draft.text}
-                          onChange={(e) => setDraftText(issue.id, e.target.value)}
-                          placeholder="Describe your resolution…"
-                          rows={3}
-                          aria-label="Continuity resolution note"
-                        />
-                        <button
-                          type="button"
-                          className="bs-cont-submit-btn"
-                          onClick={() => void submitContinuityAnswer(issue.id)}
-                        >
-                          Send to Chat
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
+              {continuityIssues.map((issue) => (
+                <li
+                  key={issue.id}
+                  className={`bs-cont-item${issue.resolved ? ' bs-cont-item-resolved' : ''}`}
+                >
+                  <label className="bs-cont-row">
+                    <input
+                      type="checkbox"
+                      className="bs-cont-checkbox"
+                      checked={issue.resolved}
+                      readOnly
+                      aria-label={`Continuity issue: ${issue.description}`}
+                    />
+                    <button
+                      className="bs-cont-label-btn"
+                      onClick={() => !issue.resolved && setContinuityDialog({
+                        suggestionId: issue.id,
+                        rationale: issue.description,
+                        anchorText: issue.anchorText,
+                      })}
+                      disabled={issue.resolved}
+                      type="button"
+                    >
+                      {issue.description}
+                    </button>
+                  </label>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -781,40 +717,57 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                 Named facts will appear here as Claude identifies them.
               </div>
             ) : (
-              facts.map((fact) => (
-                <div
-                  key={fact.id}
-                  className={`bs-fact${fact.savedStatus === 'saved' ? ' bs-fact-saved' : ''}`}
-                >
-                  <span className={`bs-fact-type bs-fact-type-${fact.type === 'note' ? 'other' : fact.type}`}>
-                    {FACT_TYPE_LABELS[fact.type]}
-                  </span>
-                  <div className="bs-fact-name">{fact.name}</div>
-                  <p className="bs-fact-desc">{fact.content}</p>
-                  <div className="bs-fact-actions">
-                    {fact.savedStatus === 'saving' && (
-                      <span className="bs-fact-saving">Saving…</span>
-                    )}
-                    {fact.savedStatus === 'saved' && (
-                      <span className="bs-fact-saved-label">Saved ✓</span>
-                    )}
-                    {fact.savedStatus === 'pending_review' && (
-                      <span className="bs-fact-pending-review">Pending review →</span>
-                    )}
-                    {fact.savedStatus === 'error' && (
-                      <span className="bs-fact-save-error">
-                        Failed —{' '}
-                        <button
-                          className="bs-fact-retry-btn"
-                          onClick={() => saveFactToVault(fact.id)}
-                        >
-                          retry
-                        </button>
-                      </span>
-                    )}
+              FACT_TYPE_ORDER.map((type) => {
+                const group = facts.filter((f) => f.type === type);
+                if (group.length === 0) return null;
+                return (
+                  <div key={type} className="bs-fact-group">
+                    <div className="bs-fact-group-header">{FACT_TYPE_LABELS[type]}s</div>
+                    {group.map((fact) => (
+                      <div
+                        key={fact.id}
+                        className={`bs-fact${fact.savedStatus === 'saved' ? ' bs-fact-saved' : ''}`}
+                      >
+                        <div className="bs-fact-name">
+                          {fact.savedStatus === 'saved' && fact.entityId && onOpenEntity ? (
+                            <button
+                              className="bs-fact-name-link"
+                              type="button"
+                              onClick={() => onOpenEntity(fact.entityId!)}
+                              aria-label={`Open ${fact.name} in vault`}
+                            >
+                              {fact.name}
+                            </button>
+                          ) : fact.name}
+                        </div>
+                        <p className="bs-fact-desc">{fact.content}</p>
+                        <div className="bs-fact-actions">
+                          {fact.savedStatus === 'saving' && (
+                            <span className="bs-fact-saving">Saving…</span>
+                          )}
+                          {fact.savedStatus === 'saved' && (
+                            <span className="bs-fact-saved-label">Saved ✓</span>
+                          )}
+                          {fact.savedStatus === 'pending_review' && (
+                            <span className="bs-fact-pending-review">Pending review →</span>
+                          )}
+                          {fact.savedStatus === 'error' && (
+                            <span className="bs-fact-save-error">
+                              Failed —{' '}
+                              <button
+                                className="bs-fact-retry-btn"
+                                onClick={() => saveFactToVault(fact.id)}
+                              >
+                                retry
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

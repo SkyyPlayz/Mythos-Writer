@@ -14,6 +14,7 @@ const mockStreamCancel = vi.fn().mockResolvedValue({ cancelled: true });
 const mockStreamAck = vi.fn();
 const mockEntityCreate = vi.fn();
 const mockEntityList = vi.fn();
+const mockArchiveConfirm = vi.fn();
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,6 +23,7 @@ function buildApi(overrides: Record<string, unknown> = {}) {
     streamAck: mockStreamAck,
     entityCreate: mockEntityCreate,
     entityList: mockEntityList,
+    archiveConfirm: mockArchiveConfirm,
     onStreamToken: (cb: TokenHandler) => {
       tokenCb = cb;
       return () => {
@@ -69,6 +71,7 @@ beforeEach(() => {
   errorCb = null;
   mockStreamStart.mockResolvedValue({ streamId: 'test-stream-1' });
   mockStreamCancel.mockResolvedValue({ cancelled: true });
+  mockArchiveConfirm.mockResolvedValue({ ok: true, auditId: 'aud-x' });
   // Default: no existing entities — new facts are saved directly.
   mockEntityList.mockResolvedValue({ entities: [] });
   (window as unknown as { api: unknown }).api = buildApi();
@@ -94,6 +97,47 @@ describe('BrainstormPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Your story sounds epic.')).toBeInTheDocument(),
     );
+  });
+
+  it('groups facts by type with section headers', async () => {
+    mockEntityCreate.mockResolvedValue({ id: 'e1', name: 'Entity' });
+
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Describe my world' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await simulateStream([
+      '[FACT:character|Ren Dusk|A wandering swordsman] [FACT:location|The Ember Keep|Ancient fortress in the north]',
+    ]);
+
+    await waitFor(() => expect(screen.getByText('Ren Dusk')).toBeInTheDocument());
+    expect(screen.getByText('The Ember Keep')).toBeInTheDocument();
+    expect(screen.getByText('Characters')).toBeInTheDocument();
+    expect(screen.getByText('Locations')).toBeInTheDocument();
+  });
+
+  it('shows a clickable link for a saved fact when onOpenEntity is provided', async () => {
+    mockEntityCreate.mockResolvedValue({ id: 'entity-42', name: 'Lyra Ashveil' });
+    const mockOpenEntity = vi.fn();
+
+    render(<BrainstormPage onClose={() => {}} onOpenEntity={mockOpenEntity} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Tell me about the hero' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await simulateStream([
+      '[FACT:character|Lyra Ashveil|A young mage with silver hair]',
+    ]);
+
+    // Wait for the entity to be saved and show the link
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /open lyra ashveil in vault/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /open lyra ashveil in vault/i }));
+    expect(mockOpenEntity).toHaveBeenCalledWith('entity-42');
   });
 
   it('extracts FACT tags, shows them in the Facts panel, and auto-saves', async () => {
@@ -666,29 +710,52 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     );
   });
 
-  it('clicking "Send to Chat" on an expanded issue marks it resolved and calls suggestionsAccept', async () => {
+  it('clicking an issue label opens ArchiveConfirmDialog', async () => {
     const mockSuggestionsList = vi.fn().mockResolvedValue({
       suggestions: [makeInconsistencySuggestion()],
     });
-    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
     (window as unknown as { api: unknown }).api = buildApi({
       suggestionsList: mockSuggestionsList,
-      suggestionsAccept: mockSuggestionsAccept,
     });
 
     render(<BrainstormPage onClose={() => {}} />);
 
-    // Click the label button to expand the issue form
     const labelBtn = await screen.findByRole('button', {
       name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
     });
     fireEvent.click(labelBtn);
 
-    // Click "Send to Chat" to resolve and call suggestionsAccept
-    const sendBtn = await screen.findByRole('button', { name: /send to chat/i });
-    fireEvent.click(sendBtn);
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: /archive continuity issue/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Match Archive to Story')).toBeInTheDocument();
+    expect(screen.getByText('Suggest Story Change')).toBeInTheDocument();
+    expect(screen.getByText('Ignore')).toBeInTheDocument();
+  });
 
-    await waitFor(() => expect(mockSuggestionsAccept).toHaveBeenCalledWith('cont-1'));
+  it('resolving via ArchiveConfirmDialog removes the issue from the list', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({
+      suggestionsList: mockSuggestionsList,
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+
+    const ignoreBtn = await screen.findByRole('button', { name: /ignore this finding/i });
+    fireEvent.click(ignoreBtn);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Elara has blonde hair in the vault but dark hair in this scene\./i),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it('renders multiple continuity issues as separate checkboxes', async () => {
