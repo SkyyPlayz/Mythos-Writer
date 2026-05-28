@@ -102,6 +102,7 @@ import {
   type AgentPersonaResetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
+  type SettingsTestConnectionPayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -213,6 +214,7 @@ import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage } from './streaming.js';
+import { streamFromProvider } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -499,6 +501,15 @@ function notifyVaultChanged(filePath: string) {
     mainWindow.webContents.send('vault:file-changed', { path: relativePath });
     // Debounced reindex — auto-sync markdown prose back to manifest
     scheduleReindex();
+  }
+}
+
+// Notify renderer when the notes vault changes so it can refresh entity state.
+// Fires on external edits (e.g. Obsidian) and schedules an FTS rebuild.
+function notifyNotesVaultChanged(_filePath: string) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    scheduleReindex();
+    mainWindow.webContents.send('vault:notes-updated', { count: 1 });
   }
 }
 
@@ -1145,6 +1156,26 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler();
     }
     return { saved: true };
+  },
+
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
+    const t0 = Date.now();
+    try {
+      const ac = new AbortController();
+      for await (const _ of streamFromProvider(
+        { kind: payload.provider.kind, apiKey: payload.provider.apiKey, baseUrl: payload.provider.baseUrl, model: payload.provider.model },
+        { messages: [{ role: 'user', content: 'Hi' }], maxTokens: 1, signal: ac.signal },
+      )) {
+        ac.abort();
+        break;
+      }
+      return { ok: true, latencyMs: Date.now() - t0 };
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return { ok: true, latencyMs: Date.now() - t0 };
+      }
+      return { ok: false, latencyMs: Date.now() - t0, error: e instanceof Error ? e.message : 'Unknown error' };
+    }
   },
 
   // MYT-343: per-agent config get/set
@@ -2338,8 +2369,9 @@ const handlers: IpcHandlers = {
       writeManifest(getManifestPath(), synced);
       try { buildFullIndex(getDb(), newRoot, synced); } catch { /* non-fatal */ }
     } catch { /* non-fatal */ }
-    // Restart file watcher and scheduler
+    // Restart file watchers and scheduler
     await startVaultWatcher(newRoot, notifyVaultChanged);
+    await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
     startWritingScanScheduler();
     // Notify renderer to reload
     if (mainWindow) {
@@ -3703,8 +3735,9 @@ app.whenReady().then(async () => {
     buildFullIndex(getDb(), getVaultRoot(), manifest);
   } catch { /* non-fatal — index rebuilt on next watcher event */ }
 
-  // Start watching vault for external markdown changes
+  // Start watching both vaults for external markdown changes
   await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
+  await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -3716,6 +3749,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', async () => {
   stopWritingScanScheduler();
   await stopVaultWatcher();
+  await stopNotesVaultWatcher();
   closeDb();
   if (process.platform !== 'darwin') {
     app.quit();

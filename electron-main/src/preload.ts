@@ -146,6 +146,8 @@ contextBridge.exposeInMainWorld('api', {
   // voicePickBinary, required when changing the local STT/TTS path fields.
   settingsSet: (settings: unknown, tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string }) =>
     ipcRenderer.invoke('settings:set', { settings, ...(tokens ?? {}) }),
+  // MYT-779: test connection to an AI provider.
+  settingsTestConnection: (provider: unknown) => ipcRenderer.invoke('settings:testConnection', { provider }),
   // MYT-788: main-process file picker for local voice binary / model selection.
   voicePickBinary: (kind: 'stt-binary' | 'tts-binary' | 'tts-model') =>
     ipcRenderer.invoke('voice:pickBinary', { kind }),

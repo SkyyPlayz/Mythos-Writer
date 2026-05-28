@@ -91,6 +91,7 @@ export const IPC_CHANNELS = {
   // App settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  SETTINGS_TEST_CONNECTION: 'settings:testConnection',
 
   // Liquid Neon background image (MYT-613)
   BG_PICK: 'bg:pick',
@@ -345,6 +346,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) => Promise<SettingsTestConnectionResponse>;
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
   [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => SuggestionsGetResponse;
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
@@ -1156,6 +1158,16 @@ export interface SettingsSetPayload {
 export interface SettingsSetResponse {
   saved: boolean;
   /** Present when settings:set failed the voice-spawn gate (MYT-788). */
+  error?: string;
+}
+
+export interface SettingsTestConnectionPayload {
+  provider: ProviderSettings;
+}
+
+export interface SettingsTestConnectionResponse {
+  ok: boolean;
+  latencyMs: number;
   error?: string;
 }
 
