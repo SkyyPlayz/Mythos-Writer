@@ -147,6 +147,7 @@ import {
   mergeProvenanceFrontmatter,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
+import { assertValidManifest } from './manifestValidate.js';
 import {
   createEntity,
   readEntity,
@@ -430,6 +431,10 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
     ensureVaultDir();
+    // MYT-792: validate before touching disk. assertValidManifest throws
+    // ManifestValidationError on the first invalid field; setupIpcMain's
+    // try/catch converts it into { error } for the renderer.
+    assertValidManifest(payload?.manifest);
     writeManifest(getManifestPath(), payload.manifest);
     const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
     return { path: getManifestPath(), bytes };
