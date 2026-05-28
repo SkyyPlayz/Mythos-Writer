@@ -2,6 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      MYT-776 — Content-Security-Policy baseline.
+
+      script-src 'self'                — no remote scripts, no inline JS.
+      style-src 'self' 'unsafe-inline' — Vite/HMR and CSS-in-JS inject <style> tags at runtime.
+      img/media-src … file: blob: data: — vault assets render from file:// URLs and blob/data URIs.
+      connect-src 'self' api.{anthropic,openai}.com ws/http://localhost:* — model endpoints
+                                                                            + Vite HMR websocket in dev.
+      object-src 'none', base-uri 'self', frame-ancestors 'none' — Electron renderer is never embedded
+                                                                   and never loads plugins or relocates.
+
+      Keep in sync with docs/security/electron-baseline.md.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com ws://localhost:* http://localhost:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; worker-src 'self' blob:;"
+    />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mythos Writer</title>

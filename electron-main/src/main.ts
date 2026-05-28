@@ -1,5 +1,6 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { secureWebPreferences, createWindowOpenHandler } from './security.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -2086,17 +2087,32 @@ const handlers: IpcHandlers = {
 
 // ─── Create BrowserWindow ───
 function createWindow() {
+  // electron-vite emits the preload to out/preload/preload.js, while this
+  // file runs from out/main/. (The packaged app preserves the same layout.)
+  const preloadPath = path.join(__dirname, '../preload/preload.js');
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: 'Mythos Writer',
-    webPreferences: {
-      // electron-vite emits the preload to out/preload/preload.js, while this
-      // file runs from out/main/. (The packaged app preserves the same layout.)
-      preload: path.join(__dirname, '../preload/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+    webPreferences: secureWebPreferences({ preloadPath }),
+  });
+
+  // MYT-776: deny renderer-initiated popups by default; route http(s) URLs to
+  // the user's system browser via shell.openExternal instead of opening an
+  // Electron window with unfettered privileges.
+  mainWindow.webContents.setWindowOpenHandler(
+    createWindowOpenHandler((url) => { shell.openExternal(url).catch(() => {}); }),
+  );
+
+  // Block in-place navigations to anything other than the loaded renderer —
+  // protects against a compromised renderer redirecting to a remote origin
+  // that would then inherit the preload bridge.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const devServer = process.env.VITE_DEV_SERVER_URL;
+    const isAllowed =
+      (devServer && url.startsWith(devServer)) ||
+      url.startsWith('file://');
+    if (!isAllowed) event.preventDefault();
   });
 
   // Load the Vite-built renderer
