@@ -131,6 +131,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
   readSceneFile,
@@ -1396,7 +1397,10 @@ const handlers: IpcHandlers = {
 
     let filePath: string;
     if (payload.targetPath) {
-      filePath = payload.targetPath;
+      // MYT-675: the headless targetPath escape hatch must stay inside the vault.
+      // resolveEpubExportPath rejects absolute paths, "../" traversal, symlink
+      // escapes, and non-.epub targets before any bytes are written.
+      filePath = resolveEpubExportPath(getVaultRoot(), payload.targetPath);
     } else {
       const result = await dialog.showSaveDialog({
         title: 'Export EPUB',

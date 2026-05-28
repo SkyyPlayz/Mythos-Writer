@@ -34,6 +34,7 @@ import {
   MAX_VAULT_FILE_BYTES,
   VaultFileTooLargeError,
   realSafePath,
+  resolveEpubExportPath,
   startVaultWatcher,
   stopVaultWatcher,
 } from './vault.js';
@@ -705,6 +706,68 @@ describe('realSafePath — traversal & absolute-path hardening (MYT-672 / MYT-64
 
   it('deleteVaultFile rejects an absolute path', () => {
     expect(() => deleteVaultFile(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+});
+
+describe('resolveEpubExportPath — export:epub targetPath containment (MYT-675)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-epub-target-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('accepts a vault-relative .epub path and anchors it inside the vault', () => {
+    const resolved = resolveEpubExportPath(tmpDir, 'exports/book.epub');
+    // realSafePath in write-mode returns the realpath-resolved target, so
+    // anchor the expectation on the real tmpDir (macOS /var → /private/var).
+    const realTmp = fs.realpathSync.native(tmpDir);
+    expect(resolved).toBe(path.join(realTmp, 'exports', 'book.epub'));
+    expect(resolved.startsWith(realTmp + path.sep)).toBe(true);
+  });
+
+  it('accepts a bare .epub filename at the vault root', () => {
+    const realTmp = fs.realpathSync.native(tmpDir);
+    expect(resolveEpubExportPath(tmpDir, 'My Story.epub')).toBe(path.join(realTmp, 'My Story.epub'));
+  });
+
+  it('rejects an absolute out-of-vault target path', () => {
+    expect(() => resolveEpubExportPath(tmpDir, '/tmp/evil.epub')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a "../" traversal escape (no existing parent)', () => {
+    expect(() => resolveEpubExportPath(tmpDir, '../../escape.epub')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a "../" escape whose parent exists', () => {
+    fs.mkdirSync(path.join(tmpDir, 'sub'));
+    expect(() => resolveEpubExportPath(tmpDir, 'sub/../../escape.epub')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects a non-.epub extension (cannot clobber arbitrary file types)', () => {
+    expect(() => resolveEpubExportPath(tmpDir, 'notes.txt')).toThrow(/must end in \.epub/);
+    expect(() => resolveEpubExportPath(tmpDir, '.bashrc')).toThrow(/must end in \.epub/);
+    expect(() => resolveEpubExportPath(tmpDir, 'no-extension')).toThrow(/must end in \.epub/);
+  });
+
+  it('accepts a case-insensitive .EPUB extension', () => {
+    const realTmp = fs.realpathSync.native(tmpDir);
+    expect(resolveEpubExportPath(tmpDir, 'Book.EPUB')).toBe(path.join(realTmp, 'Book.EPUB'));
+  });
+
+  it('rejects an empty or whitespace target path', () => {
+    expect(() => resolveEpubExportPath(tmpDir, '')).toThrow(/non-empty string/);
+    expect(() => resolveEpubExportPath(tmpDir, '   ')).toThrow(/non-empty string/);
+  });
+
+  it('rejects a symlink-escape .epub target (parent symlinks outside the vault)', () => {
+    fs.symlinkSync(os.tmpdir(), path.join(tmpDir, 'link'));
+    // MYT-641 reworded the write-mode parent-escape error from
+    // "parent symlink escape detected" to "parent symlink escapes vault".
+    expect(() => resolveEpubExportPath(tmpDir, 'link/escape.epub')).toThrow(/parent symlink escapes vault/);
   });
 });
 

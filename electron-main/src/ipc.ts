@@ -1335,7 +1335,11 @@ export interface ExportEpubPayload {
   storyId: string;
   /** Override title/author/language embedded in the EPUB metadata block. */
   metadata?: ExportEpubMetadata;
-  /** Write directly to this path instead of showing a save dialog. */
+  /**
+   * Headless export escape hatch: write directly here instead of showing a save
+   * dialog. MYT-675: constrained to a vault-relative `.epub` path — absolute
+   * paths, `../` traversal, and symlink escapes are rejected.
+   */
   targetPath?: string;
 }
 
