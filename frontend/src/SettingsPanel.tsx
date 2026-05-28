@@ -866,6 +866,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   <span className="lg-axis-label">Softness</span>
                   <input
                     id="lg-softness"
+                    data-testid="theme-contrast-slider"
                     className="settings-slider lg-slider-main"
                     type="range"
                     min={0}
