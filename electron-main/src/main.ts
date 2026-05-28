@@ -84,6 +84,11 @@ import {
   type VaultCreateScenePayload,
   type VaultListChaptersPayload,
   type VaultListScenesPayload,
+  type VaultReadDocumentPayload,
+  type VaultWriteDocumentPayload,
+  type VaultDeleteDocumentPayload,
+  type VaultWatchDocumentPayload,
+  type VaultUnwatchDocumentPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -145,6 +150,10 @@ import {
   createScene as vaultCreateScene,
   listChapters as vaultListChapters,
   listScenes as vaultListScenes,
+  softDeleteDocument,
+  watchDocument,
+  unwatchDocument,
+  VaultFileNotFoundError,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
 import {
@@ -1966,6 +1975,92 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_LIST_SCENES]: (payload: VaultListScenesPayload) => {
     ensureVaultDir();
     return { scenes: vaultListScenes(getVaultRoot(), payload.chapterPath) };
+  },
+
+  // ─── Document-level IPC with typed errors (MYT-610) ───
+
+  [IPC_CHANNELS.VAULT_READ_DOCUMENT]: (payload: VaultReadDocumentPayload) => {
+    ensureVaultDir();
+    try {
+      const { content } = readVaultFile(getVaultRoot(), payload.filePath);
+      return { content, filePath: payload.filePath };
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      if (msg.includes('Path traversal denied')) {
+        return { error: 'OUTSIDE_VAULT' as const, message: msg };
+      }
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === 'ENOENT' || nodeErr.code === 'ENOTDIR') {
+        return { error: 'NOT_FOUND' as const, message: `Not found: ${payload.filePath}` };
+      }
+      if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        return { error: 'PERMISSION_DENIED' as const, message: msg };
+      }
+      // Re-throw unexpected errors so setupIpcMain wraps them normally.
+      throw err;
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_WRITE_DOCUMENT]: (payload: VaultWriteDocumentPayload) => {
+    ensureVaultDir();
+    try {
+      const { bytes } = writeVaultFileAtomic(getVaultRoot(), payload.filePath, payload.content);
+      return { filePath: payload.filePath, bytes };
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      if (msg.includes('Path traversal denied')) {
+        return { error: 'OUTSIDE_VAULT' as const, message: msg };
+      }
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        return { error: 'PERMISSION_DENIED' as const, message: msg };
+      }
+      throw err;
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_DELETE_DOCUMENT]: (payload: VaultDeleteDocumentPayload) => {
+    ensureVaultDir();
+    try {
+      const { path: deletedPath, trashedPath } = softDeleteDocument(getVaultRoot(), payload.filePath);
+      return { filePath: deletedPath, trashedPath };
+    } catch (err) {
+      if (err instanceof VaultFileNotFoundError) {
+        return { error: 'NOT_FOUND' as const, message: err.message };
+      }
+      const msg = (err as Error).message ?? String(err);
+      if (msg.includes('Path traversal denied')) {
+        return { error: 'OUTSIDE_VAULT' as const, message: msg };
+      }
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        return { error: 'PERMISSION_DENIED' as const, message: msg };
+      }
+      throw err;
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_WATCH_DOCUMENT]: async (payload: VaultWatchDocumentPayload) => {
+    ensureVaultDir();
+    try {
+      await watchDocument(getVaultRoot(), payload.filePath, (changedPath) => {
+        if (mainWindow) {
+          mainWindow.webContents.send('vault:documentChanged', { filePath: changedPath });
+        }
+      });
+      return { watching: true, filePath: payload.filePath };
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      if (msg.includes('Path traversal denied')) {
+        return { error: 'OUTSIDE_VAULT' as const, message: msg };
+      }
+      throw err;
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_UNWATCH_DOCUMENT]: async (payload: VaultUnwatchDocumentPayload) => {
+    await unwatchDocument(getVaultRoot(), payload.filePath);
+    return { watching: false, filePath: payload.filePath };
   },
 
 };

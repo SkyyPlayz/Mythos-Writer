@@ -1019,6 +1019,115 @@ export function obsidianDryRun(
   };
 }
 
+// ─── Document-level IPC helpers (MYT-610) ───
+// Typed-error read/write/soft-delete + per-file watchers.
+
+export const VAULT_TRASH_DIR = '.trash';
+
+/** Thrown by softDeleteDocument when the target file does not exist. */
+export class VaultFileNotFoundError extends Error {
+  readonly code = 'NOT_FOUND' as const;
+  constructor(filePath: string) {
+    super(`Not found: ${filePath}`);
+    this.name = 'VaultFileNotFoundError';
+  }
+}
+
+/**
+ * Soft-deletes a vault file by moving it into `.trash/` inside the vault root.
+ * Preserves the original sub-directory structure under `.trash/` and appends a
+ * timestamp suffix to the filename so repeated deletes of the same path never
+ * collide.
+ *
+ * Throws VaultFileNotFoundError when the file does not exist.
+ * Throws path-traversal errors for paths that escape the vault.
+ */
+export function softDeleteDocument(
+  vaultRoot: string,
+  filePath: string
+): { path: string; trashedPath: string } {
+  const fullPath = realSafePath(vaultRoot, filePath);
+  if (!fs.existsSync(fullPath)) throw new VaultFileNotFoundError(filePath);
+
+  const trashDir = path.join(vaultRoot, VAULT_TRASH_DIR);
+  const relDir = path.dirname(filePath);
+  const trashSubDir = relDir !== '.' ? path.join(trashDir, relDir) : trashDir;
+  if (!fs.existsSync(trashSubDir)) fs.mkdirSync(trashSubDir, { recursive: true });
+
+  const ext = path.extname(filePath);
+  const stem = path.basename(filePath, ext);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const rand = crypto.randomBytes(3).toString('hex');
+  const trashedName = `${stem}-${timestamp}-${rand}${ext}`;
+  const trashedFullPath = path.join(trashSubDir, trashedName);
+
+  // Confirm the trash target is still inside the vault (lexical check is enough —
+  // the trashSubDir was created directly under vaultRoot so no symlinks involved).
+  const normalizedRoot = path.resolve(vaultRoot);
+  if (!path.resolve(trashedFullPath).startsWith(normalizedRoot + path.sep)) {
+    throw new Error(`Path traversal denied: trash target escapes vault`);
+  }
+
+  fs.renameSync(fullPath, trashedFullPath);
+  return { path: filePath, trashedPath: path.relative(vaultRoot, trashedFullPath) };
+}
+
+// ─── Per-file document watchers (MYT-610) ───
+// Separate from the vault-wide watcher — lets the editor subscribe to changes
+// on exactly the file it has open, without receiving noise from other files.
+
+const documentWatchers = new Map<string, FSWatcher>();
+
+/**
+ * Start watching a single vault file for external changes (e.g. edits from
+ * another tool or another Mythos window).
+ * Calls `onChanged(relativeFilePath)` on `change`, `add`, and `unlink` events.
+ * A no-op if the file is already being watched.
+ * Throws a path-traversal error if `filePath` is outside `vaultRoot`.
+ */
+export async function watchDocument(
+  vaultRoot: string,
+  filePath: string,
+  onChanged: (filePath: string) => void
+): Promise<void> {
+  const normalizedRoot = path.resolve(vaultRoot);
+  const resolved = path.resolve(vaultRoot, filePath);
+  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
+    throw new Error(`Path traversal denied: ${filePath}`);
+  }
+
+  if (documentWatchers.has(resolved)) return;
+
+  const { default: chokidar } = await import('chokidar');
+  const watcher = chokidar.watch(resolved, {
+    persistent: true,
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
+    followSymlinks: false,
+  });
+
+  watcher.on('change', () => onChanged(filePath));
+  watcher.on('add', () => onChanged(filePath));
+  watcher.on('unlink', () => onChanged(filePath));
+
+  documentWatchers.set(resolved, watcher);
+}
+
+/**
+ * Stop watching a vault file. A no-op if the file is not currently watched.
+ */
+export async function unwatchDocument(
+  vaultRoot: string,
+  filePath: string
+): Promise<void> {
+  const resolved = path.resolve(vaultRoot, filePath);
+  const watcher = documentWatchers.get(resolved);
+  if (watcher) {
+    await watcher.close();
+    documentWatchers.delete(resolved);
+  }
+}
+
 // ─── Provenance frontmatter merge ───
 // Merges agent provenance metadata into an existing vault file's frontmatter
 // while preserving (or replacing) the prose body.

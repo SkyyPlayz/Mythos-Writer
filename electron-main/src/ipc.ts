@@ -179,6 +179,13 @@ export const IPC_CHANNELS = {
   VAULT_CREATE_SCENE: 'vault:createScene',
   VAULT_LIST_CHAPTERS: 'vault:listChapters',
   VAULT_LIST_SCENES: 'vault:listScenes',
+
+  // Document-level IPC with typed errors + soft-delete + per-file watchers (MYT-610)
+  VAULT_READ_DOCUMENT: 'vault:readDocument',
+  VAULT_WRITE_DOCUMENT: 'vault:writeDocument',
+  VAULT_DELETE_DOCUMENT: 'vault:deleteDocument',
+  VAULT_WATCH_DOCUMENT: 'vault:watchDocument',
+  VAULT_UNWATCH_DOCUMENT: 'vault:unwatchDocument',
 } as const;
 
 // ─── Main process handlers ───
@@ -292,6 +299,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_CREATE_SCENE]: (payload: VaultCreateScenePayload) => VaultCreateSceneResponse;
   [IPC_CHANNELS.VAULT_LIST_CHAPTERS]: (payload: VaultListChaptersPayload) => VaultListChaptersResponse;
   [IPC_CHANNELS.VAULT_LIST_SCENES]: (payload: VaultListScenesPayload) => VaultListScenesResponse;
+  // Document-level IPC (MYT-610)
+  [IPC_CHANNELS.VAULT_READ_DOCUMENT]: (payload: VaultReadDocumentPayload) => VaultReadDocumentResponse;
+  [IPC_CHANNELS.VAULT_WRITE_DOCUMENT]: (payload: VaultWriteDocumentPayload) => VaultWriteDocumentResponse;
+  [IPC_CHANNELS.VAULT_DELETE_DOCUMENT]: (payload: VaultDeleteDocumentPayload) => VaultDeleteDocumentResponse;
+  [IPC_CHANNELS.VAULT_WATCH_DOCUMENT]: (payload: VaultWatchDocumentPayload) => Promise<VaultWatchDocumentResponse | VaultDocumentError>;
+  [IPC_CHANNELS.VAULT_UNWATCH_DOCUMENT]: (payload: VaultUnwatchDocumentPayload) => Promise<VaultUnwatchDocumentResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -1570,4 +1583,71 @@ export interface VaultListScenesPayload {
 
 export interface VaultListScenesResponse {
   scenes: SceneInfo[];
+}
+
+// ─── Document-level IPC types (MYT-610) ───
+
+/** Typed error codes for vault document operations. */
+export type VaultErrorCode = 'NOT_FOUND' | 'PERMISSION_DENIED' | 'OUTSIDE_VAULT';
+
+export interface VaultDocumentError {
+  error: VaultErrorCode;
+  message: string;
+}
+
+export interface VaultReadDocumentPayload {
+  filePath: string;
+}
+
+export interface VaultReadDocumentSuccess {
+  content: string;
+  filePath: string;
+}
+
+export type VaultReadDocumentResponse = VaultReadDocumentSuccess | VaultDocumentError;
+
+export interface VaultWriteDocumentPayload {
+  filePath: string;
+  content: string;
+}
+
+export interface VaultWriteDocumentSuccess {
+  filePath: string;
+  bytes: number;
+}
+
+export type VaultWriteDocumentResponse = VaultWriteDocumentSuccess | VaultDocumentError;
+
+export interface VaultDeleteDocumentPayload {
+  filePath: string;
+}
+
+export interface VaultDeleteDocumentSuccess {
+  filePath: string;
+  trashedPath: string;
+}
+
+export type VaultDeleteDocumentResponse = VaultDeleteDocumentSuccess | VaultDocumentError;
+
+export interface VaultWatchDocumentPayload {
+  filePath: string;
+}
+
+export interface VaultWatchDocumentResponse {
+  watching: boolean;
+  filePath: string;
+}
+
+export interface VaultUnwatchDocumentPayload {
+  filePath: string;
+}
+
+export interface VaultUnwatchDocumentResponse {
+  watching: boolean;
+  filePath: string;
+}
+
+/** Push event payload sent on `vault:documentChanged` when a watched file changes. */
+export interface VaultDocumentChangedEvent {
+  filePath: string;
 }

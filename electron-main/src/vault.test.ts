@@ -35,6 +35,11 @@ import {
   createScene,
   listChapters,
   listScenes,
+  softDeleteDocument,
+  watchDocument,
+  unwatchDocument,
+  VaultFileNotFoundError,
+  VAULT_TRASH_DIR,
   MANUSCRIPT_DIR,
   PROJECTS_DIR,
   MAX_VAULT_FILE_BYTES,
@@ -1384,5 +1389,161 @@ describe('listScenes — MYT-609', () => {
 describe('PROJECTS_DIR constant — MYT-609', () => {
   it('equals Projects', () => {
     expect(PROJECTS_DIR).toBe('Projects');
+  });
+});
+
+// ─── softDeleteDocument (MYT-610) ───
+
+describe('softDeleteDocument — soft-delete to .trash/', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-soft-del-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('moves the file into .trash/ instead of permanently deleting it', () => {
+    const relPath = 'scene.md';
+    fs.writeFileSync(path.join(tmpDir, relPath), 'content', 'utf-8');
+    const result = softDeleteDocument(tmpDir, relPath);
+    expect(fs.existsSync(path.join(tmpDir, relPath))).toBe(false);
+    expect(result.path).toBe(relPath);
+    expect(result.trashedPath).toMatch(new RegExp(`^${VAULT_TRASH_DIR}/`));
+    expect(fs.existsSync(path.join(tmpDir, result.trashedPath))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, result.trashedPath), 'utf-8')).toBe('content');
+  });
+
+  it('preserves the original subdirectory structure under .trash/', () => {
+    const relPath = 'Projects/Novel/Chapter-01/Scene-01.md';
+    fs.mkdirSync(path.join(tmpDir, 'Projects/Novel/Chapter-01'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relPath), 'prose', 'utf-8');
+    const result = softDeleteDocument(tmpDir, relPath);
+    expect(result.trashedPath).toContain('Projects/Novel/Chapter-01');
+    expect(fs.existsSync(path.join(tmpDir, result.trashedPath))).toBe(true);
+  });
+
+  it('appends a timestamp suffix so two deletes of the same file never collide', () => {
+    const relPath = 'note.md';
+    fs.writeFileSync(path.join(tmpDir, relPath), 'v1', 'utf-8');
+    const r1 = softDeleteDocument(tmpDir, relPath);
+
+    fs.writeFileSync(path.join(tmpDir, relPath), 'v2', 'utf-8');
+    const r2 = softDeleteDocument(tmpDir, relPath);
+
+    expect(r1.trashedPath).not.toBe(r2.trashedPath);
+    expect(fs.readFileSync(path.join(tmpDir, r1.trashedPath), 'utf-8')).toBe('v1');
+    expect(fs.readFileSync(path.join(tmpDir, r2.trashedPath), 'utf-8')).toBe('v2');
+  });
+
+  it('throws VaultFileNotFoundError when the file does not exist', () => {
+    expect(() => softDeleteDocument(tmpDir, 'nonexistent.md')).toThrow(VaultFileNotFoundError);
+    expect(() => softDeleteDocument(tmpDir, 'nonexistent.md')).toThrow(/Not found/);
+  });
+
+  it('VaultFileNotFoundError has code NOT_FOUND', () => {
+    try {
+      softDeleteDocument(tmpDir, 'ghost.md');
+    } catch (e) {
+      expect(e instanceof VaultFileNotFoundError).toBe(true);
+      expect((e as VaultFileNotFoundError).code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('rejects path traversal', () => {
+    expect(() => softDeleteDocument(tmpDir, '../escape.md')).toThrow(/Path traversal denied/);
+  });
+
+  it('rejects an absolute path', () => {
+    expect(() => softDeleteDocument(tmpDir, '/etc/passwd')).toThrow(/Path traversal denied/);
+  });
+
+  it('creates .trash/ directory if it does not exist yet', () => {
+    const relPath = 'first.md';
+    fs.writeFileSync(path.join(tmpDir, relPath), 'hello', 'utf-8');
+    expect(fs.existsSync(path.join(tmpDir, VAULT_TRASH_DIR))).toBe(false);
+    softDeleteDocument(tmpDir, relPath);
+    expect(fs.existsSync(path.join(tmpDir, VAULT_TRASH_DIR))).toBe(true);
+  });
+});
+
+// ─── watchDocument / unwatchDocument (MYT-610) ───
+
+describe('watchDocument — per-file watcher', () => {
+  let vaultDir: string;
+
+  beforeEach(() => {
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-docwatch-'));
+  });
+
+  afterEach(async () => {
+    // Unwatch any watchers left open by tests
+    await unwatchDocument(vaultDir, 'watched.md').catch(() => {});
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  it('fires onChanged when the watched file is modified', async () => {
+    const filePath = 'watched.md';
+    const fullPath = path.join(vaultDir, filePath);
+    fs.writeFileSync(fullPath, 'initial', 'utf-8');
+
+    const events: string[] = [];
+    await watchDocument(vaultDir, filePath, (p) => events.push(p));
+
+    // Allow chokidar to complete initial scan
+    await new Promise((r) => setTimeout(r, 400));
+    fs.writeFileSync(fullPath, 'updated content', 'utf-8');
+    await new Promise((r) => setTimeout(r, 800));
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0]).toBe(filePath);
+  }, 10_000);
+
+  it('is a no-op when called twice for the same file', async () => {
+    const filePath = 'watched.md';
+    const fullPath = path.join(vaultDir, filePath);
+    fs.writeFileSync(fullPath, 'initial', 'utf-8');
+
+    const events: string[] = [];
+    await watchDocument(vaultDir, filePath, (p) => events.push(p));
+    // Second call should not register a second listener
+    await watchDocument(vaultDir, filePath, (p) => events.push(`SECOND:${p}`));
+
+    await new Promise((r) => setTimeout(r, 400));
+    fs.writeFileSync(fullPath, 'update', 'utf-8');
+    await new Promise((r) => setTimeout(r, 800));
+
+    // None of the events should contain the SECOND: prefix
+    expect(events.filter((e) => e.startsWith('SECOND:')).length).toBe(0);
+  }, 10_000);
+
+  it('rejects a path that escapes the vault', async () => {
+    await expect(
+      watchDocument(vaultDir, '../../../etc/passwd', () => {})
+    ).rejects.toThrow(/Path traversal denied/);
+  });
+
+  it('unwatchDocument stops the watcher — no events emitted after unwatch', async () => {
+    const filePath = 'watched.md';
+    const fullPath = path.join(vaultDir, filePath);
+    fs.writeFileSync(fullPath, 'v1', 'utf-8');
+
+    const events: string[] = [];
+    await watchDocument(vaultDir, filePath, (p) => events.push(p));
+    await new Promise((r) => setTimeout(r, 400));
+    await unwatchDocument(vaultDir, filePath);
+
+    const countBefore = events.length;
+    fs.writeFileSync(fullPath, 'v2 after unwatch', 'utf-8');
+    await new Promise((r) => setTimeout(r, 800));
+
+    // No new events after unwatch
+    expect(events.length).toBe(countBefore);
+  }, 10_000);
+
+  it('unwatchDocument is a no-op for a file that was never watched', async () => {
+    await expect(unwatchDocument(vaultDir, 'not-watched.md')).resolves.toBeUndefined();
   });
 });

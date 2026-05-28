@@ -344,6 +344,38 @@ contextBridge.exposeInMainWorld('api', {
   archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>
     ipcRenderer.invoke('archive:confirm', { suggestionId, action }),
   archiveIgnoreList: () => ipcRenderer.invoke('archive:ignore-list', undefined),
+
+  // Two-vault path management (MYT-608)
+  vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
+  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) =>
+    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath }),
+
+  // Per-chapter/per-scene layout (MYT-609)
+  vaultCreateChapter: (projectPath: string, chapterName: string) =>
+    ipcRenderer.invoke('vault:createChapter', { projectPath, chapterName }),
+  vaultCreateScene: (chapterPath: string, sceneName: string) =>
+    ipcRenderer.invoke('vault:createScene', { chapterPath, sceneName }),
+  vaultListChapters: (projectPath: string) =>
+    ipcRenderer.invoke('vault:listChapters', { projectPath }),
+  vaultListScenes: (chapterPath: string) =>
+    ipcRenderer.invoke('vault:listScenes', { chapterPath }),
+
+  // Document-level IPC with typed errors, soft-delete, and per-file watching (MYT-610)
+  readDocument: (filePath: string) =>
+    ipcRenderer.invoke('vault:readDocument', { filePath }),
+  writeDocument: (filePath: string, content: string) =>
+    ipcRenderer.invoke('vault:writeDocument', { filePath, content }),
+  deleteDocument: (filePath: string) =>
+    ipcRenderer.invoke('vault:deleteDocument', { filePath }),
+  watchDocument: (filePath: string) =>
+    ipcRenderer.invoke('vault:watchDocument', { filePath }),
+  unwatchDocument: (filePath: string) =>
+    ipcRenderer.invoke('vault:unwatchDocument', { filePath }),
+  onDocumentChanged: (cb: (event: { filePath: string }) => void) => {
+    const handler = (_: unknown, data: { filePath: string }) => cb(data);
+    ipcRenderer.on('vault:documentChanged', handler);
+    return () => ipcRenderer.removeListener('vault:documentChanged', handler);
+  },
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
