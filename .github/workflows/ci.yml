@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +71,9 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    # Temporarily non-blocking: GitHub-hosted macOS runners require paid Actions minutes.
+    # Will auto-pass once billing resets (June 1) or a macOS self-hosted runner is added.
+    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -127,7 +130,7 @@ jobs:
             dist-electron/*.zip
 
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
