@@ -17,7 +17,7 @@ import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
-import DepthSlider, { type ViewDepth } from './DepthSlider';
+import DepthSlider, { type ViewDepth } from './components/EditorHeader/DepthSlider';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -354,6 +354,8 @@ export default function DesktopShell() {
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
 
+  const VALID_DEPTHS: ViewDepth[] = ['book', 'chapter', 'scene'];
+
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
@@ -361,6 +363,16 @@ export default function DesktopShell() {
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
   }, []);
+
+  // Restore per-document depth from localStorage when the selected scene changes
+  useEffect(() => {
+    if (!selectedScene) return;
+    const stored = localStorage.getItem(`mythos:depth:${selectedScene.id}`) as ViewDepth | null;
+    if (stored && VALID_DEPTHS.includes(stored)) {
+      setViewDepth(stored);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedScene?.id]);
 
   const handleJumpToText = useCallback((text: string) => {
     editorApiRef.current?.jumpToText(text);
@@ -907,6 +919,9 @@ export default function DesktopShell() {
 
   const handleViewDepthChange = useCallback((newDepth: ViewDepth) => {
     setViewDepth(newDepth);
+    if (selectedScene) {
+      localStorage.setItem(`mythos:depth:${selectedScene.id}`, newDepth);
+    }
     if (newDepth === 'scene' && !selectedScene && selectedChapter && selectedStory) {
       const first = [...selectedChapter.scenes].sort((a, b) => a.order - b.order)[0];
       if (first) handleSelectScene(first, selectedChapter, selectedStory);
