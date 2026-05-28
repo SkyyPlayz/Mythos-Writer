@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
+import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode } from './types';
 import { applyTheme, applyLiquidGlassTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
@@ -827,6 +827,12 @@ export default function DesktopShell() {
     return selectedStory.title;
   }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
 
+  // §6: empty when depth=scene but the selected chapter has no scenes
+  const depthIsEmpty = useMemo(
+    () => viewDepth === 'scene' && selectedChapter !== null && selectedChapter.scenes.length === 0,
+    [viewDepth, selectedChapter],
+  );
+
   const handleDepthPrev = useCallback(() => {
     if (!selectedStory) return;
     if (viewDepth === 'scene') {
@@ -953,6 +959,8 @@ export default function DesktopShell() {
     archive: appSettings?.agents?.archive?.enabled ?? true,
   };
 
+  const writingMode: WritingMode = layout.writingMode ?? 'normal';
+
   return (
     <div className="desktop-shell">
       <UpdateBanner />
@@ -1045,6 +1053,8 @@ export default function DesktopShell() {
               onPrev={handleDepthPrev}
               onNext={handleDepthNext}
               contextLabel={depthContextLabel}
+              writingMode={writingMode}
+              isEmpty={depthIsEmpty}
             />
           )}
           {viewDepth === 'book' && selectedStory ? (

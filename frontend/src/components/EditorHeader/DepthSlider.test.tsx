@@ -169,4 +169,60 @@ describe('DepthSlider', () => {
       expect(onDepthChange).not.toHaveBeenCalled();
     });
   });
+
+  describe('§4 writing-mode attribute', () => {
+    it('sets data-writing-mode="normal" by default', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} />);
+      expect(screen.getByTestId('depth-slider')).toHaveAttribute('data-writing-mode', 'normal');
+    });
+
+    it('sets data-writing-mode="focus" in focus mode', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} writingMode="focus" />);
+      expect(screen.getByTestId('depth-slider')).toHaveAttribute('data-writing-mode', 'focus');
+    });
+
+    it('sets data-writing-mode="edit" in edit mode', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} writingMode="edit" />);
+      expect(screen.getByTestId('depth-slider')).toHaveAttribute('data-writing-mode', 'edit');
+    });
+  });
+
+  describe('§6 empty state', () => {
+    it('shows "No scenes in this chapter" when isEmpty is true', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} isEmpty={true} />);
+      expect(screen.getByRole('status')).toHaveTextContent('No scenes in this chapter');
+    });
+
+    it('hides context label when isEmpty is true', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} isEmpty={true} contextLabel="My Story › Scene 1" />);
+      expect(screen.queryByText('My Story › Scene 1')).not.toBeInTheDocument();
+    });
+
+    it('shows context label when isEmpty is false', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} isEmpty={false} contextLabel="My Story › Scene 1" />);
+      expect(screen.getByText('My Story › Scene 1')).toBeInTheDocument();
+    });
+  });
+
+  describe('§6 loading state', () => {
+    it('sets aria-busy when isLoading is true', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} isLoading={true} />);
+      expect(screen.getByTestId('depth-slider')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('hides depth buttons when isLoading is true', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} isLoading={true} />);
+      expect(screen.queryByRole('button', { name: /full book/i })).not.toBeInTheDocument();
+    });
+
+    it('shows skeleton accessible label when isLoading is true', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} isLoading={true} />);
+      expect(screen.getByLabelText(/loading navigation/i)).toBeInTheDocument();
+    });
+
+    it('passes writingMode to skeleton container', () => {
+      render(<DepthSlider {...DEFAULT_PROPS} isLoading={true} writingMode="focus" />);
+      expect(screen.getByTestId('depth-slider')).toHaveAttribute('data-writing-mode', 'focus');
+    });
+  });
 });

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import '../../DepthSlider.css';
 
 export type ViewDepth = 'book' | 'chapter' | 'scene';
+type WritingMode = 'normal' | 'focus' | 'edit';
 
 const POSITIONS: { value: ViewDepth; label: string }[] = [
   { value: 'book', label: 'Full Book' },
@@ -17,6 +18,12 @@ export interface DepthSliderProps {
   onPrev: () => void;
   onNext: () => void;
   contextLabel: string;
+  /** §4: writing mode — Focus applies visual de-emphasis via data-writing-mode attr */
+  writingMode?: WritingMode;
+  /** §6: show loading skeleton while manifest is indexing */
+  isLoading?: boolean;
+  /** §6: show empty message when depth=scene but chapter has no scenes */
+  isEmpty?: boolean;
 }
 
 export default function DepthSlider({
@@ -27,7 +34,11 @@ export default function DepthSlider({
   onPrev,
   onNext,
   contextLabel,
+  writingMode = 'normal',
+  isLoading = false,
+  isEmpty = false,
 }: DepthSliderProps) {
+  // §7: Ctrl/Cmd+Alt+↑↓ switches depth stop; ←→ steps siblings within current depth
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -51,8 +62,24 @@ export default function DepthSlider({
     return () => window.removeEventListener('keydown', handleKey);
   }, [depth, canPrev, canNext, onDepthChange, onPrev, onNext]);
 
+  if (isLoading) {
+    return (
+      <div
+        className="depth-slider-bar"
+        data-writing-mode={writingMode}
+        data-testid="depth-slider"
+        aria-busy="true"
+      >
+        <div className="depth-slider-skeleton" aria-label="Loading navigation">
+          <div className="depth-slider-skeleton-pill" />
+          <div className="depth-slider-skeleton-pill depth-slider-skeleton-pill--wide" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="depth-slider-bar" data-testid="depth-slider">
+    <div className="depth-slider-bar" data-writing-mode={writingMode} data-testid="depth-slider">
       <button
         className="depth-nav-btn"
         onClick={onPrev}
@@ -91,7 +118,11 @@ export default function DepthSlider({
         ›
       </button>
 
-      <span className="depth-context-label">{contextLabel}</span>
+      {isEmpty ? (
+        <span className="depth-empty-msg" role="status">No scenes in this chapter</span>
+      ) : (
+        <span className="depth-context-label">{contextLabel}</span>
+      )}
     </div>
   );
 }

@@ -59,12 +59,15 @@ export interface Story {
   updatedAt: string;
 }
 
+export type WritingMode = 'normal' | 'focus' | 'edit';
+
 export interface LayoutPrefs {
   leftWidth: number;
   rightWidth: number;
   bottomHeight: number;
   rightTab: 'notes' | 'properties' | 'ai';
   leftTab: 'stories' | 'vault' | 'entities' | 'review';
+  writingMode?: WritingMode;
 }
 
 export interface Manifest {
