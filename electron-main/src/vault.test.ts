@@ -164,6 +164,17 @@ describe('IPC vault round-trip', () => {
     expect(readVaultFile(tmpDir, 'chapters/chapter-1/scene-1.txt').content).toBe('Nested content');
   });
 
+  it('writeVaultFileAtomic allows nested writes when vault root is a symlink', () => {
+    const linkedRoot = `${tmpDir}-link`;
+    fs.symlinkSync(tmpDir, linkedRoot);
+    try {
+      writeVaultFileAtomic(linkedRoot, 'chapters/chapter-1/scene-1.txt', 'Nested content');
+      expect(fs.readFileSync(path.join(tmpDir, 'chapters/chapter-1/scene-1.txt'), 'utf-8')).toBe('Nested content');
+    } finally {
+      fs.rmSync(linkedRoot, { force: true });
+    }
+  });
+
   it('listVaultFiles returns written files', () => {
     writeVaultFileUnsafe_testOnly(tmpDir, 'scene-a.txt', 'a');
     writeVaultFileUnsafe_testOnly(tmpDir, 'scene-b.txt', 'b');
