@@ -83,6 +83,21 @@ interface TelemetrySettings {
   enabled: boolean;
 }
 
+type WritingMode = 'normal' | 'focus' | 'edit';
+
+interface FocusModeFlags {
+  sidebar: boolean;
+  toolbar: boolean;
+  wordCount: boolean;
+  minimap: boolean;
+}
+
+interface EditModeConfig {
+  showWritingAssistant: boolean;
+  showArchive: boolean;
+  showBetaRead: boolean;
+}
+
 /** Liquid Glass theme customization. All values optional; absent = LIQUID_GLASS_DEFAULTS. */
 interface LiquidGlassPrefs {
   /** 'default' = built-in CSS gradient; file path = background image (MYT-716). */
@@ -285,6 +300,11 @@ interface Window {
     settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
     getAgentConfig: () => Promise<unknown>;
     setAgentConfig: (agent: string, config: unknown) => Promise<unknown>;
+    agentBudgetUsage: () => Promise<{
+      writingAssistant: { tokensLastHour: number; suggestionsLastHour: number };
+      brainstorm: { tokensLastHour: number; suggestionsLastHour: number };
+      archive: { tokensLastHour: number; suggestionsLastHour: number };
+    }>;
 
     // Generation log (prompt history viewer)
     generationLogRecent: (payload: {
@@ -381,6 +401,11 @@ interface Window {
     // Archive confirmation dialog (MYT-376)
     archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') => Promise<unknown>;
     archiveIgnoreList: () => Promise<unknown>;
+
+    // Writing modes (MYT-347) — Normal / Focus / Edit backend state + IPC
+    writingModeGet: () => Promise<{ mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }>;
+    writingModeSet: (payload: { mode?: WritingMode; focusFlags?: Partial<FocusModeFlags>; editConfig?: Partial<EditModeConfig> }) => Promise<{ mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }>;
+    onWritingModeChanged: (cb: (data: { mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }) => void) => () => void;
 
     // Two-vault path management (MYT-608) — Story Vault + Notes Vault
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;

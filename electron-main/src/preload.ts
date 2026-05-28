@@ -99,6 +99,8 @@ contextBridge.exposeInMainWorld('api', {
   getAgentConfig: () => ipcRenderer.invoke('settings:getAgentConfig', undefined),
   setAgentConfig: (agent: string, config: unknown) =>
     ipcRenderer.invoke('settings:setAgentConfig', { agent, config }),
+  // Per-agent budget usage (MYT-722) — rolling 1-hour token + suggestion totals
+  agentBudgetUsage: () => ipcRenderer.invoke('agent:budgetUsage', undefined),
 
   // Generation log (prompt history)
   generationLogRecent: (payload: { limit?: number; offset?: number; agent?: string; dateFrom?: string; dateTo?: string; search?: string }) =>
@@ -348,6 +350,16 @@ contextBridge.exposeInMainWorld('api', {
   // Liquid Glass background image (MYT-613)
   pickBgImage: () => ipcRenderer.invoke('bg:pick', undefined),
   loadBgImage: (filePath: string) => ipcRenderer.invoke('bg:load', { filePath }),
+
+  // Writing modes (MYT-347) — Normal / Focus / Edit backend state
+  writingModeGet: () => ipcRenderer.invoke('writingMode:get', undefined),
+  writingModeSet: (payload: { mode?: string; focusFlags?: Record<string, boolean>; editConfig?: Record<string, boolean> }) =>
+    ipcRenderer.invoke('writingMode:set', payload),
+  onWritingModeChanged: (cb: (data: { mode: string; focusFlags: Record<string, boolean>; editConfig: Record<string, boolean> }) => void) => {
+    const handler = (_: unknown, data: { mode: string; focusFlags: Record<string, boolean>; editConfig: Record<string, boolean> }) => cb(data);
+    ipcRenderer.on('writingMode:changed', handler);
+    return () => ipcRenderer.removeListener('writingMode:changed', handler);
+  },
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

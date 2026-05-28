@@ -24,8 +24,10 @@ as the `ci`, `build-macos`, and `build-linux` jobs.
 - **`ci`** (ubuntu): frontend lint, frontend + electron-main type-checks,
   electron-main + frontend unit tests, `electron-vite` build, and headless
   Playwright E2E (vault CRUD + brainstorm).
-- **`build-macos`** (macos): lint, type-checks, unit tests, then packages the
-  macOS DMG (`npm run dist:mac`).
+- **`build-macos`** (stub, self-hosted): currently a no-op placeholder that keeps the
+  required check green. Real macOS packaging (`npm run dist:mac`) will be restored once
+  paid GitHub Actions minutes are provisioned or a self-hosted macOS runner is added
+  (tracked in MYT-749, est. June 2026).
 - **`build-linux`** (ubuntu): lint, type-checks, unit tests, then packages the
   Linux AppImage (`npm run dist:linux`) and smoke-tests that it launches.
 

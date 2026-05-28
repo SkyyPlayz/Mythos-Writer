@@ -82,6 +82,7 @@ import {
   type ArchiveConfirmPayload,
   type BgLoadPayload,
   type VaultSetPathsPayload,
+  type WritingModeSetPayload,
 } from './ipc.js';
 import {
   openDb,
@@ -107,6 +108,8 @@ import {
   insertManifestMigrationLog,
   insertArchiveIgnore,
   listArchiveIgnores,
+  countTokensInWindow,
+  countSuggestionsInWindow,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -177,6 +180,7 @@ import {
   parseBetaReadLines,
   buildBetaReadComments,
 } from './writingAssistant.js';
+import { getWritingModeState, setWritingModeState } from './writingMode.js';
 
 const require = createRequire(import.meta.url);
 
@@ -940,6 +944,21 @@ const handlers: IpcHandlers = {
       agents: { ...current.agents, [agentKey]: updated },
     });
     return { saved: true };
+  },
+
+  // MYT-722: rolling 1-hour token + suggestion usage per agent
+  [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (): import('./ipc.js').AgentBudgetUsageResponse => {
+    ensureVaultDir();
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const usage = (agent: string) => ({
+      tokensLastHour: countTokensInWindow(agent, ONE_HOUR_MS),
+      suggestionsLastHour: countSuggestionsInWindow(agent, ONE_HOUR_MS),
+    });
+    return {
+      writingAssistant: usage('writing-assistant'),
+      brainstorm: usage('brainstorm'),
+      archive: usage('archive'),
+    };
   },
 
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => {
@@ -1987,6 +2006,21 @@ const handlers: IpcHandlers = {
     validateVaultPath(notesVaultPath, 'notesVaultPath');
     saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
     return { storyVaultPath, notesVaultPath, saved: true };
+  },
+
+  // ─── Writing modes (MYT-347) ───
+  [IPC_CHANNELS.WRITING_MODE_GET]: () => {
+    ensureVaultDir();
+    return getWritingModeState();
+  },
+
+  [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => {
+    ensureVaultDir();
+    const state = setWritingModeState(payload);
+    if (mainWindow) {
+      mainWindow.webContents.send('writingMode:changed', state);
+    }
+    return state;
   },
 
 };
