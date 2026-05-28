@@ -135,6 +135,8 @@ export const IPC_CHANNELS = {
   BETA_READ_CREATE: 'betaRead:create',
   BETA_READ_LIST: 'betaRead:list',
   BETA_READ_DISMISS: 'betaRead:dismiss',
+  // Beta-Read on-demand LLM scan (MYT-711) — auto-generates anchored comments
+  BETA_READ_SCAN: 'betaRead:scan',
 
   // EPUB export (MYT-253)
   EXPORT_EPUB: 'export:epub',
@@ -264,6 +266,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
   [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
+  // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
@@ -1337,6 +1340,17 @@ export interface BetaReadDismissPayload {
 export interface BetaReadDismissResponse {
   id: string;
   dismissed: boolean;
+}
+
+export interface BetaReadScanPayload {
+  sceneId: string;
+  prose: string;
+  scenePath: string;
+}
+
+export interface BetaReadScanResponse {
+  comments: BetaReadComment[];
+  scannedAt: string;
 }
 
 // ─── EPUB export (MYT-253 / MYT-342) ───
