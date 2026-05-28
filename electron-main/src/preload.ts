@@ -142,7 +142,13 @@ contextBridge.exposeInMainWorld('api', {
 
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
-  settingsSet: (settings: unknown) => ipcRenderer.invoke('settings:set', { settings }),
+  // MYT-788: optional `tokens` carries one-shot registration tokens from
+  // voicePickBinary, required when changing the local STT/TTS path fields.
+  settingsSet: (settings: unknown, tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string }) =>
+    ipcRenderer.invoke('settings:set', { settings, ...(tokens ?? {}) }),
+  // MYT-788: main-process file picker for local voice binary / model selection.
+  voicePickBinary: (kind: 'stt-binary' | 'tts-binary' | 'tts-model') =>
+    ipcRenderer.invoke('voice:pickBinary', { kind }),
   // Per-agent config (MYT-343)
   getAgentConfig: () => ipcRenderer.invoke('settings:getAgentConfig', undefined),
   setAgentConfig: (agent: string, config: unknown) =>

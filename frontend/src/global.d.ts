@@ -346,7 +346,19 @@ interface Window {
 
     // App settings
     settingsGet: () => Promise<AppSettings>;
-    settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
+    /**
+     * MYT-788: optional `tokens` carries one-shot registration tokens from
+     * voicePickBinary, required when changing stt.localBinaryPath,
+     * tts.localBinaryPath, or tts.localModelPath.
+     */
+    settingsSet: (
+      settings: AppSettings,
+      tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
+    ) => Promise<{ saved: boolean; error?: string }>;
+    /** Main-process file picker for local voice binary / model selection (MYT-788). */
+    voicePickBinary: (
+      kind: 'stt-binary' | 'tts-binary' | 'tts-model',
+    ) => Promise<{ path: string | null; cancelled: boolean; registrationToken: string | null }>;
     getAgentConfig: () => Promise<unknown>;
     setAgentConfig: (agent: string, config: unknown) => Promise<unknown>;
     agentBudgetUsage: () => Promise<{
