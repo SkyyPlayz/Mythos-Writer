@@ -18,6 +18,7 @@ import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
 import type { AppSettings, SttSettings, TtsSettings, VoiceTranscribePayload, VoiceTranscribeResponse } from './ipc.js';
+import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
 
 // ─── Channel names ──────────────────────────────────────────────────────────
 
@@ -149,13 +150,15 @@ export function registerVoiceHandlers(
   const reg = registry ?? new VoiceRegistry();
 
   // voice:start → returns unique sessionId
-  ipcMain.handle(VOICE_START, (_event, payload: VoiceStartPayload) => {
+  ipcMain.handle(VOICE_START, (event, payload: VoiceStartPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const session = reg.start(payload?.micDeviceId);
     return { sessionId: session.id } satisfies VoiceStartResponse;
   });
 
   // voice:stop → ends session; triggers cloud transcription when opted in
-  ipcMain.handle(VOICE_STOP, async (_event, payload: VoiceStopPayload) => {
+  ipcMain.handle(VOICE_STOP, async (event, payload: VoiceStopPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const session = reg.stop(payload?.sessionId);
     if (!session) {
       return { ok: false, error: 'session not found' } satisfies VoiceStopResponse;
@@ -180,7 +183,8 @@ export function registerVoiceHandlers(
   });
 
   // voice:audio-chunk — fire-and-forget; renderer sends raw audio for cloud path
-  ipcMain.on(VOICE_AUDIO_CHUNK, (_event, payload: { sessionId: string; chunk: Buffer | ArrayBuffer }) => {
+  ipcMain.on(VOICE_AUDIO_CHUNK, (event, payload: { sessionId: string; chunk: Buffer | ArrayBuffer }) => {
+    if (!isFromTopFrame(event)) return;
     if (!payload?.sessionId) return;
     const buf =
       payload.chunk instanceof ArrayBuffer
@@ -195,7 +199,8 @@ export function registerVoiceHandlers(
   // Main re-broadcasts as voice:transcript so the UI layer has a single event source.
   ipcMain.on(
     VOICE_LOCAL_TRANSCRIPT,
-    (_event, payload: { sessionId: string; text: string; isFinal: boolean }) => {
+    (event, payload: { sessionId: string; text: string; isFinal: boolean }) => {
+      if (!isFromTopFrame(event)) return;
       if (!payload?.sessionId) return;
       pushTranscript(getSender, {
         sessionId: payload.sessionId,
@@ -207,7 +212,8 @@ export function registerVoiceHandlers(
 
   // voice:transcribe — single-shot transcription; local-first, cloud fallback.
   // Off by default: requires stt.enabled = true in settings.
-  ipcMain.handle(VOICE_TRANSCRIBE, async (_event, payload: VoiceTranscribePayload) => {
+  ipcMain.handle(VOICE_TRANSCRIBE, async (event, payload: VoiceTranscribePayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const sttSettings = getSettings().stt;
     if (!sttSettings?.enabled) {
       return { error: 'STT is not enabled in settings (stt.enabled = false)' };
@@ -238,7 +244,8 @@ export function registerVoiceHandlers(
 
   // voice:speak — kicks off TTS; audio chunks pushed as voice:speak:chunk push events.
   // Returns { speakId } immediately; caller subscribes to push events to receive audio.
-  ipcMain.handle(VOICE_SPEAK, (_event, payload: VoiceSpeakPayload) => {
+  ipcMain.handle(VOICE_SPEAK, (event, payload: VoiceSpeakPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const ttsSettings = getSettings().tts;
     if (!ttsSettings?.enabled) {
       return { error: 'TTS is not enabled in settings (tts.enabled = false)' };
@@ -256,7 +263,8 @@ export function registerVoiceHandlers(
   });
 
   // voice:speak:cancel — fire-and-forget; aborts an active synthesis session.
-  ipcMain.on(VOICE_SPEAK_CANCEL, (_event, payload: { speakId: string }) => {
+  ipcMain.on(VOICE_SPEAK_CANCEL, (event, payload: { speakId: string }) => {
+    if (!isFromTopFrame(event)) return;
     const controller = activeSpeakSessions.get(payload?.speakId);
     if (controller) {
       controller.abort();

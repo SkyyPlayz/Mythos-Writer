@@ -88,6 +88,8 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  isFromTopFrame,
+  UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
 import {
   openDb,
@@ -205,7 +207,8 @@ function registerAgentCancelHandlers(): void {
     'agent:brainstorm:stream-cancel',
     'agent:vault-check:stream-cancel',
   ] as const) {
-    ipcMain.on(channel, (_event, { requestId }: { requestId: string }) => {
+    ipcMain.on(channel, (event, { requestId }: { requestId: string }) => {
+      if (!isFromTopFrame(event)) return;
       agentControllers.get(requestId)?.abort();
       agentControllers.delete(requestId);
     });
@@ -2203,24 +2206,30 @@ function normalizeReleaseNotes(
 
 function initAutoUpdater() {
   // Always register IPC handlers — safe no-ops when flag is off or not packaged.
-  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, () => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
     applyUpdateChannel();
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     return { queued: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (_event, payload?: { quit: boolean }) => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (event, payload?: { quit: boolean }) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
     const quit = payload?.quit !== false; // default true = restart immediately
     autoUpdater.quitAndInstall(false, quit);
     return { ok: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, () => lastUpdateInfo);
+  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    return lastUpdateInfo;
+  });
 
   // MYT-337: app:checkForUpdate — async check that returns { available, version, releaseNotes }
-  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async () => {
+  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) {
       return { available: false, version: null, releaseNotes: null };
     }
@@ -2248,7 +2257,8 @@ function initAutoUpdater() {
 
   // MYT-337: app:installUpdate — schedules install on next quit (autoInstallOnAppQuit=true).
   // Does NOT trigger an immediate restart; the downloaded update is applied when the user quits normally.
-  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, () => {
+  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { scheduled: false };
     return { scheduled: updateDownloaded };
   });
@@ -2448,6 +2458,7 @@ function getValidatedApiKey(): string {
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.brainstorm;
     if (!agentSettings.enabled) {
       throw new Error('Brainstorm agent is disabled in settings.');
@@ -2563,6 +2574,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.writingAssistant;
     if (!agentSettings.enabled) {
       throw new Error('Writing Assistant is disabled in settings.');
@@ -2665,7 +2677,8 @@ function registerWritingAssistantHandler() {
 // ─── Vault Agent handlers ───
 function registerVaultAgentHandlers() {
   // agent:vault-index — builds in-memory index of all vault entities
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, () => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     reindexEntities(getVaultRoot(), manifest);
@@ -2702,6 +2715,7 @@ function registerVaultAgentHandlers() {
 
   // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
   ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const apiKey = getValidatedApiKey();
 
     ensureVaultDir();
@@ -2898,7 +2912,8 @@ async function runWritingScan(
 
 // ─── Writing Assistant scheduled scan handler (MYT-233 / MYT-711) ───
 function registerWritingScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (_event, payload: WritingScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
       return { tips: [], suggestionsUpserted: 0, scannedAt: new Date().toISOString() };
@@ -3018,7 +3033,8 @@ function startWritingScanScheduler(): void {
 // ─── Beta-Read Mode on-demand scan handler (MYT-711) ───
 // Runs an LLM analysis of a scene and auto-generates anchored BetaReadComments.
 function registerBetaReadScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (_event, payload: BetaReadScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
       return { comments: [], scannedAt: new Date().toISOString() };

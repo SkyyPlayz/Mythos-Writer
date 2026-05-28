@@ -2,6 +2,7 @@
 import { ipcMain, WebContents } from 'electron';
 import Anthropic from '@anthropic-ai/sdk';
 import crypto from 'crypto';
+import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
 
 export const STREAM_CHANNELS = {
   STREAM_START: 'stream:start',
@@ -279,6 +280,7 @@ export function registerStreamingHandlers(
   reg: StreamRegistry = defaultRegistry,
 ): void {
   ipcMain.handle(STREAM_CHANNELS.STREAM_START, async (event, payload: StreamStartPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const senderId = event.sender.id;
     if (reg.countBySender(senderId) >= MAX_CONCURRENT_PER_SENDER) {
       return { error: STREAM_ERRORS.TOO_MANY_STREAMS };
@@ -311,6 +313,7 @@ export function registerStreamingHandlers(
   });
 
   ipcMain.handle(STREAM_CHANNELS.STREAM_CANCEL, (event, { streamId }: { streamId: string }) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const entry = reg.get(streamId);
     if (!entry || entry.senderId !== event.sender.id) return { cancelled: false };
     const cancelled = reg.cancel(streamId);
@@ -318,6 +321,7 @@ export function registerStreamingHandlers(
   });
 
   ipcMain.on(STREAM_CHANNELS.STREAM_ACK, (event, data: unknown) => {
+    if (!isFromTopFrame(event)) return;
     // F20: validate ack payload to prevent prototype-pollution or type confusion
     if (
       !data ||

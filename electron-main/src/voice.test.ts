@@ -40,16 +40,24 @@ function makeSettings(
   };
 }
 
+// Mock IpcMain event whose senderFrame self-references as `top` so the
+// isFromTopFrame() guard introduced in MYT-791 passes for normal tests.
+function makeTopFrameEvent(): { senderFrame: unknown } {
+  const frame: { top: unknown } = { top: null };
+  frame.top = frame;
+  return { senderFrame: frame };
+}
+
 async function invokeHandle(channel: string, payload: unknown): Promise<unknown> {
   const fn = handleMap.get(channel);
   if (!fn) throw new Error(`No handle registered for ${channel}`);
-  return fn({} /* event */, payload);
+  return fn(makeTopFrameEvent(), payload);
 }
 
 function fireOn(channel: string, payload: unknown): void {
   const fn = onMap.get(channel);
   if (!fn) throw new Error(`No on handler registered for ${channel}`);
-  fn({} /* event */, payload);
+  fn(makeTopFrameEvent(), payload);
 }
 
 // ─── VoiceRegistry ───────────────────────────────────────────────────────────
