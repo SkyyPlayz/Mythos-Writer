@@ -884,6 +884,12 @@ export default function DesktopShell() {
     return selectedStory.title;
   }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
 
+  // §6: empty state — depth=scene but selected chapter has no scenes
+  const depthIsEmpty = useMemo(
+    () => viewDepth === 'scene' && selectedChapter !== null && selectedChapter.scenes.length === 0,
+    [viewDepth, selectedChapter],
+  );
+
   const handleDepthPrev = useCallback(() => {
     if (!selectedStory) return;
     if (viewDepth === 'scene') {
@@ -1128,6 +1134,8 @@ export default function DesktopShell() {
               onPrev={handleDepthPrev}
               onNext={handleDepthNext}
               contextLabel={depthContextLabel}
+              writingMode={writingMode}
+              isEmpty={depthIsEmpty}
             />
           )}
           {viewDepth === 'book' && selectedStory ? (
