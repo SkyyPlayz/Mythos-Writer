@@ -174,6 +174,12 @@ export const IPC_CHANNELS = {
   // Text-to-speech (MYT-339) — streams audio chunks to renderer; cancellable mid-stream
   VOICE_SPEAK: 'voice:speak',
 
+  // Main-process file picker for local STT/TTS binary or model selection (MYT-788).
+  // Returns a one-shot registration token bound to the chosen path; the
+  // renderer must echo it back in settings:set to change the corresponding
+  // localBinaryPath / localModelPath field.
+  VOICE_PICK_BINARY: 'voice:pickBinary',
+
   // Per-agent config (MYT-343) — enable/model/threshold/budget per agent
   SETTINGS_GET_AGENT_CONFIG: 'settings:getAgentConfig',
   SETTINGS_SET_AGENT_CONFIG: 'settings:setAgentConfig',
@@ -370,6 +376,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: (payload: VoicePickBinaryPayload) => Promise<VoicePickBinaryResponse>;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse>;
   [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse>;
   [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => Promise<VaultValidatePathResponse>;
@@ -650,6 +657,27 @@ export interface VaultOpenFolderResponse {
  */
 export interface VaultPickFolderResponse {
   vaultRoot: string | null;
+  cancelled: boolean;
+  registrationToken: string | null;
+}
+
+/**
+ * Payload for VOICE_PICK_BINARY (MYT-788). `kind` controls which file extensions
+ * the dialog suggests (executable vs. piper .onnx model); the dialog itself
+ * never restricts to those filters — the user can pick any file.
+ */
+export interface VoicePickBinaryPayload {
+  kind: 'stt-binary' | 'tts-binary' | 'tts-model';
+}
+
+/**
+ * Response from VOICE_PICK_BINARY. `registrationToken` is a one-shot, 60s-TTL
+ * token bound to the chosen path; settings:set requires it when changing the
+ * corresponding localBinaryPath / localModelPath field. `cancelled` is true
+ * when the user dismissed the dialog without selecting a file.
+ */
+export interface VoicePickBinaryResponse {
+  path: string | null;
   cancelled: boolean;
   registrationToken: string | null;
 }
@@ -1109,10 +1137,22 @@ export interface AppSettings {
 
 export interface SettingsSetPayload {
   settings: AppSettings;
+  /**
+   * MYT-788: registration tokens proving the renderer-supplied voice binary
+   * and model paths came from a main-process file picker (voice:pickBinary).
+   * Required only when the corresponding path field actually changes — echoes
+   * of the existing value, and clearing the field, are accepted without a
+   * token.
+   */
+  sttBinaryToken?: string;
+  ttsBinaryToken?: string;
+  ttsModelToken?: string;
 }
 
 export interface SettingsSetResponse {
   saved: boolean;
+  /** Present when settings:set failed the voice-spawn gate (MYT-788). */
+  error?: string;
 }
 
 // ─── Multi-project types (MYT-374) ───────────────────────────────────────────

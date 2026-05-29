@@ -141,6 +141,12 @@ import {
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
 import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
+import {
+  checkVoiceSettingsUpdate,
+  seedTrustedBinariesFromSettings,
+  validateSttShape,
+  validateTtsShape,
+} from './voiceGate.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
@@ -1098,6 +1104,26 @@ const handlers: IpcHandlers = {
     // renderer echoes back the masked preview unchanged, preserve the stored
     // raw key. See settings-masking.ts (MYT-424).
     const reconciled = reconcileSettingsFromRenderer(payload.settings, current);
+    // MYT-788: shape-validate stt/tts and gate any renderer-driven change to
+    // the local binary / model paths. A failed gate aborts the whole write —
+    // we deliberately do not persist a "mostly-OK" settings object, because
+    // the rejected path field would survive next reload via reconciliation.
+    const sttShape = validateSttShape(reconciled.stt);
+    if (!sttShape.ok) return { saved: false, error: sttShape.error };
+    const ttsShape = validateTtsShape(reconciled.tts);
+    if (!ttsShape.ok) return { saved: false, error: ttsShape.error };
+    const voiceGate = checkVoiceSettingsUpdate(
+      reconciled.stt,
+      current.stt,
+      reconciled.tts,
+      current.tts,
+      {
+        sttBinaryToken: payload.sttBinaryToken,
+        ttsBinaryToken: payload.ttsBinaryToken,
+        ttsModelToken: payload.ttsModelToken,
+      },
+    );
+    if (!voiceGate.ok) return { saved: false, error: voiceGate.error };
     // Regenerate sessionId when telemetry is being disabled (privacy: unlink future sessions).
     let telemetry = reconciled.telemetry;
     if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
@@ -1776,6 +1802,36 @@ const handlers: IpcHandlers = {
     }
     const token = generateRegistrationToken(result.filePaths[0]);
     return { vaultRoot: result.filePaths[0], cancelled: false, registrationToken: token };
+  },
+
+  // ─── Voice binary/model picker (MYT-788) ───
+  // Main-process file dialog → one-shot registration token bound to the chosen
+  // path. settings:set requires this token to change stt.localBinaryPath,
+  // tts.localBinaryPath, or tts.localModelPath, so a renderer can never
+  // promote an arbitrary local executable into the spawn surface.
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: async (payload: { kind: 'stt-binary' | 'tts-binary' | 'tts-model' }) => {
+    const title =
+      payload?.kind === 'tts-model'
+        ? 'Select Local TTS Voice Model (.onnx)'
+        : payload?.kind === 'tts-binary'
+          ? 'Select Local TTS Binary (Piper)'
+          : 'Select Local STT Binary (whisper.cpp)';
+    const filters =
+      payload?.kind === 'tts-model'
+        ? [{ name: 'Piper voice model', extensions: ['onnx'] }, { name: 'All files', extensions: ['*'] }]
+        : [{ name: 'All files', extensions: ['*'] }];
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title,
+      buttonLabel: 'Select',
+      filters,
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { path: null, cancelled: true, registrationToken: null };
+    }
+    const chosen = result.filePaths[0];
+    const token = generateRegistrationToken(chosen);
+    return { path: chosen, cancelled: false, registrationToken: token };
   },
 
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: async (_payload: VaultObsidianDryRunPayload) => {
@@ -3617,6 +3673,10 @@ app.whenReady().then(async () => {
   }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
+  // MYT-788: seed the voice-binary trusted set from persisted settings — those
+  // paths got there through a previous gated write (or pre-existed before the
+  // gate was introduced and remain trustable as user-controlled state).
+  seedTrustedBinariesFromSettings(loadAppSettings());
   setupIpcMain(handlers);
   registerAgentCancelHandlers();
   registerBrainstormHandler();
