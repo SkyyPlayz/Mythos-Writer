@@ -698,7 +698,7 @@ export default function DesktopShell() {
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
-        setGlobalSearchOpen(true);
+        setWritingMode('focus');
       } else if (e.key === 'E' || e.key === 'e') {
         e.preventDefault();
         setWritingMode('edit');
