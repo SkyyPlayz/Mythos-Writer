@@ -216,6 +216,17 @@ export const IPC_CHANNELS = {
   // App data backup / restore (MYT-346)
   APP_BACKUP_APP_DATA: 'app:backupAppData',
   APP_RESTORE_APP_DATA: 'app:restoreAppData',
+
+  // SKY-20: Brainstorm Agent routing — Blank-mode vaults ask-once-per-category
+  // and remember the choice. The renderer calls WRITE_NOTE for every extracted
+  // fact; main resolves the destination from layoutMode + persisted memory.
+  // When memory is missing, the file is staged and the renderer prompts; the
+  // user's pick is then committed via RESOLVE_ROUTING.
+  BRAINSTORM_GET_SETTINGS: 'brainstorm:getSettings',
+  BRAINSTORM_WRITE_NOTE: 'brainstorm:writeNote',
+  BRAINSTORM_RESOLVE_ROUTING: 'brainstorm:resolveRouting',
+  BRAINSTORM_RESET_CATEGORY_ROUTING: 'brainstorm:resetCategoryRouting',
+  BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -371,6 +382,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
   [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
   [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
+  [IPC_CHANNELS.BRAINSTORM_GET_SETTINGS]: (payload: never) => BrainstormGetSettingsResponse;
+  [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: BrainstormWriteNotePayload) => BrainstormWriteNoteResponse;
+  [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
+  [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
+  [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1790,4 +1806,80 @@ export interface RestoreAppDataResponse {
   /** True when the caller must re-call with confirmed: true to proceed. */
   requiresConfirmation?: boolean;
   cancelled?: boolean;
+}
+
+// ─── Brainstorm Agent routing (SKY-20) ───
+
+export type BrainstormFactType = 'character' | 'location' | 'item' | 'note';
+
+export interface BrainstormGetSettingsResponse {
+  /** Vault layout mode the user picked at onboarding. */
+  layoutMode: 'default' | 'blank' | 'imported';
+  /** Per-category folder choices for Blank-mode vaults. Keys are FactType. */
+  notesRouting: Partial<Record<BrainstormFactType, string>>;
+}
+
+export interface BrainstormWriteNotePayload {
+  category: BrainstormFactType;
+  name: string;
+  content: string;
+}
+
+export type BrainstormWriteNoteResponse =
+  | {
+      status: 'written';
+      /** Vault-relative path of the written note. */
+      path: string;
+      suggestionId: string;
+      /** How the destination was resolved — for telemetry/tests. */
+      reason: 'default-layout' | 'remembered';
+    }
+  | {
+      status: 'needs_routing';
+      /** Staged file path (vault-relative). Caller invokes RESOLVE_ROUTING
+       *  with the user's chosen folder; main moves the file there. */
+      stagedPath: string;
+      category: BrainstormFactType;
+      name: string;
+    };
+
+export interface BrainstormResolveRoutingPayload {
+  /** Path returned by WRITE_NOTE when status was needs_routing. */
+  stagedPath: string;
+  category: BrainstormFactType;
+  /** User-picked destination folder, vault-relative POSIX path. */
+  destination: string;
+  /** When true, persist the destination as the new default for `category`.
+   *  When false, this is a one-off route — memory is not updated. */
+  remember: boolean;
+}
+
+export interface BrainstormResolveRoutingResponse {
+  status: 'written';
+  /** Final vault-relative path after the move. */
+  path: string;
+  /** Echoed back so the renderer can update its memory cache. */
+  notesRouting: Partial<Record<BrainstormFactType, string>>;
+}
+
+export interface BrainstormResetCategoryRoutingPayload {
+  category: BrainstormFactType;
+}
+
+export interface BrainstormResetCategoryRoutingResponse {
+  notesRouting: Partial<Record<BrainstormFactType, string>>;
+}
+
+export interface BrainstormFolderEntry {
+  /** Vault-relative POSIX path (no leading slash). */
+  path: string;
+  /** Display label for the folder picker. */
+  label: string;
+}
+
+export interface BrainstormListNotesFoldersResponse {
+  /** Existing folders inside the Notes Vault, suitable for the picker.
+   *  Sorted alphabetically; depth-limited so the picker stays usable. */
+  folders: BrainstormFolderEntry[];
+  notesVaultRoot: string;
 }
