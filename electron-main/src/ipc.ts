@@ -62,6 +62,7 @@ export const IPC_CHANNELS = {
 
   // Versioning — per-scene snapshots
   SNAPSHOT_SAVE: 'snapshot:save',
+  SNAPSHOT_SAVE_SYNC: 'snapshot:save-sync',
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
@@ -110,6 +111,8 @@ export const IPC_CHANNELS = {
   SCENE_LIST: 'scene:list',
   SCENE_GET: 'scene:get',
   SCENE_SAVE: 'scene:save',
+  // Inline rename (SKY-115) — title-only update, does not touch prose
+  SCENE_RENAME: 'scene:rename',
 
   // Auto-updater (MYT-245) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
@@ -352,6 +355,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
   [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
+  [IPC_CHANNELS.SCENE_RENAME]: (payload: SceneRenamePayload) => SceneRenameResponse;
   [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
@@ -1411,6 +1415,15 @@ export interface SceneSavePayload {
 }
 
 export interface SceneSaveResponse {
+  scene: SceneEntry;
+}
+
+export interface SceneRenamePayload {
+  sceneId: string;
+  title: string;
+}
+
+export interface SceneRenameResponse {
   scene: SceneEntry;
 }
 

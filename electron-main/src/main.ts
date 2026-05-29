@@ -1286,6 +1286,28 @@ const handlers: IpcHandlers = {
     return { scene: found };
   },
 
+  // ─── Scene inline rename (SKY-115) ───
+  [IPC_CHANNELS.SCENE_RENAME]: (payload: import('./ipc.js').SceneRenamePayload) => {
+    ensureVaultDir();
+    const trimmed = payload.title.trim();
+    if (!trimmed) throw new Error('Scene title cannot be empty');
+    const manifest = readManifest(getManifestPath());
+    let renamedScene = null as import('./ipc.js').SceneEntry | null;
+    outerRename: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) { renamedScene = scene; break outerRename; }
+      }
+    }
+    if (!renamedScene) renamedScene = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!renamedScene) throw new Error(`Scene not found: ${payload.sceneId}`);
+    renamedScene.title = trimmed;
+    renamedScene.updatedAt = new Date().toISOString();
+    writeManifest(getManifestPath(), manifest);
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: renamedScene.id, path: renamedScene.path });
+    return { scene: renamedScene };
+  },
+
   // ─── Beta-Read Mode (MYT-237) ───
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: { sceneId: string; anchorText: string; commentText: string }) => {
     ensureVaultDir();
@@ -3456,6 +3478,17 @@ app.whenReady().then(async () => {
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
   setupIpcMain(handlers);
+  // Synchronous IPC for beforeunload flush — ensures content is persisted before window closes.
+  ipcMain.on(IPC_CHANNELS.SNAPSHOT_SAVE_SYNC, (event, payload: SnapshotSavePayload) => {
+    if (isFromTopFrame(event)) {
+      try {
+        ensureVaultDir();
+        const { snapshots: retention } = loadAppSettings();
+        saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention);
+      } catch { /* non-fatal — don't block close */ }
+    }
+    event.returnValue = null;
+  });
   registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();

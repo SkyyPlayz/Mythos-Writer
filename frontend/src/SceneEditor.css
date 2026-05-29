@@ -30,6 +30,12 @@
   font-size: 0.75rem;
 }
 
+.scene-wordcount {
+  color: #6c7086;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 .btn-history {
   padding: 4px 12px;
   background: #313244;

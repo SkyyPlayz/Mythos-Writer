@@ -108,6 +108,8 @@ contextBridge.exposeInMainWorld('api', {
   // Versioning — per-scene snapshots
   snapshotSave: (sceneId: string, content: string) =>
     ipcRenderer.invoke('snapshot:save', { sceneId, content }),
+  snapshotSaveSync: (sceneId: string, content: string) =>
+    ipcRenderer.sendSync('snapshot:save-sync', { sceneId, content }),
   snapshotList: (sceneId: string) =>
     ipcRenderer.invoke('snapshot:list', { sceneId }),
   snapshotGet: (sceneId: string, snapshotId: string) =>

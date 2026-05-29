@@ -271,6 +271,7 @@ interface Window {
 
     // Versioning — per-scene snapshots
     snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotSaveSync: (sceneId: string, content: string) => void;
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
