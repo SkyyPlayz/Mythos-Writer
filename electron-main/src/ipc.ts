@@ -216,6 +216,10 @@ export const IPC_CHANNELS = {
   // App data backup / restore (MYT-346)
   APP_BACKUP_APP_DATA: 'app:backupAppData',
   APP_RESTORE_APP_DATA: 'app:restoreAppData',
+
+  // SKY-12.2: path validation for the onboarding wizard path-picker UI.
+  // Pure filesystem check with no side effects — safe to call on every blur.
+  VAULT_VALIDATE_PATH: 'vault:validatePath',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -366,6 +370,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => VaultValidatePathResponse;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
@@ -1716,15 +1721,34 @@ export interface VaultGetPathsResponse {
   notesVaultPath: string;
 }
 
+export type VaultSeedMode = 'default' | 'blank';
+
 export interface VaultSetPathsPayload {
   storyVaultPath: string;
   notesVaultPath: string;
+  /** SKY-12.2: controls whether the new vaults are scaffolded with the full
+   *  SKY-15 folder layout ('default', the prior behavior) or created as empty
+   *  roots with only a manifest.json ('blank'). Defaults to 'default' when
+   *  absent for backwards compatibility with SKY-9 callers. */
+  seedMode?: VaultSeedMode;
 }
 
 export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+}
+
+// SKY-12.2: pure filesystem check for the onboarding wizard path picker.
+export interface VaultValidatePathPayload {
+  path: string;
+}
+
+export interface VaultValidatePathResponse {
+  exists: boolean;
+  isEmpty: boolean;
+  writable: boolean;
+  error?: string;
 }
 
 // ─── Writing modes (MYT-347) ───

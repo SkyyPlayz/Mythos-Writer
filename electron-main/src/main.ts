@@ -89,6 +89,8 @@ import {
   type ArchiveConfirmPayload,
   type BgLoadPayload,
   type VaultSetPathsPayload,
+  type VaultValidatePathPayload,
+  type VaultValidatePathResponse,
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
@@ -203,6 +205,7 @@ import {
 } from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
+import { validatePathForVault } from './validatePathUtil.js';
 
 const require = createRequire(import.meta.url);
 
@@ -2083,16 +2086,29 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
-    const { storyVaultPath, notesVaultPath } = payload;
+    const { storyVaultPath, notesVaultPath, seedMode } = payload;
     validateVaultPath(storyVaultPath, 'storyVaultPath');
     validateVaultPath(notesVaultPath, 'notesVaultPath');
-    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
-    // Seed the freshly-configured roots so a user pointing at an empty
-    // folder lands in a known layout. Idempotent — existing subtrees keep
-    // their contents.
+    // SKY-12.2: persist the layout mode chosen during onboarding. 'blank'
+    // suppresses SKY-15 scaffold folders so the Brainstorm Agent learns the
+    // user's own pattern instead of imposing one. 'default' is the prior
+    // behavior (full SKY-15 seeding). Absent seedMode defaults to 'default'
+    // for backwards compatibility with SKY-9 and Settings-panel callers.
+    const layoutMode: 'default' | 'blank' = seedMode === 'blank' ? 'blank' : 'default';
+    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath, layoutMode });
+    // Seed the freshly-configured roots. The scaffold functions are idempotent
+    // and respect the layoutMode persisted above, so 'blank' callers get
+    // only the vault roots + manifest.json, while 'default' callers get the
+    // full SKY-15 folder layout.
     ensureVaultDir();
     ensureNotesVaultDir();
     return { storyVaultPath, notesVaultPath, saved: true };
+  },
+
+  // SKY-12.2: pure filesystem check for the onboarding wizard path-picker.
+  // No side effects — called on every blur/change in FolderPathField.
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload): VaultValidatePathResponse => {
+    return validatePathForVault(payload.path, app.getPath('home'));
   },
 
   // SKY-9: Notes-Vault-scoped CRUD. Mirrors VAULT_* but rooted

@@ -22,8 +22,12 @@ contextBridge.exposeInMainWorld('api', {
   // a re-seed on the main side, so the renderer can persist user edits in a
   // single round-trip.
   vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
-  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) =>
-    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath }),
+  // SKY-12.2: opts.seedMode = 'default' | 'blank' controls scaffold behavior.
+  // Defaults to 'default' (full SKY-15 layout) when absent — backwards-compatible.
+  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) =>
+    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode }),
+  // SKY-12.2: pure filesystem check for the onboarding wizard path-picker.
+  validatePath: (p: string) => ipcRenderer.invoke('vault:validatePath', { path: p }),
 
   // SKY-9: full Notes-Vault-scoped CRUD for VaultBrowser and the
   // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault
