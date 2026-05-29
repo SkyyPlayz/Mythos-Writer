@@ -246,7 +246,7 @@ describe('VaultBrowser', () => {
 
   it('shows empty state when no stories', () => {
     render(<VaultBrowser {...baseProps} />);
-    expect(screen.getByText(/No stories yet/i)).toBeInTheDocument();
+    expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
   });
 
   it('calls onCreateStory when New Story button is clicked', () => {
@@ -301,5 +301,38 @@ describe('VaultBrowser', () => {
       expect(screen.getByTestId('vb-notes-vault')).toBeInTheDocument();
     });
     expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
+  });
+});
+
+// ─── StoryVaultEmptyState ───
+
+describe('StoryVaultEmptyState', () => {
+  it('renders when stories count is 0', () => {
+    render(<VaultBrowser {...baseProps} stories={[]} />);
+    expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
+    expect(screen.getByText('Begin your first story')).toBeInTheDocument();
+    expect(screen.getByTestId('vb-story-empty-cta')).toBeInTheDocument();
+  });
+
+  it('CTA click calls onCreate', () => {
+    const onCreateStory = vi.fn();
+    render(<VaultBrowser {...baseProps} stories={[]} onCreateStory={onCreateStory} />);
+    fireEvent.click(screen.getByTestId('vb-story-empty-cta'));
+    expect(onCreateStory).toHaveBeenCalledOnce();
+  });
+
+  it('does not render when stories count > 0', () => {
+    const stories: Story[] = [
+      {
+        id: 's1',
+        title: 'My Novel',
+        path: 'stories/s1',
+        chapters: [],
+        createdAt: '',
+        updatedAt: '',
+      },
+    ];
+    render(<VaultBrowser {...baseProps} stories={stories} />);
+    expect(screen.queryByTestId('vb-story-empty')).not.toBeInTheDocument();
   });
 });

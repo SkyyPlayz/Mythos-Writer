@@ -250,6 +250,116 @@
   overflow: hidden;
 }
 
+/* ─── Story vault empty state ─── */
+
+.vb-story-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+  animation: vb-story-empty-fadein var(--dur-hover-in) var(--ease-standard) both;
+}
+
+@keyframes vb-story-empty-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vb-story-empty {
+    animation-duration: 0.01ms;
+  }
+}
+
+.vb-story-empty-icon {
+  color: var(--text-muted);
+  margin-bottom: var(--space-4);
+  display: flex;
+}
+
+.vb-story-empty-heading {
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  font-weight: var(--weight-heading);
+  color: var(--text-header);
+  margin: 0 0 var(--space-2) 0;
+  letter-spacing: var(--tracking-heading);
+}
+
+.vb-story-empty-sub {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  color: var(--text-body);
+  max-width: 240px;
+  margin: 0 0 var(--space-5) 0;
+  overflow-wrap: anywhere;
+}
+
+.vb-story-empty-cta {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg-canvas);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-heading);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  min-height: 36px;
+  cursor: pointer;
+  margin-bottom: var(--space-3);
+  transition:
+    background var(--dur-hover-in) var(--ease-standard),
+    box-shadow var(--dur-hover-in) var(--ease-standard);
+}
+
+.vb-story-empty-cta:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: var(--neon-glow);
+}
+
+.vb-story-empty-cta:active {
+  transform: scale(0.98);
+  transition-duration: var(--dur-press);
+}
+
+.vb-story-empty-cta:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.vb-story-empty-footer {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Split mode (scope=both): narrow panel overrides */
+
+.vb-section-story-split .vb-story-empty {
+  padding: var(--space-8) var(--space-4);
+}
+
+.vb-section-story-split .vb-story-empty-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.vb-section-story-split .vb-story-empty-sub {
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.vb-section-story-split .vb-story-empty-cta {
+  align-self: stretch;
+}
+
 /* ─── Empty / loading ─── */
 
 .vb-empty,

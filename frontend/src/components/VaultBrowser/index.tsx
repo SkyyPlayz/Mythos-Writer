@@ -26,6 +26,58 @@ function isNotesItem(item: { path: string; name: string }): boolean {
   return true;
 }
 
+// ─── Story Vault Empty State ───
+
+interface StoryVaultEmptyStateProps {
+  onCreate: () => void;
+}
+
+function StoryVaultEmptyState({ onCreate }: StoryVaultEmptyStateProps) {
+  return (
+    <section
+      className="vb-story-empty"
+      role="region"
+      aria-labelledby="vb-story-empty-heading"
+      data-testid="vb-story-empty"
+    >
+      <span className="vb-story-empty-icon" aria-hidden="true">
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+        </svg>
+      </span>
+      <h2 id="vb-story-empty-heading" className="vb-story-empty-heading">
+        Begin your first story
+      </h2>
+      <p className="vb-story-empty-sub">
+        Stories hold your chapters and scenes — start one to unlock your writing workspace.
+      </p>
+      <button
+        className="vb-story-empty-cta"
+        type="button"
+        onClick={onCreate}
+        data-testid="vb-story-empty-cta"
+      >
+        + New story
+      </button>
+      <p className="vb-story-empty-footer">
+        Or import an Obsidian vault to bring your existing work in.
+      </p>
+    </section>
+  );
+}
+
 // ─── Story Vault (manifest-based) ───
 
 interface StoryVaultProps {
@@ -99,7 +151,7 @@ function StoryVault({
       </div>
       <div className="vb-story-content">
         {stories.length === 0 ? (
-          <div className="vb-empty">No stories yet. Click + to create one.</div>
+          <StoryVaultEmptyState onCreate={onCreateStory} />
         ) : (
           stories.map((story) => {
             const storyExp = expandedStories.has(story.id);
