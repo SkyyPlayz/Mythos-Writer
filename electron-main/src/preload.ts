@@ -370,6 +370,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('app:backupAppData', outputPath ? { outputPath } : {}),
   restoreAppData: (archivePath?: string, confirmed?: boolean) =>
     ipcRenderer.invoke('app:restoreAppData', { archivePath, confirmed }),
+
+  // Agent persona files (MYT-816) — view/reset per-agent AGENTS/HEARTBEAT/SOUL/TOOLS files
+  agentPersonaRead: (agentName: string, key: string) =>
+    ipcRenderer.invoke('agent:persona:read', { agentName, key }),
+  agentPersonaReset: (agentName: string, key: string) =>
+    ipcRenderer.invoke('agent:persona:reset', { agentName, key }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
