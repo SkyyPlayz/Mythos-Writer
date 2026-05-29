@@ -355,6 +355,8 @@ interface Window {
       settings: AppSettings,
       tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
     ) => Promise<{ saved: boolean; error?: string }>;
+    /** Test connection to an AI provider (MYT-779). */
+    settingsTestConnection: (provider: { kind: string; apiKey?: string; baseUrl?: string; model: string }) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
     /** Main-process file picker for local voice binary / model selection (MYT-788). */
     voicePickBinary: (
       kind: 'stt-binary' | 'tts-binary' | 'tts-model',
