@@ -127,6 +127,9 @@
   cursor: pointer;
   border-radius: 4px;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .app-menu-dropdown-item:hover {
@@ -138,6 +141,13 @@
   height: 1px;
   background: var(--border-default);
   margin: 4px 0;
+}
+
+.app-menu-shortcut-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  margin-left: 16px;
 }
 
 /* View toggle (Editor / Brainstorm) */
