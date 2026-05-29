@@ -1,6 +1,7 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler } from './security.js';
+import { readBgImageAsDataUrl } from './bgLoad.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -1721,20 +1722,7 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.BG_LOAD]: async (payload: BgLoadPayload) => {
-    try {
-      const { filePath } = payload;
-      if (!filePath || !fs.existsSync(filePath)) return { dataUrl: null };
-      const ext = path.extname(filePath).toLowerCase().slice(1);
-      const mimeMap: Record<string, string> = {
-        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-        webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
-      };
-      const mime = mimeMap[ext] ?? 'image/jpeg';
-      const data = fs.readFileSync(filePath);
-      return { dataUrl: `data:${mime};base64,${data.toString('base64')}` };
-    } catch {
-      return { dataUrl: null };
-    }
+    return readBgImageAsDataUrl(payload.filePath);
   },
 
   // ─── EPUB export (MYT-342) ───
