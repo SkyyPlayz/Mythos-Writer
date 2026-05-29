@@ -31,6 +31,8 @@ const mockStartVaultWatch = vi.fn();
 const mockOnVaultFileChanged = vi.fn();
 const mockWriteVault = vi.fn();
 const mockWriteNotesVault = vi.fn();
+const mockMoveNotesVault = vi.fn();
+const mockSceneSave = vi.fn();
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -40,6 +42,8 @@ beforeEach(() => {
   mockOnVaultFileChanged.mockReturnValue(vi.fn());
   mockWriteVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
   mockWriteNotesVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
+  mockMoveNotesVault.mockResolvedValue({ fromPath: '', toPath: '', moved: true });
+  mockSceneSave.mockResolvedValue({ scene: {} });
 
   (window as unknown as { api: unknown }).api = {
     listVault: mockListVault,
@@ -48,6 +52,8 @@ beforeEach(() => {
     onVaultFileChanged: mockOnVaultFileChanged,
     writeVault: mockWriteVault,
     writeNotesVault: mockWriteNotesVault,
+    moveNotesVault: mockMoveNotesVault,
+    sceneSave: mockSceneSave,
   };
 });
 
@@ -336,6 +342,47 @@ describe('VaultBrowser', () => {
       expect(screen.getByTestId('vb-notes-vault')).toBeInTheDocument();
     });
     expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
+  });
+
+  it('renders rename input when note row is double-clicked', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [
+        { path: 'idea.md', name: 'idea.md', isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    render(<VaultBrowser {...baseProps} />);
+    fireEvent.click(screen.getByTestId('vb-scope-notes'));
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-idea.md')).toBeInTheDocument();
+    });
+    fireEvent.dblClick(screen.getByTestId('vb-row-idea.md'));
+    expect(screen.getByRole('textbox', { name: /rename note/i })).toBeInTheDocument();
+  });
+
+  it('renders rename input when scene row is double-clicked', async () => {
+    const stories: Story[] = [
+      {
+        id: 's1', title: 'Test Story', path: 'stories/s1',
+        chapters: [{
+          id: 'c1', title: 'Chapter One', path: 'stories/s1/c1', order: 1,
+          scenes: [{
+            id: 'sc1', title: 'Opening Scene', path: 'stories/s1/c1/sc1',
+            order: 1, blocks: [], createdAt: '', updatedAt: '',
+          }],
+          createdAt: '', updatedAt: '',
+        }],
+        createdAt: '', updatedAt: '',
+      },
+    ];
+    render(<VaultBrowser {...baseProps} stories={stories} />);
+    // Single story auto-expands via useEffect; wait for chapter to appear
+    await waitFor(() => expect(screen.getByText('Chapter One')).toBeInTheDocument());
+    // Click chapter toggle to expand it
+    fireEvent.click(screen.getByText('Chapter One'));
+    // Wait for scene row to appear, then double-click to start rename
+    await waitFor(() => expect(screen.getByTestId('vb-scene-sc1')).toBeInTheDocument());
+    fireEvent.dblClick(screen.getByTestId('vb-scene-sc1'));
+    expect(screen.getByRole('textbox', { name: /rename scene/i })).toBeInTheDocument();
   });
 });
 
