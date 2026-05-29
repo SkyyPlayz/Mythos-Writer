@@ -1672,12 +1672,18 @@ export interface VaultGetPathsResponse {
 export interface VaultSetPathsPayload {
   storyVaultPath: string;
   notesVaultPath: string;
+  // MYT-789: at least one proof of user intent is required per path. The
+  // tokens come from vault:pick-folder; alternatively the path may already be
+  // in the recent-projects allowlist.
+  storyVaultToken?: string;
+  notesVaultToken?: string;
 }
 
 export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+  error?: string;
 }
 
 // ─── Writing modes (MYT-347) ───

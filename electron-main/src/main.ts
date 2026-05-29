@@ -121,6 +121,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
+import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
@@ -2016,10 +2017,18 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
-    const newRoot = payload.vaultRoot;
-    if (!newRoot || typeof newRoot !== 'string') {
-      return { vaultRoot: getVaultRoot(), switched: false, error: 'Invalid vault root' };
+    // MYT-789: gate the switch behind the recent-projects allowlist. Without
+    // this, a renderer could re-root the vault sandbox at any existing,
+    // writable directory and then read or overwrite arbitrary files via the
+    // rest of the vault:* IPC surface.
+    const gate = checkProjectSwitchGate(
+      payload?.vaultRoot,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: gate.error };
     }
+    const newRoot = gate.vaultRoot;
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
@@ -2059,11 +2068,22 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
-    const { storyVaultPath, notesVaultPath } = payload;
-    validateVaultPath(storyVaultPath, 'storyVaultPath');
-    validateVaultPath(notesVaultPath, 'notesVaultPath');
-    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
-    return { storyVaultPath, notesVaultPath, saved: true };
+    // MYT-789: gate the new vault roots behind either a registration token
+    // (issued by vault:pick-folder) or membership in the recent-projects
+    // allowlist. Without this, any absolute, writable directory passes
+    // validateVaultPath and the renderer can re-root the vault sandbox at
+    // $HOME or /, escaping every other vault:* sandbox check.
+    const gate = checkSetPathsGate(
+      payload,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { storyVaultPath: getVaultRoot(), notesVaultPath: getNotesVaultRoot(), saved: false, error: gate.error };
+    }
+    validateVaultPath(gate.storyVaultPath, 'storyVaultPath');
+    validateVaultPath(gate.notesVaultPath, 'notesVaultPath');
+    saveVaultSettings({ vaultRoot: gate.storyVaultPath, notesVaultRoot: gate.notesVaultPath });
+    return { storyVaultPath: gate.storyVaultPath, notesVaultPath: gate.notesVaultPath, saved: true };
   },
 
   // ─── Writing modes (MYT-347) ───
