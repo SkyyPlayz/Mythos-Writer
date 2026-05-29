@@ -122,7 +122,6 @@ import {
   countTokensInWindow,
   countSuggestionsInWindow,
   insertProvenance,
-  upsertSuggestion,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
