@@ -247,20 +247,21 @@ describe('Accessibility — StoryNavigator (Editor tree)', () => {
 // Surface 6 — LeftRail tab bar (MYT-282 ARIA tab pattern)
 // ══════════════════════════════════════════════════════════════════════════════
 import LeftRail from './LeftRail';
+import { useUIStore, DEFAULT_LAYOUT } from './stores/uiStore';
+import { useVaultStore } from './stores/vaultStore';
 
 describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
-  beforeEach(() => { stubApi(); vi.clearAllMocks(); });
+  beforeEach(() => {
+    stubApi();
+    vi.clearAllMocks();
+    useUIStore.setState({ layout: DEFAULT_LAYOUT });
+    useVaultStore.setState({ stories: [], activeStoryId: null, activeChapterId: null, activeSceneId: null, activeEntityId: null, activeEntity: null });
+  });
 
   it('stories tab active — no axe violations', async () => {
+    useUIStore.setState({ layout: { ...DEFAULT_LAYOUT, leftTab: 'stories' } });
     const { container } = render(
       <LeftRail
-        activeTab="stories"
-        onTabChange={() => {}}
-        stories={[]}
-        selectedSceneId={null}
-        selectedEntityId={null}
-        onSelectScene={() => {}}
-        onSelectEntity={() => {}}
         onCreateStory={() => {}}
         onCreateChapter={() => {}}
         onCreateScene={() => {}}
@@ -272,15 +273,9 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
   });
 
   it('entities tab active — no axe violations', async () => {
+    useUIStore.setState({ layout: { ...DEFAULT_LAYOUT, leftTab: 'entities' } });
     const { container } = render(
       <LeftRail
-        activeTab="entities"
-        onTabChange={() => {}}
-        stories={[]}
-        selectedSceneId={null}
-        selectedEntityId={null}
-        onSelectScene={() => {}}
-        onSelectEntity={() => {}}
         onCreateStory={() => {}}
         onCreateChapter={() => {}}
         onCreateScene={() => {}}
@@ -292,15 +287,9 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
   });
 
   it('tab elements carry correct ARIA roles and attributes', () => {
+    useUIStore.setState({ layout: { ...DEFAULT_LAYOUT, leftTab: 'vault' } });
     const { container } = render(
       <LeftRail
-        activeTab="vault"
-        onTabChange={() => {}}
-        stories={[]}
-        selectedSceneId={null}
-        selectedEntityId={null}
-        onSelectScene={() => {}}
-        onSelectEntity={() => {}}
         onCreateStory={() => {}}
         onCreateChapter={() => {}}
         onCreateScene={() => {}}

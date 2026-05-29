@@ -1,20 +1,13 @@
-import type { Story, Chapter, Scene, EntityEntry } from './types';
+import type { Scene, Chapter, Story, EntityEntry } from './types';
+import { useVaultStore } from './stores/vaultStore';
+import { useUIStore } from './stores/uiStore';
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
 import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import './LeftRail.css';
 
-type Tab = 'stories' | 'vault' | 'entities' | 'review';
-
 interface Props {
-  activeTab: Tab;
-  onTabChange: (tab: Tab) => void;
-  stories: Story[];
-  selectedSceneId: string | null;
-  selectedEntityId: string | null;
-  onSelectScene: (scene: Scene, chapter: Chapter, story: Story) => void;
-  onSelectEntity: (entity: EntityEntry) => void;
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
@@ -23,19 +16,34 @@ interface Props {
 }
 
 export default function LeftRail({
-  activeTab,
-  onTabChange,
-  stories,
-  selectedSceneId,
-  selectedEntityId,
-  onSelectScene,
-  onSelectEntity,
   onCreateStory,
   onCreateChapter,
   onCreateScene,
   onReorderScenes,
   onOpenVaultPath,
 }: Props) {
+  const stories = useVaultStore((s) => s.stories);
+  const activeSceneId = useVaultStore((s) => s.activeSceneId);
+  const activeEntityId = useVaultStore((s) => s.activeEntityId);
+  const setActiveScene = useVaultStore((s) => s.setActiveScene);
+  const setActiveEntity = useVaultStore((s) => s.setActiveEntity);
+  const layout = useUIStore((s) => s.layout);
+  const setLayout = useUIStore((s) => s.setLayout);
+
+  const activeTab = layout.leftTab;
+
+  const handleSelectScene = (scene: Scene, chapter: Chapter, story: Story) => {
+    setActiveScene(story.id, chapter.id, scene.id);
+  };
+
+  const handleSelectEntity = (entity: EntityEntry) => {
+    setActiveEntity(entity);
+  };
+
+  const handleTabChange = (tab: 'stories' | 'vault' | 'entities' | 'review') => {
+    setLayout({ ...layout, leftTab: tab });
+  };
+
   return (
     <div className="left-rail">
       <div className="rail-tabs" role="tablist" aria-label="Primary navigation">
@@ -45,7 +53,7 @@ export default function LeftRail({
           aria-selected={activeTab === 'stories'}
           aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'stories' ? ' active' : ''}`}
-          onClick={() => onTabChange('stories')}
+          onClick={() => handleTabChange('stories')}
         >
           Stories
         </button>
@@ -55,7 +63,7 @@ export default function LeftRail({
           aria-selected={activeTab === 'entities'}
           aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'entities' ? ' active' : ''}`}
-          onClick={() => onTabChange('entities')}
+          onClick={() => handleTabChange('entities')}
         >
           Entities
         </button>
@@ -65,7 +73,7 @@ export default function LeftRail({
           aria-selected={activeTab === 'vault'}
           aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'vault' ? ' active' : ''}`}
-          onClick={() => onTabChange('vault')}
+          onClick={() => handleTabChange('vault')}
         >
           Vault
         </button>
@@ -75,7 +83,7 @@ export default function LeftRail({
           aria-selected={activeTab === 'review'}
           aria-controls="leftrail-tabpanel"
           className={`rail-tab${activeTab === 'review' ? ' active' : ''}`}
-          onClick={() => onTabChange('review')}
+          onClick={() => handleTabChange('review')}
           aria-label="Suggestion Review inbox"
         >
           Review
@@ -90,8 +98,8 @@ export default function LeftRail({
         {activeTab === 'stories' && (
           <StoryNavigator
             stories={stories}
-            selectedSceneId={selectedSceneId}
-            onSelectScene={onSelectScene}
+            selectedSceneId={activeSceneId}
+            onSelectScene={handleSelectScene}
             onCreateStory={onCreateStory}
             onCreateChapter={onCreateChapter}
             onCreateScene={onCreateScene}
@@ -100,15 +108,15 @@ export default function LeftRail({
         )}
         {activeTab === 'entities' && (
           <EntityBrowser
-            onSelectEntity={onSelectEntity}
-            selectedEntityId={selectedEntityId}
+            onSelectEntity={handleSelectEntity}
+            selectedEntityId={activeEntityId}
           />
         )}
         {activeTab === 'vault' && (
           <VaultBrowser
             stories={stories}
-            selectedSceneId={selectedSceneId}
-            onSelectScene={onSelectScene}
+            selectedSceneId={activeSceneId}
+            onSelectScene={handleSelectScene}
             onCreateStory={onCreateStory}
             onCreateChapter={onCreateChapter}
             onCreateScene={onCreateScene}

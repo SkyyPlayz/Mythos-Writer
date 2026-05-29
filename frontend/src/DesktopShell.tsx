@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
+import type { Story, Chapter, Scene, Block, Manifest, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import { applyTheme, applyLiquidGlassTokens } from './theme';
+import AppMenuBar from './AppMenuBar';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -15,19 +16,11 @@ import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
-import SearchBar from './SearchBar';
 import BetaReadMargin from './BetaReadMargin';
-import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
+import { useVaultStore } from './stores/vaultStore';
+import { useUIStore, DEFAULT_LAYOUT } from './stores/uiStore';
 import './DesktopShell.css';
-
-const DEFAULT_LAYOUT: LayoutPrefs = {
-  leftWidth: 240,
-  rightWidth: 260,
-  bottomHeight: 32,
-  rightTab: 'notes',
-  leftTab: 'stories',
-};
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -70,177 +63,6 @@ function blocksToMarkdown(scene: Scene): string {
     lines.push('');
   }
   return lines.join('\n');
-}
-
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
-
-interface SearchResultItem {
-  docId: string;
-  vault: 'story' | 'notes';
-  kind: string;
-  title: string;
-  snippet: string;
-  rank: number;
-}
-
-interface AppMenuBarProps {
-  view: AppView;
-  onSetView: (v: AppView) => void;
-  onOpenSettings: () => void;
-  onOpenHistory: () => void;
-  onSearchNavigate: (result: SearchResultItem) => void;
-  selectedStoryId?: string | null;
-  activeVaultRoot: string;
-  onProjectSwitched: (vaultRoot: string) => void;
-  writingMode: WritingMode;
-  onSetWritingMode: (m: WritingMode) => void;
-  onOpenFocusPrefs: () => void;
-}
-
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs }: AppMenuBarProps) {
-  const [fileMenuOpen, setFileMenuOpen] = useState(false);
-  const fileMenuRef = useRef<HTMLDivElement>(null);
-
-  const handleExportEpub = () => {
-    if (!selectedStoryId) {
-      alert('Select a story first to export it as EPUB.');
-      return;
-    }
-    (window as any).api?.exportEpub?.(selectedStoryId)
-      .then((res: { path: string | null; cancelled: boolean }) => {
-        if (!res.cancelled && res.path) {
-          alert(`EPUB saved to:\n${res.path}`);
-        }
-      })
-      .catch((err: Error) => alert(`Export failed: ${err.message}`));
-  };
-
-  const handleExportDocx = () => {
-    if (!selectedStoryId) {
-      alert('Select a story first to export it as DOCX.');
-      return;
-    }
-    (window as any).api?.exportDocx?.(selectedStoryId)
-      .then((res: { path: string | null; cancelled: boolean }) => {
-        if (!res.cancelled && res.path) {
-          alert(`DOCX saved to:\n${res.path}`);
-        }
-      })
-      .catch((err: Error) => alert(`Export failed: ${err.message}`));
-  };
-
-  return (
-    <div className="app-menu-bar">
-      <span className="app-menu-brand">Mythos</span>
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} onSwitched={onProjectSwitched} />
-      <div className="app-menu-items" ref={fileMenuRef}>
-        <div className="app-menu-item">
-          <button
-            className="app-menu-item-trigger"
-            aria-haspopup="menu"
-            aria-controls="file-menu"
-            aria-expanded={fileMenuOpen}
-            onClick={() => setFileMenuOpen(o => !o)}
-            onBlur={(e) => {
-              if (fileMenuRef.current && !fileMenuRef.current.contains(e.relatedTarget as Node)) {
-                setFileMenuOpen(false);
-              }
-            }}
-          >
-            File
-          </button>
-          {fileMenuOpen && (
-            <div id="file-menu" className="app-menu-dropdown" role="menu">
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); (window as any).api?.newStory?.(); }}>New Story</button>
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); (window as any).api?.openVault?.(); }}>Open Vault…</button>
-              <div className="app-menu-separator" role="separator" />
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
-              <div className="app-menu-separator" role="separator" />
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
-              <div className="app-menu-separator" role="separator" />
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenSettings(); }}>Settings…</button>
-            </div>
-          )}
-        </div>
-      </div>
-      <SearchBar onNavigate={onSearchNavigate} />
-      <div className="app-menu-view-toggle">
-        <button
-          className={`app-menu-view-btn${view === 'editor' ? ' active' : ''}`}
-          onClick={() => onSetView('editor')}
-          aria-pressed={view === 'editor'}
-        >
-          Editor
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'brainstorm' ? ' active' : ''}`}
-          onClick={() => onSetView('brainstorm')}
-          aria-pressed={view === 'brainstorm'}
-        >
-          Brainstorm
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'kanban' ? ' active' : ''}`}
-          onClick={() => onSetView('kanban')}
-          aria-pressed={view === 'kanban'}
-        >
-          Board
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'graph' ? ' active' : ''}`}
-          onClick={() => onSetView('graph')}
-          aria-pressed={view === 'graph'}
-        >
-          Graph
-        </button>
-      </div>
-      <div className="writing-mode-selector" aria-label="Writing mode">
-        <button
-          className={`writing-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('normal')}
-          aria-pressed={writingMode === 'normal'}
-          title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
-        >
-          N
-        </button>
-        <button
-          className={`writing-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('focus')}
-          aria-pressed={writingMode === 'focus'}
-          title="Focus mode — distraction-free (Ctrl+Shift+F)"
-        >
-          F
-        </button>
-        {writingMode === 'focus' && (
-          <button
-            className="writing-mode-prefs-btn"
-            onClick={onOpenFocusPrefs}
-            title="Configure Focus mode panels"
-            aria-label="Focus mode preferences"
-          >
-            ⚙
-          </button>
-        )}
-        <button
-          className={`writing-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('edit')}
-          aria-pressed={writingMode === 'edit'}
-          title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
-        >
-          E
-        </button>
-      </div>
-      <button
-        className="app-menu-gear-btn"
-        onClick={onOpenSettings}
-        aria-label="Open settings"
-        title="Settings"
-      >
-        ⚙
-      </button>
-    </div>
-  );
 }
 
 // ─── Chapter doc view ───
@@ -374,30 +196,76 @@ interface DragState {
 
 export default function DesktopShell() {
   const { requestText, promptModal } = useTextPrompt();
+
+  // ─── Store subscriptions ───
+  const layout = useUIStore((s) => s.layout);
+  const view = useUIStore((s) => s.view);
+  const writingMode = useUIStore((s) => s.writingMode);
+
+  const stories = useVaultStore((s) => s.stories);
+  const activeStoryId = useVaultStore((s) => s.activeStoryId);
+  const activeChapterId = useVaultStore((s) => s.activeChapterId);
+  const activeSceneId = useVaultStore((s) => s.activeSceneId);
+  const activeEntity = useVaultStore((s) => s.activeEntity);
+
+  // Derive full objects from IDs + stories
+  const selectedStory = useMemo(
+    () => stories.find((s) => s.id === activeStoryId) ?? null,
+    [stories, activeStoryId],
+  );
+  const selectedChapter = useMemo(
+    () => selectedStory?.chapters.find((c) => c.id === activeChapterId) ?? null,
+    [selectedStory, activeChapterId],
+  );
+  const selectedScene = useMemo(
+    () => selectedChapter?.scenes.find((s) => s.id === activeSceneId) ?? null,
+    [selectedChapter, activeSceneId],
+  );
+
+  // ─── Local state (not in stores) ───
   const [manifest, setManifest] = useState<Manifest | null>(null);
-  const [stories, setStories] = useState<Story[]>([]);
-  const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
-  const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
-  const [selectedStory, setSelectedStory] = useState<Story | null>(null);
-  const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
-  const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
-  const [view, setView] = useState<AppView>('editor');
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
-  const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
+  const dragState = useRef<DragState | null>(null);
+
+  // Keep manifest in a ref for use in effects/callbacks without stale closures
+  const manifestRef = useRef<Manifest | null>(null);
+  useEffect(() => { manifestRef.current = manifest; }, [manifest]);
+
+  // ─── Layout auto-persist effect ───
+  const layoutEffectInitRef = useRef(false);
+  const scheduleManifestSave = useCallback((m: Manifest) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try { await (window as any).api.writeManifest(m); } catch (e) { console.error('Failed to persist manifest:', e); }
+    }, 900);
+  }, []);
+
+  useEffect(() => {
+    if (!layoutEffectInitRef.current) {
+      layoutEffectInitRef.current = true;
+      return;
+    }
+    const m = manifestRef.current;
+    if (!m) return;
+    const updated: Manifest = { ...m, layout };
+    manifestRef.current = updated;
+    setManifest(updated);
+    scheduleManifestSave(updated);
+  }, [layout, scheduleManifestSave]);
+
+  // ─── Editor API forwarding ───
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -421,9 +289,8 @@ export default function DesktopShell() {
     setWikiLinkSuggestions((prev) => prev.filter((s) => s.id !== id));
     window.api?.suggestionsReject?.(id).catch(() => {});
   }, []);
-  const dragState = useRef<DragState | null>(null);
 
-  // ─── Beta-Read Mode (MYT-237) ───
+  // ─── Beta-Read Mode ───
 
   const loadBetaReadComments = useCallback(async (sceneId: string) => {
     try {
@@ -443,20 +310,26 @@ export default function DesktopShell() {
   }, [selectedScene?.id, loadBetaReadComments]);
 
   const handleBetaReadRequest = useCallback(async (selectedText: string) => {
-    if (!selectedScene || betaReadLoading) return;
+    const scene = useVaultStore.getState().activeSceneId
+      ? useVaultStore.getState().stories
+          .find((s) => s.id === useVaultStore.getState().activeStoryId)
+          ?.chapters.find((c) => c.id === useVaultStore.getState().activeChapterId)
+          ?.scenes.find((s) => s.id === useVaultStore.getState().activeSceneId) ?? null
+      : null;
+    if (!scene || betaReadLoading) return;
     setBetaReadLoading(true);
     try {
       const context = `You are a beta reader giving constructive feedback. Highlight strengths, flag anything confusing, and suggest one improvement. Be concise (2–4 sentences).\n\nPassage:\n\n${selectedText}`;
       const res = await (window as any).api.agentWritingAssistant(selectedText, context);
       const commentText: string = res?.text ?? 'No feedback generated.';
-      await (window as any).api.betaReadCreate(selectedScene.id, selectedText, commentText);
-      await loadBetaReadComments(selectedScene.id);
+      await (window as any).api.betaReadCreate(scene.id, selectedText, commentText);
+      await loadBetaReadComments(scene.id);
     } catch {
       // non-fatal
     } finally {
       setBetaReadLoading(false);
     }
-  }, [selectedScene, betaReadLoading, loadBetaReadComments]);
+  }, [betaReadLoading, loadBetaReadComments]);
 
   const handleBetaReadDismiss = useCallback(async (id: string) => {
     try {
@@ -466,6 +339,8 @@ export default function DesktopShell() {
       // non-fatal
     }
   }, []);
+
+  // ─── Budget cap toast ───
 
   useEffect(() => {
     if (!window.api.onBudgetCapHit) return;
@@ -482,6 +357,8 @@ export default function DesktopShell() {
     };
   }, []);
 
+  // ─── Vault loading ───
+
   const loadVault = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -492,14 +369,14 @@ export default function DesktopShell() {
         ((window as any).api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
       ]);
       setManifest(m);
-      setStories(m.stories ?? []);
+      manifestRef.current = m;
+      useVaultStore.getState().setStories(m.stories ?? []);
       if (m.layout) {
-        setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
+        useUIStore.getState().setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
       if (s) {
         setAppSettings(s);
         applyTheme(s.theme);
-        // Load background image data URL if a custom path is stored
         const lg = s.liquidGlass;
         if (lg?.background && lg.background !== 'default') {
           (window.api as any).loadBgImage?.(lg.background)
@@ -526,11 +403,7 @@ export default function DesktopShell() {
     if (!(window as any).api?.onProjectSwitched) return;
     const unsub = (window as any).api.onProjectSwitched((data: { vaultRoot: string }) => {
       setActiveVaultRoot(data.vaultRoot);
-      // Reset selection state and reload vault content
-      setSelectedScene(null);
-      setSelectedChapter(null);
-      setSelectedStory(null);
-      setSelectedEntity(null);
+      useVaultStore.getState().clearSelection();
       loadVault();
     });
     return () => unsub?.();
@@ -538,73 +411,36 @@ export default function DesktopShell() {
 
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
     setActiveVaultRoot(vaultRoot);
-    setSelectedScene(null);
-    setSelectedChapter(null);
-    setSelectedStory(null);
-    setSelectedEntity(null);
+    useVaultStore.getState().clearSelection();
     loadVault();
   }, [loadVault]);
 
-  const persistManifest = useCallback(async (m: Manifest) => {
-    try {
-      await (window as any).api.writeManifest(m);
-    } catch (e) {
-      console.error('Failed to persist manifest:', e);
-    }
-  }, []);
+  // ─── Manifest persistence ───
 
-  const scheduleManifestSave = useCallback((m: Manifest) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistManifest(m), 900);
-  }, [persistManifest]);
-
-  const updateManifest = useCallback((updatedStories: Story[], updatedLayout?: LayoutPrefs) => {
-    setStories(updatedStories);
-    if (!manifest) return;
-    const updated: Manifest = {
-      ...manifest,
-      stories: updatedStories,
-      layout: updatedLayout ?? layout,
-    };
+  const updateManifest = useCallback((updatedStories: Story[]) => {
+    useVaultStore.getState().setStories(updatedStories);
+    const m = manifestRef.current;
+    if (!m) return;
+    const currentLayout = useUIStore.getState().layout;
+    const updated: Manifest = { ...m, stories: updatedStories, layout: currentLayout };
+    manifestRef.current = updated;
     setManifest(updated);
     scheduleManifestSave(updated);
-  }, [manifest, layout, scheduleManifestSave]);
-
-  const persistLayout = useCallback((newLayout: LayoutPrefs) => {
-    setLayout(newLayout);
-    if (!manifest) return;
-    const updated: Manifest = { ...manifest, layout: newLayout };
-    setManifest(updated);
-    scheduleManifestSave(updated);
-  }, [manifest, scheduleManifestSave]);
-
-  const setWritingMode = useCallback((mode: WritingMode) => {
-    let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
-    if (mode === 'edit') {
-      newLayout = { ...newLayout, leftTab: 'review', rightTab: 'ai' };
-    }
-    persistLayout(newLayout);
-  }, [layout, persistLayout]);
+  }, [scheduleManifestSave]);
 
   // ─── Writing mode keyboard shortcuts ───
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || !e.shiftKey) return;
-      if (e.key === 'F' || e.key === 'f') {
-        e.preventDefault();
-        setWritingMode('focus');
-      } else if (e.key === 'E' || e.key === 'e') {
-        e.preventDefault();
-        setWritingMode('edit');
-      } else if (e.key === 'N' || e.key === 'n') {
-        e.preventDefault();
-        setWritingMode('normal');
-      }
+      if (e.key === 'F' || e.key === 'f') { e.preventDefault(); useUIStore.getState().setWritingMode('focus'); }
+      else if (e.key === 'E' || e.key === 'e') { e.preventDefault(); useUIStore.getState().setWritingMode('edit'); }
+      else if (e.key === 'N' || e.key === 'n') { e.preventDefault(); useUIStore.getState().setWritingMode('normal'); }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode]);
+  }, []);
 
   // ─── Panel resize drag handlers ───
 
@@ -614,19 +450,14 @@ export default function DesktopShell() {
       const { target, startX, startWidth } = dragState.current;
       const delta = e.clientX - startX;
       const newWidth = Math.max(160, Math.min(500, startWidth + (target === 'left' ? delta : -delta)));
-      setLayout((prev) => {
-        const next = { ...prev, [target === 'left' ? 'leftWidth' : 'rightWidth']: newWidth };
-        return next;
+      useUIStore.getState().setLayout({
+        ...useUIStore.getState().layout,
+        [target === 'left' ? 'leftWidth' : 'rightWidth']: newWidth,
       });
     };
 
     const onMouseUp = () => {
-      if (!dragState.current) return;
       dragState.current = null;
-      setLayout((curr) => {
-        persistLayout(curr);
-        return curr;
-      });
     };
 
     window.addEventListener('mousemove', onMouseMove);
@@ -635,22 +466,24 @@ export default function DesktopShell() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [persistLayout]);
+  }, []);
 
   const startDrag = useCallback((target: 'left' | 'right', e: React.MouseEvent) => {
     e.preventDefault();
+    const { layout: currLayout } = useUIStore.getState();
     dragState.current = {
       target,
       startX: e.clientX,
-      startWidth: target === 'left' ? layout.leftWidth : layout.rightWidth,
+      startWidth: target === 'left' ? currLayout.leftWidth : currLayout.rightWidth,
     };
-  }, [layout]);
+  }, []);
 
   const adjustPanelWidth = useCallback((target: 'left' | 'right', delta: number) => {
+    const { layout: currLayout } = useUIStore.getState();
     const key = target === 'left' ? 'leftWidth' : 'rightWidth';
-    const newWidth = Math.max(160, Math.min(500, layout[key] + delta));
-    persistLayout({ ...layout, [key]: newWidth });
-  }, [layout, persistLayout]);
+    const newWidth = Math.max(160, Math.min(500, currLayout[key] + delta));
+    useUIStore.getState().setLayout({ ...currLayout, [key]: newWidth });
+  }, []);
 
   // ─── Story/scene management ───
 
@@ -663,14 +496,17 @@ export default function DesktopShell() {
   }, []);
 
   const handleBlocksChange = useCallback((blocks: Block[]) => {
-    if (!selectedScene || !selectedChapter || !selectedStory) return;
-    const updatedScene: Scene = { ...selectedScene, blocks, updatedAt: now() };
-    setSelectedScene(updatedScene);
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
+    const { stories: currentStories, activeStoryId: sid, activeChapterId: cid, activeSceneId: scid } = useVaultStore.getState();
+    const story = currentStories.find((s) => s.id === sid) ?? null;
+    const chapter = story?.chapters.find((c) => c.id === cid) ?? null;
+    const scene = chapter?.scenes.find((s) => s.id === scid) ?? null;
+    if (!scene || !chapter || !story) return;
+    const updatedScene: Scene = { ...scene, blocks, updatedAt: now() };
+    const updatedStories = currentStories.map((st) =>
+      st.id !== story.id ? st : {
+        ...st,
+        chapters: st.chapters.map((ch) =>
+          ch.id !== chapter.id ? ch : {
             ...ch,
             scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
           }
@@ -680,18 +516,21 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
-    (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+    (window as any).api.snapshotSave?.(scene.id, content).catch(() => {});
+  }, [updateManifest, persistSceneMarkdown]);
 
-  const handleDraftStateChange = useCallback((state: DraftState) => {
-    if (!selectedScene || !selectedChapter || !selectedStory) return;
-    const updatedScene: Scene = { ...selectedScene, draftState: state, updatedAt: now() };
-    setSelectedScene(updatedScene);
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
+  const handleDraftStateChange = useCallback((state: import('./types').DraftState) => {
+    const { stories: currentStories, activeStoryId: sid, activeChapterId: cid, activeSceneId: scid } = useVaultStore.getState();
+    const story = currentStories.find((s) => s.id === sid) ?? null;
+    const chapter = story?.chapters.find((c) => c.id === cid) ?? null;
+    const scene = chapter?.scenes.find((s) => s.id === scid) ?? null;
+    if (!scene || !chapter || !story) return;
+    const updatedScene: Scene = { ...scene, draftState: state, updatedAt: now() };
+    const updatedStories = currentStories.map((st) =>
+      st.id !== story.id ? st : {
+        ...st,
+        chapters: st.chapters.map((ch) =>
+          ch.id !== chapter.id ? ch : {
             ...ch,
             scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
           }
@@ -699,7 +538,7 @@ export default function DesktopShell() {
       }
     );
     updateManifest(updatedStories);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
+  }, [updateManifest]);
 
   const createStory = useCallback(async () => {
     const title = await requestText('Story title:');
@@ -709,29 +548,31 @@ export default function DesktopShell() {
       id, title: title.trim(), path: `stories/${id}`,
       chapters: [], createdAt: now(), updatedAt: now(),
     };
-    updateManifest([...stories, story]);
-  }, [stories, updateManifest, requestText]);
+    updateManifest([...useVaultStore.getState().stories, story]);
+  }, [updateManifest, requestText]);
 
   const createChapter = useCallback(async (storyId: string) => {
     const title = await requestText('Chapter title:');
     if (!title?.trim()) return;
     const id = generateId();
+    const currentStories = useVaultStore.getState().stories;
     const chapter: Chapter = {
       id, title: title.trim(),
       path: `stories/${storyId}/chapters/${id}`,
-      order: stories.find((s) => s.id === storyId)?.chapters.length ?? 0,
+      order: currentStories.find((s) => s.id === storyId)?.chapters.length ?? 0,
       scenes: [], createdAt: now(), updatedAt: now(),
     };
-    updateManifest(stories.map((s) =>
+    updateManifest(currentStories.map((s) =>
       s.id !== storyId ? s : { ...s, chapters: [...s.chapters, chapter] }
     ));
-  }, [stories, updateManifest, requestText]);
+  }, [updateManifest, requestText]);
 
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
     if (!title?.trim()) return;
     const id = generateId();
-    const story = stories.find((s) => s.id === storyId)!;
+    const currentStories = useVaultStore.getState().stories;
+    const story = currentStories.find((s) => s.id === storyId)!;
     const chapter = story.chapters.find((c) => c.id === chapterId)!;
     const scene: Scene = {
       id, title: title.trim(),
@@ -740,7 +581,7 @@ export default function DesktopShell() {
       blocks: [], draftState: 'in-progress',
       createdAt: now(), updatedAt: now(),
     };
-    updateManifest(stories.map((s) =>
+    updateManifest(currentStories.map((s) =>
       s.id !== storyId ? s : {
         ...s,
         chapters: s.chapters.map((ch) =>
@@ -749,96 +590,41 @@ export default function DesktopShell() {
       }
     ));
     (window as any).api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, updateManifest, requestText]);
+  }, [updateManifest, requestText]);
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
-    const updatedStories = stories.map((s) =>
+    const currentStories = useVaultStore.getState().stories;
+    const updatedStories = currentStories.map((s) =>
       s.id !== storyId ? s : {
         ...s,
         chapters: s.chapters.map((ch) =>
           ch.id !== chapterId ? ch : {
             ...ch,
             scenes: orderedIds.map((id, idx) => {
-              const scene = ch.scenes.find((sc) => sc.id === id)!;
-              return { ...scene, order: idx };
+              const sc = ch.scenes.find((scene) => scene.id === id)!;
+              return { ...sc, order: idx };
             }),
           }
         ),
       }
     );
     updateManifest(updatedStories);
-  }, [stories, updateManifest]);
+  }, [updateManifest]);
 
-  const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
-    setSelectedScene(scene);
-    setSelectedChapter(chapter);
-    setSelectedStory(story);
-    setSelectedEntity(null);
-  }, []);
-
-  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
   const handleOpenSceneByPath = useCallback((scenePath: string) => {
-    for (const story of stories) {
+    const { stories: currentStories, setActiveScene } = useVaultStore.getState();
+    for (const story of currentStories) {
       for (const chapter of story.chapters) {
         const scene = chapter.scenes.find((sc) => sc.path === scenePath);
         if (scene) {
-          handleSelectScene(scene, chapter, story);
+          setActiveScene(story.id, chapter.id, scene.id);
           return;
         }
       }
     }
-  }, [stories, handleSelectScene]);
-
-  const handleSelectEntity = useCallback((entity: EntityEntry) => {
-    setSelectedEntity(entity);
-    setSelectedScene(null);
-    setSelectedChapter(null);
-    setSelectedStory(null);
   }, []);
 
-  const handleSearchNavigate = useCallback((result: SearchResultItem) => {
-    if (result.vault === 'story') {
-      // Navigate to scene by docId
-      for (const story of stories) {
-        for (const chapter of story.chapters) {
-          const scene = chapter.scenes.find((sc) => sc.id === result.docId);
-          if (scene) {
-            handleSelectScene(scene, chapter, story);
-            setView('editor');
-            return;
-          }
-        }
-      }
-    } else {
-      // Navigate to entity by docId — look up in manifest entities
-      (window as any).api?.entityRead(result.docId)
-        .then((entry: EntityEntry | null) => {
-          if (entry) {
-            handleSelectEntity(entry);
-            setView('editor');
-          }
-        })
-        .catch(() => {});
-    }
-  }, [stories, handleSelectScene, handleSelectEntity]);
-
-  const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
-    if (!selectedStory || !selectedScene) return;
-    const allScenes: { scene: Scene; chapter: Chapter }[] = [];
-    for (const ch of [...selectedStory.chapters].sort((a, b) => a.order - b.order)) {
-      for (const sc of [...ch.scenes].sort((a, b) => a.order - b.order)) {
-        allScenes.push({ scene: sc, chapter: ch });
-      }
-    }
-    const idx = allScenes.findIndex((s) => s.scene.id === selectedScene.id);
-    const nextIdx = direction === 'prev' ? idx - 1 : idx + 1;
-    if (nextIdx >= 0 && nextIdx < allScenes.length) {
-      const { scene, chapter } = allScenes[nextIdx];
-      handleSelectScene(scene, chapter, selectedStory);
-    }
-  }, [selectedStory, selectedScene, handleSelectScene]);
-
-  // ─── Header depth slider navigation (MYT-378) ───
+  // ─── Header depth slider navigation ───
 
   const depthCanPrev = useMemo(() => {
     if (!selectedStory) return false;
@@ -885,102 +671,101 @@ export default function DesktopShell() {
   }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
 
   const handleDepthPrev = useCallback(() => {
-    if (!selectedStory) return;
+    const { stories: currentStories, setActiveScene } = useVaultStore.getState();
+    const story = currentStories.find((s) => s.id === useVaultStore.getState().activeStoryId) ?? null;
+    const chapter = story?.chapters.find((c) => c.id === useVaultStore.getState().activeChapterId) ?? null;
+    const scene = chapter?.scenes.find((s) => s.id === useVaultStore.getState().activeSceneId) ?? null;
+    if (!story) return;
     if (viewDepth === 'scene') {
-      if (!selectedChapter || !selectedScene) return;
-      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
-      if (idx > 0) handleSelectScene(sorted[idx - 1], selectedChapter, selectedStory);
+      if (!chapter || !scene) return;
+      const sorted = [...chapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === scene.id);
+      if (idx > 0) setActiveScene(story.id, chapter.id, sorted[idx - 1].id);
     } else if (viewDepth === 'chapter') {
-      if (!selectedChapter) return;
-      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      if (!chapter) return;
+      const sorted = [...story.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === chapter.id);
       if (idx > 0) {
         const prev = sorted[idx - 1];
         const firstScene = [...prev.scenes].sort((a, b) => a.order - b.order)[0];
         if (firstScene) {
-          handleSelectScene(firstScene, prev, selectedStory);
+          setActiveScene(story.id, prev.id, firstScene.id);
         } else {
-          setSelectedScene(null);
-          setSelectedChapter(prev);
-          setSelectedEntity(null);
+          setActiveScene(story.id, prev.id, null);
         }
       }
     } else {
-      const idx = stories.findIndex((s) => s.id === selectedStory.id);
+      const idx = currentStories.findIndex((s) => s.id === story.id);
       if (idx > 0) {
-        const prev = stories[idx - 1];
+        const prev = currentStories[idx - 1];
         const firstCh = [...prev.chapters].sort((a, b) => a.order - b.order)[0];
         const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
         if (firstSc && firstCh) {
-          handleSelectScene(firstSc, firstCh, prev);
+          setActiveScene(prev.id, firstCh.id, firstSc.id);
         } else if (firstCh) {
-          setSelectedScene(null);
-          setSelectedChapter(firstCh);
-          setSelectedStory(prev);
-          setSelectedEntity(null);
+          setActiveScene(prev.id, firstCh.id, null);
         } else {
-          setSelectedScene(null);
-          setSelectedChapter(null);
-          setSelectedStory(prev);
-          setSelectedEntity(null);
+          setActiveScene(prev.id, null, null);
         }
       }
     }
-  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
+  }, [viewDepth]);
 
   const handleDepthNext = useCallback(() => {
-    if (!selectedStory) return;
+    const { stories: currentStories, setActiveScene } = useVaultStore.getState();
+    const story = currentStories.find((s) => s.id === useVaultStore.getState().activeStoryId) ?? null;
+    const chapter = story?.chapters.find((c) => c.id === useVaultStore.getState().activeChapterId) ?? null;
+    const scene = chapter?.scenes.find((s) => s.id === useVaultStore.getState().activeSceneId) ?? null;
+    if (!story) return;
     if (viewDepth === 'scene') {
-      if (!selectedChapter || !selectedScene) return;
-      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
-      if (idx >= 0 && idx < sorted.length - 1) handleSelectScene(sorted[idx + 1], selectedChapter, selectedStory);
+      if (!chapter || !scene) return;
+      const sorted = [...chapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === scene.id);
+      if (idx >= 0 && idx < sorted.length - 1) setActiveScene(story.id, chapter.id, sorted[idx + 1].id);
     } else if (viewDepth === 'chapter') {
-      if (!selectedChapter) return;
-      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      if (!chapter) return;
+      const sorted = [...story.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === chapter.id);
       if (idx >= 0 && idx < sorted.length - 1) {
         const next = sorted[idx + 1];
         const firstScene = [...next.scenes].sort((a, b) => a.order - b.order)[0];
         if (firstScene) {
-          handleSelectScene(firstScene, next, selectedStory);
+          setActiveScene(story.id, next.id, firstScene.id);
         } else {
-          setSelectedScene(null);
-          setSelectedChapter(next);
-          setSelectedEntity(null);
+          setActiveScene(story.id, next.id, null);
         }
       }
     } else {
-      const idx = stories.findIndex((s) => s.id === selectedStory.id);
-      if (idx >= 0 && idx < stories.length - 1) {
-        const next = stories[idx + 1];
+      const idx = currentStories.findIndex((s) => s.id === story.id);
+      if (idx >= 0 && idx < currentStories.length - 1) {
+        const next = currentStories[idx + 1];
         const firstCh = [...next.chapters].sort((a, b) => a.order - b.order)[0];
         const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
         if (firstSc && firstCh) {
-          handleSelectScene(firstSc, firstCh, next);
+          setActiveScene(next.id, firstCh.id, firstSc.id);
         } else if (firstCh) {
-          setSelectedScene(null);
-          setSelectedChapter(firstCh);
-          setSelectedStory(next);
-          setSelectedEntity(null);
+          setActiveScene(next.id, firstCh.id, null);
         } else {
-          setSelectedScene(null);
-          setSelectedChapter(null);
-          setSelectedStory(next);
-          setSelectedEntity(null);
+          setActiveScene(next.id, null, null);
         }
       }
     }
-  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
+  }, [viewDepth]);
 
   const handleViewDepthChange = useCallback((newDepth: ViewDepth) => {
     setViewDepth(newDepth);
-    if (newDepth === 'scene' && !selectedScene && selectedChapter && selectedStory) {
-      const first = [...selectedChapter.scenes].sort((a, b) => a.order - b.order)[0];
-      if (first) handleSelectScene(first, selectedChapter, selectedStory);
+    if (newDepth === 'scene') {
+      const { activeSceneId: scid, activeChapterId: cid, activeStoryId: sid, stories: currentStories, setActiveScene } = useVaultStore.getState();
+      if (!scid && cid && sid) {
+        const story = currentStories.find((s) => s.id === sid);
+        const chapter = story?.chapters.find((c) => c.id === cid);
+        if (chapter) {
+          const first = [...chapter.scenes].sort((a, b) => a.order - b.order)[0];
+          if (first) setActiveScene(sid, cid, first.id);
+        }
+      }
     }
-  }, [selectedScene, selectedChapter, selectedStory, handleSelectScene]);
+  }, []);
 
   if (loading) {
     return (
@@ -1007,31 +792,26 @@ export default function DesktopShell() {
     archive: appSettings?.agents?.archive?.enabled ?? true,
   };
 
-  const writingMode: WritingMode = layout.writingMode ?? 'normal';
   const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
   const showLeftSidebar = writingMode !== 'focus' || focusPrefs.showLeftSidebar;
   const showRightSidebar = writingMode !== 'focus' || focusPrefs.showRightSidebar;
   const showBottomBar = writingMode !== 'focus' || focusPrefs.showBottomBar;
+  const openModals = useUIStore.getState().openModals;
+  const settingsOpen = openModals.includes('settings');
+  const historyOpen = openModals.includes('history');
+  const focusModePrefsOpen = openModals.includes('focusModePrefs');
+  const closeModal = useUIStore.getState().closeModal;
 
   return (
     <div className={`desktop-shell writing-mode-${writingMode}`}>
       <UpdateBanner />
       <AppMenuBar
-        view={view}
-        onSetView={setView}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenHistory={() => setHistoryOpen(true)}
-        onSearchNavigate={handleSearchNavigate}
-        selectedStoryId={selectedStory?.id ?? null}
         activeVaultRoot={activeVaultRoot}
         onProjectSwitched={handleProjectSwitched}
-        writingMode={writingMode}
-        onSetWritingMode={setWritingMode}
-        onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
       />
       {settingsOpen && (
         <SettingsPanel
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => closeModal('settings')}
           onSaved={(s) => {
             setAppSettings(s);
             applyTheme(s.theme);
@@ -1040,17 +820,17 @@ export default function DesktopShell() {
         />
       )}
       {historyOpen && (
-        <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
+        <PromptHistoryPanel onClose={() => closeModal('history')} />
       )}
       {focusModePrefsOpen && (
         <FocusModePrefsDialog
           prefs={focusPrefs}
-          onChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
-          onClose={() => setFocusModePrefsOpen(false)}
+          onChange={(prefs) => useUIStore.getState().setLayout({ ...layout, focusPrefs: prefs })}
+          onClose={() => closeModal('focusModePrefs')}
         />
       )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+        <BrainstormPage onClose={() => useUIStore.getState().setView('editor')} enabled={agentFlags.brainstorm} />
       )}
       {view === 'kanban' && (
         <div className="shell-kanban">
@@ -1079,13 +859,6 @@ export default function DesktopShell() {
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: layout.leftWidth }}>
           <LeftRail
-            activeTab={layout.leftTab}
-            onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
-            stories={stories}
-            selectedSceneId={selectedScene?.id ?? null}
-            selectedEntityId={selectedEntity?.id ?? null}
-            onSelectScene={handleSelectScene}
-            onSelectEntity={handleSelectEntity}
             onCreateStory={createStory}
             onCreateChapter={createChapter}
             onCreateScene={createScene}
@@ -1110,8 +883,8 @@ export default function DesktopShell() {
           onKeyDown={(e) => {
             if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('left', +8); }
             else if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('left', -8); }
-            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 160 }); }
-            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 500 }); }
+            else if (e.key === 'Home') { e.preventDefault(); useUIStore.getState().setLayout({ ...layout, leftWidth: 160 }); }
+            else if (e.key === 'End') { e.preventDefault(); useUIStore.getState().setLayout({ ...layout, leftWidth: 500 }); }
           }}
         />
       )}
@@ -1136,7 +909,7 @@ export default function DesktopShell() {
               selectedChapterId={selectedChapter?.id ?? null}
               selectedSceneId={selectedScene?.id ?? null}
               onSelectScene={(sc, ch) => {
-                handleSelectScene(sc, ch, selectedStory);
+                useVaultStore.getState().setActiveScene(selectedStory.id, ch.id, sc.id);
                 setViewDepth('scene');
               }}
             />
@@ -1146,7 +919,7 @@ export default function DesktopShell() {
               selectedSceneId={selectedScene?.id ?? null}
               onSelectScene={(sc) => {
                 if (selectedStory) {
-                  handleSelectScene(sc, selectedChapter, selectedStory);
+                  useVaultStore.getState().setActiveScene(selectedStory.id, selectedChapter.id, sc.id);
                   setViewDepth('scene');
                 }
               }}
@@ -1179,13 +952,13 @@ export default function DesktopShell() {
                 </div>
               )}
             </div>
-          ) : selectedEntity ? (
+          ) : activeEntity ? (
             <EntityDetail
-              key={selectedEntity.id}
-              entity={selectedEntity}
-              onClose={() => setSelectedEntity(null)}
-              onUpdated={(updated) => setSelectedEntity(updated)}
-              onDeleted={() => setSelectedEntity(null)}
+              key={activeEntity.id}
+              entity={activeEntity}
+              onClose={() => useVaultStore.getState().clearSelection()}
+              onUpdated={(updated) => useVaultStore.getState().setActiveEntity(updated)}
+              onDeleted={() => useVaultStore.getState().clearSelection()}
               onOpenScene={handleOpenSceneByPath}
             />
           ) : (
@@ -1199,14 +972,7 @@ export default function DesktopShell() {
             </div>
           )}
         </div>
-        {showBottomBar && (
-          <BottomBar
-            selectedScene={selectedScene}
-            selectedChapter={selectedChapter}
-            selectedStory={selectedStory}
-            onNavigateScene={handleNavigateScene}
-          />
-        )}
+        {showBottomBar && <BottomBar />}
       </div>
 
       {/* Right resize handle */}
@@ -1224,8 +990,8 @@ export default function DesktopShell() {
           onKeyDown={(e) => {
             if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
             else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
-            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
-            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
+            else if (e.key === 'Home') { e.preventDefault(); useUIStore.getState().setLayout({ ...layout, rightWidth: 160 }); }
+            else if (e.key === 'End') { e.preventDefault(); useUIStore.getState().setLayout({ ...layout, rightWidth: 500 }); }
           }}
         />
       )}
@@ -1234,15 +1000,9 @@ export default function DesktopShell() {
       {showRightSidebar && (
         <div className="shell-right" style={{ width: layout.rightWidth }}>
           <RightSidebar
-            activeTab={layout.rightTab}
-            onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
-            selectedScene={selectedScene}
-            selectedChapter={selectedChapter}
-            selectedStory={selectedStory}
             writingAssistantEnabled={agentFlags.writingAssistant}
             archiveEnabled={agentFlags.archive}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
-            isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}

@@ -1,19 +1,18 @@
 import type { Scene, Chapter, Story } from './types';
+import { useVaultStore } from './stores/vaultStore';
 import './BottomBar.css';
 
-interface Props {
-  selectedScene: Scene | null;
-  selectedChapter: Chapter | null;
-  selectedStory: Story | null;
-  onNavigateScene: (direction: 'prev' | 'next') => void;
-}
+export default function BottomBar() {
+  const stories = useVaultStore((s) => s.stories);
+  const activeStoryId = useVaultStore((s) => s.activeStoryId);
+  const activeChapterId = useVaultStore((s) => s.activeChapterId);
+  const activeSceneId = useVaultStore((s) => s.activeSceneId);
+  const setActiveScene = useVaultStore((s) => s.setActiveScene);
 
-export default function BottomBar({
-  selectedScene,
-  selectedChapter,
-  selectedStory,
-  onNavigateScene,
-}: Props) {
+  const selectedStory = stories.find((s) => s.id === activeStoryId) ?? null;
+  const selectedChapter = selectedStory?.chapters.find((c) => c.id === activeChapterId) ?? null;
+  const selectedScene = selectedChapter?.scenes.find((s) => s.id === activeSceneId) ?? null;
+
   const allScenes: { scene: Scene; chapter: Chapter; story: Story }[] = [];
   if (selectedStory) {
     for (const ch of [...selectedStory.chapters].sort((a, b) => a.order - b.order)) {
@@ -36,27 +35,21 @@ export default function BottomBar({
         .reduce((a, b) => a + b, 0)
     : 0;
 
+  const handleNavigateScene = (direction: 'prev' | 'next') => {
+    if (!selectedStory || !selectedScene) return;
+    const nextIdx = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
+    if (nextIdx >= 0 && nextIdx < allScenes.length) {
+      const { scene, chapter } = allScenes[nextIdx];
+      setActiveScene(selectedStory.id, chapter.id, scene.id);
+    }
+  };
+
   return (
     <div className="bottom-bar">
       <div className="bottom-nav">
-        <button
-          className="bottom-nav-btn"
-          disabled={!hasPrev}
-          onClick={() => onNavigateScene('prev')}
-          title="Previous scene"
-        >
-          ‹ Prev
-        </button>
-        <button
-          className="bottom-nav-btn"
-          disabled={!hasNext}
-          onClick={() => onNavigateScene('next')}
-          title="Next scene"
-        >
-          Next ›
-        </button>
+        <button className="bottom-nav-btn" disabled={!hasPrev} onClick={() => handleNavigateScene('prev')} title="Previous scene">‹ Prev</button>
+        <button className="bottom-nav-btn" disabled={!hasNext} onClick={() => handleNavigateScene('next')} title="Next scene">Next ›</button>
       </div>
-
       <div className="bottom-meta">
         {selectedScene ? (
           <>
@@ -70,9 +63,7 @@ export default function BottomBar({
             <span className="bottom-stats">
               {wordCount.toLocaleString()} words
               {selectedScene.blocks.length > 0 && ` · ${selectedScene.blocks.length} blocks`}
-              {currentIndex >= 0 && (
-                <> · Scene {currentIndex + 1} / {allScenes.length}</>
-              )}
+              {currentIndex >= 0 && <> · Scene {currentIndex + 1} / {allScenes.length}</>}
             </span>
           </>
         ) : (
@@ -83,7 +74,6 @@ export default function BottomBar({
           </span>
         )}
       </div>
-
       <div className="bottom-draft">
         {selectedScene?.draftState && (
           <span className={`bottom-draft-badge draft-${selectedScene.draftState}`}>

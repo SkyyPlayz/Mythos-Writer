@@ -1,31 +1,25 @@
 import { useState } from 'react';
-import type { Scene, Story, Chapter } from './types';
+import { useVaultStore, selectActiveScene, selectActiveChapter, selectActiveStory } from './stores/vaultStore';
+import { useUIStore } from './stores/uiStore';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
 import ArchivePanel from './ArchivePanel';
 import './RightSidebar.css';
 
-type Tab = 'notes' | 'properties' | 'ai';
-
 interface Props {
-  activeTab: Tab;
-  onTabChange: (tab: Tab) => void;
-  selectedScene: Scene | null;
-  selectedChapter: Chapter | null;
-  selectedStory: Story | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
   scanIntervalSeconds?: number;
-  isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }
 
-function NotesPanel({ scene }: { scene: Scene | null }) {
+function NotesPanel() {
+  const selectedScene = useVaultStore(selectActiveScene);
   const [note, setNote] = useState('');
 
-  if (!scene) {
+  if (!selectedScene) {
     return (
       <div className="sidebar-empty">
         <div className="sidebar-empty-icon">📝</div>
@@ -47,16 +41,12 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
   );
 }
 
-function PropertiesPanel({
-  scene,
-  chapter,
-  story,
-}: {
-  scene: Scene | null;
-  chapter: Chapter | null;
-  story: Story | null;
-}) {
-  if (!scene || !chapter || !story) {
+function PropertiesPanel() {
+  const selectedScene = useVaultStore(selectActiveScene);
+  const selectedChapter = useVaultStore(selectActiveChapter);
+  const selectedStory = useVaultStore(selectActiveStory);
+
+  if (!selectedScene || !selectedChapter || !selectedStory) {
     return (
       <div className="sidebar-empty">
         <div className="sidebar-empty-icon">🏷️</div>
@@ -66,11 +56,11 @@ function PropertiesPanel({
     );
   }
 
-  const wordCount = scene.blocks
+  const wordCount = selectedScene.blocks
     .map((b) => b.content.trim().split(/\s+/).filter(Boolean).length)
     .reduce((a, b) => a + b, 0);
 
-  const blocksByType = scene.blocks.reduce<Record<string, number>>((acc, b) => {
+  const blocksByType = selectedScene.blocks.reduce<Record<string, number>>((acc, b) => {
     acc[b.type] = (acc[b.type] ?? 0) + 1;
     return acc;
   }, {});
@@ -79,16 +69,16 @@ function PropertiesPanel({
     <div className="sidebar-properties">
       <div className="prop-group">
         <div className="prop-label">Scene</div>
-        <div className="prop-value prop-title">{scene.title}</div>
+        <div className="prop-value prop-title">{selectedScene.title}</div>
       </div>
       <div className="prop-row">
         <div className="prop-group">
           <div className="prop-label">Story</div>
-          <div className="prop-value">{story.title}</div>
+          <div className="prop-value">{selectedStory.title}</div>
         </div>
         <div className="prop-group">
           <div className="prop-label">Chapter</div>
-          <div className="prop-value">{chapter.title}</div>
+          <div className="prop-value">{selectedChapter.title}</div>
         </div>
       </div>
       <div className="prop-row">
@@ -98,13 +88,13 @@ function PropertiesPanel({
         </div>
         <div className="prop-group">
           <div className="prop-label">Blocks</div>
-          <div className="prop-value prop-stat">{scene.blocks.length}</div>
+          <div className="prop-value prop-stat">{selectedScene.blocks.length}</div>
         </div>
       </div>
       <div className="prop-group">
         <div className="prop-label">Draft state</div>
-        <div className={`prop-value prop-draft draft-${scene.draftState ?? 'in-progress'}`}>
-          {scene.draftState ?? 'in-progress'}
+        <div className={`prop-value prop-draft draft-${selectedScene.draftState ?? 'in-progress'}`}>
+          {selectedScene.draftState ?? 'in-progress'}
         </div>
       </div>
       {Object.keys(blocksByType).length > 0 && (
@@ -121,15 +111,11 @@ function PropertiesPanel({
       )}
       <div className="prop-group">
         <div className="prop-label">Last updated</div>
-        <div className="prop-value prop-date">
-          {new Date(scene.updatedAt).toLocaleString()}
-        </div>
+        <div className="prop-value prop-date">{new Date(selectedScene.updatedAt).toLocaleString()}</div>
       </div>
       <div className="prop-group">
         <div className="prop-label">Created</div>
-        <div className="prop-value prop-date">
-          {new Date(scene.createdAt).toLocaleString()}
-        </div>
+        <div className="prop-value prop-date">{new Date(selectedScene.createdAt).toLocaleString()}</div>
       </div>
     </div>
   );
@@ -138,60 +124,44 @@ function PropertiesPanel({
 type AiSubTab = 'writing' | 'vault' | 'archive';
 
 function AiPanel({
-  scene,
   writingAssistantEnabled = true,
   archiveEnabled = true,
   scanIntervalSeconds = 30,
-  isPageFocused = true,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
   onWikiLinkSuggestionsChange,
 }: {
-  scene: Scene | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
   scanIntervalSeconds?: number;
-  isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }) {
   const [subTab, setSubTab] = useState<AiSubTab>('writing');
+  const selectedScene = useVaultStore(selectActiveScene);
+  const view = useUIStore((s) => s.view);
+  const isPageFocused = view === 'editor';
 
   return (
     <div className="ai-panel">
       <div className="ai-subtabs">
-        <button
-          className={`ai-subtab${subTab === 'writing' ? ' active' : ''}`}
-          onClick={() => setSubTab('writing')}
-        >
-          Writing
-        </button>
-        <button
-          className={`ai-subtab${subTab === 'vault' ? ' active' : ''}`}
-          onClick={() => setSubTab('vault')}
-        >
-          Vault
-        </button>
-        <button
-          className={`ai-subtab${subTab === 'archive' ? ' active' : ''}`}
-          onClick={() => setSubTab('archive')}
-        >
-          Archive
-        </button>
+        <button className={`ai-subtab${subTab === 'writing' ? ' active' : ''}`} onClick={() => setSubTab('writing')}>Writing</button>
+        <button className={`ai-subtab${subTab === 'vault' ? ' active' : ''}`} onClick={() => setSubTab('vault')}>Vault</button>
+        <button className={`ai-subtab${subTab === 'archive' ? ' active' : ''}`} onClick={() => setSubTab('archive')}>Archive</button>
       </div>
       {subTab === 'writing' && (
         <WritingAssistantPanel
-          scene={scene}
+          scene={selectedScene}
           enabled={writingAssistantEnabled}
           scanIntervalSeconds={scanIntervalSeconds}
           isActive={isPageFocused}
         />
       )}
-      {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
+      {subTab === 'vault' && <VaultAgentPanel scene={selectedScene} enabled={archiveEnabled} />}
       {subTab === 'archive' && (
         <ArchivePanel
-          scene={scene}
+          scene={selectedScene}
           enabled={archiveEnabled}
           onJumpToText={onJumpToText}
           onInsertWikiLink={onInsertWikiLink}
@@ -202,20 +172,20 @@ function AiPanel({
   );
 }
 
+type Tab = 'notes' | 'properties' | 'ai';
+
 export default function RightSidebar({
-  activeTab,
-  onTabChange,
-  selectedScene,
-  selectedChapter,
-  selectedStory,
   writingAssistantEnabled = true,
   archiveEnabled = true,
   scanIntervalSeconds = 30,
-  isPageFocused = true,
   onJumpToText,
   onInsertWikiLink,
   onWikiLinkSuggestionsChange,
 }: Props) {
+  const layout = useUIStore((s) => s.layout);
+  const setLayout = useUIStore((s) => s.setLayout);
+  const activeTab = layout.rightTab;
+
   const tabs: { id: Tab; label: string }[] = [
     { id: 'notes', label: 'Notes' },
     { id: 'properties', label: 'Properties' },
@@ -229,24 +199,20 @@ export default function RightSidebar({
           <button
             key={t.id}
             className={`sidebar-tab${activeTab === t.id ? ' active' : ''}`}
-            onClick={() => onTabChange(t.id)}
+            onClick={() => setLayout({ ...layout, rightTab: t.id })}
           >
             {t.label}
           </button>
         ))}
       </div>
       <div className="sidebar-content">
-        {activeTab === 'notes' && <NotesPanel scene={selectedScene} />}
-        {activeTab === 'properties' && (
-          <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
-        )}
+        {activeTab === 'notes' && <NotesPanel />}
+        {activeTab === 'properties' && <PropertiesPanel />}
         {activeTab === 'ai' && (
           <AiPanel
-            scene={selectedScene}
             writingAssistantEnabled={writingAssistantEnabled}
             archiveEnabled={archiveEnabled}
             scanIntervalSeconds={scanIntervalSeconds}
-            isPageFocused={isPageFocused}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}
             onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
