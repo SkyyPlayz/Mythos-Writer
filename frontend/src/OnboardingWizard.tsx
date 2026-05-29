@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Sparkles, FilePlus, FolderInput, FolderOpen,
+  Info, ShieldCheck, CircleCheck, ChevronRight,
+  Eye, EyeOff, FolderPlus, FolderCheck, AlertTriangle, Lock, Loader2
+} from 'lucide-react';
 import './OnboardingWizard.css';
+
+// suppress unused-import warnings for icons reserved for future screens
+void FolderPlus; void FolderCheck; void AlertTriangle; void Lock; void Loader2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +61,7 @@ function api(): Api {
 
 interface PickerCardProps {
   recommended?: boolean;
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   description: string;
   ctaLabel: string;
@@ -191,7 +199,7 @@ function FolderDropZone({ onPickFolder, onDrop, scanning, testId }: FolderDropZo
         </>
       ) : (
         <>
-          <span className="folder-drop-zone__icon" aria-hidden="true">📁</span>
+          <FolderOpen size={40} className="folder-drop-zone__icon" aria-hidden="true" />
           <span className="folder-drop-zone__hint">Drop a vault folder here</span>
           <span className="folder-drop-zone__or" aria-hidden="true">— or —</span>
           <button
@@ -290,10 +298,47 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   // API key
   const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const apiKeyValid = !apiKey.trim() || /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(apiKey.trim());
+
+  // Done screen
+  const [savedSettings, setSavedSettings] = useState<AppSettings | null>(null);
 
   // Shared
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Focus management
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [screen]);
+
+  // Esc handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (screen === 'welcome' || screen === 'done') return;
+      if (screen === 'import-progress') { setShowCancelConfirm(true); return; }
+      if (screen === 'blank-path' || screen === 'sample-path' || screen === 'api-key') {
+        setError('');
+        setScreen('welcome');
+        return;
+      }
+      if (screen === 'import-source') { setError(''); setScreen('welcome'); return; }
+      if (screen === 'import-dryrun') {
+        setError('');
+        setDryRun(null);
+        setDryRunBanner('');
+        setRegistrationToken('');
+        setScreen('import-source');
+        return;
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [screen]);
 
   // ─── Validation helpers ─────────────────────────────────────────────────────
 
@@ -511,6 +556,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       const key = skipApiKey ? initialSettings.apiKey : apiKey.trim();
       const updated: AppSettings = { ...initialSettings, apiKey: key, onboardingComplete: true };
       await api().settingsSet(updated);
+      if (savedSettings === null) setSavedSettings(updated);
       setScreen('done');
       onComplete(updated);
     } catch (e) {
@@ -535,7 +581,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   // ─── Step indicator ─────────────────────────────────────────────────────────
 
   const stepInfo = STEP_MAP[screen];
-  const stepLabel = stepInfo ? `Step ${stepInfo[0]} of ${stepInfo[1]}` : null;
 
   // ─── Render helpers ─────────────────────────────────────────────────────────
 
@@ -591,7 +636,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           <div className="picker-grid" role="group" aria-label="Choose how to get started">
             <PickerCard
               recommended
-              icon="✦"
+              icon={<Sparkles size={32} />}
               title="Open sample project"
               description="Tour the editor with a small worldbuilding demo — characters, lore, and a one-chapter draft."
               ctaLabel="Open sample →"
@@ -599,7 +644,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               testId="card-sample"
             />
             <PickerCard
-              icon="📄"
+              icon={<FilePlus size={32} />}
               title="Start blank"
               description="Create an empty vault in ~/Documents/Mythos Vault. Change the location on the next screen."
               ctaLabel="Choose path →"
@@ -607,7 +652,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               testId="card-blank"
             />
             <PickerCard
-              icon="📥"
+              icon={<FolderInput size={32} />}
               title="Import Obsidian vault"
               description="Point us at an existing vault. We'll show a dry-run report of what changes before anything is written."
               ctaLabel="Pick folder →"
@@ -619,6 +664,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           {error && <p className="onboarding-error" role="alert">{error}</p>}
 
           <p className="onboarding-footer">
+            <Info size={14} aria-hidden="true" />
             Need help? See the{' '}
             <a
               href="https://docs.mythoswriter.app/quick-start"
@@ -636,10 +682,22 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {screen === 'blank-path' && (
         <div className="onboarding-card" data-testid="screen-blank-path">
           <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
+            <button className="btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepInfo && (
+              <div className="step-indicator" role="progressbar"
+                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
+                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
+                {Array.from({length: stepInfo[1]}, (_, i) => (
+                  <span key={i} className={`step-indicator__dot${
+                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
+                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
+                  }`} />
+                ))}
+                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
+              </div>
+            )}
           </div>
-          <h2 className="onboarding-title">Where should we put your new vault?</h2>
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Where should we put your new vault?</h2>
           <p className="onboarding-subtitle">We&apos;ll create an empty Mythos Vault here. You can move it later from Settings.</p>
 
           <FolderPathField
@@ -672,10 +730,22 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {screen === 'import-source' && (
         <div className="onboarding-card" data-testid="screen-import-source">
           <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
+            <button className="btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepInfo && (
+              <div className="step-indicator" role="progressbar"
+                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
+                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
+                {Array.from({length: stepInfo[1]}, (_, i) => (
+                  <span key={i} className={`step-indicator__dot${
+                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
+                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
+                  }`} />
+                ))}
+                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
+              </div>
+            )}
           </div>
-          <h2 className="onboarding-title">Choose the Obsidian vault to import</h2>
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Choose the Obsidian vault to import</h2>
           <p className="onboarding-subtitle">Nothing is written until you confirm the dry-run report.</p>
 
           <FolderDropZone
@@ -694,14 +764,26 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         <div className="onboarding-card onboarding-card--wide" data-testid="screen-import-dryrun">
           <div className="onboarding-top-bar">
             <button
-              className="btn-ghost btn-back"
+              className="btn-back"
               onClick={() => { setError(''); setDryRun(null); setDryRunBanner(''); setRegistrationToken(''); setScreen('import-source'); }}
             >
               ← Back
             </button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
+            {stepInfo && (
+              <div className="step-indicator" role="progressbar"
+                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
+                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
+                {Array.from({length: stepInfo[1]}, (_, i) => (
+                  <span key={i} className={`step-indicator__dot${
+                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
+                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
+                  }`} />
+                ))}
+                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
+              </div>
+            )}
           </div>
-          <h2 className="onboarding-title">Vault scan report</h2>
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Vault scan report</h2>
           <p className="onboarding-vault-path">{importSourcePath}</p>
 
           {dryRunBanner && (
@@ -718,7 +800,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             {dryRun.restructured !== undefined && (
               <details className="dry-run-section" open={dryRun.restructured.length > 0} data-testid="section-restructured">
                 <summary className="dry-run-section-title">
-                  ▼ Restructured
+                  <ChevronRight size={14} className="dry-run-chevron" aria-hidden="true" /> Restructured
                 </summary>
                 {dryRun.restructured.length > 0 ? (
                   <div className="dry-run-section__body">
@@ -746,7 +828,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             {dryRun.leftAsIs !== undefined && (
               <details className="dry-run-section" open={false} data-testid="section-left-as-is">
                 <summary className="dry-run-section-title">
-                  ▼ Left as-is
+                  <ChevronRight size={14} className="dry-run-chevron" aria-hidden="true" /> Left as-is — {dryRun.leftAsIs.length} notes
                 </summary>
                 <p className="dry-run-section__body dry-run-section__count">
                   {dryRun.leftAsIs.length} notes will keep their current path
@@ -809,9 +891,10 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               <p className="dry-run-ok" data-testid="dry-run-ok">No issues found — vault looks great!</p>
             )}
 
-            <p className="dry-run-snapshot-promise">
-              ⓘ A snapshot is taken before any change. Rollback is one click during and immediately after the import.
-            </p>
+            <div className="dry-run-snapshot-promise">
+              <ShieldCheck size={16} aria-hidden="true" style={{flexShrink: 0, color: 'var(--accent)'}} />
+              <span>A snapshot is taken before any change. Rollback is one click during and immediately after the import.</span>
+            </div>
           </div>
 
           {error && <p className="onboarding-error" role="alert">{error}</p>}
@@ -842,9 +925,21 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         <div className="onboarding-card" data-testid="screen-import-progress">
           <div className="onboarding-top-bar">
             <span />
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
+            {stepInfo && (
+              <div className="step-indicator" role="progressbar"
+                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
+                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
+                {Array.from({length: stepInfo[1]}, (_, i) => (
+                  <span key={i} className={`step-indicator__dot${
+                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
+                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
+                  }`} />
+                ))}
+                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
+              </div>
+            )}
           </div>
-          <h2 className="onboarding-title">Importing your vault…</h2>
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Importing your vault…</h2>
           <p className="onboarding-vault-path">{importSourcePath}</p>
 
           {renderProgressBar()}
@@ -859,7 +954,10 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             <p className="import-progress-last-action">Last action: {importProgress.lastAction}</p>
           )}
 
-          <p className="import-progress-hint">ⓘ Safe to cancel — we&apos;ll roll back to before the import.</p>
+          <div className="import-progress-hint dry-run-snapshot-promise">
+            <ShieldCheck size={14} aria-hidden="true" style={{flexShrink: 0, color: 'var(--accent)'}} />
+            <span>Safe to cancel — we&apos;ll roll back to before the import.</span>
+          </div>
 
           <div className="onboarding-actions onboarding-actions--center">
             <button
@@ -876,8 +974,8 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {/* ── S2d Import success ── */}
       {screen === 'import-success' && (
         <div className="onboarding-card" data-testid="screen-import-success">
-          <div className="import-success-icon" aria-hidden="true">✓</div>
-          <h2 className="onboarding-title">Vault imported</h2>
+          <CircleCheck size={48} className="import-success-icon" aria-hidden="true" />
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Vault imported</h2>
           <p className="onboarding-subtitle">{importNotesCount} notes are now in your Mythos Vault.</p>
           {importSnapshotPath && (
             <>
@@ -886,7 +984,8 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                 <span className="import-snapshot-path__value">{importSnapshotPath}</span>
               </p>
               <p className="import-snapshot-footnote">
-                ⓘ You can delete the snapshot from Settings → Vault later.
+                <Info size={14} aria-hidden="true" />
+                <span>You can delete the snapshot from Settings → Vault later.</span>
               </p>
             </>
           )}
@@ -906,10 +1005,22 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {screen === 'sample-path' && (
         <div className="onboarding-card" data-testid="screen-sample-path">
           <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
+            <button className="btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepInfo && (
+              <div className="step-indicator" role="progressbar"
+                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
+                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
+                {Array.from({length: stepInfo[1]}, (_, i) => (
+                  <span key={i} className={`step-indicator__dot${
+                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
+                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
+                  }`} />
+                ))}
+                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
+              </div>
+            )}
           </div>
-          <h2 className="onboarding-title">Where should we put the sample project?</h2>
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Where should we put the sample project?</h2>
 
           <FolderPathField
             label="Target folder"
@@ -932,7 +1043,8 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           </div>
 
           <p className="sample-footnote">
-            ⓘ You can keep working in the sample, or start your own vault from File → New project at any time.
+            <Info size={14} aria-hidden="true" style={{flexShrink: 0}} />
+            <span>You can keep working in the sample, or start your own vault from File → New project at any time.</span>
           </p>
 
           {error && <p className="onboarding-error" role="alert">{error}</p>}
@@ -954,20 +1066,37 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {screen === 'api-key' && (
         <div className="onboarding-card" data-testid="screen-api-key">
           <p className="onboarding-phase-label">Add your API key — optional</p>
-          <h2 className="onboarding-title">Connect to Anthropic Claude</h2>
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Connect to Anthropic Claude</h2>
           <p className="onboarding-subtitle">
             Mythos Writer uses the Anthropic Claude API for AI features. You can skip this and add it later in Settings.
           </p>
           <label className="onboarding-label" htmlFor="api-key-input">Anthropic API key</label>
-          <input
-            id="api-key-input"
-            type="password"
-            className="onboarding-input"
-            placeholder="sk-ant-..."
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            data-testid="api-key-input"
-          />
+          <div style={{position: 'relative'}}>
+            <input
+              id="api-key-input"
+              type={showKey ? 'text' : 'password'}
+              className="onboarding-input"
+              placeholder="sk-ant-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              data-testid="api-key-input"
+              style={{paddingRight: '40px'}}
+            />
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{position:'absolute',right:0,top:0,bottom:0,padding:'0 var(--space-3)'}}
+              onClick={() => setShowKey(v => !v)}
+              aria-label={showKey ? 'Hide API key' : 'Show API key'}
+            >
+              {showKey ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+            </button>
+          </div>
+          {apiKey.trim() && !apiKeyValid && (
+            <p className="folder-path-field__hint folder-path-field__hint--warn">
+              Key format looks wrong — should start with sk-ant-
+            </p>
+          )}
           {error && <p className="onboarding-error" role="alert">{error}</p>}
           <div className="onboarding-actions">
             <button
@@ -992,11 +1121,18 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
       {/* ── S5 Done ── */}
       {screen === 'done' && (
-        <div className="onboarding-card" data-testid="screen-done">
-          <p className="onboarding-phase-label">You&apos;re set</p>
-          <div className="onboarding-done-icon" aria-hidden="true">✓</div>
-          <h2 className="onboarding-title">You&apos;re all set!</h2>
+        <div className="onboarding-card onboarding-card--done" data-testid="screen-done">
+          <CircleCheck size={64} className="onboarding-done-icon" aria-hidden="true" />
+          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>You&apos;re all set</h2>
           <p className="onboarding-subtitle">Mythos Writer is ready. Start writing your story.</p>
+          <p className="onboarding-hint">
+            Tip: press <kbd>⌘K</kbd> (or <kbd>Ctrl K</kbd>) to open the command palette.
+          </p>
+          <div className="onboarding-actions">
+            <button className="btn-primary" onClick={() => onComplete(savedSettings ?? initialSettings)}>
+              Start writing →
+            </button>
+          </div>
         </div>
       )}
     </div>

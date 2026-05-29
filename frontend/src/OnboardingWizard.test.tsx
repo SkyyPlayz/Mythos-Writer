@@ -106,16 +106,16 @@ describe('OnboardingWizard — S0 Welcome screen', () => {
     expect(screen.getByTestId('screen-import-source')).toBeInTheDocument();
   });
 
-  it('shows step label "Step 1 of 2" on blank-path screen', () => {
+  it('shows step indicator "1 / 2" on blank-path screen', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
-    expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
   });
 
-  it('shows step label "Step 1 of 3" on import-source screen', () => {
+  it('shows step indicator "1 / 3" on import-source screen', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
-    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+    expect(screen.getByText('1 / 3')).toBeInTheDocument();
   });
 });
 
@@ -370,7 +370,7 @@ describe('OnboardingWizard — S3a Sample project', () => {
     fireEvent.click(screen.getByTestId('card-sample'));
     expect(screen.getByTestId('screen-sample-path')).toBeInTheDocument();
     expect(screen.getByText(/Acheron/)).toBeInTheDocument();
-    expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument();
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
   });
 
   it('back button returns to welcome', () => {
@@ -480,7 +480,7 @@ describe('OnboardingWizard — S5 Done', () => {
     await waitFor(() => expect(screen.getByTestId('screen-api-key')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('skip-api-key'));
     await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
-    expect(screen.getByText(/You're all set!/)).toBeInTheDocument();
+    expect(screen.getByText(/You're all set/)).toBeInTheDocument();
   });
 });
 
