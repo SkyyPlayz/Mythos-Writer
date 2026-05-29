@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import SceneHistory from './SceneHistory';
+import { useSaveStatus } from './hooks/useSaveStatus';
+import type { SaveStatus } from './hooks/useSaveStatus';
 import './SceneEditor.css';
 
 interface Props {
@@ -10,31 +12,43 @@ interface Props {
 
 const SNAPSHOT_DEBOUNCE_MS = 5000;
 
+function SaveStatusIndicator({ status }: { status: SaveStatus }) {
+  if (status === 'saving') {
+    return <span className="scene-autosave scene-autosave--saving">Saving…</span>;
+  }
+  if (status === 'unsaved') {
+    return <span className="scene-autosave scene-autosave--unsaved">• Unsaved changes</span>;
+  }
+  return <span className="scene-autosave scene-autosave--saved">✓ Saved</span>;
+}
+
 export default function SceneEditor({ sceneId, scenePath, initialContent = '' }: Props) {
   const [content, setContent] = useState(initialContent);
   const [showHistory, setShowHistory] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const { saveStatus, markDirty, markSaving, markSaved, markError } = useSaveStatus();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSnapshotRef = useRef<string>(initialContent);
 
   const takeSnapshot = useCallback(
     async (text: string) => {
       if (text === lastSnapshotRef.current) return;
+      markSaving();
       try {
         await window.api.snapshotSave(sceneId, text);
         lastSnapshotRef.current = text;
-        setLastSavedAt(new Date().toLocaleTimeString());
+        markSaved();
       } catch {
-        // non-fatal
+        markError();
       }
     },
-    [sceneId]
+    [sceneId, markSaving, markSaved, markError]
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setContent(val);
+    markDirty();
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => takeSnapshot(val), SNAPSHOT_DEBOUNCE_MS);
@@ -92,9 +106,7 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
 
       <div className="scene-editor-toolbar">
         <span className="scene-title">{scenePath}</span>
-        <span className="scene-autosave">
-          {lastSavedAt ? `Snapshot saved ${lastSavedAt}` : 'No snapshot yet'}
-        </span>
+        <SaveStatusIndicator status={saveStatus} />
         <button className="btn-history" onClick={() => setShowHistory(true)}>
           History
         </button>
