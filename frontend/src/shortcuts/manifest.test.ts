@@ -13,7 +13,7 @@
  * entry, this test will catch it once you add the handler ID to that set.
  */
 
-import MANIFEST, { type ShortcutEntry, type KeyCombo } from './manifest';
+import MANIFEST, { type KeyCombo } from './manifest';
 
 // ─── 1. Structural validity ───────────────────────────────────────────────────
 
