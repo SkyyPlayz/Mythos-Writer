@@ -207,7 +207,7 @@ import {
 } from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
-import { validatePathForVault } from './validatePathUtil.js';
+import { validatePathForVault, vaultPresentState } from './validatePathUtil.js';
 
 const require = createRequire(import.meta.url);
 
@@ -312,14 +312,72 @@ const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
 const getNotesVaultRoot = () =>
   loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
 
+// SKY-69: Show a recovery dialog when a previously configured vault is no longer
+// found on disk. Gives the user three options: browse for the vault (updates
+// settings in-place), start fresh (creates the vault at the original path), or
+// quit. Throws when the user quits so the IPC caller aborts cleanly.
+function handleMissingVault(missingRoot: string): void {
+  const response = dialog.showMessageBoxSync({
+    type: 'warning',
+    title: 'Vault Not Found',
+    message: 'Story vault not found',
+    detail:
+      `The story vault at:\n\n  ${missingRoot}\n\n` +
+      'could not be found. It may have been moved or deleted.\n\n' +
+      'Choose an option to continue.',
+    buttons: ['Browse for Vault…', 'Start Fresh', 'Quit'],
+    defaultId: 0,
+    cancelId: 2,
+  });
+
+  if (response === 0) {
+    const result = dialog.showOpenDialogSync({
+      title: 'Select Story Vault Folder',
+      defaultPath: path.dirname(missingRoot),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result && result.length > 0) {
+      const newRoot = result[0];
+      saveVaultSettings({ vaultRoot: newRoot });
+      addToRecentProjects(newRoot);
+      void stopVaultWatcher().then(() => startVaultWatcher(newRoot, notifyVaultChanged));
+      return;
+    }
+    // User dismissed the folder picker — treat as Quit.
+    app.quit();
+    throw new Error('Vault not found: user dismissed folder picker');
+  } else if (response === 1) {
+    // Start fresh: create the vault at the originally configured path.
+    fs.mkdirSync(missingRoot, { recursive: true });
+  } else {
+    app.quit();
+    throw new Error('Vault not found: user chose to quit');
+  }
+}
+
 function ensureVaultDir() {
-  const vaultRoot = getVaultRoot();
   // SKY-9: treat a missing OR empty directory as needing first-run seeding so
   // a user who pre-creates the folder still gets the canonical layout.
   // Scaffold itself is idempotent — never touches existing entries.
-  if (!fs.existsSync(vaultRoot)) {
-    fs.mkdirSync(vaultRoot, { recursive: true });
+  //
+  // SKY-69: distinguish fresh install (no settings yet) from a previously
+  // configured vault that was deleted — the latter shows a recovery dialog.
+  const configuredRoot = getVaultRoot();
+  switch (vaultPresentState(configuredRoot, getVaultSettingsPath())) {
+    case 'present':
+      break;
+    case 'fresh-install':
+      fs.mkdirSync(configuredRoot, { recursive: true });
+      break;
+    case 'deleted':
+      // Throws if the user quits; on Browse updates settings in-place so
+      // getVaultRoot() reflects the new path on the re-read below.
+      handleMissingVault(configuredRoot);
+      break;
   }
+  // Re-read: if the user browsed to a different vault, getVaultRoot() now
+  // returns the new path. Use it for all subsequent operations.
+  const vaultRoot = getVaultRoot();
   if (isEmptyOrMissing(vaultRoot)) {
     scaffoldStoryVault(vaultRoot, getLayoutMode());
   }

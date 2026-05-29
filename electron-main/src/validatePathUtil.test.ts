@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { validatePathForVault } from './validatePathUtil.js';
+import { validatePathForVault, vaultPresentState } from './validatePathUtil.js';
 
 const HOME = os.homedir();
 
@@ -86,5 +86,43 @@ describe('validatePathForVault', () => {
     const result = validatePathForVault(target, HOME);
     expect(result.exists).toBe(false);
     expect(result.writable).toBe(true);
+  });
+});
+
+// ─── vaultPresentState (SKY-69) ───
+
+describe('vaultPresentState', () => {
+  let tmpDir: string;
+  let settingsPath: string;
+  let vaultRoot: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vps-test-'));
+    settingsPath = path.join(tmpDir, 'vault-settings.json');
+    vaultRoot = path.join(tmpDir, 'Story Vault');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns "present" when vault root exists', () => {
+    fs.mkdirSync(vaultRoot);
+    expect(vaultPresentState(vaultRoot, settingsPath)).toBe('present');
+  });
+
+  it('returns "present" when vault root exists regardless of settings file', () => {
+    fs.mkdirSync(vaultRoot);
+    fs.writeFileSync(settingsPath, JSON.stringify({ vaultRoot }), 'utf-8');
+    expect(vaultPresentState(vaultRoot, settingsPath)).toBe('present');
+  });
+
+  it('returns "fresh-install" when vault root is missing and no settings file exists', () => {
+    expect(vaultPresentState(vaultRoot, settingsPath)).toBe('fresh-install');
+  });
+
+  it('returns "deleted" when vault root is missing but settings file exists', () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({ vaultRoot }), 'utf-8');
+    expect(vaultPresentState(vaultRoot, settingsPath)).toBe('deleted');
   });
 });

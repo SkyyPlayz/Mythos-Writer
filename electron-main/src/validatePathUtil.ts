@@ -1,4 +1,4 @@
-// SKY-12.2: Pure filesystem validation for the onboarding wizard path-picker.
+// SKY-12.2 / SKY-69: Pure filesystem helpers for vault path validation.
 // No Electron dependency — fully testable in Node.
 import fs from 'fs';
 import path from 'path';
@@ -69,4 +69,22 @@ export function validatePathForVault(p: string, homeDir: string): ValidatePathRe
 
   const entries = fs.readdirSync(resolved);
   return { exists: true, isEmpty: entries.length === 0, writable };
+}
+
+/**
+ * SKY-69: Classify the vault-root state at startup so callers can distinguish
+ * a fresh install (no settings yet) from a previously-configured vault that
+ * has since been deleted/moved.
+ *
+ * - 'present'       — vault root exists; normal operation.
+ * - 'fresh-install' — vault root missing AND no settings file; first run.
+ * - 'deleted'       — vault root missing AND settings file exists; the vault
+ *                     was configured before and is no longer there.
+ */
+export function vaultPresentState(
+  vaultRoot: string,
+  settingsPath: string,
+): 'present' | 'fresh-install' | 'deleted' {
+  if (fs.existsSync(vaultRoot)) return 'present';
+  return fs.existsSync(settingsPath) ? 'deleted' : 'fresh-install';
 }
