@@ -102,7 +102,9 @@ import {
   type AgentPersonaResetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
+  type SettingsTestConnectionPayload,
 } from './ipc.js';
+import { wrapIpcHandler } from './ipcErrors.js';
 import {
   buildAgentSystemPrompt,
   loadPersonaFile,
@@ -141,6 +143,12 @@ import {
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
 import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
+import {
+  checkVoiceSettingsUpdate,
+  seedTrustedBinariesFromSettings,
+  validateSttShape,
+  validateTtsShape,
+} from './voiceGate.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
@@ -206,6 +214,7 @@ import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage } from './streaming.js';
+import { streamFromProvider } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -492,6 +501,15 @@ function notifyVaultChanged(filePath: string) {
     mainWindow.webContents.send('vault:file-changed', { path: relativePath });
     // Debounced reindex — auto-sync markdown prose back to manifest
     scheduleReindex();
+  }
+}
+
+// Notify renderer when the notes vault changes so it can refresh entity state.
+// Fires on external edits (e.g. Obsidian) and schedules an FTS rebuild.
+function notifyNotesVaultChanged(_filePath: string) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    scheduleReindex();
+    mainWindow.webContents.send('vault:notes-updated', { count: 1 });
   }
 }
 
@@ -1098,6 +1116,26 @@ const handlers: IpcHandlers = {
     // renderer echoes back the masked preview unchanged, preserve the stored
     // raw key. See settings-masking.ts (MYT-424).
     const reconciled = reconcileSettingsFromRenderer(payload.settings, current);
+    // MYT-788: shape-validate stt/tts and gate any renderer-driven change to
+    // the local binary / model paths. A failed gate aborts the whole write —
+    // we deliberately do not persist a "mostly-OK" settings object, because
+    // the rejected path field would survive next reload via reconciliation.
+    const sttShape = validateSttShape(reconciled.stt);
+    if (!sttShape.ok) return { saved: false, error: sttShape.error };
+    const ttsShape = validateTtsShape(reconciled.tts);
+    if (!ttsShape.ok) return { saved: false, error: ttsShape.error };
+    const voiceGate = checkVoiceSettingsUpdate(
+      reconciled.stt,
+      current.stt,
+      reconciled.tts,
+      current.tts,
+      {
+        sttBinaryToken: payload.sttBinaryToken,
+        ttsBinaryToken: payload.ttsBinaryToken,
+        ttsModelToken: payload.ttsModelToken,
+      },
+    );
+    if (!voiceGate.ok) return { saved: false, error: voiceGate.error };
     // Regenerate sessionId when telemetry is being disabled (privacy: unlink future sessions).
     let telemetry = reconciled.telemetry;
     if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
@@ -1118,6 +1156,26 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler();
     }
     return { saved: true };
+  },
+
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
+    const t0 = Date.now();
+    try {
+      const ac = new AbortController();
+      for await (const _ of streamFromProvider(
+        { kind: payload.provider.kind, apiKey: payload.provider.apiKey, baseUrl: payload.provider.baseUrl, model: payload.provider.model },
+        { messages: [{ role: 'user', content: 'Hi' }], maxTokens: 1, signal: ac.signal },
+      )) {
+        ac.abort();
+        break;
+      }
+      return { ok: true, latencyMs: Date.now() - t0 };
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return { ok: true, latencyMs: Date.now() - t0 };
+      }
+      return { ok: false, latencyMs: Date.now() - t0, error: e instanceof Error ? e.message : 'Unknown error' };
+    }
   },
 
   // MYT-343: per-agent config get/set
@@ -1648,7 +1706,7 @@ const handlers: IpcHandlers = {
     };
   },
 
-  // ─── Liquid Glass background image (MYT-613) ───
+  // ─── Liquid Neon background image (MYT-613) ────
   [IPC_CHANNELS.BG_PICK]: async () => {
     const result = await dialog.showOpenDialog({
       title: 'Choose App Background Image',
@@ -1776,6 +1834,36 @@ const handlers: IpcHandlers = {
     }
     const token = generateRegistrationToken(result.filePaths[0]);
     return { vaultRoot: result.filePaths[0], cancelled: false, registrationToken: token };
+  },
+
+  // ─── Voice binary/model picker (MYT-788) ───
+  // Main-process file dialog → one-shot registration token bound to the chosen
+  // path. settings:set requires this token to change stt.localBinaryPath,
+  // tts.localBinaryPath, or tts.localModelPath, so a renderer can never
+  // promote an arbitrary local executable into the spawn surface.
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: async (payload: { kind: 'stt-binary' | 'tts-binary' | 'tts-model' }) => {
+    const title =
+      payload?.kind === 'tts-model'
+        ? 'Select Local TTS Voice Model (.onnx)'
+        : payload?.kind === 'tts-binary'
+          ? 'Select Local TTS Binary (Piper)'
+          : 'Select Local STT Binary (whisper.cpp)';
+    const filters =
+      payload?.kind === 'tts-model'
+        ? [{ name: 'Piper voice model', extensions: ['onnx'] }, { name: 'All files', extensions: ['*'] }]
+        : [{ name: 'All files', extensions: ['*'] }];
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title,
+      buttonLabel: 'Select',
+      filters,
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { path: null, cancelled: true, registrationToken: null };
+    }
+    const chosen = result.filePaths[0];
+    const token = generateRegistrationToken(chosen);
+    return { path: chosen, cancelled: false, registrationToken: token };
   },
 
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: async (_payload: VaultObsidianDryRunPayload) => {
@@ -2281,8 +2369,9 @@ const handlers: IpcHandlers = {
       writeManifest(getManifestPath(), synced);
       try { buildFullIndex(getDb(), newRoot, synced); } catch { /* non-fatal */ }
     } catch { /* non-fatal */ }
-    // Restart file watcher and scheduler
+    // Restart file watchers and scheduler
     await startVaultWatcher(newRoot, notifyVaultChanged);
+    await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
     startWritingScanScheduler();
     // Notify renderer to reload
     if (mainWindow) {
@@ -2836,12 +2925,15 @@ function loadAppSettings(): AppSettings {
   let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
-      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
+      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings> & { liquidGlass?: AppSettings['liquidNeon'] };
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
+      // One-shot migration: legacy key liquidGlass → liquidNeon (MYT-814)
+      const liquidNeon = raw.liquidNeon ?? raw.liquidGlass;
       base = {
         ...SETTINGS_DEFAULTS,
         ...raw,
+        ...(liquidNeon ? { liquidNeon } : {}),
         agents: {
           writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, ...(rawAgents.writingAssistant ?? {}) },
           brainstorm: { ...SETTINGS_DEFAULTS.agents.brainstorm, ...(rawAgents.brainstorm ?? {}) },
@@ -2924,7 +3016,7 @@ function getValidatedApiKey(): string {
 
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
-  ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, wrapIpcHandler(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.brainstorm;
     if (!agentSettings.enabled) {
@@ -3025,13 +3117,13 @@ function registerBrainstormHandler() {
     }
 
     return { text: fullText, requestId };
-  });
+  }));
 }
 
 // ─── Writing Assistant streaming handler ───
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
-  ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, wrapIpcHandler(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.writingAssistant;
     if (!agentSettings.enabled) {
@@ -3129,13 +3221,13 @@ function registerWritingAssistantHandler() {
     }
 
     return { text: fullText, requestId };
-  });
+  }));
 }
 
 // ─── Vault Agent handlers ───
 function registerVaultAgentHandlers() {
   // agent:vault-index — builds in-memory index of all vault entities
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
@@ -3169,10 +3261,10 @@ function registerVaultAgentHandlers() {
     });
 
     return { entities: indexed };
-  });
+  }));
 
   // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const apiKey = getValidatedApiKey();
 
@@ -3299,7 +3391,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     }
 
     return { text: fullText, inconsistencies, requestId };
-  });
+  }));
 }
 
 // ─── Writing Assistant scan core (MYT-711) ───
@@ -3370,7 +3462,7 @@ async function runWritingScan(
 
 // ─── Writing Assistant scheduled scan handler (MYT-233 / MYT-711) ───
 function registerWritingScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, wrapIpcHandler(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
@@ -3394,7 +3486,7 @@ function registerWritingScanHandler(): void {
     const model = settings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
 
     return runWritingScan(payload.prose, payload.scenePath, payload.sceneId, client, model);
-  });
+  }));
 }
 
 // ─── Writing Assistant scheduled heartbeat (MYT-711) ───
@@ -3491,7 +3583,7 @@ function startWritingScanScheduler(): void {
 // ─── Beta-Read Mode on-demand scan handler (MYT-711) ───
 // Runs an LLM analysis of a scene and auto-generates anchored BetaReadComments.
 function registerBetaReadScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, wrapIpcHandler(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
@@ -3573,7 +3665,7 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
         });
       } catch { /* non-fatal */ }
     }
-  });
+  }));
 }
 
 // ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
@@ -3617,6 +3709,10 @@ app.whenReady().then(async () => {
   }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
+  // MYT-788: seed the voice-binary trusted set from persisted settings — those
+  // paths got there through a previous gated write (or pre-existed before the
+  // gate was introduced and remain trustable as user-controlled state).
+  seedTrustedBinariesFromSettings(loadAppSettings());
   setupIpcMain(handlers);
   registerAgentCancelHandlers();
   registerBrainstormHandler();
@@ -3639,8 +3735,9 @@ app.whenReady().then(async () => {
     buildFullIndex(getDb(), getVaultRoot(), manifest);
   } catch { /* non-fatal — index rebuilt on next watcher event */ }
 
-  // Start watching vault for external markdown changes
+  // Start watching both vaults for external markdown changes
   await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
+  await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -3652,6 +3749,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', async () => {
   stopWritingScanScheduler();
   await stopVaultWatcher();
+  await stopNotesVaultWatcher();
   closeDb();
   if (process.platform !== 'darwin') {
     app.quit();

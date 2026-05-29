@@ -685,6 +685,40 @@
   justify-content: flex-end;
 }
 
+/* SKY-77: backdrop-filter: blur(0px) still creates a GPU compositing stacking
+   context even with no visible blur. In high-contrast and reduced-transparency
+   contexts the blur token is already 0px, so any backdrop-filter on the overlay
+   would nest a stacking context inside .onboarding-overlay's own compositing
+   layer — Chromium can artifact this as a semi-transparent dialog panel.
+   Null it here and pin the panel to a fully-opaque surface token. */
+:root[data-contrast="high"] .confirm-dialog-overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-contrast="high"] .confirm-dialog {
+  background: var(--bg-panel);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .confirm-dialog-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .confirm-dialog {
+    background: Canvas;
+    border-color: ButtonText;
+    color: CanvasText;
+  }
+  .confirm-dialog__body {
+    opacity: 1;
+    color: CanvasText;
+  }
+}
+
 /* ─── Buttons ──────────────────────────────────────────────────────────────── */
 
 .btn-primary {

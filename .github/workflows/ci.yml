@@ -77,6 +77,19 @@ jobs:
       - name: E2E — Two-vault layout Story + Notes CRUD (MYT-769)
         run: xvfb-run --auto-servernum npm run test:e2e:two-vault
 
+      - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
+        run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
+
+      - name: E2E — Visual regression baseline comparison (MYT-771)
+        run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
+
+      - name: Upload visual-regression diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs
+          path: e2e-visual-artifacts/visual-regression/
+
       - name: Upload E2E report on failure
         if: failure()
         uses: actions/upload-artifact@v4

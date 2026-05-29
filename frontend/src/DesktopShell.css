@@ -5,7 +5,7 @@
   overflow: hidden;
   background: var(--bg-base);
   /* Background image wallpaper (MYT-613) — layered behind all glass panels.
-     --bg-app-image is 'none' (transparent) by default; set by applyLiquidGlassTokens. */
+     --bg-app-image is 'none' (transparent) by default; set by applyLiquidNeonTokens. */
   background-image: var(--bg-app-image, none);
   background-size: cover;
   background-position: center;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
-import { applyTheme, applyLiquidGlassTokens } from './theme';
+import { applyTheme, applyLiquidNeonTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -12,7 +12,7 @@ import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import { useTextPrompt } from './useTextPrompt';
-import SettingsPanel from './SettingsPanel';
+import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
@@ -500,13 +500,13 @@ export default function DesktopShell() {
         setAppSettings(s);
         applyTheme(s.theme);
         // Load background image data URL if a custom path is stored
-        const lg = s.liquidGlass;
+        const lg = s.liquidNeon;
         if (lg?.background && lg.background !== 'default') {
           (window.api as any).loadBgImage?.(lg.background)
-            .then((res: { dataUrl: string | null }) => applyLiquidGlassTokens(lg, res?.dataUrl))
-            .catch(() => applyLiquidGlassTokens(lg));
+            .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
+            .catch(() => applyLiquidNeonTokens(lg));
         } else {
-          applyLiquidGlassTokens(lg);
+          applyLiquidNeonTokens(lg);
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
@@ -1041,7 +1041,7 @@ export default function DesktopShell() {
           onSaved={(s) => {
             setAppSettings(s);
             applyTheme(s.theme);
-            applyLiquidGlassTokens(s.liquidGlass);
+            applyLiquidNeonTokens(s.liquidNeon);
           }}
         />
       )}

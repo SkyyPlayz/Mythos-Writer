@@ -136,8 +136,8 @@ interface EditModeConfig {
   showBetaRead: boolean;
 }
 
-/** Liquid Glass theme customization. All values optional; absent = LIQUID_GLASS_DEFAULTS. */
-interface LiquidGlassPrefs {
+/** Liquid Neon theme customization. All values optional; absent = LIQUID_NEON_DEFAULTS. */
+interface LiquidNeonPrefs {
   /** 'default' = built-in CSS gradient; file path = background image (MYT-716). */
   background: 'default' | string;
   style: number;
@@ -208,8 +208,8 @@ interface AppSettings {
   onboardingComplete?: boolean;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
-  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
-  liquidGlass?: LiquidGlassPrefs;
+  /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
+  liquidNeon?: LiquidNeonPrefs;
   /** Voice IO settings (MYT-205). */
   voice?: {
     enabled: boolean;
@@ -346,7 +346,21 @@ interface Window {
 
     // App settings
     settingsGet: () => Promise<AppSettings>;
-    settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
+    /**
+     * MYT-788: optional `tokens` carries one-shot registration tokens from
+     * voicePickBinary, required when changing stt.localBinaryPath,
+     * tts.localBinaryPath, or tts.localModelPath.
+     */
+    settingsSet: (
+      settings: AppSettings,
+      tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
+    ) => Promise<{ saved: boolean; error?: string }>;
+    /** Test connection to an AI provider (MYT-779). */
+    settingsTestConnection: (provider: { kind: string; apiKey?: string; baseUrl?: string; model: string }) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
+    /** Main-process file picker for local voice binary / model selection (MYT-788). */
+    voicePickBinary: (
+      kind: 'stt-binary' | 'tts-binary' | 'tts-model',
+    ) => Promise<{ path: string | null; cancelled: boolean; registrationToken: string | null }>;
     getAgentConfig: () => Promise<unknown>;
     setAgentConfig: (agent: string, config: unknown) => Promise<unknown>;
     agentBudgetUsage: () => Promise<{
@@ -415,7 +429,7 @@ interface Window {
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
 
-    // Liquid Glass background image (MYT-716)
+    // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
     loadBgImage: (filePath: string) => Promise<{ dataUrl: string | null }>;
 
