@@ -8,11 +8,22 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    performance.mark('renderer:settings-ipc-start');
+    const ipcT0 = performance.now();
     window.api.settingsGet().then((s) => {
+      performance.mark('renderer:settings-ipc-end');
+      console.log(`[perf] renderer:settingsGet IPC: ${(performance.now() - ipcT0).toFixed(0)} ms`);
       setSettings(s);
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    if (!loading && settings !== null) {
+      performance.mark('renderer:interactive');
+      console.log('[perf] renderer:interactive');
+    }
+  }, [loading, settings]);
 
   if (loading || settings === null) {
     return <div className="root-layout" />;
