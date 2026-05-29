@@ -100,7 +100,7 @@
   border-radius: var(--radius-sm);
   padding: 4px;
   z-index: 100;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  box-shadow: var(--elev-2);
 }
 
 @supports (backdrop-filter: blur(1px)) {
@@ -431,13 +431,13 @@
   bottom: 1.5rem;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--bg-panel, #2a2a2e);
-  color: var(--text-primary, #f0f0f0);
-  border: 1px solid var(--warning, #f5a623);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--warning);
   border-radius: 6px;
   padding: 0.6rem 1.1rem;
   font-size: 0.85rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--elev-2);
   z-index: 9999;
   white-space: nowrap;
   pointer-events: none;
@@ -467,11 +467,11 @@
   width: 240px;
   min-width: 180px;
   max-width: 300px;
-  border-left: 1px solid var(--border-subtle, #2e2e32);
+  border-left: 1px solid var(--border-subtle);
   overflow-y: auto;
   padding: 6px 0;
   flex-shrink: 0;
-  background: var(--bg-panel, #1e1e21);
+  background: var(--bg-panel);
 }
 
 .br-loading {
@@ -480,7 +480,7 @@
   gap: 6px;
   padding: 8px 12px;
   font-size: 12px;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
 }
 
 /* ─── Chapter doc view (MYT-378) ─── */
@@ -531,12 +531,12 @@
 }
 
 .chapter-doc-scene.active {
-  border-color: var(--accent-primary, var(--accent));
+  border-color: var(--accent-primary);
   background: var(--bg-overlay);
 }
 
 .chapter-doc-scene:focus-visible {
-  outline: 2px solid var(--accent-primary, var(--accent));
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 
@@ -597,7 +597,7 @@
 }
 
 .book-outline-chapter.active-chapter {
-  border-left-color: var(--accent-primary, var(--accent));
+  border-left-color: var(--accent-primary);
 }
 
 .book-outline-chapter-title {
@@ -640,7 +640,7 @@
 }
 
 .book-outline-scene:focus-visible {
-  outline: 2px solid var(--accent-primary, var(--accent));
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 
@@ -651,7 +651,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   z-index: 1000;
 }
 .prompt-modal {
@@ -661,9 +661,9 @@
   min-width: 320px;
   padding: 20px;
   border-radius: 10px;
-  background: var(--surface, #1e1b29);
-  border: 1px solid var(--border, #353048);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--elev-3);
 }
 .prompt-modal-label {
   font-size: 14px;
@@ -672,8 +672,8 @@
 .prompt-modal-input {
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid var(--border, #353048);
-  background: var(--bg, #15131f);
+  border: 1px solid var(--border);
+  background: var(--bg);
   color: inherit;
   font-size: 14px;
 }
@@ -685,13 +685,13 @@
 .prompt-modal-actions button {
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid var(--border, #353048);
+  border: 1px solid var(--border);
   background: transparent;
   color: inherit;
   cursor: pointer;
 }
 .prompt-modal-ok {
-  background: var(--accent, #7c5cff);
-  border-color: var(--accent, #7c5cff);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-canvas);
 }

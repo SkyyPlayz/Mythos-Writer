@@ -254,6 +254,17 @@
   --color-warning-border: rgba(251, 191, 36, 0.4);
   --color-warning-text: #fbbf24;
   --color-archive-hint: var(--neon-violet);
+
+  /* Liquid Glass surface aliases (SKY-58: stop DesktopShell's literal fallbacks
+     from silently bypassing the high-contrast theme). */
+  --bg-control: var(--bg-elevated);
+  --bg-control-hover: color-mix(in srgb, var(--bg-elevated), white 6%);
+  --bg-overlay: var(--bg-active);
+  --accent-primary: var(--accent);
+  --bg: var(--bg-inset);
+  --state-danger-bg: color-mix(in srgb, var(--state-danger) 18%, var(--bg-inset));
+  --state-success-bg: color-mix(in srgb, var(--state-success) 18%, var(--bg-inset));
+  --state-warning-bg: var(--color-warning-bg);
 }
 
 /* =============================================================================
@@ -299,6 +310,16 @@
   --accent-dim: #c9b6ff;
   --accent-dark: #c9b6ff;
   --surface-3: #1d232c;
+
+  /* SKY-58 alias parity for high-contrast (no glass, no glow, opaque fills). */
+  --bg-control: var(--bg-elevated);
+  --bg-control-hover: color-mix(in srgb, var(--bg-elevated), white 6%);
+  --bg-overlay: var(--bg-elevated);
+  --accent-primary: var(--accent);
+  --bg: var(--bg-inset);
+  --state-danger-bg: color-mix(in srgb, var(--state-danger) 18%, var(--bg-inset));
+  --state-success-bg: color-mix(in srgb, var(--state-success) 18%, var(--bg-inset));
+  --state-warning-bg: color-mix(in srgb, var(--state-warning) 18%, var(--bg-inset));
 }
 
 /* OS-level increased-contrast request → clamp toward the high-contrast theme. */
