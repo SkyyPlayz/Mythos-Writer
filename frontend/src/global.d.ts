@@ -409,9 +409,20 @@ interface Window {
     writingModeSet: (payload: { mode?: WritingMode; focusFlags?: Partial<FocusModeFlags>; editConfig?: Partial<EditModeConfig> }) => Promise<{ mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }>;
     onWritingModeChanged: (cb: (data: { mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }) => void) => () => void;
 
-    // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
+    // Two-vault path management (MYT-608 / SKY-9 / SKY-12) — Story Vault + Notes Vault
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
-    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-12.1: optional seedMode tells the main process whether to seed the standard Mythos
+    // structure ('default') or leave the vaults as bare roots ('blank'). Real handlers ship in SKY-12.2.
+    vaultSetPaths: (
+      storyVaultPath: string,
+      notesVaultPath: string,
+      opts?: { seedMode?: 'default' | 'blank' },
+    ) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-12.1: copies the bundled sample two-vault project (one universe / one story) into
+    // parentPath, returning the resolved Story/Notes Vault paths. Real handler ships in SKY-12.3.
+    loadSampleTwoVault: (
+      parentPath: string,
+    ) => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault

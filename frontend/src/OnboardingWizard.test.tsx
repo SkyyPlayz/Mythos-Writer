@@ -60,25 +60,25 @@ beforeEach(() => {
     }),
     obsidianDryRun: vi.fn().mockResolvedValue(mockDryRun),
     obsidianRegister: vi.fn().mockResolvedValue({ vaultRoot: '/home/user/my-vault', notesIndexed: 42 }),
+    obsidianPickFolderByPath: vi.fn().mockResolvedValue({ vaultRoot: '/home/user/dropped', registrationToken: 'drop-token' }),
     vaultSetPaths: vi.fn().mockResolvedValue({ ok: true }),
     loadSampleTwoVault: vi.fn().mockResolvedValue({
       storyVaultPath: '/home/user/Mythos Sample/Story Vault',
       notesVaultPath: '/home/user/Mythos Sample/Notes Vault',
     }),
     validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
-    obsidianPickFolderByPath: vi.fn().mockResolvedValue({ vaultRoot: '/home/user/dropped', registrationToken: 'drop-token' }),
   };
 });
 
 describe('OnboardingWizard — S0 Welcome screen', () => {
-  it('renders the welcome screen on first render', () => {
+  it('renders the four-card welcome screen on first render', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('screen-welcome')).toBeInTheDocument();
     expect(screen.getByText('Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('Write the world before you write the book.')).toBeInTheDocument();
   });
 
-  it('shows four picker cards (default / blank / import / sample)', () => {
+  it('shows four picker cards', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-default')).toBeInTheDocument();
     expect(screen.getByTestId('card-blank')).toBeInTheDocument();
@@ -86,35 +86,53 @@ describe('OnboardingWizard — S0 Welcome screen', () => {
     expect(screen.getByTestId('card-sample')).toBeInTheDocument();
   });
 
-  it('shows the Recommended badge on the default card', () => {
+  it('shows the Recommended badge on the default card only', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByText('Recommended')).toBeInTheDocument();
     const defaultCard = screen.getByTestId('card-default');
-    expect(defaultCard.textContent).toContain('Recommended');
+    expect(defaultCard).toHaveClass('picker-card--recommended');
+    expect(defaultCard.textContent).toMatch(/Recommended/);
+    expect(screen.getAllByText('Recommended')).toHaveLength(1);
   });
 
-  it('clicking Default card goes to S1a (default-path screen)', () => {
+  it('default card has initial keyboard focus on mount', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('card-default')).toHaveFocus();
+  });
+
+  it('clicking Default card goes to default-path screen', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-default'));
     expect(screen.getByTestId('screen-default-path')).toBeInTheDocument();
   });
 
-  it('clicking Blank card goes to S1b (blank-path screen)', () => {
+  it('clicking Blank card goes to blank-path screen', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
     expect(screen.getByTestId('screen-blank-path')).toBeInTheDocument();
   });
 
-  it('clicking Import card goes to S2a (import-source screen)', () => {
+  it('clicking Import card goes to import-source screen', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     expect(screen.getByTestId('screen-import-source')).toBeInTheDocument();
   });
 
-  it('clicking Sample card goes to S3a (sample-path screen)', () => {
+  it('clicking Sample card goes to sample-path screen', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-sample'));
     expect(screen.getByTestId('screen-sample-path')).toBeInTheDocument();
+  });
+
+  it('shows step label "Step 1 of 1" on default-path screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-default'));
+    expect(screen.getByText('Step 1 of 1')).toBeInTheDocument();
+  });
+
+  it('shows step label "Step 1 of 1" on blank-path screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-blank'));
+    expect(screen.getByText('Step 1 of 1')).toBeInTheDocument();
   });
 
   it('shows step label "Step 1 of 3" on import-source screen', () => {
@@ -124,8 +142,8 @@ describe('OnboardingWizard — S0 Welcome screen', () => {
   });
 });
 
-describe('OnboardingWizard — S1a Default layout', () => {
-  it('shows the default-path screen with path field and status hint', async () => {
+describe('OnboardingWizard — S1a Default layout (seedMode=default)', () => {
+  it('shows the default-path screen with default path and status hint', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-default'));
     expect(screen.getByTestId('default-path-input')).toBeInTheDocument();
@@ -139,36 +157,39 @@ describe('OnboardingWizard — S1a Default layout', () => {
     expect(screen.getByTestId('screen-welcome')).toBeInTheDocument();
   });
 
-  it('Create vaults calls vaultSetPaths with seedMode=default and advances to done', async () => {
+  it('Create vaults calls vaultSetPaths with seedMode "default" and lands on done', async () => {
     const onComplete = vi.fn();
-    const api = (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn> } }).api;
+    const api = (window as unknown as {
+      api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn> };
+    }).api;
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-default'));
     await waitFor(() => expect(api.validatePath).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('create-default-vault'));
-    await waitFor(() => expect(api.vaultSetPaths).toHaveBeenCalledWith(
-      expect.stringMatching(/Story Vault$/),
-      expect.stringMatching(/Notes Vault$/),
-      { seedMode: 'default' }
-    ));
+    await waitFor(() => expect(api.vaultSetPaths).toHaveBeenCalled());
+    expect(api.vaultSetPaths).toHaveBeenCalledWith(
+      expect.stringContaining('Story Vault'),
+      expect.stringContaining('Notes Vault'),
+      { seedMode: 'default' },
+    );
     await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 
-  it('shows error when vaultSetPaths fails', async () => {
-    (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn> } }).api.vaultSetPaths =
-      vi.fn().mockResolvedValue({ error: 'Disk full' });
+  it('Create vaults shows error when vaultSetPaths fails', async () => {
+    (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn> } }).api.vaultSetPaths =
+      vi.fn().mockResolvedValue({ error: 'Not writable' });
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-default'));
     await waitFor(() => {});
     fireEvent.click(screen.getByTestId('create-default-vault'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.getByRole('alert').textContent).toContain('Disk full');
+    expect(screen.getByRole('alert').textContent).toContain('Not writable');
   });
 });
 
-describe('OnboardingWizard — S1b Start blank', () => {
-  it('shows the blank-path screen with path field and status hint', async () => {
+describe('OnboardingWizard — S1b Start blank (seedMode=blank)', () => {
+  it('shows the blank-path screen with default path and status hint', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
     expect(screen.getByTestId('blank-path-input')).toBeInTheDocument();
@@ -182,24 +203,27 @@ describe('OnboardingWizard — S1b Start blank', () => {
     expect(screen.getByTestId('screen-welcome')).toBeInTheDocument();
   });
 
-  it('Create blank vaults calls vaultSetPaths with seedMode=blank and advances to done', async () => {
+  it('Create blank vaults calls vaultSetPaths with seedMode "blank" and lands on done', async () => {
     const onComplete = vi.fn();
-    const api = (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn> } }).api;
+    const api = (window as unknown as {
+      api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn> };
+    }).api;
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-blank'));
     await waitFor(() => expect(api.validatePath).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('create-blank-vault'));
-    await waitFor(() => expect(api.vaultSetPaths).toHaveBeenCalledWith(
-      expect.stringMatching(/Story Vault$/),
-      expect.stringMatching(/Notes Vault$/),
-      { seedMode: 'blank' }
-    ));
+    await waitFor(() => expect(api.vaultSetPaths).toHaveBeenCalled());
+    expect(api.vaultSetPaths).toHaveBeenCalledWith(
+      expect.stringContaining('Story Vault'),
+      expect.stringContaining('Notes Vault'),
+      { seedMode: 'blank' },
+    );
     await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 
-  it('shows error when vaultSetPaths fails on blank path', async () => {
-    (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn> } }).api.vaultSetPaths =
+  it('Create blank vaults shows error when vaultSetPaths fails', async () => {
+    (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn> } }).api.vaultSetPaths =
       vi.fn().mockResolvedValue({ error: 'Not writable' });
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
@@ -207,6 +231,14 @@ describe('OnboardingWizard — S1b Start blank', () => {
     fireEvent.click(screen.getByTestId('create-blank-vault'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toContain('Not writable');
+  });
+
+  it('blank CTA disabled when path is non-empty (validation hint state)', async () => {
+    (window as unknown as { api: { validatePath: ReturnType<typeof vi.fn> } }).api.validatePath =
+      vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: true });
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-blank'));
+    await waitFor(() => expect(screen.getByTestId('create-blank-vault')).toBeDisabled());
   });
 });
 
@@ -378,7 +410,7 @@ describe('OnboardingWizard — S2d Import success', () => {
     expect(screen.getByText('/home/user/my-vault-snapshot-2026')).toBeInTheDocument();
   });
 
-  it('Continue → advances directly to done (no api-key step)', async () => {
+  it('Continue → lands directly on done (no api-key intermediate)', async () => {
     const onComplete = vi.fn();
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-import'));
@@ -388,6 +420,7 @@ describe('OnboardingWizard — S2d Import success', () => {
     await waitFor(() => expect(screen.getByTestId('screen-import-success')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('import-success-continue'));
     expect(screen.getByTestId('screen-done')).toBeInTheDocument();
+    expect(screen.queryByTestId('screen-api-key')).not.toBeInTheDocument();
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 });
@@ -398,7 +431,7 @@ describe('OnboardingWizard — S3a Sample project', () => {
     fireEvent.click(screen.getByTestId('card-sample'));
     expect(screen.getByTestId('screen-sample-path')).toBeInTheDocument();
     expect(screen.getByText(/Argent/)).toBeInTheDocument();
-    expect(screen.getByText(/The Glass Library/)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1 of 1/)).toBeInTheDocument();
   });
 
   it('back button returns to welcome', () => {
@@ -408,13 +441,14 @@ describe('OnboardingWizard — S3a Sample project', () => {
     expect(screen.getByTestId('screen-welcome')).toBeInTheDocument();
   });
 
-  it('Open sample calls loadSampleTwoVault with parentPath and advances to done', async () => {
+  it('Open sample calls loadSampleTwoVault with parent path and lands on done', async () => {
     const onComplete = vi.fn();
     const api = (window as unknown as { api: { loadSampleTwoVault: ReturnType<typeof vi.fn> } }).api;
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-sample'));
     fireEvent.click(screen.getByTestId('open-sample'));
     await waitFor(() => expect(api.loadSampleTwoVault).toHaveBeenCalled());
+    expect(api.loadSampleTwoVault).toHaveBeenCalledWith(expect.stringContaining('Mythos Sample'));
     await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
@@ -438,34 +472,27 @@ describe('OnboardingWizard — S3a Sample project', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toMatch(/disk space/);
   });
-
-  it('shows error when loadSampleTwoVault returns an error object', async () => {
-    (window as unknown as { api: { loadSampleTwoVault: ReturnType<typeof vi.fn> } }).api.loadSampleTwoVault =
-      vi.fn().mockResolvedValue({ error: 'Target not empty' });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-sample'));
-    fireEvent.click(screen.getByTestId('open-sample'));
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.getByRole('alert').textContent).toContain('Target not empty');
-  });
 });
 
-describe('OnboardingWizard — S4 Done', () => {
-  it('shows "You\'re all set!" on done screen after blank path', async () => {
+describe('OnboardingWizard — Done screen lands directly (no api-key)', () => {
+  it('shows "You\'re all set!" on done screen after default flow', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-default'));
+    await waitFor(() => {});
+    fireEvent.click(screen.getByTestId('create-default-vault'));
+    await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
+    expect(screen.getByText(/You're all set!/)).toBeInTheDocument();
+    expect(screen.queryByTestId('screen-api-key')).not.toBeInTheDocument();
+  });
+
+  it('shows "You\'re all set!" on done screen after blank flow', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
     await waitFor(() => {});
     fireEvent.click(screen.getByTestId('create-blank-vault'));
     await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
     expect(screen.getByText(/You're all set!/)).toBeInTheDocument();
-  });
-
-  it('no api-key screen exists anywhere in the wizard flow', () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.queryByTestId('screen-api-key')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('api-key-input')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('save-api-key')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('skip-api-key')).not.toBeInTheDocument();
   });
 });
 

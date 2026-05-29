@@ -60,6 +60,7 @@ function api(): Api {
 
 interface PickerCardProps {
   recommended?: boolean;
+  autoFocus?: boolean;
   icon: string;
   title: string;
   description: string;
@@ -68,7 +69,7 @@ interface PickerCardProps {
   testId?: string;
 }
 
-function PickerCard({ recommended, icon, title, description, ctaLabel, onActivate, testId }: PickerCardProps) {
+function PickerCard({ recommended, autoFocus, icon, title, description, ctaLabel, onActivate, testId }: PickerCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -81,6 +82,7 @@ function PickerCard({ recommended, icon, title, description, ctaLabel, onActivat
       className={`picker-card${recommended ? ' picker-card--recommended' : ''}`}
       onClick={onActivate}
       onKeyDown={handleKeyDown}
+      autoFocus={autoFocus}
       data-testid={testId}
       aria-describedby={testId ? `${testId}-desc` : undefined}
     >
@@ -633,6 +635,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           <div className="picker-grid" role="group" aria-label="Choose how to get started">
             <PickerCard
               recommended
+              autoFocus
               icon="✨"
               title="Use the default layout"
               description="Create both Story Vault and Notes Vault under your chosen folder, seeded with the standard Mythos structure plus a starter universe and story."
