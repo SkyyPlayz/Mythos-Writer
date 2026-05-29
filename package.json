@@ -29,8 +29,11 @@
     "test:e2e:visual-capture": "playwright test e2e/visual-capture.spec.ts --reporter=list",
     "test:e2e:writing-modes": "playwright test e2e/writing-modes.spec.ts --reporter=list",
     "test:e2e:two-vault": "playwright test e2e/tests/two-vault-crud.spec.ts --reporter=list",
-    "test:e2e:two-vault-firstrun": "playwright test e2e/tests/two-vault-firstrun.spec.ts --reporter=list",
     "test:e2e:onboarding": "playwright test e2e/onboarding.spec.ts --reporter=list",
+    "test:e2e:onboarding-default": "playwright test e2e/tests/onboarding-default.spec.ts --reporter=list",
+    "test:e2e:onboarding-blank": "playwright test e2e/tests/onboarding-blank.spec.ts --reporter=list",
+    "test:e2e:onboarding-import": "playwright test e2e/tests/onboarding-import.spec.ts --reporter=list",
+    "test:e2e:onboarding-sample": "playwright test e2e/tests/onboarding-sample.spec.ts --reporter=list",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main",
     "docs:shortcuts": "node --experimental-vm-modules scripts/docs-shortcuts.mjs"
   },

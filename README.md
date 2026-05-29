@@ -159,6 +159,13 @@ Beta releases are labeled `v*.*.*-beta*` on the [Releases page](https://github.c
 
 The API key is primarily stored via the in-app Settings panel (Electron `userData/app-settings.json`). The env var is a fallback for CI or headless use.
 
+## Onboarding
+
+The first-run wizard guides new users through four setup paths (default layout,
+blank vaults, Obsidian import, or sample project). See
+[docs/onboarding.md](docs/onboarding.md) for the full flow, rollback
+instructions, and the `MYTHOS_DEV=1` reset action.
+
 ## CI
 
 GitHub Actions runs on every push and pull request to `main`:

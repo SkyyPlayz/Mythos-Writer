@@ -233,6 +233,19 @@
 
 ---
 
+## Onboarding Smoke Matrix (SKY-12.5)
+
+Four onboarding paths each have a dedicated automated spec under `e2e/tests/`:
+
+| Test ID    | Spec file                             | Path        | Key assertions |
+|------------|---------------------------------------|-------------|----------------|
+| TC-OB-D01  | `e2e/tests/onboarding-default.spec.ts`| A — Default | DesktopShell; `Notes Vault/Universes/My First Universe` exists |
+| TC-OB-B01  | `e2e/tests/onboarding-blank.spec.ts`  | B — Blank   | DesktopShell; `Story Vault/manifest.json`; Notes Vault has no scaffold |
+| TC-OB-I01  | `e2e/tests/onboarding-import.spec.ts` | C — Import  | Dry-run report; import-success; DesktopShell |
+| TC-OB-S01  | `e2e/tests/onboarding-sample.spec.ts` | D — Sample  | DesktopShell; `Story Vault/The Glass Library`; `Notes Vault/Universes/Argent` |
+
+---
+
 ## Automated Run Instructions
 
 ```bash
@@ -244,9 +257,18 @@ npx playwright install chromium
 
 # 3. Run the smoke suite
 npx playwright test e2e/smoke.spec.ts --reporter=list
+
+# 4. Run the onboarding suite
+npx playwright test e2e/tests/onboarding-default.spec.ts \
+                   e2e/tests/onboarding-blank.spec.ts \
+                   e2e/tests/onboarding-import.spec.ts \
+                   e2e/tests/onboarding-sample.spec.ts \
+                   --reporter=list
 ```
 
-**Expected output:** 3 passing tests (TC-01, TC-02, TC-03).
+**Expected output (smoke):** 3 passing tests (TC-01, TC-02, TC-03).
+
+**Expected output (onboarding):** 4 passing tests (TC-OB-D01, TC-OB-B01, TC-OB-I01, TC-OB-S01).
 
 ---
 
