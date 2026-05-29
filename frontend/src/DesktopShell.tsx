@@ -14,6 +14,7 @@ import VaultGraphView from './VaultGraphView';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
+import SceneHistory from './SceneHistory';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import BetaReadMargin from './BetaReadMargin';
@@ -394,6 +395,9 @@ export default function DesktopShell() {
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
+  const [showSceneHistory, setShowSceneHistory] = useState(false);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
+  const [restoreKey, setRestoreKey] = useState(0);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
@@ -402,6 +406,31 @@ export default function DesktopShell() {
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
   }, []);
+
+  const handleManualSnapshot = useCallback(async () => {
+    if (!selectedScene) return;
+    const content = selectedScene.blocks.map(b => b.content).join('\n\n');
+    try {
+      await (window as any).api.snapshotSave?.(selectedScene.id, content);
+      setSnapshotSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      // non-fatal
+    }
+  }, [selectedScene]);
+
+  const handleSceneRestore = useCallback((content: string) => {
+    if (!selectedScene) return;
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
+    setRestoreKey(k => k + 1);
+    setShowSceneHistory(false);
+  }, [selectedScene]);
 
   const handleJumpToText = useCallback((text: string) => {
     editorApiRef.current?.jumpToText(text);
@@ -441,6 +470,12 @@ export default function DesktopShell() {
       setBetaReadComments([]);
     }
   }, [selectedScene?.id, loadBetaReadComments]);
+
+  useEffect(() => {
+    setSnapshotSavedAt(null);
+    setShowSceneHistory(false);
+    setRestoreKey(0);
+  }, [selectedScene?.id]);
 
   const handleBetaReadRequest = useCallback(async (selectedText: string) => {
     if (!selectedScene || betaReadLoading) return;
@@ -1160,31 +1195,60 @@ export default function DesktopShell() {
               }}
             />
           ) : selectedScene ? (
-            <div className="shell-editor-beta-wrap">
-              <BlockEditor
-                key={selectedScene.id}
-                scene={selectedScene}
-                onBlocksChange={handleBlocksChange}
-                onDraftStateChange={handleDraftStateChange}
-                onEditorReady={handleEditorReady}
-                onBetaReadRequest={handleBetaReadRequest}
-                wikiLinkSuggestions={wikiLinkSuggestions}
-                onAcceptWikiLink={handleEditorAcceptWikiLink}
-                onRejectWikiLink={handleEditorRejectWikiLink}
-              />
-              {(betaReadComments.length > 0 || betaReadLoading) && (
-                <div className="shell-beta-margin">
-                  {betaReadLoading && (
-                    <div className="br-loading" aria-live="polite">
-                      <span className="wa-spinner" aria-hidden="true" />
-                      Reading…
-                    </div>
-                  )}
-                  <BetaReadMargin
-                    comments={betaReadComments}
-                    onDismiss={handleBetaReadDismiss}
-                  />
-                </div>
+            <div className="shell-editor-scene-wrap">
+              <div className="scene-snapshot-toolbar">
+                <button
+                  className="scene-snapshot-save"
+                  onClick={handleManualSnapshot}
+                >
+                  Save snapshot now
+                </button>
+                <span className="scene-autosave" aria-live="polite">
+                  {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
+                </span>
+                <button
+                  className="btn-history"
+                  onClick={() => setShowSceneHistory(true)}
+                  aria-label="Open scene history"
+                >
+                  History
+                </button>
+              </div>
+              <div className="shell-editor-beta-wrap">
+                <BlockEditor
+                  key={`${selectedScene.id}-${restoreKey}`}
+                  scene={selectedScene}
+                  onBlocksChange={handleBlocksChange}
+                  onDraftStateChange={handleDraftStateChange}
+                  onEditorReady={handleEditorReady}
+                  onBetaReadRequest={handleBetaReadRequest}
+                  wikiLinkSuggestions={wikiLinkSuggestions}
+                  onAcceptWikiLink={handleEditorAcceptWikiLink}
+                  onRejectWikiLink={handleEditorRejectWikiLink}
+                />
+                {(betaReadComments.length > 0 || betaReadLoading) && (
+                  <div className="shell-beta-margin">
+                    {betaReadLoading && (
+                      <div className="br-loading" aria-live="polite">
+                        <span className="wa-spinner" aria-hidden="true" />
+                        Reading…
+                      </div>
+                    )}
+                    <BetaReadMargin
+                      comments={betaReadComments}
+                      onDismiss={handleBetaReadDismiss}
+                    />
+                  </div>
+                )}
+              </div>
+              {showSceneHistory && (
+                <SceneHistory
+                  sceneId={selectedScene.id}
+                  scenePath={selectedScene.path}
+                  currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                  onRestore={handleSceneRestore}
+                  onClose={() => setShowSceneHistory(false)}
+                />
               )}
             </div>
           ) : selectedEntity ? (

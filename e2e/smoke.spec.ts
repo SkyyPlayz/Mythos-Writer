@@ -209,38 +209,38 @@ test('TC-02: create story → chapter → scene and type text', async () => {
 
 // ─── TC-03: Save snapshot ─────────────────────────────────────────────────────
 //
-// SKIPPED — the user-facing snapshot UX this case targets is no longer wired
-// into DesktopShell. Tracking restoration in SKY-17:
-//
-//   - `Save snapshot now` button, `.scene-autosave` indicator, and `.btn-history`
-//     button live in `SceneEditor.tsx`, which is orphan code. DesktopShell now
-//     mounts `BlockEditor` (TipTap) and has no visible affordance to trigger or
-//     browse snapshots, even though `handleBlocksChange` still calls
-//     `window.api.snapshotSave(...)` automatically under the hood.
-//   - The DesktopShell "History" menu opens `PromptHistoryPanel`, not
-//     `SceneHistory`, so the `role=dialog name="Scene History"` path is also
-//     unreachable from the live shell.
-//
-// Once SKY-17 lands the snapshot affordance + history opener, un-skip this case
-// and re-point the selectors at the new UI.
+// Restored in SKY-17: the snapshot toolbar now lives in DesktopShell above the
+// BlockEditor. Selectors target `.scene-snapshot-toolbar` affordances wired in
+// that PR: `.scene-snapshot-save` button, `.scene-autosave` indicator, and
+// `.btn-history` button.
 
-test.skip('TC-03: save snapshot and verify in history panel (blocked on SKY-17)', async () => {
-  const saveBtn = page.getByText('Save snapshot now');
+test('TC-03: save snapshot and verify in history panel', async () => {
+  // Toolbar must be visible once a scene is selected (set up in TC-02)
+  const toolbar = page.locator('.scene-snapshot-toolbar');
+  await expect(toolbar).toBeVisible({ timeout: 5_000 });
+
+  // Click the manual-save button
+  const saveBtn = toolbar.locator('.scene-snapshot-save');
   await expect(saveBtn).toBeVisible({ timeout: 5_000 });
   await saveBtn.click();
 
-  const autosaveIndicator = page.locator('.scene-autosave');
+  // Autosave indicator should show the saved timestamp
+  const autosaveIndicator = toolbar.locator('.scene-autosave');
   await expect(autosaveIndicator).toContainText('Snapshot saved', { timeout: 10_000 });
 
-  const historyBtn = page.locator('.btn-history').first();
+  // Open the history panel via the History button
+  const historyBtn = toolbar.locator('.btn-history');
   await historyBtn.click();
 
   const historyPanel = page.getByRole('dialog', { name: 'Scene History' });
   await expect(historyPanel).toBeVisible({ timeout: 5_000 });
 
+  // At least one snapshot entry should exist
   const snapshotEntries = historyPanel.locator('.history-item');
   await expect(snapshotEntries.first()).toBeVisible({ timeout: 5_000 });
 
+  // Close the panel
   const closeBtn = historyPanel.getByRole('button', { name: 'Close history' });
   if (await closeBtn.isVisible()) await closeBtn.click();
+  await expect(historyPanel).not.toBeVisible({ timeout: 3_000 });
 });
