@@ -589,14 +589,16 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     const pct = total > 0 ? Math.round((current / total) * 100) : null;
     if (pct !== null) {
       return (
-        <div className="import-progress-bar-wrap">
+        <div
+          className="import-progress-bar-wrap"
+          style={{ '--progress-pct': `${pct}%` } as React.CSSProperties}
+        >
           <div
             className="import-progress-bar"
             role="progressbar"
             aria-valuenow={pct}
             aria-valuemin={0}
             aria-valuemax={100}
-            style={{ '--progress-pct': `${pct}%` } as React.CSSProperties}
           />
           <span className="import-progress-bar__pct">{pct}%</span>
         </div>
