@@ -148,10 +148,8 @@ test.beforeAll(async () => {
   vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vb-story-'));
   notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vb-notes-'));
 
-  // Pre-seed a worldbuilding note so the Notes Vault tree has content on boot.
-  // The current implementation lists the main vault root via listVault, so the
-  // note lives in vaultDir at a non-Manuscript path that passes isNotesItem.
-  const noteSubDir = path.join(vaultDir, NOTE_DIR);
+  // Pre-seed a worldbuilding note in notesVaultDir so the Notes Vault tree has content on boot.
+  const noteSubDir = path.join(notesVaultDir, NOTE_DIR);
   fs.mkdirSync(noteSubDir, { recursive: true });
   fs.writeFileSync(
     path.join(noteSubDir, NOTE_FILE),
