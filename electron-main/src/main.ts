@@ -100,6 +100,8 @@ import {
   type RestoreAppDataPayload,
   type AgentPersonaReadPayload,
   type AgentPersonaResetPayload,
+  type NotesGetPayload,
+  type NotesSetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
@@ -137,6 +139,8 @@ import {
   countTokensInWindow,
   countSuggestionsInWindow,
   insertProvenance,
+  getNoteBySceneId,
+  upsertNote,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -2482,6 +2486,19 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     return { folders: listNotesVaultFolders(root), notesVaultRoot: root };
+  },
+
+  // ─── Scene notes (SKY-55) ───
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => {
+    ensureVaultDir();
+    const content = getNoteBySceneId(payload.sceneId);
+    return { content };
+  },
+
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => {
+    ensureVaultDir();
+    upsertNote(payload.sceneId, payload.content);
+    return { ok: true as const };
   },
 
   // ─── Writing modes (MYT-347) ───

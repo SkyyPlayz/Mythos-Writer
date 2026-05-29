@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
@@ -30,6 +30,43 @@ const SIDEBAR_TABS: { id: Tab; label: string }[] = [
 
 function NotesPanel({ scene }: { scene: Scene | null }) {
   const [note, setNote] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveRef = useRef(note);
+
+  // Load note from DB whenever the scene changes.
+  useEffect(() => {
+    if (!scene) return;
+    window.api.notesGet(scene.id).then((res) => {
+      setNote(res.content);
+      saveRef.current = res.content;
+    }).catch(() => {});
+  }, [scene?.id]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setNote(value);
+    saveRef.current = value;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      if (scene) {
+        window.api.notesSet(scene.id, saveRef.current).catch(() => {});
+      }
+    }, 500);
+  }, [scene]);
+
+  // Flush any pending debounce save when the scene changes or the panel unmounts.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+        if (scene) {
+          window.api.notesSet(scene.id, saveRef.current).catch(() => {});
+        }
+      }
+    };
+  }, [scene?.id]);
 
   if (!scene) {
     return (
@@ -46,7 +83,7 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
       <textarea
         className="notes-textarea"
         value={note}
-        onChange={(e) => setNote(e.target.value)}
+        onChange={handleChange}
         placeholder="Scene notes, reminders, loose ideas…"
       />
     </div>

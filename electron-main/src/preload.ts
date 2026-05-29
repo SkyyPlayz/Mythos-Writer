@@ -436,6 +436,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('brainstorm:resetCategoryRouting', { category }),
   brainstormListNotesFolders: () =>
     ipcRenderer.invoke('brainstorm:listNotesFolders', undefined),
+
+  // SKY-55: per-scene notes persisted to vault DB
+  notesGet: (sceneId: string) =>
+    ipcRenderer.invoke('notes:get', { sceneId }),
+  notesSet: (sceneId: string, content: string) =>
+    ipcRenderer.invoke('notes:set', { sceneId, content }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

@@ -240,6 +240,10 @@ export const IPC_CHANNELS = {
   BRAINSTORM_RESOLVE_ROUTING: 'brainstorm:resolveRouting',
   BRAINSTORM_RESET_CATEGORY_ROUTING: 'brainstorm:resetCategoryRouting',
   BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
+
+  // SKY-55: per-scene notes persisted to vault DB
+  NOTES_GET: 'notes:get',
+  NOTES_SET: 'notes:set',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -405,6 +409,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
+  // SKY-55: per-scene notes persisted to vault DB
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2025,4 +2032,23 @@ export interface BrainstormListNotesFoldersResponse {
    *  Sorted alphabetically; depth-limited so the picker stays usable. */
   folders: BrainstormFolderEntry[];
   notesVaultRoot: string;
+}
+
+// ─── Scene notes IPC types (SKY-55) ───
+
+export interface NotesGetPayload {
+  sceneId: string;
+}
+
+export interface NotesGetResponse {
+  content: string;
+}
+
+export interface NotesSetPayload {
+  sceneId: string;
+  content: string;
+}
+
+export interface NotesSetResponse {
+  ok: true;
 }

@@ -287,6 +287,18 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma('user_version = 11');
   }
+
+  if (currentVersion < 12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notes (
+        id         INTEGER PRIMARY KEY,
+        scene_id   TEXT UNIQUE NOT NULL,
+        content    TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.pragma('user_version = 12');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -641,6 +653,25 @@ export function listArchiveIgnores(): DbArchiveIgnore[] {
   return getDb()
     .prepare('SELECT * FROM archive_ignore_list ORDER BY created_at DESC')
     .all() as DbArchiveIgnore[];
+}
+
+// ─── Scene notes (SKY-55) ───
+
+export function getNoteBySceneId(sceneId: string): string {
+  const row = getDb()
+    .prepare('SELECT content FROM notes WHERE scene_id = ?')
+    .get(sceneId) as { content: string } | undefined;
+  return row?.content ?? '';
+}
+
+export function upsertNote(sceneId: string, content: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO notes (scene_id, content, updated_at)
+       VALUES (?, ?, strftime('%s', 'now'))
+       ON CONFLICT(scene_id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`
+    )
+    .run(sceneId, content);
 }
 
 /**

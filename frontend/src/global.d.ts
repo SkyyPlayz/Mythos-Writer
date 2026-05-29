@@ -544,6 +544,10 @@ interface Window {
       folders: Array<{ path: string; label: string }>;
       notesVaultRoot: string;
     }>;
+
+    // SKY-55: per-scene notes persisted to vault DB
+    notesGet: (sceneId: string) => Promise<{ content: string }>;
+    notesSet: (sceneId: string, content: string) => Promise<{ ok: true }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
