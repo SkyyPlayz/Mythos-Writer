@@ -26,8 +26,21 @@
 }
 
 .scene-autosave {
-  color: #6c7086;
   font-size: 0.75rem;
+  transition: color 240ms ease;
+}
+
+.scene-autosave--saved {
+  color: #6c7086;
+}
+
+.scene-autosave--saving {
+  color: #6c7086;
+  opacity: 0.65;
+}
+
+.scene-autosave--unsaved {
+  color: #6c7086;
 }
 
 .btn-history {
