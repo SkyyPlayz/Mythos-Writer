@@ -1139,6 +1139,25 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         <div className="settings-footer">
           {saveError && <p className="settings-error-msg" role="alert">{saveError}</p>}
           {savedOk && <p className="settings-saved-msg" aria-live="polite">Settings saved.</p>}
+          {/* SKY-12.4: debug reset — only rendered when MYTHOS_DEV=1 is set in the dev environment */}
+          {import.meta.env.VITE_MYTHOS_DEV === '1' && (
+            <div className="settings-debug-section">
+              <h3 className="settings-section-title">Developer</h3>
+              <button
+                className="settings-btn settings-btn-cancel"
+                data-testid="reset-onboarding"
+                onClick={() => {
+                  if (window.confirm('Reset onboarding? The wizard will re-appear on next boot.')) {
+                    window.api.onboardingReset().then(() => {
+                      window.location.reload();
+                    }).catch(() => {});
+                  }
+                }}
+              >
+                Reset onboarding
+              </button>
+            </div>
+          )}
           <div className="settings-footer-actions">
             <button className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
             <button

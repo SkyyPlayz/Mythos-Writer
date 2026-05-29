@@ -50,6 +50,7 @@ type Api = {
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
   obsidianPickFolderByPath: (sourcePath: string) => Promise<{ vaultRoot: string | null; registrationToken: string | null; error?: string }>;
   onObsidianImportProgress?: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
+  onboardingComplete: () => Promise<{ ok: boolean }>;
 };
 
 function api(): Api {
@@ -357,6 +358,10 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   const isBlankCTADisabled = blankPathStatus === 'non-empty' || blankPathStatus === 'not-writable' || busy;
 
   const finishOnboarding = useCallback(() => {
+    // Persist the flag on the main-process side; don't await — fire and forget
+    // so the UI transitions immediately. The SETTINGS_GET handler enforces this
+    // flag on next boot based on vault path existence, so a lost call is harmless.
+    api().onboardingComplete().catch(() => { /* non-fatal */ });
     const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
     setScreen('done');
     onComplete(updated);

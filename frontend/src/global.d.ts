@@ -411,7 +411,16 @@ interface Window {
 
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
-    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
+    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
+    validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
+    // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
+    loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
+    // SKY-12.4: mark onboarding complete (persisted to main-process settings)
+    onboardingComplete: () => Promise<{ ok: boolean }>;
+    // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
+    onboardingReset: () => Promise<{ ok: boolean }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault

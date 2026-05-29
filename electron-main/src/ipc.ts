@@ -225,6 +225,15 @@ export const IPC_CHANNELS = {
   // from resources/sample-project/ into <parentPath>/Story Vault/ and
   // <parentPath>/Notes Vault/, reindexes both, and calls setPaths.
   VAULT_LOAD_SAMPLE_TWO_VAULT: 'vault:load-sample-twovault',
+
+  // SKY-12.4: first-run onboarding completion flag. Called by the wizard's
+  // onComplete handler to persist onboardingComplete=true. Thin channel so
+  // the wizard never needs to send the full settings object back.
+  ONBOARDING_COMPLETE: 'onboarding:complete',
+
+  // SKY-12.4: debug reset (MYTHOS_DEV=1 only). Clears vaultRoot, notesVaultRoot,
+  // and onboardingComplete so the wizard re-appears on next boot.
+  ONBOARDING_RESET: 'onboarding:reset',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -377,6 +386,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => VaultValidatePathResponse;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;

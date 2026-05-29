@@ -964,7 +964,17 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
-    return maskSettingsForRenderer(loadAppSettings());
+    const s = maskSettingsForRenderer(loadAppSettings());
+    // SKY-12.4: if the configured vault roots don't exist on disk, force
+    // onboardingComplete=false so the wizard re-appears on next boot. This
+    // handles the case where the user moves or deletes the vault folder.
+    const vaultSettings = loadVaultSettings();
+    const storyMissing = !fs.existsSync(vaultSettings.vaultRoot);
+    const notesMissing = !fs.existsSync(vaultSettings.notesVaultRoot ?? defaultNotesVaultRoot());
+    if (storyMissing || notesMissing) {
+      return { ...s, onboardingComplete: false };
+    }
+    return s;
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
     const current = loadAppSettings();
@@ -992,6 +1002,25 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler();
     }
     return { saved: true };
+  },
+
+  // SKY-12.4: mark onboarding as complete without sending back the full settings object.
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: () => {
+    const current = loadAppSettings();
+    saveAppSettings({ ...current, onboardingComplete: true });
+    return { ok: true as const };
+  },
+
+  // SKY-12.4: debug reset — clears vault paths and onboardingComplete so the
+  // wizard re-appears on next boot. Only available when MYTHOS_DEV=1 is set.
+  [IPC_CHANNELS.ONBOARDING_RESET]: () => {
+    if (process.env.MYTHOS_DEV !== '1') {
+      return { ok: true as const };
+    }
+    saveVaultSettings({ vaultRoot: defaultVaultRoot(), notesVaultRoot: undefined, layoutMode: undefined });
+    const current = loadAppSettings();
+    saveAppSettings({ ...current, onboardingComplete: false });
+    return { ok: true as const };
   },
 
   // MYT-343: per-agent config get/set

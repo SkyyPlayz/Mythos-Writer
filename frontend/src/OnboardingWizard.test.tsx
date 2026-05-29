@@ -67,6 +67,7 @@ beforeEach(() => {
     }),
     validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
     obsidianPickFolderByPath: vi.fn().mockResolvedValue({ vaultRoot: '/home/user/dropped', registrationToken: 'drop-token' }),
+    onboardingComplete: vi.fn().mockResolvedValue({ ok: true }),
   };
 });
 
