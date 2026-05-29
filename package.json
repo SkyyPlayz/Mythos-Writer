@@ -31,10 +31,13 @@
     "test:e2e:two-vault": "playwright test e2e/tests/two-vault-crud.spec.ts --reporter=list",
     "test:e2e:two-vault-firstrun": "playwright test e2e/tests/two-vault-firstrun.spec.ts --reporter=list",
     "test:e2e:onboarding": "playwright test e2e/onboarding.spec.ts --reporter=list",
-    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main"
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main",
+    "docs:shortcuts": "node --experimental-vm-modules scripts/docs-shortcuts.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "electron": "^42.3.0",
     "electron-builder": "^26.8.1",
     "electron-updater": "^6.3.9",
