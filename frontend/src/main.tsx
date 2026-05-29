@@ -5,11 +5,15 @@ import { applyTheme } from './theme';
 import './tokens.css';
 import './index.css';
 
+performance.mark('renderer:script-start');
+
 // Dark-only: paint the theme attributes before first render so tokens resolve.
 applyTheme('dark');
+performance.mark('renderer:theme-applied');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
+performance.mark('renderer:react-scheduled');
