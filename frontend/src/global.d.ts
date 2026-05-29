@@ -406,6 +406,7 @@ interface Window {
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
     sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<import('./types').Scene>;
+    sceneSave: (payload: { sceneId: string; prose: string; title?: string; order?: number; intent?: string }) => Promise<{ scene: import('./types').Scene }>;
 
     // Auto-updater (MYT-245) — feature-flagged; safe no-ops in dev
     onUpdateStatus: (cb: (data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => void) => () => void;

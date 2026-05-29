@@ -32,7 +32,7 @@
     "test:e2e:two-vault-firstrun": "playwright test e2e/tests/two-vault-firstrun.spec.ts --reporter=list",
     "test:e2e:onboarding": "playwright test e2e/onboarding.spec.ts --reporter=list",
     "test:e2e:two-vault": "playwright test e2e/tests/two-vault-crud.spec.ts --reporter=list",
-    "test:e2e:versioned-drafts": "playwright test e2e/tests/versioned-drafts.spec.ts --reporter=list",
+    "test:e2e:versioned-drafts": "playwright test e2e/tests/sky-10-rollback.spec.ts --reporter=list",
     "test:e2e:visual-regression": "playwright test e2e/tests/visual-regression.spec.ts --reporter=list",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main"
   },

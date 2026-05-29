@@ -286,6 +286,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('chapter:create', payload),
   sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) =>
     ipcRenderer.invoke('scene:create', payload),
+  sceneSave: (payload: { sceneId: string; prose: string; title?: string; order?: number; intent?: string }) =>
+    ipcRenderer.invoke('scene:save', payload),
 
   // Search (MYT-251)
   searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) =>
