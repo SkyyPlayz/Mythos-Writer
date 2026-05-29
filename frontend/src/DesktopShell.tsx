@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
-import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
-import { applyTheme, applyLiquidNeonTokens } from './theme';
+import { applyTheme, applyLiquidGlassTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -13,7 +12,7 @@ import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import { useTextPrompt } from './useTextPrompt';
-import SettingsPanel from './components/SettingsPanel';
+import SettingsPanel from './SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
@@ -96,13 +95,10 @@ interface AppMenuBarProps {
   writingMode: WritingMode;
   onSetWritingMode: (m: WritingMode) => void;
   onOpenFocusPrefs: () => void;
-  onOpenKeyboardShortcuts: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
-  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
-  const helpMenuRef = useRef<HTMLDivElement>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
 
   const handleExportEpub = () => {
@@ -164,34 +160,6 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenSettings(); }}>Settings…</button>
-            </div>
-          )}
-        </div>
-        <div className="app-menu-item" ref={helpMenuRef}>
-          <button
-            className="app-menu-item-trigger"
-            aria-haspopup="menu"
-            aria-controls="help-menu"
-            aria-expanded={helpMenuOpen}
-            onClick={() => setHelpMenuOpen(o => !o)}
-            onBlur={(e) => {
-              if (helpMenuRef.current && !helpMenuRef.current.contains(e.relatedTarget as Node)) {
-                setHelpMenuOpen(false);
-              }
-            }}
-          >
-            Help
-          </button>
-          {helpMenuOpen && (
-            <div id="help-menu" className="app-menu-dropdown" role="menu">
-              <button
-                className="app-menu-dropdown-item"
-                role="menuitem"
-                onClick={() => { setHelpMenuOpen(false); onOpenKeyboardShortcuts(); }}
-              >
-                Keyboard Shortcuts…
-                <span className="app-menu-shortcut-hint">?</span>
-              </button>
             </div>
           )}
         </div>
@@ -425,7 +393,6 @@ export default function DesktopShell() {
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -533,13 +500,13 @@ export default function DesktopShell() {
         setAppSettings(s);
         applyTheme(s.theme);
         // Load background image data URL if a custom path is stored
-        const lg = s.liquidNeon;
+        const lg = s.liquidGlass;
         if (lg?.background && lg.background !== 'default') {
           (window.api as any).loadBgImage?.(lg.background)
-            .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
-            .catch(() => applyLiquidNeonTokens(lg));
+            .then((res: { dataUrl: string | null }) => applyLiquidGlassTokens(lg, res?.dataUrl))
+            .catch(() => applyLiquidGlassTokens(lg));
         } else {
-          applyLiquidNeonTokens(lg);
+          applyLiquidGlassTokens(lg);
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
@@ -622,21 +589,6 @@ export default function DesktopShell() {
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // ? key (with or without Shift) opens the keyboard shortcuts help dialog,
-      // but not when focus is inside a text input or contenteditable.
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        const inText =
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable;
-        if (!inText) {
-          e.preventDefault();
-          setShortcutsOpen(true);
-          return;
-        }
-      }
-
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
@@ -652,7 +604,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen]);
+  }, [setWritingMode]);
 
   // ─── Panel resize drag handlers ───
 
@@ -932,12 +884,6 @@ export default function DesktopShell() {
     return selectedStory.title;
   }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
 
-  // §6: empty state — depth=scene but selected chapter has no scenes
-  const depthIsEmpty = useMemo(
-    () => viewDepth === 'scene' && selectedChapter !== null && selectedChapter.scenes.length === 0,
-    [viewDepth, selectedChapter],
-  );
-
   const handleDepthPrev = useCallback(() => {
     if (!selectedStory) return;
     if (viewDepth === 'scene') {
@@ -1082,7 +1028,6 @@ export default function DesktopShell() {
         writingMode={writingMode}
         onSetWritingMode={setWritingMode}
         onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
-        onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
       />
       {settingsOpen && (
         <SettingsPanel
@@ -1090,7 +1035,7 @@ export default function DesktopShell() {
           onSaved={(s) => {
             setAppSettings(s);
             applyTheme(s.theme);
-            applyLiquidNeonTokens(s.liquidNeon);
+            applyLiquidGlassTokens(s.liquidGlass);
           }}
         />
       )}
@@ -1103,9 +1048,6 @@ export default function DesktopShell() {
           onChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
           onClose={() => setFocusModePrefsOpen(false)}
         />
-      )}
-      {shortcutsOpen && (
-        <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
@@ -1186,8 +1128,6 @@ export default function DesktopShell() {
               onPrev={handleDepthPrev}
               onNext={handleDepthNext}
               contextLabel={depthContextLabel}
-              writingMode={writingMode}
-              isEmpty={depthIsEmpty}
             />
           )}
           {viewDepth === 'book' && selectedStory ? (
