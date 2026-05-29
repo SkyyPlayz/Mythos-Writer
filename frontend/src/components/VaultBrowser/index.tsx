@@ -225,7 +225,7 @@ function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
         Capture your first idea
       </h2>
       <p className="vb-notes-empty-sub">
-        Notes are for ideas, characters, places, and lore — anything that supports your scenes but isn't part of them.
+        Notes are for ideas, characters, places, and lore — anything that supports your scenes but isn&apos;t part of them.
       </p>
       <button
         className="vb-notes-empty-cta"
@@ -236,7 +236,7 @@ function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
         + New note
       </button>
       <p className="vb-notes-empty-footer">
-        Or chat with Brainstorm — it'll file notes for you.
+        Or chat with Brainstorm — it&apos;ll file notes for you.
       </p>
     </section>
   );
