@@ -453,6 +453,7 @@ export default function DesktopShell() {
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
+  const [vaultContext, setVaultContext] = useState<'file' | 'folder' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
@@ -884,6 +885,7 @@ export default function DesktopShell() {
     setSelectedChapter(chapter);
     setSelectedStory(story);
     setSelectedEntity(null);
+    setVaultContext('file');
     if (!restoreInProgressRef.current) {
       // User-initiated open: clear any pending cursor restore and reset cursor to 0
       pendingCursorPosRef.current = null;
@@ -896,6 +898,15 @@ export default function DesktopShell() {
       }).catch(() => {});
     }
   }, []);
+
+  // SKY-127: Update window chrome neon border context based on selected vault item
+  useEffect(() => {
+    if (vaultContext) {
+      document.documentElement.setAttribute('data-context', vaultContext);
+    } else {
+      document.documentElement.removeAttribute('data-context');
+    }
+  }, [vaultContext]);
 
   // SKY-130: restore last-opened scene + cursor after vault loads
   useEffect(() => {
@@ -1272,6 +1283,7 @@ export default function DesktopShell() {
             onCreateScene={createScene}
             onReorderScenes={handleReorderScenes}
             onOpenVaultPath={handleOpenSceneByPath}
+            onContextChange={setVaultContext}
           />
         </div>
       )}

@@ -347,9 +347,10 @@ interface NotesVaultProps {
   items: ReturnType<typeof useVaultFiles>['items'];
   onOpenFile?: (path: string) => void;
   onReload: () => void;
+  onContextChange?: (context: 'file' | 'folder' | null) => void;
 }
 
-function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVaultProps) {
   const notesItems = items.filter(isNotesItem);
   const tree = buildTree(notesItems);
 
@@ -382,8 +383,17 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
     (path: string) => {
       select(path);
       onOpenFile?.(path);
+      onContextChange?.('file');
     },
-    [select, onOpenFile],
+    [select, onOpenFile, onContextChange],
+  );
+
+  const handleToggleFolder = useCallback(
+    (path: string) => {
+      toggle(path);
+      onContextChange?.('folder');
+    },
+    [toggle, onContextChange],
   );
 
   const handleStartRename = useCallback((row: FlatRow) => {
@@ -478,7 +488,7 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
         <VirtualTree
           data-testid="vb-notes-tree"
           rows={rows}
-          onToggle={toggle}
+          onToggle={handleToggleFolder}
           onOpen={handleOpen}
           onContextMenu={handleContextMenu}
           editingPath={editingPath}
@@ -515,6 +525,7 @@ export interface VaultBrowserProps {
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenFile?: (path: string) => void;
+  onContextChange?: (context: 'file' | 'folder' | null) => void;
 }
 
 export default function VaultBrowser({
@@ -525,6 +536,7 @@ export default function VaultBrowser({
   onCreateChapter,
   onCreateScene,
   onOpenFile,
+  onContextChange,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
   const { items, loading, reload } = useVaultFiles();
@@ -592,6 +604,7 @@ export default function VaultBrowser({
                 items={items}
                 onOpenFile={onOpenFile}
                 onReload={reload}
+                onContextChange={onContextChange}
               />
             )}
           </div>

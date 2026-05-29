@@ -1,3 +1,28 @@
+html {
+  /* SKY-127: Neon window chrome border — three-color liquid glass treatment.
+     Applied as an outer glow around the window frame. Context attribute
+     [data-context] switches between default, folder (violet), and file (cyan).
+     High-contrast mode disables neon glow via --neon-intensity: 0 */
+  box-shadow: inset 0 0 0 1px var(--glass-rim),
+              inset var(--border-neon-default);
+}
+
+html[data-context="folder"] {
+  box-shadow: inset 0 0 0 1px var(--glass-rim),
+              inset var(--border-neon-context-folder);
+}
+
+html[data-context="file"] {
+  box-shadow: inset 0 0 0 1px var(--glass-rim),
+              inset var(--border-neon-context-file);
+}
+
+html:hover,
+html:focus-within {
+  box-shadow: inset 0 0 0 1px var(--glass-rim),
+              inset var(--border-neon-hover);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

@@ -1902,22 +1902,22 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   </div>
                 </div>
 
-                {/* SKY-127: Custom neon colors for window chrome */}
+                {/* Neon colors (SKY-127) — user-configurable RGB values */}
                 <ColorPicker
-                  id="adv-neon-cyan"
-                  label="Neon cyan"
+                  id="lg-neon-cyan"
+                  label="Cyan neon colour"
                   value={lg.neonColorCyan ?? '#00f0ff'}
                   onChange={(v) => setLgField('neonColorCyan', v)}
                 />
                 <ColorPicker
-                  id="adv-neon-violet"
-                  label="Neon violet"
+                  id="lg-neon-violet"
+                  label="Violet neon colour"
                   value={lg.neonColorViolet ?? '#9b5fff'}
                   onChange={(v) => setLgField('neonColorViolet', v)}
                 />
                 <ColorPicker
-                  id="adv-neon-magenta"
-                  label="Neon magenta"
+                  id="lg-neon-magenta"
+                  label="Magenta neon colour"
                   value={lg.neonColorMagenta ?? '#ff4dff'}
                   onChange={(v) => setLgField('neonColorMagenta', v)}
                 />

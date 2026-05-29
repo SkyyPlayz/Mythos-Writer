@@ -180,11 +180,13 @@ interface LiquidNeonPrefs {
   accentColor?: string;
   /** Neon border colour slot. Default 'cyan'. */
   neonBorderColor?: 'cyan' | 'violet' | 'magenta';
-  /** Neon cyan custom color (window border glow). Default '#00f0ff'. */
+
+  // ── Neon color customization (SKY-127) ───────────────────────────────────
+  /** Cyan neon color hex. Default '#00f0ff'. */
   neonColorCyan?: string;
-  /** Neon violet custom color (window border glow). Default '#9b5fff'. */
+  /** Violet neon color hex. Default '#9b5fff'. */
   neonColorViolet?: string;
-  /** Neon magenta custom color (window border glow). Default '#ff4dff'. */
+  /** Magenta neon color hex. Default '#ff4dff'. */
   neonColorMagenta?: string;
 }
 
