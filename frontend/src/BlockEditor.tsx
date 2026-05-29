@@ -5,6 +5,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Block, Scene, DraftState } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
+import SceneHistory from './SceneHistory';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
@@ -56,6 +57,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const [hintTooltip, setHintTooltip] = useState<{
     id: string; link: string; anchor: string; top: number; left: number;
   } | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const lastSnapshotContentRef = useRef<string>('');
   const onAcceptWikiLinkRef = useRef(onAcceptWikiLink);
   onAcceptWikiLinkRef.current = onAcceptWikiLink;
   const onRejectWikiLinkRef = useRef(onRejectWikiLink);
@@ -199,6 +203,31 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     editor?.commands.setTextSelection(editor.state.selection.from);
   }, [selectionText, editor]);
 
+  const getCurrentMarkdown = useCallback((): string => {
+    if (!editor) return '';
+    const raw = (editor.storage as any).markdown.getMarkdown() as string; // eslint-disable-line @typescript-eslint/no-explicit-any
+    return raw.endsWith('\n') ? raw : `${raw}\n`;
+  }, [editor]);
+
+  const takeSnapshot = useCallback(async () => {
+    const markdown = getCurrentMarkdown();
+    if (markdown === lastSnapshotContentRef.current) return;
+    try {
+      await window.api.snapshotSave(scene.id, markdown);
+      lastSnapshotContentRef.current = markdown;
+      setLastSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      // non-fatal
+    }
+  }, [getCurrentMarkdown, scene.id]);
+
+  const handleRestore = useCallback((restoredContent: string) => {
+    if (!editor) return;
+    editor.commands.setContent(restoredContent);
+    lastSnapshotContentRef.current = restoredContent;
+    setShowHistory(false);
+  }, [editor]);
+
   return (
     <div className="block-editor">
       <div className="block-editor-toolbar">
@@ -215,6 +244,15 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
             </button>
           ))}
         </div>
+        <span className="scene-autosave">
+          {lastSavedAt ? `Snapshot saved ${lastSavedAt}` : 'No snapshot yet'}
+        </span>
+        <button className="btn-save-snapshot" onClick={takeSnapshot}>
+          Save snapshot now
+        </button>
+        <button className="btn-history" onClick={() => setShowHistory(true)}>
+          History
+        </button>
       </div>
       <div
         className="tiptap-editor-wrap"
@@ -267,6 +305,16 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         )}
         <EditorContent editor={editor} className="tiptap-content" />
       </div>
+
+      {showHistory && (
+        <SceneHistory
+          sceneId={scene.id}
+          scenePath={scene.path}
+          currentContent={getCurrentMarkdown()}
+          onRestore={handleRestore}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }

@@ -65,6 +65,9 @@ jobs:
             sudo apt-get install -y xvfb
           fi
 
+      - name: E2E — smoke (TC-01/TC-02/TC-03, headless)
+        run: xvfb-run --auto-servernum npm run test:e2e:smoke
+
       - name: E2E — vault CRUD (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:crud
 
