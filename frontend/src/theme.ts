@@ -229,6 +229,17 @@ export function applyLiquidNeonTokens(
     root.style.setProperty('--neon-cyan', borderDef.accent);
   }
 
+  // SKY-127: Custom neon colors for window chrome border
+  if (p.neonColorCyan) {
+    root.style.setProperty('--neon-cyan', p.neonColorCyan);
+  }
+  if (p.neonColorViolet) {
+    root.style.setProperty('--neon-violet', p.neonColorViolet);
+  }
+  if (p.neonColorMagenta) {
+    root.style.setProperty('--neon-magenta', p.neonColorMagenta);
+  }
+
   // Frame width: neonFrameWidth 0–100 → rest 0–2px, hover 1–4px
   if (p.neonFrameWidth !== undefined) {
     const t = p.neonFrameWidth / 100;

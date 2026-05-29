@@ -606,41 +606,6 @@ export default function DesktopShell() {
     loadVault();
   }, [loadVault]);
 
-  // SKY-130: restore last-opened scene + cursor after vault loads
-  useEffect(() => {
-    if (loading || sceneRestoreAttemptedRef.current) return;
-    if (!appSettings?.lastOpenedScene || stories.length === 0) return;
-    sceneRestoreAttemptedRef.current = true;
-    const { sceneId, cursorLine } = appSettings.lastOpenedScene;
-    for (const story of stories) {
-      for (const chapter of story.chapters) {
-        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
-        if (scene) {
-          restoreInProgressRef.current = true;
-          pendingCursorPosRef.current = cursorLine;
-          handleSelectScene(scene, chapter, story);
-          restoreInProgressRef.current = false;
-          return;
-        }
-      }
-    }
-    // Scene not found (deleted/moved) — silently skip per spec
-  }, [loading, appSettings, stories, handleSelectScene]);
-
-  // SKY-130: debounced cursor persistence as user types/navigates
-  const handleCursorPosChange = useCallback((pos: number) => {
-    if (!selectedScene) return;
-    if (saveCursorDebounceRef.current) clearTimeout(saveCursorDebounceRef.current);
-    saveCursorDebounceRef.current = setTimeout(() => {
-      window.api.sessionSaveScene({
-        sceneId: selectedScene.id,
-        scenePath: selectedScene.path,
-        scrollTop: 0,
-        cursorLine: pos,
-      }).catch(() => {});
-    }, 1000);
-  }, [selectedScene]);
-
   // Handle project switches pushed from main process
   useEffect(() => {
     if (!(window as any).api?.onProjectSwitched) return;
@@ -931,6 +896,41 @@ export default function DesktopShell() {
       }).catch(() => {});
     }
   }, []);
+
+  // SKY-130: restore last-opened scene + cursor after vault loads
+  useEffect(() => {
+    if (loading || sceneRestoreAttemptedRef.current) return;
+    if (!appSettings?.lastOpenedScene || stories.length === 0) return;
+    sceneRestoreAttemptedRef.current = true;
+    const { sceneId, cursorLine } = appSettings.lastOpenedScene;
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+        if (scene) {
+          restoreInProgressRef.current = true;
+          pendingCursorPosRef.current = cursorLine;
+          handleSelectScene(scene, chapter, story);
+          restoreInProgressRef.current = false;
+          return;
+        }
+      }
+    }
+    // Scene not found (deleted/moved) — silently skip per spec
+  }, [loading, appSettings, stories, handleSelectScene]);
+
+  // SKY-130: debounced cursor persistence as user types/navigates
+  const handleCursorPosChange = useCallback((pos: number) => {
+    if (!selectedScene) return;
+    if (saveCursorDebounceRef.current) clearTimeout(saveCursorDebounceRef.current);
+    saveCursorDebounceRef.current = setTimeout(() => {
+      window.api.sessionSaveScene({
+        sceneId: selectedScene.id,
+        scenePath: selectedScene.path,
+        scrollTop: 0,
+        cursorLine: pos,
+      }).catch(() => {});
+    }, 1000);
+  }, [selectedScene]);
 
   // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
   const handleOpenSceneByPath = useCallback((scenePath: string) => {
