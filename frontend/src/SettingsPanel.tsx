@@ -327,6 +327,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     return () => document.removeEventListener('keydown', handler);
   }, [lgAdvancedOpen]);
 
+  // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose, lgAdvancedOpen]);
+
   // Focus trap in popover
   useEffect(() => {
     if (!lgAdvancedOpen) return;

@@ -488,6 +488,28 @@ describe('SettingsPanel', () => {
     expect(document.activeElement).toBe(last);
   });
 
+  // ── MYT-801: Escape key closes dialog ──
+
+  it('closes the dialog when Escape is pressed', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(mockOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close the main dialog when Escape is pressed while the Advanced popover is open', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }));
+    expect(screen.getByRole('dialog', { name: /advanced ui settings/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: /advanced ui settings/i })).not.toBeInTheDocument();
+    expect(mockOnClose).not.toHaveBeenCalled();
+  });
+
   // ── MYT-668: voice settings ──
 
   it('renders voice section with enable toggle', async () => {
