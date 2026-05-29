@@ -186,8 +186,7 @@ import {
   configureTelemetry,
   generateSessionId,
   reportEvent,
-  TELEMETRY_EVENT_TYPES,
-  type TelemetryEventType,
+  validateTelemetryPayload,
 } from './telemetry.js';
 import {
   parseScanTips,
@@ -1992,7 +1991,14 @@ const handlers: IpcHandlers = {
 
   // ─── Telemetry (MYT-344) ───
   [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: import('./ipc.js').TelemetryReportPayload) => {
-    reportEvent({ type: payload.type as TelemetryEventType, meta: payload.meta });
+    // MYT-794: validate renderer-supplied payload before it reaches the event
+    // store. Unknown event types and malformed meta are rejected with a typed
+    // error instead of being silently coerced through.
+    const result = validateTelemetryPayload(payload);
+    if (!result.ok) {
+      return { queued: false, error: result.error };
+    }
+    reportEvent(result.event);
     return { queued: true };
   },
 
