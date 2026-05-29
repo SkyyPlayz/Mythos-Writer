@@ -2818,7 +2818,10 @@ function createWindow() {
 
   // SKY-114: use system locale for the spell checker, falling back to en-US.
   // setSpellCheckerLanguages accepts an array; Electron tries each in order.
-  const spellLang = app.getSystemLocale() || 'en-US';
+  // Strip POSIX modifiers (@posix, @euro) and convert underscores to hyphens
+  // to produce a valid BCP-47 code (e.g. "en-US@posix" → "en-US").
+  const rawLocale = app.getSystemLocale() || 'en-US';
+  const spellLang = rawLocale.split('@')[0].replace(/_/g, '-') || 'en-US';
   mainWindow.webContents.session.setSpellCheckerLanguages([spellLang, 'en-US']);
 
   // SKY-114: native context menu with spell-check suggestions.
