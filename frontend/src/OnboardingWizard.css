@@ -741,6 +741,8 @@ details[open] .dry-run-chevron { transform: rotate(90deg); }
   align-items: center;
   justify-content: center;
   z-index: 1100;
+  backdrop-filter: blur(var(--blur-overlay));
+  -webkit-backdrop-filter: blur(var(--blur-overlay));
 }
 
 .confirm-dialog {
