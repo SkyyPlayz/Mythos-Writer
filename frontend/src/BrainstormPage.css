@@ -321,10 +321,10 @@
   width: fit-content;
 }
 
-.bs-fact-type-character { background: #1e1b4b; color: #a5b4fc; }
-.bs-fact-type-location  { background: #0c2a1a; color: #6ee7b7; }
-.bs-fact-type-item      { background: #2a1a0c; color: #fcd34d; }
-.bs-fact-type-concept   { background: #1a0c2a; color: #d8b4fe; }
+.bs-fact-type-character { background: var(--entity-char-bg);    color: var(--entity-char-text); }
+.bs-fact-type-location  { background: var(--entity-loc-bg);     color: var(--entity-loc-text); }
+.bs-fact-type-item      { background: var(--entity-item-bg);    color: var(--entity-item-text); }
+.bs-fact-type-concept   { background: var(--entity-concept-bg); color: var(--entity-concept-text); }
 .bs-fact-type-other     { background: var(--border-subtle); color: var(--text-muted); }
 
 .bs-fact-name {
