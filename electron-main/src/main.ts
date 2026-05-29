@@ -220,6 +220,14 @@ import {
 } from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
+import {
+  loadBrainstormSettings,
+  setCategoryRouting,
+  resolveDestination,
+  normalizeRoutingDestination,
+  listNotesVaultFolders,
+  BLANK_MODE_STAGING_DIR,
+} from './brainstormRouting.js';
 
 const require = createRequire(import.meta.url);
 
@@ -389,6 +397,67 @@ function ensureVaultDir() {
         throw err;
       }
     }
+  }
+}
+
+// SKY-20: helpers used by the brainstorm routing IPC handlers below. Kept
+// near ensureNotesVaultDir so the staging-dir + frontmatter shape live in
+// the same area of the file.
+function joinNotesPath(...segments: string[]): string {
+  return segments
+    .map((s) => s.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+    .filter((s) => s.length > 0)
+    .join('/');
+}
+
+function renderBrainstormNote(args: {
+  category: 'character' | 'location' | 'item' | 'note';
+  name: string;
+  content: string;
+  suggestionId: string;
+  now: string;
+}): string {
+  return [
+    '---',
+    `agent: brainstorm`,
+    `suggestionId: ${args.suggestionId}`,
+    `type: ${args.category}`,
+    `name: ${args.name}`,
+    `createdAt: ${args.now}`,
+    '---',
+    '',
+    `# ${args.name}`,
+    '',
+    args.content,
+    '',
+  ].join('\n');
+}
+
+function persistBrainstormSuggestion(
+  suggestionId: string,
+  relPath: string,
+  payload: { category: string; name: string; content: string },
+  now: string,
+): void {
+  try {
+    upsertSuggestion({
+      id: suggestionId,
+      source_agent: 'brainstorm',
+      confidence: 0.8,
+      rationale: `${payload.category}: ${payload.name} — ${payload.content}`,
+      target_kind: 'vault',
+      target_path: relPath,
+      target_anchor: null,
+      payload_json: JSON.stringify({ type: payload.category, name: payload.name, description: payload.content }),
+      status: 'proposed',
+      created_at: now,
+      applied_at: null,
+      applied_run_id: null,
+      budget_exceeded: 0,
+    });
+  } catch {
+    // Logging is best-effort — a DB hiccup must not block the agent from
+    // creating notes the user is watching land.
   }
 }
 
@@ -2319,6 +2388,100 @@ const handlers: IpcHandlers = {
       return { path: null, cancelled: true };
     }
     return { path: result.filePaths[0], cancelled: false };
+  },
+
+  // ─── Brainstorm Agent routing (SKY-20) ───
+  // The Brainstorm Agent always writes into the Notes Vault (never the Story
+  // Vault — that boundary is set by SKY-15). In Default mode the destination
+  // is deterministic; in Blank/imported mode the agent asks once per category
+  // and remembers the choice. Files are written to the Notes Vault root via
+  // writeVaultFileAtomic + safeVaultIpcJoin, so all the same path-traversal
+  // and dotfile guards as NOTES_VAULT_WRITE apply.
+  [IPC_CHANNELS.BRAINSTORM_GET_SETTINGS]: () => {
+    const settings = loadBrainstormSettings(app.getPath('userData'));
+    return {
+      layoutMode: loadVaultSettings().layoutMode ?? 'default',
+      notesRouting: settings.notesRouting,
+    };
+  },
+  [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: import('./ipc.js').BrainstormWriteNotePayload) => {
+    ensureNotesVaultDir();
+    const userData = app.getPath('userData');
+    const layoutMode = loadVaultSettings().layoutMode ?? 'default';
+    const { notesRouting } = loadBrainstormSettings(userData);
+    const resolution = resolveDestination(payload.category, layoutMode, notesRouting);
+
+    const suggestionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const safeName = payload.name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
+    const fileName = `${safeName}.md`;
+    const body = renderBrainstormNote({
+      category: payload.category,
+      name: payload.name,
+      content: payload.content,
+      suggestionId,
+      now,
+    });
+
+    const root = getNotesVaultRoot();
+    if (resolution.kind === 'resolved') {
+      const relPath = joinNotesPath(resolution.relativeDir, fileName);
+      safeVaultIpcJoin(root, relPath, true);
+      writeVaultFileAtomic(root, relPath, body);
+      persistBrainstormSuggestion(suggestionId, relPath, payload, now);
+      return {
+        status: 'written' as const,
+        path: relPath,
+        suggestionId,
+        reason: resolution.reason,
+      };
+    }
+    // needs_user_choice → stage the file under the staging dir so it survives
+    // a renderer crash. The renderer prompts the user and calls RESOLVE.
+    const stagedRel = joinNotesPath(BLANK_MODE_STAGING_DIR, `${suggestionId}__${fileName}`);
+    safeVaultIpcJoin(root, stagedRel, true);
+    writeVaultFileAtomic(root, stagedRel, body);
+    return {
+      status: 'needs_routing' as const,
+      stagedPath: stagedRel,
+      category: payload.category,
+      name: payload.name,
+    };
+  },
+  [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (
+    payload: import('./ipc.js').BrainstormResolveRoutingPayload,
+  ) => {
+    ensureNotesVaultDir();
+    const userData = app.getPath('userData');
+    const root = getNotesVaultRoot();
+    const destination = normalizeRoutingDestination(payload.destination);
+    const fileName = path.posix.basename(payload.stagedPath);
+    // Strip the `<suggestionId>__` prefix so the user sees a clean filename.
+    const cleanFileName = fileName.replace(/^[0-9a-f-]{36}__/i, '');
+    const targetRel = joinNotesPath(destination, cleanFileName);
+    safeVaultIpcJoin(root, payload.stagedPath, true);
+    safeVaultIpcJoin(root, targetRel, true);
+    moveVaultFile(root, payload.stagedPath, targetRel);
+    const settings = payload.remember
+      ? setCategoryRouting(userData, payload.category, destination)
+      : loadBrainstormSettings(userData);
+    return {
+      status: 'written' as const,
+      path: targetRel,
+      notesRouting: settings.notesRouting,
+    };
+  },
+  [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (
+    payload: import('./ipc.js').BrainstormResetCategoryRoutingPayload,
+  ) => {
+    const userData = app.getPath('userData');
+    const settings = setCategoryRouting(userData, payload.category, null);
+    return { notesRouting: settings.notesRouting };
+  },
+  [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: () => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    return { folders: listNotesVaultFolders(root), notesVaultRoot: root };
   },
 
   // ─── Writing modes (MYT-347) ───

@@ -908,6 +908,10 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     onChange={(e) => setAgentField('brainstorm', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {/* SKY-20: per-category routing memory for Blank-mode vaults.
+                    Hidden in Default-mode vaults (the seeded layout fixes the
+                    destination) so users don't see an empty / inert control. */}
+                <BrainstormRoutingPanel />
               </div>
               <PersonaViewer agentName="brainstorm" />
             </div>
@@ -1701,6 +1705,81 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// SKY-20: Brainstorm routing memory — shows which folder the agent has
+// remembered for each category in a Blank-mode vault and lets the user
+// clear it. Hidden in Default-mode vaults (the seeded layout fixes the
+// destination so there is nothing to reset).
+type RoutingCategory = 'character' | 'location' | 'item' | 'note';
+const ROUTING_CATEGORIES: RoutingCategory[] = ['character', 'location', 'item', 'note'];
+
+function BrainstormRoutingPanel() {
+  const [layoutMode, setLayoutMode] = useState<'default' | 'blank' | 'imported' | null>(null);
+  const [routing, setRouting] = useState<Partial<Record<RoutingCategory, string>>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { layoutMode: mode, notesRouting } = await window.api.brainstormGetSettings();
+        if (cancelled) return;
+        setLayoutMode(mode);
+        setRouting(notesRouting);
+      } catch {
+        if (!cancelled) setLayoutMode('default');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleReset = useCallback(async (category: RoutingCategory) => {
+    try {
+      const result = await window.api.brainstormResetCategoryRouting(category);
+      setRouting(result.notesRouting);
+    } catch {
+      // No-op — failure here leaves the existing memory in place.
+    }
+  }, []);
+
+  if (layoutMode === null || layoutMode === 'default') return null;
+
+  return (
+    <div className="settings-field" data-testid="brainstorm-routing-panel">
+      <label className="settings-label">Notes folder routing</label>
+      <p className="settings-help-text">
+        Brainstorm asks once per category in a Blank vault and remembers your
+        pick. Clear a row below to be asked again on the next note.
+      </p>
+      <ul className="bs-routing-memory-list">
+        {ROUTING_CATEGORIES.map((cat) => {
+          const dest = routing[cat];
+          return (
+            <li
+              key={cat}
+              className="bs-routing-memory-row"
+              data-testid={`brainstorm-routing-memory-${cat}`}
+            >
+              <span className="bs-routing-memory-cat">{cat}</span>
+              <span className="bs-routing-memory-dest">
+                {dest !== undefined ? dest || '/ (root)' : <em>Ask on next note</em>}
+              </span>
+              <button
+                type="button"
+                className="bs-routing-memory-reset"
+                disabled={dest === undefined}
+                onClick={() => void handleReset(cat)}
+                aria-label={`Reset routing for ${cat}`}
+                data-testid={`brainstorm-routing-reset-${cat}`}
+              >
+                Reset
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

@@ -424,6 +424,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('agent:persona:read', { agentName, key }),
   agentPersonaReset: (agentName: string, key: string) =>
     ipcRenderer.invoke('agent:persona:reset', { agentName, key }),
+
+  // SKY-20: Brainstorm Agent routing
+  brainstormGetSettings: () =>
+    ipcRenderer.invoke('brainstorm:getSettings', undefined),
+  brainstormWriteNote: (payload: { category: string; name: string; content: string }) =>
+    ipcRenderer.invoke('brainstorm:writeNote', payload),
+  brainstormResolveRouting: (payload: { stagedPath: string; category: string; destination: string; remember: boolean }) =>
+    ipcRenderer.invoke('brainstorm:resolveRouting', payload),
+  brainstormResetCategoryRouting: (category: string) =>
+    ipcRenderer.invoke('brainstorm:resetCategoryRouting', { category }),
+  brainstormListNotesFolders: () =>
+    ipcRenderer.invoke('brainstorm:listNotesFolders', undefined),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

@@ -522,6 +522,28 @@ interface Window {
     onVoiceSpeakChunk: (cb: (event: { speakId: string; chunk: Uint8Array }) => void) => () => void;
     onVoiceSpeakDone: (cb: (event: { speakId: string }) => void) => () => void;
     onVoiceSpeakError: (cb: (event: { speakId: string; error: string }) => void) => () => void;
+
+    // Brainstorm Agent routing (SKY-20) — layoutMode-aware destination resolution
+    brainstormGetSettings: () => Promise<{
+      layoutMode: 'default' | 'blank' | 'imported';
+      notesRouting: Partial<Record<'character' | 'location' | 'item' | 'note', string>>;
+    }>;
+    brainstormWriteNote: (payload: { category: 'character' | 'location' | 'item' | 'note'; name: string; content: string }) => Promise<
+      | { status: 'written'; path: string; suggestionId: string; reason: 'default-layout' | 'remembered' }
+      | { status: 'needs_routing'; stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; name: string }
+    >;
+    brainstormResolveRouting: (payload: { stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; destination: string; remember: boolean }) => Promise<{
+      status: 'written';
+      path: string;
+      notesRouting: Partial<Record<'character' | 'location' | 'item' | 'note', string>>;
+    }>;
+    brainstormResetCategoryRouting: (category: 'character' | 'location' | 'item' | 'note') => Promise<{
+      notesRouting: Partial<Record<'character' | 'location' | 'item' | 'note', string>>;
+    }>;
+    brainstormListNotesFolders: () => Promise<{
+      folders: Array<{ path: string; label: string }>;
+      notesVaultRoot: string;
+    }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
