@@ -148,10 +148,8 @@ test.beforeAll(async () => {
   vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vb-story-'));
   notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vb-notes-'));
 
-  // Pre-seed a worldbuilding note so the Notes Vault tree has content on boot.
-  // The current implementation lists the main vault root via listVault, so the
-  // note lives in vaultDir at a non-Manuscript path that passes isNotesItem.
-  const noteSubDir = path.join(vaultDir, NOTE_DIR);
+  // Pre-seed a worldbuilding note in notesVaultDir so the Notes Vault tree has content on boot.
+  const noteSubDir = path.join(notesVaultDir, NOTE_DIR);
   fs.mkdirSync(noteSubDir, { recursive: true });
   fs.writeFileSync(
     path.join(noteSubDir, NOTE_FILE),
@@ -234,6 +232,9 @@ test('TC-VB-04: create story via VaultBrowser Story Vault panel, story row appea
 test('TC-VB-05: chapter + scene created via VaultBrowser; scene file in Story Vault, notesVaultDir untouched', async () => {
   await openVaultTab(page);
 
+  // Capture baseline before story write operations (notesVaultDir may already hold the TC-VB-06 seed)
+  const notesCountBefore = findMdFiles(notesVaultDir).length;
+
   // Story from TC-VB-04 must be present (single story auto-expands)
   const storyNameEl = page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: STORY_TITLE });
   await expect(storyNameEl).toBeVisible({ timeout: 6_000 });
@@ -268,11 +269,11 @@ test('TC-VB-05: chapter + scene created via VaultBrowser; scene file in Story Va
   }, 10_000);
   expect(sceneOnDisk, 'Scene .md file not found under .../scenes/ in Story Vault').toBe(true);
 
-  // Notes Vault directory (separate path) must remain empty — story writes go to vaultDir only
+  // Notes Vault directory (separate path) must not grow — story writes go to vaultDir only
   expect(
     findMdFiles(notesVaultDir).length,
     'notesVaultDir must not contain files created by Story Vault operations',
-  ).toBe(0);
+  ).toBe(notesCountBefore);
 });
 
 // ─── TC-VB-06: Pre-seeded worldbuilding note appears in Notes Vault tree ─────
