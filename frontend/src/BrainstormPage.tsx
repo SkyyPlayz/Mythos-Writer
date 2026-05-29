@@ -287,6 +287,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setLoading(false);
     setDraftSizeWarning(false);
     setShowRecoveryBanner(false);
+    setRoutingPrompts([]);
     localStorage.removeItem(DRAFT_KEY);
   }, []);
 
