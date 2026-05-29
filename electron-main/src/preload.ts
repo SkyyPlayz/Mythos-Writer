@@ -16,6 +16,32 @@ contextBridge.exposeInMainWorld('api', {
   // Vault folder management
   openVaultFolder: () => ipcRenderer.invoke('vault:open-folder', undefined),
   getVaultRoot: () => ipcRenderer.invoke('vault:get-root', undefined),
+
+  // Two-vault paths (SKY-13 / MYT-608) — Story Vault + Notes Vault path
+  // management surface used by the Settings panel. `vaultSetPaths` triggers
+  // a re-seed on the main side, so the renderer can persist user edits in a
+  // single round-trip.
+  vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
+  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) =>
+    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath }),
+
+  // SKY-9 (was SKY-13): full Notes-Vault-scoped CRUD for VaultBrowser and the
+  // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault
+  // bridge; all calls route to the separately-configured notes vault root.
+  readNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:read', { path: filePath }),
+  writeNotesVault: (filePath: string, content: string) =>
+    ipcRenderer.invoke('notesVault:write', { path: filePath, content }),
+  listNotesVault: (root?: string) => ipcRenderer.invoke('notesVault:list', { root }),
+  deleteNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:delete', { path: filePath }),
+  moveNotesVault: (fromPath: string, toPath: string) =>
+    ipcRenderer.invoke('notesVault:move', { fromPath, toPath }),
+  // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
+  moveVault: (fromPath: string, toPath: string) =>
+    ipcRenderer.invoke('vault:move', { fromPath, toPath }),
+  // SKY-9: generic folder picker for the Settings panel (decoupled from the
+  // Obsidian-import token flow). Returns { path, cancelled }.
+  chooseVaultFolder: (title?: string, defaultPath?: string) =>
+    ipcRenderer.invoke('vault:chooseFolder', { title, defaultPath }),
   importVault: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:import', { sourcePath, registrationToken }),
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
   pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),

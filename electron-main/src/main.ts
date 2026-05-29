@@ -19,6 +19,10 @@ import {
   type VaultListResponse,
   type VaultDeletePayload,
   type VaultDeleteResponse,
+  type VaultMovePayload,
+  type VaultMoveResponse,
+  type VaultChooseFolderPayload,
+  type VaultChooseFolderResponse,
   type Manifest,
   type ManifestWritePayload,
   type ManifestWriteResponse,
@@ -129,6 +133,7 @@ import {
   writeFileAtomic,
   listVaultFiles,
   deleteVaultFile,
+  moveVaultFile,
   readManifest,
   writeManifest,
   defaultManifest,
@@ -141,6 +146,7 @@ import {
   stopNotesVaultWatcher,
   scaffoldStoryVault,
   scaffoldNotesVault,
+  isEmptyOrMissing,
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
@@ -249,12 +255,17 @@ function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
 }
 
+// SKY-9 (was SKY-13) / Q4.5: first-run defaults sit side-by-side under
+// ~/Mythos Vault so the AGENTS.md docs and PROJECT_PLAN.md can refer to a
+// single canonical umbrella name. Existing installs keep whatever
+// `vault-settings.json` already persisted — the defaults only fire when there
+// is no persisted root, so this is a fresh-install-only change.
 function defaultVaultRoot(): string {
-  return path.join(app.getPath('home'), 'MythosWriter', 'StoryVault');
+  return path.join(app.getPath('home'), 'Mythos Vault', 'Story Vault');
 }
 
 function defaultNotesVaultRoot(): string {
-  return path.join(app.getPath('home'), 'MythosWriter', 'NotesVault');
+  return path.join(app.getPath('home'), 'Mythos Vault', 'Notes Vault');
 }
 
 function loadVaultSettings(): VaultSettings {
@@ -283,9 +294,13 @@ const getNotesVaultRoot = () =>
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
-  const isNew = !fs.existsSync(vaultRoot);
-  if (isNew) {
+  // SKY-9: treat a missing OR empty directory as needing first-run seeding so
+  // a user who pre-creates the folder still gets the canonical layout.
+  // Scaffold itself is idempotent — never touches existing entries.
+  if (!fs.existsSync(vaultRoot)) {
     fs.mkdirSync(vaultRoot, { recursive: true });
+  }
+  if (isEmptyOrMissing(vaultRoot)) {
     scaffoldStoryVault(vaultRoot);
   }
   // Open DB before manifest migration so the audit callback can log immediately.
@@ -326,8 +341,12 @@ function ensureVaultDir() {
 
 function ensureNotesVaultDir() {
   const notesVaultRoot = getNotesVaultRoot();
+  // SKY-9: same empty-dir trigger as ensureVaultDir so a user who pre-creates
+  // ~/Mythos Vault/Notes Vault/ still gets Universes/ + Story ideas/ seeded.
   if (!fs.existsSync(notesVaultRoot)) {
     fs.mkdirSync(notesVaultRoot, { recursive: true });
+  }
+  if (isEmptyOrMissing(notesVaultRoot)) {
     scaffoldNotesVault(notesVaultRoot);
   }
 }
@@ -2052,7 +2071,78 @@ const handlers: IpcHandlers = {
     validateVaultPath(storyVaultPath, 'storyVaultPath');
     validateVaultPath(notesVaultPath, 'notesVaultPath');
     saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
+    // Seed the freshly-configured roots so a user pointing at an empty
+    // folder lands in a known layout. Idempotent — existing subtrees keep
+    // their contents.
+    ensureVaultDir();
+    ensureNotesVaultDir();
     return { storyVaultPath, notesVaultPath, saved: true };
+  },
+
+  // SKY-9 (was SKY-13): Notes-Vault-scoped CRUD. Mirrors VAULT_* but rooted
+  // at the separately-configured notes vault path. Uses the same `path`
+  // helpers and case-sensitive resolution as the Story Vault handlers so
+  // Linux CI behaves the same as macOS. Every endpoint goes through
+  // safeVaultIpcJoin (`.md` / `.json` only, no dotfiles, no traversal).
+  [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.path, false);
+    return readVaultFile(root, payload.path);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.path, true);
+    return writeVaultFileAtomic(root, payload.path, payload.content);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    if (payload.root) safePath(root, payload.root);
+    return listVaultFiles(root, payload.root);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.path, true);
+    return deleteVaultFile(root, payload.path);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.fromPath, true);
+    safeVaultIpcJoin(root, payload.toPath, true);
+    return moveVaultFile(root, payload.fromPath, payload.toPath);
+  },
+
+  // SKY-9: Story-Vault rename. Same shape as NOTES_VAULT_MOVE rooted at the
+  // story vault. moveVaultFile() refuses to cross the vault boundary by
+  // resolving both endpoints through realSafePath before fs.renameSync.
+  [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
+    ensureVaultDir();
+    const root = getVaultRoot();
+    safeVaultIpcJoin(root, payload.fromPath, true);
+    safeVaultIpcJoin(root, payload.toPath, true);
+    return moveVaultFile(root, payload.fromPath, payload.toPath);
+  },
+
+  // SKY-9: generic folder picker for the Settings panel. Returns the chosen
+  // absolute path with no side effects; the renderer then calls vaultSetPaths
+  // to persist. Distinct from VAULT_PICK_FOLDER (Obsidian import — tags with
+  // a registration token) so this surface stays decoupled.
+  [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: async (
+    payload: VaultChooseFolderPayload,
+  ): Promise<VaultChooseFolderResponse> => {
+    const result = await dialog.showOpenDialog({
+      title: payload?.title ?? 'Choose Folder',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: payload?.defaultPath,
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { path: null, cancelled: true };
+    }
+    return { path: result.filePaths[0], cancelled: false };
   },
 
   // ─── Writing modes (MYT-347) ───

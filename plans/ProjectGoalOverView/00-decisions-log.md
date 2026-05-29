@@ -57,3 +57,11 @@ If a decision needs to change later:
 3. Optionally open a follow-up issue and link it here.
 
 The Q&A Explainer document on MYT-183 is the conversation record and should not be edited retroactively — it captures what was decided in that round.
+
+---
+
+## Implementation log
+
+| Date | Issue | Change |
+| --- | --- | --- |
+| 2026-05-28 | SKY-9 | Two-vault foundation lands. Implemented Q4.5 Notes Vault layout (`Universes/`, `Story ideas/`) with `.gitkeep` sentinels; Story Vault scaffolds `Projects/`. Default vault roots moved to `~/Mythos Vault/Story Vault/` + `~/Mythos Vault/Notes Vault/` (Option A in the SKY-9 plan); existing installs keep persisted paths. `ensure*VaultDir` now seeds when the root exists but is empty (not only when missing). Added Notes-Vault-scoped IPC handlers `notesVault:read/write/delete/move` plus `vault:move` for symmetry; renderer bridge exposes `readNotesVault`/`writeNotesVault`/`deleteNotesVault`/`moveNotesVault` and `moveVault`. Settings UI gained a "Vault paths" section backed by a new generic `vault:chooseFolder` IPC decoupled from the Obsidian-import token flow. No deviations from Q4.5. |

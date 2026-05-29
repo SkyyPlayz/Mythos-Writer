@@ -9,15 +9,17 @@ import ContextMenu from './ContextMenu';
 import './VaultBrowser.css';
 
 // ─── Filters ───
+// SKY-13: the Notes Vault is now its own IPC root, so we no longer need to
+// strip the Story Vault's `Manuscript/` prefix here. We still hide internal
+// bookkeeping (manifest backups, versions/snapshots/git) so they don't show
+// up in the tree.
 
-const MANUSCRIPT_PREFIX = 'Manuscript';
 const INTERNAL_FILES = new Set(['manifest.json', 'manifest.json.bak']);
 const INTERNAL_PREFIXES = ['.versions', '.snapshots', '.git'];
 
 function isNotesItem(item: { path: string; name: string }): boolean {
   if (item.name.startsWith('.')) return false;
   if (INTERNAL_FILES.has(item.path)) return false;
-  if (item.path === MANUSCRIPT_PREFIX || item.path.startsWith(MANUSCRIPT_PREFIX + '/')) return false;
   for (const prefix of INTERNAL_PREFIXES) {
     if (item.path === prefix || item.path.startsWith(prefix + '/')) return false;
   }

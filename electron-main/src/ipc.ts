@@ -184,6 +184,27 @@ export const IPC_CHANNELS = {
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
+  // SKY-13: Notes-Vault-scoped file IO. The existing VAULT_* channels stay
+  // bound to the Story Vault root; this is the symmetric set rooted at the
+  // separately-configured Notes Vault. Used by VaultBrowser to render the
+  // AI workspace without leaking from the Story Vault, and by Brainstorm /
+  // Writing-Assistant downstream work that needs to read or persist notes
+  // independent of the manuscript.
+  NOTES_VAULT_READ: 'notesVault:read',
+  NOTES_VAULT_WRITE: 'notesVault:write',
+  NOTES_VAULT_LIST: 'notesVault:list',
+  NOTES_VAULT_DELETE: 'notesVault:delete',
+  NOTES_VAULT_MOVE: 'notesVault:move',
+  NOTES_VAULT_WATCH_START: 'notesVault:watchStart',
+  NOTES_VAULT_WATCH_STOP: 'notesVault:watchStop',
+  // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
+  // renderer has one move channel per vault root.
+  VAULT_MOVE: 'vault:move',
+  // SKY-9: generic folder picker for the Settings UI. Distinct from
+  // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
+  // and from BG_PICK (image picker). Returns the chosen absolute path with
+  // no side effects; the Settings panel persists via vaultSetPaths.
+  VAULT_CHOOSE_FOLDER: 'vault:chooseFolder',
 
   // Per-agent budget usage (MYT-722) — rolling 1-hour token + suggestion totals
   AGENT_BUDGET_USAGE: 'agent:budgetUsage',
@@ -338,6 +359,13 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
+  [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
+  [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
+  [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
@@ -388,6 +416,27 @@ export interface VaultDeletePayload {
 export interface VaultDeleteResponse {
   path: string;
   deleted: boolean;
+}
+
+export interface VaultMovePayload {
+  fromPath: string;
+  toPath: string;
+}
+
+export interface VaultMoveResponse {
+  fromPath: string;
+  toPath: string;
+  moved: boolean;
+}
+
+export interface VaultChooseFolderPayload {
+  title?: string;
+  defaultPath?: string;
+}
+
+export interface VaultChooseFolderResponse {
+  path: string | null;
+  cancelled: boolean;
 }
 
 // ─── Full manifest schema ───

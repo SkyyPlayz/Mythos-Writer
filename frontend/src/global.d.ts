@@ -409,9 +409,20 @@ interface Window {
     writingModeSet: (payload: { mode?: WritingMode; focusFlags?: Partial<FocusModeFlags>; editConfig?: Partial<EditModeConfig> }) => Promise<{ mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }>;
     onWritingModeChanged: (cb: (data: { mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }) => void) => () => void;
 
-    // Two-vault path management (MYT-608) — Story Vault + Notes Vault
+    // Two-vault path management (MYT-608 / SKY-13) — Story Vault + Notes Vault
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
     vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-9 (was SKY-13): full Notes-Vault-scoped CRUD. Mirrors the Story Vault
+    // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
+    // symmetry. All paths resolve under the separately-configured notes vault
+    // root via safeVaultIpcJoin on the main side.
+    readNotesVault: (path: string) => Promise<{ content: string; path: string }>;
+    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number }>;
+    listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> }>;
+    deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
+    moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
+    moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
+    chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)
     vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;

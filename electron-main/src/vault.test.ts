@@ -28,6 +28,8 @@ import {
   sceneVaultPath,
   scaffoldNotesVault,
   scaffoldStoryVault,
+  isEmptyOrMissing,
+  moveVaultFile,
   obsidianDryRun,
   mergeProvenanceFrontmatter,
   MANUSCRIPT_DIR,
@@ -1079,9 +1081,9 @@ describe('scaffoldNotesVault', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates the standard Notes Vault directory structure', () => {
+  it('creates the Q4.5 Notes Vault directory structure (Universes + Story ideas)', () => {
     scaffoldNotesVault(tmpDir);
-    for (const dir of ['Characters', 'Locations', 'Items', 'Concepts', 'Notes']) {
+    for (const dir of ['Universes', 'Story ideas']) {
       expect(fs.existsSync(path.join(tmpDir, dir))).toBe(true);
       expect(fs.statSync(path.join(tmpDir, dir)).isDirectory()).toBe(true);
     }
@@ -1090,6 +1092,29 @@ describe('scaffoldNotesVault', () => {
   it('is idempotent — running twice does not throw', () => {
     scaffoldNotesVault(tmpDir);
     expect(() => scaffoldNotesVault(tmpDir)).not.toThrow();
+  });
+
+  // SKY-9 U1: .gitkeep sentinel inside each freshly-seeded directory.
+  it('writes a .gitkeep into each freshly-seeded directory', () => {
+    scaffoldNotesVault(tmpDir);
+    for (const dir of ['Universes', 'Story ideas']) {
+      expect(fs.existsSync(path.join(tmpDir, dir, '.gitkeep'))).toBe(true);
+    }
+  });
+
+  // SKY-9 U2: idempotency must not rewrite .gitkeep into a dir the user has
+  // populated since the first seed. We simulate a user file and re-scaffold.
+  it('does not overwrite or remove user files when re-scaffolding', () => {
+    scaffoldNotesVault(tmpDir);
+    const userFile = path.join(tmpDir, 'Universes', 'Aerith.md');
+    fs.writeFileSync(userFile, '# Aerith', 'utf-8');
+    // Remove the gitkeep so we can detect a re-write.
+    fs.unlinkSync(path.join(tmpDir, 'Universes', '.gitkeep'));
+    scaffoldNotesVault(tmpDir);
+    expect(fs.existsSync(userFile)).toBe(true);
+    expect(fs.readFileSync(userFile, 'utf-8')).toBe('# Aerith');
+    // .gitkeep should NOT be re-added because the directory already exists.
+    expect(fs.existsSync(path.join(tmpDir, 'Universes', '.gitkeep'))).toBe(false);
   });
 });
 
@@ -1115,6 +1140,89 @@ describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () =>
   it('is idempotent — does not throw when called twice', () => {
     scaffoldStoryVault(tmpDir);
     expect(() => scaffoldStoryVault(tmpDir)).not.toThrow();
+  });
+
+  // SKY-9 U3: .gitkeep sentinel in Projects/.
+  it('writes a .gitkeep inside Projects/ on first seed', () => {
+    scaffoldStoryVault(tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, 'Projects', '.gitkeep'))).toBe(true);
+  });
+});
+
+// ─── isEmptyOrMissing (SKY-9) ───
+
+describe('isEmptyOrMissing', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-isempty-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns true for a missing path', () => {
+    expect(isEmptyOrMissing(path.join(tmpDir, 'nope'))).toBe(true);
+  });
+
+  it('returns true for an existing empty directory', () => {
+    expect(isEmptyOrMissing(tmpDir)).toBe(true);
+  });
+
+  it('returns false once any file (even a dotfile) is present', () => {
+    fs.writeFileSync(path.join(tmpDir, '.hidden'), '');
+    expect(isEmptyOrMissing(tmpDir)).toBe(false);
+  });
+});
+
+// ─── moveVaultFile (SKY-9) ───
+
+describe('moveVaultFile', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-move-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // SKY-9 U4 — happy path inside the vault root.
+  it('renames a file within the vault and creates missing parent directories', () => {
+    fs.writeFileSync(path.join(tmpDir, 'before.md'), '# hello', 'utf-8');
+    const result = moveVaultFile(tmpDir, 'before.md', 'sub/after.md');
+    expect(result.moved).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'before.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'sub', 'after.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, 'sub', 'after.md'), 'utf-8')).toBe('# hello');
+  });
+
+  // SKY-9 U4 — same source and destination should no-op safely.
+  it('returns moved=false when source and destination are identical', () => {
+    fs.writeFileSync(path.join(tmpDir, 'same.md'), '# x');
+    const result = moveVaultFile(tmpDir, 'same.md', 'same.md');
+    expect(result.moved).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'same.md'))).toBe(true);
+  });
+
+  // SKY-9 U4 — both endpoints are resolved through realSafePath, so a
+  // traversal attempt on either side throws before fs.renameSync is reached.
+  it('rejects "../" traversal on the source path', () => {
+    expect(() => moveVaultFile(tmpDir, '../escape.md', 'after.md'))
+      .toThrow(/Path traversal denied|outside vault root/);
+  });
+
+  it('rejects "../" traversal on the destination path', () => {
+    fs.writeFileSync(path.join(tmpDir, 'before.md'), '');
+    expect(() => moveVaultFile(tmpDir, 'before.md', '../escape.md'))
+      .toThrow(/Path traversal denied|outside vault root/);
+  });
+
+  it('throws when source does not exist', () => {
+    expect(() => moveVaultFile(tmpDir, 'missing.md', 'after.md'))
+      .toThrow(/Source does not exist/);
   });
 });
 

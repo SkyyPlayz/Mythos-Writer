@@ -62,6 +62,17 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     listVault: vi.fn().mockResolvedValue({ items: [] }),
     startVaultWatch: vi.fn().mockResolvedValue({}),
     onVaultFileChanged: vi.fn().mockReturnValue(() => {}),
+    // SKY-9: Settings panel now reads vault paths on mount.
+    vaultGetPaths: vi.fn().mockResolvedValue({
+      storyVaultPath: '/home/test/Mythos Vault/Story Vault',
+      notesVaultPath: '/home/test/Mythos Vault/Notes Vault',
+    }),
+    vaultSetPaths: vi.fn().mockResolvedValue({
+      storyVaultPath: '/home/test/Mythos Vault/Story Vault',
+      notesVaultPath: '/home/test/Mythos Vault/Notes Vault',
+      saved: true,
+    }),
+    chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }),
     ...overrides,
   };
 }

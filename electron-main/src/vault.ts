@@ -261,6 +261,27 @@ export function deleteVaultFile(vaultRoot: string, filePath: string): { path: st
   return { path: filePath, deleted: exists };
 }
 
+// SKY-9: atomic intra-vault rename. Both endpoints resolve under the same
+// vaultRoot via realSafePath, so a move can never cross vault boundaries or
+// escape via "../". fs.renameSync is atomic on a single filesystem; cross-
+// device moves throw EXDEV and the caller should retry via copy+delete (not
+// implemented here — both vaults live under userData by default).
+export function moveVaultFile(
+  vaultRoot: string,
+  fromPath: string,
+  toPath: string
+): { fromPath: string; toPath: string; moved: boolean } {
+  const fromFull = realSafePath(vaultRoot, fromPath, true);
+  const toFull = realSafePath(vaultRoot, toPath, true);
+  if (fromFull === toFull) return { fromPath, toPath, moved: false };
+  if (!fs.existsSync(fromFull)) {
+    throw new Error(`Source does not exist: ${fromPath}`);
+  }
+  fs.mkdirSync(path.dirname(toFull), { recursive: true });
+  fs.renameSync(fromFull, toFull);
+  return { fromPath, toPath, moved: true };
+}
+
 // ─── YAML frontmatter helpers ───
 // Obsidian uses `---\nkey: value\n---\ncontent` format.
 
@@ -672,21 +693,51 @@ export async function stopVaultWatcher(): Promise<void> {
 
 // ─── Vault scaffold ───
 // Creates the standard subdirectory structure for each vault type on first run.
+//
+// SKY-9: seeding is idempotent — both functions only create what's missing,
+// and `.gitkeep` is only written when its parent directory is freshly made.
+// Re-running the scaffold on a populated vault is a no-op.
 
-export function scaffoldStoryVault(storyVaultRoot: string): void {
-  const dirs = ['Projects'];
-  for (const dir of dirs) {
-    const full = path.join(storyVaultRoot, dir);
-    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+function seedDir(parentRoot: string, dirName: string): void {
+  const full = path.join(parentRoot, dirName);
+  const wasMissing = !fs.existsSync(full);
+  if (wasMissing) fs.mkdirSync(full, { recursive: true });
+  // Only drop a .gitkeep if the directory we just created is genuinely empty.
+  // This avoids littering user-populated structures with stray sentinel files
+  // on a re-scaffold.
+  if (wasMissing) {
+    const gitkeep = path.join(full, '.gitkeep');
+    if (!fs.existsSync(gitkeep)) fs.writeFileSync(gitkeep, '');
   }
 }
 
-const NOTES_VAULT_DIRS = ['Notes', 'Characters', 'Locations', 'Items', 'Concepts'];
+export const STORY_VAULT_DIRS = ['Projects'] as const;
+
+export function scaffoldStoryVault(storyVaultRoot: string): void {
+  for (const dir of STORY_VAULT_DIRS) seedDir(storyVaultRoot, dir);
+}
+
+// Q4.5 (decisions-log) — canonical Notes Vault layout.
+// `Universes/<World>/...` for worldbuilding, `Story ideas/<Story>/...` for
+// per-story brainstorming. Top-level seed only; agents create world/story
+// subfolders on demand.
+export const NOTES_VAULT_DIRS = ['Universes', 'Story ideas'] as const;
 
 export function scaffoldNotesVault(vaultRoot: string): void {
-  for (const dir of NOTES_VAULT_DIRS) {
-    const full = path.join(vaultRoot, dir);
-    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+  for (const dir of NOTES_VAULT_DIRS) seedDir(vaultRoot, dir);
+}
+
+/**
+ * SKY-9: returns true when a vault root either doesn't exist or exists but
+ * contains nothing (including no dotfiles). Used by ensure*VaultDir to treat
+ * an empty user-chosen directory as "needs first-run seeding".
+ */
+export function isEmptyOrMissing(root: string): boolean {
+  if (!fs.existsSync(root)) return true;
+  try {
+    return fs.readdirSync(root).length === 0;
+  } catch {
+    return false;
   }
 }
 

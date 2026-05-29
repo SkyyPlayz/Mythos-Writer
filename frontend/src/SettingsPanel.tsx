@@ -169,6 +169,17 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [showApiKey, setShowApiKey] = useState(false);
   const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
 
+  // SKY-9: Vault paths state. `vaults` mirrors the persisted Story Vault +
+  // Notes Vault roots; `vaultsDirty` flags an unsaved local edit so the Save
+  // Vault Paths button only fires when there's something to persist.
+  const [vaults, setVaults] = useState<{ storyVaultPath: string; notesVaultPath: string }>({
+    storyVaultPath: '',
+    notesVaultPath: '',
+  });
+  const [vaultsDirty, setVaultsDirty] = useState(false);
+  const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
+  const [vaultsError, setVaultsError] = useState<string | null>(null);
+
   // Liquid Glass customization state (MYT-613 / MYT-716)
   const [lg, setLg] = useState<LiquidGlassPrefs>({ ...LG_DEFAULTS });
   const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
@@ -210,6 +221,17 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     );
     first?.focus();
   }, [lgAdvancedOpen]);
+
+  // SKY-9: load currently-persisted vault paths once on mount. The IPC
+  // resolves any unset path to its computed default (Option A) so the input
+  // always shows the value that's actually in effect.
+  useEffect(() => {
+    window.api.vaultGetPaths().then((paths) => {
+      setVaults(paths);
+    }).catch(() => {
+      // non-fatal — leave inputs blank; user can still pick folders
+    });
+  }, []);
 
   useEffect(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -260,6 +282,43 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
       setSaving(false);
     }
   }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, lg, bgPreviewUrl, onSaved]);
+
+  // SKY-9: persist vault paths in a separate round-trip from settingsSet so
+  // a misconfigured path can't block API-key edits, and so the main side can
+  // re-seed both vault dirs in the same call (vault:setPaths handler does
+  // ensureVaultDir + ensureNotesVaultDir before returning).
+  const handleSaveVaults = useCallback(async () => {
+    setVaultsError(null);
+    setVaultsSavedOk(false);
+    try {
+      const result = await window.api.vaultSetPaths(
+        vaults.storyVaultPath.trim(),
+        vaults.notesVaultPath.trim(),
+      );
+      if (result.saved) {
+        setVaults({
+          storyVaultPath: result.storyVaultPath,
+          notesVaultPath: result.notesVaultPath,
+        });
+        setVaultsDirty(false);
+        setVaultsSavedOk(true);
+      }
+    } catch (e) {
+      setVaultsError(e instanceof Error ? e.message : 'Failed to save vault paths.');
+    }
+  }, [vaults.storyVaultPath, vaults.notesVaultPath]);
+
+  const handlePickVaultFolder = useCallback(
+    async (which: 'storyVaultPath' | 'notesVaultPath') => {
+      const title = which === 'storyVaultPath' ? 'Choose Story Vault folder' : 'Choose Notes Vault folder';
+      const res = await window.api.chooseVaultFolder(title, vaults[which] || undefined);
+      if (res.cancelled || !res.path) return;
+      setVaults((prev) => ({ ...prev, [which]: res.path as string }));
+      setVaultsDirty(true);
+      setVaultsSavedOk(false);
+    },
+    [vaults],
+  );
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
@@ -425,6 +484,80 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               )}
               <p className="settings-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
             </div>
+          </section>
+
+          {/* ── Vault paths (SKY-9) ── */}
+          <section className="settings-section" aria-labelledby="section-vault-paths">
+            <h3 className="settings-section-title" id="section-vault-paths">Vault paths</h3>
+            <div className="settings-field">
+              <label className="settings-label" htmlFor="story-vault-path-input">Story Vault</label>
+              <div className="settings-input-row">
+                <input
+                  id="story-vault-path-input"
+                  className="settings-input"
+                  type="text"
+                  value={vaults.storyVaultPath}
+                  onChange={(e) => {
+                    setVaults((prev) => ({ ...prev, storyVaultPath: e.target.value }));
+                    setVaultsDirty(true);
+                    setVaultsSavedOk(false);
+                  }}
+                  placeholder="~/Mythos Vault/Story Vault"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  className="settings-reveal-btn"
+                  type="button"
+                  onClick={() => handlePickVaultFolder('storyVaultPath')}
+                  aria-label="Choose Story Vault folder"
+                >
+                  Browse…
+                </button>
+              </div>
+              <p className="settings-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
+            </div>
+            <div className="settings-field">
+              <label className="settings-label" htmlFor="notes-vault-path-input">Notes Vault</label>
+              <div className="settings-input-row">
+                <input
+                  id="notes-vault-path-input"
+                  className="settings-input"
+                  type="text"
+                  value={vaults.notesVaultPath}
+                  onChange={(e) => {
+                    setVaults((prev) => ({ ...prev, notesVaultPath: e.target.value }));
+                    setVaultsDirty(true);
+                    setVaultsSavedOk(false);
+                  }}
+                  placeholder="~/Mythos Vault/Notes Vault"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  className="settings-reveal-btn"
+                  type="button"
+                  onClick={() => handlePickVaultFolder('notesVaultPath')}
+                  aria-label="Choose Notes Vault folder"
+                >
+                  Browse…
+                </button>
+              </div>
+              <p className="settings-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code> + <code>Story ideas/</code> on first run.</p>
+            </div>
+            <div className="settings-input-row">
+              <button
+                className="settings-save"
+                type="button"
+                onClick={handleSaveVaults}
+                disabled={!vaultsDirty || !vaults.storyVaultPath.trim() || !vaults.notesVaultPath.trim()}
+              >
+                Save vault paths
+              </button>
+              {vaultsSavedOk && <span className="settings-saved-ok" role="status">Saved. Restart to fully apply.</span>}
+              {vaultsError && <span className="settings-error-msg" role="alert">{vaultsError}</span>}
+            </div>
+            <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
           </section>
 
           {/* ── Agents ── */}

@@ -13,16 +13,32 @@ const defaultSettings: AppSettings = {
 
 const mockSettingsGet = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockVaultGetPaths = vi.fn();
+const mockVaultSetPaths = vi.fn();
+const mockChooseVaultFolder = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
+
+const defaultVaultPaths = {
+  storyVaultPath: '/home/test/Mythos Vault/Story Vault',
+  notesVaultPath: '/home/test/Mythos Vault/Notes Vault',
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
   mockSettingsGet.mockResolvedValue(defaultSettings);
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+  mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+    Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+  );
+  mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
+    vaultGetPaths: mockVaultGetPaths,
+    vaultSetPaths: mockVaultSetPaths,
+    chooseVaultFolder: mockChooseVaultFolder,
   };
 });
 
