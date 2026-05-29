@@ -127,6 +127,7 @@ import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
+import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
 import {
   readVaultFile,
   writeVaultFileAtomic,
@@ -306,6 +307,27 @@ const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
 const getNotesVaultRoot = () =>
   loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+
+/**
+ * SKY-10: locate a scene's chapter directory (relative path inside the vault)
+ * by looking it up in the manifest. Returns null when the scene id is not
+ * known so callers can degrade to an empty history rather than throw.
+ */
+function resolveSceneChapterDir(sceneId: string): string | null {
+  try {
+    const manifest = readManifest(getManifestPath());
+    for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        if (chapter.scenes.find((s) => s.id === sceneId)) {
+          return chapter.path;
+        }
+      }
+    }
+    const flat = manifest.scenes.find((s) => s.id === sceneId);
+    if (flat) return path.posix.dirname(flat.path.split(path.sep).join('/'));
+  } catch { /* missing manifest — treat as no history */ }
+  return null;
+}
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
@@ -849,14 +871,20 @@ const handlers: IpcHandlers = {
     return { restored: target, preRestoreSnapshot };
   },
 
-  // ─── Versioned drafts (Phase 2 — MYT-198) ───
+  // ─── Versioned drafts (SKY-10 upgrade of MYT-198) ───
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => {
     ensureVaultDir();
-    return { versions: listVersions(getVaultRoot(), payload.sceneId) };
+    const chapterRelPath = resolveSceneChapterDir(payload.sceneId);
+    if (!chapterRelPath) return { versions: [] };
+    return { versions: listVersions(getVaultRoot(), payload.sceneId, { chapterRelPath }) };
   },
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => {
     ensureVaultDir();
-    return { version: getVersion(getVaultRoot(), payload.sceneId, payload.ts) };
+    const chapterRelPath = resolveSceneChapterDir(payload.sceneId);
+    if (!chapterRelPath) return { version: null };
+    return {
+      version: getVersion(getVaultRoot(), payload.sceneId, payload.ts, { chapterRelPath }),
+    };
   },
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => {
     ensureVaultDir();
@@ -873,6 +901,7 @@ const handlers: IpcHandlers = {
     if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
 
     safePath(getVaultRoot(), found.path);
+    const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
 
     let currentProse = '';
     try {
@@ -884,6 +913,7 @@ const handlers: IpcHandlers = {
       payload.sceneId,
       payload.ts,
       currentProse,
+      { chapterRelPath },
     );
 
     // Write restored prose back into the scene file, preserving frontmatter
@@ -910,6 +940,18 @@ const handlers: IpcHandlers = {
 
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
     return { restoredVersion, preRollbackVersion };
+  },
+
+  // ─── SKY-10: Legacy single-file-per-chapter migration ───
+  [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: import('./ipc.js').MigrationDryRunPayload) => {
+    ensureVaultDir();
+    const plans = buildMigrationPlans(getVaultRoot(), payload.storyPath);
+    return { plans };
+  },
+  [IPC_CHANNELS.MIGRATION_APPLY]: (payload: import('./ipc.js').MigrationApplyPayload) => {
+    ensureVaultDir();
+    const result = applyMigrationPlan(getVaultRoot(), payload.storyPath, payload.planId);
+    return { result };
   },
 
   // ─── Entity CRUD ───
@@ -1233,6 +1275,23 @@ const handlers: IpcHandlers = {
       found.blocks.push({ id: crypto.randomUUID(), type: 'prose', order: 0, content: payload.prose, updatedAt: nowStr });
     }
 
+    // SKY-10: pre-save snapshot — capture the on-disk state being replaced.
+    // We snapshot the prior prose before overwriting so the timeline is
+    // "what existed before this save."
+    const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
+    let priorProse: string | null = null;
+    try {
+      priorProse = readSceneFile(getVaultRoot(), found.path).prose;
+    } catch { /* new file — nothing to snapshot */ }
+    if (priorProse !== null) {
+      try {
+        saveVersion(getVaultRoot(), found.id, priorProse, {
+          chapterRelPath,
+          intent: payload.intent ?? 'save',
+        });
+      } catch { /* snapshot failure is non-fatal — save still proceeds */ }
+    }
+
     // Atomic write: temp → fdatasync → rename
     writeSceneFileAtomic(getVaultRoot(), found.path, {
       id: found.id,
@@ -1242,9 +1301,6 @@ const handlers: IpcHandlers = {
       order: found.order,
       prose: payload.prose,
     });
-
-    // Snapshot the saved prose — non-fatal if it fails
-    try { saveVersion(getVaultRoot(), found.id, payload.prose); } catch { /* ignore */ }
 
     writeManifest(getManifestPath(), manifest);
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
