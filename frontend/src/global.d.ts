@@ -457,8 +457,10 @@ interface Window {
     onWritingModeChanged: (cb: (data: { mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }) => void) => () => void;
 
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
+    // MYT-789: setPaths now requires a per-path registrationToken from
+    // vault:pick-folder, or the path must already be in recent-projects.
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
-    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    vaultSetPaths: (args: { storyVaultPath: string; notesVaultPath: string; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean; error?: string }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
