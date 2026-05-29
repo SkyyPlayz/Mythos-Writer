@@ -1,6 +1,7 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler } from './security.js';
+import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -2338,12 +2339,22 @@ function createWindow() {
   // electron-vite emits the preload to out/preload/preload.js, while this
   // file runs from out/main/. (The packaged app preserves the same layout.)
   const preloadPath = path.join(__dirname, '../preload/preload.js');
+
+  const saved = loadWindowState(app.getPath('userData'));
+  const displays = screen.getAllDisplays().map((d) => d.bounds);
+  const restoreBounds = saved && isBoundsOnScreen(saved, displays)
+    ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
+    : { width: 1200, height: 800 };
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    ...restoreBounds,
     title: 'Mythos Writer',
     webPreferences: secureWebPreferences({ preloadPath }),
   });
+
+  if (saved?.isMaximized) {
+    mainWindow.maximize();
+  }
 
   // MYT-776: deny renderer-initiated popups by default; route http(s) URLs to
   // the user's system browser via shell.openExternal instead of opening an
@@ -2363,6 +2374,47 @@ function createWindow() {
     if (!isAllowed) event.preventDefault();
   });
 
+  // SKY-114: use system locale for the spell checker, falling back to en-US.
+  // setSpellCheckerLanguages accepts an array; Electron tries each in order.
+  const spellLang = app.getSystemLocale() || 'en-US';
+  mainWindow.webContents.session.setSpellCheckerLanguages([spellLang, 'en-US']);
+
+  // SKY-114: native context menu with spell-check suggestions.
+  // Only shown when there is relevant content (misspelling or editable/selection).
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menuItems: Electron.MenuItemConstructorOptions[] = [];
+
+    if (params.misspelledWord) {
+      if (params.dictionarySuggestions.length > 0) {
+        for (const suggestion of params.dictionarySuggestions) {
+          menuItems.push({
+            label: suggestion,
+            click: () => mainWindow?.webContents.replaceMisspelling(suggestion),
+          });
+        }
+      } else {
+        menuItems.push({ label: 'No suggestions', enabled: false });
+      }
+      menuItems.push({ type: 'separator' });
+      menuItems.push({
+        label: 'Add to Dictionary',
+        click: () => mainWindow?.webContents.session
+          .addWordToSpellCheckerDictionary(params.misspelledWord),
+      });
+      menuItems.push({ type: 'separator' });
+    }
+
+    if (params.isEditable) {
+      menuItems.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' });
+    } else if (params.selectionText) {
+      menuItems.push({ role: 'copy' });
+    }
+
+    if (menuItems.length > 0) {
+      Menu.buildFromTemplate(menuItems).popup({ window: mainWindow ?? undefined });
+    }
+  });
+
   // Load the Vite-built renderer
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -2370,6 +2422,22 @@ function createWindow() {
     // electron-vite outputs renderer to out/renderer/ relative to out/main/
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
+
+  mainWindow.on('close', () => {
+    if (mainWindow) {
+      const isMaximized = mainWindow.isMaximized();
+      // getNormalBounds returns the restored (non-maximized) size so we preserve
+      // a sensible window size even when the user closes while maximized.
+      const bounds = isMaximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+      saveWindowState(app.getPath('userData'), {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        isMaximized,
+      });
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
