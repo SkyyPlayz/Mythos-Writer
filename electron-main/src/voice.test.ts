@@ -642,7 +642,7 @@ describe('voice spawn gate (MYT-788)', () => {
       () => makeSettings(undefined, { enabled: true, provider: 'local', localBinaryPath: bin }),
     );
     const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as { error: string };
-    expect(result.error).toMatch(/refused|trusted set/i);
+    expect(result.error).toBe('Voice request was invalid — check the input and settings.');
   });
 
   it('voice:speak refuses to spawn when binary exists but is not trusted', async () => {
@@ -670,7 +670,7 @@ describe('voice spawn gate (MYT-788)', () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0].speakId).toBe(speakId);
-    expect(errors[0].error).toMatch(/refused|trusted set/i);
+    expect(errors[0].error).toBe('Voice request was invalid — check the input and settings.');
   });
 
   it('voice:speak rejects text exceeding the size cap before spawn', async () => {
