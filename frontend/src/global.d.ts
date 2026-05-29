@@ -9,6 +9,44 @@ interface SceneSnapshot {
   createdAt: string;
 }
 
+// SKY-10 — Per-scene versioned drafts
+type VersionIntent =
+  | 'save'
+  | 'auto'
+  | 'agent-suggestion-applied'
+  | 'pre-rollback'
+  | 'migration';
+
+interface SceneVersion {
+  sceneId: string;
+  ts: string;
+  content: string;
+  intent: VersionIntent;
+  contentHash: string;
+}
+
+// SKY-10 — Legacy migration plan
+interface MigrationPlanChange {
+  kind: 'create-dir' | 'write-file' | 'snapshot-legacy' | 'unlink-file';
+  path: string;
+  description: string;
+}
+
+interface MigrationPlan {
+  planId: string;
+  storyPath: string;
+  detectedLegacyFiles: string[];
+  changes: MigrationPlanChange[];
+  createdAt: string;
+}
+
+interface MigrationApplyResult {
+  planId: string;
+  storyPath: string;
+  appliedChanges: number;
+  snapshotsWritten: string[];
+}
+
 interface EntityEntry {
   id: string;
   name: string;
@@ -274,6 +312,15 @@ interface Window {
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
+
+    // SKY-10 — Per-scene versioned drafts
+    versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
+    versionGet: (sceneId: string, ts: string) => Promise<{ version: SceneVersion | null }>;
+    versionRollback: (sceneId: string, ts: string) => Promise<{ restoredVersion: SceneVersion; preRollbackVersion: SceneVersion }>;
+
+    // SKY-10 — Legacy single-file-per-chapter migration
+    migrationDryRun: (storyPath?: string) => Promise<{ plans: MigrationPlan[] }>;
+    migrationApply: (planId: string, storyPath: string) => Promise<{ result: MigrationApplyResult }>;
 
     // Entity CRUD
     entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;

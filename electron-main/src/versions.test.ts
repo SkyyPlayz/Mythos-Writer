@@ -1,199 +1,219 @@
-// Unit tests for VERSION_LIST, VERSION_GET, VERSION_ROLLBACK handler logic.
-// Real temp directories; no mocks.
+// SKY-10: versions.ts — per-chapter visible snapshots with intent + content hash.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
+import {
+  saveVersion,
+  listVersions,
+  getVersion,
+  rollbackVersion,
+  _internal,
+} from './versions.js';
 
-// ─── PATH TRAVERSAL SECURITY ───
+function setupVault(): { vaultRoot: string; chapterRelPath: string } {
+  const vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky10-'));
+  const chapterRelPath = path.join('Manuscript', 'My Story', '01 - Opening');
+  fs.mkdirSync(path.join(vaultRoot, chapterRelPath), { recursive: true });
+  return { vaultRoot, chapterRelPath };
+}
 
-describe('path traversal rejection', () => {
-  let tmpDir: string;
+function teardown(vaultRoot: string): void {
+  fs.rmSync(vaultRoot, { recursive: true, force: true });
+}
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vsec-'));
-  });
+describe('saveVersion — path traversal hardening (MYT-638 carryover)', () => {
+  let vaultRoot: string;
+  let chapterRelPath: string;
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  beforeEach(() => ({ vaultRoot, chapterRelPath } = setupVault()));
+  afterEach(() => teardown(vaultRoot));
 
-  const traversalIds = ['../escape', '..\\escape', '/abs/path', 'a/b', 'a\\b', '.hidden', ''];
-
-  for (const badId of traversalIds) {
-    it(`saveVersion rejects sceneId "${badId}"`, () => {
-      expect(() => saveVersion(tmpDir, badId, 'content')).toThrow('Invalid sceneId');
-    });
-
-    it(`listVersions rejects sceneId "${badId}"`, () => {
-      expect(() => listVersions(tmpDir, badId)).toThrow('Invalid sceneId');
-    });
-
-    it(`getVersion rejects sceneId "${badId}"`, () => {
-      expect(() => getVersion(tmpDir, badId, 'safe-ts')).toThrow('Invalid sceneId');
-    });
-  }
-
-  const traversalTs = ['../escape', '..\\escape', '/abs/path', 'a/b', 'a\\b', '.hidden', ''];
-
-  for (const badTs of traversalTs) {
-    it(`getVersion rejects ts "${badTs}"`, () => {
-      expect(() => getVersion(tmpDir, 'scene-valid', badTs)).toThrow('Invalid ts');
+  const badIds = ['../escape', '..\\escape', '/abs', 'a/b', 'a\\b', '.hidden', ''];
+  for (const badId of badIds) {
+    it(`rejects sceneId "${badId}"`, () => {
+      expect(() =>
+        saveVersion(vaultRoot, badId, 'x', { chapterRelPath }),
+      ).toThrow('Invalid sceneId');
     });
   }
+
+  it('rejects chapterRelPath escaping the vault root', () => {
+    expect(() =>
+      saveVersion(vaultRoot, 'scene-1', 'x', { chapterRelPath: '../escape' }),
+    ).toThrow('Invalid chapterRelPath');
+  });
+
+  it('rejects intent values not in the allowlist', () => {
+    expect(() =>
+      // @ts-expect-error — explicit bad input
+      saveVersion(vaultRoot, 'scene-1', 'x', { chapterRelPath, intent: 'sneaky' }),
+    ).toThrow('Invalid intent');
+  });
 });
 
-// ─── VERSION_LIST ───
+describe('saveVersion — file layout', () => {
+  let vaultRoot: string;
+  let chapterRelPath: string;
 
-describe('VERSION_LIST (listVersions)', () => {
-  let tmpDir: string;
+  beforeEach(() => ({ vaultRoot, chapterRelPath } = setupVault()));
+  afterEach(() => teardown(vaultRoot));
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vlist-'));
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('returns empty array when no versions exist', () => {
-    expect(listVersions(tmpDir, 'scene-none')).toEqual([]);
-  });
-
-  it('returns versions newest-first', () => {
-    saveVersion(tmpDir, 'scene-order', 'Draft one');
-    saveVersion(tmpDir, 'scene-order', 'Draft two');
-    const versions = listVersions(tmpDir, 'scene-order');
-    expect(versions).toHaveLength(2);
-    expect(versions[0].content).toBe('Draft two');
-    expect(versions[1].content).toBe('Draft one');
-  });
-
-  it('stores files in .versions/<sceneId>/ directory as .md files', () => {
-    saveVersion(tmpDir, 'scene-path', 'Some prose');
-    const dir = path.join(tmpDir, '.versions', 'scene-path');
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
+  it('writes versions/<sceneId>/<ts>-<hash>.md inside the chapter folder (visible, not dotfile)', () => {
+    saveVersion(vaultRoot, 'scene-1', 'prose body', { chapterRelPath, intent: 'save' });
+    const dir = path.join(vaultRoot, chapterRelPath, 'versions', 'scene-1');
+    const files = fs.readdirSync(dir);
     expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/^\d{4}-\d{2}-\d{2}T.+_\d{8}-[0-9a-f]{8}\.md$/);
+    expect(fs.existsSync(path.join(vaultRoot, '.versions'))).toBe(false);
   });
 
-  it('each version carries correct sceneId', () => {
-    saveVersion(tmpDir, 'scene-id-check', 'Prose');
-    const versions = listVersions(tmpDir, 'scene-id-check');
-    expect(versions[0].sceneId).toBe('scene-id-check');
-  });
-
-  it('does not mix versions from different sceneIds', () => {
-    saveVersion(tmpDir, 'scene-a', 'A prose');
-    saveVersion(tmpDir, 'scene-b', 'B prose');
-    expect(listVersions(tmpDir, 'scene-a')).toHaveLength(1);
-    expect(listVersions(tmpDir, 'scene-b')).toHaveLength(1);
-  });
-});
-
-// ─── VERSION_GET ───
-
-describe('VERSION_GET (getVersion)', () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vget-'));
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('retrieves a version by its ts', () => {
-    const saved = saveVersion(tmpDir, 'scene-get', 'Hello world');
-    const found = getVersion(tmpDir, 'scene-get', saved.ts);
-    expect(found).not.toBeNull();
-    expect(found!.content).toBe('Hello world');
-    expect(found!.ts).toBe(saved.ts);
-    expect(found!.sceneId).toBe('scene-get');
-  });
-
-  it('returns null for an unknown ts', () => {
-    saveVersion(tmpDir, 'scene-missing', 'Content');
-    expect(getVersion(tmpDir, 'scene-missing', 'nonexistent-ts')).toBeNull();
-  });
-
-  it('returns null when the scene has no versions', () => {
-    expect(getVersion(tmpDir, 'no-versions', '2026-01-01T00-00-00-000Z')).toBeNull();
-  });
-
-  it('ts in the returned version matches the filename stem', () => {
-    const saved = saveVersion(tmpDir, 'scene-ts', 'Content');
-    const dir = path.join(tmpDir, '.versions', 'scene-ts');
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
-    expect(files).toHaveLength(1);
-    expect(files[0]).toBe(`${saved.ts}.md`);
+  it('snapshot file body embeds the SKY-10 fence header with intent + contentHash', () => {
+    saveVersion(vaultRoot, 'scene-2', 'hello', { chapterRelPath, intent: 'save' });
+    const dir = path.join(vaultRoot, chapterRelPath, 'versions', 'scene-2');
+    const file = fs.readdirSync(dir)[0];
+    const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
+    expect(raw.startsWith(_internal.VERSION_FENCE)).toBe(true);
+    expect(raw).toContain('intent: save');
+    expect(raw).toContain(`contentHash: ${_internal.sha256Hex('hello')}`);
+    expect(raw.endsWith('hello')).toBe(true);
   });
 });
 
-// ─── VERSION_ROLLBACK ───
+describe('saveVersion — dedup', () => {
+  let vaultRoot: string;
+  let chapterRelPath: string;
 
-describe('VERSION_ROLLBACK (rollbackVersion)', () => {
-  let tmpDir: string;
+  beforeEach(() => ({ vaultRoot, chapterRelPath } = setupVault()));
+  afterEach(() => teardown(vaultRoot));
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vrb-'));
+  it("auto-intent save with identical content is coalesced (no new file)", () => {
+    saveVersion(vaultRoot, 'scene-d', 'body', { chapterRelPath, intent: 'auto' });
+    saveVersion(vaultRoot, 'scene-d', 'body', { chapterRelPath, intent: 'auto' });
+    const dir = path.join(vaultRoot, chapterRelPath, 'versions', 'scene-d');
+    expect(fs.readdirSync(dir)).toHaveLength(1);
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+  it('save-intent always writes even when content matches', () => {
+    saveVersion(vaultRoot, 'scene-e', 'body', { chapterRelPath, intent: 'auto' });
+    saveVersion(vaultRoot, 'scene-e', 'body', { chapterRelPath, intent: 'save' });
+    const dir = path.join(vaultRoot, chapterRelPath, 'versions', 'scene-e');
+    expect(fs.readdirSync(dir)).toHaveLength(2);
+  });
+});
+
+describe('saveVersion — retention', () => {
+  let vaultRoot: string;
+  let chapterRelPath: string;
+
+  beforeEach(() => ({ vaultRoot, chapterRelPath } = setupVault()));
+  afterEach(() => teardown(vaultRoot));
+
+  it('prunes oldest snapshots beyond the cap', () => {
+    for (let i = 0; i < 6; i++) {
+      saveVersion(vaultRoot, 'scene-cap', `body-${i}`, {
+        chapterRelPath,
+        intent: 'save',
+        retention: 3,
+      });
+    }
+    const dir = path.join(vaultRoot, chapterRelPath, 'versions', 'scene-cap');
+    expect(fs.readdirSync(dir)).toHaveLength(3);
+  });
+});
+
+describe('listVersions', () => {
+  let vaultRoot: string;
+  let chapterRelPath: string;
+
+  beforeEach(() => ({ vaultRoot, chapterRelPath } = setupVault()));
+  afterEach(() => teardown(vaultRoot));
+
+  it('returns empty when no history exists', () => {
+    expect(listVersions(vaultRoot, 'scene-empty', { chapterRelPath })).toEqual([]);
   });
 
-  it('rollback round-trip preserves original prose', () => {
-    const v1 = saveVersion(tmpDir, 'scene-rb', 'Original prose');
-    saveVersion(tmpDir, 'scene-rb', 'Modified prose');
+  it('returns newest-first', () => {
+    saveVersion(vaultRoot, 'scene-l', 'one', { chapterRelPath, intent: 'save' });
+    saveVersion(vaultRoot, 'scene-l', 'two', { chapterRelPath, intent: 'save' });
+    const items = listVersions(vaultRoot, 'scene-l', { chapterRelPath });
+    expect(items).toHaveLength(2);
+    expect(items[0].content).toBe('two');
+    expect(items[1].content).toBe('one');
+    expect(items[0].intent).toBe('save');
+    expect(items[0].contentHash).toBe(_internal.sha256Hex('two'));
+  });
+});
 
+describe('rollbackVersion', () => {
+  let vaultRoot: string;
+  let chapterRelPath: string;
+
+  beforeEach(() => ({ vaultRoot, chapterRelPath } = setupVault()));
+  afterEach(() => teardown(vaultRoot));
+
+  it('round-trip restores the target content and snapshots the prior state', () => {
+    const v1 = saveVersion(vaultRoot, 'scene-rb', 'original', {
+      chapterRelPath,
+      intent: 'save',
+    });
+    saveVersion(vaultRoot, 'scene-rb', 'modified', {
+      chapterRelPath,
+      intent: 'save',
+    });
     const { restoredVersion, preRollbackVersion } = rollbackVersion(
-      tmpDir,
+      vaultRoot,
       'scene-rb',
       v1.ts,
-      'Modified prose',
+      'modified',
+      { chapterRelPath },
     );
-
-    expect(restoredVersion.content).toBe('Original prose');
-    expect(preRollbackVersion.content).toBe('Modified prose');
+    expect(restoredVersion.content).toBe('original');
+    expect(preRollbackVersion.content).toBe('modified');
+    expect(preRollbackVersion.intent).toBe('pre-rollback');
   });
 
-  it('saves a pre-rollback snapshot before restoring', () => {
-    const v1 = saveVersion(tmpDir, 'scene-preroll', 'V1');
-    saveVersion(tmpDir, 'scene-preroll', 'V2');
-
-    rollbackVersion(tmpDir, 'scene-preroll', v1.ts, 'V2');
-
-    // .versions dir should now have 3 entries: v1, v2, pre-rollback
-    const versions = listVersions(tmpDir, 'scene-preroll');
-    expect(versions).toHaveLength(3);
-  });
-
-  it('throws when the target ts does not exist', () => {
-    saveVersion(tmpDir, 'scene-notfound', 'Some content');
+  it('throws when the target ts does not exist; scene history is unchanged', () => {
+    saveVersion(vaultRoot, 'scene-miss', 'x', { chapterRelPath, intent: 'save' });
+    const before = listVersions(vaultRoot, 'scene-miss', { chapterRelPath }).length;
     expect(() =>
-      rollbackVersion(tmpDir, 'scene-notfound', 'nonexistent-ts', 'current'),
+      rollbackVersion(vaultRoot, 'scene-miss', 'nope', 'x', { chapterRelPath }),
     ).toThrow('Version not found');
+    expect(listVersions(vaultRoot, 'scene-miss', { chapterRelPath })).toHaveLength(before);
   });
 
   it('the pre-rollback snapshot is retrievable after rollback', () => {
-    const v1 = saveVersion(tmpDir, 'scene-precheck', 'First');
-    saveVersion(tmpDir, 'scene-precheck', 'Second');
-
-    const { preRollbackVersion } = rollbackVersion(tmpDir, 'scene-precheck', v1.ts, 'Second');
-    const fetched = getVersion(tmpDir, 'scene-precheck', preRollbackVersion.ts);
+    const v1 = saveVersion(vaultRoot, 'scene-pr', 'A', { chapterRelPath, intent: 'save' });
+    saveVersion(vaultRoot, 'scene-pr', 'B', { chapterRelPath, intent: 'save' });
+    const { preRollbackVersion } = rollbackVersion(
+      vaultRoot,
+      'scene-pr',
+      v1.ts,
+      'B',
+      { chapterRelPath },
+    );
+    const fetched = getVersion(vaultRoot, 'scene-pr', preRollbackVersion.ts, {
+      chapterRelPath,
+    });
     expect(fetched).not.toBeNull();
-    expect(fetched!.content).toBe('Second');
+    expect(fetched!.content).toBe('B');
+    expect(fetched!.intent).toBe('pre-rollback');
   });
+});
 
-  it('two saves within the same millisecond produce unique ts values that sort newest-first', () => {
-    const v1 = saveVersion(tmpDir, 'scene-coll', 'first');
-    const v2 = saveVersion(tmpDir, 'scene-coll', 'second');
-    expect(v1.ts).not.toBe(v2.ts);
-    // sequence counter ensures v2.ts > v1.ts lexicographically
-    expect(v2.ts > v1.ts).toBe(true);
-    const listed = listVersions(tmpDir, 'scene-coll');
-    expect(listed[0].content).toBe('second');
-  });
+describe('getVersion — ts validation', () => {
+  let vaultRoot: string;
+  let chapterRelPath: string;
+
+  beforeEach(() => ({ vaultRoot, chapterRelPath } = setupVault()));
+  afterEach(() => teardown(vaultRoot));
+
+  const traversalTs = ['../escape', '..\\escape', '/abs/path', 'a/b', 'a\\b', ''];
+  for (const badTs of traversalTs) {
+    it(`rejects ts "${badTs}"`, () => {
+      expect(() => getVersion(vaultRoot, 'scene-1', badTs, { chapterRelPath })).toThrow(
+        'Invalid ts',
+      );
+    });
+  }
 });

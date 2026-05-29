@@ -104,6 +104,20 @@ contextBridge.exposeInMainWorld('api', {
   snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) =>
     ipcRenderer.invoke('snapshot:restore', { sceneId, snapshotId, scenePath }),
 
+  // SKY-10 — Per-scene versioned drafts (history pane + rollback)
+  versionList: (sceneId: string) =>
+    ipcRenderer.invoke('version:list', { sceneId }),
+  versionGet: (sceneId: string, ts: string) =>
+    ipcRenderer.invoke('version:get', { sceneId, ts }),
+  versionRollback: (sceneId: string, ts: string) =>
+    ipcRenderer.invoke('version:rollback', { sceneId, ts }),
+
+  // SKY-10 — Legacy single-file-per-chapter migration
+  migrationDryRun: (storyPath?: string) =>
+    ipcRenderer.invoke('migration:dryRun', { storyPath }),
+  migrationApply: (planId: string, storyPath: string) =>
+    ipcRenderer.invoke('migration:apply', { planId, storyPath }),
+
   // Entity CRUD
   entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) =>
     ipcRenderer.invoke('entity:create', payload),

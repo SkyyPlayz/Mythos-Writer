@@ -1,0 +1,149 @@
+/* SKY-10: MigrationBanner styles — subtle alert + clean dry-run modal. */
+.migration-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(124, 255, 175, 0.08);
+  color: var(--text-primary, #e7e9ee);
+  border-bottom: 1px solid rgba(124, 255, 175, 0.18);
+  font-size: 13px;
+}
+
+.migration-banner-text {
+  flex: 1;
+}
+
+.migration-banner-action {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary, #e7e9ee);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+.migration-banner-action:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.migration-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.migration-modal-card {
+  background: var(--surface-1, #1a1d24);
+  color: var(--text-primary, #e7e9ee);
+  border-radius: 12px;
+  width: min(720px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 22px;
+  gap: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+}
+
+.migration-modal-card h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.migration-modal-card p {
+  margin: 0;
+  color: var(--text-muted, #9aa1ad);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.migration-modal-body {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.migration-plan-section h3 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #9aa1ad);
+}
+
+.migration-change-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.migration-change {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  font-size: 12px;
+}
+
+.migration-change-path {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--text-primary, #e7e9ee);
+  word-break: break-all;
+}
+
+.migration-change-description {
+  color: var(--text-muted, #9aa1ad);
+}
+
+.migration-change--snapshot-legacy .migration-change-description {
+  color: #7cffaf;
+}
+.migration-change--unlink-file .migration-change-description {
+  color: #ff8a8a;
+}
+
+.migration-modal-error {
+  color: var(--danger, #ff7373);
+  margin: 0;
+  font-size: 12px;
+}
+
+.migration-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.migration-modal-actions button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.1));
+  background: transparent;
+  color: var(--text-primary, #e7e9ee);
+  cursor: pointer;
+}
+
+.migration-modal-actions button.primary {
+  background: var(--accent, #6f8aff);
+  border-color: var(--accent, #6f8aff);
+  color: #0e1116;
+}
+
+.migration-modal-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

@@ -66,10 +66,14 @@ export const IPC_CHANNELS = {
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
 
-  // Versioned drafts — Phase 2 (MYT-198)
+  // Versioned drafts — Phase 2 (MYT-198), SKY-10 upgrade
   VERSION_LIST: 'version:list',
   VERSION_GET: 'version:get',
   VERSION_ROLLBACK: 'version:rollback',
+
+  // SKY-10 — Legacy single-file-per-chapter migration
+  MIGRATION_DRY_RUN: 'migration:dryRun',
+  MIGRATION_APPLY: 'migration:apply',
 
   // Entity CRUD
   ENTITY_CREATE: 'entity:create',
@@ -312,6 +316,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
+  [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: MigrationDryRunPayload) => MigrationDryRunResponse;
+  [IPC_CHANNELS.MIGRATION_APPLY]: (payload: MigrationApplyPayload) => MigrationApplyResponse;
   [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => EntityEntry;
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => EntityEntry | null;
   [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
@@ -709,13 +715,23 @@ export interface SnapshotRestoreResponse {
   preRestoreSnapshot: SceneSnapshot;
 }
 
-// ─── Versioned drafts types (Phase 2 — MYT-198) ───
+// ─── Versioned drafts types (SKY-10 upgrade of MYT-198) ───
+
+export type VersionIntent =
+  | 'save'
+  | 'auto'
+  | 'agent-suggestion-applied'
+  | 'pre-rollback'
+  | 'migration';
 
 export interface SceneVersion {
   sceneId: string;
-  /** Sanitized ISO timestamp — the filename stem under .versions/<sceneId>/. */
+  /** Sanitized ISO timestamp + 8-char content hash — sortable filename stem. */
   ts: string;
   content: string;
+  intent: VersionIntent;
+  /** Full sha256(content) hex. */
+  contentHash: string;
 }
 
 export interface VersionListPayload {
@@ -743,6 +759,49 @@ export interface VersionRollbackPayload {
 export interface VersionRollbackResponse {
   restoredVersion: SceneVersion;
   preRollbackVersion: SceneVersion;
+}
+
+// ─── SKY-10: Legacy-layout migration ───
+
+export interface MigrationPlanChange {
+  kind: 'create-dir' | 'write-file' | 'snapshot-legacy' | 'unlink-file';
+  /** Vault-relative path the change targets. */
+  path: string;
+  /** Human-readable description for the dry-run modal. */
+  description: string;
+}
+
+export interface MigrationPlan {
+  planId: string;
+  storyPath: string;
+  detectedLegacyFiles: string[];
+  changes: MigrationPlanChange[];
+  createdAt: string;
+}
+
+export interface MigrationDryRunPayload {
+  /** Optional — when omitted, scans every story under Manuscript/. */
+  storyPath?: string;
+}
+
+export interface MigrationDryRunResponse {
+  plans: MigrationPlan[];
+}
+
+export interface MigrationApplyPayload {
+  planId: string;
+  storyPath: string;
+}
+
+export interface MigrationApplyResult {
+  planId: string;
+  storyPath: string;
+  appliedChanges: number;
+  snapshotsWritten: string[];
+}
+
+export interface MigrationApplyResponse {
+  result: MigrationApplyResult;
 }
 
 // ─── Entity IPC payload / response types ───
@@ -1402,6 +1461,8 @@ export interface SceneSavePayload {
   prose: string;
   title?: string;
   order?: number;
+  /** SKY-10: classifies the save so snapshots can dedupe autosaves. Defaults to 'save'. */
+  intent?: VersionIntent;
 }
 
 export interface SceneSaveResponse {
