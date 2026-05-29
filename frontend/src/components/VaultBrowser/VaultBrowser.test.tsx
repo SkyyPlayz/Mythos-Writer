@@ -246,7 +246,7 @@ describe('VaultBrowser', () => {
 
   it('shows empty state when no stories', () => {
     render(<VaultBrowser {...baseProps} />);
-    expect(screen.getByText(/No stories yet/i)).toBeInTheDocument();
+    expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
   });
 
   it('calls onCreateStory when New Story button is clicked', () => {
@@ -435,3 +435,4 @@ describe('StoryVault inline rename', () => {
     expect(mockSceneRename).not.toHaveBeenCalled();
   });
 });
+

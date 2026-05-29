@@ -37,6 +37,7 @@ const STORY_TITLE = 'Vault Chronicles';
 const CHAPTER_TITLE = 'The First Chamber';
 const SCENE_TITLE = 'Descent';
 const ENTITY_NAME = 'Seraphine Dusk';
+const SCENE_RENAMED = 'Renamed Scene Title';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -337,6 +338,35 @@ test('TC-V-05: prose persists after full app restart (same userData)', async () 
   const editor = page.locator('.ProseMirror');
   await expect(editor).toBeVisible({ timeout: 8_000 });
   await expect(editor).toContainText(PROSE, { timeout: 8_000 });
+});
+
+
+// ─── TC-V-07: Double-click scene in Vault tab → inline rename persists ────────
+
+test('TC-V-07: double-click scene in Vault tab renames it and persists', async () => {
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  const vaultTab = page.locator('.rail-tab', { hasText: 'Vault' });
+  await vaultTab.click();
+  await expect(page.locator('[data-testid="vb-story-vault"]')).toBeVisible({ timeout: 6_000 });
+
+  const chapterToggle = page.locator('.vb-tree-toggle', { hasText: CHAPTER_TITLE });
+  await expect(chapterToggle).toBeVisible({ timeout: 6_000 });
+  await chapterToggle.click();
+
+  const sceneRow = page.locator('.vb-scene-row', { hasText: SCENE_TITLE });
+  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
+
+  await sceneRow.dblclick();
+
+  const renameInput = page.locator('.vb-rename-input');
+  await expect(renameInput).toBeVisible({ timeout: 4_000 });
+
+  await renameInput.fill(SCENE_RENAMED);
+  await renameInput.press('Enter');
+
+  await expect(renameInput).not.toBeVisible({ timeout: 6_000 });
+  await expect(page.locator('.vb-scene-row', { hasText: SCENE_RENAMED })).toBeVisible({ timeout: 8_000 });
 });
 
 // ─── TC-V-06: Create note in Notes Vault → appears in browser sidebar ─────────

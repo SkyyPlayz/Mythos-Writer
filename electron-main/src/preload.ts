@@ -269,6 +269,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('chapter:create', payload),
   sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) =>
     ipcRenderer.invoke('scene:create', payload),
+  // SKY-115: inline scene rename (title-only, manifest update)
+  sceneRename: (payload: { sceneId: string; title: string }) =>
+    ipcRenderer.invoke('scene:rename', payload),
 
   // Search (MYT-251)
   searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) =>

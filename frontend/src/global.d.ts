@@ -346,6 +346,8 @@ interface Window {
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
     sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<import('./types').Scene>;
+    // SKY-115: inline scene rename (title-only, manifest update)
+    sceneRename: (payload: { sceneId: string; title: string }) => Promise<{ scene: import('./types').Scene } | { error: string }>;
 
     // Auto-updater (MYT-245) — feature-flagged; safe no-ops in dev
     onUpdateStatus: (cb: (data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => void) => () => void;
