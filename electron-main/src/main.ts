@@ -1810,6 +1810,37 @@ const handlers: IpcHandlers = {
     return { path: result.filePath, cancelled: false };
   },
 
+
+  // ─── Scene Markdown export (SKY-138) ───
+  [IPC_CHANNELS.SCENE_EXPORT_MARKDOWN]: async (payload: { sceneId: string }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+
+    let found: import('./ipc.js').SceneEntry | null = null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) { found = scene; break outer; }
+      }
+    }
+    if (!found) found = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+
+    const safeTitle = found.title.replace(/[/\\?%*:|"<>]/g, '-');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Scene',
+      defaultPath: `${safeTitle}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+
+    let prose = '';
+    try { prose = readSceneFile(getVaultRoot(), found.path).prose; } catch { /* missing */ }
+
+    writeFileAtomic(result.filePath, prose);
+    return { path: result.filePath, cancelled: false };
+  },
+
   // ─── Obsidian vault import wizard (MYT-244) ───
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: async () => {
     const result = await dialog.showOpenDialog({

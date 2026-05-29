@@ -159,6 +159,9 @@ export const IPC_CHANNELS = {
   // DOCX export (MYT-252)
   EXPORT_DOCX: 'export:docx',
 
+  // Scene Markdown export (SKY-138)
+  SCENE_EXPORT_MARKDOWN: 'scene:export-markdown',
+
   // Obsidian vault import wizard (MYT-244)
   VAULT_OBSIDIAN_DRY_RUN: 'vault:obsidian-dry-run',
   VAULT_OBSIDIAN_REGISTER: 'vault:obsidian-register',
@@ -379,6 +382,7 @@ export interface IpcHandlers {
   // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
+  [IPC_CHANNELS.SCENE_EXPORT_MARKDOWN]: (payload: ExportSceneMarkdownPayload) => Promise<ExportSceneMarkdownResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
@@ -1685,6 +1689,17 @@ export interface ExportDocxPayload {
 }
 
 export interface ExportDocxResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
+// ─── Scene Markdown export (SKY-138) ───
+
+export interface ExportSceneMarkdownPayload {
+  sceneId: string;
+}
+
+export interface ExportSceneMarkdownResponse {
   path: string | null;
   cancelled: boolean;
 }

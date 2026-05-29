@@ -380,6 +380,10 @@ contextBridge.exposeInMainWorld('api', {
   exportDocx: (storyId: string) =>
     ipcRenderer.invoke('export:docx', { storyId }),
 
+  // Scene Markdown export (SKY-138)
+  exportSceneMarkdown: (sceneId: string) =>
+    ipcRenderer.invoke('scene:export-markdown', { sceneId }),
+
   // Vault Graph View (MYT-249)
   vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
 

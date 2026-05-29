@@ -97,9 +97,10 @@ interface AppMenuBarProps {
   onSetWritingMode: (m: WritingMode) => void;
   onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
+  onExportScene?: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onExportScene }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -160,6 +161,7 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onExportScene?.(); }}>Export Scene…</button>
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
               <div className="app-menu-separator" role="separator" />
@@ -870,7 +872,21 @@ export default function DesktopShell() {
     }
   }, [stories, handleSelectScene, handleSelectEntity]);
 
-  const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
+  const handleExportScene = useCallback(() => {
+    if (!selectedScene) {
+      alert('Open a scene first to export it.');
+      return;
+    }
+    (window as any).api?.exportSceneMarkdown?.(selectedScene.id)
+      .then((res: { path: string | null; cancelled: boolean }) => {
+        if (!res.cancelled && res.path) {
+          alert(`Scene exported to:\n${res.path}`);
+        }
+      })
+      .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  }, [selectedScene]);
+
+    const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
     if (!selectedStory || !selectedScene) return;
     const allScenes: { scene: Scene; chapter: Chapter }[] = [];
     for (const ch of [...selectedStory.chapters].sort((a, b) => a.order - b.order)) {
@@ -1083,6 +1099,7 @@ export default function DesktopShell() {
         onSetWritingMode={setWritingMode}
         onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
         onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
+        onExportScene={handleExportScene}
       />
       {settingsOpen && (
         <SettingsPanel
