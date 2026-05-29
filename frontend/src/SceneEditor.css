@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100%;
   position: relative;
-  background: #181825;
+  background: var(--bg-canvas);
 }
 
 .scene-editor-toolbar {
@@ -11,14 +11,14 @@
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  background: #1e1e2e;
-  border-bottom: 1px solid #313244;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 0.82rem;
 }
 
 .scene-title {
   flex: 1;
-  color: #cdd6f4;
+  color: var(--text-header);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -31,35 +31,35 @@
 }
 
 .scene-autosave--saved {
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .scene-autosave--saving {
-  color: #6c7086;
+  color: var(--text-muted);
   opacity: 0.65;
 }
 
 .scene-autosave--unsaved {
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .scene-wordcount {
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 0.75rem;
   white-space: nowrap;
 }
 
 .btn-history {
   padding: 4px 12px;
-  background: #313244;
-  border: 1px solid #45475a;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
-  color: #cdd6f4;
+  color: var(--text-header);
   font-size: 0.8rem;
   cursor: pointer;
 }
 
-.btn-history:hover { background: #45475a; }
+.btn-history:hover { background: var(--bg-active); }
 
 .btn-history:focus-visible {
   outline: 2px solid var(--focus-ring, #00f0ff);
@@ -73,7 +73,7 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #cdd6f4;
+  color: var(--text-header);
   font-family: 'Georgia', 'Times New Roman', serif;
   font-size: 1rem;
   line-height: 1.8;
@@ -84,10 +84,10 @@
 .scene-context-menu {
   position: fixed;
   z-index: 500;
-  background: #2a2b3d;
-  border: 1px solid #45475a;
+  background: var(--bg-active);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--elev-2);
   overflow: hidden;
   min-width: 160px;
 }
@@ -98,10 +98,10 @@
   padding: 9px 16px;
   background: none;
   border: none;
-  color: #cdd6f4;
+  color: var(--text-header);
   font-size: 0.85rem;
   text-align: left;
   cursor: pointer;
 }
 
-.scene-context-menu button:hover { background: #313244; }
+.scene-context-menu button:hover { background: var(--bg-hover); }
