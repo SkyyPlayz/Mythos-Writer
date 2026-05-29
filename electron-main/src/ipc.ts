@@ -92,7 +92,7 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
 
-  // Liquid Glass background image (MYT-613)
+  // Liquid Neon background image (MYT-613)
   BG_PICK: 'bg:pick',
   BG_LOAD: 'bg:load',
 
@@ -1079,9 +1079,9 @@ export interface ProviderSettings {
   model: string;
 }
 
-/** Liquid Glass advanced theme customization (MYT-613 / MYT-716). All values optional;
- *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
-export interface LiquidGlassPrefs {
+/** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;
+ *  absent fields fall back to LIQUID_NEON_DEFAULTS in theme.ts. */
+export interface LiquidNeonPrefs {
   softnessContrast: number;
   glass: number;
   blur: number;
@@ -1135,8 +1135,8 @@ export interface AppSettings {
     enabled: boolean;
     sessionId: string;
   };
-  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
-  liquidGlass?: LiquidGlassPrefs;
+  /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
+  liquidNeon?: LiquidNeonPrefs;
 }
 
 export interface SettingsSetPayload {
@@ -1838,7 +1838,7 @@ export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
 }
 
-// ─── Liquid Glass background image (MYT-613) ───
+// ─── Liquid Neon background image (MYT-613) ────
 
 export interface BgPickResponse {
   filePath: string | null;

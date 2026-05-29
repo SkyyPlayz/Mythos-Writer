@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { applyTheme, applyLiquidGlassTokens, resetLiquidGlassTokens, LIQUID_GLASS_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
+import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -122,11 +122,11 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
 }
 
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
-  { value: 'dark', label: 'Dark (Liquid Glass)' },
+  { value: 'dark', label: 'Liquid Neon' },
   { value: 'high-contrast', label: 'High contrast' },
 ];
 
-const LG_DEFAULTS: LiquidGlassPrefs = LIQUID_GLASS_DEFAULTS;
+const LG_DEFAULTS: LiquidNeonPrefs = LIQUID_NEON_DEFAULTS;
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku' },
@@ -294,8 +294,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
 
-  // Liquid Glass customization state (MYT-613 / MYT-716)
-  const [lg, setLg] = useState<LiquidGlassPrefs>({ ...LG_DEFAULTS });
+  // Liquid Neon customization state (MYT-613 / MYT-716)
+  const [lg, setLg] = useState<LiquidNeonPrefs>({ ...LG_DEFAULTS });
   const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
   const [bgPreviewUrl, setBgPreviewUrl] = useState<string | null>(null);
   const [bgPickBusy, setBgPickBusy] = useState(false);
@@ -304,9 +304,9 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   useEffect(() => {
     window.api.settingsGet().then((s) => {
       setSettings(s);
-      if (s.liquidGlass) {
-        setLg({ ...LG_DEFAULTS, ...s.liquidGlass });
-        const bg = s.liquidGlass.background;
+      if (s.liquidNeon) {
+        setLg({ ...LG_DEFAULTS, ...s.liquidNeon });
+        const bg = s.liquidNeon.background;
         if (bg && bg !== 'default') {
           (window.api as any).loadBgImage?.(bg)
             .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
@@ -391,11 +391,11 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
       const payload: AppSettings = {
         ...settings,
         apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
-        liquidGlass: lg,
+        liquidNeon: lg,
       };
       await window.api.settingsSet(payload);
       setSavedOk(true);
-      applyLiquidGlassTokens(lg, bgPreviewUrl);
+      applyLiquidNeonTokens(lg, bgPreviewUrl);
       onSaved?.(payload);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
@@ -468,12 +468,12 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     }
   }, []);
 
-  // ── Liquid Glass helpers ─────────────────────────────────────────────────
+  // ── Liquid Neon helpers ──────────────────────────────────────────────────
 
-  const setLgField = useCallback(<K extends keyof LiquidGlassPrefs>(key: K, value: LiquidGlassPrefs[K]) => {
+  const setLgField = useCallback(<K extends keyof LiquidNeonPrefs>(key: K, value: LiquidNeonPrefs[K]) => {
     setLg((prev) => {
       const next = { ...prev, [key]: value };
-      applyLiquidGlassTokens(next, bgPreviewUrl);
+      applyLiquidNeonTokens(next, bgPreviewUrl);
       return next;
     });
     setSavedOk(false);
@@ -483,12 +483,12 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setLg((prev) => {
       if (prev.advancedDecoupled) {
         // When decoupled only update the master; individual sliders stay
-        const next: LiquidGlassPrefs = { ...prev, softnessContrast: s };
-        applyLiquidGlassTokens(next, bgPreviewUrl);
+        const next: LiquidNeonPrefs = { ...prev, softnessContrast: s };
+        applyLiquidNeonTokens(next, bgPreviewUrl);
         return next;
       }
-      const next: LiquidGlassPrefs = { ...prev, softnessContrast: s, glass: s, blur: s, neonIntensity: s };
-      applyLiquidGlassTokens(next, bgPreviewUrl);
+      const next: LiquidNeonPrefs = { ...prev, softnessContrast: s, glass: s, blur: s, neonIntensity: s };
+      applyLiquidNeonTokens(next, bgPreviewUrl);
       return next;
     });
     setSavedOk(false);
@@ -497,8 +497,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const handleRelinkToSlider = useCallback(() => {
     setLg((prev) => {
       const s = prev.softnessContrast;
-      const next: LiquidGlassPrefs = { ...prev, advancedDecoupled: false, glass: s ?? LG_DEFAULTS.glass, blur: s ?? LG_DEFAULTS.blur, neonIntensity: s ?? LG_DEFAULTS.neonIntensity };
-      applyLiquidGlassTokens(next, bgPreviewUrl);
+      const next: LiquidNeonPrefs = { ...prev, advancedDecoupled: false, glass: s ?? LG_DEFAULTS.glass, blur: s ?? LG_DEFAULTS.blur, neonIntensity: s ?? LG_DEFAULTS.neonIntensity };
+      applyLiquidNeonTokens(next, bgPreviewUrl);
       return next;
     });
     setSavedOk(false);
@@ -515,7 +515,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         setBgPreviewUrl(dataUrl);
         setLg((prev) => {
           const next = { ...prev, background: res.filePath as string, bgMode: 'image' as const };
-          applyLiquidGlassTokens(next, dataUrl);
+          applyLiquidNeonTokens(next, dataUrl);
           return next;
         });
         setSavedOk(false);
@@ -531,7 +531,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setBgPreviewUrl(null);
     setLg((prev) => {
       const next = { ...prev, background: 'default' as const, bgMode: 'color' as const };
-      applyLiquidGlassTokens(next, null);
+      applyLiquidNeonTokens(next, null);
       return next;
     });
     setSavedOk(false);
@@ -543,8 +543,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setLg(defaults);
     setBgPreviewUrl(null);
     setResetConfirm(false);
-    resetLiquidGlassTokens();
-    applyLiquidGlassTokens(defaults);
+    resetLiquidNeonTokens();
+    applyLiquidNeonTokens(defaults);
     setSavedOk(false);
   }, [resetConfirm]);
 
@@ -1334,7 +1334,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                         const v = Number(e.target.value);
                         setLg((prev) => {
                           const next = { ...prev, blur: v, advancedDecoupled: true };
-                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          applyLiquidNeonTokens(next, bgPreviewUrl);
                           return next;
                         });
                         setSavedOk(false);
@@ -1361,7 +1361,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                         const v = Number(e.target.value);
                         setLg((prev) => {
                           const next = { ...prev, glass: v, advancedDecoupled: true };
-                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          applyLiquidNeonTokens(next, bgPreviewUrl);
                           return next;
                         });
                         setSavedOk(false);
@@ -1388,7 +1388,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                         const v = Number(e.target.value);
                         setLg((prev) => {
                           const next = { ...prev, neonIntensity: v, advancedDecoupled: true };
-                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          applyLiquidNeonTokens(next, bgPreviewUrl);
                           return next;
                         });
                         setSavedOk(false);
