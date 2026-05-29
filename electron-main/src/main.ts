@@ -83,7 +83,13 @@ import {
   type BetaReadScanPayload,
   type VaultObsidianDryRunPayload,
   type VaultObsidianRegisterPayload,
+  type VaultLoadSamplePayload,
   type VaultLoadSampleResponse,
+  type VaultCreateBlankPayload,
+  type VaultCreateBlankResponse,
+  type VaultValidatePathPayload,
+  type VaultValidatePathResponse,
+  type VaultPickFolderByPathPayload,
   type ProjectEntry,
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
@@ -92,9 +98,18 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  type AgentPersonaReadPayload,
+  type AgentPersonaResetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
+import {
+  buildAgentSystemPrompt,
+  loadPersonaFile,
+  resetPersonaFile,
+  type AgentPersonaName,
+  type PersonaKey,
+} from './agentPersona.js';
 import {
   openDb,
   closeDb,
@@ -125,6 +140,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
+import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
@@ -161,6 +177,7 @@ import {
   mergeProvenanceFrontmatter,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
+import { assertValidManifest } from './manifestValidate.js';
 import {
   createEntity,
   readEntity,
@@ -193,8 +210,7 @@ import {
   configureTelemetry,
   generateSessionId,
   reportEvent,
-  TELEMETRY_EVENT_TYPES,
-  type TelemetryEventType,
+  validateTelemetryPayload,
 } from './telemetry.js';
 import {
   parseScanTips,
@@ -510,6 +526,10 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
     ensureVaultDir();
+    // MYT-792: validate before touching disk. assertValidManifest throws
+    // ManifestValidationError on the first invalid field; setupIpcMain's
+    // try/catch converts it into { error } for the renderer.
+    assertValidManifest(payload?.manifest);
     writeManifest(getManifestPath(), payload.manifest);
     const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
     return { path: getManifestPath(), bytes };
@@ -1730,8 +1750,10 @@ const handlers: IpcHandlers = {
     return { vaultRoot: validated.vaultRoot, notesIndexed: scanned };
   },
 
-  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (): Promise<VaultLoadSampleResponse> => {
-    const sampleRoot = path.join(app.getPath('documents'), 'Mythos Writer Sample');
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (payload: VaultLoadSamplePayload): Promise<VaultLoadSampleResponse> => {
+    const defaultRoot = path.join(app.getPath('documents'), 'Mythos Sample');
+    const rawPath = payload?.targetPath ?? defaultRoot;
+    const sampleRoot = rawPath.replace(/^~/, app.getPath('home'));
     if (!fs.existsSync(sampleRoot)) {
       fs.mkdirSync(sampleRoot, { recursive: true });
 
@@ -2081,9 +2103,72 @@ const handlers: IpcHandlers = {
     return { vaultRoot: sampleRoot };
   },
 
+  // ─── First-run onboarding (MYT-820) ───
+
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: async (payload: VaultValidatePathPayload): Promise<VaultValidatePathResponse> => {
+    const raw = payload?.path ?? '';
+    const resolved = raw.replace(/^~/, app.getPath('home'));
+    try {
+      const exists = fs.existsSync(resolved);
+      if (!exists) {
+        // Check parent is writable so we can create it
+        const parent = path.dirname(resolved);
+        const parentExists = fs.existsSync(parent);
+        if (!parentExists) return { exists: false, isEmpty: true, writable: false };
+        const probe = path.join(parent, `.mythos-probe-${Date.now()}`);
+        try {
+          fs.writeFileSync(probe, '');
+          fs.unlinkSync(probe);
+          return { exists: false, isEmpty: true, writable: true };
+        } catch {
+          return { exists: false, isEmpty: true, writable: false };
+        }
+      }
+      const entries = fs.readdirSync(resolved);
+      const isEmpty = entries.length === 0;
+      const probe = path.join(resolved, `.mythos-probe-${Date.now()}`);
+      try {
+        fs.writeFileSync(probe, '');
+        fs.unlinkSync(probe);
+        return { exists: true, isEmpty, writable: true };
+      } catch {
+        return { exists: true, isEmpty, writable: false };
+      }
+    } catch {
+      return { exists: false, isEmpty: true, writable: false };
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: async (payload: VaultCreateBlankPayload): Promise<VaultCreateBlankResponse> => {
+    const raw = payload?.targetPath ?? '';
+    const resolved = raw.replace(/^~/, app.getPath('home'));
+    fs.mkdirSync(resolved, { recursive: true });
+    saveVaultSettings({ vaultRoot: resolved });
+    ensureVaultDir();
+    await stopVaultWatcher();
+    await startVaultWatcher(resolved, notifyVaultChanged);
+    return { vaultRoot: resolved };
+  },
+
+  [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: async (payload: VaultPickFolderByPathPayload): Promise<import('./ipc.js').VaultPickFolderResponse> => {
+    const { sourcePath } = payload;
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return { vaultRoot: null, cancelled: false, registrationToken: null };
+    }
+    const token = generateRegistrationToken(sourcePath);
+    return { vaultRoot: sourcePath, cancelled: false, registrationToken: token };
+  },
+
   // ─── Telemetry (MYT-344) ───
   [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: import('./ipc.js').TelemetryReportPayload) => {
-    reportEvent({ type: payload.type as TelemetryEventType, meta: payload.meta });
+    // MYT-794: validate renderer-supplied payload before it reaches the event
+    // store. Unknown event types and malformed meta are rejected with a typed
+    // error instead of being silently coerced through.
+    const result = validateTelemetryPayload(payload);
+    if (!result.ok) {
+      return { queued: false, error: result.error };
+    }
+    reportEvent(result.event);
     return { queued: true };
   },
 
@@ -2096,10 +2181,18 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
-    const newRoot = payload.vaultRoot;
-    if (!newRoot || typeof newRoot !== 'string') {
-      return { vaultRoot: getVaultRoot(), switched: false, error: 'Invalid vault root' };
+    // MYT-789: gate the switch behind the recent-projects allowlist. Without
+    // this, a renderer could re-root the vault sandbox at any existing,
+    // writable directory and then read or overwrite arbitrary files via the
+    // rest of the vault:* IPC surface.
+    const gate = checkProjectSwitchGate(
+      payload?.vaultRoot,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: gate.error };
     }
+    const newRoot = gate.vaultRoot;
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
@@ -2139,16 +2232,27 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
-    const { storyVaultPath, notesVaultPath } = payload;
-    validateVaultPath(storyVaultPath, 'storyVaultPath');
-    validateVaultPath(notesVaultPath, 'notesVaultPath');
-    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
+    // MYT-789: gate the new vault roots behind either a registration token
+    // (issued by vault:pick-folder) or membership in the recent-projects
+    // allowlist. Without this, any absolute, writable directory passes
+    // validateVaultPath and the renderer can re-root the vault sandbox at
+    // $HOME or /, escaping every other vault:* sandbox check.
+    const gate = checkSetPathsGate(
+      payload,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { storyVaultPath: getVaultRoot(), notesVaultPath: getNotesVaultRoot(), saved: false, error: gate.error };
+    }
+    validateVaultPath(gate.storyVaultPath, 'storyVaultPath');
+    validateVaultPath(gate.notesVaultPath, 'notesVaultPath');
+    saveVaultSettings({ vaultRoot: gate.storyVaultPath, notesVaultRoot: gate.notesVaultPath });
     // Seed the freshly-configured roots so a user pointing at an empty
     // folder lands in a known layout. Idempotent — existing subtrees keep
     // their contents.
     ensureVaultDir();
     ensureNotesVaultDir();
-    return { storyVaultPath, notesVaultPath, saved: true };
+    return { storyVaultPath: gate.storyVaultPath, notesVaultPath: gate.notesVaultPath, saved: true };
   },
 
   // SKY-9: Notes-Vault-scoped CRUD. Mirrors VAULT_* but rooted
@@ -2678,16 +2782,7 @@ function registerBrainstormHandler() {
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
-    const systemPrompt = `You are a Brainstorm Agent for fiction authors. Help the author develop their story world through conversation. You discuss story ideas, characters, locations, themes, plot arcs, world-building, and narrative goals.
-
-When you identify or introduce a specific named story fact — a character, location, item, or worldbuilding note — include a structured tag so the app can extract it:
-
-[FACT:character|Character Name|One-sentence description]
-[FACT:location|Place Name|One-sentence description]
-[FACT:item|Item Name|One-sentence description]
-[FACT:note|Note Title|Key content of the note]
-
-Be creative, ask clarifying questions, and help the author think deeper about their story. These FACT tags will appear in a "Detected Facts" panel so the author can save them to their vault.`;
+    const systemPrompt = buildAgentSystemPrompt(app.getPath('userData'), 'brainstorm');
 
     const messages = [
       ...(payload.history ?? []).map((m) => ({
@@ -2818,7 +2913,7 @@ function registerWritingAssistantHandler() {
       {
         model,
         max_tokens: 1024,
-        system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
+        system: buildAgentSystemPrompt(app.getPath('userData'), 'writingAssistant'),
         messages: [{ role: 'user', content: userContent }],
       },
       { signal: controller.signal },
@@ -3318,6 +3413,21 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
   });
 }
 
+// ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
+function registerAgentPersonaHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (_event, payload: AgentPersonaReadPayload) => {
+    const { agentName, key } = payload;
+    const file = loadPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { content: file.content, isCustom: file.isCustom };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (_event, payload: AgentPersonaResetPayload) => {
+    const { agentName, key } = payload;
+    resetPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { success: true };
+  });
+}
+
 // ─── App lifecycle ───
 // Use software rendering. Mythos Writer is a text app with no GPU-bound UI, and
 // GPU init fails in headless/virtualized environments (CI under Xvfb, some VMs),
@@ -3348,6 +3458,7 @@ app.whenReady().then(async () => {
   registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();
+  registerAgentPersonaHandlers();
   registerVaultAgentHandlers();
   registerWritingScanHandler();
   registerBetaReadScanHandler();

@@ -906,3 +906,149 @@
   color: #fbbf24;
   white-space: nowrap;
 }
+
+/* ─── Agent persona viewer (MYT-816) ─────────────────────────────────────── */
+
+.settings-persona-viewer {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+}
+
+.settings-persona-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.75rem;
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.15s;
+}
+
+.settings-persona-toggle:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.settings-persona-chevron {
+  font-size: 0.65rem;
+}
+
+.settings-persona-panel {
+  margin-top: 8px;
+}
+
+.settings-persona-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-persona-tab {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+  border-radius: 4px 4px 0 0;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.settings-persona-tab:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.settings-persona-tab--active {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.95);
+  border-bottom-color: transparent;
+}
+
+.settings-persona-custom-badge {
+  color: #7dd3fc;
+  font-size: 0.55rem;
+}
+
+.settings-persona-content {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0 4px 4px 4px;
+  padding: 8px;
+}
+
+.settings-persona-textarea {
+  width: 100%;
+  min-height: 160px;
+  max-height: 320px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.settings-persona-textarea:focus {
+  outline: 2px solid rgba(125, 211, 252, 0.4);
+  border-radius: 2px;
+}
+
+.settings-persona-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.settings-persona-custom-label {
+  font-size: 0.68rem;
+  color: #7dd3fc;
+  background: rgba(125, 211, 252, 0.1);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.settings-persona-reset-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.settings-persona-reset-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.settings-persona-reset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-persona-loading,
+.settings-persona-error {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 4px 0;
+  margin: 0;
+}
+
+.settings-persona-error {
+  color: #f87171;
+}

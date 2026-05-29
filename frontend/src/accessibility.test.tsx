@@ -321,3 +321,167 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
     expect(panel?.getAttribute('aria-labelledby')).toBe('leftrail-tab-vault');
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Surface 7 — RightSidebar tab bar (MYT-803 ARIA tab pattern)
+// ══════════════════════════════════════════════════════════════════════════════
+import RightSidebar from './RightSidebar';
+
+describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
+  beforeEach(() => { stubApi(); vi.clearAllMocks(); });
+
+  it('notes tab active — no axe violations', async () => {
+    const { container } = render(
+      <RightSidebar
+        activeTab="notes"
+        onTabChange={() => {}}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('properties tab active — no axe violations', async () => {
+    const { container } = render(
+      <RightSidebar
+        activeTab="properties"
+        onTabChange={() => {}}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('ai tab active — no axe violations (includes AI sub-tabs)', async () => {
+    const { container } = render(
+      <RightSidebar
+        activeTab="ai"
+        onTabChange={() => {}}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('main tab elements carry correct ARIA roles and attributes', () => {
+    const { container } = render(
+      <RightSidebar
+        activeTab="properties"
+        onTabChange={() => {}}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+
+    const tablist = container.querySelector('[role="tablist"]');
+    expect(tablist).not.toBeNull();
+    expect(tablist?.getAttribute('aria-label')).toBe('Sidebar panels');
+
+    const tabs = container.querySelectorAll('[role="tab"]');
+    expect(tabs).toHaveLength(3);
+
+    const activeTab = container.querySelector('[aria-selected="true"]');
+    expect(activeTab?.id).toBe('rightsidebar-tab-properties');
+
+    const panel = container.querySelector('[role="tabpanel"]');
+    expect(panel).not.toBeNull();
+    expect(panel?.getAttribute('aria-labelledby')).toBe('rightsidebar-tab-properties');
+  });
+
+  it('roving tabIndex — active tab has tabIndex 0, others have -1', () => {
+    const { container } = render(
+      <RightSidebar
+        activeTab="ai"
+        onTabChange={() => {}}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+
+    const allTabs = container.querySelectorAll('[role="tab"]');
+    // Only main tabs here (ai tab is active)
+    const mainTabs = Array.from(allTabs).filter((el) =>
+      el.id.startsWith('rightsidebar-tab-'),
+    );
+    const activeMain = mainTabs.find((el) => el.getAttribute('aria-selected') === 'true');
+    const inactiveMain = mainTabs.filter((el) => el.getAttribute('aria-selected') === 'false');
+
+    expect(activeMain?.getAttribute('tabindex')).toBe('0');
+    for (const tab of inactiveMain) {
+      expect(tab.getAttribute('tabindex')).toBe('-1');
+    }
+  });
+
+  it('AI sub-tab elements carry correct ARIA roles and attributes', () => {
+    const { container } = render(
+      <RightSidebar
+        activeTab="ai"
+        onTabChange={() => {}}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+
+    const subtablist = container.querySelector('.ai-subtabs[role="tablist"]');
+    expect(subtablist).not.toBeNull();
+    expect(subtablist?.getAttribute('aria-label')).toBe('AI assistant panels');
+
+    const subTabs = container.querySelectorAll('[role="tab"][id^="ai-subtab-"]');
+    expect(subTabs).toHaveLength(3);
+
+    const activeSubTab = Array.from(subTabs).find(
+      (el) => el.getAttribute('aria-selected') === 'true',
+    );
+    expect(activeSubTab?.id).toBe('ai-subtab-writing');
+
+    const subPanel = container.querySelector('#ai-subtabpanel[role="tabpanel"]');
+    expect(subPanel).not.toBeNull();
+    expect(subPanel?.getAttribute('aria-labelledby')).toBe('ai-subtab-writing');
+  });
+
+  it('ArrowRight on main tabs moves focus and activates next tab', () => {
+    const onTabChange = vi.fn();
+    const { container } = render(
+      <RightSidebar
+        activeTab="notes"
+        onTabChange={onTabChange}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+
+    const notesTab = container.querySelector('#rightsidebar-tab-notes') as HTMLElement;
+    fireEvent.keyDown(notesTab, { key: 'ArrowRight' });
+    expect(onTabChange).toHaveBeenCalledWith('properties');
+  });
+
+  it('ArrowLeft on main tabs wraps around to last tab', () => {
+    const onTabChange = vi.fn();
+    const { container } = render(
+      <RightSidebar
+        activeTab="notes"
+        onTabChange={onTabChange}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+
+    const notesTab = container.querySelector('#rightsidebar-tab-notes') as HTMLElement;
+    fireEvent.keyDown(notesTab, { key: 'ArrowLeft' });
+    expect(onTabChange).toHaveBeenCalledWith('ai');
+  });
+});
