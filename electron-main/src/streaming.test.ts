@@ -1084,6 +1084,107 @@ describe('Provider rejection before first content chunk', () => {
   });
 });
 
+// ─── Mid-stream Anthropic errors (MYT-22 regression guard) ───
+//
+// When the SDK throws after yielding partial tokens, the streaming layer must
+// send exactly one STREAM_ERROR and no STREAM_END. The client must not receive
+// any further tokens after the failure point.
+
+describe('Mid-stream Anthropic errors (MYT-22 regression guard)', () => {
+  let reg: StreamRegistry;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    reg = new StreamRegistry();
+    registerStreamingHandlers(() => 'sk-ant-test', reg);
+  });
+
+  function makeMidStreamError(status: number, message: string): Error & { status: number } {
+    const err = new Error(message) as Error & { status: number };
+    err.status = status;
+    return err;
+  }
+
+  it('sends STREAM_ERROR and no STREAM_END when SDK throws after partial tokens', async () => {
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: {
+        stream: () =>
+          (async function* () {
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hello' } };
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: ' world' } };
+            throw makeMidStreamError(500, 'Internal Server Error');
+          })(),
+      },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    const { streamId } = await startHandler(makeEvent(sender), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    const tokenCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_TOKEN);
+    expect(tokenCalls).toHaveLength(2);
+
+    const errorCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_ERROR);
+    expect(errorCalls).toHaveLength(1);
+    expect(errorCalls[0][1]).toMatchObject({
+      streamId,
+      category: STREAM_ERROR_CATEGORIES.NETWORK,
+    });
+
+    const endCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_END);
+    expect(endCalls).toHaveLength(0);
+  });
+
+  it('sends no STREAM_TOKEN after the error point', async () => {
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: {
+        stream: () =>
+          (async function* () {
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'before-error' } };
+            throw makeMidStreamError(429, 'Rate limited');
+            // unreachable — documents that these would not be sent:
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'after-error' } };
+          })(),
+      },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    await startHandler(makeEvent(sender), { messages: [{ role: 'user', content: 'Hi' }] });
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    const tokenCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_TOKEN);
+    expect(tokenCalls).toHaveLength(1);
+    expect((tokenCalls[0][1] as { token: string }).token).toBe('before-error');
+  });
+
+  it('cleans up registry after mid-stream error', async () => {
+    vi.mocked(Anthropic).mockImplementation(() => ({
+      messages: {
+        stream: () =>
+          (async function* () {
+            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } };
+            throw makeMidStreamError(503, 'Service unavailable');
+          })(),
+      },
+    }) as unknown as Anthropic);
+
+    const { startHandler } = getHandlers(reg);
+    const { streamId } = await startHandler(makeEvent(makeSender()), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(reg.get(streamId)).toBeUndefined();
+  });
+});
+
 // ─── Concurrent stream cap ───
 
 describe('concurrent stream cap', () => {
