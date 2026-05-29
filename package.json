@@ -18,7 +18,7 @@
     "dist:mac:release": "electron-vite build && electron-builder --mac dmg zip",
     "dist:linux": "electron-vite build && electron-builder --linux AppImage --publish never",
     "build:electron": "electron-vite build",
-    "start": "electron .",
+    "start": "npm run rebuild:native && electron .",
     "package": "electron-builder --win zip",
     "lint": "npm run lint -w frontend",
     "test": "npm run test -w electron-main && npm run test -w frontend",
@@ -45,6 +45,8 @@
     "vite": "^6.4.2"
   },
   "overrides": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "vite": "^6.4.2"
   }
 }
