@@ -232,6 +232,9 @@ test('TC-VB-04: create story via VaultBrowser Story Vault panel, story row appea
 test('TC-VB-05: chapter + scene created via VaultBrowser; scene file in Story Vault, notesVaultDir untouched', async () => {
   await openVaultTab(page);
 
+  // Capture baseline before story write operations (notesVaultDir may already hold the TC-VB-06 seed)
+  const notesCountBefore = findMdFiles(notesVaultDir).length;
+
   // Story from TC-VB-04 must be present (single story auto-expands)
   const storyNameEl = page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: STORY_TITLE });
   await expect(storyNameEl).toBeVisible({ timeout: 6_000 });
@@ -266,11 +269,11 @@ test('TC-VB-05: chapter + scene created via VaultBrowser; scene file in Story Va
   }, 10_000);
   expect(sceneOnDisk, 'Scene .md file not found under .../scenes/ in Story Vault').toBe(true);
 
-  // Notes Vault directory (separate path) must remain empty — story writes go to vaultDir only
+  // Notes Vault directory (separate path) must not grow — story writes go to vaultDir only
   expect(
     findMdFiles(notesVaultDir).length,
     'notesVaultDir must not contain files created by Story Vault operations',
-  ).toBe(0);
+  ).toBe(notesCountBefore);
 });
 
 // ─── TC-VB-06: Pre-seeded worldbuilding note appears in Notes Vault tree ─────
