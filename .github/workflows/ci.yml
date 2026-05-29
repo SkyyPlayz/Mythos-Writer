@@ -86,6 +86,9 @@ jobs:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
 
+      - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
+        run: xvfb-run --auto-servernum npm run test:e2e:a11y
+
       - name: Upload E2E report on failure
         if: failure()
         uses: actions/upload-artifact@v4

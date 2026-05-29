@@ -35,10 +35,31 @@ export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder
     };
   }, [row, onClose]);
 
+  // Auto-focus the first menu item when the menu opens
+  useEffect(() => {
+    if (!row || !menuRef.current) return;
+    const firstItem = menuRef.current.querySelector<HTMLElement>('[role="menuitem"]');
+    firstItem?.focus();
+  }, [row]);
+
   if (!row) return null;
 
   const dir = dirOf(row);
   const isMd = !row.node.isDirectory && row.node.name.endsWith('.md');
+
+  function handleMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    );
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    const next =
+      e.key === 'ArrowDown'
+        ? items[(idx + 1) % items.length]
+        : items[(idx - 1 + items.length) % items.length];
+    next?.focus();
+  }
 
   return createPortal(
     <div
@@ -47,6 +68,7 @@ export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder
       style={{ position: 'fixed', top: y, left: x, zIndex: 9999 }}
       role="menu"
       data-testid="vb-context-menu"
+      onKeyDown={handleMenuKeyDown}
     >
       {isMd && onRename && (
         <button

@@ -26,8 +26,21 @@
 }
 
 .scene-autosave {
-  color: #6c7086;
   font-size: 0.75rem;
+  transition: color 240ms ease;
+}
+
+.scene-autosave--saved {
+  color: #6c7086;
+}
+
+.scene-autosave--saving {
+  color: #6c7086;
+  opacity: 0.65;
+}
+
+.scene-autosave--unsaved {
+  color: #6c7086;
 }
 
 .scene-wordcount {
@@ -47,6 +60,11 @@
 }
 
 .btn-history:hover { background: #45475a; }
+
+.btn-history:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
 
 .scene-textarea {
   flex: 1;

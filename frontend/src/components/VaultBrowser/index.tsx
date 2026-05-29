@@ -249,7 +249,7 @@ function StoryVault({
                                     onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
                                     onKeyDown={(e) => {
                                       if (isEditing) return;
-                                      if (e.key === 'Enter') {
+                                      if (e.key === 'Enter' || e.key === ' ') {
                                         e.preventDefault();
                                         onSelectScene(scene, chapter, story);
                                       }

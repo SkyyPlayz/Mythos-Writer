@@ -554,4 +554,44 @@
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
+
+/* ─── Focus rings (SKY-143) ─── */
+
+.vb-scope-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.vb-section-add:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.vb-tree-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}
+
+.vb-item-row:hover .vb-inline-add,
+.vb-inline-add:focus-visible {
+  opacity: 1;
+}
+
+.vb-inline-add:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+  color: var(--text-header, #fff);
+}
+
+.vb-row:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+  color: var(--text-body, rgba(255,255,255,0.85));
+}
+
+.vb-context-item:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+  color: var(--text-header, #fff);
 }

@@ -48,6 +48,11 @@
   text-shadow: var(--neon-glow);
 }
 
+.rail-tab:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}
+
 .rail-content {
   flex: 1;
   overflow-y: auto;
