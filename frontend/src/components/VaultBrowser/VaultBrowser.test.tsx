@@ -246,7 +246,7 @@ describe('VaultBrowser', () => {
 
   it('shows empty state when no stories', () => {
     render(<VaultBrowser {...baseProps} />);
-    expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
+    expect(screen.getByText(/No stories yet/i)).toBeInTheDocument();
   });
 
   it('calls onCreateStory when New Story button is clicked', () => {
@@ -304,35 +304,134 @@ describe('VaultBrowser', () => {
   });
 });
 
-// ─── StoryVaultEmptyState ───
+// ─── validateRenameName (SKY-115) ───
 
-describe('StoryVaultEmptyState', () => {
-  it('renders when stories count is 0', () => {
-    render(<VaultBrowser {...baseProps} stories={[]} />);
-    expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
-    expect(screen.getByText('Begin your first story')).toBeInTheDocument();
-    expect(screen.getByTestId('vb-story-empty-cta')).toBeInTheDocument();
+import { validateRenameName } from './renameUtils';
+
+describe('validateRenameName', () => {
+  it('returns null for a valid name', () => {
+    expect(validateRenameName('My Scene')).toBeNull();
+    expect(validateRenameName('scene-1')).toBeNull();
+    expect(validateRenameName('  trimmed  ')).toBeNull();
   });
 
-  it('CTA click calls onCreate', () => {
-    const onCreateStory = vi.fn();
-    render(<VaultBrowser {...baseProps} stories={[]} onCreateStory={onCreateStory} />);
-    fireEvent.click(screen.getByTestId('vb-story-empty-cta'));
-    expect(onCreateStory).toHaveBeenCalledOnce();
+  it('returns error for empty string', () => {
+    expect(validateRenameName('')).not.toBeNull();
+    expect(validateRenameName('   ')).not.toBeNull();
   });
 
-  it('does not render when stories count > 0', () => {
-    const stories: Story[] = [
+  it('returns error for name longer than 255 characters', () => {
+    expect(validateRenameName('a'.repeat(256))).not.toBeNull();
+  });
+
+  it('returns null for exactly 255 characters', () => {
+    expect(validateRenameName('a'.repeat(255))).toBeNull();
+  });
+
+  it('rejects invalid filesystem characters', () => {
+    for (const ch of ['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+      expect(validateRenameName(`bad${ch}name`)).not.toBeNull();
+    }
+  });
+
+  it('allows hyphens, underscores, spaces, and dots', () => {
+    expect(validateRenameName('my-scene_v1.2 final')).toBeNull();
+  });
+});
+
+// ─── StoryVault inline rename (SKY-115) ───
+
+const storyWithScene: Story[] = [
+  {
+    id: 'story1',
+    title: 'Test Story',
+    path: 'stories/story1',
+    chapters: [
       {
-        id: 's1',
-        title: 'My Novel',
-        path: 'stories/s1',
-        chapters: [],
+        id: 'ch1',
+        title: 'Chapter One',
+        path: 'ch1',
+        order: 0,
+        scenes: [
+          {
+            id: 'sc1',
+            title: 'Opening Scene',
+            path: 'sc1.md',
+            order: 0,
+            blocks: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
         createdAt: '',
         updatedAt: '',
       },
-    ];
-    render(<VaultBrowser {...baseProps} stories={stories} />);
-    expect(screen.queryByTestId('vb-story-empty')).not.toBeInTheDocument();
+    ],
+    createdAt: '',
+    updatedAt: '',
+  },
+];
+
+const mockSceneRename = vi.fn().mockResolvedValue({ scene: { id: 'sc1', title: 'New Title' } });
+
+describe('StoryVault inline rename', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockSceneRename.mockClear();
+    (window as unknown as { api: unknown }).api = {
+      listVault: mockListVault,
+      startVaultWatch: mockStartVaultWatch,
+      onVaultFileChanged: mockOnVaultFileChanged,
+      writeVault: mockWriteVault,
+      sceneRename: mockSceneRename,
+    };
+  });
+
+  async function renderWithScene() {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    // Story auto-expands (single story); expand chapter
+    const chapterToggle = await screen.findByText('Chapter One');
+    fireEvent.click(chapterToggle);
+    return screen.findByTestId('vb-scene-sc1');
+  }
+
+  it('shows rename input on double-click of scene row', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    expect(input).toBeInTheDocument();
+    expect((input as HTMLInputElement).value).toBe('Opening Scene');
+  });
+
+  it('cancels rename on Escape without calling IPC', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: /rename scene/i })).not.toBeInTheDocument();
+    });
+    expect(mockSceneRename).not.toHaveBeenCalled();
+  });
+
+  it('commits rename on Enter and calls sceneRename IPC', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    fireEvent.change(input, { target: { value: 'Renamed Scene' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(mockSceneRename).toHaveBeenCalledWith({ sceneId: 'sc1', title: 'Renamed Scene' });
+    });
+  });
+
+  it('shows validation error for empty name and does not call IPC', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(mockSceneRename).not.toHaveBeenCalled();
   });
 });

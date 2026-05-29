@@ -9,6 +9,7 @@ interface Props {
   onClose: () => void;
   onNewNote: (dirPath: string) => void;
   onNewFolder: (dirPath: string) => void;
+  onRename?: (row: FlatRow) => void;
 }
 
 function dirOf(row: FlatRow): string {
@@ -17,7 +18,7 @@ function dirOf(row: FlatRow): string {
   return slash > 0 ? row.node.path.slice(0, slash) : '';
 }
 
-export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder }: Props) {
+export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder, onRename }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder
   if (!row) return null;
 
   const dir = dirOf(row);
+  const isMd = !row.node.isDirectory && row.node.name.endsWith('.md');
 
   return createPortal(
     <div
@@ -46,6 +48,15 @@ export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder
       role="menu"
       data-testid="vb-context-menu"
     >
+      {isMd && onRename && (
+        <button
+          className="vb-context-item"
+          role="menuitem"
+          onClick={() => { onRename(row); onClose(); }}
+        >
+          Rename
+        </button>
+      )}
       <button
         className="vb-context-item"
         role="menuitem"
