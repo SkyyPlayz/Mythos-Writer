@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import BrainstormPage from './BrainstormPage';
+import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS } from './BrainstormPage';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; category: string; message: string }) => void;
+type ErrorHandler = (data: { streamId: string; error: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -55,7 +55,7 @@ async function simulateStream(tokens: string[], errorMessage?: string) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
     if (errorMessage) {
-      errorCb?.({ streamId: 'test-stream-1', category: 'unknown', message: errorMessage });
+      errorCb?.({ streamId: 'test-stream-1', error: errorMessage });
     } else {
       endCb?.({ streamId: 'test-stream-1' });
     }
@@ -281,7 +281,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     // Fire error immediately — no tokens precede it.
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', category: 'auth', message: 'Authentication error — check your API key in Settings.' });
+      errorCb?.({ streamId: 'test-stream-1', error: 'Authentication error — check your API key in Settings.' });
     });
 
     await waitFor(() =>
@@ -304,8 +304,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        category: 'auth',
-        message: 'Authentication error — check your API key in Settings.',
+        error: 'Authentication error — check your API key in Settings.',
       });
     });
 
@@ -325,8 +324,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        category: 'rate_limited',
-        message: 'Rate limit reached — try again shortly.',
+        error: 'Rate limit reached — try again shortly.',
       });
     });
 
@@ -346,8 +344,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        category: 'invalid_request',
-        message: 'Invalid request — check the model and input parameters.',
+        error: 'Invalid request — check the model and input parameters.',
       });
     });
 
@@ -365,7 +362,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', category: 'unknown', message: '' });
+      errorCb?.({ streamId: 'test-stream-1', error: '' });
     });
 
     await waitFor(() =>
@@ -381,7 +378,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', category: 'rate_limited', message: 'Rate limit reached — try again shortly.' });
+      errorCb?.({ streamId: 'test-stream-1', error: 'Rate limit reached — try again shortly.' });
     });
 
     await waitFor(() =>
@@ -540,6 +537,136 @@ describe('Draft persistence', () => {
     localStorage.setItem('brainstorm:draft', 'not-valid-json{{{');
     expect(() => render(<BrainstormPage onClose={() => {}} />)).not.toThrow();
     expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('Stalled-stream UX', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('exported constants have correct values', () => {
+    expect(STALL_TIMEOUT_MS).toBe(20_000);
+    expect(HARD_TIMEOUT_MS).toBe(90_000);
+  });
+
+  it('shows the stalled panel after STALL_TIMEOUT_MS with no tokens', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    // tokenCb is set synchronously before _runStream's first await
+    expect(tokenCb).not.toBeNull();
+
+    // Use async act to flush React 18 batched updates triggered by timer callbacks
+    await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
+
+    expect(screen.getByRole('status', { name: /generation stalled/i })).toBeInTheDocument();
+    expect(screen.getByText(/taking longer than expected/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry generation/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument();
+  });
+
+  it('hides the stalled panel when tokens resume after stall', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    expect(tokenCb).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
+    expect(screen.getByRole('status', { name: /generation stalled/i })).toBeInTheDocument();
+
+    // Token arrives — streamPhase resets to 'streaming', stall panel disappears
+    act(() => { tokenCb?.({ streamId: 'test-stream-1', token: 'hello' }); });
+    await act(async () => {});  // flush React batched updates
+    expect(screen.queryByRole('status', { name: /generation stalled/i })).not.toBeInTheDocument();
+  });
+
+  it('Cancel button in stalled panel aborts the stream and shows toast', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    expect(tokenCb).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
+    expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel generation/i }));
+    await act(async () => {});  // flush
+
+    expect(mockStreamCancel).toHaveBeenCalledWith('test-stream-1');
+    expect(screen.queryByRole('status', { name: /generation stalled/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/generation cancelled/i)).toBeInTheDocument();
+  });
+
+  it('Retry button re-starts the stream with the same messages', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'retry-me' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    expect(tokenCb).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
+    expect(screen.getByRole('button', { name: /retry generation/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /retry generation/i }));
+    // retryFromStalled is async — flush its promise chain
+    await act(async () => {});
+
+    expect(mockStreamCancel).toHaveBeenCalledWith('test-stream-1');
+    expect(mockStreamStart).toHaveBeenCalledTimes(2);
+
+    // End the new stream — stalled panel should not reappear
+    act(() => { endCb?.({ streamId: 'test-stream-1' }); });
+    await act(async () => {});
+    expect(screen.queryByRole('status', { name: /generation stalled/i })).not.toBeInTheDocument();
+  });
+
+  it('auto-aborts after HARD_TIMEOUT_MS and shows an error', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'slow request' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    expect(tokenCb).not.toBeNull();
+    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
+    await act(async () => {});
+
+    await act(async () => { vi.advanceTimersByTime(HARD_TIMEOUT_MS + 1000); });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/timed out/i);
+    expect(mockStreamCancel).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /cancel streaming/i })).not.toBeInTheDocument();
+  });
+
+  it('Cancel button in input area shows cancelled toast', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    expect(tokenCb).not.toBeNull();
+    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: /cancel streaming/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel streaming/i }));
+    await act(async () => {});
+
+    expect(mockStreamCancel).toHaveBeenCalledWith('test-stream-1');
+    expect(screen.getByText(/generation cancelled/i)).toBeInTheDocument();
   });
 });
 

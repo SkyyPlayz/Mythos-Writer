@@ -53,8 +53,16 @@ function makeSender(id = 1): MockSender {
   };
 }
 
+// Mock event whose senderFrame self-references as `top` so the MYT-791
+// isFromTopFrame() guard passes for normal tests.
+function makeTopFrame(): unknown {
+  const frame: { top: unknown } = { top: null };
+  frame.top = frame;
+  return frame;
+}
+
 function makeEvent(sender: MockSender): IpcMainInvokeEvent {
-  return { sender } as unknown as IpcMainInvokeEvent;
+  return { sender, senderFrame: makeTopFrame() } as unknown as IpcMainInvokeEvent;
 }
 
 function getHandlers(reg?: StreamRegistry) {

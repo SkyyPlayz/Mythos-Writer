@@ -206,6 +206,8 @@ function StoryVault({
                                     onSelectScene(scene, chapter, story);
                                   }
                                 }}
+                                aria-pressed={selectedSceneId === scene.id}
+                                aria-label={scene.title}
                                 title={scene.title}
                               >
                                 <span className="vs-chevron" />
@@ -257,6 +259,8 @@ function NotesTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }
               onToggle(node.path);
             }
           }}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.name}`}
           title={node.path}
         >
           <span className="vs-chevron">{isExpanded ? '▾' : '▸'}</span>

@@ -60,6 +60,75 @@ export interface TelemetryEvent {
   meta?: Record<string, string | number | boolean>;
 }
 
+// ─── Payload validation (MYT-794) ────────────────────────────────────────────
+// The IPC handler accepts renderer-controlled data; type-only casts are not a
+// runtime guarantee. validateTelemetryPayload enforces the contract before the
+// event reaches the reporter / event store.
+
+/** Maximum number of keys allowed in `meta`. */
+export const TELEMETRY_META_MAX_KEYS = 32;
+/** Maximum JSON-serialized byte length of `meta`. */
+export const TELEMETRY_META_MAX_BYTES = 4096;
+
+export type TelemetryValidationResult =
+  | { ok: true; event: TelemetryEvent }
+  | { ok: false; error: string };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+export function validateTelemetryPayload(payload: unknown): TelemetryValidationResult {
+  if (!isPlainObject(payload)) {
+    return { ok: false, error: 'Invalid telemetry payload.' };
+  }
+
+  const { type, meta } = payload as { type?: unknown; meta?: unknown };
+
+  if (typeof type !== 'string') {
+    return { ok: false, error: 'Invalid telemetry event type.' };
+  }
+  if (!(TELEMETRY_EVENT_TYPES as readonly string[]).includes(type)) {
+    return { ok: false, error: 'Unknown telemetry event type.' };
+  }
+
+  let safeMeta: Record<string, string | number | boolean> | undefined;
+  if (meta !== undefined) {
+    if (!isPlainObject(meta)) {
+      return { ok: false, error: 'Telemetry meta must be a plain object.' };
+    }
+    const keys = Object.keys(meta);
+    if (keys.length > TELEMETRY_META_MAX_KEYS) {
+      return { ok: false, error: 'Telemetry meta exceeds key limit.' };
+    }
+    const collected: Record<string, string | number | boolean> = {};
+    for (const key of keys) {
+      const value = (meta as Record<string, unknown>)[key];
+      const t = typeof value;
+      if (t === 'string' || t === 'boolean') {
+        collected[key] = value as string | boolean;
+        continue;
+      }
+      if (t === 'number') {
+        if (!Number.isFinite(value)) {
+          return { ok: false, error: 'Telemetry meta contains non-finite number.' };
+        }
+        collected[key] = value as number;
+        continue;
+      }
+      return { ok: false, error: 'Telemetry meta values must be string, number, or boolean.' };
+    }
+    if (Buffer.byteLength(JSON.stringify(collected), 'utf8') > TELEMETRY_META_MAX_BYTES) {
+      return { ok: false, error: 'Telemetry meta exceeds size limit.' };
+    }
+    safeMeta = collected;
+  }
+
+  return { ok: true, event: { type: type as TelemetryEventType, meta: safeMeta } };
+}
+
 // ─── Telemetry config (subset of AppSettings) ────────────────────────────────
 export interface TelemetryConfig {
   enabled: boolean;

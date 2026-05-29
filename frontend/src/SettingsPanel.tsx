@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { applyTheme, type ThemeMode } from './theme';
-import ThemeContrastSlider from './ThemeContrastSlider';
-import { resolveAxisTokens, applyAxisTokens } from './themeAxis';
+import { applyTheme, applyLiquidGlassTokens, resetLiquidGlassTokens, LIQUID_GLASS_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -9,10 +7,126 @@ interface MicDevice {
   label: string;
 }
 
+// ─── Persona viewer (MYT-816) ─────────────────────────────────────────────────
+
+type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
+const PERSONA_KEYS: PersonaKey[] = ['AGENTS', 'HEARTBEAT', 'SOUL', 'TOOLS'];
+
+interface PersonaFileState {
+  content: string;
+  isCustom: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainstorm' }) {
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<PersonaKey>('AGENTS');
+  const [files, setFiles] = useState<Record<PersonaKey, PersonaFileState>>({
+    AGENTS:    { content: '', isCustom: false, loading: false, error: null },
+    HEARTBEAT: { content: '', isCustom: false, loading: false, error: null },
+    SOUL:      { content: '', isCustom: false, loading: false, error: null },
+    TOOLS:     { content: '', isCustom: false, loading: false, error: null },
+  });
+  const [resetBusy, setResetBusy] = useState(false);
+
+  const loadFile = useCallback(async (key: PersonaKey) => {
+    setFiles((prev) => ({ ...prev, [key]: { ...prev[key], loading: true, error: null } }));
+    try {
+      const res = await (window.api as any).agentPersonaRead(agentName, key) as { content: string; isCustom: boolean };
+      setFiles((prev) => ({ ...prev, [key]: { content: res.content, isCustom: res.isCustom, loading: false, error: null } }));
+    } catch (err) {
+      setFiles((prev) => ({ ...prev, [key]: { ...prev[key], loading: false, error: (err as Error).message } }));
+    }
+  }, [agentName]);
+
+  useEffect(() => {
+    if (!open) return;
+    for (const key of PERSONA_KEYS) loadFile(key);
+  }, [open, loadFile]);
+
+  const handleReset = async (key: PersonaKey) => {
+    setResetBusy(true);
+    try {
+      await (window.api as any).agentPersonaReset(agentName, key);
+      await loadFile(key);
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const file = files[activeTab];
+
+  return (
+    <div className="settings-persona-viewer">
+      <button
+        type="button"
+        className="settings-persona-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="settings-persona-chevron">{open ? '▾' : '▸'}</span>
+        Persona files
+      </button>
+      {open && (
+        <div className="settings-persona-panel">
+          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs">
+            {PERSONA_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === key}
+                className={`settings-persona-tab${activeTab === key ? ' settings-persona-tab--active' : ''}`}
+                onClick={() => setActiveTab(key)}
+              >
+                {key}.md
+                {files[key].isCustom && (
+                  <span className="settings-persona-custom-badge" title="Custom override">●</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="settings-persona-content" role="tabpanel">
+            {file.loading && <p className="settings-persona-loading">Loading…</p>}
+            {file.error && <p className="settings-persona-error">{file.error}</p>}
+            {!file.loading && !file.error && (
+              <>
+                {file.isCustom && (
+                  <div className="settings-persona-actions">
+                    <span className="settings-persona-custom-label">Custom</span>
+                    <button
+                      type="button"
+                      className="settings-persona-reset-btn"
+                      disabled={resetBusy}
+                      onClick={() => handleReset(activeTab)}
+                    >
+                      Reset to default
+                    </button>
+                  </div>
+                )}
+                <textarea
+                  className="settings-persona-textarea"
+                  readOnly
+                  value={file.content}
+                  aria-label={`${agentName} ${activeTab}.md content`}
+                  spellCheck={false}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
   { value: 'dark', label: 'Dark (Liquid Glass)' },
   { value: 'high-contrast', label: 'High contrast' },
 ];
+
+const LG_DEFAULTS: LiquidGlassPrefs = LIQUID_GLASS_DEFAULTS;
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku' },
@@ -40,10 +154,102 @@ const DEFAULTS: AppSettings = {
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
 };
 
+const BG_POSITIONS = [
+  { value: 'top left',     label: '↖' },
+  { value: 'top',          label: '↑' },
+  { value: 'top right',    label: '↗' },
+  { value: 'left',         label: '←' },
+  { value: 'center',       label: '·' },
+  { value: 'right',        label: '→' },
+  { value: 'bottom left',  label: '↙' },
+  { value: 'bottom',       label: '↓' },
+  { value: 'bottom right', label: '↘' },
+];
+
 function validateApiKey(key: string): string | null {
   if (!key) return null;
   if (!key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
   return null;
+}
+
+/** Contrast ratio badge — shows ratio and colour-codes pass/fail. */
+function ContrastBadge({ ratio }: { ratio: number }) {
+  const pass = ratio >= 4.5;
+  const warn = ratio >= 3 && ratio < 4.5;
+  const cls = pass ? 'tcs-badge tcs-badge-pass' : warn ? 'tcs-badge tcs-badge-warn' : 'tcs-badge tcs-badge-fail';
+  return <span className={cls} aria-live="polite">{ratio.toFixed(1)}:1</span>;
+}
+
+/** A colour picker control: swatch + hex input + contrast badge. */
+function ColorPicker({
+  id,
+  label,
+  value,
+  bgForContrast,
+  onChange,
+  minRatio = 0,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  bgForContrast?: string;
+  onChange: (hex: string) => void;
+  minRatio?: number;
+}) {
+  const [hexInput, setHexInput] = useState(value);
+  const [clamped, setClamped] = useState(false);
+
+  useEffect(() => { setHexInput(value); }, [value]);
+
+  const handleColorChange = (raw: string) => {
+    setHexInput(raw);
+    let final = raw;
+    if (minRatio > 0 && bgForContrast) {
+      const safe = enforceContrastFloor(raw, bgForContrast, minRatio);
+      if (safe !== raw) { setClamped(true); final = safe; }
+      else { setClamped(false); }
+    }
+    onChange(final);
+  };
+
+  const handleHexBlur = () => {
+    const trimmed = hexInput.startsWith('#') ? hexInput : `#${hexInput}`;
+    if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(trimmed)) {
+      handleColorChange(trimmed);
+    } else {
+      setHexInput(value);
+    }
+  };
+
+  const ratio = bgForContrast ? contrastRatio(value, bgForContrast) : null;
+
+  return (
+    <div className="lg-color-picker-row">
+      <label className="settings-label lg-adv-label" htmlFor={id}>{label}</label>
+      <div className="lg-color-picker-controls">
+        <input
+          id={id}
+          type="color"
+          value={value}
+          onChange={(e) => handleColorChange(e.target.value)}
+          className="lg-color-input"
+          aria-label={`${label} colour`}
+        />
+        <input
+          type="text"
+          className="lg-hex-input settings-input"
+          value={hexInput}
+          onChange={(e) => setHexInput(e.target.value)}
+          onBlur={handleHexBlur}
+          maxLength={7}
+          aria-label={`${label} hex value`}
+          spellCheck={false}
+        />
+        {ratio !== null && <ContrastBadge ratio={ratio} />}
+        {clamped && <span className="lg-clamp-notice">Adjusted to stay readable</span>}
+      </div>
+    </div>
+  );
 }
 
 interface Props {
@@ -54,6 +260,7 @@ interface Props {
 export default function SettingsPanel({ onClose, onSaved }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     triggerRef.current = document.activeElement as HTMLElement;
@@ -67,8 +274,6 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, []);
 
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
-  const [contrastPosition, setContrastPosition] = useState(50);
-  // Separate input state so the masked value from settingsGet never appears in the writable field.
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -78,15 +283,47 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [showApiKey, setShowApiKey] = useState(false);
   const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
 
+  // Liquid Glass customization state (MYT-613 / MYT-716)
+  const [lg, setLg] = useState<LiquidGlassPrefs>({ ...LG_DEFAULTS });
+  const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
+  const [bgPreviewUrl, setBgPreviewUrl] = useState<string | null>(null);
+  const [bgPickBusy, setBgPickBusy] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+
   useEffect(() => {
     window.api.settingsGet().then((s) => {
       setSettings(s);
-      // Do not populate the input — masked value stays in settings state only
+      if (s.liquidGlass) {
+        setLg({ ...LG_DEFAULTS, ...s.liquidGlass });
+        const bg = s.liquidGlass.background;
+        if (bg && bg !== 'default') {
+          (window.api as any).loadBgImage?.(bg)
+            .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
+            .catch(() => {});
+        }
+      }
       setLoading(false);
     }).catch(() => {
       setLoading(false);
     });
   }, []);
+
+  // Close popover on Escape
+  useEffect(() => {
+    if (!lgAdvancedOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setLgAdvancedOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [lgAdvancedOpen]);
+
+  // Focus trap in popover
+  useEffect(() => {
+    if (!lgAdvancedOpen) return;
+    const first = popoverRef.current?.querySelector<HTMLElement>(
+      'button, input, select, [tabindex]:not([tabindex="-1"])'
+    );
+    first?.focus();
+  }, [lgAdvancedOpen]);
 
   useEffect(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -99,7 +336,6 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
-  // Only validate when the user has touched the field; an untouched empty input is not an error.
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
 
   const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(
@@ -125,23 +361,126 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     try {
       const payload: AppSettings = {
         ...settings,
-        // When dirty: send the typed value ('' clears the key; a new sk-ant-... value updates it).
-        // When not dirty: echo the masked value back so the backend guard preserves the stored key.
         apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
+        liquidGlass: lg,
       };
       await window.api.settingsSet(payload);
       setSavedOk(true);
+      applyLiquidGlassTokens(lg, bgPreviewUrl);
       onSaved?.(payload);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, onSaved]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, lg, bgPreviewUrl, onSaved]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
   };
+
+  const handleDialogKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    ).filter((el) => !(el as HTMLInputElement).disabled);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }, []);
+
+  // ── Liquid Glass helpers ─────────────────────────────────────────────────
+
+  const setLgField = useCallback(<K extends keyof LiquidGlassPrefs>(key: K, value: LiquidGlassPrefs[K]) => {
+    setLg((prev) => {
+      const next = { ...prev, [key]: value };
+      applyLiquidGlassTokens(next, bgPreviewUrl);
+      return next;
+    });
+    setSavedOk(false);
+  }, [bgPreviewUrl]);
+
+  const handleSoftnessChange = useCallback((s: number) => {
+    setLg((prev) => {
+      if (prev.advancedDecoupled) {
+        // When decoupled only update the master; individual sliders stay
+        const next: LiquidGlassPrefs = { ...prev, softnessContrast: s };
+        applyLiquidGlassTokens(next, bgPreviewUrl);
+        return next;
+      }
+      const next: LiquidGlassPrefs = { ...prev, softnessContrast: s, glass: s, blur: s, neonIntensity: s };
+      applyLiquidGlassTokens(next, bgPreviewUrl);
+      return next;
+    });
+    setSavedOk(false);
+  }, [bgPreviewUrl]);
+
+  const handleRelinkToSlider = useCallback(() => {
+    setLg((prev) => {
+      const s = prev.softnessContrast;
+      const next: LiquidGlassPrefs = { ...prev, advancedDecoupled: false, glass: s ?? LG_DEFAULTS.glass, blur: s ?? LG_DEFAULTS.blur, neonIntensity: s ?? LG_DEFAULTS.neonIntensity };
+      applyLiquidGlassTokens(next, bgPreviewUrl);
+      return next;
+    });
+    setSavedOk(false);
+  }, [bgPreviewUrl]);
+
+  const handlePickBgImage = useCallback(async () => {
+    if (bgPickBusy) return;
+    setBgPickBusy(true);
+    try {
+      const res = await (window.api as any).pickBgImage?.();
+      if (res?.filePath && !res.cancelled) {
+        const loadRes = await (window.api as any).loadBgImage?.(res.filePath);
+        const dataUrl: string | null = loadRes?.dataUrl ?? null;
+        setBgPreviewUrl(dataUrl);
+        setLg((prev) => {
+          const next = { ...prev, background: res.filePath as string, bgMode: 'image' as const };
+          applyLiquidGlassTokens(next, dataUrl);
+          return next;
+        });
+        setSavedOk(false);
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setBgPickBusy(false);
+    }
+  }, [bgPickBusy]);
+
+  const handleResetBg = useCallback(() => {
+    setBgPreviewUrl(null);
+    setLg((prev) => {
+      const next = { ...prev, background: 'default' as const, bgMode: 'color' as const };
+      applyLiquidGlassTokens(next, null);
+      return next;
+    });
+    setSavedOk(false);
+  }, []);
+
+  const handleResetAll = useCallback(() => {
+    if (!resetConfirm) { setResetConfirm(true); return; }
+    const defaults = { ...LG_DEFAULTS };
+    setLg(defaults);
+    setBgPreviewUrl(null);
+    setResetConfirm(false);
+    resetLiquidGlassTokens();
+    applyLiquidGlassTokens(defaults);
+    setSavedOk(false);
+  }, [resetConfirm]);
 
   if (loading) {
     return (
@@ -153,9 +492,11 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     );
   }
 
+  const effectiveBg = lg.bgBaseColor ?? LG_DEFAULTS.bgBaseColor!;
+
   return (
     <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
-      <div className="settings-panel" ref={dialogRef}>
+      <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
           <h2 className="settings-title">Settings</h2>
           <button className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
@@ -324,6 +665,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   />
                 </div>
               </div>
+              <PersonaViewer agentName="writingAssistant" />
             </div>
 
             <div className="settings-agent-card">
@@ -434,6 +776,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   />
                 </div>
               </div>
+              <PersonaViewer agentName="brainstorm" />
             </div>
 
             <div className="settings-agent-card">
@@ -625,9 +968,11 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
           </section>
 
-          {/* ── Theme ── */}
+          {/* ── Appearance ── */}
           <section className="settings-section" aria-labelledby="section-theme">
             <h3 className="settings-section-title" id="section-theme">Appearance</h3>
+
+            {/* Theme mode */}
             <div className="settings-field">
               <div className="settings-radio-group" role="radiogroup" aria-label="Appearance">
                 {THEME_CHOICES.map(({ value, label }) => (
@@ -639,7 +984,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                       checked={settings.theme === value}
                       onChange={() => {
                         setSettings((p) => ({ ...p, theme: value }));
-                        applyTheme(value); // live preview
+                        applyTheme(value);
                         setSavedOk(false);
                       }}
                     />
@@ -648,20 +993,74 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 ))}
               </div>
               <p className="settings-hint">
-                Mythos Writer uses the dark Liquid Glass theme. High contrast switches to
-                opaque, AAA-contrast surfaces for accessibility.
+                High contrast switches to opaque, AAA-contrast surfaces for accessibility.
               </p>
             </div>
+
+            {/* Main softness↔contrast slider with Advanced button */}
             <div className="settings-field">
-              <label className="settings-label">Glass softness / contrast</label>
-              <ThemeContrastSlider
-                value={contrastPosition}
-                onChange={(v) => {
-                  setContrastPosition(v);
-                  applyAxisTokens(resolveAxisTokens(v));
-                }}
-              />
+              <label className="settings-label" htmlFor="lg-softness">Style</label>
+              <div className="lg-slider-band">
+                <div className="lg-slider-labeled-row">
+                  <span className="lg-axis-label">Softness</span>
+                  <input
+                    id="lg-softness"
+                    data-testid="theme-contrast-slider"
+                    className="settings-slider lg-slider-main"
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={lg.softnessContrast}
+                    aria-label="Softness to Contrast"
+                    onChange={(e) => handleSoftnessChange(Number(e.target.value))}
+                  />
+                  <span className="lg-axis-label lg-axis-right">Contrast</span>
+                </div>
+                <div className="lg-slider-footer">
+                  {lg.advancedDecoupled && (
+                    <button
+                      className="lg-relink-btn"
+                      type="button"
+                      onClick={handleRelinkToSlider}
+                    >
+                      Re-link to slider
+                    </button>
+                  )}
+                  <button
+                    className="lg-advanced-pill"
+                    type="button"
+                    onClick={() => setLgAdvancedOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-expanded={lgAdvancedOpen}
+                  >
+                    Advanced…
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* Reset to defaults */}
+            <div className="lg-reset-row">
+              <button
+                className="settings-btn lg-btn-reset"
+                type="button"
+                onClick={handleResetAll}
+                aria-label="Reset all appearance settings to defaults"
+              >
+                {resetConfirm ? 'Confirm reset' : 'Reset to defaults'}
+              </button>
+              {resetConfirm && (
+                <button
+                  className="settings-btn lg-btn-secondary"
+                  type="button"
+                  onClick={() => setResetConfirm(false)}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+
           </section>
 
           {/* ── Voice ── */}
@@ -736,6 +1135,439 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
           </div>
         </div>
       </div>
+
+      {/* ── Advanced UI settings popover (MYT-716) ── */}
+      {lgAdvancedOpen && (
+        <div
+          className="lg-popover-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) setLgAdvancedOpen(false); }}
+        >
+          <div
+            className="lg-popover"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Advanced UI settings"
+            ref={popoverRef}
+          >
+            <div className="lg-popover-header">
+              <h3 className="lg-popover-title">Advanced UI settings</h3>
+              <button
+                className="settings-close"
+                type="button"
+                onClick={() => setLgAdvancedOpen(false)}
+                aria-label="Close advanced UI settings"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="lg-popover-body">
+
+              {/* ── B1–B3: Per-value sliders ── */}
+              <div className="lg-popover-section">
+                <h4 className="lg-popover-section-title">Backdrop &amp; Glow</h4>
+                {lg.advancedDecoupled && (
+                  <p className="settings-hint lg-decouple-notice">
+                    Sliders below are decoupled from the main Style slider.{' '}
+                    <button className="lg-link-btn" onClick={handleRelinkToSlider} type="button">Re-link</button>
+                  </p>
+                )}
+
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label lg-adv-label" htmlFor="adv-blur">Backdrop blur</label>
+                  <div className="lg-slider-labeled-row lg-adv-slider-row">
+                    <span className="lg-axis-label">More</span>
+                    <input
+                      id="adv-blur"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={lg.blur}
+                      aria-label="Backdrop blur more to less"
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setLg((prev) => {
+                          const next = { ...prev, blur: v, advancedDecoupled: true };
+                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          return next;
+                        });
+                        setSavedOk(false);
+                      }}
+                    />
+                    <span className="lg-axis-label lg-axis-right">Less</span>
+                  </div>
+                </div>
+
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label lg-adv-label" htmlFor="adv-glass">Glass opacity</label>
+                  <div className="lg-slider-labeled-row lg-adv-slider-row">
+                    <span className="lg-axis-label">Lighter</span>
+                    <input
+                      id="adv-glass"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={lg.glass}
+                      aria-label="Glass opacity lighter to darker"
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setLg((prev) => {
+                          const next = { ...prev, glass: v, advancedDecoupled: true };
+                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          return next;
+                        });
+                        setSavedOk(false);
+                      }}
+                    />
+                    <span className="lg-axis-label lg-axis-right">Darker</span>
+                  </div>
+                </div>
+
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label lg-adv-label" htmlFor="adv-neon">Neon glow</label>
+                  <div className="lg-slider-labeled-row lg-adv-slider-row">
+                    <span className="lg-axis-label">Strong</span>
+                    <input
+                      id="adv-neon"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={lg.neonIntensity}
+                      aria-label="Neon glow strong to soft"
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setLg((prev) => {
+                          const next = { ...prev, neonIntensity: v, advancedDecoupled: true };
+                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          return next;
+                        });
+                        setSavedOk(false);
+                      }}
+                    />
+                    <span className="lg-axis-label lg-axis-right">Soft</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── D1–D3: Extra sliders ── */}
+              <div className="lg-popover-section">
+                <h4 className="lg-popover-section-title">Detail</h4>
+
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label lg-adv-label" htmlFor="adv-neon-frame">Neon frame</label>
+                  <div className="lg-slider-labeled-row lg-adv-slider-row">
+                    <span className="lg-axis-label">Thin</span>
+                    <input
+                      id="adv-neon-frame"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={lg.neonFrameWidth ?? 50}
+                      aria-label="Neon frame width thin to thick"
+                      onChange={(e) => setLgField('neonFrameWidth', Number(e.target.value))}
+                    />
+                    <span className="lg-axis-label lg-axis-right">Thick</span>
+                  </div>
+                </div>
+
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label lg-adv-label" htmlFor="adv-border">Border</label>
+                  <div className="lg-slider-labeled-row lg-adv-slider-row">
+                    <span className="lg-axis-label">Subtle</span>
+                    <input
+                      id="adv-border"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={lg.borderStrength ?? 50}
+                      aria-label="Border strength subtle to strong"
+                      onChange={(e) => setLgField('borderStrength', Number(e.target.value))}
+                    />
+                    <span className="lg-axis-label lg-axis-right">Strong</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── C4–C7: Background ── */}
+              <div className="lg-popover-section">
+                <h4 className="lg-popover-section-title">Background</h4>
+
+                {/* Mode toggle */}
+                <div className="settings-field">
+                  <div className="lg-mode-toggle" role="radiogroup" aria-label="Background mode">
+                    {(['color', 'image'] as const).map((mode) => (
+                      <label key={mode} className={`lg-mode-btn${(lg.bgMode ?? 'color') === mode ? ' lg-mode-btn-active' : ''}`}>
+                        <input
+                          type="radio"
+                          name="lg-bg-mode"
+                          value={mode}
+                          checked={(lg.bgMode ?? 'color') === mode}
+                          onChange={() => setLgField('bgMode', mode)}
+                          aria-label={`Background mode ${mode}`}
+                        />
+                        {mode === 'color' ? 'Colour' : 'Image'}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Image controls */}
+                {(lg.bgMode ?? 'color') === 'image' && (
+                  <div className="lg-bg-image-section">
+                    <div className="lg-bg-preview-row">
+                      <div
+                        className="lg-bg-preview"
+                        role="img"
+                        aria-label="Current background preview"
+                        style={{
+                          backgroundImage: bgPreviewUrl
+                            ? `url("${bgPreviewUrl}")`
+                            : lg.background !== 'default'
+                              ? `url("${lg.background}")`
+                              : DEFAULT_BG_GRADIENT,
+                          backgroundSize: lg.bgFit === 'tile' ? 'auto' : (lg.bgFit ?? 'cover'),
+                          backgroundRepeat: lg.bgFit === 'tile' ? 'repeat' : 'no-repeat',
+                          backgroundPosition: lg.bgPosition ?? 'center',
+                        }}
+                      />
+                      <div className="lg-bg-actions">
+                        <button
+                          className="settings-btn lg-btn-secondary"
+                          type="button"
+                          onClick={handlePickBgImage}
+                          disabled={bgPickBusy}
+                          aria-label="Browse for background image"
+                        >
+                          {bgPickBusy ? 'Loading…' : 'Browse…'}
+                        </button>
+                        {lg.background !== 'default' && (
+                          <button
+                            className="settings-btn lg-btn-secondary"
+                            type="button"
+                            onClick={handleResetBg}
+                            aria-label="Reset background to default"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="settings-hint">JPEG, PNG, WebP — replaces the app wallpaper. Max ~12 MB.</p>
+
+                    {/* Fit */}
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-label lg-adv-label" htmlFor="adv-bg-fit">Fit</label>
+                      <div className="lg-mode-toggle" role="radiogroup" aria-label="Image fit">
+                        {(['cover', 'contain', 'tile'] as const).map((fit) => (
+                          <label key={fit} className={`lg-mode-btn${(lg.bgFit ?? 'cover') === fit ? ' lg-mode-btn-active' : ''}`}>
+                            <input
+                              type="radio"
+                              name="lg-bg-fit"
+                              value={fit}
+                              checked={(lg.bgFit ?? 'cover') === fit}
+                              onChange={() => setLgField('bgFit', fit)}
+                              aria-label={`Image fit ${fit}`}
+                            />
+                            {fit.charAt(0).toUpperCase() + fit.slice(1)}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Position — 9-point grid */}
+                    <div className="settings-field">
+                      <label className="settings-label">Position</label>
+                      <div className="lg-position-grid" role="radiogroup" aria-label="Image position">
+                        {BG_POSITIONS.map(({ value, label }) => (
+                          <label
+                            key={value}
+                            className={`lg-position-cell${(lg.bgPosition ?? 'center') === value ? ' lg-position-cell-active' : ''}`}
+                            title={value}
+                          >
+                            <input
+                              type="radio"
+                              name="lg-bg-position"
+                              value={value}
+                              checked={(lg.bgPosition ?? 'center') === value}
+                              onChange={() => setLgField('bgPosition', value)}
+                              aria-label={`Image position ${value}`}
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Scrim */}
+                    <div className="settings-field settings-field-inline">
+                      <label className="settings-label lg-adv-label" htmlFor="adv-scrim">Scrim</label>
+                      <div className="lg-slider-labeled-row lg-adv-slider-row">
+                        <span className="lg-axis-label">Light</span>
+                        <input
+                          id="adv-scrim"
+                          className="settings-slider"
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={lg.bgScrim ?? 40}
+                          aria-label="Background scrim light to dark"
+                          onChange={(e) => setLgField('bgScrim', Number(e.target.value))}
+                        />
+                        <span className="lg-axis-label lg-axis-right">Dark</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Vignette (always visible) */}
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label lg-adv-label" htmlFor="adv-vignette">Vignette</label>
+                  <div className="lg-slider-labeled-row lg-adv-slider-row">
+                    <span className="lg-axis-label">Off</span>
+                    <input
+                      id="adv-vignette"
+                      className="settings-slider"
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={lg.bgVignette ?? 40}
+                      aria-label="Background vignette off to strong"
+                      onChange={(e) => setLgField('bgVignette', Number(e.target.value))}
+                    />
+                    <span className="lg-axis-label lg-axis-right">Strong</span>
+                  </div>
+                </div>
+
+                {/* Base color */}
+                <ColorPicker
+                  id="adv-bg-base"
+                  label="Base colour"
+                  value={lg.bgBaseColor ?? '#0e1116'}
+                  onChange={(v) => setLgField('bgBaseColor', v)}
+                />
+              </div>
+
+              {/* ── E1–E4: Color pickers ── */}
+              <div className="lg-popover-section">
+                <h4 className="lg-popover-section-title">Colours</h4>
+
+                <ColorPicker
+                  id="adv-text-header"
+                  label="Header text"
+                  value={lg.textHeader ?? LG_DEFAULTS.textHeader!}
+                  bgForContrast={effectiveBg}
+                  minRatio={4.5}
+                  onChange={(v) => setLgField('textHeader', v)}
+                />
+                <ColorPicker
+                  id="adv-text-body"
+                  label="Body text"
+                  value={lg.textBody ?? LG_DEFAULTS.textBody!}
+                  bgForContrast={effectiveBg}
+                  minRatio={4.5}
+                  onChange={(v) => setLgField('textBody', v)}
+                />
+                <ColorPicker
+                  id="adv-text-muted"
+                  label="Muted text"
+                  value={lg.textMuted ?? LG_DEFAULTS.textMuted!}
+                  bgForContrast={effectiveBg}
+                  minRatio={4.5}
+                  onChange={(v) => setLgField('textMuted', v)}
+                />
+                <ColorPicker
+                  id="adv-accent"
+                  label="Accent"
+                  value={lg.accentColor ?? '#00f0ff'}
+                  onChange={(v) => setLgField('accentColor', v)}
+                />
+
+                {/* Neon border colour slot */}
+                <div className="settings-field">
+                  <label className="settings-label">Neon border</label>
+                  <div className="lg-swatch-row" role="radiogroup" aria-label="Neon border colour">
+                    {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
+                      <label key={accent} className="lg-swatch-label">
+                        <input
+                          type="radio"
+                          name="lg-neon-border"
+                          value={accent}
+                          checked={(lg.neonBorderColor ?? 'cyan') === accent}
+                          onChange={() => setLgField('neonBorderColor', accent)}
+                          aria-label={`Neon border ${accent}`}
+                        />
+                        <span
+                          className={`lg-swatch lg-swatch-${accent}${(lg.neonBorderColor ?? 'cyan') === accent ? ' lg-swatch-active' : ''}`}
+                          title={accent.charAt(0).toUpperCase() + accent.slice(1)}
+                        />
+                        <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Legacy neon accent slot (kept for compatibility) */}
+                <div className="settings-field">
+                  <label className="settings-label">Neon accent</label>
+                  <div className="lg-swatch-row" role="radiogroup" aria-label="Neon accent colour">
+                    {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
+                      <label key={accent} className="lg-swatch-label">
+                        <input
+                          type="radio"
+                          name="lg-neon-accent"
+                          value={accent}
+                          checked={lg.neonAccent === accent}
+                          onChange={() => setLgField('neonAccent', accent)}
+                          aria-label={`Neon accent ${accent}`}
+                        />
+                        <span
+                          className={`lg-swatch lg-swatch-${accent}${lg.neonAccent === accent ? ' lg-swatch-active' : ''}`}
+                          title={accent.charAt(0).toUpperCase() + accent.slice(1)}
+                        />
+                        <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Reset ── */}
+              <div className="lg-popover-reset">
+                <button
+                  className="settings-btn lg-btn-reset"
+                  type="button"
+                  onClick={handleResetAll}
+                  aria-label="Reset all appearance settings to defaults"
+                >
+                  {resetConfirm ? 'Confirm reset' : 'Reset to defaults'}
+                </button>
+                {resetConfirm && (
+                  <button
+                    className="settings-btn lg-btn-secondary"
+                    type="button"
+                    onClick={() => setResetConfirm(false)}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

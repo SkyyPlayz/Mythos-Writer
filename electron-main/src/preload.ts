@@ -109,6 +109,8 @@ contextBridge.exposeInMainWorld('api', {
   // Suggestions lifecycle
   suggestionsList: (status?: string, sourceAgent?: string) =>
     ipcRenderer.invoke('suggestions:list', { status, sourceAgent }),
+  suggestionsGet: (id: string) =>
+    ipcRenderer.invoke('suggestions:get', { id }),
   suggestionsUpsert: (suggestion: unknown) =>
     ipcRenderer.invoke('suggestions:upsert', { suggestion }),
   suggestionsAccept: (id: string, actor?: string) =>
@@ -119,6 +121,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suggestions:rollback', { id, actor }),
   auditList: (suggestionId?: string) =>
     ipcRenderer.invoke('audit:list', { suggestionId }),
+  provenanceUpsert: (entityId: string, entityKind: string, agentId: string, agentType: string, runId?: string | null) =>
+    ipcRenderer.invoke('provenance:upsert', { entityId, entityKind, agentId, agentType, runId }),
 
   // Generalized token streaming — stream:* channels (MYT-156)
   streamStart: (payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; system?: string; model?: string; maxTokens?: number }) =>
@@ -347,6 +351,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('archive:confirm', { suggestionId, action }),
   archiveIgnoreList: () => ipcRenderer.invoke('archive:ignore-list', undefined),
 
+  // Liquid Glass background image (MYT-613)
+  pickBgImage: () => ipcRenderer.invoke('bg:pick', undefined),
+  loadBgImage: (filePath: string) => ipcRenderer.invoke('bg:load', { filePath }),
+
   // Writing modes (MYT-347) — Normal / Focus / Edit backend state
   writingModeGet: () => ipcRenderer.invoke('writingMode:get', undefined),
   writingModeSet: (payload: { mode?: string; focusFlags?: Record<string, boolean>; editConfig?: Record<string, boolean> }) =>
@@ -362,6 +370,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('app:backupAppData', outputPath ? { outputPath } : {}),
   restoreAppData: (archivePath?: string, confirmed?: boolean) =>
     ipcRenderer.invoke('app:restoreAppData', { archivePath, confirmed }),
+
+  // Agent persona files (MYT-816) — view/reset per-agent AGENTS/HEARTBEAT/SOUL/TOOLS files
+  agentPersonaRead: (agentName: string, key: string) =>
+    ipcRenderer.invoke('agent:persona:read', { agentName, key }),
+  agentPersonaReset: (agentName: string, key: string) =>
+    ipcRenderer.invoke('agent:persona:reset', { agentName, key }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
