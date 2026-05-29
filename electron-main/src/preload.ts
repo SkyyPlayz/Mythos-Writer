@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode }),
   // SKY-12.2: pure filesystem check for the onboarding wizard path-picker.
   validatePath: (p: string) => ipcRenderer.invoke('vault:validatePath', { path: p }),
+  // SKY-12.3: copy the bundled sample project into a two-vault layout.
+  loadSampleTwoVault: (parentPath: string) =>
+    ipcRenderer.invoke('vault:load-sample-twovault', { parentPath }),
 
   // SKY-9: full Notes-Vault-scoped CRUD for VaultBrowser and the
   // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault

@@ -220,6 +220,11 @@ export const IPC_CHANNELS = {
   // SKY-12.2: path validation for the onboarding wizard path-picker UI.
   // Pure filesystem check with no side effects — safe to call on every blur.
   VAULT_VALIDATE_PATH: 'vault:validatePath',
+
+  // SKY-12.3: two-vault sample project loader. Copies the bundled sample
+  // from resources/sample-project/ into <parentPath>/Story Vault/ and
+  // <parentPath>/Notes Vault/, reindexes both, and calls setPaths.
+  VAULT_LOAD_SAMPLE_TWO_VAULT: 'vault:load-sample-twovault',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -371,6 +376,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => VaultValidatePathResponse;
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
@@ -1748,6 +1754,18 @@ export interface VaultValidatePathResponse {
   exists: boolean;
   isEmpty: boolean;
   writable: boolean;
+  error?: string;
+}
+
+// SKY-12.3: two-vault sample project loader.
+export interface VaultLoadSampleTwoVaultPayload {
+  /** Parent directory under which Story Vault/ and Notes Vault/ will be created. */
+  parentPath: string;
+}
+
+export interface VaultLoadSampleTwoVaultResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
   error?: string;
 }
 

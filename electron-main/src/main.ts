@@ -91,6 +91,8 @@ import {
   type VaultSetPathsPayload,
   type VaultValidatePathPayload,
   type VaultValidatePathResponse,
+  type VaultLoadSampleTwoVaultPayload,
+  type VaultLoadSampleTwoVaultResponse,
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
@@ -2026,6 +2028,58 @@ const handlers: IpcHandlers = {
     await stopVaultWatcher();
     await startVaultWatcher(sampleRoot, notifyVaultChanged);
     return { vaultRoot: sampleRoot };
+  },
+
+  // SKY-12.3: copy the bundled sample project into a two-vault layout.
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: async (
+    payload: VaultLoadSampleTwoVaultPayload,
+  ): Promise<VaultLoadSampleTwoVaultResponse> => {
+    const { parentPath } = payload;
+    if (!parentPath || typeof parentPath !== 'string') {
+      return { storyVaultPath: '', notesVaultPath: '', error: 'parentPath must be a non-empty string' };
+    }
+    // Resolve the bundled sample-project dir: dev = <repo>/sample-project,
+    // packaged = <app>/resources/sample-project.
+    const sampleProjectDir = app.isPackaged
+      ? path.join(process.resourcesPath, 'sample-project')
+      : path.join(app.getAppPath(), '..', 'sample-project');
+
+    if (!fs.existsSync(sampleProjectDir)) {
+      return { storyVaultPath: '', notesVaultPath: '', error: `Sample project bundle not found at: ${sampleProjectDir}` };
+    }
+
+    const storyVaultPath = path.join(parentPath, 'Story Vault');
+    const notesVaultPath = path.join(parentPath, 'Notes Vault');
+
+    // Refuse to clobber non-empty targets.
+    for (const [label, target] of [['Story Vault', storyVaultPath], ['Notes Vault', notesVaultPath]] as const) {
+      if (fs.existsSync(target) && !isEmptyOrMissing(target)) {
+        return { storyVaultPath: '', notesVaultPath: '', error: `Target for ${label} already exists and is not empty: ${target}` };
+      }
+    }
+
+    // Copy story-vault/ → Story Vault/ and notes-vault/ → Notes Vault/.
+    const cpR = (src: string, dst: string) => fs.cpSync(src, dst, { recursive: true, force: false });
+    try {
+      cpR(path.join(sampleProjectDir, 'story-vault'), storyVaultPath);
+      cpR(path.join(sampleProjectDir, 'notes-vault'), notesVaultPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { storyVaultPath: '', notesVaultPath: '', error: `Failed to copy sample project: ${msg}` };
+    }
+
+    // Persist the new vault paths and index both vaults.
+    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath, layoutMode: 'default' });
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced } = reindexVault(storyVaultPath, manifest);
+    writeManifest(getManifestPath(), synced);
+    try { buildFullIndex(getDb(), storyVaultPath, synced); } catch { /* non-fatal */ }
+    await stopVaultWatcher();
+    await startVaultWatcher(storyVaultPath, notifyVaultChanged);
+
+    return { storyVaultPath, notesVaultPath };
   },
 
   // ─── Telemetry (MYT-344) ───
