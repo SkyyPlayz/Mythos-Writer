@@ -38,7 +38,7 @@ import {
   type SuggestionStatus,
 } from './db.js';
 import { evaluateAutoApply, type AgentBudgetSettings } from './budget.js';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ function makeAuditEntry(
 
 describe('Suggestion payload schema (§1)', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-schema-'));
@@ -335,7 +335,7 @@ describe('Audit log (§3)', () => {
 
 describe('Auto-apply policy (§4)', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-policy-'));

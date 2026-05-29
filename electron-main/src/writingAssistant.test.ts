@@ -32,7 +32,7 @@ import {
   parseBetaReadLines,
   buildBetaReadComments,
 } from './writingAssistant.js';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -293,7 +293,7 @@ describe('buildBetaReadComments (§4)', () => {
 
 describe('Suggestions DB integration (§5)', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-'));
@@ -363,7 +363,7 @@ describe('Suggestions DB integration (§5)', () => {
 
 describe('Budget gating (§6)', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   const BUDGET = { maxTokensPerHour: 1_000, maxTokensPerDay: 5_000, requestsPerMinute: 10 };
 
