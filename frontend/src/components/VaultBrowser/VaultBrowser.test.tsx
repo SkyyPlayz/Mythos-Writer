@@ -316,12 +316,12 @@ describe('VaultBrowser', () => {
     expect(screen.queryByText('story-scene')).not.toBeInTheDocument();
   });
 
-  it('shows vb-notes-substate empty state when Notes Vault has no items', async () => {
+  it('shows notes empty state when Notes Vault has no items', async () => {
     mockListNotesVault.mockResolvedValue({ items: [] });
     render(<VaultBrowser {...baseProps} />);
     fireEvent.click(screen.getByTestId('vb-scope-notes'));
     await waitFor(() => {
-      expect(screen.getByTestId('vb-notes-substate')).toBeInTheDocument();
+      expect(screen.getByTestId('vb-notes-empty')).toBeInTheDocument();
     });
   });
 
