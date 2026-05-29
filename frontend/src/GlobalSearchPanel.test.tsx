@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import GlobalSearchPanel from './GlobalSearchPanel';
 
 describe('GlobalSearchPanel', () => {
   const mockOnClose = vi.fn();
   const mockOnNavigate = vi.fn();
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   it('does not render when open is false', () => {
     const { container } = render(
@@ -56,5 +60,23 @@ describe('GlobalSearchPanel', () => {
     expect(panel).toBeInTheDocument();
     panel.click();
     expect(mockOnClose2).not.toHaveBeenCalled();
+  });
+
+  it('shows zero-results heading when search returns empty array', async () => {
+    vi.stubGlobal('api', { searchVault: vi.fn().mockResolvedValue({ results: [] }) });
+
+    render(
+      <GlobalSearchPanel open={true} onClose={mockOnClose} onNavigate={mockOnNavigate} />,
+    );
+
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'dragon' } });
+
+    await waitFor(
+      () => {
+        expect(screen.getByRole('heading', { name: /No results for/i })).toBeInTheDocument();
+      },
+      { timeout: 1000 },
+    );
   });
 });
