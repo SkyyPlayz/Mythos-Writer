@@ -8,9 +8,7 @@
     "electron-main"
   ],
   "scripts": {
-    "rebuild:native": "node scripts/rebuild-native.js",
-    "rebuild:node": "npm rebuild better-sqlite3",
-    "dev": "npm run rebuild:native && electron-vite dev",
+    "dev": "electron-vite dev",
     "build": "electron-vite build && electron-builder --win zip",
     "build:installer": "electron-vite build && electron-builder --win nsis",
     "dist": "electron-vite build && electron-builder --win",
@@ -40,7 +38,7 @@
   "devDependencies": {
     "@playwright/test": "^1.44.0",
     "@types/pngjs": "^6.0.5",
-    "electron": "^39.8.10",
+    "electron": "^42.3.0",
     "electron-builder": "^26.8.1",
     "electron-updater": "^6.3.9",
     "electron-vite": "^5.0.0",
