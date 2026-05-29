@@ -187,6 +187,61 @@ function StoryVault({
   );
 }
 
+// ─── Notes Vault Empty State ───
+
+interface NotesVaultEmptyStateProps {
+  onCreate: () => void;
+}
+
+function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
+  return (
+    <section
+      className="vb-notes-empty"
+      role="region"
+      aria-labelledby="vb-notes-empty-heading"
+      data-testid="vb-notes-empty"
+    >
+      <span className="vb-notes-empty-icon" aria-hidden="true">
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <rect x="4" y="3" width="14" height="18" rx="2" />
+          <line x1="7" y1="8" x2="14" y2="8" />
+          <line x1="7" y1="12" x2="14" y2="12" />
+          <line x1="7" y1="16" x2="11" y2="16" />
+          <path d="M16.5 14.5 L20 18 L18 20 L14.5 16.5 Z" />
+        </svg>
+      </span>
+      <h2 id="vb-notes-empty-heading" className="vb-notes-empty-heading">
+        Capture your first idea
+      </h2>
+      <p className="vb-notes-empty-sub">
+        Notes are for ideas, characters, places, and lore — anything that supports your scenes but isn't part of them.
+      </p>
+      <button
+        className="vb-notes-empty-cta"
+        type="button"
+        onClick={onCreate}
+        data-testid="vb-notes-empty-cta"
+      >
+        + New note
+      </button>
+      <p className="vb-notes-empty-footer">
+        Or chat with Brainstorm — it'll file notes for you.
+      </p>
+    </section>
+  );
+}
+
 // ─── Notes Vault (file-based, virtualized) ───
 
 interface NotesVaultProps {
@@ -280,7 +335,7 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
         </button>
       </div>
       {notesItems.length === 0 ? (
-        <div className="vb-empty">No notes yet. Click + to create one.</div>
+        <NotesVaultEmptyState onCreate={() => handleNewNote('')} />
       ) : (
         <VirtualTree
           data-testid="vb-notes-tree"

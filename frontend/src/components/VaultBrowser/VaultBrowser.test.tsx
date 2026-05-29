@@ -303,3 +303,40 @@ describe('VaultBrowser', () => {
     expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
   });
 });
+
+// ─── NotesVaultEmptyState ───
+
+describe('NotesVaultEmptyState', () => {
+  it('renders when notes count is 0', async () => {
+    // beforeEach resolves listVault to { items: [] } — empty vault
+    render(<VaultBrowser {...baseProps} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-notes-empty')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Capture your first idea')).toBeInTheDocument();
+    expect(screen.getByTestId('vb-notes-empty-cta')).toBeInTheDocument();
+  });
+
+  it('CTA click calls handleNewNote', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null);
+    render(<VaultBrowser {...baseProps} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-notes-empty-cta')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('vb-notes-empty-cta'));
+    expect(promptSpy).toHaveBeenCalled();
+    promptSpy.mockRestore();
+  });
+
+  it('does not render when notes count > 0', async () => {
+    mockListVault.mockResolvedValue({
+      items: [
+        { path: 'note1.md', name: 'note1.md', isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    render(<VaultBrowser {...baseProps} />);
+    await waitFor(() => {
+      expect(screen.queryByTestId('vb-notes-empty')).not.toBeInTheDocument();
+    });
+  });
+});
