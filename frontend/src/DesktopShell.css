@@ -4,6 +4,12 @@
   height: 100vh;
   overflow: hidden;
   background: var(--bg-base);
+  /* Background image wallpaper (MYT-613) — layered behind all glass panels.
+     --bg-app-image is 'none' (transparent) by default; set by applyLiquidGlassTokens. */
+  background-image: var(--bg-app-image, none);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: var(--text-primary);
 }
 
@@ -214,6 +220,60 @@
   border-color: var(--accent);
   color: var(--accent-light);
   box-shadow: var(--neon-glow);
+}
+
+/* Writing mode selector */
+.writing-mode-selector {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.writing-mode-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  cursor: pointer;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+}
+
+.writing-mode-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.writing-mode-btn.active {
+  background: var(--border-default);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.writing-mode-prefs-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 1px 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1.6;
+}
+
+.writing-mode-prefs-btn:hover {
+  color: var(--text-primary);
+  background: var(--border-default);
+}
+
+/* Focus mode: subtle full-bleed editor */
+.writing-mode-focus .shell-center-column {
+  min-width: 0;
 }
 
 /* Main panels row */

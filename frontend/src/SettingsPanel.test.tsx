@@ -408,6 +408,70 @@ describe('SettingsPanel', () => {
     expect(saved.agents.writingAssistant.confidenceThreshold).toBeCloseTo(0.75);
   });
 
+  // ── MYT-802: keyboard focus trap ──
+
+  it('traps Tab focus within the dialog — Tab from last focusable cycles to first', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const dialog = document.querySelector('.settings-panel') as HTMLElement;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !(el as HTMLInputElement).disabled);
+
+    expect(focusable.length).toBeGreaterThan(0);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    last.focus();
+    expect(document.activeElement).toBe(last);
+
+    fireEvent.keyDown(last, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(first);
+  });
+
+  it('traps Tab focus within the dialog — Shift+Tab from first focusable cycles to last', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const dialog = document.querySelector('.settings-panel') as HTMLElement;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !(el as HTMLInputElement).disabled);
+
+    expect(focusable.length).toBeGreaterThan(0);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    first.focus();
+    expect(document.activeElement).toBe(first);
+
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('does not trap focus for non-Tab keys', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const dialog = document.querySelector('.settings-panel') as HTMLElement;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !(el as HTMLInputElement).disabled);
+
+    const last = focusable[focusable.length - 1];
+    last.focus();
+
+    fireEvent.keyDown(last, { key: 'Enter' });
+    expect(document.activeElement).toBe(last);
+  });
+
   // ── MYT-668: voice settings ──
 
   it('renders voice section with enable toggle', async () => {

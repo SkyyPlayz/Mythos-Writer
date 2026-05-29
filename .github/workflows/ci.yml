@@ -56,11 +56,6 @@ jobs:
           ELECTRON_VER=$(node -p "require('electron/package.json').version")
           npm rebuild better-sqlite3 --runtime=electron --target="$ELECTRON_VER" --dist-url=https://electronjs.org/headers
 
-      - name: Install Xvfb (virtual display for Electron E2E)
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y xvfb
-
       - name: E2E — vault CRUD (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:crud
 
@@ -75,6 +70,12 @@ jobs:
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
+
+      - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
+        run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
+
+      - name: E2E — Two-vault layout Story + Notes CRUD (MYT-769)
+        run: xvfb-run --auto-servernum npm run test:e2e:two-vault
 
       - name: Upload E2E report on failure
         if: failure()
@@ -125,6 +126,13 @@ jobs:
 
       - name: Test (frontend)
         run: npm run test -w frontend
+
+      # Rebuild better-sqlite3 for Electron ABI before packaging. npm ci builds it
+      # for Node ABI (needed by the unit tests above); electron-builder bundles
+      # whatever is in node_modules, so the AppImage would crash on startup if we
+      # skip this step (ABI mismatch between Node 20 and Electron 39+).
+      - name: Rebuild native modules for Electron (packaging)
+        run: npm run rebuild:native
 
       - name: Build and package (Linux AppImage)
         run: npm run dist:linux

@@ -2,6 +2,7 @@
 // All IPC calls go through this module for type safety.
 
 import { ipcMain, ipcRenderer } from 'electron';
+import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -23,6 +24,7 @@ export const IPC_CHANNELS = {
 
   // Suggestions
   SUGGESTIONS_LIST: 'suggestions:list',
+  SUGGESTIONS_GET: 'suggestions:get',
   SUGGESTIONS_UPSERT: 'suggestions:upsert',
   SUGGESTIONS_ACCEPT: 'suggestions:accept',
   SUGGESTIONS_APPLY: 'suggestions:apply',
@@ -31,6 +33,9 @@ export const IPC_CHANNELS = {
 
   // Audit log
   AUDIT_LIST: 'audit:list',
+
+  // Provenance
+  PROVENANCE_UPSERT: 'provenance:upsert',
 
   // Timeline
   TIMELINE_LIST: 'timeline:list',
@@ -51,6 +56,10 @@ export const IPC_CHANNELS = {
   AGENT_VAULT_INDEX: 'agent:vault-index',
   AGENT_VAULT_CHECK: 'agent:vault-check',
   AGENT_ARCHIVE: 'agent:archive',
+
+  // Agent persona files (MYT-816)
+  AGENT_PERSONA_READ: 'agent:persona:read',
+  AGENT_PERSONA_RESET: 'agent:persona:reset',
 
   // System
   SYSTEM_INFO: 'system:info',
@@ -77,6 +86,10 @@ export const IPC_CHANNELS = {
   // App settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+
+  // Liquid Glass background image (MYT-613)
+  BG_PICK: 'bg:pick',
+  BG_LOAD: 'bg:load',
 
   // Generation log
   GENERATION_LOG_RECENT: 'generationLog:recent',
@@ -131,6 +144,8 @@ export const IPC_CHANNELS = {
   BETA_READ_CREATE: 'betaRead:create',
   BETA_READ_LIST: 'betaRead:list',
   BETA_READ_DISMISS: 'betaRead:dismiss',
+  // Beta-Read on-demand LLM scan (MYT-711) — auto-generates anchored comments
+  BETA_READ_SCAN: 'betaRead:scan',
 
   // EPUB export (MYT-253)
   EXPORT_EPUB: 'export:epub',
@@ -180,14 +195,47 @@ export const IPC_CHANNELS = {
   // Writing modes (MYT-347) — Normal / Focus / Edit per-project state
   WRITING_MODE_GET: 'writingMode:get',
   WRITING_MODE_SET: 'writingMode:set',
+
+  // App data backup / restore (MYT-346)
+  APP_BACKUP_APP_DATA: 'app:backupAppData',
+  APP_RESTORE_APP_DATA: 'app:restoreAppData',
 } as const;
+
+// ─── Sender-frame guard (MYT-791) ───
+// Defense-in-depth: reject IPC messages whose origin is not the top-level
+// renderer frame. With contextIsolation on and nodeIntegration off the
+// practical exposure today is low, but this blocks future preview iframes,
+// embedded help panes, or third-party WebViews from invoking any IPC channel.
+
+export interface IpcUntrustedFrameRejection {
+  /** Generic user-facing message — never includes frame URLs or origins. */
+  error: string;
+  category: 'untrusted_frame';
+}
+
+export const UNTRUSTED_FRAME_REJECTION: IpcUntrustedFrameRejection = {
+  error: 'IPC request rejected: not from the top-level renderer frame.',
+  category: 'untrusted_frame',
+};
+
+/**
+ * Returns true when `event.senderFrame` is the top-level frame. Designed for
+ * both `ipcMain.handle` (IpcMainInvokeEvent) and `ipcMain.on` (IpcMainEvent),
+ * which both expose `senderFrame`. Returns false when senderFrame is null
+ * (frame already destroyed) or originates from a nested frame.
+ */
+export function isFromTopFrame(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
+  const frame = event.senderFrame;
+  return !!frame && frame === frame.top;
+}
 
 // ─── Main process handlers ───
 // Each handler: receive request → process → send response via IPC
 
 export function setupIpcMain(handlers: IpcHandlers) {
   for (const [channel, handler] of Object.entries(handlers)) {
-    ipcMain.handle(channel, (_event, payload) => {
+    ipcMain.handle(channel, (event, payload) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       try {
         return handler(payload);
       } catch (error) {
@@ -245,12 +293,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
+  [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => SuggestionsGetResponse;
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
   [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => SuggestionsAcceptResponse;
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => SuggestionsApplyResponse;
   [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => SuggestionsRejectResponse;
   [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => SuggestionsRollbackResponse;
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => AuditListResponse;
+  [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => ProvenanceUpsertResponse;
   [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
@@ -271,6 +321,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
   [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
+  // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
@@ -287,11 +338,15 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
+  [IPC_CHANNELS.BG_PICK]: (payload: never) => Promise<BgPickResponse>;
+  [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
+  [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
+  [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -860,6 +915,34 @@ export interface ProviderSettings {
   model: string;
 }
 
+/** Liquid Glass advanced theme customization (MYT-613 / MYT-716). All values optional;
+ *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
+export interface LiquidGlassPrefs {
+  softnessContrast: number;
+  glass: number;
+  blur: number;
+  neonIntensity: number;
+  neonAccent: 'cyan' | 'violet' | 'magenta';
+  textHeader: string;
+  textBody: string;
+  textMuted: string;
+  background: 'default' | string;
+
+  // Advanced overrides (MYT-716)
+  advancedDecoupled?: boolean;
+  textContrast?: number;
+  neonFrameWidth?: number;
+  borderStrength?: number;
+  bgMode?: 'color' | 'image';
+  bgFit?: 'cover' | 'contain' | 'tile';
+  bgPosition?: string;
+  bgScrim?: number;
+  bgVignette?: number;
+  bgBaseColor?: string;
+  accentColor?: string;
+  neonBorderColor?: 'cyan' | 'violet' | 'magenta';
+}
+
 export interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
@@ -888,6 +971,8 @@ export interface AppSettings {
     enabled: boolean;
     sessionId: string;
   };
+  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
+  liquidGlass?: LiquidGlassPrefs;
 }
 
 export interface SettingsSetPayload {
@@ -929,6 +1014,8 @@ export interface TelemetryReportPayload {
 
 export interface TelemetryReportResponse {
   queued: boolean;
+  /** Set when validation rejects the payload (MYT-794). */
+  error?: string;
 }
 
 // ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
@@ -1036,6 +1123,38 @@ export interface SuggestionsRollbackResponse {
   id: string;
   auditId: string;
   restoredPath: string | null;
+}
+
+export interface SuggestionsGetPayload {
+  id: string;
+}
+
+export interface SuggestionsGetResponse {
+  suggestion: SuggestionRow | null;
+}
+
+// ─── Provenance IPC payload / response types ───
+
+export interface ProvenanceRow {
+  id: string;
+  entity_id: string;
+  entity_kind: string;
+  agent_id: string;
+  agent_type: string;
+  run_id: string | null;
+  created_at: string;
+}
+
+export interface ProvenanceUpsertPayload {
+  entityId: string;
+  entityKind: string;
+  agentId: string;
+  agentType: string;
+  runId?: string | null;
+}
+
+export interface ProvenanceUpsertResponse {
+  id: string;
 }
 
 // ─── Audit IPC payload / response types ───
@@ -1333,6 +1452,17 @@ export interface BetaReadDismissResponse {
   dismissed: boolean;
 }
 
+export interface BetaReadScanPayload {
+  sceneId: string;
+  prose: string;
+  scenePath: string;
+}
+
+export interface BetaReadScanResponse {
+  comments: BetaReadComment[];
+  scannedAt: string;
+}
+
 // ─── EPUB export (MYT-253 / MYT-342) ───
 
 export interface ExportEpubMetadata {
@@ -1438,6 +1568,30 @@ export interface SetAgentConfigResponse {
   saved: boolean;
 }
 
+// ─── Agent persona IPC types (MYT-816) ───
+
+export type AgentPersonaName = 'writingAssistant' | 'brainstorm';
+export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
+
+export interface AgentPersonaReadPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaReadResponse {
+  content: string;
+  isCustom: boolean;
+}
+
+export interface AgentPersonaResetPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaResetResponse {
+  success: boolean;
+}
+
 // ─── Archive confirmation dialog (MYT-376) ───
 
 /** The three resolution verbs the user can pick for an inconsistency finding. */
@@ -1466,6 +1620,21 @@ export interface ArchiveIgnoreEntry {
 
 export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
+}
+
+// ─── Liquid Glass background image (MYT-613) ───
+
+export interface BgPickResponse {
+  filePath: string | null;
+  cancelled: boolean;
+}
+
+export interface BgLoadPayload {
+  filePath: string;
+}
+
+export interface BgLoadResponse {
+  dataUrl: string | null;
 }
 
 // ─── Auto-updater Phase 4 (MYT-337) ───
@@ -1531,12 +1700,18 @@ export interface VaultGetPathsResponse {
 export interface VaultSetPathsPayload {
   storyVaultPath: string;
   notesVaultPath: string;
+  // MYT-789: at least one proof of user intent is required per path. The
+  // tokens come from vault:pick-folder; alternatively the path may already be
+  // in the recent-projects allowlist.
+  storyVaultToken?: string;
+  notesVaultToken?: string;
 }
 
 export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+  error?: string;
 }
 
 // ─── Writing modes (MYT-347) ───
@@ -1573,4 +1748,33 @@ export interface WritingModeSetPayload {
   mode?: WritingMode;
   focusFlags?: Partial<FocusModeFlags>;
   editConfig?: Partial<EditModeConfig>;
+}
+
+// ─── App data backup / restore (MYT-346) ───
+
+export interface BackupAppDataPayload {
+  /** If provided, write the archive here instead of showing a save dialog. */
+  outputPath?: string;
+}
+
+export interface BackupAppDataResponse {
+  /** Absolute path to the created archive; null when cancelled. */
+  path: string | null;
+  bytes: number;
+  cancelled: boolean;
+}
+
+export interface RestoreAppDataPayload {
+  /** If provided, read from this path instead of showing an open dialog. */
+  archivePath?: string;
+  /** Must be true when app data already exists; absent/false → reject with requiresConfirmation. */
+  confirmed?: boolean;
+}
+
+export interface RestoreAppDataResponse {
+  restored: boolean;
+  details: string[];
+  /** True when the caller must re-call with confirmed: true to proceed. */
+  requiresConfirmation?: boolean;
+  cancelled?: boolean;
 }

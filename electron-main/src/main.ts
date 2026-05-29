@@ -1,5 +1,6 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
+import { secureWebPreferences, createWindowOpenHandler } from './security.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -48,6 +49,7 @@ import {
   type AppSettings,
   type SettingsSetPayload,
   type SuggestionsListPayload,
+  type SuggestionsGetPayload,
   type SuggestionsUpsertPayload,
   type SuggestionsAcceptPayload,
   type SuggestionsApplyPayload,
@@ -56,6 +58,7 @@ import {
   type AuditListPayload,
   type TimelineListPayload,
   type TimelineUpsertPayload,
+  type ProvenanceUpsertPayload,
   type GenerationLogRecentPayload,
   type GenerationLogListPayload,
   type GenerationLogGetPayload,
@@ -73,15 +76,30 @@ import {
   type VersionRollbackPayload,
   type SearchQueryPayload,
   type WritingScanPayload,
+  type BetaReadScanPayload,
   type VaultObsidianDryRunPayload,
   type VaultObsidianRegisterPayload,
   type VaultLoadSampleResponse,
   type ProjectEntry,
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
+  type BgLoadPayload,
   type VaultSetPathsPayload,
   type WritingModeSetPayload,
+  type BackupAppDataPayload,
+  type RestoreAppDataPayload,
+  type AgentPersonaReadPayload,
+  type AgentPersonaResetPayload,
+  isFromTopFrame,
+  UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
+import {
+  buildAgentSystemPrompt,
+  loadPersonaFile,
+  resetPersonaFile,
+  type AgentPersonaName,
+  type PersonaKey,
+} from './agentPersona.js';
 import {
   openDb,
   closeDb,
@@ -108,9 +126,11 @@ import {
   listArchiveIgnores,
   countTokensInWindow,
   countSuggestionsInWindow,
+  insertProvenance,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
+import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
@@ -134,6 +154,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
+  safeVaultIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -143,6 +164,7 @@ import {
   mergeProvenanceFrontmatter,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
+import { assertValidManifest } from './manifestValidate.js';
 import {
   createEntity,
   readEntity,
@@ -161,6 +183,12 @@ import {
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
+import { initSecretsStore, getSecretsStore } from './secrets/index.js';
+import {
+  hydrateSecretsIntoSettings,
+  migrateSecretsFromSettingsFile,
+  persistSecretsAndStripSettings,
+} from './secrets/migration.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
@@ -169,10 +197,16 @@ import {
   configureTelemetry,
   generateSessionId,
   reportEvent,
-  TELEMETRY_EVENT_TYPES,
-  type TelemetryEventType,
+  validateTelemetryPayload,
 } from './telemetry.js';
+import {
+  parseScanTips,
+  buildScanSuggestions,
+  parseBetaReadLines,
+  buildBetaReadComments,
+} from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
+import { backupAppData, restoreAppData } from './backup.js';
 
 const require = createRequire(import.meta.url);
 
@@ -189,7 +223,8 @@ function registerAgentCancelHandlers(): void {
     'agent:brainstorm:stream-cancel',
     'agent:vault-check:stream-cancel',
   ] as const) {
-    ipcMain.on(channel, (_event, { requestId }: { requestId: string }) => {
+    ipcMain.on(channel, (event, { requestId }: { requestId: string }) => {
+      if (!isFromTopFrame(event)) return;
       agentControllers.get(requestId)?.abort();
       agentControllers.delete(requestId);
     });
@@ -393,20 +428,29 @@ function validateVaultPath(p: string, field: string): void {
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
+  // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
+  // at the IPC boundary. The low-level helpers also re-check traversal, so a
+  // bad path is rejected twice independently.
   [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, false);
     return readVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return writeVaultFileAtomic(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
+    // LIST takes a directory — enforce traversal/symlink only, not the
+    // file-extension allow-list.
+    if (payload.root) safePath(getVaultRoot(), payload.root);
     return listVaultFiles(getVaultRoot(), payload.root);
   },
   [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
     return deleteVaultFile(getVaultRoot(), payload.path);
   },
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: () => {
@@ -419,6 +463,10 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
     ensureVaultDir();
+    // MYT-792: validate before touching disk. assertValidManifest throws
+    // ManifestValidationError on the first invalid field; setupIpcMain's
+    // try/catch converts it into { error } for the renderer.
+    assertValidManifest(payload?.manifest);
     writeManifest(getManifestPath(), payload.manifest);
     const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
     return { path: getManifestPath(), bytes };
@@ -478,6 +526,10 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
     ensureVaultDir();
     return { suggestions: listSuggestions(payload.status, payload.sourceAgent) };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => {
+    ensureVaultDir();
+    return { suggestion: getSuggestion(payload.id) };
   },
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => {
     ensureVaultDir();
@@ -604,6 +656,23 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => {
     ensureVaultDir();
     return { entries: listAuditLog(payload.suggestionId) };
+  },
+
+  // ─── Provenance ───
+  [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => {
+    ensureVaultDir();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    insertProvenance({
+      id,
+      entity_id: payload.entityId,
+      entity_kind: payload.entityKind,
+      agent_id: payload.agentId,
+      agent_type: payload.agentType,
+      run_id: payload.runId ?? null,
+      created_at: now,
+    });
+    return { id };
   },
 
   // ─── Timeline ───
@@ -888,15 +957,21 @@ const handlers: IpcHandlers = {
     if (updated.telemetry) {
       configureTelemetry({ enabled: updated.telemetry.enabled, sessionId: updated.telemetry.sessionId });
     }
+    // Restart writing scan scheduler when scanIntervalSeconds or enabled flag changes.
+    const prevInterval = current.agents.writingAssistant.scanIntervalSeconds;
+    const newInterval = updated.agents.writingAssistant.scanIntervalSeconds;
+    const prevEnabled = current.agents.writingAssistant.enabled;
+    const newEnabled = updated.agents.writingAssistant.enabled;
+    if (prevInterval !== newInterval || prevEnabled !== newEnabled) {
+      startWritingScanScheduler();
+    }
     return { saved: true };
   },
 
   // MYT-343: per-agent config get/set
   [IPC_CHANNELS.SETTINGS_GET_AGENT_CONFIG]: (): import('./ipc.js').AgentConfigMap => {
     const s = loadAppSettings();
-    // Common shape across all three agents (brainstorm has no extra interval
-    // field); toConfig only reads enabled/model/budget, never the per-agent
-    // interval fields, so the narrowest shared type accepts all of them.
+    // Common shape across all three agents; toConfig only reads enabled/model/budget.
     const toConfig = (a: typeof s.agents.brainstorm): import('./ipc.js').AgentConfig => ({
       enabled: a.enabled,
       model: a.model,
@@ -1407,6 +1482,37 @@ const handlers: IpcHandlers = {
     };
   },
 
+  // ─── Liquid Glass background image (MYT-613) ───
+  [IPC_CHANNELS.BG_PICK]: async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose App Background Image',
+      buttonLabel: 'Set Background',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { filePath: null, cancelled: true };
+    }
+    return { filePath: result.filePaths[0], cancelled: false };
+  },
+
+  [IPC_CHANNELS.BG_LOAD]: async (payload: BgLoadPayload) => {
+    try {
+      const { filePath } = payload;
+      if (!filePath || !fs.existsSync(filePath)) return { dataUrl: null };
+      const ext = path.extname(filePath).toLowerCase().slice(1);
+      const mimeMap: Record<string, string> = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
+      };
+      const mime = mimeMap[ext] ?? 'image/jpeg';
+      const data = fs.readFileSync(filePath);
+      return { dataUrl: `data:${mime};base64,${data.toString('base64')}` };
+    } catch {
+      return { dataUrl: null };
+    }
+  },
+
   // ─── EPUB export (MYT-342) ───
   [IPC_CHANNELS.EXPORT_EPUB]: async (payload: { storyId: string; metadata?: { title?: string; author?: string; language?: string }; targetPath?: string }) => {
     ensureVaultDir();
@@ -1900,7 +2006,14 @@ const handlers: IpcHandlers = {
 
   // ─── Telemetry (MYT-344) ───
   [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: import('./ipc.js').TelemetryReportPayload) => {
-    reportEvent({ type: payload.type as TelemetryEventType, meta: payload.meta });
+    // MYT-794: validate renderer-supplied payload before it reaches the event
+    // store. Unknown event types and malformed meta are rejected with a typed
+    // error instead of being silently coerced through.
+    const result = validateTelemetryPayload(payload);
+    if (!result.ok) {
+      return { queued: false, error: result.error };
+    }
+    reportEvent(result.event);
     return { queued: true };
   },
 
@@ -1913,14 +2026,23 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
-    const newRoot = payload.vaultRoot;
-    if (!newRoot || typeof newRoot !== 'string') {
-      return { vaultRoot: getVaultRoot(), switched: false, error: 'Invalid vault root' };
+    // MYT-789: gate the switch behind the recent-projects allowlist. Without
+    // this, a renderer could re-root the vault sandbox at any existing,
+    // writable directory and then read or overwrite arbitrary files via the
+    // rest of the vault:* IPC surface.
+    const gate = checkProjectSwitchGate(
+      payload?.vaultRoot,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: gate.error };
     }
+    const newRoot = gate.vaultRoot;
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
-    // Stop watchers and close current DB before switching
+    // Stop watchers, scheduler, and close current DB before switching
+    stopWritingScanScheduler();
     await stopVaultWatcher();
     await stopNotesVaultWatcher();
     closeDb();
@@ -1935,8 +2057,9 @@ const handlers: IpcHandlers = {
       writeManifest(getManifestPath(), synced);
       try { buildFullIndex(getDb(), newRoot, synced); } catch { /* non-fatal */ }
     } catch { /* non-fatal */ }
-    // Restart file watcher
+    // Restart file watcher and scheduler
     await startVaultWatcher(newRoot, notifyVaultChanged);
+    startWritingScanScheduler();
     // Notify renderer to reload
     if (mainWindow) {
       mainWindow.webContents.send('project:switched', { vaultRoot: newRoot });
@@ -1954,11 +2077,22 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
-    const { storyVaultPath, notesVaultPath } = payload;
-    validateVaultPath(storyVaultPath, 'storyVaultPath');
-    validateVaultPath(notesVaultPath, 'notesVaultPath');
-    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
-    return { storyVaultPath, notesVaultPath, saved: true };
+    // MYT-789: gate the new vault roots behind either a registration token
+    // (issued by vault:pick-folder) or membership in the recent-projects
+    // allowlist. Without this, any absolute, writable directory passes
+    // validateVaultPath and the renderer can re-root the vault sandbox at
+    // $HOME or /, escaping every other vault:* sandbox check.
+    const gate = checkSetPathsGate(
+      payload,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { storyVaultPath: getVaultRoot(), notesVaultPath: getNotesVaultRoot(), saved: false, error: gate.error };
+    }
+    validateVaultPath(gate.storyVaultPath, 'storyVaultPath');
+    validateVaultPath(gate.notesVaultPath, 'notesVaultPath');
+    saveVaultSettings({ vaultRoot: gate.storyVaultPath, notesVaultRoot: gate.notesVaultPath });
+    return { storyVaultPath: gate.storyVaultPath, notesVaultPath: gate.notesVaultPath, saved: true };
   },
 
   // ─── Writing modes (MYT-347) ───
@@ -1976,21 +2110,92 @@ const handlers: IpcHandlers = {
     return state;
   },
 
+  // ─── App data backup / restore (MYT-346) ───
+
+  [IPC_CHANNELS.APP_BACKUP_APP_DATA]: async (payload: BackupAppDataPayload) => {
+    let outputPath = payload?.outputPath;
+    if (!outputPath) {
+      const res = await dialog.showSaveDialog({
+        title: 'Save App Data Backup',
+        defaultPath: `mythos-backup-${new Date().toISOString().slice(0, 10)}.mwbackup`,
+        filters: [{ name: 'Mythos Backup', extensions: ['mwbackup'] }],
+      });
+      if (res.canceled || !res.filePath) return { path: null, bytes: 0, cancelled: true };
+      outputPath = res.filePath;
+    }
+    closeDb();
+    try {
+      const manifest = fs.existsSync(getManifestPath()) ? readManifest(getManifestPath()) : null;
+      const result = await backupAppData({
+        userDataPath: app.getPath('userData'),
+        storyVaultRoot: getVaultRoot(),
+        notesVaultRoot: getNotesVaultRoot(),
+        appVersion: app.getVersion(),
+        manifestSchemaVersion: manifest?.schemaVersion ?? 0,
+        outputPath,
+      });
+      return { ...result, cancelled: false };
+    } finally {
+      ensureVaultDir();
+    }
+  },
+
+  [IPC_CHANNELS.APP_RESTORE_APP_DATA]: async (payload: RestoreAppDataPayload) => {
+    let archivePath = payload?.archivePath;
+    if (!archivePath) {
+      const res = await dialog.showOpenDialog({
+        title: 'Restore App Data from Backup',
+        filters: [{ name: 'Mythos Backup', extensions: ['mwbackup'] }],
+        properties: ['openFile'],
+      });
+      if (res.canceled || !res.filePaths[0]) return { restored: false, cancelled: true, details: [] };
+      archivePath = res.filePaths[0];
+    }
+    closeDb();
+    try {
+      const result = await restoreAppData({
+        archivePath,
+        userDataPath: app.getPath('userData'),
+        storyVaultRoot: getVaultRoot(),
+        notesVaultRoot: getNotesVaultRoot(),
+        overwrite: payload?.confirmed ?? false,
+      });
+      return result;
+    } finally {
+      ensureVaultDir();
+    }
+  },
+
 };
 
 // ─── Create BrowserWindow ───
 function createWindow() {
+  // electron-vite emits the preload to out/preload/preload.js, while this
+  // file runs from out/main/. (The packaged app preserves the same layout.)
+  const preloadPath = path.join(__dirname, '../preload/preload.js');
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: 'Mythos Writer',
-    webPreferences: {
-      // electron-vite emits the preload to out/preload/preload.js, while this
-      // file runs from out/main/. (The packaged app preserves the same layout.)
-      preload: path.join(__dirname, '../preload/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+    webPreferences: secureWebPreferences({ preloadPath }),
+  });
+
+  // MYT-776: deny renderer-initiated popups by default; route http(s) URLs to
+  // the user's system browser via shell.openExternal instead of opening an
+  // Electron window with unfettered privileges.
+  mainWindow.webContents.setWindowOpenHandler(
+    createWindowOpenHandler((url) => { shell.openExternal(url).catch(() => {}); }),
+  );
+
+  // Block in-place navigations to anything other than the loaded renderer —
+  // protects against a compromised renderer redirecting to a remote origin
+  // that would then inherit the preload bridge.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const devServer = process.env.VITE_DEV_SERVER_URL;
+    const isAllowed =
+      (devServer && url.startsWith(devServer)) ||
+      url.startsWith('file://');
+    if (!isAllowed) event.preventDefault();
   });
 
   // Load the Vite-built renderer
@@ -2047,24 +2252,30 @@ function normalizeReleaseNotes(
 
 function initAutoUpdater() {
   // Always register IPC handlers — safe no-ops when flag is off or not packaged.
-  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, () => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
     applyUpdateChannel();
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     return { queued: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (_event, payload?: { quit: boolean }) => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (event, payload?: { quit: boolean }) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
     const quit = payload?.quit !== false; // default true = restart immediately
     autoUpdater.quitAndInstall(false, quit);
     return { ok: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, () => lastUpdateInfo);
+  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    return lastUpdateInfo;
+  });
 
   // MYT-337: app:checkForUpdate — async check that returns { available, version, releaseNotes }
-  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async () => {
+  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) {
       return { available: false, version: null, releaseNotes: null };
     }
@@ -2092,7 +2303,8 @@ function initAutoUpdater() {
 
   // MYT-337: app:installUpdate — schedules install on next quit (autoInstallOnAppQuit=true).
   // Does NOT trigger an immediate restart; the downloaded update is applied when the user quits normally.
-  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, () => {
+  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { scheduled: false };
     return { scheduled: updateDownloaded };
   });
@@ -2232,12 +2444,13 @@ function getAppSettingsPath(): string {
 
 function loadAppSettings(): AppSettings {
   const settingsPath = getAppSettingsPath();
+  let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
-      return {
+      base = {
         ...SETTINGS_DEFAULTS,
         ...raw,
         agents: {
@@ -2247,14 +2460,42 @@ function loadAppSettings(): AppSettings {
         },
       };
     } catch {
-      // fall through to defaults
+      base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
+  } else {
+    base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
   }
-  return { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
+  // MYT-777: overlay decrypted credentials from the SecretsStore so the rest
+  // of the main-process code keeps reading settings.apiKey / provider.apiKey /
+  // voice.openaiApiKey unchanged. The on-disk JSON file holds empty strings
+  // for those fields after the one-shot migration in app-ready.
+  try {
+    return hydrateSecretsIntoSettings(base, getSecretsStore());
+  } catch {
+    // Store not yet initialized (very early boot path). Caller will see the
+    // post-migration empty key strings; the env-var fallback in
+    // getValidatedApiKey still serves as a last resort for CLI/CI scenarios.
+    return base;
+  }
 }
 
 function saveAppSettings(settings: AppSettings): void {
-  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+  // MYT-777: never persist plaintext API keys to app-settings.json. Route
+  // secret-shaped fields into the encrypted store and write the cleared
+  // payload to disk. If the store is unavailable, still strip the fields so
+  // we never regress to plaintext-at-rest.
+  let toWrite: AppSettings = settings;
+  try {
+    toWrite = persistSecretsAndStripSettings(settings, getSecretsStore());
+  } catch {
+    toWrite = {
+      ...settings,
+      apiKey: '',
+      ...(settings.provider ? { provider: { ...settings.provider, apiKey: '' } } : {}),
+      ...(settings.voice ? { voice: { ...settings.voice, openaiApiKey: '' } } : {}),
+    };
+  }
+  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(toWrite, null, 2), 'utf-8');
 }
 
 // ─── Telemetry bootstrap ───────────────────────────────────────────────────
@@ -2276,7 +2517,10 @@ function initTelemetry(): void {
 // without booting electron. See settings-masking.ts.
 
 // ─── Anthropic API key validation ───
-// Checks persisted settings first, then falls back to environment variable.
+// MYT-777: settings.apiKey is hydrated from the encrypted secrets store. The
+// process.env.ANTHROPIC_API_KEY fallback is retained as a dev/CI escape hatch
+// (and for headless CLI runs) and is intentionally NOT written into the store
+// — that would silently persist a key the user did not explicitly opt into.
 function getValidatedApiKey(): string {
   const settings = loadAppSettings();
   const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY;
@@ -2292,6 +2536,7 @@ function getValidatedApiKey(): string {
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.brainstorm;
     if (!agentSettings.enabled) {
       throw new Error('Brainstorm agent is disabled in settings.');
@@ -2311,16 +2556,7 @@ function registerBrainstormHandler() {
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
-    const systemPrompt = `You are a Brainstorm Agent for fiction authors. Help the author develop their story world through conversation. You discuss story ideas, characters, locations, themes, plot arcs, world-building, and narrative goals.
-
-When you identify or introduce a specific named story fact — a character, location, item, or worldbuilding note — include a structured tag so the app can extract it:
-
-[FACT:character|Character Name|One-sentence description]
-[FACT:location|Place Name|One-sentence description]
-[FACT:item|Item Name|One-sentence description]
-[FACT:note|Note Title|Key content of the note]
-
-Be creative, ask clarifying questions, and help the author think deeper about their story. These FACT tags will appear in a "Detected Facts" panel so the author can save them to their vault.`;
+    const systemPrompt = buildAgentSystemPrompt(app.getPath('userData'), 'brainstorm');
 
     const messages = [
       ...(payload.history ?? []).map((m) => ({
@@ -2407,6 +2643,7 @@ Be creative, ask clarifying questions, and help the author think deeper about th
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
   ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.writingAssistant;
     if (!agentSettings.enabled) {
       throw new Error('Writing Assistant is disabled in settings.');
@@ -2450,7 +2687,7 @@ function registerWritingAssistantHandler() {
       {
         model,
         max_tokens: 1024,
-        system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
+        system: buildAgentSystemPrompt(app.getPath('userData'), 'writingAssistant'),
         messages: [{ role: 'user', content: userContent }],
       },
       { signal: controller.signal },
@@ -2509,7 +2746,8 @@ function registerWritingAssistantHandler() {
 // ─── Vault Agent handlers ───
 function registerVaultAgentHandlers() {
   // agent:vault-index — builds in-memory index of all vault entities
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, () => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     reindexEntities(getVaultRoot(), manifest);
@@ -2546,6 +2784,7 @@ function registerVaultAgentHandlers() {
 
   // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
   ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const apiKey = getValidatedApiKey();
 
     ensureVaultDir();
@@ -2674,28 +2913,219 @@ Then write a short summary paragraph. If no issues are found, say so and output 
   });
 }
 
-// ─── Writing Assistant scheduled scan handler (MYT-233) ───
-// Non-streaming: returns structured tips for background scheduler use.
+// ─── Writing Assistant scan core (MYT-711) ───
+// Shared logic for both the WRITING_SCAN IPC handler and the scheduled heartbeat.
+// Returns tips and upserts each as a suggestion row.
+async function runWritingScan(
+  prose: string,
+  scenePath: string,
+  sceneId: string,
+  client: Anthropic,
+  model: string,
+): Promise<{ tips: string[]; suggestionsUpserted: number; scannedAt: string }> {
+  const startedAt = Date.now();
+  let tokensIn: number | null = null;
+  let tokensOut: number | null = null;
+  let genError: string | null = null;
+  const scannedAt = new Date().toISOString();
+
+  try {
+    const response = await client.messages.create({
+      model,
+      max_tokens: 512,
+      system: 'You are a Writing Assistant doing a quick scene scan. Read the prose and identify 2–3 specific, actionable writing tips about craft, pacing, voice, or clarity. Return ONLY a JSON array of tip strings, for example: ["Tip one.", "Tip two."]. No other text.',
+      messages: [{
+        role: 'user',
+        content: `Scene (${scenePath}):\n\n${prose.slice(0, 4000)}`,
+      }],
+    });
+
+    tokensIn = response.usage.input_tokens;
+    tokensOut = response.usage.output_tokens;
+
+    const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
+    const tips = parseScanTips(text);
+    const rows = buildScanSuggestions(tips, sceneId, scenePath, scannedAt, crypto.randomUUID.bind(crypto));
+
+    let suggestionsUpserted = 0;
+    for (const row of rows) {
+      try {
+        upsertSuggestion(row);
+        suggestionsUpserted++;
+      } catch { /* non-fatal — continue with remaining tips */ }
+    }
+
+    return { tips, suggestionsUpserted, scannedAt };
+  } catch (err: unknown) {
+    genError = (err as Error).message ?? 'unknown error';
+    throw err;
+  } finally {
+    const digest = crypto.createHash('sha256').update(prose.slice(0, 100)).digest('hex');
+    try {
+      insertGenerationLog({
+        id: crypto.randomUUID(),
+        agent: 'writing-assistant',
+        model,
+        endpoint: 'messages.create',
+        request_id: null,
+        tokens_in: tokensIn,
+        tokens_out: tokensOut,
+        latency_ms: Date.now() - startedAt,
+        error: genError,
+        created_at: new Date().toISOString(),
+        payload_digest: digest,
+      });
+    } catch { /* non-fatal */ }
+  }
+}
+
+// ─── Writing Assistant scheduled scan handler (MYT-233 / MYT-711) ───
 function registerWritingScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (_event, payload: WritingScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
-      return { tips: [], scannedAt: new Date().toISOString() };
+      return { tips: [], suggestionsUpserted: 0, scannedAt: new Date().toISOString() };
     }
     const budgetCheck = checkCallBudget('writing-assistant', settings.agents.writingAssistant, getDb());
     if (!budgetCheck.allowed) {
-      if (mainWindow) {
-        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
-          agent: 'writing-assistant',
-          agentLabel: 'Writing Assistant',
-          reason: budgetCheck.reason,
-        });
-      }
-      return { tips: [], scannedAt: new Date().toISOString() };
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+            agent: 'writing-assistant',
+            agentLabel: 'Writing Assistant',
+            reason: budgetCheck.reason,
+          });
+        }
+      });
+      return { tips: [], suggestionsUpserted: 0, scannedAt: new Date().toISOString() };
     }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
     const model = settings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
+
+    return runWritingScan(payload.prose, payload.scenePath, payload.sceneId, client, model);
+  });
+}
+
+// ─── Writing Assistant scheduled heartbeat (MYT-711) ───
+// Periodically scans the most recently updated scene in the vault and pushes
+// WRITING_SCAN_RESULT to all active renderers. Interval keyed to
+// agents.writingAssistant.scanIntervalSeconds; restarts when settings change.
+
+let writingScanTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopWritingScanScheduler(): void {
+  if (writingScanTimer !== null) {
+    clearInterval(writingScanTimer);
+    writingScanTimer = null;
+  }
+}
+
+function startWritingScanScheduler(): void {
+  stopWritingScanScheduler();
+  const settings = loadAppSettings();
+  if (!settings.agents.writingAssistant.enabled) return;
+
+  const intervalMs = (settings.agents.writingAssistant.scanIntervalSeconds ?? 30) * 1000;
+
+  writingScanTimer = setInterval(async () => {
+    try {
+      const currentSettings = loadAppSettings();
+      if (!currentSettings.agents.writingAssistant.enabled) return;
+      const budgetCheck = checkCallBudget('writing-assistant', currentSettings.agents.writingAssistant, getDb());
+      if (!budgetCheck.allowed) {
+        BrowserWindow.getAllWindows().forEach((win) => {
+          if (!win.isDestroyed()) {
+            win.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+              agent: 'writing-assistant',
+              agentLabel: 'Writing Assistant',
+              reason: budgetCheck.reason,
+            });
+          }
+        });
+        return;
+      }
+
+      // Find the most recently updated scene in the vault.
+      let latestScene: import('./ipc.js').SceneEntry | null = null;
+      try {
+        const manifest = readManifest(getManifestPath());
+        for (const story of manifest.stories) {
+          for (const chapter of story.chapters) {
+            for (const scene of chapter.scenes) {
+              if (!latestScene || scene.updatedAt > latestScene.updatedAt) {
+                latestScene = scene;
+              }
+            }
+          }
+        }
+        // Fallback to legacy flat scenes list
+        if (!latestScene) {
+          for (const scene of manifest.scenes) {
+            if (!latestScene || scene.updatedAt > latestScene.updatedAt) {
+              latestScene = scene;
+            }
+          }
+        }
+      } catch { /* non-fatal — no vault open yet */ }
+
+      if (!latestScene) return;
+
+      let prose = '';
+      try {
+        prose = readSceneFile(getVaultRoot(), latestScene.path).prose;
+      } catch { return; }
+      if (!prose.trim()) return;
+
+      const apiKey = getValidatedApiKey();
+      const client = new Anthropic({ apiKey });
+      const model = currentSettings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
+
+      const result = await runWritingScan(prose, latestScene.path, latestScene.id, client, model);
+
+      const pushPayload: import('./ipc.js').WritingScanResultPayload = {
+        sceneId: latestScene.id,
+        scenePath: latestScene.path,
+        tips: result.tips,
+        scannedAt: result.scannedAt,
+      };
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.WRITING_SCAN_RESULT, pushPayload);
+        }
+      });
+    } catch { /* non-fatal — scheduler must not crash the main process */ }
+  }, intervalMs);
+}
+
+// ─── Beta-Read Mode on-demand scan handler (MYT-711) ───
+// Runs an LLM analysis of a scene and auto-generates anchored BetaReadComments.
+function registerBetaReadScanHandler(): void {
+  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    const settings = loadAppSettings();
+    if (!settings.agents.writingAssistant.enabled) {
+      return { comments: [], scannedAt: new Date().toISOString() };
+    }
+    const budgetCheck = checkCallBudget('writing-assistant', settings.agents.writingAssistant, getDb());
+    if (!budgetCheck.allowed) {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+            agent: 'writing-assistant',
+            agentLabel: 'Writing Assistant',
+            reason: budgetCheck.reason,
+          });
+        }
+      });
+      return { comments: [], scannedAt: new Date().toISOString() };
+    }
+
+    const apiKey = getValidatedApiKey();
+    const client = new Anthropic({ apiKey });
+    const model = settings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
+    const scannedAt = new Date().toISOString();
     const startedAt = Date.now();
     let tokensIn: number | null = null;
     let tokensOut: number | null = null;
@@ -2704,11 +3134,13 @@ function registerWritingScanHandler(): void {
     try {
       const response = await client.messages.create({
         model,
-        max_tokens: 512,
-        system: 'You are a Writing Assistant doing a quick scene scan. Read the prose and identify 2–3 specific, actionable writing tips about craft, pacing, voice, or clarity. Return ONLY a JSON array of tip strings, for example: ["Tip one.", "Tip two."]. No other text.',
+        max_tokens: 1024,
+        system: `You are a Beta Reader reviewing a fiction scene. Identify specific passages that need improvement in pacing, clarity, characterisation, or narrative tension. For each issue, output a JSON object on its own line:
+{"anchor":"exact quote from the text (max 80 chars)","comment":"your specific feedback"}
+Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other text.`,
         messages: [{
           role: 'user',
-          content: `Scene (${payload.scenePath}):\n\n${payload.prose.slice(0, 4000)}`,
+          content: `Scene (${payload.scenePath}):\n\n${payload.prose.slice(0, 5000)}`,
         }],
       });
 
@@ -2716,19 +3148,21 @@ function registerWritingScanHandler(): void {
       tokensOut = response.usage.output_tokens;
 
       const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
-      let tips: string[] = [];
-      try {
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (Array.isArray(parsed)) tips = parsed.map(String);
-        }
-      } catch { /* fallback below */ }
-      if (tips.length === 0) {
-        tips = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      const parsed = parseBetaReadLines(text);
+      const comments = buildBetaReadComments(parsed, payload.sceneId, scannedAt, crypto.randomUUID.bind(crypto));
+
+      for (const comment of comments) {
+        insertBetaReadComment({
+          id: comment.id,
+          scene_id: comment.scene_id,
+          anchor_text: comment.anchor_text,
+          comment_text: comment.comment_text,
+          created_at: comment.created_at,
+          dismissed_at: comment.dismissed_at,
+        });
       }
 
-      return { tips: tips.slice(0, 5), scannedAt: new Date().toISOString() };
+      return { comments, scannedAt };
     } catch (err: unknown) {
       genError = (err as Error).message ?? 'unknown error';
       throw err;
@@ -2753,6 +3187,21 @@ function registerWritingScanHandler(): void {
   });
 }
 
+// ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
+function registerAgentPersonaHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (_event, payload: AgentPersonaReadPayload) => {
+    const { agentName, key } = payload;
+    const file = loadPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { content: file.content, isCustom: file.isCustom };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (_event, payload: AgentPersonaResetPayload) => {
+    const { agentName, key } = payload;
+    resetPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { success: true };
+  });
+}
+
 // ─── App lifecycle ───
 // Use software rendering. Mythos Writer is a text app with no GPU-bound UI, and
 // GPU init fails in headless/virtualized environments (CI under Xvfb, some VMs),
@@ -2765,15 +3214,30 @@ app.whenReady().then(async () => {
   ensureNotesVaultDir();
   // Track current vault in recent projects list on every launch
   addToRecentProjects(getVaultRoot());
+  // MYT-777: initialise the encrypted credential store, then run the one-shot
+  // migration that lifts any plaintext API keys out of app-settings.json into
+  // safeStorage. Must precede initTelemetry — that path can rewrite settings.
+  initSecretsStore({ userDataDir: app.getPath('userData'), safeStorage });
+  try {
+    migrateSecretsFromSettingsFile(getAppSettingsPath(), getSecretsStore());
+  } catch (e) {
+    // On hosts without a usable OS keychain, safeStorage.encryptString throws
+    // and the migration would re-throw. Leave the file untouched so existing
+    // env-var workflows keep working; settings UI will surface the error.
+    console.warn('[secrets] migration skipped: safeStorage unavailable —', (e as Error).message);
+  }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
   setupIpcMain(handlers);
   registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();
+  registerAgentPersonaHandlers();
   registerVaultAgentHandlers();
   registerWritingScanHandler();
+  registerBetaReadScanHandler();
   registerStreamingHandlers(getValidatedApiKey);
+  startWritingScanScheduler();
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
@@ -2797,6 +3261,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', async () => {
+  stopWritingScanScheduler();
   await stopVaultWatcher();
   closeDb();
   if (process.platform !== 'darwin') {

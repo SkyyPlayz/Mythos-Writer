@@ -28,6 +28,8 @@ interface Props {
   enabled?: boolean;
   scanIntervalSeconds?: number;
   isActive?: boolean;
+  isPageFocused?: boolean;
+  onJumpToText?: (text: string) => void;
 }
 
 export default function WritingAssistantPanel({
