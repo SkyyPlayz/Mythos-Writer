@@ -78,8 +78,9 @@ test('TC-SK10-01: edit → save → rollback restores prior text and snapshots t
     const sceneFile = path.join(vaultDir, 'My First Story', 'Manuscript', '01 - Opening', '01 - Scene One.md');
     expect(fs.existsSync(sceneFile)).toBe(true);
 
-    // Resolve sceneId from the manifest so the IPC calls below operate on the right entity.
-    const manifest = JSON.parse(fs.readFileSync(path.join(vaultDir, 'manifest.json'), 'utf-8')) as {
+    // Resolve sceneId via IPC (vault:manifest:read triggers reindexVault so the
+    // default manifest — which has stories:[] — is populated before we read it).
+    const manifest = await page.evaluate(() => (window as never as { api: { readManifest: () => Promise<unknown> } }).api.readManifest()) as {
       stories: Array<{ chapters: Array<{ scenes: Array<{ id: string }> }> }>;
     };
     const sceneId = manifest.stories[0].chapters[0].scenes[0].id;
