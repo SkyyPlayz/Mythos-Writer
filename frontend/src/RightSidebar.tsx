@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
@@ -21,6 +21,12 @@ interface Props {
   onInsertWikiLink?: (link: string, anchorText: string) => void;
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }
+
+const SIDEBAR_TABS: { id: Tab; label: string }[] = [
+  { id: 'notes', label: 'Notes' },
+  { id: 'properties', label: 'Properties' },
+  { id: 'ai', label: 'Assistant' },
+];
 
 function NotesPanel({ scene }: { scene: Scene | null }) {
   const [note, setNote] = useState('');
@@ -137,6 +143,12 @@ function PropertiesPanel({
 
 type AiSubTab = 'writing' | 'vault' | 'archive';
 
+const AI_SUB_TABS: { id: AiSubTab; label: string }[] = [
+  { id: 'writing', label: 'Writing' },
+  { id: 'vault', label: 'Vault' },
+  { id: 'archive', label: 'Archive' },
+];
+
 function AiPanel({
   scene,
   writingAssistantEnabled = true,
@@ -157,47 +169,63 @@ function AiPanel({
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
 }) {
   const [subTab, setSubTab] = useState<AiSubTab>('writing');
+  const subTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleSubTabKeyDown = useCallback((e: React.KeyboardEvent, idx: number) => {
+    let nextIdx = idx;
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      nextIdx = (idx + 1) % AI_SUB_TABS.length;
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      nextIdx = (idx - 1 + AI_SUB_TABS.length) % AI_SUB_TABS.length;
+    } else {
+      return;
+    }
+    setSubTab(AI_SUB_TABS[nextIdx].id);
+    subTabRefs.current[nextIdx]?.focus();
+  }, []);
 
   return (
     <div className="ai-panel">
-      <div className="ai-subtabs">
-        <button
-          className={`ai-subtab${subTab === 'writing' ? ' active' : ''}`}
-          onClick={() => setSubTab('writing')}
-        >
-          Writing
-        </button>
-        <button
-          className={`ai-subtab${subTab === 'vault' ? ' active' : ''}`}
-          onClick={() => setSubTab('vault')}
-        >
-          Vault
-        </button>
-        <button
-          className={`ai-subtab${subTab === 'archive' ? ' active' : ''}`}
-          onClick={() => setSubTab('archive')}
-        >
-          Archive
-        </button>
+      <div className="ai-subtabs" role="tablist" aria-label="AI assistant panels">
+        {AI_SUB_TABS.map((t, i) => (
+          <button
+            key={t.id}
+            ref={(el) => { subTabRefs.current[i] = el; }}
+            id={`ai-subtab-${t.id}`}
+            role="tab"
+            aria-selected={subTab === t.id}
+            aria-controls="ai-subtabpanel"
+            tabIndex={subTab === t.id ? 0 : -1}
+            className={`ai-subtab${subTab === t.id ? ' active' : ''}`}
+            onClick={() => setSubTab(t.id)}
+            onKeyDown={(e) => handleSubTabKeyDown(e, i)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      {subTab === 'writing' && (
-        <WritingAssistantPanel
-          scene={scene}
-          enabled={writingAssistantEnabled}
-          scanIntervalSeconds={scanIntervalSeconds}
-          isActive={isPageFocused}
-        />
-      )}
-      {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
-      {subTab === 'archive' && (
-        <ArchivePanel
-          scene={scene}
-          enabled={archiveEnabled}
-          onJumpToText={onJumpToText}
-          onInsertWikiLink={onInsertWikiLink}
-          onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
-        />
-      )}
+      <div id="ai-subtabpanel" role="tabpanel" aria-labelledby={`ai-subtab-${subTab}`}>
+        {subTab === 'writing' && (
+          <WritingAssistantPanel
+            scene={scene}
+            enabled={writingAssistantEnabled}
+            scanIntervalSeconds={scanIntervalSeconds}
+            isActive={isPageFocused}
+          />
+        )}
+        {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
+        {subTab === 'archive' && (
+          <ArchivePanel
+            scene={scene}
+            enabled={archiveEnabled}
+            onJumpToText={onJumpToText}
+            onInsertWikiLink={onInsertWikiLink}
+            onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -216,26 +244,49 @@ export default function RightSidebar({
   onInsertWikiLink,
   onWikiLinkSuggestionsChange,
 }: Props) {
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'notes', label: 'Notes' },
-    { id: 'properties', label: 'Properties' },
-    { id: 'ai', label: 'Assistant' },
-  ];
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent, idx: number) => {
+    let nextIdx = idx;
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      nextIdx = (idx + 1) % SIDEBAR_TABS.length;
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      nextIdx = (idx - 1 + SIDEBAR_TABS.length) % SIDEBAR_TABS.length;
+    } else {
+      return;
+    }
+    onTabChange(SIDEBAR_TABS[nextIdx].id);
+    tabRefs.current[nextIdx]?.focus();
+  }, [onTabChange]);
 
   return (
     <div className="right-sidebar">
-      <div className="sidebar-tabs">
-        {tabs.map((t) => (
+      <div className="sidebar-tabs" role="tablist" aria-label="Sidebar panels">
+        {SIDEBAR_TABS.map((t, i) => (
           <button
             key={t.id}
+            ref={(el) => { tabRefs.current[i] = el; }}
+            id={`rightsidebar-tab-${t.id}`}
+            role="tab"
+            aria-selected={activeTab === t.id}
+            aria-controls="rightsidebar-tabpanel"
+            tabIndex={activeTab === t.id ? 0 : -1}
             className={`sidebar-tab${activeTab === t.id ? ' active' : ''}`}
             onClick={() => onTabChange(t.id)}
+            onKeyDown={(e) => handleTabKeyDown(e, i)}
           >
             {t.label}
           </button>
         ))}
       </div>
-      <div className="sidebar-content">
+      <div
+        id="rightsidebar-tabpanel"
+        role="tabpanel"
+        className="sidebar-content"
+        aria-labelledby={`rightsidebar-tab-${activeTab}`}
+      >
         {activeTab === 'notes' && <NotesPanel scene={selectedScene} />}
         {activeTab === 'properties' && (
           <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />

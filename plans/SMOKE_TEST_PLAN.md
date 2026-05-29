@@ -4,7 +4,7 @@
 **Document:** MYT-255  
 **Date:** 2026-05-23  
 **Scope:** Phase 2 (Core Writing Experience) + Phase 3 (AI-Augmented Authoring) flows  
-**Automated coverage:** `e2e/smoke.spec.ts` — TC-01, TC-02, TC-03 (open vault → write → save)  
+**Automated coverage:** `e2e/smoke.spec.ts` — TC-01, TC-02 (open vault → write). TC-03 is currently skipped pending the snapshot-UI restoration tracked in SKY-17.  
 **Manual coverage:** TC-04 through TC-08 — see issue checklist below
 
 ---
@@ -77,7 +77,9 @@
 ## TC-03 — Save Snapshot
 
 **Phase:** 2  
-**Type:** Automated (e2e/smoke.spec.ts) + Manual verification
+**Type:** Automated (skipped — blocked on SKY-17) + Manual verification
+
+> **Status (SKY-16):** the automated case is `test.skip(...)` in `e2e/smoke.spec.ts`. The user-facing snapshot UX referenced below — the **Save snapshot now** button, the `.scene-autosave` indicator, and the **History** panel — lives in `SceneEditor.tsx`, which is now orphan code. `DesktopShell` mounts `BlockEditor` (TipTap) and offers no visible affordance to trigger or browse snapshots, even though `handleBlocksChange` still calls `window.api.snapshotSave(...)` automatically. Restoring the affordances is tracked in SKY-17; once that lands, un-skip this case and re-point the selectors.
 
 ### Steps
 
@@ -246,7 +248,7 @@ npx playwright install chromium
 npx playwright test e2e/smoke.spec.ts --reporter=list
 ```
 
-**Expected output:** 3 passing tests (TC-01, TC-02, TC-03).
+**Expected output:** 2 passing tests (TC-01, TC-02) and 1 skipped (TC-03 — blocked on SKY-17).
 
 ---
 

@@ -57,6 +57,10 @@ export const IPC_CHANNELS = {
   AGENT_VAULT_CHECK: 'agent:vault-check',
   AGENT_ARCHIVE: 'agent:archive',
 
+  // Agent persona files (MYT-816)
+  AGENT_PERSONA_READ: 'agent:persona:read',
+  AGENT_PERSONA_RESET: 'agent:persona:reset',
+
   // System
   SYSTEM_INFO: 'system:info',
 
@@ -1018,6 +1022,8 @@ export interface TelemetryReportPayload {
 
 export interface TelemetryReportResponse {
   queued: boolean;
+  /** Set when validation rejects the payload (MYT-794). */
+  error?: string;
 }
 
 // ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
@@ -1608,6 +1614,30 @@ export interface SetAgentConfigResponse {
   saved: boolean;
 }
 
+// ─── Agent persona IPC types (MYT-816) ───
+
+export type AgentPersonaName = 'writingAssistant' | 'brainstorm';
+export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
+
+export interface AgentPersonaReadPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaReadResponse {
+  content: string;
+  isCustom: boolean;
+}
+
+export interface AgentPersonaResetPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaResetResponse {
+  success: boolean;
+}
+
 // ─── Archive confirmation dialog (MYT-376) ───
 
 /** The three resolution verbs the user can pick for an inconsistency finding. */
@@ -1716,12 +1746,18 @@ export interface VaultGetPathsResponse {
 export interface VaultSetPathsPayload {
   storyVaultPath: string;
   notesVaultPath: string;
+  // MYT-789: at least one proof of user intent is required per path. The
+  // tokens come from vault:pick-folder; alternatively the path may already be
+  // in the recent-projects allowlist.
+  storyVaultToken?: string;
+  notesVaultToken?: string;
 }
 
 export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+  error?: string;
 }
 
 // ─── Writing modes (MYT-347) ───

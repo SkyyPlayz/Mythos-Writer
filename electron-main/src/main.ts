@@ -1,5 +1,5 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler } from './security.js';
 import { createRequire } from 'node:module';
 import path from 'path';
@@ -94,9 +94,18 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  type AgentPersonaReadPayload,
+  type AgentPersonaResetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
 } from './ipc.js';
+import {
+  buildAgentSystemPrompt,
+  loadPersonaFile,
+  resetPersonaFile,
+  type AgentPersonaName,
+  type PersonaKey,
+} from './agentPersona.js';
 import {
   openDb,
   closeDb,
@@ -127,6 +136,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
+import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import {
@@ -160,6 +170,7 @@ import {
   mergeProvenanceFrontmatter,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
+import { assertValidManifest } from './manifestValidate.js';
 import {
   createEntity,
   readEntity,
@@ -178,6 +189,12 @@ import {
 } from './archiveAgent.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
+import { initSecretsStore, getSecretsStore } from './secrets/index.js';
+import {
+  hydrateSecretsIntoSettings,
+  migrateSecretsFromSettingsFile,
+  persistSecretsAndStripSettings,
+} from './secrets/migration.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
@@ -186,8 +203,7 @@ import {
   configureTelemetry,
   generateSessionId,
   reportEvent,
-  TELEMETRY_EVENT_TYPES,
-  type TelemetryEventType,
+  validateTelemetryPayload,
 } from './telemetry.js';
 import {
   parseScanTips,
@@ -453,6 +469,10 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
     ensureVaultDir();
+    // MYT-792: validate before touching disk. assertValidManifest throws
+    // ManifestValidationError on the first invalid field; setupIpcMain's
+    // try/catch converts it into { error } for the renderer.
+    assertValidManifest(payload?.manifest);
     writeManifest(getManifestPath(), payload.manifest);
     const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
     return { path: getManifestPath(), bytes };
@@ -2050,7 +2070,14 @@ const handlers: IpcHandlers = {
 
   // ─── Telemetry (MYT-344) ───
   [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: import('./ipc.js').TelemetryReportPayload) => {
-    reportEvent({ type: payload.type as TelemetryEventType, meta: payload.meta });
+    // MYT-794: validate renderer-supplied payload before it reaches the event
+    // store. Unknown event types and malformed meta are rejected with a typed
+    // error instead of being silently coerced through.
+    const result = validateTelemetryPayload(payload);
+    if (!result.ok) {
+      return { queued: false, error: result.error };
+    }
+    reportEvent(result.event);
     return { queued: true };
   },
 
@@ -2063,10 +2090,18 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
-    const newRoot = payload.vaultRoot;
-    if (!newRoot || typeof newRoot !== 'string') {
-      return { vaultRoot: getVaultRoot(), switched: false, error: 'Invalid vault root' };
+    // MYT-789: gate the switch behind the recent-projects allowlist. Without
+    // this, a renderer could re-root the vault sandbox at any existing,
+    // writable directory and then read or overwrite arbitrary files via the
+    // rest of the vault:* IPC surface.
+    const gate = checkProjectSwitchGate(
+      payload?.vaultRoot,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: gate.error };
     }
+    const newRoot = gate.vaultRoot;
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
@@ -2106,11 +2141,22 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
-    const { storyVaultPath, notesVaultPath } = payload;
-    validateVaultPath(storyVaultPath, 'storyVaultPath');
-    validateVaultPath(notesVaultPath, 'notesVaultPath');
-    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
-    return { storyVaultPath, notesVaultPath, saved: true };
+    // MYT-789: gate the new vault roots behind either a registration token
+    // (issued by vault:pick-folder) or membership in the recent-projects
+    // allowlist. Without this, any absolute, writable directory passes
+    // validateVaultPath and the renderer can re-root the vault sandbox at
+    // $HOME or /, escaping every other vault:* sandbox check.
+    const gate = checkSetPathsGate(
+      payload,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { storyVaultPath: getVaultRoot(), notesVaultPath: getNotesVaultRoot(), saved: false, error: gate.error };
+    }
+    validateVaultPath(gate.storyVaultPath, 'storyVaultPath');
+    validateVaultPath(gate.notesVaultPath, 'notesVaultPath');
+    saveVaultSettings({ vaultRoot: gate.storyVaultPath, notesVaultRoot: gate.notesVaultPath });
+    return { storyVaultPath: gate.storyVaultPath, notesVaultPath: gate.notesVaultPath, saved: true };
   },
 
   // ─── Writing modes (MYT-347) ───
@@ -2462,12 +2508,13 @@ function getAppSettingsPath(): string {
 
 function loadAppSettings(): AppSettings {
   const settingsPath = getAppSettingsPath();
+  let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
-      return {
+      base = {
         ...SETTINGS_DEFAULTS,
         ...raw,
         agents: {
@@ -2477,14 +2524,42 @@ function loadAppSettings(): AppSettings {
         },
       };
     } catch {
-      // fall through to defaults
+      base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
+  } else {
+    base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
   }
-  return { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
+  // MYT-777: overlay decrypted credentials from the SecretsStore so the rest
+  // of the main-process code keeps reading settings.apiKey / provider.apiKey /
+  // voice.openaiApiKey unchanged. The on-disk JSON file holds empty strings
+  // for those fields after the one-shot migration in app-ready.
+  try {
+    return hydrateSecretsIntoSettings(base, getSecretsStore());
+  } catch {
+    // Store not yet initialized (very early boot path). Caller will see the
+    // post-migration empty key strings; the env-var fallback in
+    // getValidatedApiKey still serves as a last resort for CLI/CI scenarios.
+    return base;
+  }
 }
 
 function saveAppSettings(settings: AppSettings): void {
-  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+  // MYT-777: never persist plaintext API keys to app-settings.json. Route
+  // secret-shaped fields into the encrypted store and write the cleared
+  // payload to disk. If the store is unavailable, still strip the fields so
+  // we never regress to plaintext-at-rest.
+  let toWrite: AppSettings = settings;
+  try {
+    toWrite = persistSecretsAndStripSettings(settings, getSecretsStore());
+  } catch {
+    toWrite = {
+      ...settings,
+      apiKey: '',
+      ...(settings.provider ? { provider: { ...settings.provider, apiKey: '' } } : {}),
+      ...(settings.voice ? { voice: { ...settings.voice, openaiApiKey: '' } } : {}),
+    };
+  }
+  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(toWrite, null, 2), 'utf-8');
 }
 
 // ─── Telemetry bootstrap ───────────────────────────────────────────────────
@@ -2506,7 +2581,10 @@ function initTelemetry(): void {
 // without booting electron. See settings-masking.ts.
 
 // ─── Anthropic API key validation ───
-// Checks persisted settings first, then falls back to environment variable.
+// MYT-777: settings.apiKey is hydrated from the encrypted secrets store. The
+// process.env.ANTHROPIC_API_KEY fallback is retained as a dev/CI escape hatch
+// (and for headless CLI runs) and is intentionally NOT written into the store
+// — that would silently persist a key the user did not explicitly opt into.
 function getValidatedApiKey(): string {
   const settings = loadAppSettings();
   const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY;
@@ -2542,16 +2620,7 @@ function registerBrainstormHandler() {
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
-    const systemPrompt = `You are a Brainstorm Agent for fiction authors. Help the author develop their story world through conversation. You discuss story ideas, characters, locations, themes, plot arcs, world-building, and narrative goals.
-
-When you identify or introduce a specific named story fact — a character, location, item, or worldbuilding note — include a structured tag so the app can extract it:
-
-[FACT:character|Character Name|One-sentence description]
-[FACT:location|Place Name|One-sentence description]
-[FACT:item|Item Name|One-sentence description]
-[FACT:note|Note Title|Key content of the note]
-
-Be creative, ask clarifying questions, and help the author think deeper about their story. These FACT tags will appear in a "Detected Facts" panel so the author can save them to their vault.`;
+    const systemPrompt = buildAgentSystemPrompt(app.getPath('userData'), 'brainstorm');
 
     const messages = [
       ...(payload.history ?? []).map((m) => ({
@@ -2682,7 +2751,7 @@ function registerWritingAssistantHandler() {
       {
         model,
         max_tokens: 1024,
-        system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
+        system: buildAgentSystemPrompt(app.getPath('userData'), 'writingAssistant'),
         messages: [{ role: 'user', content: userContent }],
       },
       { signal: controller.signal },
@@ -3182,6 +3251,21 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
   });
 }
 
+// ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
+function registerAgentPersonaHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (_event, payload: AgentPersonaReadPayload) => {
+    const { agentName, key } = payload;
+    const file = loadPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { content: file.content, isCustom: file.isCustom };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (_event, payload: AgentPersonaResetPayload) => {
+    const { agentName, key } = payload;
+    resetPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { success: true };
+  });
+}
+
 // ─── App lifecycle ───
 // Use software rendering. Mythos Writer is a text app with no GPU-bound UI, and
 // GPU init fails in headless/virtualized environments (CI under Xvfb, some VMs),
@@ -3194,12 +3278,25 @@ app.whenReady().then(async () => {
   ensureNotesVaultDir();
   // Track current vault in recent projects list on every launch
   addToRecentProjects(getVaultRoot());
+  // MYT-777: initialise the encrypted credential store, then run the one-shot
+  // migration that lifts any plaintext API keys out of app-settings.json into
+  // safeStorage. Must precede initTelemetry — that path can rewrite settings.
+  initSecretsStore({ userDataDir: app.getPath('userData'), safeStorage });
+  try {
+    migrateSecretsFromSettingsFile(getAppSettingsPath(), getSecretsStore());
+  } catch (e) {
+    // On hosts without a usable OS keychain, safeStorage.encryptString throws
+    // and the migration would re-throw. Leave the file untouched so existing
+    // env-var workflows keep working; settings UI will surface the error.
+    console.warn('[secrets] migration skipped: safeStorage unavailable —', (e as Error).message);
+  }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
   setupIpcMain(handlers);
   registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();
+  registerAgentPersonaHandlers();
   registerVaultAgentHandlers();
   registerWritingScanHandler();
   registerBetaReadScanHandler();
