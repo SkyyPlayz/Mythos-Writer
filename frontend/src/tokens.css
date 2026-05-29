@@ -1,5 +1,5 @@
 /* =============================================================================
- * Liquid Glass Dark Neon — Design Tokens (phase 1 foundation)
+ * Liquid Neon — Design Tokens (phase 1 foundation)
  * Implements MYT-520 §1 at the default slider position (s ≈ 0.40, leaning soft).
  *
  * Scope (MYT-517, foundation only):
@@ -49,7 +49,7 @@
       rgba(255, 77, 255, 0.6) 100%);
 
   /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
-  /* Background image override — set by applyLiquidGlassTokens (MYT-613/716).
+  /* Background image override — set by applyLiquidNeonTokens (MYT-613/716).
      'none' keeps the plain --bg-base colour; any other value shows as a
      full-cover wallpaper behind all glass panels. */
   --bg-app-image: none;
@@ -69,7 +69,7 @@
   --glass-inner-shadow: inset 0 1px 24px rgba(20, 16, 40, 0.45);
 
   /* ---- 1.2b Softness↔Contrast axis defaults (MYT-518) ------------------ */
-  --lg-blur: 16px;             /* overridden at runtime by applyLiquidGlassTokens */
+  --lg-blur: 16px;             /* overridden at runtime by applyLiquidNeonTokens */
   --lg-glass: 0.72;            /* glass opacity multiplier (0–1) */
   --lg-neon: 0.5;              /* neon glow intensity (0–1) */
   --lg-style: 0.5;             /* style softness (0–1) */
@@ -158,7 +158,7 @@
   --border-default: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
 
-  /* Brand accent — cyan per Liquid Glass spec §1.1 (MYT-680 polish pass). */
+  /* Brand accent — cyan per Liquid Neon spec §1.1 (MYT-680 polish pass). */
   --accent: var(--neon-cyan);
   --accent-soft: rgba(0, 240, 255, 0.12);
   --accent-violet: var(--neon-violet);
@@ -179,7 +179,7 @@
    * these resolved to nothing and the UI leaned on inline fallbacks). Defining
    * them here is what actually makes every surface token-driven. Two legacy
    * conventions are in use — bare (`--text-primary`) and `--color-`-prefixed —
-   * both are mapped onto the Liquid Glass palette above. The MYT-521 polish
+   * both are mapped onto the Liquid Neon palette above. The MYT-521 polish
    * pass migrates components onto the canonical names and retires these.
    * ====================================================================== */
 
@@ -246,19 +246,32 @@
   --color-surface-hover: var(--bg-hover);
   --color-surface-subtle: var(--bg-inset);
   --color-success: var(--state-success);
+  --color-success-bg: rgba(74, 222, 128, 0.12);
+  --color-success-border: rgba(74, 222, 128, 0.4);
   --color-danger: var(--state-danger);
   --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-danger-border: rgba(248, 113, 113, 0.4);
   --color-error: var(--state-danger);
   --color-warning: var(--state-warning);
   --color-warning-bg: rgba(251, 191, 36, 0.12);
   --color-warning-border: rgba(251, 191, 36, 0.4);
   --color-warning-text: #fbbf24;
   --color-archive-hint: var(--neon-violet);
+
+  /* Entity-category badge tokens — fact type chips in BrainstormPage */
+  --entity-char-bg: rgba(99, 102, 241, 0.20);
+  --entity-char-text: #a5b4fc;
+  --entity-loc-bg: rgba(16, 185, 129, 0.15);
+  --entity-loc-text: #6ee7b7;
+  --entity-item-bg: rgba(245, 158, 11, 0.15);
+  --entity-item-text: #fcd34d;
+  --entity-concept-bg: rgba(139, 92, 246, 0.18);
+  --entity-concept-text: #d8b4fe;
 }
 
 /* =============================================================================
  * High-contrast accessibility theme (MYT-520 §5.2).
- * Composes ON TOP of Liquid Glass — it is not a slider position. Triggered by:
+ * Composes ON TOP of Liquid Neon — it is not a slider position. Triggered by:
  *   - explicit app setting  -> [data-contrast="high"] (set by theme.ts)
  *   - OS "increase contrast" -> prefers-contrast: more
  *   - OS "reduce transparency" / forced-colors -> opaque fills
@@ -299,6 +312,24 @@
   --accent-dim: #c9b6ff;
   --accent-dark: #c9b6ff;
   --surface-3: #1d232c;
+
+  /* State bg/border — higher opacity for legibility */
+  --color-success-bg: rgba(74, 222, 128, 0.22);
+  --color-success-border: rgba(74, 222, 128, 0.7);
+  --color-danger-bg: rgba(248, 113, 113, 0.22);
+  --color-danger-border: rgba(248, 113, 113, 0.7);
+  --color-warning-bg: rgba(251, 191, 36, 0.22);
+  --color-warning-border: rgba(251, 191, 36, 0.7);
+
+  /* Entity-category badges — solid, higher contrast text for AAA */
+  --entity-char-bg: rgba(99, 102, 241, 0.35);
+  --entity-char-text: #c7d2fe;
+  --entity-loc-bg: rgba(16, 185, 129, 0.25);
+  --entity-loc-text: #a7f3d0;
+  --entity-item-bg: rgba(245, 158, 11, 0.25);
+  --entity-item-text: #fde68a;
+  --entity-concept-bg: rgba(139, 92, 246, 0.30);
+  --entity-concept-text: #ede9fe;
 }
 
 /* OS-level increased-contrast request → clamp toward the high-contrast theme. */

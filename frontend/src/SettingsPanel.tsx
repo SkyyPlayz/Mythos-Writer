@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { applyTheme, applyLiquidGlassTokens, resetLiquidGlassTokens, LIQUID_GLASS_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
+import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -7,12 +7,147 @@ interface MicDevice {
   label: string;
 }
 
+// ─── Persona viewer (MYT-816) ─────────────────────────────────────────────────
+
+type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
+const PERSONA_KEYS: PersonaKey[] = ['AGENTS', 'HEARTBEAT', 'SOUL', 'TOOLS'];
+
+interface PersonaFileState {
+  content: string;
+  isCustom: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainstorm' }) {
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<PersonaKey>('AGENTS');
+  const [files, setFiles] = useState<Record<PersonaKey, PersonaFileState>>({
+    AGENTS:    { content: '', isCustom: false, loading: false, error: null },
+    HEARTBEAT: { content: '', isCustom: false, loading: false, error: null },
+    SOUL:      { content: '', isCustom: false, loading: false, error: null },
+    TOOLS:     { content: '', isCustom: false, loading: false, error: null },
+  });
+  const [resetBusy, setResetBusy] = useState(false);
+
+  const loadFile = useCallback(async (key: PersonaKey) => {
+    setFiles((prev) => ({ ...prev, [key]: { ...prev[key], loading: true, error: null } }));
+    try {
+      const res = await (window.api as any).agentPersonaRead(agentName, key) as { content: string; isCustom: boolean };
+      setFiles((prev) => ({ ...prev, [key]: { content: res.content, isCustom: res.isCustom, loading: false, error: null } }));
+    } catch (err) {
+      setFiles((prev) => ({ ...prev, [key]: { ...prev[key], loading: false, error: (err as Error).message } }));
+    }
+  }, [agentName]);
+
+  useEffect(() => {
+    if (!open) return;
+    for (const key of PERSONA_KEYS) loadFile(key);
+  }, [open, loadFile]);
+
+  const handleReset = async (key: PersonaKey) => {
+    setResetBusy(true);
+    try {
+      await (window.api as any).agentPersonaReset(agentName, key);
+      await loadFile(key);
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const file = files[activeTab];
+
+  return (
+    <div className="settings-persona-viewer">
+      <button
+        type="button"
+        className="settings-persona-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="settings-persona-chevron">{open ? '▾' : '▸'}</span>
+        Persona files
+      </button>
+      {open && (
+        <div className="settings-persona-panel">
+          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs">
+            {PERSONA_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === key}
+                className={`settings-persona-tab${activeTab === key ? ' settings-persona-tab--active' : ''}`}
+                onClick={() => setActiveTab(key)}
+              >
+                {key}.md
+                {files[key].isCustom && (
+                  <span className="settings-persona-custom-badge" title="Custom override">●</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="settings-persona-content" role="tabpanel">
+            {file.loading && <p className="settings-persona-loading">Loading…</p>}
+            {file.error && <p className="settings-persona-error">{file.error}</p>}
+            {!file.loading && !file.error && (
+              <>
+                {file.isCustom && (
+                  <div className="settings-persona-actions">
+                    <span className="settings-persona-custom-label">Custom</span>
+                    <button
+                      type="button"
+                      className="settings-persona-reset-btn"
+                      disabled={resetBusy}
+                      onClick={() => handleReset(activeTab)}
+                    >
+                      Reset to default
+                    </button>
+                  </div>
+                )}
+                <textarea
+                  className="settings-persona-textarea"
+                  readOnly
+                  value={file.content}
+                  aria-label={`${agentName} ${activeTab}.md content`}
+                  spellCheck={false}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Provider / Telemetry types (MYT-779) ─────────────────────────────────────
+
+type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+
+const PROVIDER_OPTIONS: { value: ProviderKind; label: string; needsKey: boolean; needsUrl: boolean }[] = [
+  { value: 'anthropic', label: 'Anthropic (Claude)', needsKey: true, needsUrl: false },
+  { value: 'openai', label: 'OpenAI', needsKey: true, needsUrl: false },
+  { value: 'ollama', label: 'Ollama (local)', needsKey: false, needsUrl: true },
+  { value: 'lmstudio', label: 'LM Studio (local)', needsKey: false, needsUrl: true },
+  { value: 'custom', label: 'Custom endpoint', needsKey: true, needsUrl: true },
+];
+
+const TELEMETRY_DATA_LIST = [
+  'App version and platform (OS / Electron version)',
+  'Session start and end timestamps',
+  'Feature usage counts (e.g. brainstorm invocations, suggestions accepted)',
+  'Error type and frequency (no content or personal data)',
+];
+
+type TestConnectionStatus = 'idle' | 'testing' | 'ok' | 'error';
+
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
-  { value: 'dark', label: 'Dark (Liquid Glass)' },
+  { value: 'dark', label: 'Liquid Neon' },
   { value: 'high-contrast', label: 'High contrast' },
 ];
 
-const LG_DEFAULTS: LiquidGlassPrefs = LIQUID_GLASS_DEFAULTS;
+const LG_DEFAULTS: LiquidNeonPrefs = LIQUID_NEON_DEFAULTS;
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku' },
@@ -180,8 +315,20 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
 
-  // Liquid Glass customization state (MYT-613 / MYT-716)
-  const [lg, setLg] = useState<LiquidGlassPrefs>({ ...LG_DEFAULTS });
+  // Provider state (MYT-779)
+  const [providerKind, setProviderKind] = useState<ProviderKind>('anthropic');
+  const [providerApiKey, setProviderApiKey] = useState('');
+  const [providerApiKeyDirty, setProviderApiKeyDirty] = useState(false);
+  const [providerBaseUrl, setProviderBaseUrl] = useState('');
+  const [providerModel, setProviderModel] = useState('');
+  const [testConnectionStatus, setTestConnectionStatus] = useState<TestConnectionStatus>('idle');
+  const [testConnectionMsg, setTestConnectionMsg] = useState('');
+
+  // Telemetry state (MYT-344 / MYT-779)
+  const [telemetryEnabled, setTelemetryEnabled] = useState(false);
+
+  // Liquid Neon customization state (MYT-613 / MYT-716)
+  const [lg, setLg] = useState<LiquidNeonPrefs>({ ...LG_DEFAULTS });
   const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
   const [bgPreviewUrl, setBgPreviewUrl] = useState<string | null>(null);
   const [bgPickBusy, setBgPickBusy] = useState(false);
@@ -190,15 +337,21 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   useEffect(() => {
     window.api.settingsGet().then((s) => {
       setSettings(s);
-      if (s.liquidGlass) {
-        setLg({ ...LG_DEFAULTS, ...s.liquidGlass });
-        const bg = s.liquidGlass.background;
+      if (s.liquidNeon) {
+        setLg({ ...LG_DEFAULTS, ...s.liquidNeon });
+        const bg = s.liquidNeon.background;
         if (bg && bg !== 'default') {
           (window.api as any).loadBgImage?.(bg)
             .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
             .catch(() => {});
         }
       }
+      if (s.provider) {
+        setProviderKind(s.provider.kind as ProviderKind);
+        setProviderBaseUrl(s.provider.baseUrl ?? '');
+        setProviderModel(s.provider.model ?? '');
+      }
+      setTelemetryEnabled(s.telemetry?.enabled ?? false);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -212,6 +365,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [lgAdvancedOpen]);
+
+  // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose, lgAdvancedOpen]);
 
   // Focus trap in popover
   useEffect(() => {
@@ -267,21 +427,30 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setSaveError(null);
     setSavedOk(false);
     try {
+      const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
+      const provider: AppSettings['provider'] = {
+        kind: providerKind,
+        model: providerModel,
+        ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
+        ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+      };
       const payload: AppSettings = {
         ...settings,
         apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
-        liquidGlass: lg,
+        provider,
+        liquidNeon: lg,
+        telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
       };
       await window.api.settingsSet(payload);
       setSavedOk(true);
-      applyLiquidGlassTokens(lg, bgPreviewUrl);
+      applyLiquidNeonTokens(lg, bgPreviewUrl);
       onSaved?.(payload);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, lg, bgPreviewUrl, onSaved]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -347,12 +516,35 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     }
   }, []);
 
-  // ── Liquid Glass helpers ─────────────────────────────────────────────────
+  const handleTestConnection = useCallback(async () => {
+    setTestConnectionStatus('testing');
+    setTestConnectionMsg('');
+    try {
+      const result = await (window.api as unknown as Record<string, (a: unknown) => Promise<{ ok: boolean; error?: string }>>).testProviderConnection?.({
+        kind: providerKind,
+        apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? ''),
+        baseUrl: providerBaseUrl || undefined,
+        model: providerModel,
+      });
+      if (result?.ok) {
+        setTestConnectionStatus('ok');
+        setTestConnectionMsg('Connection successful');
+      } else {
+        setTestConnectionStatus('error');
+        setTestConnectionMsg(result?.error ?? 'Connection failed');
+      }
+    } catch (e) {
+      setTestConnectionStatus('error');
+      setTestConnectionMsg(e instanceof Error ? e.message : 'Connection failed');
+    }
+  }, [providerKind, providerApiKey, providerApiKeyDirty, providerBaseUrl, providerModel, settings.provider?.apiKey]);
 
-  const setLgField = useCallback(<K extends keyof LiquidGlassPrefs>(key: K, value: LiquidGlassPrefs[K]) => {
+  // ── Liquid Neon helpers ──────────────────────────────────────────────────
+
+  const setLgField = useCallback(<K extends keyof LiquidNeonPrefs>(key: K, value: LiquidNeonPrefs[K]) => {
     setLg((prev) => {
       const next = { ...prev, [key]: value };
-      applyLiquidGlassTokens(next, bgPreviewUrl);
+      applyLiquidNeonTokens(next, bgPreviewUrl);
       return next;
     });
     setSavedOk(false);
@@ -362,12 +554,12 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setLg((prev) => {
       if (prev.advancedDecoupled) {
         // When decoupled only update the master; individual sliders stay
-        const next: LiquidGlassPrefs = { ...prev, softnessContrast: s };
-        applyLiquidGlassTokens(next, bgPreviewUrl);
+        const next: LiquidNeonPrefs = { ...prev, softnessContrast: s };
+        applyLiquidNeonTokens(next, bgPreviewUrl);
         return next;
       }
-      const next: LiquidGlassPrefs = { ...prev, softnessContrast: s, glass: s, blur: s, neonIntensity: s };
-      applyLiquidGlassTokens(next, bgPreviewUrl);
+      const next: LiquidNeonPrefs = { ...prev, softnessContrast: s, glass: s, blur: s, neonIntensity: s };
+      applyLiquidNeonTokens(next, bgPreviewUrl);
       return next;
     });
     setSavedOk(false);
@@ -376,8 +568,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const handleRelinkToSlider = useCallback(() => {
     setLg((prev) => {
       const s = prev.softnessContrast;
-      const next: LiquidGlassPrefs = { ...prev, advancedDecoupled: false, glass: s ?? LG_DEFAULTS.glass, blur: s ?? LG_DEFAULTS.blur, neonIntensity: s ?? LG_DEFAULTS.neonIntensity };
-      applyLiquidGlassTokens(next, bgPreviewUrl);
+      const next: LiquidNeonPrefs = { ...prev, advancedDecoupled: false, glass: s ?? LG_DEFAULTS.glass, blur: s ?? LG_DEFAULTS.blur, neonIntensity: s ?? LG_DEFAULTS.neonIntensity };
+      applyLiquidNeonTokens(next, bgPreviewUrl);
       return next;
     });
     setSavedOk(false);
@@ -394,7 +586,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         setBgPreviewUrl(dataUrl);
         setLg((prev) => {
           const next = { ...prev, background: res.filePath as string, bgMode: 'image' as const };
-          applyLiquidGlassTokens(next, dataUrl);
+          applyLiquidNeonTokens(next, dataUrl);
           return next;
         });
         setSavedOk(false);
@@ -410,7 +602,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setBgPreviewUrl(null);
     setLg((prev) => {
       const next = { ...prev, background: 'default' as const, bgMode: 'color' as const };
-      applyLiquidGlassTokens(next, null);
+      applyLiquidNeonTokens(next, null);
       return next;
     });
     setSavedOk(false);
@@ -422,8 +614,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setLg(defaults);
     setBgPreviewUrl(null);
     setResetConfirm(false);
-    resetLiquidGlassTokens();
-    applyLiquidGlassTokens(defaults);
+    resetLiquidNeonTokens();
+    applyLiquidNeonTokens(defaults);
     setSavedOk(false);
   }, [resetConfirm]);
 
@@ -448,6 +640,105 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         </div>
 
         <div className="settings-body">
+
+          {/* ── AI Providers ── */}
+          <section className="settings-section" aria-labelledby="section-providers">
+            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+            <div className="settings-field">
+              <label className="settings-label" htmlFor="provider-select">Provider</label>
+              <select
+                id="provider-select"
+                className="settings-input settings-select"
+                value={providerKind}
+                aria-label="AI provider"
+                onChange={(e) => {
+                  setProviderKind(e.target.value as ProviderKind);
+                  setProviderApiKeyDirty(false);
+                  setTestConnectionStatus('idle');
+                  setSavedOk(false);
+                }}
+              >
+                {PROVIDER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            {(() => {
+              const def = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
+              return (
+                <>
+                  {def.needsKey && (
+                    <div className="settings-field">
+                      <label className="settings-label" htmlFor="provider-api-key">API Key</label>
+                      <div className="settings-input-row">
+                        <input
+                          id="provider-api-key"
+                          className="settings-input"
+                          type="password"
+                          value={providerApiKey}
+                          placeholder={settings.provider?.apiKey ? 'Key configured — enter a new key to replace' : 'Paste API key…'}
+                          autoComplete="off"
+                          spellCheck={false}
+                          aria-label="Provider API key"
+                          onChange={(e) => { setProviderApiKey(e.target.value); setProviderApiKeyDirty(true); setTestConnectionStatus('idle'); setSavedOk(false); }}
+                        />
+                      </div>
+                      {!providerApiKeyDirty && settings.provider?.apiKey && (
+                        <p className="settings-hint" data-testid="provider-key-configured-hint">Key is already configured.</p>
+                      )}
+                    </div>
+                  )}
+                  {def.needsUrl && (
+                    <div className="settings-field">
+                      <label className="settings-label" htmlFor="provider-base-url">Base URL</label>
+                      <input
+                        id="provider-base-url"
+                        className="settings-input"
+                        type="url"
+                        value={providerBaseUrl}
+                        placeholder="http://localhost:11434"
+                        spellCheck={false}
+                        aria-label="Provider base URL"
+                        onChange={(e) => { setProviderBaseUrl(e.target.value); setTestConnectionStatus('idle'); setSavedOk(false); }}
+                      />
+                    </div>
+                  )}
+                  <div className="settings-field">
+                    <label className="settings-label" htmlFor="provider-model">Default model</label>
+                    <input
+                      id="provider-model"
+                      className="settings-input"
+                      type="text"
+                      value={providerModel}
+                      placeholder={providerKind === 'anthropic' ? 'claude-sonnet-4-6' : 'model name'}
+                      spellCheck={false}
+                      aria-label="Default model for this provider"
+                      onChange={(e) => { setProviderModel(e.target.value); setSavedOk(false); }}
+                    />
+                  </div>
+                  <div className="settings-field">
+                    <div className="settings-input-row">
+                      <button
+                        className="settings-btn settings-btn-secondary"
+                        type="button"
+                        disabled={testConnectionStatus === 'testing'}
+                        aria-label="Test provider connection"
+                        onClick={handleTestConnection}
+                      >
+                        {testConnectionStatus === 'testing' ? 'Testing…' : 'Test connection'}
+                      </button>
+                      {testConnectionStatus === 'ok' && (
+                        <span className="settings-test-ok" role="status">{testConnectionMsg}</span>
+                      )}
+                      {testConnectionStatus === 'error' && (
+                        <span className="settings-test-error" role="alert">{testConnectionMsg}</span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </section>
 
           {/* ── API Key ── */}
           <section className="settings-section" aria-labelledby="section-api-key">
@@ -684,6 +975,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   />
                 </div>
               </div>
+              <PersonaViewer agentName="writingAssistant" />
             </div>
 
             <div className="settings-agent-card">
@@ -793,7 +1085,12 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     onChange={(e) => setAgentField('brainstorm', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {/* SKY-20: per-category routing memory for Blank-mode vaults.
+                    Hidden in Default-mode vaults (the seeded layout fixes the
+                    destination) so users don't see an empty / inert control. */}
+                <BrainstormRoutingPanel />
               </div>
+              <PersonaViewer agentName="brainstorm" />
             </div>
 
             <div className="settings-agent-card">
@@ -1134,6 +1431,33 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
           </section>
 
+          {/* ── Telemetry ── */}
+          <section className="settings-section" aria-labelledby="section-telemetry">
+            <h3 className="settings-section-title" id="section-telemetry">Telemetry</h3>
+            <div className="settings-field">
+              <div className="settings-agent-header">
+                <span className="settings-label">Send anonymous usage data</span>
+                <label className="settings-toggle" htmlFor="telemetry-enabled">
+                  <input
+                    id="telemetry-enabled"
+                    type="checkbox"
+                    aria-label="Enable telemetry"
+                    checked={telemetryEnabled}
+                    onChange={(e) => { setTelemetryEnabled(e.target.checked); setSavedOk(false); }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+              <p className="settings-hint">Off by default. When enabled, we collect only:</p>
+              <ul className="settings-telemetry-list" aria-label="Telemetry data items">
+                {TELEMETRY_DATA_LIST.map((item) => (
+                  <li key={item} className="settings-telemetry-item">{item}</li>
+                ))}
+              </ul>
+              <p className="settings-hint">No text content, file names, or personal data is ever sent.</p>
+            </div>
+          </section>
+
         </div>
 
         <div className="settings-footer">
@@ -1226,7 +1550,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                         const v = Number(e.target.value);
                         setLg((prev) => {
                           const next = { ...prev, blur: v, advancedDecoupled: true };
-                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          applyLiquidNeonTokens(next, bgPreviewUrl);
                           return next;
                         });
                         setSavedOk(false);
@@ -1253,7 +1577,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                         const v = Number(e.target.value);
                         setLg((prev) => {
                           const next = { ...prev, glass: v, advancedDecoupled: true };
-                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          applyLiquidNeonTokens(next, bgPreviewUrl);
                           return next;
                         });
                         setSavedOk(false);
@@ -1280,7 +1604,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                         const v = Number(e.target.value);
                         setLg((prev) => {
                           const next = { ...prev, neonIntensity: v, advancedDecoupled: true };
-                          applyLiquidGlassTokens(next, bgPreviewUrl);
+                          applyLiquidNeonTokens(next, bgPreviewUrl);
                           return next;
                         });
                         setSavedOk(false);
@@ -1604,6 +1928,81 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// SKY-20: Brainstorm routing memory — shows which folder the agent has
+// remembered for each category in a Blank-mode vault and lets the user
+// clear it. Hidden in Default-mode vaults (the seeded layout fixes the
+// destination so there is nothing to reset).
+type RoutingCategory = 'character' | 'location' | 'item' | 'note';
+const ROUTING_CATEGORIES: RoutingCategory[] = ['character', 'location', 'item', 'note'];
+
+function BrainstormRoutingPanel() {
+  const [layoutMode, setLayoutMode] = useState<'default' | 'blank' | 'imported' | null>(null);
+  const [routing, setRouting] = useState<Partial<Record<RoutingCategory, string>>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { layoutMode: mode, notesRouting } = await window.api.brainstormGetSettings();
+        if (cancelled) return;
+        setLayoutMode(mode);
+        setRouting(notesRouting);
+      } catch {
+        if (!cancelled) setLayoutMode('default');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleReset = useCallback(async (category: RoutingCategory) => {
+    try {
+      const result = await window.api.brainstormResetCategoryRouting(category);
+      setRouting(result.notesRouting);
+    } catch {
+      // No-op — failure here leaves the existing memory in place.
+    }
+  }, []);
+
+  if (layoutMode === null || layoutMode === 'default') return null;
+
+  return (
+    <div className="settings-field" data-testid="brainstorm-routing-panel">
+      <label className="settings-label">Notes folder routing</label>
+      <p className="settings-help-text">
+        Brainstorm asks once per category in a Blank vault and remembers your
+        pick. Clear a row below to be asked again on the next note.
+      </p>
+      <ul className="bs-routing-memory-list">
+        {ROUTING_CATEGORIES.map((cat) => {
+          const dest = routing[cat];
+          return (
+            <li
+              key={cat}
+              className="bs-routing-memory-row"
+              data-testid={`brainstorm-routing-memory-${cat}`}
+            >
+              <span className="bs-routing-memory-cat">{cat}</span>
+              <span className="bs-routing-memory-dest">
+                {dest !== undefined ? dest || '/ (root)' : <em>Ask on next note</em>}
+              </span>
+              <button
+                type="button"
+                className="bs-routing-memory-reset"
+                disabled={dest === undefined}
+                onClick={() => void handleReset(cat)}
+                aria-label={`Reset routing for ${cat}`}
+                data-testid={`brainstorm-routing-reset-${cat}`}
+              >
+                Reset
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

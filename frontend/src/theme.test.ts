@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidGlassTokens, resetLiquidGlassTokens, LIQUID_GLASS_DEFAULTS } from './theme';
+import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS } from './theme';
 
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
 
@@ -115,38 +115,38 @@ describe('enforceContrastFloor', () => {
   });
 });
 
-describe('applyLiquidGlassTokens contrast guard (MYT-716)', () => {
+describe('applyLiquidNeonTokens contrast guard (MYT-716)', () => {
   beforeEach(() => {
     document.documentElement.style.cssText = '';
   });
 
   afterEach(() => {
-    resetLiquidGlassTokens();
+    resetLiquidNeonTokens();
   });
 
   it('applies default tokens without dropping below 4.5:1', () => {
-    applyLiquidGlassTokens(LIQUID_GLASS_DEFAULTS);
+    applyLiquidNeonTokens(LIQUID_NEON_DEFAULTS);
     const root = document.documentElement;
     const header = root.style.getPropertyValue('--text-header');
     const body   = root.style.getPropertyValue('--text-body');
     const muted  = root.style.getPropertyValue('--text-muted');
-    const bg = LIQUID_GLASS_DEFAULTS.bgBaseColor ?? '#0e1116';
+    const bg = LIQUID_NEON_DEFAULTS.bgBaseColor ?? '#0e1116';
     expect(contrastRatio(header, bg)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(body,   bg)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(muted,  bg)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('clamps a below-floor body text colour to the floor', () => {
-    applyLiquidGlassTokens({ ...LIQUID_GLASS_DEFAULTS, textBody: '#111111' });
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, textBody: '#111111' });
     const root = document.documentElement;
     const body = root.style.getPropertyValue('--text-body');
-    const bg = LIQUID_GLASS_DEFAULTS.bgBaseColor ?? '#0e1116';
+    const bg = LIQUID_NEON_DEFAULTS.bgBaseColor ?? '#0e1116';
     expect(contrastRatio(body, bg)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('sets bg-image-size/repeat/position for image mode', () => {
-    applyLiquidGlassTokens({
-      ...LIQUID_GLASS_DEFAULTS,
+    applyLiquidNeonTokens({
+      ...LIQUID_NEON_DEFAULTS,
       bgMode: 'image',
       bgFit: 'contain',
       bgPosition: 'top',
@@ -157,9 +157,9 @@ describe('applyLiquidGlassTokens contrast guard (MYT-716)', () => {
     expect(root.style.getPropertyValue('--bg-image-position')).toBe('top');
   });
 
-  it('resets all new tokens on resetLiquidGlassTokens', () => {
-    applyLiquidGlassTokens(LIQUID_GLASS_DEFAULTS);
-    resetLiquidGlassTokens();
+  it('resets all new tokens on resetLiquidNeonTokens', () => {
+    applyLiquidNeonTokens(LIQUID_NEON_DEFAULTS);
+    resetLiquidNeonTokens();
     const root = document.documentElement;
     expect(root.style.getPropertyValue('--bg-image-size')).toBe('');
     expect(root.style.getPropertyValue('--bg-scrim-alpha')).toBe('');

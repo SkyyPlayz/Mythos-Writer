@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
-import { applyTheme, applyLiquidGlassTokens } from './theme';
+import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
+import { applyTheme, applyLiquidNeonTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -12,13 +13,15 @@ import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import { useTextPrompt } from './useTextPrompt';
-import SettingsPanel from './SettingsPanel';
+import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
+import GlobalSearchPanel from './GlobalSearchPanel';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
+import { useFocusMode } from './useFocusMode';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -95,10 +98,14 @@ interface AppMenuBarProps {
   writingMode: WritingMode;
   onSetWritingMode: (m: WritingMode) => void;
   onOpenFocusPrefs: () => void;
+  onOpenKeyboardShortcuts: () => void;
+  onToggleDistractionFree: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
+  const helpMenuRef = useRef<HTMLDivElement>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
 
   const handleExportEpub = () => {
@@ -163,6 +170,34 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
             </div>
           )}
         </div>
+        <div className="app-menu-item" ref={helpMenuRef}>
+          <button
+            className="app-menu-item-trigger"
+            aria-haspopup="menu"
+            aria-controls="help-menu"
+            aria-expanded={helpMenuOpen}
+            onClick={() => setHelpMenuOpen(o => !o)}
+            onBlur={(e) => {
+              if (helpMenuRef.current && !helpMenuRef.current.contains(e.relatedTarget as Node)) {
+                setHelpMenuOpen(false);
+              }
+            }}
+          >
+            Help
+          </button>
+          {helpMenuOpen && (
+            <div id="help-menu" className="app-menu-dropdown" role="menu">
+              <button
+                className="app-menu-dropdown-item"
+                role="menuitem"
+                onClick={() => { setHelpMenuOpen(false); onOpenKeyboardShortcuts(); }}
+              >
+                Keyboard Shortcuts…
+                <span className="app-menu-shortcut-hint">?</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <SearchBar onNavigate={onSearchNavigate} />
       <div className="app-menu-view-toggle">
@@ -208,7 +243,7 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           className={`writing-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
           onClick={() => onSetWritingMode('focus')}
           aria-pressed={writingMode === 'focus'}
-          title="Focus mode — distraction-free (Ctrl+Shift+F)"
+          title="Focus mode — distraction-free"
         >
           F
         </button>
@@ -232,6 +267,14 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         </button>
       </div>
       <button
+        className="app-menu-df-btn"
+        onClick={onToggleDistractionFree}
+        aria-label="Enter distraction-free mode"
+        title="Distraction-free mode (F11)"
+      >
+        ⊡
+      </button>
+      <button
         className="app-menu-gear-btn"
         onClick={onOpenSettings}
         aria-label="Open settings"
@@ -239,6 +282,36 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
       >
         ⚙
       </button>
+    </div>
+  );
+}
+
+// ─── Focus mode overlay ───
+
+interface FocusModeOverlayProps {
+  wordCount: number;
+  readingMinutes: number;
+  saveState: 'idle' | 'saved';
+}
+
+function FocusModeOverlay({ wordCount, readingMinutes, saveState }: FocusModeOverlayProps) {
+  const [hintVisible, setHintVisible] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setHintVisible(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div className="focus-mode-overlay" aria-hidden="true">
+      <div className={`focus-hint${hintVisible ? '' : ' focus-hint-hidden'}`}>
+        Press Esc to exit focus mode
+      </div>
+      <div className="focus-status-bar">
+        <span>{wordCount.toLocaleString()} words</span>
+        <span>{readingMinutes} min read</span>
+        {saveState === 'saved' && <span className="focus-save-ok">Saved ✓</span>}
+      </div>
     </div>
   );
 }
@@ -393,11 +466,23 @@ export default function DesktopShell() {
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
+
+  const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
+  const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
+  const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
+
+  // SKY-130: cross-restart scene/cursor restore refs
+  const pendingCursorPosRef = useRef<number | null>(null);
+  const sceneRestoreAttemptedRef = useRef(false);
+  const restoreInProgressRef = useRef(false);
+  const saveCursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -500,13 +585,13 @@ export default function DesktopShell() {
         setAppSettings(s);
         applyTheme(s.theme);
         // Load background image data URL if a custom path is stored
-        const lg = s.liquidGlass;
+        const lg = s.liquidNeon;
         if (lg?.background && lg.background !== 'default') {
           (window.api as any).loadBgImage?.(lg.background)
-            .then((res: { dataUrl: string | null }) => applyLiquidGlassTokens(lg, res?.dataUrl))
-            .catch(() => applyLiquidGlassTokens(lg));
+            .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
+            .catch(() => applyLiquidNeonTokens(lg));
         } else {
-          applyLiquidGlassTokens(lg);
+          applyLiquidNeonTokens(lg);
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
@@ -521,6 +606,41 @@ export default function DesktopShell() {
     loadVault();
   }, [loadVault]);
 
+  // SKY-130: restore last-opened scene + cursor after vault loads
+  useEffect(() => {
+    if (loading || sceneRestoreAttemptedRef.current) return;
+    if (!appSettings?.lastOpenedScene || stories.length === 0) return;
+    sceneRestoreAttemptedRef.current = true;
+    const { sceneId, cursorLine } = appSettings.lastOpenedScene;
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+        if (scene) {
+          restoreInProgressRef.current = true;
+          pendingCursorPosRef.current = cursorLine;
+          handleSelectScene(scene, chapter, story);
+          restoreInProgressRef.current = false;
+          return;
+        }
+      }
+    }
+    // Scene not found (deleted/moved) — silently skip per spec
+  }, [loading, appSettings, stories, handleSelectScene]);
+
+  // SKY-130: debounced cursor persistence as user types/navigates
+  const handleCursorPosChange = useCallback((pos: number) => {
+    if (!selectedScene) return;
+    if (saveCursorDebounceRef.current) clearTimeout(saveCursorDebounceRef.current);
+    saveCursorDebounceRef.current = setTimeout(() => {
+      window.api.sessionSaveScene({
+        sceneId: selectedScene.id,
+        scenePath: selectedScene.path,
+        scrollTop: 0,
+        cursorLine: pos,
+      }).catch(() => {});
+    }, 1000);
+  }, [selectedScene]);
+
   // Handle project switches pushed from main process
   useEffect(() => {
     if (!(window as any).api?.onProjectSwitched) return;
@@ -531,6 +651,8 @@ export default function DesktopShell() {
       setSelectedChapter(null);
       setSelectedStory(null);
       setSelectedEntity(null);
+      // SKY-130: allow restore to fire again for the new project
+      sceneRestoreAttemptedRef.current = false;
       loadVault();
     });
     return () => unsub?.();
@@ -542,6 +664,8 @@ export default function DesktopShell() {
     setSelectedChapter(null);
     setSelectedStory(null);
     setSelectedEntity(null);
+    // SKY-130: allow restore to fire again for the new project
+    sceneRestoreAttemptedRef.current = false;
     loadVault();
   }, [loadVault]);
 
@@ -589,11 +713,26 @@ export default function DesktopShell() {
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // ? key (with or without Shift) opens the keyboard shortcuts help dialog,
+      // but not when focus is inside a text input or contenteditable.
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        const inText =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+        if (!inText) {
+          e.preventDefault();
+          setShortcutsOpen(true);
+          return;
+        }
+      }
+
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
-        setWritingMode('focus');
+        setGlobalSearchOpen(true);
       } else if (e.key === 'E' || e.key === 'e') {
         e.preventDefault();
         setWritingMode('edit');
@@ -604,7 +743,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen]);
 
   // ─── Panel resize drag handlers ───
 
@@ -681,6 +820,12 @@ export default function DesktopShell() {
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
     (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
+    // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
+    if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
+    saveIndicatorTimer.current = setTimeout(() => {
+      setSaveState('saved');
+      saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
+    }, 1200);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
 
   const handleDraftStateChange = useCallback((state: DraftState) => {
@@ -774,6 +919,17 @@ export default function DesktopShell() {
     setSelectedChapter(chapter);
     setSelectedStory(story);
     setSelectedEntity(null);
+    if (!restoreInProgressRef.current) {
+      // User-initiated open: clear any pending cursor restore and reset cursor to 0
+      pendingCursorPosRef.current = null;
+      // SKY-130: persist the newly active scene (cursor will be updated as user types/scrolls)
+      window.api.sessionSaveScene({
+        sceneId: scene.id,
+        scenePath: scene.path,
+        scrollTop: 0,
+        cursorLine: 0,
+      }).catch(() => {});
+    }
   }, []);
 
   // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
@@ -883,6 +1039,12 @@ export default function DesktopShell() {
     }
     return selectedStory.title;
   }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
+
+  // §6: empty state — depth=scene but selected chapter has no scenes
+  const depthIsEmpty = useMemo(
+    () => viewDepth === 'scene' && selectedChapter !== null && selectedChapter.scenes.length === 0,
+    [viewDepth, selectedChapter],
+  );
 
   const handleDepthPrev = useCallback(() => {
     if (!selectedStory) return;
@@ -1009,33 +1171,49 @@ export default function DesktopShell() {
 
   const writingMode: WritingMode = layout.writingMode ?? 'normal';
   const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
-  const showLeftSidebar = writingMode !== 'focus' || focusPrefs.showLeftSidebar;
-  const showRightSidebar = writingMode !== 'focus' || focusPrefs.showRightSidebar;
-  const showBottomBar = writingMode !== 'focus' || focusPrefs.showBottomBar;
+  const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
+  const showRightSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
+  const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
+
+  const focusWordCount = selectedScene
+    ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
+    : 0;
+  const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
 
   return (
-    <div className={`desktop-shell writing-mode-${writingMode}`}>
+    <div className={`desktop-shell writing-mode-${writingMode}${distractionFree ? ' distraction-free' : ''}`}>
       <UpdateBanner />
-      <AppMenuBar
-        view={view}
-        onSetView={setView}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenHistory={() => setHistoryOpen(true)}
-        onSearchNavigate={handleSearchNavigate}
-        selectedStoryId={selectedStory?.id ?? null}
-        activeVaultRoot={activeVaultRoot}
-        onProjectSwitched={handleProjectSwitched}
-        writingMode={writingMode}
-        onSetWritingMode={setWritingMode}
-        onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
-      />
+      {!distractionFree && (
+        <AppMenuBar
+          view={view}
+          onSetView={setView}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenHistory={() => setHistoryOpen(true)}
+          onSearchNavigate={handleSearchNavigate}
+          selectedStoryId={selectedStory?.id ?? null}
+          activeVaultRoot={activeVaultRoot}
+          onProjectSwitched={handleProjectSwitched}
+          writingMode={writingMode}
+          onSetWritingMode={setWritingMode}
+          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
+          onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
+          onToggleDistractionFree={toggleDistractionFree}
+        />
+      )}
+      {distractionFree && (
+        <FocusModeOverlay
+          wordCount={focusWordCount}
+          readingMinutes={focusReadingMinutes}
+          saveState={saveState}
+        />
+      )}
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
           onSaved={(s) => {
             setAppSettings(s);
             applyTheme(s.theme);
-            applyLiquidGlassTokens(s.liquidGlass);
+            applyLiquidNeonTokens(s.liquidNeon);
           }}
         />
       )}
@@ -1048,6 +1226,9 @@ export default function DesktopShell() {
           onChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
           onClose={() => setFocusModePrefsOpen(false)}
         />
+      )}
+      {shortcutsOpen && (
+        <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
@@ -1119,7 +1300,7 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {selectedStory && (
+          {selectedStory && !distractionFree && (
             <DepthSlider
               depth={viewDepth}
               onDepthChange={handleViewDepthChange}
@@ -1128,6 +1309,8 @@ export default function DesktopShell() {
               onPrev={handleDepthPrev}
               onNext={handleDepthNext}
               contextLabel={depthContextLabel}
+              writingMode={writingMode}
+              isEmpty={depthIsEmpty}
             />
           )}
           {viewDepth === 'book' && selectedStory ? (
@@ -1163,6 +1346,8 @@ export default function DesktopShell() {
                 wikiLinkSuggestions={wikiLinkSuggestions}
                 onAcceptWikiLink={handleEditorAcceptWikiLink}
                 onRejectWikiLink={handleEditorRejectWikiLink}
+                initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                onCursorPosChange={handleCursorPosChange}
               />
               {(betaReadComments.length > 0 || betaReadLoading) && (
                 <div className="shell-beta-margin">
@@ -1254,6 +1439,15 @@ export default function DesktopShell() {
         <div className="budget-toast" role="alert" aria-live="assertive">
           {budgetToast}
         </div>
+      )}
+      {globalSearchOpen && (
+        <GlobalSearchPanel
+          onNavigate={(result) => {
+            handleSearchNavigate(result);
+            setGlobalSearchOpen(false);
+          }}
+          onClose={() => setGlobalSearchOpen(false)}
+        />
       )}
       {promptModal}
     </div>

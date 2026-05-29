@@ -52,6 +52,19 @@ jobs:
             sudo apt-get install -y xvfb
           fi
 
+      # better-sqlite3 is built for the Node ABI by `npm ci`; the E2E launches
+      # Electron, which has a different ABI. Rebuild the native module against
+      # Electron so the main process can load it (otherwise the app crashes on
+      # startup before creating a window and Playwright times out on firstWindow).
+      # Runs after the Node-based unit tests above, which need the Node ABI build.
+      # `npm rebuild` is used directly because @electron/rebuild's tree search
+      # does not find better-sqlite3 (it is hoisted to the root by the workspace
+      # and the root package.json has no dependencies).
+      - name: Rebuild native modules for Electron (E2E)
+        run: |
+          ELECTRON_VER=$(node -p "require('electron/package.json').version")
+          npm rebuild better-sqlite3 --runtime=electron --target="$ELECTRON_VER" --dist-url=https://electronjs.org/headers
+
       - name: E2E — vault CRUD (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:crud
 
@@ -72,6 +85,19 @@ jobs:
 
       - name: E2E — Two-vault layout Story + Notes CRUD (MYT-769)
         run: xvfb-run --auto-servernum npm run test:e2e:two-vault
+
+      - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
+        run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
+
+      - name: E2E — Visual regression baseline comparison (MYT-771)
+        run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
+
+      - name: Upload visual-regression diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs
+          path: e2e-visual-artifacts/visual-regression/
 
       - name: Upload E2E report on failure
         if: failure()
@@ -122,6 +148,13 @@ jobs:
 
       - name: Test (frontend)
         run: npm run test -w frontend
+
+      # Rebuild better-sqlite3 for Electron ABI before packaging. npm ci builds it
+      # for Node ABI (needed by the unit tests above); electron-builder bundles
+      # whatever is in node_modules, so the AppImage would crash on startup if we
+      # skip this step (ABI mismatch between Node 20 and Electron 39+).
+      - name: Rebuild native modules for Electron (packaging)
+        run: npm run rebuild:native
 
       - name: Build and package (Linux AppImage)
         run: npm run dist:linux
