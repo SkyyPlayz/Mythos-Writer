@@ -486,6 +486,7 @@ interface Window {
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
     moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
+    mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)

@@ -211,6 +211,8 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_LIST: 'notesVault:list',
   NOTES_VAULT_DELETE: 'notesVault:delete',
   NOTES_VAULT_MOVE: 'notesVault:move',
+  // SKY-95: dedicated mkdir avoids the dotfile block on .gitkeep placeholders.
+  NOTES_VAULT_MKDIR: 'notesVault:mkdir',
   NOTES_VAULT_WATCH_START: 'notesVault:watchStart',
   NOTES_VAULT_WATCH_STOP: 'notesVault:watchStop',
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
@@ -406,6 +408,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
@@ -474,6 +477,15 @@ export interface VaultMoveResponse {
   fromPath: string;
   toPath: string;
   moved: boolean;
+}
+
+export interface VaultMkdirPayload {
+  path: string;
+}
+
+export interface VaultMkdirResponse {
+  path: string;
+  created: boolean;
 }
 
 export interface VaultChooseFolderPayload {

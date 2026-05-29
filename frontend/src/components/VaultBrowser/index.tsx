@@ -308,9 +308,9 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
       const name = prompt('Folder name:');
       if (!name?.trim()) return;
       const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
-      const rel = dirPath ? `${dirPath}/${slug || 'folder'}/.gitkeep` : `${slug || 'folder'}/.gitkeep`;
+      const rel = dirPath ? `${dirPath}/${slug || 'folder'}` : `${slug || 'folder'}`;
       try {
-        await window.api.writeVault(rel, '');
+        await window.api.mkdirNotesVault(rel);
         await onReload();
       } catch (e) {
         console.error('Failed to create folder:', e);

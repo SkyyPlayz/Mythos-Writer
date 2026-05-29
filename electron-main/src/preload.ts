@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('api', {
   deleteNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:delete', { path: filePath }),
   moveNotesVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('notesVault:move', { fromPath, toPath }),
+  // SKY-95: creates a directory without a .gitkeep placeholder, bypassing
+  // the dotfile guard that blocked handleNewFolder from working.
+  mkdirNotesVault: (dirPath: string) => ipcRenderer.invoke('notesVault:mkdir', { path: dirPath }),
   // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
   moveVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),

@@ -21,6 +21,8 @@ import {
   type VaultDeleteResponse,
   type VaultMovePayload,
   type VaultMoveResponse,
+  type VaultMkdirPayload,
+  type VaultMkdirResponse,
   type VaultChooseFolderPayload,
   type VaultChooseFolderResponse,
   type Manifest,
@@ -176,6 +178,7 @@ import {
   serializeFrontmatter,
   safePath,
   safeVaultIpcJoin,
+  safeVaultDirIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -2448,6 +2451,16 @@ const handlers: IpcHandlers = {
     safeVaultIpcJoin(root, payload.fromPath, true);
     safeVaultIpcJoin(root, payload.toPath, true);
     return moveVaultFile(root, payload.fromPath, payload.toPath);
+  },
+
+  // SKY-95: create a directory directly so handleNewFolder in VaultBrowser
+  // doesn't need a .gitkeep placeholder (which safeVaultIpcJoin rejects).
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload): VaultMkdirResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const absPath = safeVaultDirIpcJoin(root, payload.path);
+    fs.mkdirSync(absPath, { recursive: true });
+    return { path: payload.path, created: true };
   },
 
   // SKY-9: Story-Vault rename. Same shape as NOTES_VAULT_MOVE rooted at the
