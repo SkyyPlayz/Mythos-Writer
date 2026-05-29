@@ -233,6 +233,12 @@ function registerAgentCancelHandlers(): void {
 interface VaultSettings {
   vaultRoot: string;
   notesVaultRoot?: string;
+  // SKY-9 / SKY-15: which onboarding layout the user picked. Absent on
+  // existing installs is treated as 'default' for back-compat. 'imported'
+  // is set by the Obsidian importer once SKY-12 lands its picker — for
+  // seeding purposes the main side maps it to 'blank' so we don't overwrite
+  // imported content.
+  layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
 }
 
@@ -255,17 +261,26 @@ function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
 }
 
-// SKY-9 (was SKY-13) / Q4.5: first-run defaults sit side-by-side under
-// ~/Mythos Vault so the AGENTS.md docs and PROJECT_PLAN.md can refer to a
-// single canonical umbrella name. Existing installs keep whatever
-// `vault-settings.json` already persisted — the defaults only fire when there
-// is no persisted root, so this is a fresh-install-only change.
+// SKY-9 / SKY-15: first-run defaults sit side-by-side under ~/Mythos/ with
+// each vault as its own folder, per the board-accepted SKY-15 plan. Existing
+// installs keep whatever `vault-settings.json` already persisted — the
+// defaults only fire when there is no persisted root, so this is a
+// fresh-install-only change. No on-disk migration of user content.
 function defaultVaultRoot(): string {
-  return path.join(app.getPath('home'), 'Mythos Vault', 'Story Vault');
+  return path.join(app.getPath('home'), 'Mythos', 'Story Vault');
 }
 
 function defaultNotesVaultRoot(): string {
-  return path.join(app.getPath('home'), 'Mythos Vault', 'Notes Vault');
+  return path.join(app.getPath('home'), 'Mythos', 'Notes Vault');
+}
+
+// SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
+// treated as 'blank' here — the importer wrote its own content; we must not
+// scaffold over it. Absent = 'default' for back-compat with installs that
+// predate the field.
+function getLayoutMode(): 'default' | 'blank' {
+  const mode = loadVaultSettings().layoutMode ?? 'default';
+  return mode === 'default' ? 'default' : 'blank';
 }
 
 function loadVaultSettings(): VaultSettings {
@@ -301,7 +316,7 @@ function ensureVaultDir() {
     fs.mkdirSync(vaultRoot, { recursive: true });
   }
   if (isEmptyOrMissing(vaultRoot)) {
-    scaffoldStoryVault(vaultRoot);
+    scaffoldStoryVault(vaultRoot, getLayoutMode());
   }
   // Open DB before manifest migration so the audit callback can log immediately.
   openDb(vaultRoot);
@@ -341,13 +356,14 @@ function ensureVaultDir() {
 
 function ensureNotesVaultDir() {
   const notesVaultRoot = getNotesVaultRoot();
-  // SKY-9: same empty-dir trigger as ensureVaultDir so a user who pre-creates
-  // ~/Mythos Vault/Notes Vault/ still gets Universes/ + Story ideas/ seeded.
+  // SKY-9 / SKY-15: same empty-dir trigger as ensureVaultDir so a user who
+  // pre-creates ~/Mythos/Notes Vault/ still gets the six-folder layout seeded.
+  // Blank/imported modes skip scaffolding (the scaffold function is a no-op).
   if (!fs.existsSync(notesVaultRoot)) {
     fs.mkdirSync(notesVaultRoot, { recursive: true });
   }
   if (isEmptyOrMissing(notesVaultRoot)) {
-    scaffoldNotesVault(notesVaultRoot);
+    scaffoldNotesVault(notesVaultRoot, getLayoutMode());
   }
 }
 
@@ -2079,7 +2095,7 @@ const handlers: IpcHandlers = {
     return { storyVaultPath, notesVaultPath, saved: true };
   },
 
-  // SKY-9 (was SKY-13): Notes-Vault-scoped CRUD. Mirrors VAULT_* but rooted
+  // SKY-9: Notes-Vault-scoped CRUD. Mirrors VAULT_* but rooted
   // at the separately-configured notes vault path. Uses the same `path`
   // helpers and case-sensitive resolution as the Story Vault handlers so
   // Linux CI behaves the same as macOS. Every endpoint goes through

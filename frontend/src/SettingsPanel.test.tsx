@@ -20,8 +20,8 @@ const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
 
 const defaultVaultPaths = {
-  storyVaultPath: '/home/test/Mythos Vault/Story Vault',
-  notesVaultPath: '/home/test/Mythos Vault/Notes Vault',
+  storyVaultPath: '/home/test/Mythos/Story Vault',
+  notesVaultPath: '/home/test/Mythos/Notes Vault',
 };
 
 beforeEach(() => {

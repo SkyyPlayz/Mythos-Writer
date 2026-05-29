@@ -1081,12 +1081,29 @@ describe('scaffoldNotesVault', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates the Q4.5 Notes Vault directory structure (Universes + Story ideas)', () => {
+  // SKY-15: six-folder Notes Vault layout replaces the Q4.5 example.
+  it('creates the SKY-15 Notes Vault directory structure (6 top-level folders)', () => {
     scaffoldNotesVault(tmpDir);
-    for (const dir of ['Universes', 'Story ideas']) {
+    for (const dir of ['Universes', 'Stories', 'Inbox', 'Research', 'Daily Notes', 'Archive']) {
       expect(fs.existsSync(path.join(tmpDir, dir))).toBe(true);
       expect(fs.statSync(path.join(tmpDir, dir)).isDirectory()).toBe(true);
     }
+  });
+
+  // SKY-15: default mode seeds an example universe and a per-story notes folder.
+  it('seeds My First Universe/<category>/ inside Universes/ in default mode', () => {
+    scaffoldNotesVault(tmpDir, 'default');
+    const universeRoot = path.join(tmpDir, 'Universes', 'My First Universe');
+    for (const sub of ['Characters', 'Locations', 'Factions', 'History', 'Systems', 'Items']) {
+      expect(fs.existsSync(path.join(universeRoot, sub))).toBe(true);
+    }
+    expect(fs.existsSync(path.join(tmpDir, 'Stories', 'My First Story'))).toBe(true);
+  });
+
+  // SKY-15: Blank mode means "only the top-level vault folder" — no scaffolding.
+  it('is a no-op in blank mode (no Universes/, no Stories/, no anything)', () => {
+    scaffoldNotesVault(tmpDir, 'blank');
+    expect(fs.readdirSync(tmpDir)).toEqual([]);
   });
 
   it('is idempotent — running twice does not throw', () => {
@@ -1095,9 +1112,9 @@ describe('scaffoldNotesVault', () => {
   });
 
   // SKY-9 U1: .gitkeep sentinel inside each freshly-seeded directory.
-  it('writes a .gitkeep into each freshly-seeded directory', () => {
+  it('writes a .gitkeep into each freshly-seeded top-level directory', () => {
     scaffoldNotesVault(tmpDir);
-    for (const dir of ['Universes', 'Story ideas']) {
+    for (const dir of ['Universes', 'Stories', 'Inbox', 'Research', 'Daily Notes', 'Archive']) {
       expect(fs.existsSync(path.join(tmpDir, dir, '.gitkeep'))).toBe(true);
     }
   });
@@ -1120,7 +1137,7 @@ describe('scaffoldNotesVault', () => {
 
 // ─── scaffoldStoryVault ───
 
-describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () => {
+describe('scaffoldStoryVault — SKY-15 per-story default layout', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -1131,10 +1148,27 @@ describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () =>
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates Projects/ subfolder', () => {
+  // SKY-15 item 3: per-story → Manuscript/ → numbered chapter folders →
+  // numbered scene files, plus Outline.md and Synopsis.md at the story root.
+  it('seeds My First Story/Manuscript/<chapter>/<scene>.md + Outline.md + Synopsis.md', () => {
     scaffoldStoryVault(tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, 'Projects'))).toBe(true);
-    expect(fs.statSync(path.join(tmpDir, 'Projects')).isDirectory()).toBe(true);
+    const story = path.join(tmpDir, 'My First Story');
+    expect(fs.existsSync(path.join(story, 'Manuscript', '01 - Opening', '01 - Scene One.md'))).toBe(true);
+    expect(fs.existsSync(path.join(story, 'Outline.md'))).toBe(true);
+    expect(fs.existsSync(path.join(story, 'Synopsis.md'))).toBe(true);
+  });
+
+  it('seeded files carry seeded_by: SKY-9 frontmatter so future tools can spot pristine seeds', () => {
+    scaffoldStoryVault(tmpDir);
+    const outline = fs.readFileSync(path.join(tmpDir, 'My First Story', 'Outline.md'), 'utf-8');
+    expect(outline).toMatch(/seeded_by:\s*SKY-9/);
+  });
+
+  // SKY-15: Blank mode skips all per-story scaffolding so the user organizes
+  // from scratch. The vault root has already been created by ensure*VaultDir.
+  it('is a no-op in blank mode (no My First Story/)', () => {
+    scaffoldStoryVault(tmpDir, 'blank');
+    expect(fs.readdirSync(tmpDir)).toEqual([]);
   });
 
   it('is idempotent — does not throw when called twice', () => {
@@ -1142,10 +1176,14 @@ describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () =>
     expect(() => scaffoldStoryVault(tmpDir)).not.toThrow();
   });
 
-  // SKY-9 U3: .gitkeep sentinel in Projects/.
-  it('writes a .gitkeep inside Projects/ on first seed', () => {
+  // SKY-9 idempotency: a user who edits a seeded file does not have it
+  // clobbered on the next boot.
+  it('does not overwrite seeded files that the user has edited', () => {
     scaffoldStoryVault(tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, 'Projects', '.gitkeep'))).toBe(true);
+    const outlinePath = path.join(tmpDir, 'My First Story', 'Outline.md');
+    fs.writeFileSync(outlinePath, '# My outline\n', 'utf-8');
+    scaffoldStoryVault(tmpDir);
+    expect(fs.readFileSync(outlinePath, 'utf-8')).toBe('# My outline\n');
   });
 });
 

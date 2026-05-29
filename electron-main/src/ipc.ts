@@ -184,7 +184,7 @@ export const IPC_CHANNELS = {
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
-  // SKY-13: Notes-Vault-scoped file IO. The existing VAULT_* channels stay
+  // SKY-9: Notes-Vault-scoped file IO. The existing VAULT_* channels stay
   // bound to the Story Vault root; this is the symmetric set rooted at the
   // separately-configured Notes Vault. Used by VaultBrowser to render the
   // AI workspace without leaking from the Story Vault, and by Brainstorm /

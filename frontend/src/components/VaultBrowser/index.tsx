@@ -9,7 +9,7 @@ import ContextMenu from './ContextMenu';
 import './VaultBrowser.css';
 
 // ─── Filters ───
-// SKY-13: the Notes Vault is now its own IPC root, so we no longer need to
+// SKY-9: the Notes Vault is now its own IPC root, so we no longer need to
 // strip the Story Vault's `Manuscript/` prefix here. We still hide internal
 // bookkeeping (manifest backups, versions/snapshots/git) so they don't show
 // up in the tree.

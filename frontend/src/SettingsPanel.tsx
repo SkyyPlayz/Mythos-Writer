@@ -502,7 +502,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     setVaultsDirty(true);
                     setVaultsSavedOk(false);
                   }}
-                  placeholder="~/Mythos Vault/Story Vault"
+                  placeholder="~/Mythos/Story Vault"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -530,7 +530,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     setVaultsDirty(true);
                     setVaultsSavedOk(false);
                   }}
-                  placeholder="~/Mythos Vault/Notes Vault"
+                  placeholder="~/Mythos/Notes Vault"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -543,7 +543,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   Browse…
                 </button>
               </div>
-              <p className="settings-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code> + <code>Story ideas/</code> on first run.</p>
+              <p className="settings-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
             </div>
             <div className="settings-input-row">
               <button

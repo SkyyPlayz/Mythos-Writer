@@ -409,10 +409,10 @@ interface Window {
     writingModeSet: (payload: { mode?: WritingMode; focusFlags?: Partial<FocusModeFlags>; editConfig?: Partial<EditModeConfig> }) => Promise<{ mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }>;
     onWritingModeChanged: (cb: (data: { mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }) => void) => () => void;
 
-    // Two-vault path management (MYT-608 / SKY-13) — Story Vault + Notes Vault
+    // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
     vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
-    // SKY-9 (was SKY-13): full Notes-Vault-scoped CRUD. Mirrors the Story Vault
+    // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
     // root via safeVaultIpcJoin on the main side.

@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   openVaultFolder: () => ipcRenderer.invoke('vault:open-folder', undefined),
   getVaultRoot: () => ipcRenderer.invoke('vault:get-root', undefined),
 
-  // Two-vault paths (SKY-13 / MYT-608) — Story Vault + Notes Vault path
+  // Two-vault paths (SKY-9 / MYT-608) — Story Vault + Notes Vault path
   // management surface used by the Settings panel. `vaultSetPaths` triggers
   // a re-seed on the main side, so the renderer can persist user edits in a
   // single round-trip.
@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('api', {
   vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) =>
     ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath }),
 
-  // SKY-9 (was SKY-13): full Notes-Vault-scoped CRUD for VaultBrowser and the
+  // SKY-9: full Notes-Vault-scoped CRUD for VaultBrowser and the
   // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault
   // bridge; all calls route to the separately-configured notes vault root.
   readNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:read', { path: filePath }),

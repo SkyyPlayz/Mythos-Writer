@@ -3,7 +3,7 @@ import type { VaultListItem } from './treeUtils';
 
 type Source = 'story' | 'notes';
 
-// SKY-13: parameterise the source so the VaultBrowser can pull each vault
+// SKY-9: parameterise the source so the VaultBrowser can pull each vault
 // from its own IPC. `story` keeps the existing single-root listing; `notes`
 // reads from the Notes Vault root configured in Settings. The fallback
 // preserves test-mock compatibility for environments that haven't shipped

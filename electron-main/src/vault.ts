@@ -694,9 +694,17 @@ export async function stopVaultWatcher(): Promise<void> {
 // ─── Vault scaffold ───
 // Creates the standard subdirectory structure for each vault type on first run.
 //
-// SKY-9: seeding is idempotent — both functions only create what's missing,
-// and `.gitkeep` is only written when its parent directory is freshly made.
-// Re-running the scaffold on a populated vault is a no-op.
+// SKY-9 / SKY-15: seeding is idempotent — directories are only created when
+// missing, files are only written when missing. `.gitkeep` is only written
+// when its parent directory is freshly made. Re-running the scaffold on a
+// populated vault is a no-op. Two modes are supported: `default` produces
+// the SKY-15 canonical layout with example content; `blank` produces only
+// the top-level vault folder (the user organizes from scratch).
+
+/** SKY-15 layout mode. `imported` is treated as `blank` for seeding purposes
+ *  — the importer is responsible for writing whatever content the source
+ *  vault contains. */
+export type VaultLayoutMode = 'default' | 'blank';
 
 function seedDir(parentRoot: string, dirName: string): void {
   const full = path.join(parentRoot, dirName);
@@ -711,20 +719,112 @@ function seedDir(parentRoot: string, dirName: string): void {
   }
 }
 
-export const STORY_VAULT_DIRS = ['Projects'] as const;
-
-export function scaffoldStoryVault(storyVaultRoot: string): void {
-  for (const dir of STORY_VAULT_DIRS) seedDir(storyVaultRoot, dir);
+function seedFile(parentRoot: string, relPath: string, contents: string): void {
+  const full = path.join(parentRoot, relPath);
+  if (fs.existsSync(full)) return; // never overwrite a user-edited seed
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, contents, 'utf-8');
 }
 
-// Q4.5 (decisions-log) — canonical Notes Vault layout.
-// `Universes/<World>/...` for worldbuilding, `Story ideas/<Story>/...` for
-// per-story brainstorming. Top-level seed only; agents create world/story
-// subfolders on demand.
-export const NOTES_VAULT_DIRS = ['Universes', 'Story ideas'] as const;
+// ── Story Vault default layout (SKY-15) ─────────────────────────────────────
+// Per-story folder → Manuscript/ → numbered chapter folders → numbered scene
+// files, plus seeded Outline.md and Synopsis.md at the story root. The example
+// `My First Story/` is a real folder name the user can rename — empty
+// `<Story Title>` placeholders read as "fill in the blank" homework and
+// undermine the point of seeding.
+export const STORY_VAULT_EXAMPLE_STORY = 'My First Story';
+export const STORY_VAULT_EXAMPLE_CHAPTERS = ['01 - Opening'] as const;
+export const STORY_VAULT_EXAMPLE_SCENE_FILE = '01 - Scene One.md';
 
-export function scaffoldNotesVault(vaultRoot: string): void {
-  for (const dir of NOTES_VAULT_DIRS) seedDir(vaultRoot, dir);
+const OUTLINE_SEED = `---
+seeded_by: SKY-9
+---
+# Outline
+
+One bullet per beat. Rename or delete this file when you have your own.
+`;
+
+const SYNOPSIS_SEED = `---
+seeded_by: SKY-9
+---
+# Synopsis
+
+A one-paragraph pitch for this story. Rename or delete this file when you have your own.
+`;
+
+const SCENE_SEED = `---
+seeded_by: SKY-9
+---
+# Scene One
+
+The story begins here. Delete this scene or rewrite it — the file path
+(\`Manuscript/<chapter>/<scene>.md\`) is what the app indexes.
+`;
+
+export function scaffoldStoryVault(
+  storyVaultRoot: string,
+  mode: VaultLayoutMode = 'default'
+): void {
+  if (mode === 'blank') return;
+  const storyRoot = path.join(STORY_VAULT_EXAMPLE_STORY);
+  for (const chapter of STORY_VAULT_EXAMPLE_CHAPTERS) {
+    const chapterRel = path.join(storyRoot, MANUSCRIPT_DIR, chapter);
+    const chapterFull = path.join(storyVaultRoot, chapterRel);
+    if (!fs.existsSync(chapterFull)) {
+      fs.mkdirSync(chapterFull, { recursive: true });
+    }
+    seedFile(storyVaultRoot, path.join(chapterRel, STORY_VAULT_EXAMPLE_SCENE_FILE), SCENE_SEED);
+  }
+  seedFile(storyVaultRoot, path.join(storyRoot, 'Outline.md'), OUTLINE_SEED);
+  seedFile(storyVaultRoot, path.join(storyRoot, 'Synopsis.md'), SYNOPSIS_SEED);
+}
+
+// ── Notes Vault default layout (SKY-15) ─────────────────────────────────────
+// Six top-level folders replace the old Q4.5 example (Universes + Story ideas).
+// `Stories/` mirrors the Story Vault sibling. `Inbox/` is the Brainstorm
+// Agent's drop zone for unclassified notes. `Daily Notes/` matches the
+// Obsidian convention. `Archive/` lets notes retire without being deleted.
+export const NOTES_VAULT_DIRS = [
+  'Universes',
+  'Stories',
+  'Inbox',
+  'Research',
+  'Daily Notes',
+  'Archive',
+] as const;
+
+// Example universe seeded inside `Universes/` in default mode. The six
+// sub-categories (Characters/Locations/Factions/History/Systems/Items)
+// match the SKY-15 plan exactly — `Systems/` generalises the old
+// `Magic & Systems`, and `Society & Governance` is folded into Factions.
+export const NOTES_VAULT_EXAMPLE_UNIVERSE = 'My First Universe';
+export const NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS = [
+  'Characters',
+  'Locations',
+  'Factions',
+  'History',
+  'Systems',
+  'Items',
+] as const;
+export const NOTES_VAULT_EXAMPLE_STORY = 'My First Story';
+
+export function scaffoldNotesVault(
+  notesVaultRoot: string,
+  mode: VaultLayoutMode = 'default'
+): void {
+  if (mode === 'blank') return;
+  for (const dir of NOTES_VAULT_DIRS) seedDir(notesVaultRoot, dir);
+  // Seeded example universe under Universes/. seedDir keeps .gitkeep
+  // idempotency for the per-category subfolders.
+  for (const sub of NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS) {
+    seedDir(
+      path.join(notesVaultRoot, 'Universes', NOTES_VAULT_EXAMPLE_UNIVERSE),
+      sub
+    );
+  }
+  // Per-story notes folder under Stories/ that mirrors the Story Vault
+  // example. The Brainstorm Agent uses this on first run.
+  seedDir(path.join(notesVaultRoot, 'Stories'), NOTES_VAULT_EXAMPLE_STORY);
 }
 
 /**
