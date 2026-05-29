@@ -14,12 +14,10 @@ import './VaultBrowser.css';
 // bookkeeping (manifest backups, versions/snapshots/git) so they don't show
 // up in the tree.
 
-const INTERNAL_FILES = new Set(['manifest.json', 'manifest.json.bak']);
 const INTERNAL_PREFIXES = ['.versions', '.snapshots', '.git'];
 
 function isNotesItem(item: { path: string; name: string }): boolean {
   if (item.name.startsWith('.')) return false;
-  if (INTERNAL_FILES.has(item.path)) return false;
   for (const prefix of INTERNAL_PREFIXES) {
     if (item.path === prefix || item.path.startsWith(prefix + '/')) return false;
   }
@@ -289,7 +287,7 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
       const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
       const rel = dirPath ? `${dirPath}/${slug || 'note'}.md` : `${slug || 'note'}.md`;
       try {
-        await window.api.writeVault(
+        await window.api.writeNotesVault(
           rel,
           `---\ntitle: "${name.trim()}"\ncreatedAt: ${new Date().toISOString()}\n---\n\n`,
         );
@@ -310,7 +308,7 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
       const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
       const rel = dirPath ? `${dirPath}/${slug || 'folder'}/.gitkeep` : `${slug || 'folder'}/.gitkeep`;
       try {
-        await window.api.writeVault(rel, '');
+        await window.api.writeNotesVault(rel, '');
         await onReload();
       } catch (e) {
         console.error('Failed to create folder:', e);
@@ -381,7 +379,7 @@ export default function VaultBrowser({
   onOpenFile,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
-  const { items, loading, reload } = useVaultFiles();
+  const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
 
   const showStory = scope === 'story' || scope === 'both';
   const showNotes = scope === 'notes' || scope === 'both';
@@ -433,13 +431,13 @@ export default function VaultBrowser({
 
         {showNotes && (
           <div className={`vb-section${scope === 'both' ? ' vb-section-notes-split' : ' vb-section-full'}`}>
-            {loading ? (
+            {notesLoading ? (
               <div className="vb-loading">Loading…</div>
             ) : (
               <NotesVault
-                items={items}
+                items={notesItems}
                 onOpenFile={onOpenFile}
-                onReload={reload}
+                onReload={notesReload}
               />
             )}
           </div>
