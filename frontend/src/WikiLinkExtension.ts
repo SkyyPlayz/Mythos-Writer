@@ -79,8 +79,15 @@ export const WikiLink = Node.create({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             md.renderer.rules['wiki_link'] = (tokens: any[], idx: number) => {
               const target = tokens[idx].attrGet('data-wiki-link') ?? '';
-              const escaped = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-              return `<span data-wiki-link="${escaped}">[[${target}]]</span>`;
+              // SKY-211: escape all four HTML-special chars so neither the
+              // attribute value nor the text content can inject live elements.
+              // '<' and '>' in the text were the exploitable vector.
+              const escaped = target
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+              return `<span data-wiki-link="${escaped}">[[${escaped}]]</span>`;
             };
           },
         },
