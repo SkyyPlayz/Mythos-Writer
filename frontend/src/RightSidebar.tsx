@@ -48,6 +48,7 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder="Scene notes, reminders, loose ideas…"
+        aria-label="Scene notes"
       />
     </div>
   );

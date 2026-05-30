@@ -217,3 +217,15 @@
   font-size: 11px;
   color: var(--text-muted, rgba(232, 232, 232, 0.25));
 }
+
+/* Focus rings */
+.gsp-scope-btn:focus-visible,
+.gsp-close-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c6af7);
+  outline-offset: 2px;
+}
+
+.gsp-result-item:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c6af7);
+  outline-offset: -2px;
+}

@@ -273,3 +273,19 @@
   background: var(--border-default);
   color: var(--text-primary);
 }
+
+/* Focus rings — all interactive tree items */
+.vs-section-toggle:focus-visible,
+.vs-section-add:focus-visible,
+.vs-item-toggle:focus-visible,
+.vs-item-add:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}
+
+.vs-scene-row:focus-visible,
+.vs-notes-dir-row:focus-visible,
+.vs-notes-file-row:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}

@@ -1,3 +1,4 @@
+import { useRef, useCallback } from 'react';
 import type { Story, Chapter, Scene, EntityEntry } from './types';
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -6,6 +7,13 @@ import VaultBrowser from './components/VaultBrowser';
 import './LeftRail.css';
 
 type Tab = 'stories' | 'vault' | 'entities' | 'review';
+
+const RAIL_TABS: { id: Tab; label: string; ariaLabel?: string }[] = [
+  { id: 'stories', label: 'Stories' },
+  { id: 'entities', label: 'Entities' },
+  { id: 'vault', label: 'Vault' },
+  { id: 'review', label: 'Review', ariaLabel: 'Suggestion Review inbox' },
+];
 
 interface Props {
   activeTab: Tab;
@@ -38,50 +46,43 @@ export default function LeftRail({
   onOpenVaultPath,
   onContextChange,
 }: Props) {
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent, idx: number) => {
+    let nextIdx = idx;
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      nextIdx = (idx + 1) % RAIL_TABS.length;
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      nextIdx = (idx - 1 + RAIL_TABS.length) % RAIL_TABS.length;
+    } else {
+      return;
+    }
+    onTabChange(RAIL_TABS[nextIdx].id);
+    tabRefs.current[nextIdx]?.focus();
+  }, [onTabChange]);
+
   return (
     <div className="left-rail">
       <div className="rail-tabs" role="tablist" aria-label="Primary navigation">
-        <button
-          id="leftrail-tab-stories"
-          role="tab"
-          aria-selected={activeTab === 'stories'}
-          aria-controls="leftrail-tabpanel"
-          className={`rail-tab${activeTab === 'stories' ? ' active' : ''}`}
-          onClick={() => onTabChange('stories')}
-        >
-          Stories
-        </button>
-        <button
-          id="leftrail-tab-entities"
-          role="tab"
-          aria-selected={activeTab === 'entities'}
-          aria-controls="leftrail-tabpanel"
-          className={`rail-tab${activeTab === 'entities' ? ' active' : ''}`}
-          onClick={() => onTabChange('entities')}
-        >
-          Entities
-        </button>
-        <button
-          id="leftrail-tab-vault"
-          role="tab"
-          aria-selected={activeTab === 'vault'}
-          aria-controls="leftrail-tabpanel"
-          className={`rail-tab${activeTab === 'vault' ? ' active' : ''}`}
-          onClick={() => onTabChange('vault')}
-        >
-          Vault
-        </button>
-        <button
-          id="leftrail-tab-review"
-          role="tab"
-          aria-selected={activeTab === 'review'}
-          aria-controls="leftrail-tabpanel"
-          className={`rail-tab${activeTab === 'review' ? ' active' : ''}`}
-          onClick={() => onTabChange('review')}
-          aria-label="Suggestion Review inbox"
-        >
-          Review
-        </button>
+        {RAIL_TABS.map((t, i) => (
+          <button
+            key={t.id}
+            ref={(el) => { tabRefs.current[i] = el; }}
+            id={`leftrail-tab-${t.id}`}
+            role="tab"
+            aria-selected={activeTab === t.id}
+            aria-controls="leftrail-tabpanel"
+            tabIndex={activeTab === t.id ? 0 : -1}
+            className={`rail-tab${activeTab === t.id ? ' active' : ''}`}
+            onClick={() => onTabChange(t.id)}
+            onKeyDown={(e) => handleTabKeyDown(e, i)}
+            aria-label={t.ariaLabel}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
       <div
         className="rail-content"

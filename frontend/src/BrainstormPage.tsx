@@ -209,6 +209,18 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [messages.length, facts.length, prompt]);
 
+  // ESC closes the page, matching the same capture-phase pattern as GlobalSearchPanel
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [onClose]);
+
   useEffect(() => {
     const el = messagesEndRef.current;
     if (el && typeof el.scrollIntoView === 'function') {
