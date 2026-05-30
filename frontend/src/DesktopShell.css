@@ -180,6 +180,10 @@
   color: var(--text-primary);
 }
 
+.app-menu-tour-btn { background: none; border: none; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; padding: 2px 7px; cursor: pointer; border-radius: 50%; margin-left: 4px; -webkit-app-region: no-drag; line-height: 1.5; min-width: 20px; text-align: center; }
+.app-menu-tour-btn:hover { color: var(--text-header); background: var(--bg-elevated); }
+.app-menu-tour-btn:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
+
 .app-menu-gear-btn {
   background: none;
   border: none;
