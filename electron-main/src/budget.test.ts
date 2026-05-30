@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import { openDb, closeDb, upsertSuggestion, insertGenerationLog } from './db.js';
 import { evaluateAutoApply, checkCallBudget, type AgentBudgetSettings } from './budget.js';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 const BASE_SETTINGS: AgentBudgetSettings = {
   autoApply: true,
@@ -41,7 +41,7 @@ function makeSuggestion(overrides: Partial<{
 
 describe('evaluateAutoApply', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-budget-'));
@@ -165,7 +165,7 @@ const CALL_SETTINGS = { maxTokensPerHour: 1000, maxTokensPerDay: 5000 };
 
 describe('checkCallBudget', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-call-budget-'));

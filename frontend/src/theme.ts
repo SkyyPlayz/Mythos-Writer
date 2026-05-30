@@ -37,7 +37,7 @@ export function applyTheme(mode: ThemeMode | string | null | undefined): ThemeMo
   return resolved;
 }
 
-export const LG_DEFAULTS: LiquidGlassPrefs = {
+export const LG_DEFAULTS: LiquidNeonPrefs = {
   background: 'default',
   style: 50,
   glass: 50,
@@ -110,9 +110,9 @@ export function enforceContrastFloor(textHex: string, bgHex: string, minRatio = 
   return '#ffffff';
 }
 
-// ─── Liquid Glass token customization (MYT-613 / MYT-716) ───────────────────
+// ─── Liquid Neon token customization (MYT-613 / MYT-716) ────────────────────
 
-export const LIQUID_GLASS_DEFAULTS: LiquidGlassPrefs = {
+export const LIQUID_NEON_DEFAULTS: LiquidNeonPrefs = {
   softnessContrast: 0.4,
   glass: 0.4,
   blur: 0.4,
@@ -147,7 +147,7 @@ export const DEFAULT_BG_GRADIENT =
   'radial-gradient(ellipse at 10% 15%, rgba(55,10,110,0.28) 0%, transparent 42%), ' +
   '#08091a';
 
-const NEON_ACCENT_MAP: Record<LiquidGlassPrefs['neonAccent'], { accent: string; accentSoft: string }> = {
+const NEON_ACCENT_MAP: Record<LiquidNeonPrefs['neonAccent'], { accent: string; accentSoft: string }> = {
   cyan:    { accent: '#00f0ff', accentSoft: 'rgba(0,240,255,0.18)' },
   violet:  { accent: '#9b5fff', accentSoft: 'rgba(155,95,255,0.18)' },
   magenta: { accent: '#ff4dff', accentSoft: 'rgba(255,77,255,0.18)' },
@@ -162,17 +162,17 @@ function toHex2(n: number): string {
 }
 
 /**
- * Apply Liquid Glass customization tokens to :root inline styles.
- * Safe to call with a partial — missing keys fall back to LIQUID_GLASS_DEFAULTS.
+ * Apply Liquid Neon customization tokens to :root inline styles.
+ * Safe to call with a partial — missing keys fall back to LIQUID_NEON_DEFAULTS.
  * Pass `null` or `undefined` to reset all overrides to defaults.
  */
-export function applyLiquidGlassTokens(
-  prefs: Partial<LiquidGlassPrefs> | null | undefined,
+export function applyLiquidNeonTokens(
+  prefs: Partial<LiquidNeonPrefs> | null | undefined,
   bgDataUrl?: string | null,
 ): void {
   if (typeof document === 'undefined') return;
 
-  const p: LiquidGlassPrefs = { ...LIQUID_GLASS_DEFAULTS, ...prefs };
+  const p: LiquidNeonPrefs = { ...LIQUID_NEON_DEFAULTS, ...prefs };
   const root = document.documentElement;
 
   // Glass fill alpha: glass=0 → lighter (more transparent), glass=1 → darker (more opaque)
@@ -191,7 +191,7 @@ export function applyLiquidGlassTokens(
   root.style.setProperty('--blur-chip',    `${Math.round(lerp(24, 8,  p.blur))}px`);
 
   // Neon intensity: neonIntensity=0 → strong (1.0), neonIntensity=1 → soft (0.25)
-  const intensity = lerp(1.0, 0.25, p.neonIntensity ?? LIQUID_GLASS_DEFAULTS.neonIntensity!);
+  const intensity = lerp(1.0, 0.25, p.neonIntensity ?? LIQUID_NEON_DEFAULTS.neonIntensity!);
   root.style.setProperty('--neon-intensity', intensity.toFixed(3));
 
   // Neon accent
@@ -202,10 +202,10 @@ export function applyLiquidGlassTokens(
   root.style.setProperty('--color-accent', accentDef.accent);
 
   // Text colors (enforce contrast floor ≥ 4.5:1)
-  const effectiveBg = p.bgBaseColor ?? LIQUID_GLASS_DEFAULTS.bgBaseColor!;
-  const safeHeader = enforceContrastFloor(p.textHeader ?? LIQUID_GLASS_DEFAULTS.textHeader!, effectiveBg);
-  const safeBody   = enforceContrastFloor(p.textBody   ?? LIQUID_GLASS_DEFAULTS.textBody!,   effectiveBg);
-  const safeMuted  = enforceContrastFloor(p.textMuted  ?? LIQUID_GLASS_DEFAULTS.textMuted!,  effectiveBg);
+  const effectiveBg = p.bgBaseColor ?? LIQUID_NEON_DEFAULTS.bgBaseColor!;
+  const safeHeader = enforceContrastFloor(p.textHeader ?? LIQUID_NEON_DEFAULTS.textHeader!, effectiveBg);
+  const safeBody   = enforceContrastFloor(p.textBody   ?? LIQUID_NEON_DEFAULTS.textBody!,   effectiveBg);
+  const safeMuted  = enforceContrastFloor(p.textMuted  ?? LIQUID_NEON_DEFAULTS.textMuted!,  effectiveBg);
 
   root.style.setProperty('--text-header',  safeHeader);
   root.style.setProperty('--text-body',    safeBody);
@@ -228,6 +228,11 @@ export function applyLiquidGlassTokens(
     const borderDef = NEON_ACCENT_MAP[p.neonBorderColor] ?? NEON_ACCENT_MAP.cyan;
     root.style.setProperty('--neon-cyan', borderDef.accent);
   }
+
+  // Neon color customization (SKY-127) — user-configurable RGB values for window border
+  if (p.neonColorCyan) root.style.setProperty('--neon-cyan', p.neonColorCyan);
+  if (p.neonColorViolet) root.style.setProperty('--neon-violet', p.neonColorViolet);
+  if (p.neonColorMagenta) root.style.setProperty('--neon-magenta', p.neonColorMagenta);
 
   // Frame width: neonFrameWidth 0–100 → rest 0–2px, hover 1–4px
   if (p.neonFrameWidth !== undefined) {
@@ -291,10 +296,10 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 /**
- * Reset all Liquid Glass inline style overrides (back to tokens.css defaults).
+ * Reset all Liquid Neon inline style overrides (back to tokens.css defaults).
  * Called when the user selects "Reset to defaults".
  */
-export function resetLiquidGlassTokens(): void {
+export function resetLiquidNeonTokens(): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   const vars = [

@@ -1,26 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Sparkles, FilePlus, FolderInput, FolderOpen,
-  Info, ShieldCheck, CircleCheck, ChevronRight,
-  Eye, EyeOff, FolderPlus, FolderCheck, AlertTriangle, Lock, Loader2
-} from 'lucide-react';
 import './OnboardingWizard.css';
-
-// suppress unused-import warnings for icons reserved for future screens
-void FolderPlus; void FolderCheck; void AlertTriangle; void Lock; void Loader2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type WizardScreen =
   | 'welcome'
+  | 'default-path'
   | 'blank-path'
   | 'import-source'
   | 'import-dryrun'
   | 'import-progress'
   | 'import-success'
   | 'sample-path'
-  | 'api-key'
   | 'done';
+
+type SeedMode = 'default' | 'blank';
 
 type PathStatus = 'checking' | 'new' | 'empty-ok' | 'non-empty' | 'not-writable' | 'unknown';
 
@@ -45,12 +39,18 @@ type Api = {
   pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null; error?: string }>;
   obsidianDryRun: (path: string, token: string) => Promise<DryRunReport | { error: string }>;
   obsidianRegister: (path: string, token: string) => Promise<{ vaultRoot: string; notesIndexed: number; snapshotPath?: string } | { error: string }>;
-  loadSampleProject: (targetPath?: string) => Promise<{ vaultRoot: string }>;
-  createBlankVault: (targetPath: string) => Promise<{ vaultRoot: string } | { error: string }>;
+  vaultSetPaths: (
+    storyVaultPath: string,
+    notesVaultPath: string,
+    opts?: { seedMode?: SeedMode }
+  ) => Promise<{ ok: true } | { error: string }>;
+  loadSampleTwoVault: (
+    parentPath: string
+  ) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
   obsidianPickFolderByPath: (sourcePath: string) => Promise<{ vaultRoot: string | null; registrationToken: string | null; error?: string }>;
-  settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
   onObsidianImportProgress?: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
+  onboardingComplete: () => Promise<{ ok: boolean }>;
 };
 
 function api(): Api {
@@ -61,7 +61,7 @@ function api(): Api {
 
 interface PickerCardProps {
   recommended?: boolean;
-  icon: React.ReactNode;
+  icon: string;
   title: string;
   description: string;
   ctaLabel: string;
@@ -199,7 +199,7 @@ function FolderDropZone({ onPickFolder, onDrop, scanning, testId }: FolderDropZo
         </>
       ) : (
         <>
-          <FolderOpen size={40} className="folder-drop-zone__icon" aria-hidden="true" />
+          <span className="folder-drop-zone__icon" aria-hidden="true">📁</span>
           <span className="folder-drop-zone__hint">Drop a vault folder here</span>
           <span className="folder-drop-zone__or" aria-hidden="true">— or —</span>
           <button
@@ -264,12 +264,21 @@ function ConfirmDialog({ title, body, primaryLabel, destructiveLabel, onPrimary,
 // ─── Step indicator helpers ───────────────────────────────────────────────────
 
 const STEP_MAP: Partial<Record<WizardScreen, [number, number]>> = {
-  'blank-path':       [1, 2],
+  'default-path':     [1, 1],
+  'blank-path':       [1, 1],
   'import-source':    [1, 3],
   'import-dryrun':    [2, 3],
   'import-progress':  [3, 3],
-  'sample-path':      [1, 2],
+  'sample-path':      [1, 1],
 };
+
+const STORY_VAULT_DIR = 'Story Vault';
+const NOTES_VAULT_DIR = 'Notes Vault';
+
+function joinPath(parent: string, child: string): string {
+  const cleaned = parent.replace(/[/\\]+$/, '');
+  return `${cleaned}/${child}`;
+}
 
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
@@ -277,8 +286,12 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   // Navigation
   const [screen, setScreen] = useState<WizardScreen>('welcome');
 
+  // Default-layout flow
+  const [defaultPath, setDefaultPath] = useState('~/Mythos');
+  const [defaultPathStatus, setDefaultPathStatus] = useState<PathStatus>('new');
+
   // Blank vault flow
-  const [blankPath, setBlankPath] = useState('~/Documents/Mythos Vault');
+  const [blankPath, setBlankPath] = useState('~/Mythos');
   const [blankPathStatus, setBlankPathStatus] = useState<PathStatus>('new');
 
   // Import flow
@@ -293,52 +306,12 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   const [dryRunBanner, setDryRunBanner] = useState('');
 
   // Sample flow
-  const [samplePath, setSamplePath] = useState('~/Documents/Mythos Sample');
+  const [samplePath, setSamplePath] = useState('~/Mythos Sample');
   const [samplePathStatus, setSamplePathStatus] = useState<PathStatus>('new');
-
-  // API key
-  const [apiKey, setApiKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
-  const apiKeyValid = !apiKey.trim() || /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(apiKey.trim());
-
-  // Done screen
-  const [savedSettings, setSavedSettings] = useState<AppSettings | null>(null);
 
   // Shared
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  // Focus management
-  const titleRef = useRef<HTMLHeadingElement>(null);
-
-  useEffect(() => {
-    titleRef.current?.focus();
-  }, [screen]);
-
-  // Esc handler
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (screen === 'welcome' || screen === 'done') return;
-      if (screen === 'import-progress') { setShowCancelConfirm(true); return; }
-      if (screen === 'blank-path' || screen === 'sample-path' || screen === 'api-key') {
-        setError('');
-        setScreen('welcome');
-        return;
-      }
-      if (screen === 'import-source') { setError(''); setScreen('welcome'); return; }
-      if (screen === 'import-dryrun') {
-        setError('');
-        setDryRun(null);
-        setDryRunBanner('');
-        setRegistrationToken('');
-        setScreen('import-source');
-        return;
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [screen]);
 
   // ─── Validation helpers ─────────────────────────────────────────────────────
 
@@ -384,19 +357,62 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   const isBlankCTADisabled = blankPathStatus === 'non-empty' || blankPathStatus === 'not-writable' || busy;
 
-  const handleCreateBlankVault = async () => {
+  const finishOnboarding = useCallback(() => {
+    // Persist the flag on the main-process side; don't await — fire and forget
+    // so the UI transitions immediately. The SETTINGS_GET handler enforces this
+    // flag on next boot based on vault path existence, so a lost call is harmless.
+    api().onboardingComplete().catch(() => { /* non-fatal */ });
+    const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
+    setScreen('done');
+    onComplete(updated);
+  }, [initialSettings, onComplete]);
+
+  const handleCreateVault = useCallback(async (parentPath: string, seedMode: SeedMode) => {
     setError('');
     setBusy(true);
     try {
-      const res = await api().createBlankVault(blankPath);
+      const storyPath = joinPath(parentPath, STORY_VAULT_DIR);
+      const notesPath = joinPath(parentPath, NOTES_VAULT_DIR);
+      const res = await api().vaultSetPaths(storyPath, notesPath, { seedMode });
       if ('error' in res) throw new Error(res.error);
-      setScreen('api-key');
+      finishOnboarding();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create vault');
     } finally {
       setBusy(false);
     }
+  }, [finishOnboarding]);
+
+  const handleCreateBlankVault = () => handleCreateVault(blankPath, 'blank');
+  const handleCreateDefaultVault = () => handleCreateVault(defaultPath, 'default');
+
+  // ─── Default-layout flow ───────────────────────────────────────────────────
+
+  const handleDefaultBrowse = useCallback(async () => {
+    try {
+      const res = await api().pickFolder();
+      if (res.error === 'permission-denied') {
+        setError("macOS blocked access to that folder. Pick a folder in your home directory, or grant access in System Settings → Privacy & Security → Files and Folders.");
+        return;
+      }
+      if (res.cancelled || !res.vaultRoot) return;
+      setDefaultPath(res.vaultRoot);
+      await validatePathStatus(res.vaultRoot, setDefaultPathStatus);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to open folder picker');
+    }
+  }, [validatePathStatus]);
+
+  const handleDefaultPathChange = (v: string) => {
+    setDefaultPath(v);
+    setDefaultPathStatus('unknown');
   };
+
+  const handleDefaultPathBlur = async () => {
+    await validatePathStatus(defaultPath, setDefaultPathStatus);
+  };
+
+  const isDefaultCTADisabled = defaultPathStatus === 'not-writable' || busy;
 
   // ─── Import flow ────────────────────────────────────────────────────────────
 
@@ -534,8 +550,9 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     setError('');
     setBusy(true);
     try {
-      await api().loadSampleProject(samplePath);
-      setScreen('api-key');
+      const res = await api().loadSampleTwoVault(samplePath);
+      if ('error' in res) throw new Error(res.error);
+      finishOnboarding();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load sample project';
       const isDiskFull = msg.toLowerCase().includes('enospc') || msg.toLowerCase().includes('no space left');
@@ -547,29 +564,13 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   };
 
-  // ─── API key flow ───────────────────────────────────────────────────────────
-
-  const handleFinish = async (skipApiKey = false) => {
-    setBusy(true);
-    setError('');
-    try {
-      const key = skipApiKey ? initialSettings.apiKey : apiKey.trim();
-      const updated: AppSettings = { ...initialSettings, apiKey: key, onboardingComplete: true };
-      await api().settingsSet(updated);
-      if (savedSettings === null) setSavedSettings(updated);
-      setScreen('done');
-      onComplete(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save settings');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // ─── Validate blank/sample path on change (blur) ───────────────────────────
 
   useEffect(() => {
     // Pre-validate default paths when the respective screens mount
+    if (screen === 'default-path' && defaultPathStatus === 'new') {
+      validatePathStatus(defaultPath, setDefaultPathStatus).catch(() => {});
+    }
     if (screen === 'blank-path' && blankPathStatus === 'new') {
       validatePathStatus(blankPath, setBlankPathStatus).catch(() => {});
     }
@@ -581,6 +582,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   // ─── Step indicator ─────────────────────────────────────────────────────────
 
   const stepInfo = STEP_MAP[screen];
+  const stepLabel = stepInfo ? `Step ${stepInfo[0]} of ${stepInfo[1]}` : null;
 
   // ─── Render helpers ─────────────────────────────────────────────────────────
 
@@ -589,16 +591,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     const pct = total > 0 ? Math.round((current / total) * 100) : null;
     if (pct !== null) {
       return (
-        <div
-          className="import-progress-bar-wrap"
-          style={{ '--progress-pct': `${pct}%` } as React.CSSProperties}
-        >
+        <div className="import-progress-bar-wrap">
           <div
             className="import-progress-bar"
             role="progressbar"
             aria-valuenow={pct}
             aria-valuemin={0}
             aria-valuemax={100}
+            style={{ '--progress-pct': `${pct}%` } as React.CSSProperties}
           />
           <span className="import-progress-bar__pct">{pct}%</span>
         </div>
@@ -638,35 +638,42 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           <div className="picker-grid" role="group" aria-label="Choose how to get started">
             <PickerCard
               recommended
-              icon={<Sparkles size={32} />}
-              title="Open sample project"
-              description="Tour the editor with a small worldbuilding demo — characters, lore, and a one-chapter draft."
-              ctaLabel="Open sample →"
-              onActivate={() => { setError(''); setScreen('sample-path'); }}
-              testId="card-sample"
+              icon="✨"
+              title="Use the default layout"
+              description="Create both Story Vault and Notes Vault under your chosen folder, seeded with the standard Mythos structure plus a starter universe and story."
+              ctaLabel="Choose path →"
+              onActivate={() => { setError(''); setScreen('default-path'); }}
+              testId="card-default"
             />
             <PickerCard
-              icon={<FilePlus size={32} />}
+              icon="📄"
               title="Start blank"
-              description="Create an empty vault in ~/Documents/Mythos Vault. Change the location on the next screen."
+              description="Create both vaults with empty roots and let the Brainstorm Agent learn your own organization pattern."
               ctaLabel="Choose path →"
               onActivate={() => { setError(''); setScreen('blank-path'); }}
               testId="card-blank"
             />
             <PickerCard
-              icon={<FolderInput size={32} />}
+              icon="📥"
               title="Import Obsidian vault"
               description="Point us at an existing vault. We'll show a dry-run report of what changes before anything is written."
               ctaLabel="Pick folder →"
               onActivate={() => { setError(''); setScreen('import-source'); }}
               testId="card-import"
             />
+            <PickerCard
+              icon="✦"
+              title="Open sample project"
+              description="Tour the app with a pre-built worldbuilding demo — one universe, one story, populated notes."
+              ctaLabel="Open sample →"
+              onActivate={() => { setError(''); setScreen('sample-path'); }}
+              testId="card-sample"
+            />
           </div>
 
           {error && <p className="onboarding-error" role="alert">{error}</p>}
 
           <p className="onboarding-footer">
-            <Info size={14} aria-hidden="true" />
             Need help? See the{' '}
             <a
               href="https://docs.mythoswriter.app/quick-start"
@@ -680,30 +687,58 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         </div>
       )}
 
-      {/* ── S1 Start blank ── */}
+      {/* ── S1a Default layout ── */}
+      {screen === 'default-path' && (
+        <div className="onboarding-card" data-testid="screen-default-path">
+          <div className="onboarding-top-bar">
+            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepLabel && <span className="step-label">{stepLabel}</span>}
+          </div>
+          <h2 className="onboarding-title">Where should we put your vaults?</h2>
+          <p className="onboarding-subtitle">
+            We&apos;ll create <code>Story Vault/</code> and <code>Notes Vault/</code> side-by-side under this folder, seeded with the standard Mythos layout plus a starter universe and story.
+          </p>
+
+          <FolderPathField
+            label="Parent folder"
+            value={defaultPath}
+            onChange={handleDefaultPathChange}
+            onBlur={handleDefaultPathBlur}
+            onBrowse={handleDefaultBrowse}
+            status={defaultPathStatus}
+            disabled={busy}
+            testId="default-path-input"
+          />
+
+          {error && <p className="onboarding-error" role="alert">{error}</p>}
+
+          <div className="onboarding-actions">
+            <button
+              className="btn-primary"
+              onClick={handleCreateDefaultVault}
+              disabled={isDefaultCTADisabled}
+              data-testid="create-default-vault"
+            >
+              {busy ? 'Creating…' : 'Create vaults →'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── S1b Start blank ── */}
       {screen === 'blank-path' && (
         <div className="onboarding-card" data-testid="screen-blank-path">
           <div className="onboarding-top-bar">
-            <button className="btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepInfo && (
-              <div className="step-indicator" role="progressbar"
-                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
-                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
-                {Array.from({length: stepInfo[1]}, (_, i) => (
-                  <span key={i} className={`step-indicator__dot${
-                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
-                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
-                  }`} />
-                ))}
-                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
-              </div>
-            )}
+            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepLabel && <span className="step-label">{stepLabel}</span>}
           </div>
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Where should we put your new vault?</h2>
-          <p className="onboarding-subtitle">We&apos;ll create an empty Mythos Vault here. You can move it later from Settings.</p>
+          <h2 className="onboarding-title">Where should we put your blank vaults?</h2>
+          <p className="onboarding-subtitle">
+            We&apos;ll create empty <code>Story Vault/</code> and <code>Notes Vault/</code> roots here — no scaffolding folders. The Brainstorm Agent will learn the structure you build.
+          </p>
 
           <FolderPathField
-            label="Target folder"
+            label="Parent folder"
             value={blankPath}
             onChange={handleBlankPathChange}
             onBlur={handleBlankPathBlur}
@@ -722,7 +757,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               disabled={isBlankCTADisabled}
               data-testid="create-blank-vault"
             >
-              {busy ? 'Creating…' : 'Create vault →'}
+              {busy ? 'Creating…' : 'Create blank vaults →'}
             </button>
           </div>
         </div>
@@ -732,22 +767,10 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {screen === 'import-source' && (
         <div className="onboarding-card" data-testid="screen-import-source">
           <div className="onboarding-top-bar">
-            <button className="btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepInfo && (
-              <div className="step-indicator" role="progressbar"
-                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
-                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
-                {Array.from({length: stepInfo[1]}, (_, i) => (
-                  <span key={i} className={`step-indicator__dot${
-                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
-                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
-                  }`} />
-                ))}
-                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
-              </div>
-            )}
+            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepLabel && <span className="step-label">{stepLabel}</span>}
           </div>
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Choose the Obsidian vault to import</h2>
+          <h2 className="onboarding-title">Choose the Obsidian vault to import</h2>
           <p className="onboarding-subtitle">Nothing is written until you confirm the dry-run report.</p>
 
           <FolderDropZone
@@ -766,26 +789,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         <div className="onboarding-card onboarding-card--wide" data-testid="screen-import-dryrun">
           <div className="onboarding-top-bar">
             <button
-              className="btn-back"
+              className="btn-ghost btn-back"
               onClick={() => { setError(''); setDryRun(null); setDryRunBanner(''); setRegistrationToken(''); setScreen('import-source'); }}
             >
               ← Back
             </button>
-            {stepInfo && (
-              <div className="step-indicator" role="progressbar"
-                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
-                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
-                {Array.from({length: stepInfo[1]}, (_, i) => (
-                  <span key={i} className={`step-indicator__dot${
-                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
-                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
-                  }`} />
-                ))}
-                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
-              </div>
-            )}
+            {stepLabel && <span className="step-label">{stepLabel}</span>}
           </div>
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Vault scan report</h2>
+          <h2 className="onboarding-title">Vault scan report</h2>
           <p className="onboarding-vault-path">{importSourcePath}</p>
 
           {dryRunBanner && (
@@ -802,7 +813,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             {dryRun.restructured !== undefined && (
               <details className="dry-run-section" open={dryRun.restructured.length > 0} data-testid="section-restructured">
                 <summary className="dry-run-section-title">
-                  <ChevronRight size={14} className="dry-run-chevron" aria-hidden="true" /> Restructured
+                  ▼ Restructured
                 </summary>
                 {dryRun.restructured.length > 0 ? (
                   <div className="dry-run-section__body">
@@ -830,7 +841,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             {dryRun.leftAsIs !== undefined && (
               <details className="dry-run-section" open={false} data-testid="section-left-as-is">
                 <summary className="dry-run-section-title">
-                  <ChevronRight size={14} className="dry-run-chevron" aria-hidden="true" /> Left as-is — {dryRun.leftAsIs.length} notes
+                  ▼ Left as-is
                 </summary>
                 <p className="dry-run-section__body dry-run-section__count">
                   {dryRun.leftAsIs.length} notes will keep their current path
@@ -893,10 +904,9 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               <p className="dry-run-ok" data-testid="dry-run-ok">No issues found — vault looks great!</p>
             )}
 
-            <div className="dry-run-snapshot-promise">
-              <ShieldCheck size={16} aria-hidden="true" style={{flexShrink: 0, color: 'var(--accent)'}} />
-              <span>A snapshot is taken before any change. Rollback is one click during and immediately after the import.</span>
-            </div>
+            <p className="dry-run-snapshot-promise">
+              ⓘ A snapshot is taken before any change. Rollback is one click during and immediately after the import.
+            </p>
           </div>
 
           {error && <p className="onboarding-error" role="alert">{error}</p>}
@@ -927,21 +937,9 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         <div className="onboarding-card" data-testid="screen-import-progress">
           <div className="onboarding-top-bar">
             <span />
-            {stepInfo && (
-              <div className="step-indicator" role="progressbar"
-                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
-                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
-                {Array.from({length: stepInfo[1]}, (_, i) => (
-                  <span key={i} className={`step-indicator__dot${
-                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
-                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
-                  }`} />
-                ))}
-                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
-              </div>
-            )}
+            {stepLabel && <span className="step-label">{stepLabel}</span>}
           </div>
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Importing your vault…</h2>
+          <h2 className="onboarding-title">Importing your vault…</h2>
           <p className="onboarding-vault-path">{importSourcePath}</p>
 
           {renderProgressBar()}
@@ -956,10 +954,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             <p className="import-progress-last-action">Last action: {importProgress.lastAction}</p>
           )}
 
-          <div className="import-progress-hint dry-run-snapshot-promise">
-            <ShieldCheck size={14} aria-hidden="true" style={{flexShrink: 0, color: 'var(--accent)'}} />
-            <span>Safe to cancel — we&apos;ll roll back to before the import.</span>
-          </div>
+          <p className="import-progress-hint">ⓘ Safe to cancel — we&apos;ll roll back to before the import.</p>
 
           <div className="onboarding-actions onboarding-actions--center">
             <button
@@ -976,8 +971,8 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {/* ── S2d Import success ── */}
       {screen === 'import-success' && (
         <div className="onboarding-card" data-testid="screen-import-success">
-          <CircleCheck size={48} className="import-success-icon" aria-hidden="true" />
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Vault imported</h2>
+          <div className="import-success-icon" aria-hidden="true">✓</div>
+          <h2 className="onboarding-title">Vault imported</h2>
           <p className="onboarding-subtitle">{importNotesCount} notes are now in your Mythos Vault.</p>
           {importSnapshotPath && (
             <>
@@ -986,15 +981,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                 <span className="import-snapshot-path__value">{importSnapshotPath}</span>
               </p>
               <p className="import-snapshot-footnote">
-                <Info size={14} aria-hidden="true" />
-                <span>You can delete the snapshot from Settings → Vault later.</span>
+                ⓘ You can delete the snapshot from Settings → Vault later.
               </p>
             </>
           )}
           <div className="onboarding-actions">
             <button
               className="btn-primary"
-              onClick={() => setScreen('api-key')}
+              onClick={finishOnboarding}
               data-testid="import-success-continue"
             >
               Continue →
@@ -1007,25 +1001,16 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {screen === 'sample-path' && (
         <div className="onboarding-card" data-testid="screen-sample-path">
           <div className="onboarding-top-bar">
-            <button className="btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepInfo && (
-              <div className="step-indicator" role="progressbar"
-                   aria-valuemin={1} aria-valuemax={stepInfo[1]} aria-valuenow={stepInfo[0]}
-                   aria-label={`Step ${stepInfo[0]} of ${stepInfo[1]}`}>
-                {Array.from({length: stepInfo[1]}, (_, i) => (
-                  <span key={i} className={`step-indicator__dot${
-                    i + 1 < stepInfo[0] ? ' step-indicator__dot--done'
-                    : i + 1 === stepInfo[0] ? ' step-indicator__dot--current' : ''
-                  }`} />
-                ))}
-                <span className="step-indicator__label">{stepInfo[0]} / {stepInfo[1]}</span>
-              </div>
-            )}
+            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepLabel && <span className="step-label">{stepLabel}</span>}
           </div>
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Where should we put the sample project?</h2>
+          <h2 className="onboarding-title">Where should we put the sample project?</h2>
+          <p className="onboarding-subtitle">
+            We&apos;ll create <code>Story Vault/</code> and <code>Notes Vault/</code> under this folder, populated with the demo content.
+          </p>
 
           <FolderPathField
-            label="Target folder"
+            label="Parent folder"
             value={samplePath}
             onChange={(v) => { setSamplePath(v); setSamplePathStatus('unknown'); }}
             onBrowse={handleSampleBrowse}
@@ -1037,16 +1022,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           <div className="sample-contents">
             <p className="sample-contents__header">The sample includes:</p>
             <ul className="sample-contents__list">
-              <li>1 universe (&ldquo;Acheron&rdquo;)</li>
-              <li>2 stories with 3 chapters between them</li>
-              <li>18 characters, 6 locations, 4 lore notes</li>
-              <li>A populated Scene Crafter board</li>
+              <li>1 universe (&ldquo;Argent&rdquo;) with characters, locations, and a custom system</li>
+              <li>1 story (&ldquo;The Glass Library&rdquo;) with two chapters and a synopsis</li>
+              <li>Beats, themes, and notes wired up to the story</li>
             </ul>
           </div>
 
           <p className="sample-footnote">
-            <Info size={14} aria-hidden="true" style={{flexShrink: 0}} />
-            <span>You can keep working in the sample, or start your own vault from File → New project at any time.</span>
+            ⓘ You can keep working in the sample, or start your own vault from File → New project at any time.
           </p>
 
           {error && <p className="onboarding-error" role="alert">{error}</p>}
@@ -1064,77 +1047,13 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         </div>
       )}
 
-      {/* ── S4 API key ── */}
-      {screen === 'api-key' && (
-        <div className="onboarding-card" data-testid="screen-api-key">
-          <p className="onboarding-phase-label">Add your API key — optional</p>
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>Connect to Anthropic Claude</h2>
-          <p className="onboarding-subtitle">
-            Mythos Writer uses the Anthropic Claude API for AI features. You can skip this and add it later in Settings.
-          </p>
-          <label className="onboarding-label" htmlFor="api-key-input">Anthropic API key</label>
-          <div style={{position: 'relative'}}>
-            <input
-              id="api-key-input"
-              type={showKey ? 'text' : 'password'}
-              className="onboarding-input"
-              placeholder="sk-ant-..."
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              data-testid="api-key-input"
-              style={{paddingRight: '40px'}}
-            />
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{position:'absolute',right:0,top:0,bottom:0,padding:'0 var(--space-3)'}}
-              onClick={() => setShowKey(v => !v)}
-              aria-label={showKey ? 'Hide API key' : 'Show API key'}
-            >
-              {showKey ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
-            </button>
-          </div>
-          {apiKey.trim() && !apiKeyValid && (
-            <p className="folder-path-field__hint folder-path-field__hint--warn">
-              Key format looks wrong — should start with sk-ant-
-            </p>
-          )}
-          {error && <p className="onboarding-error" role="alert">{error}</p>}
-          <div className="onboarding-actions">
-            <button
-              className="btn-ghost"
-              onClick={() => handleFinish(true)}
-              disabled={busy}
-              data-testid="skip-api-key"
-            >
-              Skip for now
-            </button>
-            <button
-              className="btn-primary"
-              onClick={() => handleFinish(false)}
-              disabled={busy || !apiKey.trim()}
-              data-testid="save-api-key"
-            >
-              {busy ? 'Saving…' : 'Save & continue'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── S5 Done ── */}
+      {/* ── S4 Done ── */}
       {screen === 'done' && (
-        <div className="onboarding-card onboarding-card--done" data-testid="screen-done">
-          <CircleCheck size={64} className="onboarding-done-icon" aria-hidden="true" />
-          <h2 className="onboarding-title" ref={titleRef} tabIndex={-1}>You&apos;re all set</h2>
+        <div className="onboarding-card" data-testid="screen-done">
+          <p className="onboarding-phase-label">You&apos;re set</p>
+          <div className="onboarding-done-icon" aria-hidden="true">✓</div>
+          <h2 className="onboarding-title">You&apos;re all set!</h2>
           <p className="onboarding-subtitle">Mythos Writer is ready. Start writing your story.</p>
-          <p className="onboarding-hint">
-            Tip: press <kbd>⌘K</kbd> (or <kbd>Ctrl K</kbd>) to open the command palette.
-          </p>
-          <div className="onboarding-actions">
-            <button className="btn-primary" onClick={() => onComplete(savedSettings ?? initialSettings)}>
-              Start writing →
-            </button>
-          </div>
         </div>
       )}
     </div>

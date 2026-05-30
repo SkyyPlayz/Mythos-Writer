@@ -50,6 +50,7 @@ function stubApi(overrides: Record<string, unknown> = {}) {
       snapshots: { maxPerScene: 100, maxAgeDays: 30 },
     }),
     settingsSet: vi.fn().mockResolvedValue({}),
+    settingsTestConnection: vi.fn().mockResolvedValue({ ok: true, latencyMs: 10 }),
     agentWritingAssistant: vi.fn().mockResolvedValue({ text: '' }),
     onWritingAssistantChunk: vi.fn().mockReturnValue(() => {}),
     onStreamToken: vi.fn().mockReturnValue(() => {}),
@@ -122,7 +123,7 @@ describe('Accessibility — WritingAssistantPanel (Writing Assistant sidebar)', 
 // ══════════════════════════════════════════════════════════════════════════════
 // Surface 3 — Settings panel
 // ══════════════════════════════════════════════════════════════════════════════
-import SettingsPanel from './SettingsPanel';
+import SettingsPanel from './components/SettingsPanel';
 import { waitFor } from '@testing-library/react';
 
 describe('Accessibility — SettingsPanel (Settings)', () => {

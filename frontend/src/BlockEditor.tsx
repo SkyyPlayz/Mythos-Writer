@@ -23,6 +23,10 @@ interface Props {
   wikiLinkSuggestions?: WLSuggestion[];
   onAcceptWikiLink?: (id: string, link: string, anchorText: string) => void;
   onRejectWikiLink?: (id: string) => void;
+  /** SKY-130: ProseMirror document position to restore on mount. 0 or undefined = top. */
+  initialCursorPos?: number;
+  /** SKY-130: debounced callback reporting cursor position changes for session persistence. */
+  onCursorPosChange?: (pos: number) => void;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -49,7 +53,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
   return lines.join('\n').trim();
 }
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, initialCursorPos, onCursorPosChange }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [selectionText, setSelectionText] = useState<string>('');
   const [betaReadBubble, setBetaReadBubble] = useState<{ top: number; left: number } | null>(null);
@@ -69,6 +73,10 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const onBetaReadRef = useRef(onBetaReadRequest);
   onBetaReadRef.current = onBetaReadRequest;
   const editorWrapRef = useRef<HTMLDivElement | null>(null);
+  // SKY-130: cursor tracking refs
+  const onCursorPosChangeRef = useRef(onCursorPosChange);
+  onCursorPosChangeRef.current = onCursorPosChange;
+  const cursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editor = useEditor({
     extensions: [StarterKit, WikiLink, WikiLinkHintExtension, Markdown],
@@ -112,6 +120,11 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       } else {
         setBetaReadBubble(null);
       }
+      // SKY-130: debounced cursor position reporting for session persistence
+      if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
+      cursorDebounceRef.current = setTimeout(() => {
+        onCursorPosChangeRef.current?.(from);
+      }, 500);
     },
   });
 
@@ -158,6 +171,24 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
+  // SKY-130: restore cursor position on mount from cross-restart session state.
+  // initialCursorPos is fixed for the scene's lifetime (BlockEditor remounts per key).
+  useEffect(() => {
+    if (!editor || !initialCursorPos || initialCursorPos <= 0) return;
+    const timer = setTimeout(() => {
+      try {
+        const docSize = editor.state.doc.nodeSize - 2;
+        const clamped = Math.max(1, Math.min(initialCursorPos, docSize));
+        editor.commands.setTextSelection({ from: clamped, to: clamped });
+        editor.commands.scrollIntoView();
+      } catch {
+        // Out-of-range positions are silently ignored
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
+
   // Push updated wiki-link hint suggestions into the ProseMirror plugin
   useEffect(() => {
     if (!editor) return;
@@ -165,6 +196,14 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       editor.state.tr.setMeta(WIKI_LINK_HINT_META, wikiLinkSuggestions ?? [])
     );
   }, [editor, wikiLinkSuggestions]);
+
+  // SKY-130: flush pending cursor debounce on unmount to avoid stale callbacks
+  useEffect(() => {
+    return () => {
+      if (changeRef.current) clearTimeout(changeRef.current);
+      if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
+    };
+  }, []);
 
   const handleHintMouseOver = useCallback((e: React.MouseEvent) => {
     const el = (e.target as HTMLElement).closest('.archive-wl-hint') as HTMLElement | null;

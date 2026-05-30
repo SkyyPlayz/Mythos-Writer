@@ -34,6 +34,10 @@ export function secureWebPreferences(
     // Allow renderer to use experimental Web APIs only when explicitly opted
     // in elsewhere; default off.
     experimentalFeatures: false,
+    // SKY-114: enable Electron's built-in spell checker so the renderer
+    // surfaces red underlines and the context-menu handler can read
+    // dictionarySuggestions / misspelledWord from context-menu params.
+    spellcheck: true,
   };
 }
 
