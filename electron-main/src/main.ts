@@ -3268,6 +3268,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: import('./ipc.js').NotesTagMergePayload): import('./ipc.js').NotesTagMergeResponse => {
     const { sourceTag, targetTag } = payload ?? {};
     return mergeNotesTags(getNotesVaultRoot(), sourceTag, targetTag);
+  },
   // ─── SKY-170: Scene-to-entity links ───
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload): import('./ipc.js').SceneEntityLinksListResponse => {
     ensureVaultDir();
@@ -3280,6 +3281,7 @@ const handlers: IpcHandlers = {
         createdAt: r.created_at,
       })),
     };
+  },
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload): import('./ipc.js').SceneEntityLinksUpsertResponse => {
     ensureVaultDir();
     const now = new Date().toISOString();
@@ -3293,6 +3295,7 @@ const handlers: IpcHandlers = {
         createdAt: row.created_at,
       },
     };
+  },
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload): void => {
     ensureVaultDir();
     deleteSceneEntityLink(payload.sceneId, payload.entityId, payload.kind);

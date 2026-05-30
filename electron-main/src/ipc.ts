@@ -2432,6 +2432,7 @@ export interface NotesTagMergePayload {
 
 export interface NotesTagMergeResponse {
   affectedFiles: number;
+}
 // ─── SKY-55: per-scene notes ───
 export interface NotesGetPayload { sceneId: string }
 export interface NotesGetResponse { content: string }
@@ -2441,6 +2442,7 @@ export interface NotesSetResponse { saved: boolean }
 export interface TagEntry {
   color?: string | null;
   createdAt: string;
+}
 export interface TagsListResponse { tags: TagEntry[] }
 export interface TagsUpsertPayload { name: string; color?: string | null }
 export interface TagsUpsertResponse { tag: TagEntry }
@@ -2460,6 +2462,7 @@ export interface TagsBulkApplyPayload {
   itemKind: 'scene' | 'entity';
   addTags?: string[];
   removeTags?: string[];
+}
 export interface TagsBulkApplyResponse { updated: number }
 export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
 export interface SceneSetTagsResponse { scene: SceneEntry }
@@ -2486,20 +2489,26 @@ export interface LinkedScene {
   linkKind: 'mention' | 'tag';
 export interface SceneEntityLinksListPayload {
   sceneId: string;
+}
 export interface SceneEntityLinksListResponse {
   links: SceneEntityLink[];
+}
 export interface SceneEntityLinksUpsertPayload {
   sceneId: string;
   entityId: string;
   kind: 'mention' | 'tag';
+}
 export interface SceneEntityLinksUpsertResponse {
   link: SceneEntityLink;
+}
 export interface SceneEntityLinksDeletePayload {
   sceneId: string;
   entityId: string;
   kind: 'mention' | 'tag';
+}
 export interface EntityLinkedScenesPayload {
   entityId: string;
+}
 export interface EntityLinkedScenesResponse {
   scenes: LinkedScene[];
 }
