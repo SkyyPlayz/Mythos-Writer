@@ -2668,6 +2668,7 @@ export type BrainstormEnrichEntryResponse =
   | { status: 'ok'; path: string; content: string }
   | { status: 'skipped'; reason: string };
 
+
 // ─── SKY-156: Project Templates ───────────────────────────────────────────────
 
 export interface TemplateNode {

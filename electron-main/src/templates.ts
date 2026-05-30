@@ -650,3 +650,4 @@ export function listNoteTemplates(kind?: string): NoteTemplate[] {
 export function getNoteTemplate(id: string): NoteTemplate | undefined {
   return BUNDLED_NOTE_TEMPLATES.find((t) => t.id === id);
 }
+
