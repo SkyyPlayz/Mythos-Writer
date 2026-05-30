@@ -5,6 +5,9 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import { WikiLink } from './WikiLinkExtension';
+import { EntityMentionExtension } from './EntityMentionExtension';
+import { matchesEntityQuery } from './EntityMentionPicker';
+import type { EntityEntry } from './types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -335,5 +338,88 @@ describe('BlockEditor markdown round-trip — extended regression (MYT-131)', ()
       const raw = roundTripRaw('Hello world');
       expect(raw).toMatch(/\n$/);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SKY-176: EntityMention round-trip tests
+// ---------------------------------------------------------------------------
+
+function roundTripMention(markdown: string): string {
+  const editor = new Editor({
+    extensions: [StarterKit, WikiLink, EntityMentionExtension, Markdown],
+    content: markdown,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (editor.storage as any).markdown.getMarkdown() as string;
+  editor.destroy();
+  return result;
+}
+
+describe('EntityMentionExtension markdown round-trip (SKY-176)', () => {
+  it('entity mention serialises to [Name](entity://id)', () => {
+    const md = '[Elara Voss](entity://ent_001)';
+    const out = roundTripMention(md);
+    expect(out).toContain('[Elara Voss](entity://ent_001)');
+  });
+
+  it('entity mention in prose round-trips verbatim', () => {
+    const md = 'She saw [Elara Voss](entity://ent_001) across the hall.';
+    const out = roundTripMention(md);
+    expect(out).toContain('[Elara Voss](entity://ent_001)');
+    expect(out).toContain('across the hall');
+  });
+
+  it('multiple entity mentions in one paragraph all survive', () => {
+    const md = '[Elara](entity://ent_001) met [The Shadow Realm](entity://ent_002) in [Duskfall](entity://ent_003).';
+    const out = roundTripMention(md);
+    expect(out).toContain('[Elara](entity://ent_001)');
+    expect(out).toContain('[The Shadow Realm](entity://ent_002)');
+    expect(out).toContain('[Duskfall](entity://ent_003)');
+  });
+
+  it('standard markdown links are NOT treated as entity mentions', () => {
+    const md = '[OpenAI](https://openai.com)';
+    const out = roundTripMention(md);
+    // Should not be converted to an entity mention node
+    expect(out).not.toContain('entity://');
+    expect(out).toContain('OpenAI');
+  });
+
+  it('entity mention and wiki-link coexist in the same paragraph', () => {
+    const md = 'See [[Elara]] and [Duskfall](entity://ent_003).';
+    const out = roundTripMention(md);
+    expect(out).toContain('[[Elara]]');
+    expect(out).toContain('[Duskfall](entity://ent_003)');
+  });
+});
+
+describe('matchesEntityQuery (SKY-176)', () => {
+  const mkEntity = (name: string, aliases?: string[]): EntityEntry => ({
+    id: 'x',
+    name,
+    type: 'character',
+    path: '',
+    aliases,
+    createdAt: '',
+    updatedAt: '',
+  });
+
+  it('empty query matches all entities', () => {
+    expect(matchesEntityQuery(mkEntity('Elara'), '')).toBe(true);
+    expect(matchesEntityQuery(mkEntity('Other'), '   ')).toBe(true);
+  });
+
+  it('matches entity name case-insensitively', () => {
+    expect(matchesEntityQuery(mkEntity('Elara Voss'), 'elara')).toBe(true);
+    expect(matchesEntityQuery(mkEntity('Elara Voss'), 'VOSS')).toBe(true);
+  });
+
+  it('matches alias case-insensitively', () => {
+    expect(matchesEntityQuery(mkEntity('Elara Voss', ['The Wanderer']), 'wanderer')).toBe(true);
+  });
+
+  it('returns false when query does not match name or aliases', () => {
+    expect(matchesEntityQuery(mkEntity('Elara', ['The Wanderer']), 'dragon')).toBe(false);
   });
 });

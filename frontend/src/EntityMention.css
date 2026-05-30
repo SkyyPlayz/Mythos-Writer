@@ -1,0 +1,101 @@
+/* ── EntityMention inline pill (rendered mention node) ─────────────── */
+
+.entity-mention {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-full, 999px);
+  font-size: 0.88em;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  background: var(--accent-soft, rgba(0, 240, 255, 0.12));
+  color: var(--accent, #00f0ff);
+}
+
+/* Type-specific colors — apply to both inline pills and picker type chips */
+
+.entity-mention--character {
+  background: var(--entity-char-bg, rgba(99, 102, 241, 0.20));
+  color: var(--entity-char-text, #a5b4fc);
+  border-color: rgba(99, 102, 241, 0.30);
+}
+
+.entity-mention--location {
+  background: var(--entity-loc-bg, rgba(16, 185, 129, 0.15));
+  color: var(--entity-loc-text, #6ee7b7);
+  border-color: rgba(16, 185, 129, 0.30);
+}
+
+.entity-mention--item {
+  background: var(--entity-item-bg, rgba(245, 158, 11, 0.15));
+  color: var(--entity-item-text, #fcd34d);
+  border-color: rgba(245, 158, 11, 0.30);
+}
+
+.entity-mention--concept {
+  background: var(--entity-concept-bg, rgba(139, 92, 246, 0.18));
+  color: var(--entity-concept-text, #d8b4fe);
+  border-color: rgba(139, 92, 246, 0.30);
+}
+
+/* ── Entity mention picker (typeahead dropdown) ──────────────────────── */
+
+.entity-mention-picker {
+  position: absolute;
+  z-index: 50;
+  min-width: 220px;
+  max-width: 340px;
+  background: var(--surface-1, #1a1c2e);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.10));
+  border-radius: var(--radius-xs, 8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.50);
+  overflow: hidden;
+  padding: 4px;
+}
+
+.entity-mention-picker-empty {
+  padding: 8px 12px;
+  font-size: 0.85em;
+  color: var(--text-muted, #6b7280);
+}
+
+.entity-mention-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: calc(var(--radius-xs, 8px) - 2px);
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+.entity-mention-picker-item:hover,
+.entity-mention-picker-item.active {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+
+.entity-mention-picker-name {
+  font-size: 0.9em;
+  color: var(--text-body, #e8eaf6);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Type chip in the picker — inherits background/color from entity-mention--{type} */
+.entity-mention-picker-type {
+  font-size: 0.75em;
+  padding: 1px 6px;
+  border-radius: var(--radius-full, 999px);
+  flex-shrink: 0;
+  /* default (other) — overridden by entity-mention--{type} */
+  background: var(--accent-soft, rgba(0, 240, 255, 0.12));
+  color: var(--accent, #00f0ff);
+}

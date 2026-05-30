@@ -2,10 +2,14 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import { useRef, useState, useEffect, useCallback } from 'react';
-import type { Block, Scene, DraftState } from './types';
+import type { Block, Scene, DraftState, EntityEntry } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
+import { EntityMentionExtension } from './EntityMentionExtension';
+import { EntityMentionPickerExtension, mentionPickerKey } from './EntityMentionPickerExtension';
+import { EntityMentionPicker, matchesEntityQuery } from './EntityMentionPicker';
 import './BlockEditor.css';
+import './EntityMention.css';
 
 export interface BlockEditorApi {
   jumpToText: (text: string) => void;
@@ -53,6 +57,14 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
   return lines.join('\n').trim();
 }
 
+interface ActiveMentionPicker {
+  query: string;
+  from: number;
+  to: number;
+  top: number;
+  left: number;
+}
+
 export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, initialCursorPos, onCursorPosChange }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [selectionText, setSelectionText] = useState<string>('');
@@ -60,6 +72,21 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const [hintTooltip, setHintTooltip] = useState<{
     id: string; link: string; anchor: string; top: number; left: number;
   } | null>(null);
+
+  // SKY-176: @entity mention typeahead state
+  const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
+  const [activePicker, setActivePicker] = useState<ActiveMentionPicker | null>(null);
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+  // Refs for keyboard handler (avoids stale closure in capture-phase listener)
+  const allEntitiesRef = useRef<EntityEntry[]>([]);
+  const activePickerRef = useRef<ActiveMentionPicker | null>(null);
+  const selectedMentionIndexRef = useRef(0);
+  const pickerSuppressedRef = useRef<{ from: number } | null>(null);
+  const lastPickerQueryRef = useRef<string>('');
+  allEntitiesRef.current = allEntities;
+  activePickerRef.current = activePicker;
+  selectedMentionIndexRef.current = selectedMentionIndex;
+
   const onAcceptWikiLinkRef = useRef(onAcceptWikiLink);
   onAcceptWikiLinkRef.current = onAcceptWikiLink;
   const onRejectWikiLinkRef = useRef(onRejectWikiLink);
@@ -78,13 +105,65 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   onCursorPosChangeRef.current = onCursorPosChange;
   const cursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // SKY-176: read mention picker plugin state and update React picker state.
+  // Called from both onUpdate and onSelectionUpdate so all transitions are captured.
+  // Uses a ref so the stale useEditor closure always calls the latest implementation.
+  const syncPickerStateRef = useRef<(ed: typeof editor) => void>(() => {});
+  syncPickerStateRef.current = (ed) => {
+    if (!ed) return;
+    const ps = mentionPickerKey.getState(ed.state);
+
+    if (!ps?.active) {
+      setActivePicker(null);
+      return;
+    }
+
+    // Escape-key suppression: if user pressed Escape at this @ position, keep closed.
+    if (pickerSuppressedRef.current?.from === ps.from) {
+      setActivePicker(null);
+      return;
+    }
+    // A different @ position clears stale suppression.
+    pickerSuppressedRef.current = null;
+
+    // Reset selected index when query text changes.
+    if (ps.query !== lastPickerQueryRef.current) {
+      setSelectedMentionIndex(0);
+      lastPickerQueryRef.current = ps.query;
+    }
+
+    // Compute pixel position relative to editor wrap.
+    let top = 0;
+    let left = 0;
+    try {
+      const coords = ed.view.coordsAtPos(ps.from);
+      const wrapEl = editorWrapRef.current;
+      if (wrapEl) {
+        const wrapRect = wrapEl.getBoundingClientRect();
+        top = coords.bottom - wrapRect.top + 4;
+        left = Math.max(0, coords.left - wrapRect.left);
+      }
+    } catch {
+      // coordsAtPos can throw for out-of-range positions; leave defaults.
+    }
+
+    setActivePicker({ query: ps.query, from: ps.from, to: ps.to, top, left });
+  };
+
   const editor = useEditor({
-    extensions: [StarterKit, WikiLink, WikiLinkHintExtension, Markdown],
+    extensions: [
+      StarterKit,
+      WikiLink,
+      WikiLinkHintExtension,
+      EntityMentionExtension,
+      EntityMentionPickerExtension,
+      Markdown,
+    ],
     content: blocksToMarkdownBody(scene.blocks),
-    onUpdate({ editor }) {
+    onUpdate({ editor: ed }) {
       // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = (editor.storage as any).markdown.getMarkdown() as string;
+      const raw = (ed.storage as any).markdown.getMarkdown() as string;
       // tiptap-markdown v0.9 omits a trailing newline; add it for tooling compatibility.
       const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
       if (changeRef.current) clearTimeout(changeRef.current);
@@ -97,10 +176,11 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           updatedAt: new Date().toISOString(),
         }]);
       }, 800);
+      syncPickerStateRef.current(ed);
     },
-    onSelectionUpdate({ editor }) {
-      const { from, to } = editor.state.selection;
-      const text = from === to ? '' : editor.state.doc.textBetween(from, to, ' ');
+    onSelectionUpdate({ editor: ed }) {
+      const { from, to } = ed.state.selection;
+      const text = from === to ? '' : ed.state.doc.textBetween(from, to, ' ');
       const trimmed = text.trim();
       setSelectionText(trimmed);
       if (trimmed.length > 3 && editorWrapRef.current) {
@@ -125,6 +205,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       cursorDebounceRef.current = setTimeout(() => {
         onCursorPosChangeRef.current?.(from);
       }, 500);
+      syncPickerStateRef.current(ed);
     },
   });
 
@@ -204,6 +285,71 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
     };
   }, []);
+
+  // SKY-176: fetch entity list once on mount for the typeahead.
+  useEffect(() => {
+    window.api?.entityList?.().then((res) => {
+      setAllEntities(res?.entities ?? []);
+    }).catch(() => { /* entity list unavailable — picker shows no results */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // SKY-176: insert entity mention node, replacing the @query text.
+  const insertEntityMention = useCallback((entity: EntityEntry, picker: ActiveMentionPicker) => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from: picker.from, to: picker.to })
+      .insertContent({
+        type: 'entityMention',
+        attrs: { id: entity.id, label: entity.name, entityType: entity.type },
+      })
+      .run();
+    setActivePicker(null);
+    setSelectedMentionIndex(0);
+    pickerSuppressedRef.current = null;
+    lastPickerQueryRef.current = '';
+  }, [editor]);
+
+  // SKY-176: keyboard capture handler — intercepts arrows/enter/escape when picker is open.
+  // Runs in capture phase so ProseMirror never sees these keys.
+  useEffect(() => {
+    if (!editor) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      const picker = activePickerRef.current;
+      if (!picker) return;
+
+      const filtered = allEntitiesRef.current
+        .filter((en) => matchesEntityQuery(en, picker.query))
+        .slice(0, 10);
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedMentionIndex((i) => Math.min(Math.max(0, filtered.length - 1), i + 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedMentionIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        const entity = filtered[selectedMentionIndexRef.current];
+        if (entity) insertEntityMention(entity, picker);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        pickerSuppressedRef.current = { from: picker.from };
+        setActivePicker(null);
+      }
+    }
+
+    const el = editor.view.dom;
+    el.addEventListener('keydown', handleKeyDown, true);
+    return () => el.removeEventListener('keydown', handleKeyDown, true);
+  }, [editor, insertEntityMention]);
 
   const handleHintMouseOver = useCallback((e: React.MouseEvent) => {
     const el = (e.target as HTMLElement).closest('.archive-wl-hint') as HTMLElement | null;
@@ -303,6 +449,15 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           >
             Beta-Read
           </button>
+        )}
+        {activePicker && (
+          <EntityMentionPicker
+            entities={allEntities}
+            query={activePicker.query}
+            selectedIndex={selectedMentionIndex}
+            onSelect={(entity) => insertEntityMention(entity, activePicker)}
+            style={{ top: activePicker.top, left: activePicker.left }}
+          />
         )}
         <EditorContent editor={editor} className="tiptap-content" />
       </div>
