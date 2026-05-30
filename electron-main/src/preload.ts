@@ -394,9 +394,17 @@ contextBridge.exposeInMainWorld('api', {
   exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) =>
     ipcRenderer.invoke('export:epub', { storyId, metadata, targetPath }),
 
-  // DOCX export (MYT-252)
-  exportDocx: (storyId: string) =>
-    ipcRenderer.invoke('export:docx', { storyId }),
+  // DOCX export (MYT-252, extended SKY-153)
+  exportDocx: (storyId: string | undefined, scope?: unknown) =>
+    ipcRenderer.invoke('export:docx', scope ? { scope } : { storyId }),
+
+  // Markdown export (SKY-153)
+  exportMarkdown: (scope: unknown) =>
+    ipcRenderer.invoke('export:markdown', { scope }),
+
+  // Plain text export (SKY-153)
+  exportPlaintext: (scope: unknown) =>
+    ipcRenderer.invoke('export:plaintext', { scope }),
 
   // Vault Graph View (MYT-249)
   vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
@@ -468,6 +476,20 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-130: persist last-opened scene + cursor position for cross-restart restore.
   sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) =>
     ipcRenderer.invoke('session:saveScene', payload),
+  // SKY-156: Project Templates
+  templateList: () => ipcRenderer.invoke('template:list', undefined),
+  templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) =>
+    ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
+  templateSaveAs: (name: string) =>
+    ipcRenderer.invoke('template:saveAs', { name }),
+
+  // SKY-154: Writing Goals & Progress Dashboard
+  goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
+  goalsLogWords: (date: string, wordsAdded: number) =>
+    ipcRenderer.invoke('goals:logWords', { date, wordsAdded }),
+  goalsSetGoal: (dailyGoal: number) =>
+    ipcRenderer.invoke('goals:setGoal', { dailyGoal }),
+  goalsResetStreak: () => ipcRenderer.invoke('goals:resetStreak', undefined),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
