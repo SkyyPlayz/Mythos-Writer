@@ -181,6 +181,8 @@ test.afterAll(async () => {
 
 test('TC-GS-01: Ctrl+K opens Global Search panel', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  // Ensure the page has focus by clicking on the main app area
+  await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
   await expect(searchPanel).toBeVisible({ timeout: 6_000 });
@@ -193,6 +195,7 @@ test('TC-GS-01: Ctrl+K opens Global Search panel', async () => {
 // ─── TC-GS-02: Typing query returns FTS5 results with excerpt ──────────────────
 
 test('TC-GS-02: typing query returns FTS5 results with excerpt and filename', async () => {
+  await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
   await expect(searchPanel).toBeVisible({ timeout: 6_000 });
@@ -210,6 +213,7 @@ test('TC-GS-02: typing query returns FTS5 results with excerpt and filename', as
 // ─── TC-GS-03: Click result opens correct scene + scrolls to match ──────────────
 
 test('TC-GS-03: clicking result opens scene and scrolls to match location', async () => {
+  await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
   await expect(searchPanel).toBeVisible({ timeout: 6_000 });
@@ -226,6 +230,7 @@ test('TC-GS-03: clicking result opens scene and scrolls to match location', asyn
 // ─── TC-GS-04: Scope selector filters results correctly ──────────────────────────
 
 test('TC-GS-04: scope selector (Story | Notes | Both) filters results correctly', async () => {
+  await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
   await expect(searchPanel).toBeVisible({ timeout: 6_000 });
@@ -264,6 +269,7 @@ test('TC-GS-05: rapid typing debounces search requests (≤1 request per 300ms w
     }
   });
 
+  await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
   await expect(searchPanel).toBeVisible({ timeout: 6_000 });
@@ -282,6 +288,7 @@ test('TC-GS-05: rapid typing debounces search requests (≤1 request per 300ms w
 // ─── TC-GS-06: Empty query clears results gracefully ──────────────────────────────
 
 test('TC-GS-06: empty query clears results gracefully', async () => {
+  await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
   await expect(searchPanel).toBeVisible({ timeout: 6_000 });
