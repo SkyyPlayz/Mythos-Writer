@@ -299,7 +299,7 @@ function runMigrations(db: DatabaseSync): void {
         updated_at INTEGER NOT NULL DEFAULT 0
       );
     `);
-    db.pragma('user_version = 12');
+    db.exec('PRAGMA user_version = 12');
   }
 }
 
