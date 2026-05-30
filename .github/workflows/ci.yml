@@ -62,10 +62,12 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:e2e:visual-capture
 
       - name: Upload visual-capture artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
+          retention-days: 7
 
       - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
@@ -81,20 +83,24 @@ jobs:
 
       - name: Upload visual-regression diffs on failure
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
+          retention-days: 7
 
       - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
         run: xvfb-run --auto-servernum npm run test:e2e:a11y
 
       - name: Upload E2E report on failure
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report
           path: e2e-report/
+          retention-days: 7
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
@@ -143,10 +149,12 @@ jobs:
         run: npm run dist:linux
 
       - name: Upload Linux AppImage artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: linux-appimage
           path: dist-electron/*.AppImage
+          retention-days: 7
 
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
