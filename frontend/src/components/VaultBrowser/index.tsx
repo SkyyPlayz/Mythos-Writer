@@ -572,6 +572,65 @@ export interface VaultBrowserProps {
   onOpenFile?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
   onExport?: (scope: ExportScope) => void;
+  /** SKY-204: whether journal mode is enabled (shows Daily Notes widget). */
+  journalModeEnabled?: boolean;
+}
+
+// SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
+function DailyNotesBanner({ onOpenFile }: { onOpenFile?: (path: string) => void }) {
+  const [streak, setStreak] = useState(0);
+  const [todayExists, setTodayExists] = useState(false);
+  const [opening, setOpening] = useState(false);
+
+  const loadStreak = useCallback(async () => {
+    try {
+      const r = await window.api.dailyNoteGetStreak();
+      setStreak(r.streakDays);
+      setTodayExists(r.todayExists);
+    } catch {
+      // vault not ready yet
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStreak();
+    const unsub = window.api.onVaultFileChanged?.(() => loadStreak());
+    return () => unsub?.();
+  }, [loadStreak]);
+
+  const handleOpen = useCallback(async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      const r = await window.api.dailyNoteOpenToday();
+      await loadStreak();
+      onOpenFile?.(r.path);
+    } catch {
+      // non-fatal
+    } finally {
+      setOpening(false);
+    }
+  }, [opening, loadStreak, onOpenFile]);
+
+  return (
+    <div className="vb-daily-banner">
+      <div className="vb-daily-streak">
+        {streak > 0 && (
+          <span title={`Journal streak: ${streak} consecutive day${streak === 1 ? '' : 's'}`}>
+            🔥 {streak} day{streak === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+      <button
+        className={`vb-daily-today-btn${todayExists ? ' vb-daily-today-btn--exists' : ''}`}
+        onClick={handleOpen}
+        disabled={opening}
+        aria-label="Open or create today's daily note"
+      >
+        {opening ? '…' : todayExists ? "Open Today's Note" : "Create Today's Note"}
+      </button>
+    </div>
+  );
 }
 
 export default function VaultBrowser({
@@ -584,6 +643,7 @@ export default function VaultBrowser({
   onOpenFile,
   onContextChange,
   onExport,
+  journalModeEnabled,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -606,6 +666,9 @@ export default function VaultBrowser({
 
   return (
     <div className="vault-browser" data-testid="vault-browser">
+      {journalModeEnabled && (
+        <DailyNotesBanner onOpenFile={onOpenFile} />
+      )}
       <div className="vb-scope-bar" role="group" aria-label="Vault scope">
         <button
           className={`vb-scope-btn${scope === 'story' ? ' vb-scope-active' : ''}`}

@@ -289,9 +289,11 @@ import {
   selectContext,
   type ContextCandidate,
 } from './brainstormRouting.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates } from './templates.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
+import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
+import type { SmartFolderEntry } from './ipc.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 
 const require = createRequire(import.meta.url);
@@ -3288,6 +3290,80 @@ const handlers: IpcHandlers = {
     return { templates: listNoteTemplates(payload?.kind) };
   },
 
+  // SKY-204: Daily Notes — opt-in journal mode
+  [IPC_CHANNELS.DAILY_NOTE_OPEN_TODAY]: (): import('./ipc.js').DailyNoteOpenTodayResponse => {
+    const settings = loadAppSettings();
+    const jm = settings.journalMode;
+    const noteFolder = jm?.noteFolder ?? 'Daily Notes';
+    const notesRoot = getNotesVaultRoot();
+    ensureNotesVaultDir();
+
+    // Today in local time YYYY-MM-DD using UTC-noon trick avoids DST edge issues
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const relFolder = noteFolder;
+    const relPath = `${relFolder}/${today}.md`;
+    const absFolder = path.join(notesRoot, relFolder);
+    const absPath = path.join(notesRoot, relPath);
+
+    const alreadyExists = fs.existsSync(absPath);
+    if (!alreadyExists) {
+      fs.mkdirSync(absFolder, { recursive: true });
+      // Apply daily-note template if one is defined; otherwise use bare default.
+      const templates = listNoteTemplates('daily-note');
+      let content: string;
+      if (templates.length > 0) {
+        content = resolveNoteTemplate(templates[0].body, { date: today });
+      } else {
+        content = `---\ndate: "${today}"\n---\n\n# ${today}\n\n`;
+      }
+      fs.writeFileSync(absPath, content, 'utf8');
+    }
+
+    return { path: relPath, created: !alreadyExists };
+  },
+
+  [IPC_CHANNELS.DAILY_NOTE_GET_STREAK]: (): import('./ipc.js').DailyNoteGetStreakResponse => {
+    const settings = loadAppSettings();
+    const noteFolder = settings.journalMode?.noteFolder ?? 'Daily Notes';
+    const notesRoot = getNotesVaultRoot();
+    const absFolder = path.join(notesRoot, noteFolder);
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    if (!fs.existsSync(absFolder)) {
+      return { streakDays: 0, todayExists: false };
+    }
+
+    // Collect all dated filenames (YYYY-MM-DD.md) from the daily notes folder.
+    const files = fs.readdirSync(absFolder);
+    const dates = new Set(
+      files
+        .filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
+        .map((f) => f.slice(0, 10)),
+    );
+
+    const todayExists = dates.has(today);
+
+    // Walk backwards from today counting consecutive days with a note.
+    let streak = 0;
+    let current = todayExists ? today : (() => {
+      const d = new Date(today + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    while (dates.has(current)) {
+      streak++;
+      const d = new Date(current + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      current = d.toISOString().slice(0, 10);
+    }
+
+    return { streakDays: streak, todayExists };
+  },
+
   // SKY-193: Tag Wrangler
   [IPC_CHANNELS.NOTES_TAG_LIST]: (): import('./ipc.js').NotesTagListResponse => {
     const tags = listNotesTags(getNotesVaultRoot());
@@ -3375,6 +3451,69 @@ const handlers: IpcHandlers = {
     return { svg };
   },
 
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  [IPC_CHANNELS.SMART_FOLDER_LIST]: (): { smartFolders: SmartFolderEntry[] } => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return { smartFolders: manifest.smartFolders ?? [] };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_CREATE]: (payload: { name: string; query: string }): { smartFolder: SmartFolderEntry } => {
+    ensureVaultDir();
+    const { name, query } = payload ?? {};
+    if (!name?.trim()) throw new Error('Smart folder name is required');
+    if (!query?.trim()) throw new Error('Smart folder query is required');
+    const { error } = parseSmartQuery(query);
+    if (error) throw new Error(`Invalid query: ${error}`);
+    const manifest = readManifest(getManifestPath());
+    const now = new Date().toISOString();
+    const entry: SmartFolderEntry = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      query: query.trim(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    manifest.smartFolders = [...(manifest.smartFolders ?? []), entry];
+    writeManifest(getManifestPath(), manifest);
+    return { smartFolder: entry };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }): { smartFolder: SmartFolderEntry } => {
+    ensureVaultDir();
+    const { id, name, query } = payload ?? {};
+    if (!id) throw new Error('Smart folder id is required');
+    if (query !== undefined) {
+      const { error } = parseSmartQuery(query);
+      if (error) throw new Error(`Invalid query: ${error}`);
+    }
+    const manifest = readManifest(getManifestPath());
+    const folders = manifest.smartFolders ?? [];
+    const idx = folders.findIndex((f) => f.id === id);
+    if (idx === -1) throw new Error(`Smart folder not found: ${id}`);
+    folders[idx] = {
+      ...folders[idx],
+      ...(name !== undefined ? { name: name.trim() } : {}),
+      ...(query !== undefined ? { query: query.trim() } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    manifest.smartFolders = folders;
+    writeManifest(getManifestPath(), manifest);
+    return { smartFolder: folders[idx] };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }): { success: boolean } => {
+    ensureVaultDir();
+    const { id } = payload ?? {};
+    if (!id) throw new Error('Smart folder id is required');
+    const manifest = readManifest(getManifestPath());
+    manifest.smartFolders = (manifest.smartFolders ?? []).filter((f) => f.id !== id);
+    writeManifest(getManifestPath(), manifest);
+    return { success: true };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }): { results: import('./ipc.js').SmartFolderResult[] } => {
+    const { query } = payload ?? {};
+    if (!query?.trim()) return { results: [] };
+    const results = executeSmartQuery(getNotesVaultRoot(), query);
+    return { results };
+  },
 
 };
 

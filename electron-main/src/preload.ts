@@ -493,6 +493,12 @@ contextBridge.exposeInMainWorld('api', {
   noteTemplateList: (kind?: string) =>
     ipcRenderer.invoke('note-template:list', { kind }),
 
+  // SKY-204: Daily Notes
+  dailyNoteOpenToday: () =>
+    ipcRenderer.invoke('dailyNote:openToday', undefined),
+  dailyNoteGetStreak: () =>
+    ipcRenderer.invoke('dailyNote:getStreak', undefined),
+
   // SKY-193: Tag Wrangler
   notesTagList: () =>
     ipcRenderer.invoke('notesVault:tag:list', undefined),
@@ -533,6 +539,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
   iconReadSvg: (packName: string, iconName: string) =>
     ipcRenderer.invoke('icons:readSvg', { packName, iconName }) as unknown as Promise<{ svg: string | null }>,
+
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  smartFolderList: () =>
+    ipcRenderer.invoke('smartFolder:list', undefined),
+  smartFolderCreate: (name: string, query: string) =>
+    ipcRenderer.invoke('smartFolder:create', { name, query }),
+  smartFolderUpdate: (id: string, updates: { name?: string; query?: string }) =>
+    ipcRenderer.invoke('smartFolder:update', { id, ...updates }),
+  smartFolderDelete: (id: string) =>
+    ipcRenderer.invoke('smartFolder:delete', { id }),
+  smartFolderQuery: (query: string) =>
+    ipcRenderer.invoke('smartFolder:query', { query }),
 
 });
 

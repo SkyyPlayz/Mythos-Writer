@@ -286,3 +286,241 @@
   cursor: pointer;
 }
 .vs-tag-pill:hover { background: var(--accent, rgba(0,240,255,0.22)); }
+
+/* ─── Smart Folders (SKY-205) ─── */
+
+.vs-sf-section {
+  flex-shrink: 0;
+}
+
+.vs-sf-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 6px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.vs-sf-item:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.vs-sf-item.vs-sf-active {
+  background: var(--border-default);
+  color: var(--text-primary);
+}
+
+.vs-sf-icon {
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.vs-sf-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vs-sf-action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.vs-sf-item:hover .vs-sf-action,
+.vs-sf-item.vs-sf-active .vs-sf-action {
+  opacity: 1;
+}
+
+.vs-sf-action:hover { color: var(--text-primary); background: var(--bg-surface); }
+.vs-sf-delete:hover { color: var(--color-error, #e57373); }
+
+/* Inline create/edit form */
+.vs-sf-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--bg-surface, rgba(255,255,255,0.04));
+  border-left: 2px solid var(--accent, rgba(0,240,255,0.4));
+  margin: 2px 4px;
+  border-radius: 0 3px 3px 0;
+}
+
+.vs-sf-input {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-muted);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  padding: 3px 6px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vs-sf-input:focus {
+  border-color: var(--accent, rgba(0,240,255,0.5));
+}
+
+.vs-sf-query-input {
+  font-family: monospace;
+  font-size: 0.72rem;
+}
+
+.vs-sf-form-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.vs-sf-btn-save,
+.vs-sf-btn-cancel {
+  background: none;
+  border: 1px solid var(--border-muted);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+}
+
+.vs-sf-btn-save:hover { color: var(--text-primary); border-color: var(--accent, rgba(0,240,255,0.5)); }
+.vs-sf-btn-cancel:hover { color: var(--text-primary); }
+
+/* Results panel */
+.vs-sf-results {
+  background: var(--bg-surface, rgba(255,255,255,0.03));
+  border-left: 2px solid var(--accent, rgba(0,240,255,0.25));
+  margin: 2px 4px 4px;
+  border-radius: 0 3px 3px 0;
+  overflow: hidden;
+}
+
+.vs-sf-results-header {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.vs-sf-query-badge {
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.vs-sf-error {
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  color: var(--color-error, #e57373);
+}
+
+.vs-sf-result-list {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.vs-sf-result-item {
+  margin: 0;
+  padding: 0;
+}
+
+.vs-sf-result-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.vs-sf-result-btn:hover {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+.vs-sf-result-icon {
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+.vs-sf-result-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* SKY-204: Daily Notes section */
+.vs-daily-section {}
+
+.vs-daily-streak {
+  font-size: 0.72rem;
+  margin-left: 6px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.vs-daily-content {
+  padding: 6px 8px;
+}
+
+.vs-daily-today-btn {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: opacity 0.15s;
+}
+
+.vs-daily-today-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.vs-daily-today-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vs-daily-today-btn--exists {
+  background: var(--bg-panel, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border, #3a3a3a);
+}

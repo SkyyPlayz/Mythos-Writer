@@ -364,7 +364,7 @@ export interface NoteTemplate {
   name: string;
   description: string;
   /** Which note kind this template targets */
-  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note';
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note' | 'daily-note';
   /** Markdown body containing {{var}}, {{var | prompt(label)}}, {{var | pick(Type)}} */
   body: string;
   /** Parsed fields derived from body */
@@ -578,7 +578,33 @@ beat: "{{beat | prompt(Beat Name)}}"
 
 `;
 
+// SKY-204: Daily note template body — {{date}} is auto-resolved to today's date.
+const DAILY_NOTE_BODY = `---
+date: "{{date}}"
+---
+
+# {{date}}
+
+## Today's focus
+
+
+
+## Notes
+
+
+
+## Words written today
+
+`;
+
 export const BUNDLED_NOTE_TEMPLATES: NoteTemplate[] = [
+  makeNote(
+    'note:daily-note',
+    'Daily Note',
+    'Default daily journal entry with date, focus, and notes sections.',
+    'daily-note',
+    DAILY_NOTE_BODY,
+  ),
   makeNote(
     'note:default-scene',
     'Default Scene',

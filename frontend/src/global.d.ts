@@ -269,6 +269,12 @@ interface AppSettings {
   };
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
+  /** SKY-204: opt-in daily notes / journal mode. */
+  journalMode?: {
+    enabled: boolean;
+    noteFolder?: string;
+    noteFormat?: string;
+  };
 }
 
 interface GenerationLogRow {
@@ -642,6 +648,9 @@ interface Window {
 
     // SKY-190: Note Templates
     noteTemplateList: (kind?: string) => Promise<{ templates: NoteTemplate[] }>;
+    // SKY-204: Daily Notes
+    dailyNoteOpenToday: () => Promise<{ path: string; created: boolean }>;
+    dailyNoteGetStreak: () => Promise<{ streakDays: number; todayExists: boolean }>;
     // SKY-193: Tag Wrangler
     notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
     notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
@@ -672,6 +681,13 @@ interface Window {
     vaultReadIcons: () => Promise<Record<string, string>>;
     iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
     iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
+
+    // SKY-205: Smart Folders — frontmatter-backed persistent queries
+    smartFolderList?: () => Promise<{ smartFolders: Array<{ id: string; name: string; query: string; createdAt: string; updatedAt: string }> }>;
+    smartFolderCreate?: (name: string, query: string) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderUpdate?: (id: string, updates: { name?: string; query?: string }) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderDelete?: (id: string) => Promise<{ success: boolean }>;
+    smartFolderQuery?: (query: string) => Promise<{ results: Array<{ path: string; title: string }> }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
