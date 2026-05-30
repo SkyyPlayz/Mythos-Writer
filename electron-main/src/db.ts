@@ -956,34 +956,68 @@ export function deleteEntityRelationship(id: string): void {
   getDb().prepare('DELETE FROM entity_relationships WHERE id = ?').run(id);
 }
 
-// ─── Scene entity links ───
+// ─── Scene entity links (SKY-170) ───
 
 export interface DbSceneEntityLink {
   id: string;
   scene_id: string;
   entity_id: string;
-  link_kind: string;
+  link_kind: 'mention' | 'tag';
   created_at: string;
 }
 
-export function insertSceneEntityLink(l: DbSceneEntityLink): void {
+/** Upsert a scene→entity link. Generates a UUID for `id` when not supplied. */
+export function upsertSceneEntityLink(link: Omit<DbSceneEntityLink, 'id'> & { id?: string }): void {
+  const id = link.id ?? randomUUID();
   getDb()
     .prepare(
-      `INSERT OR IGNORE INTO scene_entity_links
-         (id, scene_id, entity_id, link_kind, created_at)
-       VALUES (@id, @scene_id, @entity_id, @link_kind, @created_at)`
+      `INSERT INTO scene_entity_links (id, scene_id, entity_id, link_kind, created_at)
+       VALUES (@id, @scene_id, @entity_id, @link_kind, @created_at)
+       ON CONFLICT(scene_id, entity_id, link_kind) DO UPDATE SET created_at = excluded.created_at`
     )
-    .run(l as unknown as Record<string, SQLInputValue>);
+    .run({ id, scene_id: link.scene_id, entity_id: link.entity_id, link_kind: link.link_kind, created_at: link.created_at });
+}
+
+export function deleteSceneEntityLink(sceneId: string, entityId: string, linkKind: 'mention' | 'tag'): void {
+  getDb()
+    .prepare(`DELETE FROM scene_entity_links WHERE scene_id = ? AND entity_id = ? AND link_kind = ?`)
+    .run(sceneId, entityId, linkKind);
 }
 
 export function listSceneEntityLinks(sceneId: string): DbSceneEntityLink[] {
   return getDb()
-    .prepare('SELECT * FROM scene_entity_links WHERE scene_id = ? ORDER BY created_at ASC')
+    .prepare(`SELECT * FROM scene_entity_links WHERE scene_id = ? ORDER BY entity_id ASC`)
     .all(sceneId) as unknown as DbSceneEntityLink[];
 }
 
+export function listLinkedSceneIds(entityId: string): DbSceneEntityLink[] {
+  return getDb()
+    .prepare(`SELECT * FROM scene_entity_links WHERE entity_id = ? ORDER BY scene_id ASC`)
+    .all(entityId) as unknown as DbSceneEntityLink[];
+}
+
+/** Alias for upsertSceneEntityLink — backward compat for callers using the original name. */
+export const insertSceneEntityLink = upsertSceneEntityLink;
+
+/** Delete all scene_entity_links rows for a scene — backward compat with original bulk-delete signature. */
 export function deleteSceneEntityLinks(sceneId: string): void {
   getDb().prepare('DELETE FROM scene_entity_links WHERE scene_id = ?').run(sceneId);
+}
+
+/** Remove mention rows for a scene whose entityIds are NOT in keepIds. */
+export function deleteStaleSceneMentionLinks(sceneId: string, keepIds: string[]): void {
+  if (keepIds.length === 0) {
+    getDb()
+      .prepare(`DELETE FROM scene_entity_links WHERE scene_id = ? AND link_kind = 'mention'`)
+      .run(sceneId);
+    return;
+  }
+  const placeholders = keepIds.map(() => '?').join(',');
+  getDb()
+    .prepare(
+      `DELETE FROM scene_entity_links WHERE scene_id = ? AND link_kind = 'mention' AND entity_id NOT IN (${placeholders})`
+    )
+    .run(sceneId, ...keepIds);
 }
 
 // ─── Entity FTS ───

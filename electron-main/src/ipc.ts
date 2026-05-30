@@ -304,6 +304,12 @@ export const IPC_CHANNELS = {
   GOALS_GET_STATS: 'goals:getStats',
   GOALS_SET_GOAL: 'goals:setGoal',
   GOALS_RESET_STREAK: 'goals:resetStreak',
+
+  // SKY-170: Scene-to-entity links
+  SCENE_ENTITY_LINKS_LIST: 'sceneEntityLinks:list',
+  SCENE_ENTITY_LINKS_UPSERT: 'sceneEntityLinks:upsert',
+  SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
+  ENTITY_LINKED_SCENES: 'entity:linkedScenes',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -511,6 +517,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.GOALS_GET_STATS]: (payload: never) => GoalsGetStatsResponse;
   [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => GoalsSetGoalResponse;
   [IPC_CHANNELS.GOALS_RESET_STREAK]: (payload: never) => GoalsResetStreakResponse;
+
+  // SKY-170: Scene-to-entity links
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload) => SceneEntityLinksListResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLinksUpsertResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2386,3 +2398,53 @@ export interface GoalsGetStatsResponse { todayWords: number; weekWords: number; 
 export interface GoalsSetGoalPayload { dailyGoal: number; }
 export type GoalsSetGoalResponse = { ok: true };
 export type GoalsResetStreakResponse = { ok: true };
+
+// ─── SKY-170: Scene-to-entity links ─────────────────────────────────────────
+
+export interface SceneEntityLink {
+  sceneId: string;
+  entityId: string;
+  linkKind: 'mention' | 'tag';
+  createdAt: string;
+}
+
+export interface LinkedScene {
+  sceneId: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
+}
+
+export interface SceneEntityLinksListPayload {
+  sceneId: string;
+}
+
+export interface SceneEntityLinksListResponse {
+  links: SceneEntityLink[];
+}
+
+export interface SceneEntityLinksUpsertPayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+
+export interface SceneEntityLinksUpsertResponse {
+  link: SceneEntityLink;
+}
+
+export interface SceneEntityLinksDeletePayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+
+export interface EntityLinkedScenesPayload {
+  entityId: string;
+}
+
+export interface EntityLinkedScenesResponse {
+  scenes: LinkedScene[];
+}

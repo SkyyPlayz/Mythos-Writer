@@ -125,6 +125,10 @@ import {
   type TagEntry,
   type GoalsLogWordsPayload,
   type GoalsSetGoalPayload,
+  type SceneEntityLinksListPayload,
+  type SceneEntityLinksUpsertPayload,
+  type SceneEntityLinksDeletePayload,
+  type EntityLinkedScenesPayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -172,6 +176,11 @@ import {
   getItemsForTag,
   bulkApplyTags,
   type DbTag,
+  upsertSceneEntityLink,
+  deleteSceneEntityLink,
+  listSceneEntityLinks,
+  listLinkedSceneIds,
+  deleteStaleSceneMentionLinks,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -401,6 +410,17 @@ function resolveSceneChapterDir(sceneId: string): string | null {
     if (flat) return path.posix.dirname(flat.path.split(path.sep).join('/'));
   } catch { /* missing manifest — treat as no history */ }
   return null;
+}
+
+// SKY-170: extract entity IDs from entity:// markdown links ([label](entity://ent_*))
+function parseMentionEntityIds(prose: string): Set<string> {
+  const ids = new Set<string>();
+  const re = /\[[^\]]*\]\(entity:\/\/(ent_[^)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(prose)) !== null) {
+    ids.add(m[1]);
+  }
+  return ids;
 }
 
 function ensureVaultDir() {
@@ -1813,6 +1833,17 @@ const handlers: IpcHandlers = {
     });
 
     writeManifest(getManifestPath(), manifest);
+
+    // SKY-170: parse @mentions and sync scene_entity_links rows
+    try {
+      const mentionedIds = parseMentionEntityIds(payload.prose);
+      const now2 = new Date().toISOString();
+      for (const entityId of mentionedIds) {
+        upsertSceneEntityLink({ id: crypto.randomUUID(), scene_id: found.id, entity_id: entityId, link_kind: 'mention', created_at: now2 });
+      }
+      deleteStaleSceneMentionLinks(found.id, [...mentionedIds]);
+    } catch { /* non-fatal — scene save still succeeds */ }
+
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
     return { scene: found };
   },
@@ -3211,6 +3242,70 @@ const handlers: IpcHandlers = {
     if (!name) return { error: 'Template name is required' };
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
+  },
+
+  // ─── SKY-170: Scene-to-entity links ───
+
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload): import('./ipc.js').SceneEntityLinksListResponse => {
+    ensureVaultDir();
+    const rows = listSceneEntityLinks(payload.sceneId);
+    return {
+      links: rows.map((r) => ({
+        sceneId: r.scene_id,
+        entityId: r.entity_id,
+        linkKind: r.link_kind as 'mention' | 'tag',
+        createdAt: r.created_at,
+      })),
+    };
+  },
+
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload): import('./ipc.js').SceneEntityLinksUpsertResponse => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const row = { id: crypto.randomUUID(), scene_id: payload.sceneId, entity_id: payload.entityId, link_kind: payload.kind, created_at: now };
+    upsertSceneEntityLink(row);
+    return {
+      link: {
+        sceneId: row.scene_id,
+        entityId: row.entity_id,
+        linkKind: row.link_kind,
+        createdAt: row.created_at,
+      },
+    };
+  },
+
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload): void => {
+    ensureVaultDir();
+    deleteSceneEntityLink(payload.sceneId, payload.entityId, payload.kind);
+  },
+
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload): import('./ipc.js').EntityLinkedScenesResponse => {
+    ensureVaultDir();
+    const rows = listLinkedSceneIds(payload.entityId);
+    if (rows.length === 0) return { scenes: [] };
+
+    const manifest = readManifest(getManifestPath());
+    const scenes: import('./ipc.js').LinkedScene[] = [];
+
+    for (const row of rows) {
+      for (const story of manifest.stories) {
+        for (const chapter of story.chapters) {
+          const scene = chapter.scenes.find((s) => s.id === row.scene_id);
+          if (scene) {
+            scenes.push({
+              sceneId: scene.id,
+              sceneTitle: scene.title,
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              storyId: story.id,
+              linkKind: row.link_kind as 'mention' | 'tag',
+            });
+          }
+        }
+      }
+    }
+
+    return { scenes };
   },
 
 };
