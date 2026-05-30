@@ -2410,9 +2410,11 @@ export interface SceneEntityLink {
 
 export interface LinkedScene {
   sceneId: string;
+  scenePath: string;
   sceneTitle: string;
   chapterId: string;
   chapterTitle: string;
+  chapterOrder: number;
   storyId: string;
   linkKind: 'mention' | 'tag';
 }

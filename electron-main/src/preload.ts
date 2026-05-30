@@ -158,6 +158,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:list', { type }),
   entityBacklinks: (entityId: string) =>
     ipcRenderer.invoke('entity:backlinks', { entityId }),
+  entityLinkedScenes: (entityId: string) =>
+    ipcRenderer.invoke('entity:linkedScenes', { entityId }),
 
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
