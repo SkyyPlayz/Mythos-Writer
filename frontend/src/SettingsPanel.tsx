@@ -1216,6 +1216,86 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
           </section>
 
+          {/* ── Auto Linker (SKY-192) ── */}
+          <section className="settings-section" aria-labelledby="section-autolinker">
+            <h3 className="settings-section-title" id="section-autolinker">Auto Linker</h3>
+            <div className="settings-field">
+              <label className="settings-label">Entity mention mode</label>
+              <div className="settings-radio-group" role="radiogroup" aria-label="Auto Linker mode">
+                {([
+                  { value: 'off', label: 'Off' },
+                  { value: 'suggest', label: 'Suggest (default)' },
+                  { value: 'auto', label: 'Auto on save' },
+                ] as const).map(({ value, label }) => (
+                  <label key={value} className="settings-radio-label">
+                    <input
+                      type="radio"
+                      name="autoLinkerMode"
+                      value={value}
+                      checked={(settings.autoLinker?.mode ?? 'suggest') === value}
+                      onChange={() => {
+                        setSettings((p) => ({ ...p, autoLinker: { mode: value } }));
+                        setSavedOk(false);
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="settings-hint">
+                <strong>Suggest</strong> — underlines unlinked entity names; click to wrap in{' '}
+                <code>[[wikilink]]</code>.{' '}
+                <strong>Auto on save</strong> — applies all suggestions automatically when the scene is saved
+                (one Undo to revert).
+              </p>
+            </div>
+          </section>
+
+          {/* ── Journal Mode (SKY-204) ── */}
+          <section className="settings-section" aria-labelledby="section-journal">
+            <h3 className="settings-section-title" id="section-journal">Journal Mode</h3>
+            <div className="settings-field">
+              <label className="settings-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={settings.journalMode?.enabled ?? false}
+                  onChange={(e) => {
+                    setSettings((p) => ({
+                      ...p,
+                      journalMode: { ...(p.journalMode ?? {}), enabled: e.target.checked },
+                    }));
+                    setSavedOk(false);
+                  }}
+                />
+                Enable daily notes (auto-create a dated note each day you open the app)
+              </label>
+              <p className="settings-hint">
+                Creates a note like <code>Daily Notes/2025-01-15.md</code> on first launch of each new
+                calendar day. The writing streak counter in the Notes sidebar tracks consecutive days
+                with a note.
+              </p>
+            </div>
+            {(settings.journalMode?.enabled) && (
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="journal-folder">Daily notes folder</label>
+                <input
+                  id="journal-folder"
+                  className="settings-input"
+                  type="text"
+                  placeholder="Daily Notes"
+                  value={settings.journalMode?.noteFolder ?? ''}
+                  onChange={(e) => {
+                    setSettings((p) => ({
+                      ...p,
+                      journalMode: { ...(p.journalMode ?? { enabled: true }), noteFolder: e.target.value || undefined },
+                    }));
+                    setSavedOk(false);
+                  }}
+                />
+              </div>
+            )}
+          </section>
+
           {/* ── Snapshots ── */}
           <section className="settings-section" aria-labelledby="section-snapshots">
             <h3 className="settings-section-title" id="section-snapshots">Snapshots</h3>

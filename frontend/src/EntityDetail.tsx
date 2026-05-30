@@ -24,17 +24,27 @@ function extractProse(markdown: string): string {
   return match ? match[1].trimStart() : markdown;
 }
 
+interface ProposedRelation {
+  suggestionId: string;
+  relationType: string;
+  targetEntityId: string;
+  targetEntityName: string;
+  rationale: string;
+}
+
 interface Props {
   entity: EntityEntry;
   onClose: () => void;
   onUpdated: (entity: EntityEntry) => void;
   onDeleted: (id: string) => void;
   onOpenScene?: (scenePath: string) => void;
+  onOpenEntity?: (entityId: string) => void;
 }
 
-export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, onOpenScene }: Props) {
+export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, onOpenScene, onOpenEntity }: Props) {
   const [name, setName] = useState(entity.name);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join(', '));
+  const [noAutoLink, setNoAutoLink] = useState(!!entity.properties?.noAutoLink);
   const [tags, setTags] = useState<string[]>(entity.tags ?? []);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [prose, setProse] = useState('');
@@ -50,10 +60,17 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [linkedScenesOpen, setLinkedScenesOpen] = useState(true);
   const [linkedScenesLoading, setLinkedScenesLoading] = useState(false);
 
+  // Relations state
+  const [relationsOpen, setRelationsOpen] = useState(true);
+  const [entityNameMap, setEntityNameMap] = useState<Map<string, string>>(new Map());
+  const [proposedRelations, setProposedRelations] = useState<ProposedRelation[]>([]);
+  const [proposedRelationsLoading, setProposedRelationsLoading] = useState(false);
+
   // Reset form when entity changes
   useEffect(() => {
     setName(entity.name);
     setAliases((entity.aliases ?? []).join(', '));
+    setNoAutoLink(!!entity.properties?.noAutoLink);
     setTags(entity.tags ?? []);
     setDirty(false);
     setError('');
@@ -125,6 +142,94 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     return off;
   }, [loadBacklinks, loadLinkedScenes]);
 
+  // Build entity id to name map for rendering relation targets
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await window.api.entityList();
+        const map = new Map<string, string>();
+        for (const e of result.entities) map.set(e.id, e.name);
+        setEntityNameMap(map);
+      } catch {
+        // silent -- relations render raw IDs as fallback
+      }
+    })();
+  }, []);
+
+  // Load proposed typed-relation suggestions targeting this entity
+  const loadProposedRelations = useCallback(async () => {
+    setProposedRelationsLoading(true);
+    try {
+      const result = await window.api.suggestionsList('proposed', 'archive');
+      const proposed: ProposedRelation[] = [];
+      for (const s of result.suggestions) {
+        if (!s.payload_json) continue;
+        try {
+          const p = JSON.parse(s.payload_json) as {
+            kind?: string;
+            relationType?: string;
+            sourceEntityId?: string;
+            targetEntityId?: string;
+            targetEntityName?: string;
+            sourceEntityName?: string;
+          };
+          if (
+            p.kind === 'typed-relation' &&
+            (p.sourceEntityId === entity.id || p.targetEntityId === entity.id)
+          ) {
+            proposed.push({
+              suggestionId: s.id,
+              relationType: p.relationType ?? '',
+              targetEntityId:
+                p.sourceEntityId === entity.id
+                  ? (p.targetEntityId ?? '')
+                  : (p.sourceEntityId ?? ''),
+              targetEntityName:
+                p.sourceEntityId === entity.id
+                  ? (p.targetEntityName ?? '')
+                  : (p.sourceEntityName ?? ''),
+              rationale: s.rationale,
+            });
+          }
+        } catch {
+          // malformed payload -- skip
+        }
+      }
+      setProposedRelations(proposed);
+    } catch {
+      setProposedRelations([]);
+    } finally {
+      setProposedRelationsLoading(false);
+    }
+  }, [entity.id]);
+
+  useEffect(() => {
+    loadProposedRelations();
+  }, [loadProposedRelations]);
+
+  const handleAcceptRelation = useCallback(
+    async (suggestionId: string) => {
+      try {
+        await window.api.suggestionsAccept(suggestionId);
+        setProposedRelations((prev) => prev.filter((r) => r.suggestionId !== suggestionId));
+        const updated = await window.api.entityRead(entity.id);
+        if (updated) onUpdated(updated);
+      } catch {
+        // silent -- user can retry
+      }
+    },
+    [entity.id, onUpdated],
+  );
+
+  const handleRejectRelation = useCallback(async (suggestionId: string) => {
+    try {
+      await window.api.suggestionsReject(suggestionId);
+      setProposedRelations((prev) => prev.filter((r) => r.suggestionId !== suggestionId));
+    } catch {
+      // silent
+    }
+  }, []);
+
   const markDirty = useCallback(() => setDirty(true), []);
 
   const handleSave = async () => {
@@ -132,12 +237,19 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setError('');
     try {
       const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
+      const updatedProps: Record<string, unknown> = { ...(entity.properties ?? {}) };
+      if (noAutoLink) {
+        updatedProps.noAutoLink = true;
+      } else {
+        delete updatedProps.noAutoLink;
+      }
       const updated = await window.api.entityUpdate({
         id: entity.id,
         name: name.trim() || entity.name,
         aliases: aliasList,
         tags,
         prose,
+        properties: Object.keys(updatedProps).length > 0 ? updatedProps : undefined,
       });
       setDirty(false);
       onUpdated(updated);
@@ -156,6 +268,9 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
       setError(String(err));
     }
   };
+
+  const currentRelations = entity.relations ?? [];
+  const totalRelations = currentRelations.length + proposedRelations.length;
 
   return (
     <div className="entity-detail">
@@ -231,6 +346,18 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
           <TagInput value={tags} onChange={(t) => { setTags(t); markDirty(); }} allTags={allTags} />
         </div>
 
+        <div className="entity-det-field entity-det-field-inline">
+          <label className="entity-det-label entity-det-label-check">
+            <input
+              type="checkbox"
+              checked={noAutoLink}
+              onChange={(e) => { setNoAutoLink(e.target.checked); markDirty(); }}
+              aria-label="Skip auto-link for this entity"
+            />
+            Skip auto-link (common nouns like &ldquo;Mom&rdquo;, &ldquo;the King&rdquo;)
+          </label>
+        </div>
+
         <div className="entity-det-field entity-det-field-prose">
           <label className="entity-det-label">Notes / Prose</label>
           {proseLoading ? (
@@ -246,6 +373,82 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
         </div>
 
         {error && <div className="entity-det-error">{error}</div>}
+
+        {/* Connections (typed relations) panel */}
+        <div className="entity-det-backlinks">
+          <button
+            className="entity-det-backlinks-header"
+            onClick={() => setRelationsOpen((o) => !o)}
+            aria-expanded={relationsOpen}
+          >
+            <span className="entity-det-backlinks-chevron">{relationsOpen ? '▾' : '▸'}</span>
+            <span className="entity-det-backlinks-title">Connections</span>
+            <span className="entity-det-backlinks-count">
+              {proposedRelationsLoading ? '…' : totalRelations}
+            </span>
+          </button>
+          {relationsOpen && (
+            <div className="entity-det-backlinks-body">
+              {currentRelations.length === 0 && proposedRelations.length === 0 && (
+                <div className="entity-det-backlinks-empty">
+                  No connections yet. Run Archive scan to detect relations from brainstorm transcripts.
+                </div>
+              )}
+              {currentRelations.length > 0 && (
+                <ul className="entity-det-backlinks-list" aria-label="Confirmed connections">
+                  {currentRelations.map((rel, i) => {
+                    const targetName = entityNameMap.get(rel.target) ?? rel.target;
+                    return (
+                      <li key={rel.type + '-' + rel.target + '-' + i} className="entity-det-relation-item">
+                        <span className="entity-det-relation-type">{rel.type}</span>
+                        <button
+                          className="entity-det-backlink-scene"
+                          onClick={() => onOpenEntity?.(rel.target)}
+                          disabled={!onOpenEntity}
+                          aria-label={'Open ' + targetName}
+                        >
+                          {targetName}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {proposedRelations.length > 0 && (
+                <div className="entity-det-proposed-relations" aria-label="Proposed connections">
+                  <div className="entity-det-proposed-header">Proposed by Archive</div>
+                  {proposedRelations.map((pr) => (
+                    <div key={pr.suggestionId} className="entity-det-proposed-item">
+                      <div className="entity-det-proposed-desc">
+                        <span className="entity-det-relation-type">{pr.relationType}</span>
+                        <span className="entity-det-proposed-target">
+                          {pr.targetEntityName || pr.targetEntityId}
+                        </span>
+                      </div>
+                      <p className="entity-det-proposed-rationale">{pr.rationale}</p>
+                      <div className="entity-det-proposed-actions">
+                        <button
+                          className="entity-det-btn entity-det-btn-primary entity-det-btn-sm"
+                          onClick={() => handleAcceptRelation(pr.suggestionId)}
+                          aria-label={'Accept relation: ' + pr.relationType + ' ' + pr.targetEntityName}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          className="entity-det-btn entity-det-btn-ghost entity-det-btn-sm"
+                          onClick={() => handleRejectRelation(pr.suggestionId)}
+                          aria-label={'Reject relation: ' + pr.relationType + ' ' + pr.targetEntityName}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Backlinks panel */}
         <div className="entity-det-backlinks">

@@ -236,8 +236,10 @@ import {
   deleteEntity,
   listEntities,
   reindexEntities,
+  migrateEntityAliases,
   getEntityBacklinks,
 } from './entities.js';
+import { getReciprocal } from './entityRelations.js';
 import {
   buildArchiveIndex,
   getArchiveIndex,
@@ -284,9 +286,15 @@ import {
   normalizeRoutingDestination,
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
+  selectContext,
+  type ContextCandidate,
 } from './brainstormRouting.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate } from './templates.js';
+import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
+import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
+import type { SmartFolderEntry } from './ipc.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
 
@@ -1254,6 +1262,7 @@ const handlers: IpcHandlers = {
       name: payload.name,
       aliases: payload.aliases,
       tags: payload.tags,
+      relations: payload.relations,
       prose: payload.prose,
       properties: payload.properties,
     });
@@ -1272,6 +1281,7 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     reindexEntities(getVaultRoot(), manifest);
+    migrateEntityAliases(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), manifest);
     return { entities: listEntities(getVaultRoot(), manifest, payload.type) };
   },
@@ -3139,6 +3149,37 @@ const handlers: IpcHandlers = {
     const root = getNotesVaultRoot();
     return { folders: listNotesVaultFolders(root), notesVaultRoot: root };
   },
+  // SKY-196: select vault notes that fit inside the token budget for context injection.
+  // Reads up to 100 .md files from the Notes Vault, parses frontmatter for type/name,
+  // then delegates scoring and budgeting to selectContext().
+  [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (
+    payload: import('./ipc.js').BrainstormSelectContextPayload,
+  ) => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const { items } = listVaultFiles(root);
+    const FACT_TYPES = new Set(['character', 'location', 'item', 'note']);
+    const MAX_CANDIDATES = 100;
+    const candidates: ContextCandidate[] = [];
+    for (const item of items) {
+      if (candidates.length >= MAX_CANDIDATES) break;
+      if (item.isDirectory) continue;
+      if (!item.name.endsWith('.md')) continue;
+      // Skip hidden paths (staging dir, .git, etc.)
+      if (item.path.split(path.sep).some((seg) => seg.startsWith('.'))) continue;
+      try {
+        const { content } = readVaultFile(root, item.path);
+        const { frontmatter, prose } = parseFrontmatter(content);
+        const rawType = frontmatter.type as string | undefined;
+        const type = rawType && FACT_TYPES.has(rawType)
+          ? (rawType as ContextCandidate['type'])
+          : 'note';
+        const name = (frontmatter.name as string | undefined) || item.name.replace(/\.md$/, '');
+        candidates.push({ path: item.path, name, type, content: prose.trim() });
+      } catch { /* skip unreadable or corrupt files */ }
+    }
+    return selectContext({ candidates, ...payload });
+  },
 
   // ─── Writing modes (MYT-347) ───
   [IPC_CHANNELS.WRITING_MODE_GET]: () => {
@@ -3244,8 +3285,99 @@ const handlers: IpcHandlers = {
     return { ok: true as const, id };
   },
 
-  // ─── SKY-170: Scene-to-entity links ───
+  // SKY-190: Note Templates
+  [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: import('./ipc.js').NoteTemplateListPayload): import('./ipc.js').NoteTemplateListResponse => {
+    return { templates: listNoteTemplates(payload?.kind) };
+  },
 
+  // SKY-204: Daily Notes — opt-in journal mode
+  [IPC_CHANNELS.DAILY_NOTE_OPEN_TODAY]: (): import('./ipc.js').DailyNoteOpenTodayResponse => {
+    const settings = loadAppSettings();
+    const jm = settings.journalMode;
+    const noteFolder = jm?.noteFolder ?? 'Daily Notes';
+    const notesRoot = getNotesVaultRoot();
+    ensureNotesVaultDir();
+
+    // Today in local time YYYY-MM-DD using UTC-noon trick avoids DST edge issues
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const relFolder = noteFolder;
+    const relPath = `${relFolder}/${today}.md`;
+    const absFolder = path.join(notesRoot, relFolder);
+    const absPath = path.join(notesRoot, relPath);
+
+    const alreadyExists = fs.existsSync(absPath);
+    if (!alreadyExists) {
+      fs.mkdirSync(absFolder, { recursive: true });
+      // Apply daily-note template if one is defined; otherwise use bare default.
+      const templates = listNoteTemplates('daily-note');
+      let content: string;
+      if (templates.length > 0) {
+        content = resolveNoteTemplate(templates[0].body, { date: today });
+      } else {
+        content = `---\ndate: "${today}"\n---\n\n# ${today}\n\n`;
+      }
+      fs.writeFileSync(absPath, content, 'utf8');
+    }
+
+    return { path: relPath, created: !alreadyExists };
+  },
+
+  [IPC_CHANNELS.DAILY_NOTE_GET_STREAK]: (): import('./ipc.js').DailyNoteGetStreakResponse => {
+    const settings = loadAppSettings();
+    const noteFolder = settings.journalMode?.noteFolder ?? 'Daily Notes';
+    const notesRoot = getNotesVaultRoot();
+    const absFolder = path.join(notesRoot, noteFolder);
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    if (!fs.existsSync(absFolder)) {
+      return { streakDays: 0, todayExists: false };
+    }
+
+    // Collect all dated filenames (YYYY-MM-DD.md) from the daily notes folder.
+    const files = fs.readdirSync(absFolder);
+    const dates = new Set(
+      files
+        .filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
+        .map((f) => f.slice(0, 10)),
+    );
+
+    const todayExists = dates.has(today);
+
+    // Walk backwards from today counting consecutive days with a note.
+    let streak = 0;
+    let current = todayExists ? today : (() => {
+      const d = new Date(today + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    while (dates.has(current)) {
+      streak++;
+      const d = new Date(current + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      current = d.toISOString().slice(0, 10);
+    }
+
+    return { streakDays: streak, todayExists };
+  },
+
+  // SKY-193: Tag Wrangler
+  [IPC_CHANNELS.NOTES_TAG_LIST]: (): import('./ipc.js').NotesTagListResponse => {
+    const tags = listNotesTags(getNotesVaultRoot());
+    return { tags };
+  },
+  [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: import('./ipc.js').NotesTagRenamePayload): import('./ipc.js').NotesTagRenameResponse => {
+    const { oldTag, newTag } = payload ?? {};
+    return renameNotesTag(getNotesVaultRoot(), oldTag, newTag);
+  },
+  [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: import('./ipc.js').NotesTagMergePayload): import('./ipc.js').NotesTagMergeResponse => {
+    const { sourceTag, targetTag } = payload ?? {};
+    return mergeNotesTags(getNotesVaultRoot(), sourceTag, targetTag);
+  },
+  // ─── SKY-170: Scene-to-entity links ───
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload): import('./ipc.js').SceneEntityLinksListResponse => {
     ensureVaultDir();
     const rows = listSceneEntityLinks(payload.sceneId);
@@ -3258,7 +3390,6 @@ const handlers: IpcHandlers = {
       })),
     };
   },
-
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload): import('./ipc.js').SceneEntityLinksUpsertResponse => {
     ensureVaultDir();
     const now = new Date().toISOString();
@@ -3273,20 +3404,16 @@ const handlers: IpcHandlers = {
       },
     };
   },
-
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload): void => {
     ensureVaultDir();
     deleteSceneEntityLink(payload.sceneId, payload.entityId, payload.kind);
   },
-
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload): import('./ipc.js').EntityLinkedScenesResponse => {
     ensureVaultDir();
     const rows = listLinkedSceneIds(payload.entityId);
     if (rows.length === 0) return { scenes: [] };
-
     const manifest = readManifest(getManifestPath());
     const scenes: import('./ipc.js').LinkedScene[] = [];
-
     for (const row of rows) {
       for (const story of manifest.stories) {
         for (const chapter of story.chapters) {
@@ -3306,8 +3433,88 @@ const handlers: IpcHandlers = {
         }
       }
     }
-
     return { scenes };
+  },
+  // SKY-194: Iconize — per-node icon IPC
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string> => {
+    return batchReadVaultIcons(getNotesVaultRoot());
+  },
+  [IPC_CHANNELS.VAULT_READ_ICONS]: (): Record<string, string> => {
+    return batchReadVaultIcons(getVaultRoot());
+  },
+  [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (): import('./iconPacks.js').UserIconPack[] => {
+    const iconsDir = path.join(app.getPath('home'), 'Mythos', '.icons');
+    return listUserIconPacks(iconsDir);
+  },
+  [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }): { svg: string | null } => {
+    const iconsDir = path.join(app.getPath('home'), 'Mythos', '.icons');
+    const { packName, iconName } = payload ?? {};
+    const svg = readUserPackSvg(iconsDir, packName, iconName);
+    return { svg };
+  },
+
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  [IPC_CHANNELS.SMART_FOLDER_LIST]: (): { smartFolders: SmartFolderEntry[] } => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return { smartFolders: manifest.smartFolders ?? [] };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_CREATE]: (payload: { name: string; query: string }): { smartFolder: SmartFolderEntry } => {
+    ensureVaultDir();
+    const { name, query } = payload ?? {};
+    if (!name?.trim()) throw new Error('Smart folder name is required');
+    if (!query?.trim()) throw new Error('Smart folder query is required');
+    const { error } = parseSmartQuery(query);
+    if (error) throw new Error(`Invalid query: ${error}`);
+    const manifest = readManifest(getManifestPath());
+    const now = new Date().toISOString();
+    const entry: SmartFolderEntry = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      query: query.trim(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    manifest.smartFolders = [...(manifest.smartFolders ?? []), entry];
+    writeManifest(getManifestPath(), manifest);
+    return { smartFolder: entry };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }): { smartFolder: SmartFolderEntry } => {
+    ensureVaultDir();
+    const { id, name, query } = payload ?? {};
+    if (!id) throw new Error('Smart folder id is required');
+    if (query !== undefined) {
+      const { error } = parseSmartQuery(query);
+      if (error) throw new Error(`Invalid query: ${error}`);
+    }
+    const manifest = readManifest(getManifestPath());
+    const folders = manifest.smartFolders ?? [];
+    const idx = folders.findIndex((f) => f.id === id);
+    if (idx === -1) throw new Error(`Smart folder not found: ${id}`);
+    folders[idx] = {
+      ...folders[idx],
+      ...(name !== undefined ? { name: name.trim() } : {}),
+      ...(query !== undefined ? { query: query.trim() } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    manifest.smartFolders = folders;
+    writeManifest(getManifestPath(), manifest);
+    return { smartFolder: folders[idx] };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }): { success: boolean } => {
+    ensureVaultDir();
+    const { id } = payload ?? {};
+    if (!id) throw new Error('Smart folder id is required');
+    const manifest = readManifest(getManifestPath());
+    manifest.smartFolders = (manifest.smartFolders ?? []).filter((f) => f.id !== id);
+    writeManifest(getManifestPath(), manifest);
+    return { success: true };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }): { results: import('./ipc.js').SmartFolderResult[] } => {
+    const { query } = payload ?? {};
+    if (!query?.trim()) return { results: [] };
+    const results = executeSmartQuery(getNotesVaultRoot(), query);
+    return { results };
   },
 
 };
@@ -3606,6 +3813,63 @@ function autoApplyVaultWrite(
     suggestion.payload_json
   ) {
     try {
+      const payloadData = JSON.parse(suggestion.payload_json) as {
+        kind?: string;
+        content?: string;
+        prose?: string;
+        relationType?: string;
+        sourceEntityId?: string;
+        sourceEntityPath?: string;
+        targetEntityId?: string;
+        targetEntityPath?: string;
+      };
+
+      // ─── Typed-relation apply ───
+      if (payloadData.kind === 'typed-relation') {
+        const {
+          relationType,
+          sourceEntityId,
+          sourceEntityPath,
+          targetEntityId,
+          targetEntityPath,
+        } = payloadData;
+        if (!relationType || !sourceEntityId || !sourceEntityPath || !targetEntityId || !targetEntityPath) {
+          return { finalStatus: 'accepted', snapshotPath: null };
+        }
+        const manifest = readManifest(getManifestPath());
+
+        const sourceEntry = manifest.entities.find((e) => e.id === sourceEntityId);
+        if (sourceEntry) {
+          const existingRelations = sourceEntry.relations ?? [];
+          const alreadyHas = existingRelations.some(
+            (r) => r.type === relationType && r.target === targetEntityId,
+          );
+          if (!alreadyHas) {
+            updateEntity(getVaultRoot(), manifest, sourceEntityId, {
+              relations: [...existingRelations, { type: relationType, target: targetEntityId }],
+            });
+          }
+        }
+
+        const reciprocal = getReciprocal(relationType);
+        const targetEntry = manifest.entities.find((e) => e.id === targetEntityId);
+        if (targetEntry) {
+          const existingRelations = targetEntry.relations ?? [];
+          const alreadyHas = existingRelations.some(
+            (r) => r.type === reciprocal && r.target === sourceEntityId,
+          );
+          if (!alreadyHas) {
+            updateEntity(getVaultRoot(), manifest, targetEntityId, {
+              relations: [...existingRelations, { type: reciprocal, target: sourceEntityId }],
+            });
+          }
+        }
+
+        writeManifest(getManifestPath(), manifest);
+        return { finalStatus: 'applied', snapshotPath: null };
+      }
+
+      // ─── Standard vault-write apply ───
       const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
       if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
       const relSnapshotPath = path.join(
@@ -3615,8 +3879,8 @@ function autoApplyVaultWrite(
 
       let originalContent = '';
       try {
-        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
-        originalContent = content;
+        const { content: vc } = readVaultFile(getVaultRoot(), suggestion.target_path);
+        originalContent = vc;
       } catch { /* new file — empty original */ }
 
       fs.writeFileSync(
@@ -3625,7 +3889,6 @@ function autoApplyVaultWrite(
         'utf-8',
       );
 
-      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
       const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
       const { prose: newProse } = parseFrontmatter(newContent);
       mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {

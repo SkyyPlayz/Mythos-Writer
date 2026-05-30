@@ -67,6 +67,41 @@ interface DetectedFact {
   savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review' | 'needs_routing';
 }
 
+// SKY-196: context selection result surfaced in the "Context used" panel.
+interface ContextResultItem {
+  path: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'note';
+  content: string;
+  estimatedTokens: number;
+  whyIncluded: string;
+}
+
+interface ContextResult {
+  included: ContextResultItem[];
+  excluded: ContextResultItem[];
+  usedTokens: number;
+  budgetTokens: number;
+}
+
+function buildContextBlock(items: ContextResultItem[]): string {
+  const lines = [
+    '',
+    '---',
+    '## Story Vault Context',
+    "The following entities are in the user's story vault and may be relevant:",
+    '',
+  ];
+  for (const item of items) {
+    lines.push(`**${item.name}** (${item.type})`);
+    if (item.content.trim()) {
+      lines.push(item.content.trim().slice(0, 400));
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
 // SKY-20: a pending routing prompt rendered as a chat bubble. When the
 // Brainstorm agent emits a fact whose category has no remembered destination
 // in a Blank-mode vault, main stages the file and tells the renderer to ask.
@@ -141,6 +176,10 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [routingPrompts, setRoutingPrompts] = useState<RoutingPrompt[]>([]);
   const [notesFolders, setNotesFolders] = useState<Array<{ path: string; label: string }>>([]);
 
+  // SKY-196: vault context surfaced in the "Context used" panel
+  const [contextResult, setContextResult] = useState<ContextResult | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
+
   const streamIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef<string>('');
   const cleanupStreamRef = useRef<(() => void) | null>(null);
@@ -148,6 +187,8 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTokenAtRef = useRef<number>(0);
   const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  // Holds the system prompt augmented with vault context for the current/last request.
+  const contextSystemRef = useRef<string>(BRAINSTORM_SYSTEM_PROMPT);
   const { announce, liveText } = useLiveAnnounce();
 
   // Restore draft from localStorage on mount
@@ -288,6 +329,9 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setDraftSizeWarning(false);
     setShowRecoveryBanner(false);
     setRoutingPrompts([]);
+    setContextResult(null);
+    setContextOpen(false);
+    contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
   }, []);
 
@@ -394,7 +438,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     try {
       const { streamId: sid } = await window.api.streamStart({
         messages: apiMessages,
-        system: BRAINSTORM_SYSTEM_PROMPT,
+        system: contextSystemRef.current,
       });
       streamIdRef.current = sid;
     } catch (err) {
@@ -441,6 +485,24 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       role: m.role as 'user' | 'assistant',
       content: m.text,
     }));
+
+    // SKY-196: fetch vault context before streaming so relevant entities are
+    // visible to Claude. Non-critical — proceed without context on any error.
+    let systemPrompt = BRAINSTORM_SYSTEM_PROMPT;
+    try {
+      const convText = messages.map((m) => m.text).join('\n');
+      const ctx = await window.api.brainstormSelectContext?.({
+        userMessage: trimmed,
+        conversationText: convText,
+      });
+      if (ctx) {
+        setContextResult(ctx);
+        if (ctx.included.length > 0) {
+          systemPrompt = BRAINSTORM_SYSTEM_PROMPT + buildContextBlock(ctx.included);
+        }
+      }
+    } catch { /* vault context is non-critical */ }
+    contextSystemRef.current = systemPrompt;
 
     await _runStream(apiMessages);
   }, [prompt, loading, messages, announce, _runStream]);
@@ -970,6 +1032,51 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
               })}
             </ul>
           </div>
+
+          {/* SKY-196: collapsible "Context used" panel */}
+          {contextResult && (
+            <div className="bs-context-section" data-testid="brainstorm-context-section">
+              <button
+                className="bs-context-header"
+                onClick={() => setContextOpen((o) => !o)}
+                aria-expanded={contextOpen}
+                aria-controls="bs-context-body"
+                type="button"
+              >
+                <span className="bs-context-title">Context sent</span>
+                <span className="bs-context-counts">
+                  {contextResult.included.length} item{contextResult.included.length !== 1 ? 's' : ''}
+                  {contextResult.excluded.length > 0 && `, ${contextResult.excluded.length} excluded`}
+                </span>
+                <span className="bs-context-chevron" aria-hidden="true">{contextOpen ? '▲' : '▼'}</span>
+              </button>
+              {contextOpen && (
+                <div id="bs-context-body" className="bs-context-body">
+                  <div className="bs-context-budget">
+                    {contextResult.usedTokens.toLocaleString()} / {contextResult.budgetTokens.toLocaleString()} tokens
+                  </div>
+                  {contextResult.included.length === 0 ? (
+                    <div className="bs-context-empty">No vault items sent.</div>
+                  ) : (
+                    <ul className="bs-context-list" aria-label="Context items sent to AI">
+                      {contextResult.included.map((item) => (
+                        <li key={item.path} className="bs-context-item">
+                          <span className="bs-context-item-name">{item.name}</span>
+                          <span className={`bs-context-item-type bs-context-type-${item.type}`}>{item.type}</span>
+                          <span className="bs-context-item-why">{item.whyIncluded}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {contextResult.excluded.length > 0 && (
+                    <div className="bs-context-excluded">
+                      {contextResult.excluded.length} item{contextResult.excluded.length !== 1 ? 's' : ''} excluded — token budget reached
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="brainstorm-facts-header brainstorm-facts-header-divider">
             <span className="brainstorm-facts-title">Detected Facts</span>

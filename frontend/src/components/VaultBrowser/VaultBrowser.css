@@ -595,3 +595,57 @@
   background: var(--glass-highlight, rgba(255,255,255,0.06));
   color: var(--text-header, #fff);
 }
+
+/* ─── Tag filter empty state ─── */
+
+.vb-notes-no-match {
+  padding: 10px 12px;
+  font-size: var(--text-xs, 0.72rem);
+  color: var(--text-muted, rgba(255,255,255,0.45));
+  text-align: center;
+}
+
+/* SKY-204: Daily Notes banner */
+.vb-daily-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+  background: var(--bg-secondary, #111);
+}
+
+.vb-daily-streak {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #888);
+  flex: 1;
+  white-space: nowrap;
+}
+
+.vb-daily-today-btn {
+  padding: 4px 10px;
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.vb-daily-today-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.vb-daily-today-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vb-daily-today-btn--exists {
+  background: var(--bg-panel, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border, #3a3a3a);
+}

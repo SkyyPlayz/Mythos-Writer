@@ -19,6 +19,8 @@ const mockEntityList = vi.fn();
 const mockBrainstormWriteNote = vi.fn();
 const mockBrainstormResolveRouting = vi.fn();
 const mockBrainstormListNotesFolders = vi.fn();
+// SKY-196: context selection mock — empty vault by default so tests stay fast.
+const mockBrainstormSelectContext = vi.fn();
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +32,7 @@ function buildApi(overrides: Record<string, unknown> = {}) {
     brainstormWriteNote: mockBrainstormWriteNote,
     brainstormResolveRouting: mockBrainstormResolveRouting,
     brainstormListNotesFolders: mockBrainstormListNotesFolders,
+    brainstormSelectContext: mockBrainstormSelectContext,
     onStreamToken: (cb: TokenHandler) => {
       tokenCb = cb;
       return () => {
@@ -95,6 +98,10 @@ beforeEach(() => {
       { path: 'Worldbuilding/People', label: 'Worldbuilding/People' },
     ],
     notesVaultRoot: '/tmp/notes',
+  });
+  // SKY-196: empty vault context by default so context fetch resolves fast.
+  mockBrainstormSelectContext.mockResolvedValue({
+    included: [], excluded: [], usedTokens: 0, budgetTokens: 4000,
   });
   (window as unknown as { api: unknown }).api = buildApi();
   localStorage.clear();
@@ -645,8 +652,9 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush the brainstormSelectContext microtask so _runStream (and onStreamToken) run
+    await act(async () => {});
 
-    // tokenCb is set synchronously before _runStream's first await
     expect(tokenCb).not.toBeNull();
 
     // Use async act to flush React 18 batched updates triggered by timer callbacks
@@ -664,6 +672,8 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush the brainstormSelectContext microtask so _runStream (and onStreamToken) run
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -681,6 +691,7 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});  // flush brainstormSelectContext microtask
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -700,6 +711,7 @@ describe('Stalled-stream UX', () => {
       target: { value: 'retry-me' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});  // flush brainstormSelectContext microtask
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -724,10 +736,11 @@ describe('Stalled-stream UX', () => {
       target: { value: 'slow request' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush brainstormSelectContext microtask, then the streamStart() microtask
+    await act(async () => {});
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
-    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
-    await act(async () => {});
 
     await act(async () => { vi.advanceTimersByTime(HARD_TIMEOUT_MS + 1000); });
 
@@ -742,10 +755,11 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush brainstormSelectContext microtask, then streamStart() microtask
+    await act(async () => {});
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
-    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
-    await act(async () => {});
     expect(screen.getByRole('button', { name: /cancel streaming/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /cancel streaming/i }));

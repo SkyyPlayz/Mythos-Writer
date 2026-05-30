@@ -15,6 +15,7 @@ export interface FtsDoc {
 }
 
 export interface SearchResult {
+  resultType: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
@@ -143,7 +144,7 @@ export function searchVault(
     params.push(limit);
     try {
       const rows = db.prepare(sql).all(...params) as Array<{ doc_id: string; vault: string; kind: string; title: string }>;
-      return rows.map((r) => ({ docId: r.doc_id, vault: r.vault as 'story' | 'notes', kind: r.kind, title: r.title, snippet: '', rank: 0 }));
+      return rows.map((r) => ({ resultType: (r.kind === 'scene' ? 'scene' : 'entity') as 'scene' | 'entity', docId: r.doc_id, vault: r.vault as 'story' | 'notes', kind: r.kind, title: r.title, snippet: '', rank: 0 }));
     } catch { return []; }
   }
 
@@ -189,6 +190,7 @@ export function searchVault(
 
     for (const row of rows) {
       results.push({
+        resultType: row.kind === 'scene' ? 'scene' : 'entity',
         docId: row.doc_id,
         vault: row.vault as 'story' | 'notes',
         kind: row.kind,
@@ -230,6 +232,7 @@ export function searchVault(
       for (const row of fuzzyRows) {
         if (!seen.has(row.doc_id)) {
           results.push({
+            resultType: 'entity',
             docId: row.doc_id,
             vault: row.vault as 'story' | 'notes',
             kind: row.kind,

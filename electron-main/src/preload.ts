@@ -478,6 +478,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('brainstorm:resetCategoryRouting', { category }),
   brainstormListNotesFolders: () =>
     ipcRenderer.invoke('brainstorm:listNotesFolders', undefined),
+  // SKY-196: token-budgeted vault context selection for Brainstorm AI requests
+  brainstormSelectContext: (payload: { userMessage: string; conversationText: string; tokenBudget?: number }) =>
+    ipcRenderer.invoke('brainstorm:selectContext', payload),
 
   // SKY-130: persist last-opened scene + cursor position for cross-restart restore.
   sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) =>
@@ -488,6 +491,23 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
   templateSaveAs: (name: string) =>
     ipcRenderer.invoke('template:saveAs', { name }),
+  // SKY-190: Note Templates
+  noteTemplateList: (kind?: string) =>
+    ipcRenderer.invoke('note-template:list', { kind }),
+
+  // SKY-204: Daily Notes
+  dailyNoteOpenToday: () =>
+    ipcRenderer.invoke('dailyNote:openToday', undefined),
+  dailyNoteGetStreak: () =>
+    ipcRenderer.invoke('dailyNote:getStreak', undefined),
+
+  // SKY-193: Tag Wrangler
+  notesTagList: () =>
+    ipcRenderer.invoke('notesVault:tag:list', undefined),
+  notesTagRename: (oldTag: string, newTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:rename', { oldTag, newTag }),
+  notesTagMerge: (sourceTag: string, targetTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
 
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
@@ -512,6 +532,28 @@ contextBridge.exposeInMainWorld('api', {
   tagsBulkApply: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) =>
     ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
   sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
+  // SKY-194: Iconize — per-node icon IPC
+  notesVaultReadIcons: () =>
+    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  vaultReadIcons: () =>
+    ipcRenderer.invoke('vault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  iconListUserPacks: () =>
+    ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
+  iconReadSvg: (packName: string, iconName: string) =>
+    ipcRenderer.invoke('icons:readSvg', { packName, iconName }) as unknown as Promise<{ svg: string | null }>,
+
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  smartFolderList: () =>
+    ipcRenderer.invoke('smartFolder:list', undefined),
+  smartFolderCreate: (name: string, query: string) =>
+    ipcRenderer.invoke('smartFolder:create', { name, query }),
+  smartFolderUpdate: (id: string, updates: { name?: string; query?: string }) =>
+    ipcRenderer.invoke('smartFolder:update', { id, ...updates }),
+  smartFolderDelete: (id: string) =>
+    ipcRenderer.invoke('smartFolder:delete', { id }),
+  smartFolderQuery: (query: string) =>
+    ipcRenderer.invoke('smartFolder:query', { query }),
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

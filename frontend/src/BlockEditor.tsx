@@ -5,11 +5,20 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Block, Scene, DraftState } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
+import {
+  AutoLinkerExtension,
+  AUTO_LINKER_META,
+  getAutoLinkerState,
+  collectAutoLinkerRanges,
+  type AutoLinkerMode,
+} from './AutoLinkerExtension';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
   jumpToText: (text: string) => void;
   insertWikiLink: (link: string, anchorText: string) => void;
+  /** Apply all current auto-linker suggestions as a single undoable transaction. */
+  applyAutoLinks: () => void;
 }
 
 interface Props {
@@ -23,6 +32,10 @@ interface Props {
   wikiLinkSuggestions?: WLSuggestion[];
   onAcceptWikiLink?: (id: string, link: string, anchorText: string) => void;
   onRejectWikiLink?: (id: string) => void;
+  /** SKY-192: entity list for the auto-linker decoration layer. */
+  autoLinkerEntities?: EntityEntry[];
+  /** SKY-192: auto-linker mode. Defaults to 'suggest'. */
+  autoLinkerMode?: AutoLinkerMode;
   /** SKY-130: ProseMirror document position to restore on mount. 0 or undefined = top. */
   initialCursorPos?: number;
   /** SKY-130: debounced callback reporting cursor position changes for session persistence. */
@@ -53,7 +66,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
   return lines.join('\n').trim();
 }
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, initialCursorPos, onCursorPosChange }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [selectionText, setSelectionText] = useState<string>('');
   const [betaReadBubble, setBetaReadBubble] = useState<{ top: number; left: number } | null>(null);
@@ -64,6 +77,10 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   onAcceptWikiLinkRef.current = onAcceptWikiLink;
   const onRejectWikiLinkRef = useRef(onRejectWikiLink);
   onRejectWikiLinkRef.current = onRejectWikiLink;
+  const autoLinkerModeRef = useRef(autoLinkerMode);
+  autoLinkerModeRef.current = autoLinkerMode;
+  // Flag to break the auto-link → onUpdate → auto-link cycle
+  const applyingAutoLinksRef = useRef(false);
   const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBlocksChangeRef = useRef(onBlocksChange);
   onBlocksChangeRef.current = onBlocksChange;
@@ -79,16 +96,36 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const cursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editor = useEditor({
-    extensions: [StarterKit, WikiLink, WikiLinkHintExtension, Markdown],
+    extensions: [StarterKit, WikiLink, WikiLinkHintExtension, AutoLinkerExtension, Markdown],
     content: blocksToMarkdownBody(scene.blocks),
     onUpdate({ editor }) {
-      // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = (editor.storage as any).markdown.getMarkdown() as string;
-      // tiptap-markdown v0.9 omits a trailing newline; add it for tooling compatibility.
-      const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
       if (changeRef.current) clearTimeout(changeRef.current);
       changeRef.current = setTimeout(() => {
+        // Auto on save: apply all auto-linker suggestions as a single transaction,
+        // then read the updated markdown. The applyingAutoLinksRef flag prevents
+        // the resulting onUpdate from triggering a second application cycle.
+        if (autoLinkerModeRef.current === 'auto' && !applyingAutoLinksRef.current) {
+          const linkerState = getAutoLinkerState(editor.state);
+          if (linkerState && linkerState.entities.length > 0) {
+            const ranges = collectAutoLinkerRanges(editor.state.doc, linkerState.entities);
+            if (ranges.length > 0) {
+              applyingAutoLinksRef.current = true;
+              const sorted = [...ranges].sort((a, b) => b.from - a.from);
+              let tr = editor.state.tr;
+              for (const r of sorted) {
+                const wikiNode = editor.schema.nodes['wikiLink']?.create({ target: r.target });
+                if (wikiNode) tr = tr.replaceWith(r.from, r.to, wikiNode);
+              }
+              editor.view.dispatch(tr);
+              applyingAutoLinksRef.current = false;
+            }
+          }
+        }
+        // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = (editor.storage as any).markdown.getMarkdown() as string;
+        // tiptap-markdown v0.9 omits a trailing newline; add it for tooling compatibility.
+        const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
         onBlocksChangeRef.current([{
           id: blockIdRef.current,
           type: 'prose',
@@ -166,6 +203,19 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           editor.chain().focus().insertContent(link).run();
         }
       },
+      applyAutoLinks: () => {
+        const linkerState = getAutoLinkerState(editor.state);
+        if (!linkerState || linkerState.mode === 'off') return;
+        const ranges = collectAutoLinkerRanges(editor.state.doc, linkerState.entities);
+        if (ranges.length === 0) return;
+        const sorted = [...ranges].sort((a, b) => b.from - a.from);
+        let tr = editor.state.tr;
+        for (const r of sorted) {
+          const wikiNode = editor.schema.nodes['wikiLink']?.create({ target: r.target });
+          if (wikiNode) tr = tr.replaceWith(r.from, r.to, wikiNode);
+        }
+        editor.view.dispatch(tr);
+      },
     });
   // Run only when the editor instance changes (new scene key causes remount)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -196,6 +246,17 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       editor.state.tr.setMeta(WIKI_LINK_HINT_META, wikiLinkSuggestions ?? [])
     );
   }, [editor, wikiLinkSuggestions]);
+
+  // Push updated auto-linker entities + mode into the AutoLinker plugin
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(AUTO_LINKER_META, {
+        entities: autoLinkerEntities ?? [],
+        mode: autoLinkerMode ?? 'suggest',
+      })
+    );
+  }, [editor, autoLinkerEntities, autoLinkerMode]);
 
   // SKY-130: flush pending cursor debounce on unmount to avoid stale callbacks
   useEffect(() => {

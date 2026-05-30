@@ -413,3 +413,76 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* Typed relations (Connections panel) */
+.entity-det-relation-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+}
+
+.entity-det-relation-item:last-child {
+  border-bottom: none;
+}
+
+.entity-det-relation-type {
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  font-style: italic;
+  flex-shrink: 0;
+}
+
+/* Proposed relations */
+.entity-det-proposed-relations {
+  border-top: 1px solid var(--border, #2a2a2a);
+}
+
+.entity-det-proposed-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 5px 12px 3px;
+}
+
+.entity-det-proposed-item {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+}
+
+.entity-det-proposed-item:last-child {
+  border-bottom: none;
+}
+
+.entity-det-proposed-desc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.entity-det-proposed-target {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text, #eee);
+}
+
+.entity-det-proposed-rationale {
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  margin: 0 0 5px;
+  line-height: 1.4;
+}
+
+.entity-det-proposed-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.entity-det-btn-sm {
+  font-size: 11px;
+  padding: 3px 8px;
+}

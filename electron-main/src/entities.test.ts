@@ -9,6 +9,7 @@ import {
   deleteEntity,
   listEntities,
   reindexEntities,
+  migrateEntityAliases,
   entityRelPath,
 } from './entities.js';
 import { defaultManifest } from './vault.js';
@@ -197,6 +198,100 @@ describe('reindexEntities', () => {
     createEntity(tmpDir, manifest, { name: 'Aria', type: 'character' });
     reindexEntities(tmpDir, manifest);
     expect(manifest.entities).toHaveLength(1);
+  });
+});
+
+describe('aliases frontmatter serialization', () => {
+  it('writes aliases: [] when aliases is an empty array', () => {
+    // Simulate migration: entity created without aliases, then migrated
+    const entry = createEntity(tmpDir, manifest, { name: 'Nameless', type: 'character' });
+    expect(entry.aliases).toBeUndefined();
+
+    // Run migration — should write aliases: []
+    const { migrated } = migrateEntityAliases(tmpDir, manifest);
+    expect(migrated).toBe(1);
+
+    const raw = fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8');
+    expect(raw).toContain('aliases: []');
+  });
+
+  it('writes aliases: [a, b] for non-empty arrays', () => {
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'Lyra',
+      type: 'character',
+      aliases: ['the Stranger', 'she who walks the wall'],
+    });
+    const raw = fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8');
+    expect(raw).toContain('aliases: [the Stranger, she who walks the wall]');
+  });
+
+  it('round-trips multi-word aliases through parse/serialize', () => {
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'Aria',
+      type: 'character',
+      aliases: ['the Weaver', 'Aria Voss'],
+    });
+    const read = readEntity(tmpDir, manifest, entry.id);
+    expect(read!.aliases).toEqual(['the Weaver', 'Aria Voss']);
+  });
+});
+
+describe('migrateEntityAliases', () => {
+  it('adds aliases: [] to entities whose frontmatter lacks the field', () => {
+    const entry = createEntity(tmpDir, manifest, { name: 'Aria', type: 'character' });
+    let raw = fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8');
+    expect(raw).not.toContain('aliases');
+
+    const result = migrateEntityAliases(tmpDir, manifest);
+    expect(result.migrated).toBe(1);
+
+    raw = fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8');
+    expect(raw).toContain('aliases: []');
+  });
+
+  it('does not overwrite entities that already have aliases', () => {
+    createEntity(tmpDir, manifest, {
+      name: 'Aria',
+      type: 'character',
+      aliases: ['Ari', 'The Weaver'],
+    });
+    const result = migrateEntityAliases(tmpDir, manifest);
+    expect(result.migrated).toBe(0);
+
+    const raw = fs.readFileSync(path.join(tmpDir, manifest.entities[0].path), 'utf-8');
+    expect(raw).toContain('aliases: [Ari, The Weaver]');
+  });
+
+  it('does not overwrite entities that have aliases: [] (already migrated)', () => {
+    createEntity(tmpDir, manifest, { name: 'Ghost', type: 'character' });
+    migrateEntityAliases(tmpDir, manifest); // first pass
+    const result = migrateEntityAliases(tmpDir, manifest); // second pass — idempotent
+    expect(result.migrated).toBe(0);
+  });
+
+  it('updates the in-memory manifest entry aliases', () => {
+    createEntity(tmpDir, manifest, { name: 'Kael', type: 'character' });
+    expect(manifest.entities[0].aliases).toBeUndefined();
+
+    migrateEntityAliases(tmpDir, manifest);
+    expect(manifest.entities[0].aliases).toEqual([]);
+  });
+
+  it('skips entities whose files cannot be read and does not throw', () => {
+    createEntity(tmpDir, manifest, { name: 'Ghost', type: 'character' });
+    fs.rmSync(path.join(tmpDir, manifest.entities[0].path));
+
+    const result = migrateEntityAliases(tmpDir, manifest);
+    expect(result.migrated).toBe(0);
+  });
+
+  it('migrates only entities without aliases when mixed', () => {
+    createEntity(tmpDir, manifest, { name: 'No Aliases', type: 'character' });
+    createEntity(tmpDir, manifest, { name: 'Has Aliases', type: 'character', aliases: ['Alias A'] });
+    createEntity(tmpDir, manifest, { name: 'Also No Aliases', type: 'location' });
+
+    const result = migrateEntityAliases(tmpDir, manifest);
+    expect(result.migrated).toBe(2);
   });
 });
 

@@ -48,6 +48,11 @@ interface MigrationApplyResult {
   snapshotsWritten: string[];
 }
 
+interface EntityRelation {
+  type: string;
+  target: string; // entity id
+}
+
 interface EntityEntry {
   id: string;
   name: string;
@@ -55,6 +60,7 @@ interface EntityEntry {
   path: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -105,6 +111,7 @@ interface Suggestion {
   rationale: string;
   createdAt: string;
   status: 'proposed' | 'accepted' | 'rejected' | 'ignored';
+  payload_json?: string | null;
 }
 
 interface AgentBudgetSettings {
@@ -267,8 +274,18 @@ interface AppSettings {
     scrollTop: number;
     cursorLine: number;
   };
+  /** SKY-192: automatic wikilink linker. Absent = suggest mode. */
+  autoLinker?: {
+    mode: 'off' | 'suggest' | 'auto';
+  };
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
+  /** SKY-204: opt-in daily notes / journal mode. */
+  journalMode?: {
+    enabled: boolean;
+    noteFolder?: string;
+    noteFormat?: string;
+  };
 }
 
 interface GenerationLogRow {
@@ -301,6 +318,33 @@ interface BrainstormExtractedEntity {
   name: string;
   type: 'character' | 'location' | 'item' | 'note';
   suggestionId: string;
+}
+
+// SKY-193: Tag Wrangler
+interface NotesTagEntry {
+  name: string;
+  fullName: string;
+  count: number;
+  paths: string[];
+  children: NotesTagEntry[];
+}
+
+// SKY-190: Note Templates
+interface NoteTemplateField {
+  key: string;
+  kind: 'literal' | 'prompt' | 'pick';
+  label: string;
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note';
+  body: string;
+  fields: NoteTemplateField[];
 }
 
 interface Window {
@@ -357,7 +401,7 @@ interface Window {
     // Entity CRUD
     entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
     entityRead: (id: string) => Promise<EntityEntry | null>;
-    entityUpdate: (payload: { id: string; name?: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
+    entityUpdate: (payload: { id: string; name?: string; aliases?: string[]; tags?: string[]; relations?: EntityRelation[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
@@ -603,10 +647,26 @@ interface Window {
       folders: Array<{ path: string; label: string }>;
       notesVaultRoot: string;
     }>;
+    // SKY-196: token-budgeted vault context selection
+    brainstormSelectContext?: (payload: { userMessage: string; conversationText: string; tokenBudget?: number }) => Promise<{
+      included: Array<{ path: string; name: string; type: 'character' | 'location' | 'item' | 'note'; content: string; estimatedTokens: number; whyIncluded: string }>;
+      excluded: Array<{ path: string; name: string; type: 'character' | 'location' | 'item' | 'note'; content: string; estimatedTokens: number; whyIncluded: string }>;
+      usedTokens: number;
+      budgetTokens: number;
+    }>;
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
 
+    // SKY-190: Note Templates
+    noteTemplateList: (kind?: string) => Promise<{ templates: NoteTemplate[] }>;
+    // SKY-204: Daily Notes
+    dailyNoteOpenToday: () => Promise<{ path: string; created: boolean }>;
+    dailyNoteGetStreak: () => Promise<{ streakDays: number; todayExists: boolean }>;
+    // SKY-193: Tag Wrangler
+    notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
+    notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
+    notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number }>;
     // SKY-55: per-scene notes
     notesGet?: (sceneId: string) => Promise<{ content: string }>;
     notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
@@ -627,6 +687,19 @@ interface Window {
     goalsLogWords: (date: string, wordsAdded: number) => Promise<{ ok: boolean }>;
     goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
     goalsResetStreak: () => Promise<{ ok: boolean }>;
+
+    // SKY-194: Iconize — per-node icon IPC
+    notesVaultReadIcons: () => Promise<Record<string, string>>;
+    vaultReadIcons: () => Promise<Record<string, string>>;
+    iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
+    iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
+
+    // SKY-205: Smart Folders — frontmatter-backed persistent queries
+    smartFolderList?: () => Promise<{ smartFolders: Array<{ id: string; name: string; query: string; createdAt: string; updatedAt: string }> }>;
+    smartFolderCreate?: (name: string, query: string) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderUpdate?: (id: string, updates: { name?: string; query?: string }) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderDelete?: (id: string) => Promise<{ success: boolean }>;
+    smartFolderQuery?: (query: string) => Promise<{ results: Array<{ path: string; title: string }> }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
