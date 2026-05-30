@@ -497,7 +497,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
     const story = {
       id: 's1', title: 'My Story', path: '/s', order: 0,
       chapters: [{
-        id: 'ch1', title: 'Chapter 1', storyId: 's1', path: '/s/ch1', order: 0,
+        id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, createdAt: '', updatedAt: '',
         scenes: [
           { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
           { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
@@ -509,7 +509,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
         activeTab="outline"
         onTabChange={() => {}}
         selectedScene={{ id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' }}
-        selectedChapter={{ id: 'ch1', title: 'Chapter 1', storyId: 's1', path: '/s/ch1', order: 0, scenes: story.chapters[0].scenes }}
+        selectedChapter={{ id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: story.chapters[0].scenes, createdAt: '', updatedAt: '' }}
         selectedStory={story as any}
       />,
     );
@@ -520,7 +520,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
   it('outline tab — active scene has aria-current="true"', () => {
     const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
     const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
-    const chapter = { id: 'ch1', title: 'Chapter 1', storyId: 's1', path: '/s/ch1', order: 0, scenes: [scene1, scene2] };
+    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
     const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
 
     const { container } = render(
@@ -544,7 +544,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
   it('outline tab — clicking a scene calls onSelectScene', () => {
     const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
     const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
-    const chapter = { id: 'ch1', title: 'Chapter 1', storyId: 's1', path: '/s/ch1', order: 0, scenes: [scene1, scene2] };
+    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
     const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
     const onSelectScene = vi.fn();
 
