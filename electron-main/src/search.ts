@@ -15,6 +15,7 @@ export interface FtsDoc {
 }
 
 export interface SearchResult {
+  resultType: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
@@ -167,6 +168,7 @@ export function searchVault(
 
     for (const row of rows) {
       results.push({
+        resultType: row.kind === 'scene' ? 'scene' : 'entity',
         docId: row.doc_id,
         vault: row.vault as 'story' | 'notes',
         kind: row.kind,
@@ -208,6 +210,7 @@ export function searchVault(
       for (const row of fuzzyRows) {
         if (!seen.has(row.doc_id)) {
           results.push({
+            resultType: 'entity',
             docId: row.doc_id,
             vault: row.vault as 'story' | 'notes',
             kind: row.kind,

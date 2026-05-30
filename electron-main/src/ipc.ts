@@ -1653,6 +1653,7 @@ export interface SearchQueryPayload {
 }
 
 export interface SearchResultItem {
+  resultType: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
