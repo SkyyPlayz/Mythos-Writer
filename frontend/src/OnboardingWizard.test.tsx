@@ -511,3 +511,132 @@ describe('OnboardingWizard — error states from spec §6', () => {
     await act(async () => {});
   });
 });
+
+// ─── SKY-152: Project wizard screens ─────────────────────────────────────────
+
+describe('OnboardingWizard — SKY-152 Project wizard', () => {
+  beforeEach(() => {
+    (window as unknown as { api: unknown }).api = {
+      pickFolder: vi.fn().mockResolvedValue({ vaultRoot: '/home/user/my-vault', cancelled: false, registrationToken: 'token-abc' }),
+      obsidianDryRun: vi.fn(),
+      obsidianRegister: vi.fn(),
+      vaultSetPaths: vi.fn().mockResolvedValue({ ok: true }),
+      loadSampleTwoVault: vi.fn(),
+      validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
+      obsidianPickFolderByPath: vi.fn(),
+      onboardingComplete: vi.fn().mockResolvedValue({ ok: true }),
+      writeVault: vi.fn().mockResolvedValue({ path: 'p', bytes: 1 }),
+      writeNotesVault: vi.fn().mockResolvedValue({ path: 'p', bytes: 1 }),
+    };
+  });
+
+  it('shows "Create your first project" CTA on welcome screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('cta-create-project')).toBeInTheDocument();
+  });
+
+  it('clicking CTA navigates to project-name screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    expect(screen.getByTestId('screen-project-name')).toBeInTheDocument();
+  });
+
+  it('shows Step 1 of 3 on project-name screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+  });
+
+  it('skip on project-name advances to genre', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    expect(screen.getByTestId('screen-genre')).toBeInTheDocument();
+  });
+
+  it('next on project-name advances to genre', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('next-to-genre'));
+    expect(screen.getByTestId('screen-genre')).toBeInTheDocument();
+  });
+
+  it('shows Step 2 of 3 on genre screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('next-to-genre'));
+    expect(screen.getByText('Step 2 of 3')).toBeInTheDocument();
+  });
+
+  it('skip genre advances to writing-goal', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    expect(screen.getByTestId('screen-writing-goal')).toBeInTheDocument();
+  });
+
+  it('shows Step 3 of 3 on writing-goal screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    expect(screen.getByText('Step 3 of 3')).toBeInTheDocument();
+  });
+
+  it('next-to-path navigates to default-path screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('next-to-path'));
+    expect(screen.getByTestId('screen-default-path')).toBeInTheDocument();
+  });
+
+  it('skip-goal navigates to default-path', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('skip-goal'));
+    expect(screen.getByTestId('screen-default-path')).toBeInTheDocument();
+  });
+
+  it('shows create-project-vault button in project flow', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('next-to-path'));
+    await waitFor(() => expect(screen.getByTestId('create-project-vault')).toBeInTheDocument());
+  });
+
+  it('create-project-vault calls vaultSetPaths blank and writes starter files', async () => {
+    const onComplete = vi.fn();
+    const apiMock = (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn>; writeVault: ReturnType<typeof vi.fn>; writeNotesVault: ReturnType<typeof vi.fn> } }).api;
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('next-to-path'));
+    await waitFor(() => expect(apiMock.validatePath).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('create-project-vault'));
+    await waitFor(() => expect(apiMock.vaultSetPaths).toHaveBeenCalledWith(
+      expect.stringMatching(/Story Vault$/),
+      expect.stringMatching(/Notes Vault$/),
+      { seedMode: 'blank' }
+    ));
+    await waitFor(() => expect(apiMock.writeVault).toHaveBeenCalled());
+    await waitFor(() => expect(apiMock.writeNotesVault).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
+  });
+
+  it('existing picker cards remain accessible via other-options', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('card-default')).toBeInTheDocument();
+    expect(screen.getByTestId('card-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('card-import')).toBeInTheDocument();
+    expect(screen.getByTestId('card-sample')).toBeInTheDocument();
+  });
+});

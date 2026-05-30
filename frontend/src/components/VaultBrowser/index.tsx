@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Story, Scene, Chapter } from '../../types';
+import type { ExportScope } from '../../ExportDialog';
+import StoryContextMenu from './StoryContextMenu';
 import { useVaultFiles } from './useVaultFiles';
 import { useTreeState } from './useTreeState';
 import { buildTree, flattenTree } from './treeUtils';
@@ -65,6 +67,7 @@ function SceneRenameInput({
 
 // ─── Story Vault (manifest-based) ───
 
+interface CT{x:number;y:number;kind:'story'|'chapter'|'scene';storyId:string;chapterId?:string;sceneId?:string;}
 interface StoryVaultProps {
   stories: Story[];
   selectedSceneId: string | null;
@@ -73,6 +76,7 @@ interface StoryVaultProps {
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onRenameScene: (sceneId: string, title: string) => Promise<void>;
+  onExport?: (scope: ExportScope) => void;
 }
 
 function StoryVault({
@@ -83,6 +87,7 @@ function StoryVault({
   onCreateChapter,
   onCreateScene,
   onRenameScene,
+  onExport,
 }: StoryVaultProps) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(() => {
     try {
@@ -102,6 +107,7 @@ function StoryVault({
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  const [ct, setCt] = useState<CT | null>(null);
 
   useEffect(() => {
     if (stories.length === 1 && expandedStories.size === 0) {
@@ -188,7 +194,7 @@ function StoryVault({
             const storyExp = expandedStories.has(story.id);
             return (
               <div key={story.id}>
-                <div className="vb-item-row">
+                <div className="vb-item-row" onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'story',storyId:story.id});}}>
                   <button
                     className="vb-tree-toggle"
                     onClick={() => toggleStory(story.id)}
@@ -214,7 +220,7 @@ function StoryVault({
                       const chapterExp = expandedChapters.has(chapter.id);
                       return (
                         <div key={chapter.id}>
-                          <div className="vb-item-row">
+                          <div className="vb-item-row" onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'chapter',storyId:story.id,chapterId:chapter.id});}}>
                             <button
                               className="vb-tree-toggle"
                               style={{ paddingLeft: 20 }}
@@ -247,6 +253,7 @@ function StoryVault({
                                     role="button"
                                     tabIndex={0}
                                     data-testid={`vb-scene-${scene.id}`}
+                                    onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'scene',storyId:story.id,chapterId:chapter.id,sceneId:scene.id});}}
                                     onClick={() => { if (!isEditing) onSelectScene(scene, chapter, story); }}
                                     onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
                                     onKeyDown={(e) => {
@@ -282,6 +289,7 @@ function StoryVault({
           })
         )}
       </div>
+      {ct && <StoryContextMenu x={ct.x} y={ct.y} kind={ct.kind} storyId={ct.storyId} chapterId={ct.chapterId} sceneId={ct.sceneId} onClose={()=>setCt(null)} onExport={(scope:ExportScope)=>{onExport?.(scope);}} />}
     </div>
   );
 }
@@ -561,6 +569,7 @@ export interface VaultBrowserProps {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenFile?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  onExport?: (scope: ExportScope) => void;
 }
 
 export default function VaultBrowser({
@@ -572,6 +581,7 @@ export default function VaultBrowser({
   onCreateScene,
   onOpenFile,
   onContextChange,
+  onExport,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -625,6 +635,7 @@ export default function VaultBrowser({
               onCreateChapter={onCreateChapter}
               onCreateScene={onCreateScene}
               onRenameScene={handleRenameScene}
+            onExport={onExport}
             />
           </div>
         )}

@@ -316,7 +316,7 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
     expect(tablist).not.toBeNull();
 
     const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
 
     const activeTab = container.querySelector('[aria-selected="true"]');
     expect(activeTab?.id).toBe('leftrail-tab-vault');

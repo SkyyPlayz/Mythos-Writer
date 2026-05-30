@@ -1289,6 +1289,19 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               </div>
             </div>
             <p className="settings-hint">Snapshots are taken automatically while you write. Older ones are pruned by count and age.</p>
+            <div className="settings-field settings-field-inline" style={{ marginTop: 8 }}>
+              <span className="settings-label">Danger zone</span>
+              <button
+                className="settings-btn-danger"
+                onClick={async () => {
+                  if (!window.confirm('Delete ALL snapshots across every scene? This cannot be undone.')) return;
+                  await window.api.snapshotDeleteAll();
+                  setSavedOk(false);
+                }}
+              >
+                Delete all snapshots
+              </button>
+            </div>
           </section>
 
           {/* ── Updates ── */}

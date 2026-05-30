@@ -14,8 +14,12 @@ interface SearchResultItem {
 }
 
 interface Props {
+  open: boolean;
   onNavigate: (result: SearchResultItem) => void;
   onClose: () => void;
+  initialTagFilter?: string;
+  /** Context-aware initial scope. Defaults to 'both'. */
+  defaultScope?: SearchScope;
 }
 
 const KIND_ICONS: Record<string, string> = {
@@ -33,22 +37,31 @@ const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
   { id: 'notes', label: 'Notes Vault' },
 ];
 
-export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
+export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both' }: Props) {
   const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<SearchScope>('both');
+  const [scope, setScope] = useState<SearchScope>(defaultScope);
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (open) inputRef.current?.focus();
+  }, [open]);
 
-  // Capture phase so Escape fires before editor keybindings swallow it
   useEffect(() => {
+    if (initialTagFilter) setActiveTagFilters([initialTagFilter]);
+  }, [initialTagFilter]);
+
+  // Capture phase so Escape fires before editor keybindings swallow it.
+  // Guard with `open` so the listener only exists while the panel is visible —
+  // an always-mounted listener intercepts Escape app-wide and breaks other UI
+  // such as VaultBrowser inline rename (TC-V-07).
+  useEffect(() => {
+    if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
@@ -57,17 +70,18 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  }, [open, onClose]);
 
-  const runSearch = useCallback(async (q: string, s: SearchScope) => {
-    if (!q.trim()) {
+  const runSearch = useCallback(async (q: string, s: SearchScope, tagFilters?: string[]) => {
+    const filters = tagFilters ?? activeTagFilters;
+    if (!q.trim() && !filters.length) {
       setResults([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const resp = await window.api.searchVault(q, s, 20) as { results?: SearchResultItem[] };
+      const resp = await window.api.searchVault(q, s, 20, filters.length ? filters : undefined) as { results?: SearchResultItem[] };
       if (resp?.results) {
         setResults(resp.results);
         setActiveIdx(-1);
@@ -77,7 +91,7 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeTagFilters]);
 
   const handleQueryChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,6 +149,8 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
+  if (!open) return null;
+
   return (
     <div className="gsp-backdrop" onClick={onClose} role="presentation">
       <div
@@ -144,6 +160,21 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
         aria-modal="true"
         aria-label="Search vault"
       >
+        {activeTagFilters.length > 0 && (
+          <div className="gsp-tag-filters">
+            {activeTagFilters.map((t) => (
+              <span key={t} className="gsp-tag-filter">
+                #{t}
+                <button
+                  className="gsp-tag-filter-remove"
+                  onClick={() => setActiveTagFilters((fs) => fs.filter((f) => f !== t))}
+                  aria-label={`Remove tag filter ${t}`}
+                >×</button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="gsp-header">
           <span className="gsp-icon" aria-hidden="true">🔍</span>
           <input
