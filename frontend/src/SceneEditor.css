@@ -105,3 +105,84 @@
 }
 
 .scene-context-menu button:hover { background: var(--bg-hover); }
+
+/* ── Snapshot name dialog (SKY-157) ── */
+.scene-snapshot-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 600;
+}
+
+.scene-snapshot-dialog {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  padding: 20px 24px;
+  width: 360px;
+  box-shadow: var(--elev-3);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.scene-snapshot-dialog-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-header);
+}
+
+.scene-snapshot-dialog-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-header);
+  font-size: 0.88rem;
+  box-sizing: border-box;
+}
+
+.scene-snapshot-dialog-input:focus {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.scene-snapshot-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.scene-snapshot-dialog-actions .btn-cancel {
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.scene-snapshot-dialog-actions .btn-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.scene-snapshot-dialog-actions .btn-save {
+  padding: 6px 16px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: var(--bg-canvas);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scene-snapshot-dialog-actions .btn-save:hover {
+  background: var(--accent-hover);
+}
