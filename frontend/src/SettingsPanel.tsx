@@ -460,10 +460,10 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setVaultsError(null);
     setVaultsSavedOk(false);
     try {
-      const result = await window.api.vaultSetPaths({
-        storyVaultPath: vaults.storyVaultPath.trim(),
-        notesVaultPath: vaults.notesVaultPath.trim(),
-      });
+      const result = await window.api.vaultSetPaths(
+        vaults.storyVaultPath.trim(),
+        vaults.notesVaultPath.trim(),
+      );
       if (result.saved) {
         setVaults({
           storyVaultPath: result.storyVaultPath,
@@ -1463,6 +1463,25 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         <div className="settings-footer">
           {saveError && <p className="settings-error-msg" role="alert">{saveError}</p>}
           {savedOk && <p className="settings-saved-msg" aria-live="polite">Settings saved.</p>}
+          {/* SKY-12.4: debug reset — only rendered when MYTHOS_DEV=1 is set in the dev environment */}
+          {import.meta.env.VITE_MYTHOS_DEV === '1' && (
+            <div className="settings-debug-section">
+              <h3 className="settings-section-title">Developer</h3>
+              <button
+                className="settings-btn settings-btn-cancel"
+                data-testid="reset-onboarding"
+                onClick={() => {
+                  if (window.confirm('Reset onboarding? The wizard will re-appear on next boot.')) {
+                    window.api.onboardingReset().then(() => {
+                      window.location.reload();
+                    }).catch(() => {});
+                  }
+                }}
+              >
+                Reset onboarding
+              </button>
+            </div>
+          )}
           <div className="settings-footer-actions">
             <button className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
             <button
@@ -1882,6 +1901,26 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     ))}
                   </div>
                 </div>
+
+                {/* Neon colors (SKY-127) — user-configurable RGB values */}
+                <ColorPicker
+                  id="lg-neon-cyan"
+                  label="Cyan neon colour"
+                  value={lg.neonColorCyan ?? '#00f0ff'}
+                  onChange={(v) => setLgField('neonColorCyan', v)}
+                />
+                <ColorPicker
+                  id="lg-neon-violet"
+                  label="Violet neon colour"
+                  value={lg.neonColorViolet ?? '#9b5fff'}
+                  onChange={(v) => setLgField('neonColorViolet', v)}
+                />
+                <ColorPicker
+                  id="lg-neon-magenta"
+                  label="Magenta neon colour"
+                  value={lg.neonColorMagenta ?? '#ff4dff'}
+                  onChange={(v) => setLgField('neonColorMagenta', v)}
+                />
               </div>
 
               {/* ── Reset ── */}
