@@ -734,6 +734,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   }, []);
 
+
   // ─── Step indicator ─────────────────────────────────────────────────────────
 
   const stepInfo = STEP_MAP[screen];

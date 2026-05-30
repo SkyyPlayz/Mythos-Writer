@@ -2573,6 +2573,7 @@ export interface BrainstormSelectContextResponse {
   budgetTokens: number;
 }
 
+
 // ─── SKY-156: Project Templates ───────────────────────────────────────────────
 
 export interface TemplateNode {

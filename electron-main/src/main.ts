@@ -788,6 +788,7 @@ function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js'
   }
 }
 
+
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
