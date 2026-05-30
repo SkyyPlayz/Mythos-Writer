@@ -3266,14 +3266,14 @@ const handlers: IpcHandlers = {
     return { templates: listTemplates(app.getPath('userData')) };
   },
 
-  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse | { error: string }> => {
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse> => {
     const { templateId, storyVaultPath, notesVaultPath } = payload ?? {};
     if (!templateId || !storyVaultPath || !notesVaultPath) {
-      return { error: 'templateId, storyVaultPath, and notesVaultPath are required' };
+      throw new Error('templateId, storyVaultPath, and notesVaultPath are required');
     }
     const templates = listTemplates(app.getPath('userData'));
     const template = templates.find((t) => t.id === templateId);
-    if (!template) return { error: `Template not found: ${templateId}` };
+    if (!template) throw new Error(`Template not found: ${templateId}`);
     const resolvedStory = storyVaultPath.replace(/^~/, app.getPath('home'));
     const resolvedNotes = notesVaultPath.replace(/^~/, app.getPath('home'));
     for (const [label, target] of [['Story Vault', resolvedStory], ['Notes Vault', resolvedNotes]] as const) {
@@ -3281,16 +3281,16 @@ const handlers: IpcHandlers = {
         fs.existsSync(target) &&
         fs.readdirSync(target).filter((e) => !e.startsWith('.')).length > 0
       ) {
-        return { error: `${label} target is not empty: ${target}` };
+        throw new Error(`${label} target is not empty: ${target}`);
       }
     }
     scaffoldFromTemplate(resolvedStory, resolvedNotes, template);
     return { ok: true as const, storyVaultPath: resolvedStory, notesVaultPath: resolvedNotes };
   },
 
-  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: import('./ipc.js').TemplateSaveAsPayload): import('./ipc.js').TemplateSaveAsResponse | { error: string } => {
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: import('./ipc.js').TemplateSaveAsPayload): import('./ipc.js').TemplateSaveAsResponse => {
     const name = (payload?.name ?? '').trim();
-    if (!name) return { error: 'Template name is required' };
+    if (!name) throw new Error('Template name is required');
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
   },

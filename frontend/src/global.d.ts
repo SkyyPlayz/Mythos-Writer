@@ -56,7 +56,7 @@ interface EntityRelation {
 interface EntityEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   path: string;
   aliases?: string[];
   tags?: string[];
@@ -69,7 +69,7 @@ interface EntityEntry {
 interface VaultIndexEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   aliases?: string[];
   tags?: string[];
   keyFacts: string;

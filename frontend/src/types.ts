@@ -2,7 +2,7 @@
 
 export type BlockType = 'prose' | 'heading' | 'dialogue' | 'action' | 'description' | 'note';
 
-export type EntityType = 'character' | 'location' | 'item' | 'concept' | 'other';
+export type EntityType = 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
 
 export interface EntityRelation {
   type: string;
