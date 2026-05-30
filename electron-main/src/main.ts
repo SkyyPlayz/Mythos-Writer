@@ -3296,6 +3296,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload): void => {
     ensureVaultDir();
     deleteSceneEntityLink(payload.sceneId, payload.entityId, payload.kind);
+  },
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload): import('./ipc.js').EntityLinkedScenesResponse => {
     ensureVaultDir();
     const rows = listLinkedSceneIds(payload.entityId);
