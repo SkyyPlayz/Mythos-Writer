@@ -63,6 +63,7 @@ jobs:
 
       - name: Upload visual-capture artifacts
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
@@ -144,6 +145,7 @@ jobs:
 
       - name: Upload Linux AppImage artifact
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: linux-appimage
           path: dist-electron/*.AppImage
