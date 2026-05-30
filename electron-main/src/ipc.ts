@@ -538,6 +538,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLinksUpsertResponse;
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
+
+  // SKY-194: Iconize — per-node icon IPC
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (payload: never) => { packName: string; icons: string[] }[];
+  [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }) => { svg: string | null };
 }
 
 // ─── Payload / Response types ───
@@ -2440,6 +2446,8 @@ export interface NotesSetPayload { sceneId: string; content: string }
 export interface NotesSetResponse { saved: boolean }
 // ─── Tag types (SKY-158) ───
 export interface TagEntry {
+  id: string;
+  name: string;
   color?: string | null;
   createdAt: string;
 }
