@@ -7,6 +7,7 @@ import type { FlatRow } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
+import NoteTemplateDialog from '../NoteTemplateDialog';
 import './VaultBrowser.css';
 
 // ─── Filters ───
@@ -366,6 +367,10 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
   const [ctxRow, setCtxRow] = useState<FlatRow | null>(null);
   const [ctxPos, setCtxPos] = useState({ x: 0, y: 0 });
 
+  // ─── Template dialog state ───
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogDirPath, setDialogDirPath] = useState('');
+
   // ─── Rename state ───
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -429,22 +434,18 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
   }, []);
 
   const handleNewNote = useCallback(
-    async (dirPath: string) => {
-      const name = prompt('Note name (without .md):');
-      if (!name?.trim()) return;
-      const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
-      const rel = dirPath ? `${dirPath}/${slug || 'note'}.md` : `${slug || 'note'}.md`;
-      try {
-        await window.api.writeNotesVault(
-          rel,
-          `---\ntitle: "${name.trim()}"\ncreatedAt: ${new Date().toISOString()}\n---\n\n`,
-        );
-        await onReload();
-        select(rel);
-        onOpenFile?.(rel);
-      } catch (e) {
-        console.error('Failed to create note:', e);
-      }
+    (dirPath: string) => {
+      setDialogDirPath(dirPath);
+      setDialogOpen(true);
+    },
+    [],
+  );
+
+  const handleNoteCreated = useCallback(
+    async (path: string) => {
+      await onReload();
+      select(path);
+      onOpenFile?.(path);
     },
     [onReload, select, onOpenFile],
   );
@@ -506,6 +507,12 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
         onNewNote={handleNewNote}
         onNewFolder={handleNewFolder}
         onRename={handleStartRename}
+      />
+      <NoteTemplateDialog
+        open={dialogOpen}
+        dirPath={dialogDirPath}
+        onClose={() => setDialogOpen(false)}
+        onCreated={handleNoteCreated}
       />
     </div>
   );

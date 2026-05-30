@@ -482,6 +482,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
   templateSaveAs: (name: string) =>
     ipcRenderer.invoke('template:saveAs', { name }),
+  // SKY-190: Note Templates
+  noteTemplateList: (kind?: string) =>
+    ipcRenderer.invoke('note-template:list', { kind }),
 
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),

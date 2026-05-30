@@ -281,6 +281,8 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
+  // SKY-190: Note Templates — per-note variable/prompt/pick templates
+  NOTE_TEMPLATE_LIST: 'note-template:list',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -465,6 +467,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
   [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse>;
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse;
+  // SKY-190: Note Templates
+  [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2268,4 +2272,31 @@ export interface TemplateSaveAsPayload {
 export interface TemplateSaveAsResponse {
   ok: true;
   id: string;
+}
+
+// ─── SKY-190: Note Templates ──────────────────────────────────────────────────
+
+export interface NoteTemplateField {
+  key: string;
+  kind: 'literal' | 'prompt' | 'pick';
+  label: string;
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note';
+  body: string;
+  fields: NoteTemplateField[];
+}
+
+export interface NoteTemplateListPayload {
+  kind?: string;
+}
+
+export interface NoteTemplateListResponse {
+  templates: NoteTemplate[];
 }

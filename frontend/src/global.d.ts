@@ -289,6 +289,24 @@ interface BrainstormExtractedEntity {
   suggestionId: string;
 }
 
+// SKY-190: Note Templates
+interface NoteTemplateField {
+  key: string;
+  kind: 'literal' | 'prompt' | 'pick';
+  label: string;
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note';
+  body: string;
+  fields: NoteTemplateField[];
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -589,6 +607,9 @@ interface Window {
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
+
+    // SKY-190: Note Templates
+    noteTemplateList: (kind?: string) => Promise<{ templates: NoteTemplate[] }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

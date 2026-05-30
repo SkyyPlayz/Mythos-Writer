@@ -10,8 +10,14 @@ import {
   saveAsTemplate,
   loadUserTemplates,
   userTemplatesDir,
+  BUNDLED_NOTE_TEMPLATES,
+  listNoteTemplates,
+  getNoteTemplate,
+  parseNoteTemplateFields,
+  resolveNoteTemplate,
   type TemplateDefinition,
   type TemplateNode,
+  type NoteTemplate,
 } from './templates.js';
 
 let tmpDir: string;
@@ -270,5 +276,180 @@ describe('loadUserTemplates', () => {
   it('returns empty array when directory does not exist', () => {
     const appData = path.join(tmpDir, 'nonexistent');
     expect(loadUserTemplates(appData)).toEqual([]);
+  });
+});
+
+// ─── Note Template tests (SKY-190) ───────────────────────────────────────────
+
+describe('BUNDLED_NOTE_TEMPLATES', () => {
+  it('exports exactly 5 bundled note templates', () => {
+    expect(BUNDLED_NOTE_TEMPLATES).toHaveLength(5);
+  });
+
+  it('each note template has required fields', () => {
+    for (const t of BUNDLED_NOTE_TEMPLATES) {
+      expect(t.id).toMatch(/^note:/);
+      expect(t.name).toBeTruthy();
+      expect(t.description).toBeTruthy();
+      expect(typeof t.body).toBe('string');
+      expect(t.body.length).toBeGreaterThan(0);
+      expect(Array.isArray(t.fields)).toBe(true);
+    }
+  });
+
+  it('note template ids are unique', () => {
+    const ids = BUNDLED_NOTE_TEMPLATES.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('bundled note templates cover the expected kinds', () => {
+    const kinds = BUNDLED_NOTE_TEMPLATES.map((t) => t.kind);
+    expect(kinds).toContain('scene');
+    expect(kinds).toContain('character');
+    expect(kinds).toContain('location');
+    expect(kinds).toContain('item');
+    expect(kinds).toContain('chapter');
+  });
+
+  it('default-scene template has prompt and pick fields', () => {
+    const scene = BUNDLED_NOTE_TEMPLATES.find((t) => t.id === 'note:default-scene')!;
+    const prompts = scene.fields.filter((f) => f.kind === 'prompt');
+    const picks = scene.fields.filter((f) => f.kind === 'pick');
+    expect(prompts.length).toBeGreaterThan(0);
+    expect(picks.length).toBeGreaterThan(0);
+  });
+
+  it('default-character template has pick field for archetype', () => {
+    const char = BUNDLED_NOTE_TEMPLATES.find((t) => t.id === 'note:default-character')!;
+    const archetype = char.fields.find((f) => f.key === 'archetype');
+    expect(archetype).toBeDefined();
+    expect(archetype?.kind).toBe('pick');
+    expect(archetype?.entityType).toBe('character');
+  });
+});
+
+describe('parseNoteTemplateFields', () => {
+  it('parses a plain {{var}} as literal kind', () => {
+    const fields = parseNoteTemplateFields('Hello {{name}}!');
+    expect(fields).toHaveLength(1);
+    expect(fields[0]).toEqual({ key: 'name', kind: 'literal', label: 'name' });
+  });
+
+  it('parses {{var | prompt(label)}} as prompt kind', () => {
+    const fields = parseNoteTemplateFields('{{title | prompt(Scene Title)}}');
+    expect(fields).toHaveLength(1);
+    expect(fields[0].kind).toBe('prompt');
+    expect(fields[0].key).toBe('title');
+    expect(fields[0].label).toBe('Scene Title');
+  });
+
+  it('parses {{var | pick(Characters)}} as pick kind with character entity type', () => {
+    const fields = parseNoteTemplateFields('{{archetype | pick(Characters)}}');
+    expect(fields).toHaveLength(1);
+    expect(fields[0].kind).toBe('pick');
+    expect(fields[0].key).toBe('archetype');
+    expect(fields[0].entityType).toBe('character');
+  });
+
+  it('parses {{var | pick(Locations)}} as pick kind with location entity type', () => {
+    const fields = parseNoteTemplateFields('{{location | pick(Locations)}}');
+    expect(fields[0].entityType).toBe('location');
+  });
+
+  it('parses {{var | pick(Items)}} as pick kind with item entity type', () => {
+    const fields = parseNoteTemplateFields('{{item | pick(Items)}}');
+    expect(fields[0].entityType).toBe('item');
+  });
+
+  it('deduplicates repeated keys', () => {
+    const body = '# {{title | prompt(Title)}}\n\n## {{title}}';
+    const fields = parseNoteTemplateFields(body);
+    expect(fields.filter((f) => f.key === 'title')).toHaveLength(1);
+  });
+
+  it('falls back to prompt for unknown modifiers', () => {
+    const fields = parseNoteTemplateFields('{{x | unknownModifier(foo)}}');
+    expect(fields[0].kind).toBe('prompt');
+  });
+
+  it('parses empty body without throwing', () => {
+    expect(parseNoteTemplateFields('')).toEqual([]);
+  });
+
+  it('parses body with no template expressions', () => {
+    expect(parseNoteTemplateFields('# Static heading\n\nNo variables here.')).toEqual([]);
+  });
+
+  it('strips whitespace around keys and modifiers', () => {
+    const fields = parseNoteTemplateFields('{{ title | prompt( My Label ) }}');
+    expect(fields[0].key).toBe('title');
+    expect(fields[0].label).toBe('My Label');
+  });
+});
+
+describe('resolveNoteTemplate', () => {
+  it('replaces {{var}} with the provided value', () => {
+    const result = resolveNoteTemplate('Hello {{name}}!', { name: 'Aria' });
+    expect(result).toBe('Hello Aria!');
+  });
+
+  it('replaces {{var | prompt(...)}} using the key', () => {
+    const result = resolveNoteTemplate(
+      '{{title | prompt(Title)}}',
+      { title: 'The Opening' },
+    );
+    expect(result).toBe('The Opening');
+  });
+
+  it('replaces {{var | pick(...)}} using the key', () => {
+    const result = resolveNoteTemplate(
+      '{{location | pick(Locations)}}',
+      { location: 'The Citadel' },
+    );
+    expect(result).toBe('The Citadel');
+  });
+
+  it('replaces multiple expressions in the same body', () => {
+    const body = '# {{title | prompt(Title)}}\n\n**POV:** {{pov | prompt(POV)}}';
+    const result = resolveNoteTemplate(body, { title: 'Dawn', pov: 'Aria' });
+    expect(result).toBe('# Dawn\n\n**POV:** Aria');
+  });
+
+  it('leaves missing keys as empty string', () => {
+    const result = resolveNoteTemplate('{{missing}}', {});
+    expect(result).toBe('');
+  });
+
+  it('is idempotent — resolving an already-resolved string does nothing', () => {
+    const body = 'Plain text, no variables.';
+    expect(resolveNoteTemplate(body, {})).toBe(body);
+  });
+});
+
+describe('listNoteTemplates', () => {
+  it('returns all 5 templates when no kind filter is given', () => {
+    expect(listNoteTemplates()).toHaveLength(5);
+  });
+
+  it('filters by kind correctly', () => {
+    const scenes = listNoteTemplates('scene');
+    expect(scenes.every((t) => t.kind === 'scene')).toBe(true);
+    expect(scenes.length).toBeGreaterThan(0);
+  });
+
+  it('returns empty array for unknown kind', () => {
+    expect(listNoteTemplates('nonexistent')).toEqual([]);
+  });
+});
+
+describe('getNoteTemplate', () => {
+  it('returns the correct template by id', () => {
+    const t = getNoteTemplate('note:default-scene');
+    expect(t).toBeDefined();
+    expect(t!.id).toBe('note:default-scene');
+  });
+
+  it('returns undefined for unknown id', () => {
+    expect(getNoteTemplate('note:does-not-exist')).toBeUndefined();
   });
 });
