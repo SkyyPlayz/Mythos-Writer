@@ -629,10 +629,10 @@ describe('world DB migration — entity tables', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('sets user_version to 14 on fresh vault', () => {
+  it('sets user_version to 15 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(14);
+    expect(row.user_version).toBe(15);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -674,15 +674,15 @@ describe('world DB migration — entity tables', () => {
     expect(row?.name).toBe('entity_fts');
   });
 
-  it('migration is idempotent — close/reopen keeps user_version at 14', () => {
+  it('migration is idempotent — close/reopen keeps user_version at 15', () => {
     openDb(tmpDir);
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(14);
+    expect(row.user_version).toBe(15);
   });
 
-  it('upgrading from v13 reaches v14 with all entity tables', () => {
+  it('upgrading from v13 reaches v15 with all entity tables and writing_log', () => {
     const mythosDir = path.join(tmpDir, '.mythos');
     fs.mkdirSync(mythosDir, { recursive: true });
     const dbPath = path.join(mythosDir, 'state.db');
@@ -698,9 +698,11 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(14);
+    expect(row.user_version).toBe(15);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
+    const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
+    expect(wlCols.map((c) => c.name)).toContain('log_date');
   });
 });
 

@@ -19,6 +19,8 @@ import SceneHistory from './SceneHistory';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
+import TourModal from './TourModal';
+import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
@@ -101,9 +103,10 @@ interface AppMenuBarProps {
   onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
+  onOpenTour: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -274,6 +277,15 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         title="Distraction-free mode (F11)"
       >
         ⊡
+      </button>
+      <button
+        className="app-menu-tour-btn"
+        onClick={onOpenTour}
+        aria-label="Quick tour"
+        title="Quick tour"
+        data-testid="toolbar-tour-btn"
+      >
+        ?
       </button>
       <button
         className="app-menu-gear-btn"
@@ -470,6 +482,7 @@ export default function DesktopShell() {
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
@@ -492,6 +505,15 @@ export default function DesktopShell() {
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
   }, []);
+
+  // SKY-152: seenTips
+  const seenTips: Record<string, boolean> = (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {};
+  const handleDismissTip = useCallback(async (key: string) => {
+    if (!appSettings) return;
+    const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
+    setAppSettings(updatedSettings);
+    window.api.settingsSet(updatedSettings).catch(() => {});
+  }, [appSettings, seenTips]);
 
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
@@ -1244,6 +1266,7 @@ export default function DesktopShell() {
           onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
+          onOpenTour={() => setTourOpen(true)}
         />
       )}
       {distractionFree && (
@@ -1275,6 +1298,9 @@ export default function DesktopShell() {
       )}
       {shortcutsOpen && (
         <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+      )}
+      {tourOpen && (
+        <TourModal onClose={() => setTourOpen(false)} />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
@@ -1457,6 +1483,12 @@ export default function DesktopShell() {
               <p className="shell-editor-empty-sub">
                 No stories yet? Click the <strong>+</strong> button in the Stories panel to create your first story.
               </p>
+              <PaneTip
+                tipKey="editor"
+                text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                seen={seenTips['editor'] ?? false}
+                onDismiss={handleDismissTip}
+              />
             </div>
           )}
         </div>
