@@ -291,7 +291,6 @@ import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates 
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
 

@@ -522,14 +522,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
   sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
   // SKY-194: Iconize — per-node icon IPC
-  notesVaultReadIcons: (): Promise<Record<string, string>> =>
-    ipcRenderer.invoke('notesVault:readIcons', undefined),
-  vaultReadIcons: (): Promise<Record<string, string>> =>
-    ipcRenderer.invoke('vault:readIcons', undefined),
-  iconListUserPacks: (): Promise<{ packName: string; icons: string[] }[]> =>
-    ipcRenderer.invoke('icons:listUserPacks', undefined),
-  iconReadSvg: (packName: string, iconName: string): Promise<{ svg: string | null }> =>
-    ipcRenderer.invoke('icons:readSvg', { packName, iconName }),
+  notesVaultReadIcons: () =>
+    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  vaultReadIcons: () =>
+    ipcRenderer.invoke('vault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  iconListUserPacks: () =>
+    ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
+  iconReadSvg: (packName: string, iconName: string) =>
+    ipcRenderer.invoke('icons:readSvg', { packName, iconName }) as unknown as Promise<{ svg: string | null }>,
 
 });
 
