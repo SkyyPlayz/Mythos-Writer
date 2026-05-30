@@ -237,9 +237,10 @@ interface NotesTreeNodeProps {
   selected: string | null;
   onToggle: (path: string) => void;
   onOpenFile: (path: string) => void;
+  onSelectNode?: (path: string, isDirectory: boolean) => void;
 }
 
-function NotesTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }: NotesTreeNodeProps) {
+function NotesTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile, onSelectNode }: NotesTreeNodeProps) {
   const isExpanded = expanded.has(node.path);
   const isSelected = selected === node.path;
   const indent = 8 + depth * 14;
@@ -252,11 +253,12 @@ function NotesTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }
           style={{ paddingLeft: indent }}
           role="button"
           tabIndex={0}
-          onClick={() => onToggle(node.path)}
+          onClick={() => { onToggle(node.path); onSelectNode?.(node.path, true); }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               onToggle(node.path);
+              onSelectNode?.(node.path, true);
             }
           }}
           aria-expanded={isExpanded}
@@ -276,6 +278,7 @@ function NotesTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }
             selected={selected}
             onToggle={onToggle}
             onOpenFile={onOpenFile}
+            onSelectNode={onSelectNode}
           />
         ))}
       </div>
@@ -289,13 +292,14 @@ function NotesTreeNode({ node, depth, expanded, selected, onToggle, onOpenFile }
       style={{ paddingLeft: indent }}
       role={isMd ? 'button' : undefined}
       tabIndex={isMd ? 0 : undefined}
-      onClick={() => isMd && onOpenFile(node.path)}
+      onClick={() => isMd && (onOpenFile(node.path), onSelectNode?.(node.path, false))}
       onKeyDown={
         isMd
           ? (e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
                 onOpenFile(node.path);
+                onSelectNode?.(node.path, false);
               }
             }
           : undefined
@@ -327,9 +331,10 @@ function isNotesItem(item: VaultListItem): boolean {
 
 interface NotesVaultProps {
   onOpenPath?: (path: string) => void;
+  onContextChange?: (context: 'file' | 'folder' | null) => void;
 }
 
-function NotesVault({ onOpenPath }: NotesVaultProps) {
+function NotesVault({ onOpenPath, onContextChange }: NotesVaultProps) {
   const [open, setOpen] = useState(true);
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -399,6 +404,13 @@ function NotesVault({ onOpenPath }: NotesVaultProps) {
     });
   }, []);
 
+  const handleSelectNode = useCallback(
+    (_path: string, isDirectory: boolean) => {
+      onContextChange?.(isDirectory ? 'folder' : 'file');
+    },
+    [onContextChange],
+  );
+
   const handleOpenFile = useCallback(
     (path: string) => {
       setSelected(path);
@@ -432,6 +444,7 @@ function NotesVault({ onOpenPath }: NotesVaultProps) {
                 selected={selected}
                 onToggle={toggleDir}
                 onOpenFile={handleOpenFile}
+                onSelectNode={handleSelectNode}
               />
             ))
           )}
@@ -451,6 +464,7 @@ export interface VaultSidebarProps {
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenVaultPath?: (path: string) => void;
+  onContextChange?: (context: 'file' | 'folder' | null) => void;
 }
 
 export default function VaultSidebar({
@@ -461,6 +475,7 @@ export default function VaultSidebar({
   onCreateChapter,
   onCreateScene,
   onOpenVaultPath,
+  onContextChange,
 }: VaultSidebarProps) {
   return (
     <div className="vault-sidebar">
@@ -473,7 +488,7 @@ export default function VaultSidebar({
         onCreateScene={onCreateScene}
       />
       <div className="vs-divider" aria-hidden="true" />
-      <NotesVault onOpenPath={onOpenVaultPath} />
+      <NotesVault onOpenPath={onOpenVaultPath} onContextChange={onContextChange} />
     </div>
   );
 }

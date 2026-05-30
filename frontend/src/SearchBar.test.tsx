@@ -2,6 +2,8 @@ import { render } from '@testing-library/react';
 import { renderSnippet } from './SearchBar';
 
 // Unit tests for the FTS5 snippet renderer — verifies XSS safety and highlight rendering.
+// MYT-56: renderSnippet uses React DOM nodes (not dangerouslySetInnerHTML), so vault
+// content with raw HTML tags is always rendered as escaped text, never live elements.
 
 describe('renderSnippet', () => {
   it('renders plain text without marks', () => {
