@@ -32,6 +32,7 @@ export function renderSnippet(snippet: string): ReactNode {
 type SearchScope = 'story' | 'notes' | 'both';
 
 interface SearchResultItem {
+  resultType: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;

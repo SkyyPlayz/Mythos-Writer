@@ -21,6 +21,25 @@ function makeDb(): DatabaseSync {
       doc_id     TEXT PRIMARY KEY,
       indexed_at TEXT NOT NULL
     );
+    CREATE VIRTUAL TABLE IF NOT EXISTS entity_fts USING fts5(
+      entity_id UNINDEXED,
+      name,
+      aliases,
+      notes_text,
+      custom_fields_text
+    );
+    CREATE TABLE IF NOT EXISTS tags (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS item_tags (
+      item_id   TEXT NOT NULL,
+      item_kind TEXT NOT NULL,
+      tag_id    TEXT NOT NULL,
+      PRIMARY KEY (item_id, item_kind, tag_id)
+    );
   `);
   return db;
 }
@@ -164,4 +183,141 @@ describe('search subsystem', () => {
     expect(elapsed).toBeLessThan(200);
     expect(results.length).toBeGreaterThan(0);
   });
+
+  describe('resultType field (SKY-171)', () => {
+    it('scene results have resultType scene', () => {
+      indexDocument(db, {
+        docId: 'scene-rt-1',
+        vault: 'story',
+        kind: 'scene',
+        title: 'The Crystal Spire',
+        body: 'Mira climbed the spire at dawn.',
+      });
+
+      const results = searchVault(db, 'Crystal Spire', 'both');
+      const hit = results.find((r) => r.docId === 'scene-rt-1');
+      expect(hit).toBeDefined();
+      expect(hit?.resultType).toBe('scene');
+    });
+
+    it('entity results have resultType entity (via entity_fts)', () => {
+      // Populate entity_fts directly for this test
+      db.prepare(
+        `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text) VALUES (?, ?, ?, ?, ?)`
+      ).run('ent-rt-1', 'Mira Coldwater', 'Mira', 'A renowned alchemist.', null);
+      // Also insert into fts_index so the JOIN resolves kind/title
+      indexDocument(db, { docId: 'ent-rt-1', vault: 'notes', kind: 'character', title: 'Mira Coldwater', body: 'A renowned alchemist.' });
+
+      const results = searchVault(db, 'Mira', 'notes');
+      const hit = results.find((r) => r.docId === 'ent-rt-1');
+      expect(hit).toBeDefined();
+      expect(hit?.resultType).toBe('entity');
+      expect(hit?.kind).toBe('character');
+    });
+
+    it('searching entity name returns entity result', () => {
+      db.prepare(
+        `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text) VALUES (?, ?, ?, ?, ?)`
+      ).run('ent-rt-2', 'Ashenvale Keep', null, 'A ruined fortress in the eastern marshes.', null);
+      indexDocument(db, { docId: 'ent-rt-2', vault: 'notes', kind: 'location', title: 'Ashenvale Keep', body: 'A ruined fortress.' });
+
+      const results = searchVault(db, 'Ashenvale', 'both');
+      const hit = results.find((r) => r.docId === 'ent-rt-2');
+      expect(hit).toBeDefined();
+      expect(hit?.resultType).toBe('entity');
+      expect(hit?.kind).toBe('location');
+    });
+
+    it('searching text from entity notes returns entity', () => {
+      db.prepare(
+        `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text) VALUES (?, ?, ?, ?, ?)`
+      ).run('ent-rt-3', 'The Iron Circle', null, 'Controls the southern grain trade routes.', null);
+      indexDocument(db, { docId: 'ent-rt-3', vault: 'notes', kind: 'faction', title: 'The Iron Circle', body: 'Controls the southern grain trade routes.' });
+
+      const results = searchVault(db, 'grain trade', 'notes');
+      const hit = results.find((r) => r.docId === 'ent-rt-3');
+      expect(hit).toBeDefined();
+      expect(hit?.resultType).toBe('entity');
+    });
+
+    it('searching custom fields text returns entity', () => {
+      db.prepare(
+        `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text) VALUES (?, ?, ?, ?, ?)`
+      ).run('ent-rt-4', 'Dragonsbane Sword', null, null, 'enchanted vorpal weapon legendary artifact');
+      indexDocument(db, { docId: 'ent-rt-4', vault: 'notes', kind: 'item', title: 'Dragonsbane Sword', body: '' });
+
+      const results = searchVault(db, 'vorpal', 'notes');
+      const hit = results.find((r) => r.docId === 'ent-rt-4');
+      expect(hit).toBeDefined();
+      expect(hit?.resultType).toBe('entity');
+    });
+
+    it('scene results not returned by entity query (no regression)', () => {
+      indexDocument(db, {
+        docId: 'scene-rt-2',
+        vault: 'story',
+        kind: 'scene',
+        title: 'Shadowgate Crossing',
+        body: 'The caravan passed through at nightfall.',
+      });
+      db.prepare(
+        `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text) VALUES (?, ?, ?, ?, ?)`
+      ).run('ent-rt-5', 'Shadowgate', null, 'An ancient crossing.', null);
+      indexDocument(db, { docId: 'ent-rt-5', vault: 'notes', kind: 'location', title: 'Shadowgate', body: 'An ancient crossing.' });
+
+      const results = searchVault(db, 'Shadowgate', 'both');
+      const sceneHit = results.find((r) => r.docId === 'scene-rt-2');
+      const entityHit = results.find((r) => r.docId === 'ent-rt-5');
+
+      expect(sceneHit?.resultType).toBe('scene');
+      expect(entityHit?.resultType).toBe('entity');
+    });
+
+    it('scope=story excludes entity results', () => {
+      db.prepare(
+        `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text) VALUES (?, ?, ?, ?, ?)`
+      ).run('ent-scope-1', 'Eira Moondancer', null, 'A dancer of the old order.', null);
+      indexDocument(db, { docId: 'ent-scope-1', vault: 'notes', kind: 'character', title: 'Eira Moondancer', body: '' });
+      indexDocument(db, { docId: 'scene-scope-1', vault: 'story', kind: 'scene', title: 'Eira Arrives', body: 'She arrived at dawn.' });
+
+      const storyResults = searchVault(db, 'eira', 'story');
+      expect(storyResults.every((r) => r.resultType === 'scene')).toBe(true);
+    });
+
+    it('scope=notes excludes scene results', () => {
+      db.prepare(
+        `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text) VALUES (?, ?, ?, ?, ?)`
+      ).run('ent-scope-2', 'Kalen Blackthorn', null, 'A wandering knight.', null);
+      indexDocument(db, { docId: 'ent-scope-2', vault: 'notes', kind: 'character', title: 'Kalen Blackthorn', body: '' });
+      indexDocument(db, { docId: 'scene-scope-2', vault: 'story', kind: 'scene', title: 'Kalen Fights', body: 'He fought valiantly.' });
+
+      const notesResults = searchVault(db, 'kalen', 'notes');
+      expect(notesResults.every((r) => r.resultType === 'entity')).toBe(true);
+    });
+
+    it('buildFullIndex populates entity_fts and results have resultType entity', () => {
+      const manifest = emptyManifest();
+      manifest.entities = [
+        {
+          id: 'ent-full-1',
+          name: 'Thalindra Voss',
+          type: 'character',
+          path: 'entities/characters/ent-full-1.md',
+          aliases: ['The Architect'],
+          tags: ['protagonist'],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+
+      buildFullIndex(db, '/nonexistent/vault', manifest);
+
+      const results = searchVault(db, 'Thalindra', 'notes');
+      const hit = results.find((r) => r.docId === 'ent-full-1');
+      expect(hit).toBeDefined();
+      expect(hit?.resultType).toBe('entity');
+      expect(hit?.kind).toBe('character');
+    });
+  });
+
 });
