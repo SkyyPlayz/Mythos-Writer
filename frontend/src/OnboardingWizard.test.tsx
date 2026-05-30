@@ -470,6 +470,40 @@ describe('OnboardingWizard — S4 Done', () => {
   });
 });
 
+describe('OnboardingWizard — keyboard focus trap', () => {
+  const FOCUSABLE_SELECTOR =
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+  it('Tab at the last focusable element wraps to the first', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    const overlay = document.querySelector('.onboarding-overlay') as HTMLElement;
+    const focusable = Array.from(overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    expect(focusable.length).toBeGreaterThan(0);
+    const last = focusable[focusable.length - 1];
+    last.focus();
+    fireEvent.keyDown(last, { key: 'Tab', bubbles: true });
+    expect(document.activeElement).toBe(focusable[0]);
+  });
+
+  it('Shift+Tab at the first focusable element wraps to the last', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    const overlay = document.querySelector('.onboarding-overlay') as HTMLElement;
+    const focusable = Array.from(overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    expect(focusable.length).toBeGreaterThan(0);
+    const first = focusable[0];
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true, bubbles: true });
+    expect(document.activeElement).toBe(focusable[focusable.length - 1]);
+  });
+
+  it('focus moves to the screen heading on screen transition', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-default'));
+    const heading = await screen.findByText('Where should we put your vaults?');
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+});
+
 describe('OnboardingWizard — error states from spec §6', () => {
   it('E-perm: shows macOS-specific copy including System Settings link text', async () => {
     (window as unknown as { api: { pickFolder: ReturnType<typeof vi.fn> } }).api.pickFolder =
