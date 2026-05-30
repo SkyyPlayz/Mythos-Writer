@@ -228,6 +228,12 @@ import {
   getEntityBacklinks,
 } from './entities.js';
 import {
+  syncEntityToIndex,
+  removeEntityFromIndex,
+  readEntityProse,
+  syncAllEntitiesToIndex,
+} from './entitySync.js';
+import {
   buildArchiveIndex,
   getArchiveIndex,
   getArchiveStatus,
@@ -782,6 +788,7 @@ const handlers: IpcHandlers = {
     const manifest = readManifest(getManifestPath());
     const { manifest: updated, scanned, updated: count } = reindexVault(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), updated);
+    syncAllEntitiesToIndex(getVaultRoot(), updated.entities);
     return { scanned, updated: count };
   },
   [IPC_CHANNELS.VAULT_WATCH_START]: async () => {
@@ -1202,6 +1209,7 @@ const handlers: IpcHandlers = {
     const entry = createEntity(getVaultRoot(), manifest, payload);
     writeManifest(getManifestPath(), manifest);
     setItemTags(entry.id, 'entity', entry.tags ?? []);
+    syncEntityToIndex(entry, payload.prose ?? '');
     return entry;
   },
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => {
@@ -1221,6 +1229,7 @@ const handlers: IpcHandlers = {
     });
     writeManifest(getManifestPath(), manifest);
     if (payload.tags !== undefined) setItemTags(payload.id, 'entity', payload.tags);
+    syncEntityToIndex(entry, readEntityProse(getVaultRoot(), entry.path));
     return entry;
   },
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => {
@@ -1228,6 +1237,7 @@ const handlers: IpcHandlers = {
     const manifest = readManifest(getManifestPath());
     const result = deleteEntity(getVaultRoot(), manifest, payload.id);
     writeManifest(getManifestPath(), manifest);
+    removeEntityFromIndex(payload.id);
     return result;
   },
   [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => {
