@@ -486,6 +486,14 @@ contextBridge.exposeInMainWorld('api', {
   noteTemplateList: (kind?: string) =>
     ipcRenderer.invoke('note-template:list', { kind }),
 
+  // SKY-193: Tag Wrangler
+  notesTagList: () =>
+    ipcRenderer.invoke('notesVault:tag:list', undefined),
+  notesTagRename: (oldTag: string, newTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:rename', { oldTag, newTag }),
+  notesTagMerge: (sourceTag: string, targetTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
+
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
   goalsLogWords: (date: string, wordsAdded: number) =>

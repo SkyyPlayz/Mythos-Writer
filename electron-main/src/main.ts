@@ -252,6 +252,7 @@ import {
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates } from './templates.js';
+import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 
 const require = createRequire(import.meta.url);
 
@@ -2975,6 +2976,20 @@ const handlers: IpcHandlers = {
   // SKY-190: Note Templates
   [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: import('./ipc.js').NoteTemplateListPayload): import('./ipc.js').NoteTemplateListResponse => {
     return { templates: listNoteTemplates(payload?.kind) };
+  },
+
+  // SKY-193: Tag Wrangler
+  [IPC_CHANNELS.NOTES_TAG_LIST]: (): import('./ipc.js').NotesTagListResponse => {
+    const tags = listNotesTags(getNotesVaultRoot());
+    return { tags };
+  },
+  [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: import('./ipc.js').NotesTagRenamePayload): import('./ipc.js').NotesTagRenameResponse => {
+    const { oldTag, newTag } = payload ?? {};
+    return renameNotesTag(getNotesVaultRoot(), oldTag, newTag);
+  },
+  [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: import('./ipc.js').NotesTagMergePayload): import('./ipc.js').NotesTagMergeResponse => {
+    const { sourceTag, targetTag } = payload ?? {};
+    return mergeNotesTags(getNotesVaultRoot(), sourceTag, targetTag);
   },
 
 };

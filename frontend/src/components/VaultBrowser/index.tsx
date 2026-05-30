@@ -8,6 +8,7 @@ import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
 import NoteTemplateDialog from '../NoteTemplateDialog';
+import TagPane from '../TagPane';
 import './VaultBrowser.css';
 
 // ─── Filters ───
@@ -347,10 +348,34 @@ interface NotesVaultProps {
   onOpenFile?: (path: string) => void;
   onReload: () => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  activeTag: string | null;
+  onTagFilter: (tag: string | null) => void;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVaultProps) {
-  const notesItems = items.filter(isNotesItem);
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter }: NotesVaultProps) {
+  const allNotesItems = items.filter(isNotesItem);
+  const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!activeTag) { setTagPaths(null); return; }
+    window.api.notesTagList().then((result) => {
+      if (!result || 'error' in result) return;
+      const { tags } = result as { tags: NotesTagEntry[] };
+      const paths = new Set<string>();
+      function gather(entries: NotesTagEntry[]) {
+        for (const e of entries) {
+          if (e.fullName === activeTag) e.paths.forEach((p) => paths.add(p));
+          gather(e.children);
+        }
+      }
+      gather(tags);
+      setTagPaths(paths);
+    }).catch(() => setTagPaths(null));
+  }, [activeTag]);
+
+  const notesItems = tagPaths
+    ? allNotesItems.filter((item) => !item.isDirectory && tagPaths.has(item.path))
+    : allNotesItems;
   const tree = buildTree(notesItems);
 
   const { expanded, selected, toggle, initExpand, select } = useTreeState('notes');
@@ -481,8 +506,13 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
           +
         </button>
       </div>
-      {notesItems.length === 0 ? (
+      <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
+      {allNotesItems.length === 0 ? (
         <NotesVaultEmptyState onCreate={() => handleNewNote('')} />
+      ) : notesItems.length === 0 && activeTag ? (
+        <div className="vb-notes-no-match" data-testid="vb-notes-no-match">
+          No notes with tag <strong>{activeTag}</strong>
+        </div>
       ) : (
         <VirtualTree
           data-testid="vb-notes-tree"
@@ -544,6 +574,7 @@ export default function VaultBrowser({
   onContextChange,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
 
   const showStory = scope === 'story' || scope === 'both';
@@ -610,6 +641,8 @@ export default function VaultBrowser({
                 onOpenFile={onOpenFile}
                 onReload={notesReload}
                 onContextChange={onContextChange}
+                activeTag={activeTag}
+                onTagFilter={setActiveTag}
               />
             )}
           </div>

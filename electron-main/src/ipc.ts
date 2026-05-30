@@ -283,6 +283,11 @@ export const IPC_CHANNELS = {
   TEMPLATE_SAVE_AS: 'template:saveAs',
   // SKY-190: Note Templates — per-note variable/prompt/pick templates
   NOTE_TEMPLATE_LIST: 'note-template:list',
+
+  // SKY-193: Tag Wrangler — list / rename / merge notes-vault tags
+  NOTES_TAG_LIST: 'notesVault:tag:list',
+  NOTES_TAG_RENAME: 'notesVault:tag:rename',
+  NOTES_TAG_MERGE: 'notesVault:tag:merge',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -469,6 +474,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
   // SKY-190: Note Templates
   [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
+  // SKY-193: Tag Wrangler
+  [IPC_CHANNELS.NOTES_TAG_LIST]: (payload: never) => NotesTagListResponse;
+  [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: NotesTagRenamePayload) => NotesTagRenameResponse;
+  [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: NotesTagMergePayload) => NotesTagMergeResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2299,4 +2308,36 @@ export interface NoteTemplateListPayload {
 
 export interface NoteTemplateListResponse {
   templates: NoteTemplate[];
+}
+
+// ─── SKY-193: Tag Wrangler ───
+
+export interface NotesTagEntry {
+  name: string;
+  fullName: string;
+  count: number;
+  paths: string[];
+  children: NotesTagEntry[];
+}
+
+export interface NotesTagListResponse {
+  tags: NotesTagEntry[];
+}
+
+export interface NotesTagRenamePayload {
+  oldTag: string;
+  newTag: string;
+}
+
+export interface NotesTagRenameResponse {
+  affectedFiles: number;
+}
+
+export interface NotesTagMergePayload {
+  sourceTag: string;
+  targetTag: string;
+}
+
+export interface NotesTagMergeResponse {
+  affectedFiles: number;
 }
