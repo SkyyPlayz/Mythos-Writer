@@ -74,6 +74,10 @@ function stubApi(overrides: Record<string, unknown> = {}) {
       saved: true,
     }),
     chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }),
+    listNotesVault: vi.fn().mockResolvedValue({ items: [] }),
+    notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+    notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     ...overrides,
   };
 }

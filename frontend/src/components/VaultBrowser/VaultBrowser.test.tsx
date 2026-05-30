@@ -48,6 +48,9 @@ beforeEach(() => {
     onVaultFileChanged: mockOnVaultFileChanged,
     writeVault: mockWriteVault,
     writeNotesVault: mockWriteNotesVault,
+    notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+    notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
   };
 });
 
@@ -415,10 +418,15 @@ describe('StoryVault inline rename', () => {
     mockSceneRename.mockClear();
     (window as unknown as { api: unknown }).api = {
       listVault: mockListVault,
+      listNotesVault: mockListNotesVault,
       startVaultWatch: mockStartVaultWatch,
       onVaultFileChanged: mockOnVaultFileChanged,
       writeVault: mockWriteVault,
+      writeNotesVault: mockWriteNotesVault,
       sceneRename: mockSceneRename,
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+      notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     };
   });
 
