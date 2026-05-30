@@ -518,7 +518,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
   [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse | { error: string }>;
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
-<<<<<<< HEAD
   // SKY-190: Note Templates
   [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
   // SKY-204: Daily Notes
