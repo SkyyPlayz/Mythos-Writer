@@ -1,6 +1,49 @@
 # Mythos Writer
 
-AI-powered creative writing and story generation tool — desktop-first Electron app built with React + TypeScript.
+Mythos Writer is a local-first desktop writing app for fiction authors. It gives you a structured vault for your stories and notes, a distraction-free scene editor, and an AI brainstorm assistant powered by Claude — all running on your own machine with your files stored as plain Markdown. No subscription, no cloud, no lock-in.
+
+## Installation
+
+Download the latest release from the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases):
+
+| Platform | File |
+|----------|------|
+| Windows  | `Mythos.Writer-<version>.exe` (NSIS installer) or `.zip` (portable) |
+| Linux    | `Mythos-Writer-<version>.AppImage` |
+| macOS    | Build from source (see [Local setup](#local-setup)) |
+
+Run the installer or AppImage, then launch **Mythos Writer**.
+
+## Quickstart (5 minutes)
+
+1. **First launch** — the onboarding wizard appears. Pick a folder for your vault (or accept the default `~/Mythos`). Click **Create vault**.
+2. **Create a story** — in the left rail, click **+** next to *Story Vault*, enter a title, press Enter.
+3. **Add a chapter and scene** — expand your story, click **+** to add a chapter, then **+** inside the chapter to create your first scene.
+4. **Write** — click the scene to open the editor. Start typing. Your work is saved automatically.
+5. **Brainstorm with AI** — click **Brainstorm** in the top bar. Type a question or describe your story premise. Mythos Writer chats with Claude and automatically picks out characters, locations, and items from the conversation.
+
+> **API key required for AI features.** Open **Settings** (⚙ icon in the top bar) → enter your [Anthropic API key](https://console.anthropic.com/). The key is stored locally — it never leaves your machine.
+
+## Key features
+
+- **Story Vault** — organise your manuscript as Stories → Chapters → Scenes; each scene is a Markdown file you own
+- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference
+- **Rich scene editor** — TipTap-powered editor with WikiLinks (`[[Character Name]]`), draft states (In Progress / Review / Final), and word count
+- **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
+- **Brainstorm AI** — conversational story development; automatically extracts facts into your vault entities
+- **Writing Assistant** — proactive inline suggestions as you write (Edit mode)
+- **Entity browser** — characters, locations, and items extracted from brainstorm sessions
+- **Kanban board** — scene cards in a drag-and-drop board view
+- **Graph view** — visual map of WikiLink connections across your vault
+- **Export** — one-click EPUB and DOCX export (File → Export…)
+- **Snapshot history** — automatic per-scene version snapshots; right-click the editor to restore
+- **Auto-updater** — Stable and Beta release channels; updates install in the background
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branch policy, required CI checks, and commit conventions.
+
+---
 
 ## Tech Stack
 

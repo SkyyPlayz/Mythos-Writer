@@ -110,7 +110,7 @@
 
 .bs-user-bubble {
   background: var(--accent-border);
-  color: #ede9fe;
+  color: var(--text-header);
   border-radius: 14px 14px 4px 14px;
   padding: 10px 14px;
   max-width: 72%;
@@ -153,10 +153,10 @@
 }
 
 .brainstorm-error {
-  background: #3b0a0a;
-  border: 1px solid #7f1d1d;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
   border-radius: 8px;
-  color: #fca5a5;
+  color: var(--state-danger);
   padding: 10px 14px;
   font-size: 0.84rem;
 }
@@ -188,7 +188,7 @@
 
 .brainstorm-input:focus {
   border-color: var(--accent-border);
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 20%, transparent);
 }
 
 .brainstorm-input:disabled {
@@ -290,8 +290,8 @@
 }
 
 .bs-fact-saved {
-  border-color: #14532d;
-  background: #0a1e12;
+  border-color: var(--color-success-border);
+  background: var(--color-success-bg);
 }
 
 /* Grouped fact sections */
@@ -321,10 +321,10 @@
   width: fit-content;
 }
 
-.bs-fact-type-character { background: #1e1b4b; color: #a5b4fc; }
-.bs-fact-type-location  { background: #0c2a1a; color: #6ee7b7; }
-.bs-fact-type-item      { background: #2a1a0c; color: #fcd34d; }
-.bs-fact-type-concept   { background: #1a0c2a; color: #d8b4fe; }
+.bs-fact-type-character { background: var(--entity-char-bg);    color: var(--entity-char-text); }
+.bs-fact-type-location  { background: var(--entity-loc-bg);     color: var(--entity-loc-text); }
+.bs-fact-type-item      { background: var(--entity-item-bg);    color: var(--entity-item-text); }
+.bs-fact-type-concept   { background: var(--entity-concept-bg); color: var(--entity-concept-text); }
 .bs-fact-type-other     { background: var(--border-subtle); color: var(--text-muted); }
 
 .bs-fact-name {
@@ -478,23 +478,23 @@
 }
 
 .brainstorm-mic-btn-recording {
-  background: #7f1d1d;
-  border-color: #ef4444;
-  color: #fca5a5;
+  background: var(--color-danger-bg);
+  border-color: var(--state-danger);
+  color: var(--state-danger);
   animation: bs-mic-pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes bs-mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-danger) 40%, transparent); }
+  50% { box-shadow: 0 0 0 4px transparent; }
 }
 
 /* Cancel button */
 .brainstorm-cancel-btn {
-  background: #3b0a0a;
-  border: 1px solid #7f1d1d;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
   border-radius: 8px;
-  color: #fca5a5;
+  color: var(--state-danger);
   font-size: 0.85rem;
   font-weight: 500;
   padding: 8px 14px;
@@ -505,7 +505,7 @@
 }
 
 .brainstorm-cancel-btn:hover {
-  background: #7f1d1d;
+  background: color-mix(in srgb, var(--state-danger) 20%, transparent);
   color: #fff;
 }
 
@@ -515,10 +515,10 @@
   bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
-  background: #14532d;
-  border: 1px solid #166534;
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
   border-radius: 8px;
-  color: #4ade80;
+  color: var(--state-success);
   font-size: 0.82rem;
   padding: 8px 16px;
   z-index: 100;
@@ -547,7 +547,7 @@
 
 .bs-fact-save-error {
   font-size: 0.76rem;
-  color: #fca5a5;
+  color: var(--state-danger);
 }
 
 .bs-fact-retry-btn {
@@ -573,8 +573,8 @@
 }
 
 .bs-continuity-badge {
-  background: #3b1a0a;
-  color: #fbbf24;
+  background: var(--color-warning-bg);
+  color: var(--state-warning);
 }
 
 .bs-continuity-list {
@@ -700,7 +700,7 @@
 
 .bs-cont-textarea:focus {
   border-color: var(--accent-border);
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 15%, transparent);
 }
 
 .bs-cont-submit-btn {
