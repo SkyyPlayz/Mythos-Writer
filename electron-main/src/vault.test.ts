@@ -28,6 +28,8 @@ import {
   sceneVaultPath,
   scaffoldNotesVault,
   scaffoldStoryVault,
+  isEmptyOrMissing,
+  moveVaultFile,
   obsidianDryRun,
   mergeProvenanceFrontmatter,
   MANUSCRIPT_DIR,
@@ -709,6 +711,51 @@ describe('realSafePath — traversal & absolute-path hardening (MYT-672 / MYT-64
   });
 });
 
+// MYT-46: writeVaultFileAtomic must allow create-on-write semantics for nested
+// paths whose parent chain resolves cleanly under the vault root. The path-
+// traversal hardening (MYT-774) introduced safeVaultJoin; these tests ensure
+// the writeMode path continues to permit deeply-nested new paths.
+describe('writeVaultFileAtomic — nested create-on-write semantics (MYT-46 regression guard)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-myt46-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates a file in a 3-level nested path when no parent dirs exist', () => {
+    const relPath = 'level1/level2/level3/scene.md';
+    expect(() => writeVaultFileAtomic(tmpDir, relPath, '# Scene')).not.toThrow();
+    expect(fs.readFileSync(path.join(tmpDir, relPath), 'utf-8')).toBe('# Scene');
+  });
+
+  it('creates a file in a 1-level nested path when parent dir does not exist', () => {
+    const relPath = 'NewChapter/scene.md';
+    expect(() => writeVaultFileAtomic(tmpDir, relPath, 'content')).not.toThrow();
+    expect(fs.existsSync(path.join(tmpDir, relPath))).toBe(true);
+  });
+
+  it('creates a file in a deeply nested path while the vault is empty (no subdirs)', () => {
+    // Specifically tests the case from MYT-46: first write into a brand-new vault
+    // where every intermediate directory is absent.
+    const relPath = 'Manuscript/my-story/chapter-one/scene-1.md';
+    expect(() => writeVaultFileAtomic(tmpDir, relPath, 'Once upon a time')).not.toThrow();
+    const written = fs.readFileSync(path.join(tmpDir, relPath), 'utf-8');
+    expect(written).toBe('Once upon a time');
+  });
+
+  it('still rejects "../" traversal on nested new paths (MYT-774 regression guard)', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '../escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+
+  it('still rejects absolute paths on nested new paths (MYT-774 regression guard)', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '/tmp/escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+});
+
 describe('resolveEpubExportPath — export:epub targetPath containment (MYT-675)', () => {
   let tmpDir: string;
 
@@ -1079,23 +1126,63 @@ describe('scaffoldNotesVault', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates the standard Notes Vault directory structure', () => {
+  // SKY-15: six-folder Notes Vault layout replaces the Q4.5 example.
+  it('creates the SKY-15 Notes Vault directory structure (6 top-level folders)', () => {
     scaffoldNotesVault(tmpDir);
-    for (const dir of ['Characters', 'Locations', 'Items', 'Concepts', 'Notes']) {
+    for (const dir of ['Universes', 'Stories', 'Inbox', 'Research', 'Daily Notes', 'Archive']) {
       expect(fs.existsSync(path.join(tmpDir, dir))).toBe(true);
       expect(fs.statSync(path.join(tmpDir, dir)).isDirectory()).toBe(true);
     }
+  });
+
+  // SKY-15: default mode seeds an example universe and a per-story notes folder.
+  it('seeds My First Universe/<category>/ inside Universes/ in default mode', () => {
+    scaffoldNotesVault(tmpDir, 'default');
+    const universeRoot = path.join(tmpDir, 'Universes', 'My First Universe');
+    for (const sub of ['Characters', 'Locations', 'Factions', 'History', 'Systems', 'Items']) {
+      expect(fs.existsSync(path.join(universeRoot, sub))).toBe(true);
+    }
+    expect(fs.existsSync(path.join(tmpDir, 'Stories', 'My First Story'))).toBe(true);
+  });
+
+  // SKY-15: Blank mode means "only the top-level vault folder" — no scaffolding.
+  it('is a no-op in blank mode (no Universes/, no Stories/, no anything)', () => {
+    scaffoldNotesVault(tmpDir, 'blank');
+    expect(fs.readdirSync(tmpDir)).toEqual([]);
   });
 
   it('is idempotent — running twice does not throw', () => {
     scaffoldNotesVault(tmpDir);
     expect(() => scaffoldNotesVault(tmpDir)).not.toThrow();
   });
+
+  // SKY-9 U1: .gitkeep sentinel inside each freshly-seeded directory.
+  it('writes a .gitkeep into each freshly-seeded top-level directory', () => {
+    scaffoldNotesVault(tmpDir);
+    for (const dir of ['Universes', 'Stories', 'Inbox', 'Research', 'Daily Notes', 'Archive']) {
+      expect(fs.existsSync(path.join(tmpDir, dir, '.gitkeep'))).toBe(true);
+    }
+  });
+
+  // SKY-9 U2: idempotency must not rewrite .gitkeep into a dir the user has
+  // populated since the first seed. We simulate a user file and re-scaffold.
+  it('does not overwrite or remove user files when re-scaffolding', () => {
+    scaffoldNotesVault(tmpDir);
+    const userFile = path.join(tmpDir, 'Universes', 'Aerith.md');
+    fs.writeFileSync(userFile, '# Aerith', 'utf-8');
+    // Remove the gitkeep so we can detect a re-write.
+    fs.unlinkSync(path.join(tmpDir, 'Universes', '.gitkeep'));
+    scaffoldNotesVault(tmpDir);
+    expect(fs.existsSync(userFile)).toBe(true);
+    expect(fs.readFileSync(userFile, 'utf-8')).toBe('# Aerith');
+    // .gitkeep should NOT be re-added because the directory already exists.
+    expect(fs.existsSync(path.join(tmpDir, 'Universes', '.gitkeep'))).toBe(false);
+  });
 });
 
 // ─── scaffoldStoryVault ───
 
-describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () => {
+describe('scaffoldStoryVault — SKY-15 per-story default layout', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -1106,15 +1193,119 @@ describe('scaffoldStoryVault — default Story Vault structure (MYT-608)', () =>
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates Projects/ subfolder', () => {
+  // SKY-15 item 3: per-story → Manuscript/ → numbered chapter folders →
+  // numbered scene files, plus Outline.md and Synopsis.md at the story root.
+  it('seeds My First Story/Manuscript/<chapter>/<scene>.md + Outline.md + Synopsis.md', () => {
     scaffoldStoryVault(tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, 'Projects'))).toBe(true);
-    expect(fs.statSync(path.join(tmpDir, 'Projects')).isDirectory()).toBe(true);
+    const story = path.join(tmpDir, 'My First Story');
+    expect(fs.existsSync(path.join(story, 'Manuscript', '01 - Opening', '01 - Scene One.md'))).toBe(true);
+    expect(fs.existsSync(path.join(story, 'Outline.md'))).toBe(true);
+    expect(fs.existsSync(path.join(story, 'Synopsis.md'))).toBe(true);
+  });
+
+  it('seeded files carry seeded_by: SKY-9 frontmatter so future tools can spot pristine seeds', () => {
+    scaffoldStoryVault(tmpDir);
+    const outline = fs.readFileSync(path.join(tmpDir, 'My First Story', 'Outline.md'), 'utf-8');
+    expect(outline).toMatch(/seeded_by:\s*SKY-9/);
+  });
+
+  // SKY-15: Blank mode skips all per-story scaffolding so the user organizes
+  // from scratch. The vault root has already been created by ensure*VaultDir.
+  it('is a no-op in blank mode (no My First Story/)', () => {
+    scaffoldStoryVault(tmpDir, 'blank');
+    expect(fs.readdirSync(tmpDir)).toEqual([]);
   });
 
   it('is idempotent — does not throw when called twice', () => {
     scaffoldStoryVault(tmpDir);
     expect(() => scaffoldStoryVault(tmpDir)).not.toThrow();
+  });
+
+  // SKY-9 idempotency: a user who edits a seeded file does not have it
+  // clobbered on the next boot.
+  it('does not overwrite seeded files that the user has edited', () => {
+    scaffoldStoryVault(tmpDir);
+    const outlinePath = path.join(tmpDir, 'My First Story', 'Outline.md');
+    fs.writeFileSync(outlinePath, '# My outline\n', 'utf-8');
+    scaffoldStoryVault(tmpDir);
+    expect(fs.readFileSync(outlinePath, 'utf-8')).toBe('# My outline\n');
+  });
+});
+
+// ─── isEmptyOrMissing (SKY-9) ───
+
+describe('isEmptyOrMissing', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-isempty-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns true for a missing path', () => {
+    expect(isEmptyOrMissing(path.join(tmpDir, 'nope'))).toBe(true);
+  });
+
+  it('returns true for an existing empty directory', () => {
+    expect(isEmptyOrMissing(tmpDir)).toBe(true);
+  });
+
+  it('returns false once any file (even a dotfile) is present', () => {
+    fs.writeFileSync(path.join(tmpDir, '.hidden'), '');
+    expect(isEmptyOrMissing(tmpDir)).toBe(false);
+  });
+});
+
+// ─── moveVaultFile (SKY-9) ───
+
+describe('moveVaultFile', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-move-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // SKY-9 U4 — happy path inside the vault root.
+  it('renames a file within the vault and creates missing parent directories', () => {
+    fs.writeFileSync(path.join(tmpDir, 'before.md'), '# hello', 'utf-8');
+    const result = moveVaultFile(tmpDir, 'before.md', 'sub/after.md');
+    expect(result.moved).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'before.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'sub', 'after.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, 'sub', 'after.md'), 'utf-8')).toBe('# hello');
+  });
+
+  // SKY-9 U4 — same source and destination should no-op safely.
+  it('returns moved=false when source and destination are identical', () => {
+    fs.writeFileSync(path.join(tmpDir, 'same.md'), '# x');
+    const result = moveVaultFile(tmpDir, 'same.md', 'same.md');
+    expect(result.moved).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'same.md'))).toBe(true);
+  });
+
+  // SKY-9 U4 — both endpoints are resolved through realSafePath, so a
+  // traversal attempt on either side throws before fs.renameSync is reached.
+  it('rejects "../" traversal on the source path', () => {
+    expect(() => moveVaultFile(tmpDir, '../escape.md', 'after.md'))
+      .toThrow(/Path traversal denied|outside vault root/);
+  });
+
+  it('rejects "../" traversal on the destination path', () => {
+    fs.writeFileSync(path.join(tmpDir, 'before.md'), '');
+    expect(() => moveVaultFile(tmpDir, 'before.md', '../escape.md'))
+      .toThrow(/Path traversal denied|outside vault root/);
+  });
+
+  it('throws when source does not exist', () => {
+    expect(() => moveVaultFile(tmpDir, 'missing.md', 'after.md'))
+      .toThrow(/Source does not exist/);
   });
 });
 

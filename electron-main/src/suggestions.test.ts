@@ -1,5 +1,5 @@
 /**
- * suggestions.test.ts  (MYT-311)
+ * suggestions.test.ts  (MYT-311, MYT-786)
  *
  * Agent API contract: suggestion payload schema, apply/reject logic, auto-apply policy.
  *
@@ -13,6 +13,8 @@
  *   §3  Audit log — every transition writes one row with correct action + actor
  *   §4  Auto-apply policy — evaluateAutoApply gate + daily token cap (new in Phase 3)
  *   §5  Budget enforcement — suggestion count cap, hourly token cap, daily token cap
+ *   §6  Provenance upsert (MYT-786) — IPC handler contract via DB layer
+ *   §7  Complete CRUD + rollback lifecycle (MYT-786)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -30,11 +32,13 @@ import {
   insertAuditLog,
   listAuditLog,
   insertGenerationLog,
+  insertProvenance,
+  listProvenanceForEntity,
   type DbSuggestion,
   type SuggestionStatus,
 } from './db.js';
 import { evaluateAutoApply, type AgentBudgetSettings } from './budget.js';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,7 +113,7 @@ function makeAuditEntry(
 
 describe('Suggestion payload schema (§1)', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-schema-'));
@@ -331,7 +335,7 @@ describe('Audit log (§3)', () => {
 
 describe('Auto-apply policy (§4)', () => {
   let tmpDir: string;
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-policy-'));
@@ -503,5 +507,142 @@ describe('Budget enforcement flag (§5)', () => {
     upsertSuggestion(s);
     updateSuggestionBudgetExceeded('bf-4', true);
     expect(getSuggestion('bf-4')!.status).toBe('proposed');
+  });
+});
+
+// ─── Provenance upsert (§6) ───────────────────────────────────────────────────
+// Tests the IPC provenance:upsert handler contract (via DB layer directly).
+
+describe('Provenance upsert (§6)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-prov-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts provenance linking a suggestion to an agent run', () => {
+    const suggestionId = 'prov-sug-1';
+    const agentId = 'archive';
+    const runId = 'run-xyz';
+    const now = new Date().toISOString();
+    upsertSuggestion(makeSuggestion({ id: suggestionId }));
+    insertProvenance({
+      id: 'prov-1',
+      entity_id: suggestionId,
+      entity_kind: 'suggestion',
+      agent_id: agentId,
+      agent_type: 'archive',
+      run_id: runId,
+      created_at: now,
+    });
+    const rows = listProvenanceForEntity(suggestionId, 'suggestion');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].agent_id).toBe(agentId);
+    expect(rows[0].run_id).toBe(runId);
+  });
+
+  it('stores null run_id for non-run-scoped provenance', () => {
+    const now = new Date().toISOString();
+    insertProvenance({
+      id: 'prov-norun',
+      entity_id: 'ent-x',
+      entity_kind: 'entity',
+      agent_id: 'brainstorm',
+      agent_type: 'brainstorm',
+      run_id: null,
+      created_at: now,
+    });
+    const rows = listProvenanceForEntity('ent-x');
+    expect(rows[0].run_id).toBeNull();
+  });
+
+  it('multiple provenance entries can link different agents to same entity', () => {
+    const now = new Date().toISOString();
+    const entityId = 'shared-entity';
+    insertProvenance({ id: 'pm1', entity_id: entityId, entity_kind: 'entity', agent_id: 'brainstorm', agent_type: 'brainstorm', run_id: 'r1', created_at: now });
+    insertProvenance({ id: 'pm2', entity_id: entityId, entity_kind: 'entity', agent_id: 'archive', agent_type: 'archive', run_id: 'r2', created_at: now });
+    const rows = listProvenanceForEntity(entityId);
+    expect(rows).toHaveLength(2);
+    const agentIds = rows.map((r) => r.agent_id);
+    expect(agentIds).toContain('brainstorm');
+    expect(agentIds).toContain('archive');
+  });
+});
+
+// ─── Complete CRUD + rollback lifecycle (§7) ─────────────────────────────────
+// End-to-end lifecycle: create → accept → apply → rollback, with audit entries.
+
+describe('Complete CRUD + rollback lifecycle (§7)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-lifecycle-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('full lifecycle: proposed → applied → rolled_back with audit trail', () => {
+    const id = 'lifecycle-1';
+    const s = makeVaultSuggestion({ id });
+    const now = new Date().toISOString();
+
+    // Create
+    upsertSuggestion(s);
+    expect(getSuggestion(id)!.status).toBe('proposed');
+    expect(listSuggestions('proposed').map((r) => r.id)).toContain(id);
+
+    // Accept
+    updateSuggestionStatus(id, 'accepted', now);
+    insertAuditLog({ id: 'au-lc-1', suggestion_id: id, action: 'accept', snapshot_path: null, actor: 'user', created_at: now });
+    expect(getSuggestion(id)!.status).toBe('accepted');
+
+    // Apply
+    const snapPath = '.mythos/snapshots/lifecycle-1.json';
+    updateSuggestionStatus(id, 'applied', now, 'run-lifecycle');
+    insertAuditLog({ id: 'au-lc-2', suggestion_id: id, action: 'apply', snapshot_path: snapPath, actor: 'user', created_at: now });
+    const applied = getSuggestion(id)!;
+    expect(applied.status).toBe('applied');
+    expect(applied.applied_run_id).toBe('run-lifecycle');
+
+    // Rollback
+    updateSuggestionStatus(id, 'rolled_back');
+    insertAuditLog({ id: 'au-lc-3', suggestion_id: id, action: 'rollback', snapshot_path: snapPath, actor: 'user', created_at: now });
+    expect(getSuggestion(id)!.status).toBe('rolled_back');
+
+    // Verify full audit trail
+    const auditEntries = listAuditLog(id);
+    expect(auditEntries).toHaveLength(3);
+    const actions = auditEntries.map((e) => e.action);
+    expect(actions).toContain('accept');
+    expect(actions).toContain('apply');
+    expect(actions).toContain('rollback');
+    const rollbackEntry = auditEntries.find((e) => e.action === 'rollback')!;
+    expect(rollbackEntry.snapshot_path).toBe(snapPath);
+  });
+
+  it('rejected suggestion cannot transition to applied after rejection', () => {
+    const id = 'lifecycle-reject';
+    const s = makeSuggestion({ id });
+    upsertSuggestion(s);
+    updateSuggestionStatus(id, 'rejected');
+    insertAuditLog({ id: 'au-rej-1', suggestion_id: id, action: 'reject', snapshot_path: null, actor: 'user', created_at: new Date().toISOString() });
+    expect(getSuggestion(id)!.status).toBe('rejected');
+    // listSuggestions('proposed') no longer contains it
+    expect(listSuggestions('proposed').map((r) => r.id)).not.toContain(id);
+    expect(listSuggestions('rejected').map((r) => r.id)).toContain(id);
+  });
+
+  it('getSuggestion returns null for unknown id (suggestions:get handler contract)', () => {
+    expect(getSuggestion('no-such-suggestion')).toBeNull();
   });
 });

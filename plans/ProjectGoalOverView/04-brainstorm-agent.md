@@ -73,13 +73,19 @@ This is a first-class design decision: no Mythos Writer feature should ever be l
 
 ## Vault structure the agent builds against
 
-The Brainstorm Agent builds notes inside the **Universes / Story ideas** layout described in [Storage and Organization](02-storage-and-organization.md#default-folder-layout-inside-the-notes-vault).
+The Brainstorm Agent builds notes inside the SKY-15 default layout described in [Storage and Organization](02-storage-and-organization.md#default-folder-layout-inside-the-notes-vault) (authoritative spec at [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan)).
 
-- Worldbuilding notes (locations, lore, society, governance, history) live under `Universes/<World>/...`.
-- Story-specific notes (story ideas, beats, story-bound characters, cross-universe location refs) live under `Story ideas/<Story Title>/`.
-- When a note doesn't naturally fit either bucket, the agent falls back to the default frontmatter schemas so it remains typed and findable.
+- **Worldbuilding notes** (characters, locations, factions, history, systems, items) live under `Universes/<World>/<Category>/`. If the user has only one universe, the agent uses it without prompting; if multiple, it asks which one (or infers from the active story).
+- **Story-specific notes** (beats, themes, scene cards, planning notes) live under `Stories/<Active Story>/`. Active story comes from app state, not from a prompt.
+- **Unclear notes** land in `Inbox/` with a frontmatter `suggested_destination:` field. The user triages from a sidebar list and confirms — the agent then moves the note to its accepted destination.
+- **Real-world references** go in `Research/`; spoken-brainstorm transcripts go in `Daily Notes/`; retired material goes in `Archive/` (still searchable, still linked, de-prioritized).
+- When a note doesn't naturally fit any of these buckets, the agent falls back to the default frontmatter schemas so it remains typed and findable.
 
 The agent extends this structure as needed (new sub-folders per world, new note types), but always preserves the user's existing layout. When in doubt, it asks the user to clarify rather than guessing.
+
+### Blank-mode behavior
+
+If the user picked **Blank** at first-run (only the top-level Notes Vault and Story Vault folders exist, no `Universes/` or `Stories/` scaffolding), the Brainstorm Agent **never** auto-creates `Universes/` behind the user's back. Instead, on the first note in each category it asks once — "Where should I put this kind of note?" — and remembers the answer per category for the rest of the session. The user's pattern becomes the agent's pattern. (See [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan) for the full Blank-mode rules; the asks-once-per-category UX is delivered as a child issue of SKY-9.)
 
 ## In short
 

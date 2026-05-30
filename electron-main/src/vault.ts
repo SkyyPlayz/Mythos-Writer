@@ -16,6 +16,14 @@ import type {
   ObsidianNameCollision,
 } from './ipc.js';
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
+import { safeVaultJoin } from './vault/safeVaultJoin.js';
+
+export {
+  safeVaultJoin,
+  safeVaultIpcJoin,
+  VAULT_IPC_ALLOWED_EXTENSIONS,
+} from './vault/safeVaultJoin.js';
+export type { SafeVaultJoinOptions } from './vault/safeVaultJoin.js';
 
 // ─── Manuscript layout ───
 
@@ -103,80 +111,16 @@ export class VaultFileTooLargeError extends Error {
   }
 }
 /**
- * Resolve a relative path inside the vault, hardening against symlink escape.
- * Uses fs.realpathSync.native to follow filesystem symlinks, then checks
- * that the real target stays within the real vault root.
+ * Resolve a relative path inside the vault, hardening against escape vectors
+ * (traversal, symlinks, null bytes, encoded ".." and cross-OS payloads).
  *
- * For reads (file exists): realpath the full path.
- * For writes (leaf may not exist): realpath the parent directory.
+ * Thin wrapper around {@link safeVaultJoin} (MYT-774) so existing call sites
+ * and the `safePath` legacy alias keep working; new code should call
+ * `safeVaultJoin` directly to expose the option surface (dotfile + extension
+ * allow-list) at the call site.
  */
 export function realSafePath(vaultRoot: string, relativePath: string, writeMode = false): string {
-  const realVaultRoot = fs.realpathSync.native(vaultRoot);
-  const resolved = path.resolve(vaultRoot, relativePath);
-  const isWithinVault = (candidate: string) =>
-    candidate === realVaultRoot || candidate.startsWith(realVaultRoot + path.sep);
-
-  if (writeMode) {
-    // Leaf path may not exist yet — walk up to the nearest existing ancestor,
-    // realpath that ancestor, then reattach the remaining suffix. This correctly
-    // handles symlinked vault roots and deeply-nested paths in empty directories.
-    let ancestor = resolved;
-    while (!fs.existsSync(ancestor)) {
-      const parent = path.dirname(ancestor);
-      if (parent === ancestor) break;
-      ancestor = parent;
-    }
-    if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relativePath}`);
-
-    const realAncestor = fs.realpathSync.native(ancestor);
-    if (!isWithinVault(realAncestor)) {
-      // Use "symlink escape detected" when the leaf itself is the escape vector so
-      // existing tests that check for that phrase continue to pass.
-      const msg =
-        ancestor === resolved
-          ? `Path traversal denied: ${relativePath} (symlink escape detected)`
-          : `Path traversal denied: ${relativePath} (parent symlink escapes vault)`;
-      throw new Error(msg);
-    }
-
-    const remainder = path.relative(ancestor, resolved);
-    const realTarget = path.resolve(realAncestor, remainder);
-    if (!isWithinVault(realTarget)) throw new Error(`Path traversal denied: ${relativePath}`);
-
-    return realTarget;
-  }
-
-  // Read mode: keep the returned path anchored to the caller's vault root so
-  // callers see the path they expect.
-  const normalizedRoot = path.resolve(vaultRoot);
-
-  // Existing leaf path: realpath the full path and reject symlink escapes.
-  if (fs.existsSync(resolved)) {
-    const realPath = fs.realpathSync.native(resolved);
-    if (!isWithinVault(realPath)) {
-      throw new Error(`Path traversal denied: ${relativePath} (symlink escape detected)`);
-    }
-    return resolved;
-  }
-
-  // Missing leaf, parent exists: realpath the parent and reject escapes.
-  const parent = path.dirname(resolved);
-  if (fs.existsSync(parent)) {
-    const realParent = fs.realpathSync.native(parent);
-    if (!isWithinVault(realParent)) {
-      throw new Error(`Path traversal denied: ${relativePath} (parent symlink escape detected)`);
-    }
-    return resolved;
-  }
-
-  // Neither exists — lexical check against un-realpath'd root is correct here
-  // because nothing on disk can symlink-escape. Comparing against realVaultRoot
-  // would wrongly deny valid nested paths when the root is a symlink
-  // (e.g. macOS /var → /private/var).
-  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
-    throw new Error(`Path traversal denied: ${relativePath}`);
-  }
-  return resolved;
+  return safeVaultJoin(vaultRoot, relativePath, { writeMode });
 }
 
 // Legacy alias — deprecated, use realSafePath.
@@ -317,6 +261,27 @@ export function deleteVaultFile(vaultRoot: string, filePath: string): { path: st
   return { path: filePath, deleted: exists };
 }
 
+// SKY-9: atomic intra-vault rename. Both endpoints resolve under the same
+// vaultRoot via realSafePath, so a move can never cross vault boundaries or
+// escape via "../". fs.renameSync is atomic on a single filesystem; cross-
+// device moves throw EXDEV and the caller should retry via copy+delete (not
+// implemented here — both vaults live under userData by default).
+export function moveVaultFile(
+  vaultRoot: string,
+  fromPath: string,
+  toPath: string
+): { fromPath: string; toPath: string; moved: boolean } {
+  const fromFull = realSafePath(vaultRoot, fromPath, true);
+  const toFull = realSafePath(vaultRoot, toPath, true);
+  if (fromFull === toFull) return { fromPath, toPath, moved: false };
+  if (!fs.existsSync(fromFull)) {
+    throw new Error(`Source does not exist: ${fromPath}`);
+  }
+  fs.mkdirSync(path.dirname(toFull), { recursive: true });
+  fs.renameSync(fromFull, toFull);
+  return { fromPath, toPath, moved: true };
+}
+
 // ─── YAML frontmatter helpers ───
 // Obsidian uses `---\nkey: value\n---\ncontent` format.
 
@@ -439,6 +404,59 @@ export function readSceneFile(vaultRoot: string, relativePath: string): SceneFil
     outcome: frontmatter.outcome ? String(frontmatter.outcome) : undefined,
     pov: frontmatter.pov ? String(frontmatter.pov) : undefined,
     storyTime: frontmatter.storyTime ? String(frontmatter.storyTime) : undefined,
+    prose,
+  };
+}
+
+// ─── SKY-10: chapter.md (chapter-level metadata) ───
+//
+// `chapter.md` lives at the root of the chapter folder. It holds the stable
+// chapter `id` (so renaming the folder does not lose identity), title, order,
+// and any optional chapter-level prose (epigraph, author notes). It is the
+// chapter analog of a scene file and is excluded from scene reindexing.
+
+export const CHAPTER_META_FILENAME = 'chapter.md';
+
+export interface ChapterFileData {
+  id: string;
+  title: string;
+  storyId?: string;
+  order?: number;
+  prose: string;
+}
+
+export function chapterMetaPath(chapterRelPath: string): string {
+  return path.posix.join(chapterRelPath.split(path.sep).join('/'), CHAPTER_META_FILENAME);
+}
+
+export function writeChapterMetaFile(
+  vaultRoot: string,
+  chapterRelPath: string,
+  data: ChapterFileData,
+): void {
+  const fm: Frontmatter = {
+    id: data.id,
+    title: data.title,
+    ...(data.storyId ? { storyId: data.storyId } : {}),
+    ...(data.order !== undefined ? { order: data.order } : {}),
+    schemaVersion: 1,
+    updatedAt: new Date().toISOString(),
+  };
+  writeVaultFileAtomic(vaultRoot, chapterMetaPath(chapterRelPath), serializeFrontmatter(fm, data.prose));
+}
+
+export function readChapterMetaFile(vaultRoot: string, chapterRelPath: string): ChapterFileData | null {
+  const rel = chapterMetaPath(chapterRelPath);
+  const full = safePath(vaultRoot, rel);
+  if (!fs.existsSync(full)) return null;
+  const { content } = readVaultFile(vaultRoot, rel);
+  const { frontmatter, prose } = parseFrontmatter(content);
+  if (!frontmatter.id) return null;
+  return {
+    id: String(frontmatter.id),
+    title: String(frontmatter.title ?? path.basename(chapterRelPath)),
+    storyId: frontmatter.storyId ? String(frontmatter.storyId) : undefined,
+    order: frontmatter.order !== undefined ? Number(frontmatter.order) : undefined,
     prose,
   };
 }
@@ -618,9 +636,14 @@ function collectMarkdownFiles(dir: string, base = ''): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
     const rel = base ? `${base}/${entry.name}` : entry.name;
-    if (entry.isDirectory() && !entry.name.startsWith('.')) {
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('.')) continue;
+      // SKY-10: skip `versions/` — snapshot files are not scenes.
+      if (entry.name === 'versions') continue;
       results.push(...collectMarkdownFiles(path.join(dir, entry.name), rel));
     } else if (entry.name.endsWith('.md')) {
+      // SKY-10: chapter.md is metadata, not a scene.
+      if (entry.name === CHAPTER_META_FILENAME) continue;
       results.push(rel);
     }
   }
@@ -728,21 +751,151 @@ export async function stopVaultWatcher(): Promise<void> {
 
 // ─── Vault scaffold ───
 // Creates the standard subdirectory structure for each vault type on first run.
+//
+// SKY-9 / SKY-15: seeding is idempotent — directories are only created when
+// missing, files are only written when missing. `.gitkeep` is only written
+// when its parent directory is freshly made. Re-running the scaffold on a
+// populated vault is a no-op. Two modes are supported: `default` produces
+// the SKY-15 canonical layout with example content; `blank` produces only
+// the top-level vault folder (the user organizes from scratch).
 
-export function scaffoldStoryVault(storyVaultRoot: string): void {
-  const dirs = ['Projects'];
-  for (const dir of dirs) {
-    const full = path.join(storyVaultRoot, dir);
-    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+/** SKY-15 layout mode. `imported` is treated as `blank` for seeding purposes
+ *  — the importer is responsible for writing whatever content the source
+ *  vault contains. */
+export type VaultLayoutMode = 'default' | 'blank';
+
+function seedDir(parentRoot: string, dirName: string): void {
+  const full = path.join(parentRoot, dirName);
+  const wasMissing = !fs.existsSync(full);
+  if (wasMissing) fs.mkdirSync(full, { recursive: true });
+  // Only drop a .gitkeep if the directory we just created is genuinely empty.
+  // This avoids littering user-populated structures with stray sentinel files
+  // on a re-scaffold.
+  if (wasMissing) {
+    const gitkeep = path.join(full, '.gitkeep');
+    if (!fs.existsSync(gitkeep)) fs.writeFileSync(gitkeep, '');
   }
 }
 
-const NOTES_VAULT_DIRS = ['Notes', 'Characters', 'Locations', 'Items', 'Concepts'];
+function seedFile(parentRoot: string, relPath: string, contents: string): void {
+  const full = path.join(parentRoot, relPath);
+  if (fs.existsSync(full)) return; // never overwrite a user-edited seed
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, contents, 'utf-8');
+}
 
-export function scaffoldNotesVault(vaultRoot: string): void {
-  for (const dir of NOTES_VAULT_DIRS) {
-    const full = path.join(vaultRoot, dir);
-    if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+// ── Story Vault default layout (SKY-15) ─────────────────────────────────────
+// Per-story folder → Manuscript/ → numbered chapter folders → numbered scene
+// files, plus seeded Outline.md and Synopsis.md at the story root. The example
+// `My First Story/` is a real folder name the user can rename — empty
+// `<Story Title>` placeholders read as "fill in the blank" homework and
+// undermine the point of seeding.
+export const STORY_VAULT_EXAMPLE_STORY = 'My First Story';
+export const STORY_VAULT_EXAMPLE_CHAPTERS = ['01 - Opening'] as const;
+export const STORY_VAULT_EXAMPLE_SCENE_FILE = '01 - Scene One.md';
+
+const OUTLINE_SEED = `---
+seeded_by: SKY-9
+---
+# Outline
+
+One bullet per beat. Rename or delete this file when you have your own.
+`;
+
+const SYNOPSIS_SEED = `---
+seeded_by: SKY-9
+---
+# Synopsis
+
+A one-paragraph pitch for this story. Rename or delete this file when you have your own.
+`;
+
+const SCENE_SEED = `---
+seeded_by: SKY-9
+---
+# Scene One
+
+The story begins here. Delete this scene or rewrite it — the file path
+(\`Manuscript/<chapter>/<scene>.md\`) is what the app indexes.
+`;
+
+export function scaffoldStoryVault(
+  storyVaultRoot: string,
+  mode: VaultLayoutMode = 'default'
+): void {
+  if (mode === 'blank') return;
+  const storyRoot = path.join(STORY_VAULT_EXAMPLE_STORY);
+  for (const chapter of STORY_VAULT_EXAMPLE_CHAPTERS) {
+    const chapterRel = path.join(storyRoot, MANUSCRIPT_DIR, chapter);
+    const chapterFull = path.join(storyVaultRoot, chapterRel);
+    if (!fs.existsSync(chapterFull)) {
+      fs.mkdirSync(chapterFull, { recursive: true });
+    }
+    seedFile(storyVaultRoot, path.join(chapterRel, STORY_VAULT_EXAMPLE_SCENE_FILE), SCENE_SEED);
+  }
+  seedFile(storyVaultRoot, path.join(storyRoot, 'Outline.md'), OUTLINE_SEED);
+  seedFile(storyVaultRoot, path.join(storyRoot, 'Synopsis.md'), SYNOPSIS_SEED);
+}
+
+// ── Notes Vault default layout (SKY-15) ─────────────────────────────────────
+// Six top-level folders replace the old Q4.5 example (Universes + Story ideas).
+// `Stories/` mirrors the Story Vault sibling. `Inbox/` is the Brainstorm
+// Agent's drop zone for unclassified notes. `Daily Notes/` matches the
+// Obsidian convention. `Archive/` lets notes retire without being deleted.
+export const NOTES_VAULT_DIRS = [
+  'Universes',
+  'Stories',
+  'Inbox',
+  'Research',
+  'Daily Notes',
+  'Archive',
+] as const;
+
+// Example universe seeded inside `Universes/` in default mode. The six
+// sub-categories (Characters/Locations/Factions/History/Systems/Items)
+// match the SKY-15 plan exactly — `Systems/` generalises the old
+// `Magic & Systems`, and `Society & Governance` is folded into Factions.
+export const NOTES_VAULT_EXAMPLE_UNIVERSE = 'My First Universe';
+export const NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS = [
+  'Characters',
+  'Locations',
+  'Factions',
+  'History',
+  'Systems',
+  'Items',
+] as const;
+export const NOTES_VAULT_EXAMPLE_STORY = 'My First Story';
+
+export function scaffoldNotesVault(
+  notesVaultRoot: string,
+  mode: VaultLayoutMode = 'default'
+): void {
+  if (mode === 'blank') return;
+  for (const dir of NOTES_VAULT_DIRS) seedDir(notesVaultRoot, dir);
+  // Seeded example universe under Universes/. seedDir keeps .gitkeep
+  // idempotency for the per-category subfolders.
+  for (const sub of NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS) {
+    seedDir(
+      path.join(notesVaultRoot, 'Universes', NOTES_VAULT_EXAMPLE_UNIVERSE),
+      sub
+    );
+  }
+  // Per-story notes folder under Stories/ that mirrors the Story Vault
+  // example. The Brainstorm Agent uses this on first run.
+  seedDir(path.join(notesVaultRoot, 'Stories'), NOTES_VAULT_EXAMPLE_STORY);
+}
+
+/**
+ * SKY-9: returns true when a vault root either doesn't exist or exists but
+ * contains nothing (including no dotfiles). Used by ensure*VaultDir to treat
+ * an empty user-chosen directory as "needs first-run seeding".
+ */
+export function isEmptyOrMissing(root: string): boolean {
+  if (!fs.existsSync(root)) return true;
+  try {
+    return fs.readdirSync(root).length === 0;
+  } catch {
+    return false;
   }
 }
 

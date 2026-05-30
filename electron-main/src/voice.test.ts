@@ -15,8 +15,18 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { VoiceRegistry, registerVoiceHandlers, transcribeAudio } from './voice.js';
-import type { VoiceTranscriptEvent, VoiceErrorEvent } from './voice.js';
+import {
+  VoiceRegistry,
+  registerVoiceHandlers,
+  transcribeAudio,
+  categorizeVoiceError,
+  voiceErrorUserMessage,
+  VOICE_ERROR_CATEGORIES,
+  LocalBinaryError,
+  CloudProviderError,
+  InvalidVoiceInputError,
+} from './voice.js';
+import type { VoiceTranscriptEvent, VoiceErrorEvent, VoiceErrorCategory } from './voice.js';
 import type { AppSettings, SttSettings, TtsSettings } from './ipc.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -40,16 +50,24 @@ function makeSettings(
   };
 }
 
+// Mock IpcMain event whose senderFrame self-references as `top` so the
+// isFromTopFrame() guard introduced in MYT-791 passes for normal tests.
+function makeTopFrameEvent(): { senderFrame: unknown } {
+  const frame: { top: unknown } = { top: null };
+  frame.top = frame;
+  return { senderFrame: frame };
+}
+
 async function invokeHandle(channel: string, payload: unknown): Promise<unknown> {
   const fn = handleMap.get(channel);
   if (!fn) throw new Error(`No handle registered for ${channel}`);
-  return fn({} /* event */, payload);
+  return fn(makeTopFrameEvent(), payload);
 }
 
 function fireOn(channel: string, payload: unknown): void {
   const fn = onMap.get(channel);
   if (!fn) throw new Error(`No on handler registered for ${channel}`);
-  fn({} /* event */, payload);
+  fn(makeTopFrameEvent(), payload);
 }
 
 // ─── VoiceRegistry ───────────────────────────────────────────────────────────
@@ -230,9 +248,11 @@ describe('VoiceErrorEvent shape', () => {
   it('conforms to expected contract', () => {
     const event: VoiceErrorEvent = {
       sessionId: 'abc-123',
+      category: VOICE_ERROR_CATEGORIES.UNKNOWN,
       error: 'microphone access denied',
     };
     expect(event.sessionId).toBe('abc-123');
+    expect(event.category).toBe('unknown');
     expect(event.error).toBe('microphone access denied');
   });
 });
@@ -294,19 +314,27 @@ describe('voice:transcribe handler', () => {
     fetchSpy.mockRestore();
   });
 
-  it('returns error when cloud endpoint returns non-ok status', async () => {
+  it('returns sanitized error when cloud endpoint returns non-ok status (MYT-793)', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 401,
-      text: async () => 'Unauthorized',
+      text: async () => 'Unauthorized: sk_live_LEAKED_SECRET',
     } as Response);
 
     registerVoiceHandlers(
       () => null,
       () => makeSettings(undefined, { enabled: true, provider: 'cloud', cloudEndpoint: 'http://e', cloudApiKey: 'k' }),
     );
-    const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as { error: string };
-    expect(result.error).toMatch(/401/);
+    const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as {
+      error: string;
+      category: VoiceErrorCategory;
+    };
+    // Acceptance: status code and response body must not leak to the renderer.
+    expect(result.error).not.toMatch(/401/);
+    expect(result.error).not.toMatch(/Unauthorized/);
+    expect(result.error).not.toMatch(/LEAKED_SECRET/);
+    expect(result.category).toBe(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER);
+    expect(result.error).toBe(voiceErrorUserMessage(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER));
     fetchSpy.mockRestore();
   });
 });
@@ -513,18 +541,18 @@ describe('voice:speak handler', () => {
     fetchSpy.mockRestore();
   });
 
-  it('pushes error event when cloud TTS returns non-ok status', async () => {
-    const errors: Array<{ speakId: string; error: string }> = [];
+  it('pushes sanitized error event when cloud TTS returns non-ok status (MYT-793)', async () => {
+    const errors: Array<{ speakId: string; category: VoiceErrorCategory; error: string }> = [];
     const mockSender = {
       send: (ch: string, data: unknown) => {
-        if (ch === 'voice:speak:error') errors.push(data as { speakId: string; error: string });
+        if (ch === 'voice:speak:error') errors.push(data as { speakId: string; category: VoiceErrorCategory; error: string });
       },
       isDestroyed: () => false,
     };
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
-      status: 429,
-      text: async () => 'rate limited',
+      status: 400,
+      text: async () => 'Bad request body: missing voice_id at /home/secret/path',
     } as Response);
 
     registerVoiceHandlers(
@@ -536,7 +564,12 @@ describe('voice:speak handler', () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0].speakId).toBe(speakId);
-    expect(errors[0].error).toMatch(/429/);
+    // Acceptance: cloud response body and status must not be forwarded to renderer.
+    expect(errors[0].error).not.toMatch(/400/);
+    expect(errors[0].error).not.toMatch(/Bad request/i);
+    expect(errors[0].error).not.toMatch(/\/home\/secret\/path/);
+    expect(errors[0].category).toBe(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER);
+    expect(errors[0].error).toBe(voiceErrorUserMessage(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER));
     fetchSpy.mockRestore();
   });
 
@@ -576,6 +609,291 @@ describe('voice:speak handler', () => {
     fetchSpy.mockRestore();
   });
 });
+
+// ─── Voice spawn gate integration (MYT-788) ──────────────────────────────────
+//
+// Acceptance criterion: a renderer that gets an arbitrary local binary path
+// into the settings file (bypassing the settings:set gate) must still not be
+// able to trigger spawn. The transcribeAudio / speakAsync helpers consult the
+// trusted-set before reaching spawn.
+
+describe('voice spawn gate (MYT-788)', () => {
+  let tmpRoot: string;
+
+  beforeEach(async () => {
+    handleMap.clear();
+    onMap.clear();
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-voice-spawn-'));
+    const { __resetVoiceGate } = await import('./voiceGate.js');
+    __resetVoiceGate();
+  });
+
+  it('voice:transcribe refuses to spawn when binary exists but is not trusted', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const bin = path.join(tmpRoot, 'attacker-shell');
+    fs.writeFileSync(bin, '#!/bin/sh\necho pwned\n', { mode: 0o755 });
+
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, { enabled: true, provider: 'local', localBinaryPath: bin }),
+    );
+    const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as { error: string };
+    // IPC sanitizes raw spawn-gate errors to a fixed category message (INVALID_INPUT).
+    expect(result.error).toBe('Voice request was invalid — check the input and settings.');
+  });
+
+  it('voice:speak refuses to spawn when binary exists but is not trusted', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const bin = path.join(tmpRoot, 'attacker-shell');
+    const model = path.join(tmpRoot, 'voice.onnx');
+    fs.writeFileSync(bin, '#!/bin/sh\necho pwned\n', { mode: 0o755 });
+    fs.writeFileSync(model, '');
+
+    const errors: Array<{ speakId: string; error: string }> = [];
+    const mockSender = {
+      send: (ch: string, data: unknown) => {
+        if (ch === 'voice:speak:error') errors.push(data as { speakId: string; error: string });
+      },
+      isDestroyed: () => false,
+    };
+
+    registerVoiceHandlers(
+      () => mockSender,
+      () => makeSettings(undefined, undefined, { enabled: true, provider: 'local', localBinaryPath: bin, localModelPath: model }),
+    );
+    const { speakId } = (await invokeHandle('voice:speak', { text: 'hi' })) as { speakId: string };
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].speakId).toBe(speakId);
+    // IPC sanitizes raw spawn-gate errors to a fixed category message (INVALID_INPUT).
+    expect(errors[0].error).toBe('Voice request was invalid — check the input and settings.');
+  });
+
+  it('voice:speak rejects text exceeding the size cap before spawn', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const { MAX_TTS_TEXT_BYTES } = await import('./voiceGate.js');
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, undefined, { enabled: true, provider: 'cloud', cloudEndpoint: 'http://tts', cloudApiKey: 'k' }),
+    );
+    const giant = 'a'.repeat(MAX_TTS_TEXT_BYTES + 1);
+    const result = (await invokeHandle('voice:speak', { text: giant })) as { error: string };
+    expect(result.error).toMatch(/exceeds limit/i);
+    // Did not reach the cloud path either.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('voice:transcribe rejects audio exceeding the size cap', async () => {
+    const { MAX_STT_AUDIO_BYTES } = await import('./voiceGate.js');
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, { enabled: true, provider: 'cloud', cloudEndpoint: 'http://e', cloudApiKey: 'k' }),
+    );
+    // Use a Buffer just past the cap. allocUnsafe is cheap and we never read.
+    const giant = Buffer.allocUnsafe(MAX_STT_AUDIO_BYTES + 1);
+    const result = (await invokeHandle('voice:transcribe', { audio: giant, mimeType: 'audio/wav' })) as { error: string };
+    expect(result.error).toMatch(/exceeds limit/i);
+  });
+
+  it('voice:transcribe falls through to cloud when local binary refuses gate (provider=auto)', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const bin = path.join(tmpRoot, 'attacker-shell');
+    fs.writeFileSync(bin, '#!/bin/sh\n', { mode: 0o755 });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'cloud-fallback' }),
+    } as Response);
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, {
+        enabled: true,
+        provider: 'auto',
+        localBinaryPath: bin,
+        cloudEndpoint: 'http://cloud',
+        cloudApiKey: 'k',
+      }),
+    );
+    const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as { text: string };
+    expect(result.text).toBe('cloud-fallback');
+    fetchSpy.mockRestore();
+  });
+});
+
+// ─── MYT-793: error categorization unit tests ────────────────────────────────
+
+describe('categorizeVoiceError', () => {
+  it('maps LocalBinaryError to LOCAL_BINARY', () => {
+    expect(categorizeVoiceError(new LocalBinaryError('whisper.cpp exited 1: /tmp/path stack trace'))).toBe(
+      VOICE_ERROR_CATEGORIES.LOCAL_BINARY,
+    );
+  });
+
+  it('maps CloudProviderError to CLOUD_PROVIDER', () => {
+    expect(categorizeVoiceError(new CloudProviderError('Cloud STT failed (429): rate limited'))).toBe(
+      VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER,
+    );
+  });
+
+  it('maps CloudProviderError with status to CLOUD_PROVIDER', () => {
+    expect(categorizeVoiceError(new CloudProviderError('boom', 503))).toBe(
+      VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER,
+    );
+  });
+
+  it('maps InvalidVoiceInputError to INVALID_INPUT', () => {
+    expect(categorizeVoiceError(new InvalidVoiceInputError('STT disabled'))).toBe(
+      VOICE_ERROR_CATEGORIES.INVALID_INPUT,
+    );
+  });
+
+  it('maps AbortError to NETWORK', () => {
+    const err = new Error('aborted');
+    err.name = 'AbortError';
+    expect(categorizeVoiceError(err)).toBe(VOICE_ERROR_CATEGORIES.NETWORK);
+  });
+
+  it('maps untyped error with HTTP-style status to CLOUD_PROVIDER', () => {
+    const err = Object.assign(new Error('boom'), { status: 401 });
+    expect(categorizeVoiceError(err)).toBe(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER);
+  });
+
+  it('maps TypeError (fetch failure) to NETWORK', () => {
+    expect(categorizeVoiceError(new TypeError('fetch failed'))).toBe(VOICE_ERROR_CATEGORIES.NETWORK);
+  });
+
+  it('maps "network" message to NETWORK', () => {
+    expect(categorizeVoiceError(new Error('network unreachable'))).toBe(VOICE_ERROR_CATEGORIES.NETWORK);
+  });
+
+  it('maps "timeout" message to NETWORK', () => {
+    expect(categorizeVoiceError(new Error('request timeout after 30s'))).toBe(
+      VOICE_ERROR_CATEGORIES.NETWORK,
+    );
+  });
+
+  it('maps unrecognised error to UNKNOWN', () => {
+    expect(categorizeVoiceError(new Error('something weird happened'))).toBe(
+      VOICE_ERROR_CATEGORIES.UNKNOWN,
+    );
+  });
+
+  it('returns UNKNOWN for a non-Error value (no throw)', () => {
+    expect(categorizeVoiceError({})).toBe(VOICE_ERROR_CATEGORIES.UNKNOWN);
+    expect(categorizeVoiceError(undefined)).toBe(VOICE_ERROR_CATEGORIES.UNKNOWN);
+    expect(categorizeVoiceError('plain string')).toBe(VOICE_ERROR_CATEGORIES.UNKNOWN);
+  });
+});
+
+describe('voiceErrorUserMessage', () => {
+  it('returns a fixed string per category that contains no raw error detail', () => {
+    for (const cat of Object.values(VOICE_ERROR_CATEGORIES) as VoiceErrorCategory[]) {
+      const msg = voiceErrorUserMessage(cat);
+      expect(typeof msg).toBe('string');
+      expect(msg.length).toBeGreaterThan(0);
+      // No status codes, file paths, or stderr substrings should appear in the
+      // canned user messages.
+      expect(msg).not.toMatch(/\b\d{3}\b/);
+      expect(msg).not.toMatch(/\/(tmp|home|var)\//);
+      expect(msg).not.toMatch(/stderr/i);
+    }
+  });
+
+  it('returns the LOCAL_BINARY message for that category', () => {
+    expect(voiceErrorUserMessage(VOICE_ERROR_CATEGORIES.LOCAL_BINARY)).toMatch(/local voice engine/i);
+  });
+
+  it('returns the CLOUD_PROVIDER message for that category', () => {
+    expect(voiceErrorUserMessage(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER)).toMatch(/cloud voice provider/i);
+  });
+});
+
+describe('voice:stop cloud STT error (MYT-793)', () => {
+  beforeEach(() => { handleMap.clear(); onMap.clear(); });
+
+  it('emits sanitized voice:error event when cloud Whisper rejects (no body / status leak)', async () => {
+    const errors: Array<{ sessionId: string; category: VoiceErrorCategory; error: string }> = [];
+    const mockSender = {
+      send: (ch: string, data: unknown) => {
+        if (ch === 'voice:error') errors.push(data as { sessionId: string; category: VoiceErrorCategory; error: string });
+      },
+      isDestroyed: () => false,
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => 'INVALID_API_KEY sk_test_LEAK',
+      json: async () => ({ error: { message: 'INVALID_API_KEY sk_test_LEAK' } }),
+    } as unknown as Response);
+
+    const reg = new VoiceRegistry();
+    registerVoiceHandlers(
+      () => mockSender,
+      () => makeSettings({ cloudFallback: true, openaiApiKey: 'k' }),
+      reg,
+    );
+    const { sessionId } = (await invokeHandle('voice:start', {})) as { sessionId: string };
+    reg.addChunk(sessionId, Buffer.from('audio'));
+    await invokeHandle('voice:stop', { sessionId });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].sessionId).toBe(sessionId);
+    expect(errors[0].category).toBe(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER);
+    expect(errors[0].error).toBe(voiceErrorUserMessage(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER));
+    // Acceptance: no raw API-key fragment or status code reaches the renderer.
+    expect(errors[0].error).not.toMatch(/sk_test_LEAK/);
+    expect(errors[0].error).not.toMatch(/INVALID_API_KEY/);
+    expect(errors[0].error).not.toMatch(/401/);
+    fetchSpy.mockRestore();
+  });
+});
+
+// ─── MYT-793: local STT stderr scrubbing (compositional) ─────────────────────
+//
+// ESM prevents `vi.spyOn(childProc, 'spawn')` from re-binding the export, so we
+// can't easily intercept the spawn-and-emit-stderr path in isolation. Instead,
+// prove the property by construction: voice handlers route every caught error
+// through `categorizeVoiceError` → `voiceErrorUserMessage`, which returns a
+// fixed canned message that cannot contain stderr / response-body content.
+
+describe('voice error scrubbing (MYT-793 acceptance)', () => {
+  it('LocalBinaryError carrying raw whisper.cpp stderr is never echoed to the renderer', () => {
+    const stderrPath = '/home/secret/models/ggml.bin';
+    const err = new LocalBinaryError(
+      `whisper.cpp exited 1: failed to load ${stderrPath} (api_key=sk_LEAK)`,
+    );
+    const cat = categorizeVoiceError(err);
+    const userMsg = voiceErrorUserMessage(cat);
+    expect(cat).toBe(VOICE_ERROR_CATEGORIES.LOCAL_BINARY);
+    expect(userMsg).not.toMatch(/whisper\.cpp/);
+    expect(userMsg).not.toMatch(/exited/);
+    expect(userMsg).not.toMatch(/\/home\/secret/);
+    expect(userMsg).not.toMatch(/ggml/);
+    expect(userMsg).not.toMatch(/sk_LEAK/);
+  });
+
+  it('CloudProviderError carrying raw response body is never echoed to the renderer', () => {
+    const err = new CloudProviderError(
+      'Cloud TTS request failed (400): {"error":{"message":"bad input","trace_id":"tr_xyz"}}',
+      400,
+    );
+    const cat = categorizeVoiceError(err);
+    const userMsg = voiceErrorUserMessage(cat);
+    expect(cat).toBe(VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER);
+    expect(userMsg).not.toMatch(/400/);
+    expect(userMsg).not.toMatch(/bad input/);
+    expect(userMsg).not.toMatch(/tr_xyz/);
+    expect(userMsg).not.toMatch(/trace_id/);
+  });
+});
+
 
 // ─── Integration: local binary (gated on WHISPER_BIN env var) ────────────────
 

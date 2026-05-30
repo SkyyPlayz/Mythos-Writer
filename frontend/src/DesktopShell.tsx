@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry } from './types';
-import { applyTheme } from './theme';
+import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
+import FocusModePrefsDialog from './FocusModePrefsDialog';
+import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
+import { applyTheme, applyLiquidNeonTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -11,13 +13,15 @@ import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import { useTextPrompt } from './useTextPrompt';
-import SettingsPanel from './SettingsPanel';
+import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
+import GlobalSearchPanel from './GlobalSearchPanel';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
+import { useFocusMode } from './useFocusMode';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -91,10 +95,17 @@ interface AppMenuBarProps {
   selectedStoryId?: string | null;
   activeVaultRoot: string;
   onProjectSwitched: (vaultRoot: string) => void;
+  writingMode: WritingMode;
+  onSetWritingMode: (m: WritingMode) => void;
+  onOpenFocusPrefs: () => void;
+  onOpenKeyboardShortcuts: () => void;
+  onToggleDistractionFree: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
+  const helpMenuRef = useRef<HTMLDivElement>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
 
   const handleExportEpub = () => {
@@ -159,6 +170,34 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
             </div>
           )}
         </div>
+        <div className="app-menu-item" ref={helpMenuRef}>
+          <button
+            className="app-menu-item-trigger"
+            aria-haspopup="menu"
+            aria-controls="help-menu"
+            aria-expanded={helpMenuOpen}
+            onClick={() => setHelpMenuOpen(o => !o)}
+            onBlur={(e) => {
+              if (helpMenuRef.current && !helpMenuRef.current.contains(e.relatedTarget as Node)) {
+                setHelpMenuOpen(false);
+              }
+            }}
+          >
+            Help
+          </button>
+          {helpMenuOpen && (
+            <div id="help-menu" className="app-menu-dropdown" role="menu">
+              <button
+                className="app-menu-dropdown-item"
+                role="menuitem"
+                onClick={() => { setHelpMenuOpen(false); onOpenKeyboardShortcuts(); }}
+              >
+                Keyboard Shortcuts…
+                <span className="app-menu-shortcut-hint">?</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <SearchBar onNavigate={onSearchNavigate} />
       <div className="app-menu-view-toggle">
@@ -191,6 +230,50 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           Graph
         </button>
       </div>
+      <div className="writing-mode-selector" aria-label="Writing mode">
+        <button
+          className={`writing-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
+          onClick={() => onSetWritingMode('normal')}
+          aria-pressed={writingMode === 'normal'}
+          title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
+        >
+          N
+        </button>
+        <button
+          className={`writing-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
+          onClick={() => onSetWritingMode('focus')}
+          aria-pressed={writingMode === 'focus'}
+          title="Focus mode — distraction-free"
+        >
+          F
+        </button>
+        {writingMode === 'focus' && (
+          <button
+            className="writing-mode-prefs-btn"
+            onClick={onOpenFocusPrefs}
+            title="Configure Focus mode panels"
+            aria-label="Focus mode preferences"
+          >
+            ⚙
+          </button>
+        )}
+        <button
+          className={`writing-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
+          onClick={() => onSetWritingMode('edit')}
+          aria-pressed={writingMode === 'edit'}
+          title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
+        >
+          E
+        </button>
+      </div>
+      <button
+        className="app-menu-df-btn"
+        onClick={onToggleDistractionFree}
+        aria-label="Enter distraction-free mode"
+        title="Distraction-free mode (F11)"
+      >
+        ⊡
+      </button>
       <button
         className="app-menu-gear-btn"
         onClick={onOpenSettings}
@@ -199,6 +282,36 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
       >
         ⚙
       </button>
+    </div>
+  );
+}
+
+// ─── Focus mode overlay ───
+
+interface FocusModeOverlayProps {
+  wordCount: number;
+  readingMinutes: number;
+  saveState: 'idle' | 'saved';
+}
+
+function FocusModeOverlay({ wordCount, readingMinutes, saveState }: FocusModeOverlayProps) {
+  const [hintVisible, setHintVisible] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setHintVisible(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div className="focus-mode-overlay" aria-hidden="true">
+      <div className={`focus-hint${hintVisible ? '' : ' focus-hint-hidden'}`}>
+        Press Esc to exit focus mode
+      </div>
+      <div className="focus-status-bar">
+        <span>{wordCount.toLocaleString()} words</span>
+        <span>{readingMinutes} min read</span>
+        {saveState === 'saved' && <span className="focus-save-ok">Saved ✓</span>}
+      </div>
     </div>
   );
 }
@@ -340,6 +453,7 @@ export default function DesktopShell() {
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
+  const [vaultContext, setVaultContext] = useState<'file' | 'folder' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
@@ -352,11 +466,24 @@ export default function DesktopShell() {
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
+  const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
+
+  const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
+  const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
+  const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
+
+  // SKY-130: cross-restart scene/cursor restore refs
+  const pendingCursorPosRef = useRef<number | null>(null);
+  const sceneRestoreAttemptedRef = useRef(false);
+  const restoreInProgressRef = useRef(false);
+  const saveCursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -455,7 +582,19 @@ export default function DesktopShell() {
       if (m.layout) {
         setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
-      if (s) { setAppSettings(s); applyTheme(s.theme); }
+      if (s) {
+        setAppSettings(s);
+        applyTheme(s.theme);
+        // Load background image data URL if a custom path is stored
+        const lg = s.liquidNeon;
+        if (lg?.background && lg.background !== 'default') {
+          (window.api as any).loadBgImage?.(lg.background)
+            .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
+            .catch(() => applyLiquidNeonTokens(lg));
+        } else {
+          applyLiquidNeonTokens(lg);
+        }
+      }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
@@ -478,6 +617,8 @@ export default function DesktopShell() {
       setSelectedChapter(null);
       setSelectedStory(null);
       setSelectedEntity(null);
+      // SKY-130: allow restore to fire again for the new project
+      sceneRestoreAttemptedRef.current = false;
       loadVault();
     });
     return () => unsub?.();
@@ -489,6 +630,8 @@ export default function DesktopShell() {
     setSelectedChapter(null);
     setSelectedStory(null);
     setSelectedEntity(null);
+    // SKY-130: allow restore to fire again for the new project
+    sceneRestoreAttemptedRef.current = false;
     loadVault();
   }, [loadVault]);
 
@@ -524,6 +667,49 @@ export default function DesktopShell() {
     setManifest(updated);
     scheduleManifestSave(updated);
   }, [manifest, scheduleManifestSave]);
+
+  const setWritingMode = useCallback((mode: WritingMode) => {
+    let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
+    if (mode === 'edit') {
+      newLayout = { ...newLayout, leftTab: 'review', rightTab: 'ai' };
+    }
+    persistLayout(newLayout);
+  }, [layout, persistLayout]);
+
+  // ─── Writing mode keyboard shortcuts ───
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // ? key (with or without Shift) opens the keyboard shortcuts help dialog,
+      // but not when focus is inside a text input or contenteditable.
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        const inText =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+        if (!inText) {
+          e.preventDefault();
+          setShortcutsOpen(true);
+          return;
+        }
+      }
+
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || !e.shiftKey) return;
+      if (e.key === 'F' || e.key === 'f') {
+        e.preventDefault();
+        setWritingMode('focus');
+      } else if (e.key === 'E' || e.key === 'e') {
+        e.preventDefault();
+        setWritingMode('edit');
+      } else if (e.key === 'N' || e.key === 'n') {
+        e.preventDefault();
+        setWritingMode('normal');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen]);
 
   // ─── Panel resize drag handlers ───
 
@@ -600,6 +786,12 @@ export default function DesktopShell() {
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
     (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
+    // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
+    if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
+    saveIndicatorTimer.current = setTimeout(() => {
+      setSaveState('saved');
+      saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
+    }, 1200);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
 
   const handleDraftStateChange = useCallback((state: DraftState) => {
@@ -693,7 +885,63 @@ export default function DesktopShell() {
     setSelectedChapter(chapter);
     setSelectedStory(story);
     setSelectedEntity(null);
+    setVaultContext('file');
+    if (!restoreInProgressRef.current) {
+      // User-initiated open: clear any pending cursor restore and reset cursor to 0
+      pendingCursorPosRef.current = null;
+      // SKY-130: persist the newly active scene (cursor will be updated as user types/scrolls)
+      window.api.sessionSaveScene({
+        sceneId: scene.id,
+        scenePath: scene.path,
+        scrollTop: 0,
+        cursorLine: 0,
+      }).catch(() => {});
+    }
   }, []);
+
+  // SKY-127: Update window chrome neon border context based on selected vault item
+  useEffect(() => {
+    if (vaultContext) {
+      document.documentElement.setAttribute('data-context', vaultContext);
+    } else {
+      document.documentElement.removeAttribute('data-context');
+    }
+  }, [vaultContext]);
+
+  // SKY-130: restore last-opened scene + cursor after vault loads
+  useEffect(() => {
+    if (loading || sceneRestoreAttemptedRef.current) return;
+    if (!appSettings?.lastOpenedScene || stories.length === 0) return;
+    sceneRestoreAttemptedRef.current = true;
+    const { sceneId, cursorLine } = appSettings.lastOpenedScene;
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+        if (scene) {
+          restoreInProgressRef.current = true;
+          pendingCursorPosRef.current = cursorLine;
+          handleSelectScene(scene, chapter, story);
+          restoreInProgressRef.current = false;
+          return;
+        }
+      }
+    }
+    // Scene not found (deleted/moved) — silently skip per spec
+  }, [loading, appSettings, stories, handleSelectScene]);
+
+  // SKY-130: debounced cursor persistence as user types/navigates
+  const handleCursorPosChange = useCallback((pos: number) => {
+    if (!selectedScene) return;
+    if (saveCursorDebounceRef.current) clearTimeout(saveCursorDebounceRef.current);
+    saveCursorDebounceRef.current = setTimeout(() => {
+      window.api.sessionSaveScene({
+        sceneId: selectedScene.id,
+        scenePath: selectedScene.path,
+        scrollTop: 0,
+        cursorLine: pos,
+      }).catch(() => {});
+    }, 1000);
+  }, [selectedScene]);
 
   // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
   const handleOpenSceneByPath = useCallback((scenePath: string) => {
@@ -802,6 +1050,12 @@ export default function DesktopShell() {
     }
     return selectedStory.title;
   }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
+
+  // §6: empty state — depth=scene but selected chapter has no scenes
+  const depthIsEmpty = useMemo(
+    () => viewDepth === 'scene' && selectedChapter !== null && selectedChapter.scenes.length === 0,
+    [viewDepth, selectedChapter],
+  );
 
   const handleDepthPrev = useCallback(() => {
     if (!selectedStory) return;
@@ -926,18 +1180,66 @@ export default function DesktopShell() {
     archive: appSettings?.agents?.archive?.enabled ?? true,
   };
 
+  const writingMode: WritingMode = layout.writingMode ?? 'normal';
+  const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
+  const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
+  const showRightSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
+  const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
+
+  const focusWordCount = selectedScene
+    ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
+    : 0;
+  const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
+
   return (
-    <div className="desktop-shell">
+    <div className={`desktop-shell writing-mode-${writingMode}${distractionFree ? ' distraction-free' : ''}`}>
       <UpdateBanner />
-      <AppMenuBar view={view} onSetView={setView} onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} onSearchNavigate={handleSearchNavigate} selectedStoryId={selectedStory?.id ?? null} activeVaultRoot={activeVaultRoot} onProjectSwitched={handleProjectSwitched} />
+      {!distractionFree && (
+        <AppMenuBar
+          view={view}
+          onSetView={setView}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenHistory={() => setHistoryOpen(true)}
+          onSearchNavigate={handleSearchNavigate}
+          selectedStoryId={selectedStory?.id ?? null}
+          activeVaultRoot={activeVaultRoot}
+          onProjectSwitched={handleProjectSwitched}
+          writingMode={writingMode}
+          onSetWritingMode={setWritingMode}
+          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
+          onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
+          onToggleDistractionFree={toggleDistractionFree}
+        />
+      )}
+      {distractionFree && (
+        <FocusModeOverlay
+          wordCount={focusWordCount}
+          readingMinutes={focusReadingMinutes}
+          saveState={saveState}
+        />
+      )}
       {settingsOpen && (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
-          onSaved={(s) => { setAppSettings(s); applyTheme(s.theme); }}
+          onSaved={(s) => {
+            setAppSettings(s);
+            applyTheme(s.theme);
+            applyLiquidNeonTokens(s.liquidNeon);
+          }}
         />
       )}
       {historyOpen && (
         <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
+      )}
+      {focusModePrefsOpen && (
+        <FocusModePrefsDialog
+          prefs={focusPrefs}
+          onChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
+          onClose={() => setFocusModePrefsOpen(false)}
+        />
+      )}
+      {shortcutsOpen && (
+        <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
@@ -966,46 +1268,51 @@ export default function DesktopShell() {
       )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
-      <div className="shell-left" style={{ width: layout.leftWidth }}>
-        <LeftRail
-          activeTab={layout.leftTab}
-          onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
-          stories={stories}
-          selectedSceneId={selectedScene?.id ?? null}
-          selectedEntityId={selectedEntity?.id ?? null}
-          onSelectScene={handleSelectScene}
-          onSelectEntity={handleSelectEntity}
-          onCreateStory={createStory}
-          onCreateChapter={createChapter}
-          onCreateScene={createScene}
-          onReorderScenes={handleReorderScenes}
-          onOpenVaultPath={handleOpenSceneByPath}
-        />
-      </div>
+      {showLeftSidebar && (
+        <div className="shell-left" style={{ width: layout.leftWidth }}>
+          <LeftRail
+            activeTab={layout.leftTab}
+            onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
+            stories={stories}
+            selectedSceneId={selectedScene?.id ?? null}
+            selectedEntityId={selectedEntity?.id ?? null}
+            onSelectScene={handleSelectScene}
+            onSelectEntity={handleSelectEntity}
+            onCreateStory={createStory}
+            onCreateChapter={createChapter}
+            onCreateScene={createScene}
+            onReorderScenes={handleReorderScenes}
+            onOpenVaultPath={handleOpenSceneByPath}
+            onContextChange={setVaultContext}
+          />
+        </div>
+      )}
 
       {/* Left resize handle */}
-      <div
-        role="separator"
-        aria-label="Resize left panel"
-        aria-orientation="vertical"
-        aria-valuenow={layout.leftWidth}
-        aria-valuemin={160}
-        aria-valuemax={500}
-        tabIndex={0}
-        className="shell-divider shell-divider-left"
-        onMouseDown={(e) => startDrag('left', e)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('left', +8); }
-          else if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('left', -8); }
-          else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 160 }); }
-          else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 500 }); }
-        }}
-      />
+      {showLeftSidebar && (
+        <div
+          role="separator"
+          aria-label="Resize left panel"
+          aria-orientation="vertical"
+          aria-valuenow={layout.leftWidth}
+          aria-valuemin={160}
+          aria-valuemax={500}
+          tabIndex={0}
+          className="shell-divider shell-divider-left"
+          onMouseDown={(e) => startDrag('left', e)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('left', +8); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('left', -8); }
+            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 160 }); }
+            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 500 }); }
+          }}
+        />
+      )}
 
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {selectedStory && (
+          {selectedStory && !distractionFree && (
             <DepthSlider
               depth={viewDepth}
               onDepthChange={handleViewDepthChange}
@@ -1014,6 +1321,8 @@ export default function DesktopShell() {
               onPrev={handleDepthPrev}
               onNext={handleDepthNext}
               contextLabel={depthContextLabel}
+              writingMode={writingMode}
+              isEmpty={depthIsEmpty}
             />
           )}
           {viewDepth === 'book' && selectedStory ? (
@@ -1049,6 +1358,8 @@ export default function DesktopShell() {
                 wikiLinkSuggestions={wikiLinkSuggestions}
                 onAcceptWikiLink={handleEditorAcceptWikiLink}
                 onRejectWikiLink={handleEditorRejectWikiLink}
+                initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                onCursorPosChange={handleCursorPosChange}
               />
               {(betaReadComments.length > 0 || betaReadLoading) && (
                 <div className="shell-beta-margin">
@@ -1085,55 +1396,70 @@ export default function DesktopShell() {
             </div>
           )}
         </div>
-        <BottomBar
-          selectedScene={selectedScene}
-          selectedChapter={selectedChapter}
-          selectedStory={selectedStory}
-          onNavigateScene={handleNavigateScene}
-        />
+        {showBottomBar && (
+          <BottomBar
+            selectedScene={selectedScene}
+            selectedChapter={selectedChapter}
+            selectedStory={selectedStory}
+            onNavigateScene={handleNavigateScene}
+          />
+        )}
       </div>
 
       {/* Right resize handle */}
-      <div
-        role="separator"
-        aria-label="Resize right panel"
-        aria-orientation="vertical"
-        aria-valuenow={layout.rightWidth}
-        aria-valuemin={160}
-        aria-valuemax={500}
-        tabIndex={0}
-        className="shell-divider shell-divider-right"
-        onMouseDown={(e) => startDrag('right', e)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
-          else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
-          else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
-          else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
-        }}
-      />
+      {showRightSidebar && (
+        <div
+          role="separator"
+          aria-label="Resize right panel"
+          aria-orientation="vertical"
+          aria-valuenow={layout.rightWidth}
+          aria-valuemin={160}
+          aria-valuemax={500}
+          tabIndex={0}
+          className="shell-divider shell-divider-right"
+          onMouseDown={(e) => startDrag('right', e)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
+            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
+            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
+          }}
+        />
+      )}
 
       {/* Right sidebar */}
-      <div className="shell-right" style={{ width: layout.rightWidth }}>
-        <RightSidebar
-          activeTab={layout.rightTab}
-          onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
-          selectedScene={selectedScene}
-          selectedChapter={selectedChapter}
-          selectedStory={selectedStory}
-          writingAssistantEnabled={agentFlags.writingAssistant}
-          archiveEnabled={agentFlags.archive}
-          scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
-          isPageFocused={view === 'editor'}
-          onJumpToText={handleJumpToText}
-          onInsertWikiLink={handleInsertWikiLink}
-          onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
-        />
-      </div>
+      {showRightSidebar && (
+        <div className="shell-right" style={{ width: layout.rightWidth }}>
+          <RightSidebar
+            activeTab={layout.rightTab}
+            onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
+            selectedScene={selectedScene}
+            selectedChapter={selectedChapter}
+            selectedStory={selectedStory}
+            writingAssistantEnabled={agentFlags.writingAssistant}
+            archiveEnabled={agentFlags.archive}
+            scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+            isPageFocused={view === 'editor'}
+            onJumpToText={handleJumpToText}
+            onInsertWikiLink={handleInsertWikiLink}
+            onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+          />
+        </div>
+      )}
       </div>}{/* end shell-panels */}
       {budgetToast && (
         <div className="budget-toast" role="alert" aria-live="assertive">
           {budgetToast}
         </div>
+      )}
+      {globalSearchOpen && (
+        <GlobalSearchPanel
+          onNavigate={(result) => {
+            handleSearchNavigate(result);
+            setGlobalSearchOpen(false);
+          }}
+          onClose={() => setGlobalSearchOpen(false)}
+        />
       )}
       {promptModal}
     </div>

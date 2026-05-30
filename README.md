@@ -1,6 +1,49 @@
 # Mythos Writer
 
-AI-powered creative writing and story generation tool — desktop-first Electron app built with React + TypeScript.
+Mythos Writer is a local-first desktop writing app for fiction authors. It gives you a structured vault for your stories and notes, a distraction-free scene editor, and an AI brainstorm assistant powered by Claude — all running on your own machine with your files stored as plain Markdown. No subscription, no cloud, no lock-in.
+
+## Installation
+
+Download the latest release from the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases):
+
+| Platform | File |
+|----------|------|
+| Windows  | `Mythos.Writer-<version>.exe` (NSIS installer) or `.zip` (portable) |
+| Linux    | `Mythos-Writer-<version>.AppImage` |
+| macOS    | Build from source (see [Local setup](#local-setup)) |
+
+Run the installer or AppImage, then launch **Mythos Writer**.
+
+## Quickstart (5 minutes)
+
+1. **First launch** — the onboarding wizard appears. Pick a folder for your vault (or accept the default `~/Mythos`). Click **Create vault**.
+2. **Create a story** — in the left rail, click **+** next to *Story Vault*, enter a title, press Enter.
+3. **Add a chapter and scene** — expand your story, click **+** to add a chapter, then **+** inside the chapter to create your first scene.
+4. **Write** — click the scene to open the editor. Start typing. Your work is saved automatically.
+5. **Brainstorm with AI** — click **Brainstorm** in the top bar. Type a question or describe your story premise. Mythos Writer chats with Claude and automatically picks out characters, locations, and items from the conversation.
+
+> **API key required for AI features.** Open **Settings** (⚙ icon in the top bar) → enter your [Anthropic API key](https://console.anthropic.com/). The key is stored locally — it never leaves your machine.
+
+## Key features
+
+- **Story Vault** — organise your manuscript as Stories → Chapters → Scenes; each scene is a Markdown file you own
+- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference
+- **Rich scene editor** — TipTap-powered editor with WikiLinks (`[[Character Name]]`), draft states (In Progress / Review / Final), and word count
+- **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
+- **Brainstorm AI** — conversational story development; automatically extracts facts into your vault entities
+- **Writing Assistant** — proactive inline suggestions as you write (Edit mode)
+- **Entity browser** — characters, locations, and items extracted from brainstorm sessions
+- **Kanban board** — scene cards in a drag-and-drop board view
+- **Graph view** — visual map of WikiLink connections across your vault
+- **Export** — one-click EPUB and DOCX export (File → Export…)
+- **Snapshot history** — automatic per-scene version snapshots; right-click the editor to restore
+- **Auto-updater** — Stable and Beta release channels; updates install in the background
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branch policy, required CI checks, and commit conventions.
+
+---
 
 ## Tech Stack
 
@@ -47,6 +90,7 @@ mythos-writer/
 - Node.js 20+
 - npm 10+
 - An [Anthropic API key](https://console.anthropic.com/) — set in-app via Settings, or via `ANTHROPIC_API_KEY` env var
+- Build tools for native modules: `python3`, `make`, `g++` (Linux/macOS usually have these; Windows needs Visual Studio Build Tools or `npm install --global windows-build-tools`)
 
 ## Local setup
 
@@ -69,36 +113,65 @@ npm run dev
 
 Starts `electron-vite dev`: hot-reloads the React renderer in a live Electron window, watches the main process, and sets `VITE_DEV_SERVER_URL` so Electron loads the Vite dev server instead of the built renderer.
 
+> **Native module note:** `npm run dev` automatically rebuilds `better-sqlite3` for Electron's Node ABI before launching. This takes a few seconds on the first run after `npm install`. If you run `npm test` after `npm run dev`, first restore the Node ABI with `npm run rebuild:node`.
+
 ## Production build and start
 
 ```bash
-# 1. Compile main process + renderer to out/
+# 1. Install dependencies
+npm install
+
+# 2. Rebuild the native SQLite module for Electron
+npm run rebuild:native
+
+# 3. Compile main process + renderer to out/
 npm run build:electron
 
-# 2. Launch the compiled app (no packaging — fast local test of prod mode)
+# 4. Launch the compiled app (no packaging — fast local test of prod mode)
 npm start
 
-# 3. (Optional) Package as a distributable Windows zip
+# 5. (Optional) Package as a distributable Windows zip
 npm run build         # → dist-electron/Mythos Writer-<version>.zip
 
-# 4. (Optional) Build a Windows NSIS installer
+# 6. (Optional) Build a Windows NSIS installer
 npm run build:installer  # → dist-electron/Mythos Writer-<version>.exe
 ```
 
-`npm start` runs `electron .` against the files in `out/` (built by the previous step). In production mode, `VITE_DEV_SERVER_URL` is not set, so Electron loads `out/renderer/index.html` directly — no HTTP server involved.
+`npm start` runs `electron .` against the files in `out/` (built by step 3). In production mode, `VITE_DEV_SERVER_URL` is not set, so Electron loads `out/renderer/index.html` directly — no HTTP server involved.
+
+**Why the rebuild step?** `better-sqlite3` is a native Node.js addon. `npm install` compiles it for the system Node.js ABI. Electron embeds its own Node.js with a different ABI — without the rebuild step, the app crashes immediately on launch with a `NODE_MODULE_VERSION` error. `npm run rebuild:native` recompiles the addon for Electron's ABI. (Unit tests run under system Node.js; use `npm run rebuild:node` to switch back if needed.)
 
 ## Available scripts (run from repo root)
 
-| Script                  | What it does                                          |
-| ----------------------- | ----------------------------------------------------- |
-| `npm run dev`           | Start Electron app in hot-reload dev mode             |
-| `npm run build:electron`| Compile main + preload + renderer to `out/`           |
-| `npm start`             | Launch the already-built app from `out/` (prod mode)  |
-| `npm run build`         | Compile + package as Windows zip to `dist-electron/`  |
-| `npm run build:installer` | Compile + package as Windows NSIS installer         |
-| `npm run lint`          | ESLint across frontend                                |
-| `npm run test`          | Vitest across both packages                           |
-| `npm run typecheck`     | `tsc --noEmit` across both packages                   |
+| Script                  | What it does                                                        |
+| ----------------------- | ------------------------------------------------------------------- |
+| `npm run dev`           | Rebuild native modules for Electron, then start hot-reload dev mode |
+| `npm run rebuild:native`| Rebuild `better-sqlite3` for Electron's ABI (required before launch)|
+| `npm run rebuild:node`  | Rebuild `better-sqlite3` for system Node.js ABI (for unit tests)    |
+| `npm run build:electron`| Compile main + preload + renderer to `out/`                         |
+| `npm start`             | Launch the already-built app from `out/` (prod mode)                |
+| `npm run build`         | Compile + package as Windows zip to `dist-electron/`                |
+| `npm run build:installer` | Compile + package as Windows NSIS installer                       |
+| `npm run lint`          | ESLint across frontend                                              |
+| `npm run test`          | Vitest across both packages                                         |
+| `npm run typecheck`     | `tsc --noEmit` across both packages                                 |
+
+## Troubleshooting
+
+### App crashes with `NODE_MODULE_VERSION` error on launch
+
+```
+Error: The module '…/better-sqlite3/build/Release/better_sqlite3.node'
+was compiled against a different Node.js version…
+```
+
+**Cause:** `better-sqlite3` was compiled for system Node.js but Electron uses a different internal ABI.  
+**Fix:** Run `npm run rebuild:native`, then relaunch.
+
+### Unit tests fail with `NODE_MODULE_VERSION` error
+
+`npm run dev` rebuilds for Electron's ABI, which breaks unit tests running under system Node.js.  
+**Fix:** Run `npm run rebuild:node` before `npm test`.
 
 ## Update Channels
 

@@ -18,6 +18,8 @@ import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
 import type { AppSettings, SttSettings, TtsSettings, VoiceTranscribePayload, VoiceTranscribeResponse } from './ipc.js';
+import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
+import { checkSpawnPath, MAX_STT_AUDIO_BYTES, MAX_TTS_TEXT_BYTES } from './voiceGate.js';
 
 // ─── Channel names ──────────────────────────────────────────────────────────
 
@@ -69,6 +71,7 @@ export interface VoiceTranscriptEvent {
 
 export interface VoiceErrorEvent {
   sessionId: string;
+  category: VoiceErrorCategory;
   error: string;
 }
 
@@ -94,7 +97,108 @@ export interface VoiceSpeakDoneEvent {
 
 export interface VoiceSpeakErrorEvent {
   speakId: string;
+  category: VoiceErrorCategory;
   error: string;
+}
+
+// ─── Error categorization (MYT-793) ──────────────────────────────────────────
+//
+// Voice handlers must not forward raw stderr, response bodies, host paths, or
+// SDK error details to the renderer. Mirrors the streaming.ts pattern: classify
+// the error into a typed category, send a fixed user-facing message, and log
+// the raw error to the main-process console only.
+
+export const VOICE_ERROR_CATEGORIES = {
+  LOCAL_BINARY: 'local_binary',
+  CLOUD_PROVIDER: 'cloud_provider',
+  INVALID_INPUT: 'invalid_input',
+  NETWORK: 'network',
+  UNKNOWN: 'unknown',
+} as const;
+
+export type VoiceErrorCategory =
+  (typeof VOICE_ERROR_CATEGORIES)[keyof typeof VOICE_ERROR_CATEGORIES];
+
+// Typed errors carry the category at the point of throw so categorization is
+// deterministic and does not depend on message-pattern guessing.
+export class LocalBinaryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LocalBinaryError';
+  }
+}
+
+export class CloudProviderError extends Error {
+  readonly status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'CloudProviderError';
+    this.status = status;
+  }
+}
+
+export class InvalidVoiceInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidVoiceInputError';
+  }
+}
+
+export function categorizeVoiceError(err: unknown): VoiceErrorCategory {
+  const name = (err as Error)?.name;
+  if (name === 'LocalBinaryError') return VOICE_ERROR_CATEGORIES.LOCAL_BINARY;
+  if (name === 'CloudProviderError') return VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER;
+  if (name === 'InvalidVoiceInputError') return VOICE_ERROR_CATEGORIES.INVALID_INPUT;
+  if (name === 'AbortError') return VOICE_ERROR_CATEGORIES.NETWORK;
+
+  // Fallback: HTTP-style status property → cloud provider; fetch failures → network.
+  const status = (err as { status?: number })?.status;
+  if (typeof status === 'number' && status >= 400) {
+    return VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER;
+  }
+  if (name === 'TypeError') return VOICE_ERROR_CATEGORIES.NETWORK;
+
+  const msg = (err as Error)?.message?.toLowerCase() ?? '';
+  if (
+    msg.includes('network') ||
+    msg.includes('connect') ||
+    msg.includes('timeout') ||
+    msg.includes('dns') ||
+    msg.includes('fetch failed')
+  ) {
+    return VOICE_ERROR_CATEGORIES.NETWORK;
+  }
+  return VOICE_ERROR_CATEGORIES.UNKNOWN;
+}
+
+// Returns a fixed, user-facing message for a category. Never echoes raw error
+// details (stderr, response bodies, host paths, status codes, etc.).
+export function voiceErrorUserMessage(category: VoiceErrorCategory): string {
+  switch (category) {
+    case VOICE_ERROR_CATEGORIES.LOCAL_BINARY:
+      return 'Local voice engine failed — check the binary configuration in Settings.';
+    case VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER:
+      return 'Cloud voice provider rejected the request — check the API key and try again.';
+    case VOICE_ERROR_CATEGORIES.INVALID_INPUT:
+      return 'Voice request was invalid — check the input and settings.';
+    case VOICE_ERROR_CATEGORIES.NETWORK:
+      return 'Network error — check your connection and try again.';
+    case VOICE_ERROR_CATEGORIES.UNKNOWN:
+      return 'An unexpected voice error occurred — check the logs for details.';
+  }
+}
+
+// Internal: log the raw error in main process; return a sanitized payload safe
+// for IPC. Centralised so every voice handler scrubs errors consistently.
+function sanitizeVoiceError(
+  scope: string,
+  id: string,
+  err: unknown,
+): { category: VoiceErrorCategory; error: string } {
+  const category = categorizeVoiceError(err);
+  const raw = (err as Error)?.message ?? 'Unknown';
+  console.error(`[${scope}] id=${id} category=${category} raw=${raw}`);
+  return { category, error: voiceErrorUserMessage(category) };
 }
 
 // ─── Session registry ────────────────────────────────────────────────────────
@@ -149,13 +253,15 @@ export function registerVoiceHandlers(
   const reg = registry ?? new VoiceRegistry();
 
   // voice:start → returns unique sessionId
-  ipcMain.handle(VOICE_START, (_event, payload: VoiceStartPayload) => {
+  ipcMain.handle(VOICE_START, (event, payload: VoiceStartPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const session = reg.start(payload?.micDeviceId);
     return { sessionId: session.id } satisfies VoiceStartResponse;
   });
 
   // voice:stop → ends session; triggers cloud transcription when opted in
-  ipcMain.handle(VOICE_STOP, async (_event, payload: VoiceStopPayload) => {
+  ipcMain.handle(VOICE_STOP, async (event, payload: VoiceStopPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const session = reg.stop(payload?.sessionId);
     if (!session) {
       return { ok: false, error: 'session not found' } satisfies VoiceStopResponse;
@@ -171,7 +277,8 @@ export function registerVoiceHandlers(
           const text = await transcribeWithWhisper(openaiKey, session.audioChunks);
           pushTranscript(getSender, { sessionId: session.id, text, isFinal: true });
         } catch (err) {
-          pushError(getSender, { sessionId: session.id, error: (err as Error).message ?? 'cloud STT error' });
+          const { category, error } = sanitizeVoiceError('voice:error', session.id, err);
+          pushError(getSender, { sessionId: session.id, category, error });
         }
       }
     }
@@ -180,7 +287,8 @@ export function registerVoiceHandlers(
   });
 
   // voice:audio-chunk — fire-and-forget; renderer sends raw audio for cloud path
-  ipcMain.on(VOICE_AUDIO_CHUNK, (_event, payload: { sessionId: string; chunk: Buffer | ArrayBuffer }) => {
+  ipcMain.on(VOICE_AUDIO_CHUNK, (event, payload: { sessionId: string; chunk: Buffer | ArrayBuffer }) => {
+    if (!isFromTopFrame(event)) return;
     if (!payload?.sessionId) return;
     const buf =
       payload.chunk instanceof ArrayBuffer
@@ -195,7 +303,8 @@ export function registerVoiceHandlers(
   // Main re-broadcasts as voice:transcript so the UI layer has a single event source.
   ipcMain.on(
     VOICE_LOCAL_TRANSCRIPT,
-    (_event, payload: { sessionId: string; text: string; isFinal: boolean }) => {
+    (event, payload: { sessionId: string; text: string; isFinal: boolean }) => {
+      if (!isFromTopFrame(event)) return;
       if (!payload?.sessionId) return;
       pushTranscript(getSender, {
         sessionId: payload.sessionId,
@@ -207,7 +316,8 @@ export function registerVoiceHandlers(
 
   // voice:transcribe — single-shot transcription; local-first, cloud fallback.
   // Off by default: requires stt.enabled = true in settings.
-  ipcMain.handle(VOICE_TRANSCRIBE, async (_event, payload: VoiceTranscribePayload) => {
+  ipcMain.handle(VOICE_TRANSCRIBE, async (event, payload: VoiceTranscribePayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const sttSettings = getSettings().stt;
     if (!sttSettings?.enabled) {
       return { error: 'STT is not enabled in settings (stt.enabled = false)' };
@@ -224,10 +334,19 @@ export function registerVoiceHandlers(
       return { error: 'voice:transcribe requires non-empty audio data' };
     }
 
+    // MYT-788: cap renderer-supplied audio so it cannot blow up the host with
+    // arbitrarily large temp-file writes before spawn.
+    if (audioBuf.length > MAX_STT_AUDIO_BYTES) {
+      return {
+        error: `voice:transcribe audio exceeds limit (${audioBuf.length} > ${MAX_STT_AUDIO_BYTES} bytes)`,
+      };
+    }
+
     try {
       return await transcribeAudio(audioBuf, payload.mimeType ?? 'audio/webm', sttSettings);
     } catch (err) {
-      return { error: (err as Error).message };
+      const { category, error } = sanitizeVoiceError('voice:transcribe', 'n/a', err);
+      return { error, category };
     }
   });
 
@@ -238,10 +357,21 @@ export function registerVoiceHandlers(
 
   // voice:speak — kicks off TTS; audio chunks pushed as voice:speak:chunk push events.
   // Returns { speakId } immediately; caller subscribes to push events to receive audio.
-  ipcMain.handle(VOICE_SPEAK, (_event, payload: VoiceSpeakPayload) => {
+  ipcMain.handle(VOICE_SPEAK, (event, payload: VoiceSpeakPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const ttsSettings = getSettings().tts;
     if (!ttsSettings?.enabled) {
       return { error: 'TTS is not enabled in settings (tts.enabled = false)' };
+    }
+
+    // MYT-788: cap renderer-supplied text so it cannot blow up the host with
+    // an unbounded write to the child's stdin.
+    const text = payload?.text ?? '';
+    const textBytes = Buffer.byteLength(text, 'utf8');
+    if (textBytes > MAX_TTS_TEXT_BYTES) {
+      return {
+        error: `voice:speak text exceeds limit (${textBytes} > ${MAX_TTS_TEXT_BYTES} bytes)`,
+      };
     }
 
     const speakId = crypto.randomUUID();
@@ -249,14 +379,15 @@ export function registerVoiceHandlers(
     activeSpeakSessions.set(speakId, abortController);
 
     const voiceId = payload?.voiceId ?? ttsSettings.voiceId;
-    speakAsync(speakId, payload?.text ?? '', voiceId, ttsSettings, getSender, abortController.signal)
+    speakAsync(speakId, text, voiceId, ttsSettings, getSender, abortController.signal)
       .finally(() => activeSpeakSessions.delete(speakId));
 
     return { speakId } satisfies VoiceSpeakResponse;
   });
 
   // voice:speak:cancel — fire-and-forget; aborts an active synthesis session.
-  ipcMain.on(VOICE_SPEAK_CANCEL, (_event, payload: { speakId: string }) => {
+  ipcMain.on(VOICE_SPEAK_CANCEL, (event, payload: { speakId: string }) => {
+    if (!isFromTopFrame(event)) return;
     const controller = activeSpeakSessions.get(payload?.speakId);
     if (controller) {
       controller.abort();
@@ -293,7 +424,7 @@ export async function transcribeAudio(
   settings: SttSettings,
 ): Promise<VoiceTranscribeResponse> {
   if (!settings.enabled) {
-    throw new Error('STT is disabled in settings (stt.enabled = false)');
+    throw new InvalidVoiceInputError('STT is disabled in settings (stt.enabled = false)');
   }
 
   const provider = settings.provider ?? 'auto';
@@ -301,10 +432,16 @@ export async function transcribeAudio(
   if (provider === 'local' || provider === 'auto') {
     const binPath = settings.localBinaryPath;
     if (binPath && fs.existsSync(binPath)) {
-      return transcribeLocal(binPath, audio, mimeType);
-    }
-    if (provider === 'local') {
-      throw new Error(
+      const gate = checkSpawnPath(binPath);
+      if (gate.ok) {
+        return transcribeLocal(gate.realPath ?? binPath, audio, mimeType);
+      }
+      if (provider === 'local') {
+        throw new InvalidVoiceInputError(`Local STT refused: ${gate.error}`);
+      }
+      // provider === 'auto' falls through to cloud below.
+    } else if (provider === 'local') {
+      throw new InvalidVoiceInputError(
         `Local STT binary not found at path: ${binPath ?? '(stt.localBinaryPath not configured)'}`,
       );
     }
@@ -316,7 +453,7 @@ export async function transcribeAudio(
   const apiKey = settings.cloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
 
   if (!settings.cloudEndpoint && !apiKey) {
-    throw new Error(
+    throw new InvalidVoiceInputError(
       'No STT provider available. Configure stt.localBinaryPath or stt.cloudEndpoint in settings.',
     );
   }
@@ -329,6 +466,8 @@ async function transcribeLocal(
   audio: Buffer,
   mimeType: string,
 ): Promise<VoiceTranscribeResponse> {
+  // Caller (transcribeAudio) is responsible for the MYT-788 trusted-set gate
+  // and passes in the resolved real-path of the binary.
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';
   const tmpFile = path.join(os.tmpdir(), `mythos-stt-${crypto.randomUUID()}.${ext}`);
 
@@ -345,12 +484,14 @@ async function transcribeLocal(
       proc.on('close', (code) => {
         if (code !== 0) {
           const errMsg = Buffer.concat(stderrChunks).toString().trim();
-          reject(new Error(`whisper.cpp exited ${code}: ${errMsg || '(no stderr)'}`));
+          // Raw stderr stays in the Error message for main-process logging only;
+          // the IPC handler scrubs it before sending anything to the renderer.
+          reject(new LocalBinaryError(`whisper.cpp exited ${code}: ${errMsg || '(no stderr)'}`));
         } else {
           resolve(Buffer.concat(stdoutChunks).toString().trim());
         }
       });
-      proc.on('error', reject);
+      proc.on('error', (err) => reject(new LocalBinaryError(`whisper.cpp spawn error: ${err.message}`)));
     });
     return { text, confidence: 0.9 };
   } finally {
@@ -392,11 +533,14 @@ async function transcribeCloud(
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
-    throw new Error(`Cloud STT request failed (${response.status}): ${errText}`);
+    throw new CloudProviderError(
+      `Cloud STT request failed (${response.status}): ${errText}`,
+      response.status,
+    );
   }
 
   const json = (await response.json()) as { text?: string; error?: { message: string } };
-  if (json.error) throw new Error(json.error.message);
+  if (json.error) throw new CloudProviderError(`Cloud STT returned error: ${json.error.message}`);
   return { text: json.text ?? '', confidence: 0.95 };
 }
 
@@ -424,12 +568,21 @@ async function speakAsync(
       const binPath = settings.localBinaryPath;
       const modelPath = settings.localModelPath;
       if (binPath && modelPath && fs.existsSync(binPath)) {
-        await speakWithPiper(binPath, modelPath, text, signal, sendChunk);
-        pushSpeakDone(getSender, speakId);
-        return;
-      }
-      if (provider === 'local') {
-        throw new Error(
+        const binGate = checkSpawnPath(binPath);
+        const modelGate = checkSpawnPath(modelPath);
+        if (binGate.ok && modelGate.ok) {
+          await speakWithPiper(binGate.realPath ?? binPath, modelGate.realPath ?? modelPath, text, signal, sendChunk);
+          pushSpeakDone(getSender, speakId);
+          return;
+        }
+        if (provider === 'local') {
+          throw new InvalidVoiceInputError(
+            `Local TTS refused: ${!binGate.ok ? binGate.error : modelGate.error}`,
+          );
+        }
+        // provider === 'auto' falls through to cloud below.
+      } else if (provider === 'local') {
+        throw new InvalidVoiceInputError(
           `Local TTS binary not found at path: ${binPath ?? '(tts.localBinaryPath not configured)'}`,
         );
       }
@@ -439,7 +592,7 @@ async function speakAsync(
     const endpoint = settings.cloudEndpoint ?? 'https://api.openai.com/v1/audio/speech';
     const apiKey = settings.cloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
     if (!settings.cloudEndpoint && !apiKey) {
-      throw new Error(
+      throw new InvalidVoiceInputError(
         'No TTS provider available. Configure tts.localBinaryPath+tts.localModelPath or tts.cloudEndpoint in settings.',
       );
     }
@@ -447,11 +600,13 @@ async function speakAsync(
     pushSpeakDone(getSender, speakId);
   } catch (err) {
     if (signal.aborted) return; // clean cancellation — no error event
+    const { category, error } = sanitizeVoiceError('voice:speak:error', speakId, err);
     const sender = getSender();
     if (sender && !sender.isDestroyed()) {
       sender.send(VOICE_SPEAK_ERROR, {
         speakId,
-        error: (err as Error).message ?? 'TTS error',
+        category,
+        error,
       } satisfies VoiceSpeakErrorEvent);
     }
   }
@@ -471,6 +626,8 @@ async function speakWithPiper(
   signal: AbortSignal,
   onChunk: (chunk: Buffer) => void,
 ): Promise<void> {
+  // Caller (speakAsync) is responsible for the MYT-788 trusted-set gate and
+  // passes in the resolved real-paths of the binary and model.
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(binaryPath, ['--model', modelPath, '--output-raw'], {
       timeout: 60_000,
@@ -486,16 +643,20 @@ async function speakWithPiper(
     proc.on('close', (code) => {
       signal.removeEventListener('abort', onAbort);
       if (signal.aborted) {
-        reject(new Error('cancelled'));
+        // Abort path — keep the standard AbortError name so categorizeVoiceError
+        // routes it as NETWORK and speakAsync's clean-cancel branch suppresses it.
+        const err = new Error('cancelled');
+        err.name = 'AbortError';
+        reject(err);
       } else if (code !== 0) {
-        reject(new Error(`piper exited ${code}`));
+        reject(new LocalBinaryError(`piper exited ${code}`));
       } else {
         resolve();
       }
     });
     proc.on('error', (err) => {
       signal.removeEventListener('abort', onAbort);
-      reject(err);
+      reject(new LocalBinaryError(`piper spawn error: ${err.message}`));
     });
   });
 }
@@ -520,11 +681,14 @@ async function speakWithCloud(
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
-    throw new Error(`Cloud TTS request failed (${response.status}): ${errText}`);
+    throw new CloudProviderError(
+      `Cloud TTS request failed (${response.status}): ${errText}`,
+      response.status,
+    );
   }
 
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body from cloud TTS endpoint');
+  if (!reader) throw new CloudProviderError('No response body from cloud TTS endpoint');
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -562,7 +726,15 @@ async function transcribeWithWhisper(apiKey: string, chunks: Buffer[]): Promise<
     body,
   });
 
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new CloudProviderError(
+      `Cloud Whisper request failed (${response.status}): ${errText}`,
+      response.status,
+    );
+  }
+
   const json = (await response.json()) as { text?: string; error?: { message: string } };
-  if (json.error) throw new Error(json.error.message);
+  if (json.error) throw new CloudProviderError(`Cloud Whisper returned error: ${json.error.message}`);
   return json.text ?? '';
 }

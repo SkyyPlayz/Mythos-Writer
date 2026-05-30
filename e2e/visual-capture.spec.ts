@@ -1,10 +1,10 @@
 /**
  * visual-capture.spec.ts — MYT-726
  *
- * Captures render artifacts for the MYT-531 Liquid Glass visual gate:
+ * Captures render artifacts for the MYT-531 Liquid Neon visual gate:
  *
  *   §9.2  9 surfaces × 2 viewports (1440×900 desktop, 390×844 mobile) = 18 shots
- *   §9.3  ThemeContrastSlider at 0 / 50 / 100 × 2 viewports             = 6 shots
+ *   §9.3  Style slider (lg-softness) at 0 / 0.5 / 1 × 2 viewports       = 6 shots
  *
  * Screenshots land in e2e-visual-artifacts/visual-capture/ for manual inspection
  * and attachment to MYT-531.
@@ -76,7 +76,7 @@ function seedUserData(userData: string, vaultDir: string): void {
     stories: [
       {
         id: storyId,
-        title: 'The Liquid Glass Chronicles',
+        title: 'The Liquid Neon Chronicles',
         path: `stories/${storyId}`,
         chapters: [
           {
@@ -317,7 +317,7 @@ test('§9.2 — 18 surface screenshots', async () => {
 
 // ─── §9.3 — 6 slider sweep shots ─────────────────────────────────────────────
 
-test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
+test('§9.3 — slider sweep at 0 / 0.5 / 1 (2 viewports)', async () => {
   // Return to editor view so glass surfaces are visible
   const editorBtn = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
   if (await editorBtn.isVisible()) await editorBtn.click();
@@ -327,14 +327,15 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
     await page.setViewportSize(vp);
     await page.waitForTimeout(200);
 
-    // Open settings to access ThemeContrastSlider
+    // Open settings to access the main Style (softness↔contrast) slider
     const gearBtn = page.locator('.app-menu-gear-btn');
     if (await gearBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await gearBtn.click();
       await page.waitForTimeout(600);
     }
 
-    const slider = page.locator('[data-testid="theme-contrast-slider"]');
+    // MYT-716: ThemeContrastSlider replaced by #lg-softness (range 0–1)
+    const slider = page.locator('#lg-softness');
     if (!(await slider.isVisible({ timeout: 3_000 }).catch(() => false))) {
       // Settings panel loaded but slider not visible — screenshot as-is
       await shot(page, `slider-no-slider-${vpLabel}`);
@@ -343,7 +344,7 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
       continue;
     }
 
-    for (const pos of [0, 50, 100] as const) {
+    for (const pos of [0, 0.5, 1] as const) {
       await slider.fill(String(pos));
       await slider.dispatchEvent('input');
       await slider.dispatchEvent('change');
@@ -351,8 +352,8 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
       await shot(page, `slider-pos${pos}-${vpLabel}`);
     }
 
-    // Reset to default before closing
-    await slider.fill('50');
+    // Reset to default (0.5 = midpoint) before closing
+    await slider.fill('0.5');
     await slider.dispatchEvent('input');
     await slider.dispatchEvent('change');
 
@@ -371,7 +372,7 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
 // ─── §9.5 — Reference image inventory ────────────────────────────────────────
 //
 // The reference images are already in-repo at:
-//   plans/ProjectGoalOverView/Liduid-Glass-Dark-Neon- theme- exampels/
+//   plans/ProjectGoalOverView/Liquid-Neon-theme-examples/
 //
 // This test logs their paths so the UX reviewer knows where to find them for
 // the side-by-side comparison with the §9.2 captures above.
@@ -379,7 +380,7 @@ test('§9.3 — slider sweep at 0 / 50 / 100 (2 viewports)', async () => {
 test('§9.5 — log reference image paths for side-by-side review', async () => {
   const refDir = path.resolve(
     __dirname,
-    '../plans/ProjectGoalOverView/Liduid-Glass-Dark-Neon- theme- exampels',
+    '../plans/ProjectGoalOverView/Liquid-Neon-theme-examples',
   );
 
   const refs = fs.existsSync(refDir)
@@ -388,12 +389,12 @@ test('§9.5 — log reference image paths for side-by-side review', async () => 
 
   // Map reference images to comparable §9.2 surfaces
   const pairs: { ref: string; capture: string }[] = [
-    { ref: 'Liquid Glass Dark Neon writing app example 1.png', capture: 's2-editor-desktop.png' },
-    { ref: 'Liquid Glass Dark Neon writing app example 2.png', capture: 's2-editor-mobile.png' },
-    { ref: 'Liquid glass Dark Neon Agent chat box example1.png', capture: 's5-agent-chat-desktop.png' },
+    { ref: 'Liquid Neon writing app example 1.png', capture: 's2-editor-desktop.png' },
+    { ref: 'Liquid Neon writing app example 2.png', capture: 's2-editor-mobile.png' },
+    { ref: 'Liquid Neon Agent chat box example1.png', capture: 's5-agent-chat-desktop.png' },
     { ref: 'Notes navigator example .png', capture: 's4-notes-tab-desktop.png' },
-    { ref: 'Mythos writer in Liquid glass dark neon example 1.png', capture: 's1-app-shell-desktop.png' },
-    { ref: 'Mythos writer in Liquid glass dark neon example 2.png', capture: 's1-app-shell-mobile.png' },
+    { ref: 'Mythos writer Liquid Neon example 1.png', capture: 's1-app-shell-desktop.png' },
+    { ref: 'Mythos writer Liquid Neon example 2.png', capture: 's1-app-shell-mobile.png' },
     { ref: 'Cosmic neon grapgh view example.png', capture: 's6-graph-desktop.png' },
     { ref: 'Mythos writer notes example 1.png', capture: 's4-notes-tab-mobile.png' },
   ];
