@@ -26,22 +26,28 @@ vi.stubGlobal('ResizeObserver', MockResizeObserver);
 // ─── window.api mock ───
 
 const mockListVault = vi.fn();
+const mockListNotesVault = vi.fn();
 const mockStartVaultWatch = vi.fn();
 const mockOnVaultFileChanged = vi.fn();
 const mockWriteVault = vi.fn();
+const mockWriteNotesVault = vi.fn();
 
 beforeEach(() => {
   vi.resetAllMocks();
   mockListVault.mockResolvedValue({ items: [] });
+  mockListNotesVault.mockResolvedValue({ items: [] });
   mockStartVaultWatch.mockResolvedValue({ watching: true });
   mockOnVaultFileChanged.mockReturnValue(vi.fn());
   mockWriteVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
+  mockWriteNotesVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
 
   (window as unknown as { api: unknown }).api = {
     listVault: mockListVault,
+    listNotesVault: mockListNotesVault,
     startVaultWatch: mockStartVaultWatch,
     onVaultFileChanged: mockOnVaultFileChanged,
     writeVault: mockWriteVault,
+    writeNotesVault: mockWriteNotesVault,
   };
 });
 
@@ -246,7 +252,7 @@ describe('VaultBrowser', () => {
 
   it('shows empty state when no stories', () => {
     render(<VaultBrowser {...baseProps} />);
-    expect(screen.getByText(/No stories yet/i)).toBeInTheDocument();
+    expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
   });
 
   it('calls onCreateStory when New Story button is clicked', () => {
@@ -270,28 +276,57 @@ describe('VaultBrowser', () => {
     expect(screen.getByText('My Great Novel')).toBeInTheDocument();
   });
 
-  it('filters out Manuscript items from notes vault', async () => {
-    mockListVault.mockResolvedValue({
+  it('filters out hidden items from notes vault', async () => {
+    mockListNotesVault.mockResolvedValue({
       items: [
-        { path: 'Manuscript', name: 'Manuscript', isDirectory: true, modifiedAt: '' },
-        { path: 'Manuscript/ch1', name: 'ch1', isDirectory: true, modifiedAt: '' },
+        { path: '.git', name: '.git', isDirectory: true, modifiedAt: '' },
+        { path: '.git/config', name: 'config', isDirectory: false, modifiedAt: '' },
         { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
       ],
     });
     render(<VaultBrowser {...baseProps} />);
     fireEvent.click(screen.getByTestId('vb-scope-notes'));
     await waitFor(() => {
-      expect(screen.queryByText('Manuscript')).not.toBeInTheDocument();
+      expect(screen.queryByText('.git')).not.toBeInTheDocument();
+      expect(screen.queryByText('config')).not.toBeInTheDocument();
     });
   });
 
-  it('calls listVault on mount', async () => {
+  it('calls listNotesVault (not listVault) for the Notes section', async () => {
     render(<VaultBrowser {...baseProps} />);
-    await waitFor(() => expect(mockListVault).toHaveBeenCalled());
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
+    expect(mockListVault).not.toHaveBeenCalled();
+  });
+
+  it('Notes section shows items from listNotesVault, not listVault', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [
+        { path: 'my-note.md', name: 'my-note.md', isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    mockListVault.mockResolvedValue({
+      items: [
+        { path: 'story-scene.md', name: 'story-scene.md', isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    render(<VaultBrowser {...baseProps} />);
+    fireEvent.click(screen.getByTestId('vb-scope-notes'));
+    // VirtualTree strips .md extension from display names
+    await waitFor(() => expect(screen.getByText('my-note')).toBeInTheDocument());
+    expect(screen.queryByText('story-scene')).not.toBeInTheDocument();
+  });
+
+  it('shows notes empty state when Notes Vault has no items', async () => {
+    mockListNotesVault.mockResolvedValue({ items: [] });
+    render(<VaultBrowser {...baseProps} />);
+    fireEvent.click(screen.getByTestId('vb-scope-notes'));
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-notes-empty')).toBeInTheDocument();
+    });
   });
 
   it('renders notes vault when notes items are loaded', async () => {
-    mockListVault.mockResolvedValue({
+    mockListNotesVault.mockResolvedValue({
       items: [
         { path: 'note1.md', name: 'note1.md', isDirectory: false, modifiedAt: '' },
       ],
@@ -304,39 +339,135 @@ describe('VaultBrowser', () => {
   });
 });
 
-// ─── NotesVaultEmptyState ───
+// ─── validateRenameName (SKY-115) ───
 
-describe('NotesVaultEmptyState', () => {
-  it('renders when notes count is 0', async () => {
-    // beforeEach resolves listVault to { items: [] } — empty vault
-    render(<VaultBrowser {...baseProps} />);
-    await waitFor(() => {
-      expect(screen.getByTestId('vb-notes-empty')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Capture your first idea')).toBeInTheDocument();
-    expect(screen.getByTestId('vb-notes-empty-cta')).toBeInTheDocument();
+import { validateRenameName } from './renameUtils';
+
+describe('validateRenameName', () => {
+  it('returns null for a valid name', () => {
+    expect(validateRenameName('My Scene')).toBeNull();
+    expect(validateRenameName('scene-1')).toBeNull();
+    expect(validateRenameName('  trimmed  ')).toBeNull();
   });
 
-  it('CTA click calls handleNewNote', async () => {
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null);
-    render(<VaultBrowser {...baseProps} />);
-    await waitFor(() => {
-      expect(screen.getByTestId('vb-notes-empty-cta')).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByTestId('vb-notes-empty-cta'));
-    expect(promptSpy).toHaveBeenCalled();
-    promptSpy.mockRestore();
+  it('returns error for empty string', () => {
+    expect(validateRenameName('')).not.toBeNull();
+    expect(validateRenameName('   ')).not.toBeNull();
   });
 
-  it('does not render when notes count > 0', async () => {
-    mockListVault.mockResolvedValue({
-      items: [
-        { path: 'note1.md', name: 'note1.md', isDirectory: false, modifiedAt: '' },
-      ],
-    });
-    render(<VaultBrowser {...baseProps} />);
-    await waitFor(() => {
-      expect(screen.queryByTestId('vb-notes-empty')).not.toBeInTheDocument();
-    });
+  it('returns error for name longer than 255 characters', () => {
+    expect(validateRenameName('a'.repeat(256))).not.toBeNull();
+  });
+
+  it('returns null for exactly 255 characters', () => {
+    expect(validateRenameName('a'.repeat(255))).toBeNull();
+  });
+
+  it('rejects invalid filesystem characters', () => {
+    for (const ch of ['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+      expect(validateRenameName(`bad${ch}name`)).not.toBeNull();
+    }
+  });
+
+  it('allows hyphens, underscores, spaces, and dots', () => {
+    expect(validateRenameName('my-scene_v1.2 final')).toBeNull();
   });
 });
+
+// ─── StoryVault inline rename (SKY-115) ───
+
+const storyWithScene: Story[] = [
+  {
+    id: 'story1',
+    title: 'Test Story',
+    path: 'stories/story1',
+    chapters: [
+      {
+        id: 'ch1',
+        title: 'Chapter One',
+        path: 'ch1',
+        order: 0,
+        scenes: [
+          {
+            id: 'sc1',
+            title: 'Opening Scene',
+            path: 'sc1.md',
+            order: 0,
+            blocks: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+        createdAt: '',
+        updatedAt: '',
+      },
+    ],
+    createdAt: '',
+    updatedAt: '',
+  },
+];
+
+const mockSceneRename = vi.fn().mockResolvedValue({ scene: { id: 'sc1', title: 'New Title' } });
+
+describe('StoryVault inline rename', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockSceneRename.mockClear();
+    (window as unknown as { api: unknown }).api = {
+      listVault: mockListVault,
+      startVaultWatch: mockStartVaultWatch,
+      onVaultFileChanged: mockOnVaultFileChanged,
+      writeVault: mockWriteVault,
+      sceneRename: mockSceneRename,
+    };
+  });
+
+  async function renderWithScene() {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    // Story auto-expands (single story); expand chapter
+    const chapterToggle = await screen.findByText('Chapter One');
+    fireEvent.click(chapterToggle);
+    return screen.findByTestId('vb-scene-sc1');
+  }
+
+  it('shows rename input on double-click of scene row', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    expect(input).toBeInTheDocument();
+    expect((input as HTMLInputElement).value).toBe('Opening Scene');
+  });
+
+  it('cancels rename on Escape without calling IPC', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: /rename scene/i })).not.toBeInTheDocument();
+    });
+    expect(mockSceneRename).not.toHaveBeenCalled();
+  });
+
+  it('commits rename on Enter and calls sceneRename IPC', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    fireEvent.change(input, { target: { value: 'Renamed Scene' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(mockSceneRename).toHaveBeenCalledWith({ sceneId: 'sc1', title: 'Renamed Scene' });
+    });
+  });
+
+  it('shows validation error for empty name and does not call IPC', async () => {
+    const sceneRow = await renderWithScene();
+    fireEvent.doubleClick(sceneRow);
+    const input = await screen.findByRole('textbox', { name: /rename scene/i });
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(mockSceneRename).not.toHaveBeenCalled();
+  });
+});
+

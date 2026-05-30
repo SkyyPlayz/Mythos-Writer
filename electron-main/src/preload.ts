@@ -22,8 +22,19 @@ contextBridge.exposeInMainWorld('api', {
   // a re-seed on the main side, so the renderer can persist user edits in a
   // single round-trip.
   vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
-  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string) =>
-    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath }),
+  // SKY-12.2: opts.seedMode = 'default' | 'blank' controls scaffold behavior.
+  // Defaults to 'default' (full SKY-15 layout) when absent — backwards-compatible.
+  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) =>
+    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode }),
+  // SKY-12.2: pure filesystem check for the onboarding wizard path-picker.
+  validatePath: (p: string) => ipcRenderer.invoke('vault:validate-path', { path: p }),
+  // SKY-12.3: copy the bundled sample project into a two-vault layout.
+  loadSampleTwoVault: (parentPath: string) =>
+    ipcRenderer.invoke('vault:load-sample-twovault', { parentPath }),
+  // SKY-12.4: mark onboarding as complete — persists flag without full settings roundtrip.
+  onboardingComplete: () => ipcRenderer.invoke('onboarding:complete', undefined),
+  // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
+  onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
 
   // SKY-9: full Notes-Vault-scoped CRUD for VaultBrowser and the
   // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault
@@ -52,7 +63,6 @@ contextBridge.exposeInMainWorld('api', {
   obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
   loadSampleProject: (targetPath?: string) => ipcRenderer.invoke('vault:load-sample', { targetPath }),
   createBlankVault: (targetPath: string) => ipcRenderer.invoke('vault:create-blank', { targetPath }),
-  validatePath: (vaultPath: string) => ipcRenderer.invoke('vault:validate-path', { path: vaultPath }),
   obsidianPickFolderByPath: (sourcePath: string) => ipcRenderer.invoke('vault:pick-folder-by-path', { sourcePath }),
   onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => {
     const handler = (_: unknown, data: { current: number; total: number; lastAction: string }) => cb(data);
@@ -108,6 +118,8 @@ contextBridge.exposeInMainWorld('api', {
   // Versioning — per-scene snapshots
   snapshotSave: (sceneId: string, content: string) =>
     ipcRenderer.invoke('snapshot:save', { sceneId, content }),
+  snapshotSaveSync: (sceneId: string, content: string) =>
+    ipcRenderer.sendSync('snapshot:save-sync', { sceneId, content }),
   snapshotList: (sceneId: string) =>
     ipcRenderer.invoke('snapshot:list', { sceneId }),
   snapshotGet: (sceneId: string, snapshotId: string) =>
@@ -289,6 +301,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('chapter:create', payload),
   sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) =>
     ipcRenderer.invoke('scene:create', payload),
+  // SKY-115: inline scene rename (title-only, manifest update)
+  sceneRename: (payload: { sceneId: string; title: string }) =>
+    ipcRenderer.invoke('scene:rename', payload),
   sceneSave: (payload: { sceneId: string; prose: string; title?: string; order?: number; intent?: string }) =>
     ipcRenderer.invoke('scene:save', payload),
 
@@ -449,6 +464,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('brainstorm:resetCategoryRouting', { category }),
   brainstormListNotesFolders: () =>
     ipcRenderer.invoke('brainstorm:listNotesFolders', undefined),
+
+  // SKY-130: persist last-opened scene + cursor position for cross-restart restore.
+  sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) =>
+    ipcRenderer.invoke('session:saveScene', payload),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

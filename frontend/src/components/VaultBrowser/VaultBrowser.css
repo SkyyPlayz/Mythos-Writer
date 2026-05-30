@@ -250,6 +250,116 @@
   overflow: hidden;
 }
 
+/* ─── Story vault empty state ─── */
+
+.vb-story-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+  animation: vb-story-empty-fadein var(--dur-hover-in) var(--ease-standard) both;
+}
+
+@keyframes vb-story-empty-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vb-story-empty {
+    animation-duration: 0.01ms;
+  }
+}
+
+.vb-story-empty-icon {
+  color: var(--text-muted);
+  margin-bottom: var(--space-4);
+  display: flex;
+}
+
+.vb-story-empty-heading {
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  font-weight: var(--weight-heading);
+  color: var(--text-header);
+  margin: 0 0 var(--space-2) 0;
+  letter-spacing: var(--tracking-heading);
+}
+
+.vb-story-empty-sub {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  color: var(--text-body);
+  max-width: 240px;
+  margin: 0 0 var(--space-5) 0;
+  overflow-wrap: anywhere;
+}
+
+.vb-story-empty-cta {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg-canvas);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-heading);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  min-height: 36px;
+  cursor: pointer;
+  margin-bottom: var(--space-3);
+  transition:
+    background var(--dur-hover-in) var(--ease-standard),
+    box-shadow var(--dur-hover-in) var(--ease-standard);
+}
+
+.vb-story-empty-cta:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: var(--neon-glow);
+}
+
+.vb-story-empty-cta:active {
+  transform: scale(0.98);
+  transition-duration: var(--dur-press);
+}
+
+.vb-story-empty-cta:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.vb-story-empty-footer {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Split mode (scope=both): narrow panel overrides */
+
+.vb-section-story-split .vb-story-empty {
+  padding: var(--space-8) var(--space-4);
+}
+
+.vb-section-story-split .vb-story-empty-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.vb-section-story-split .vb-story-empty-sub {
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.vb-section-story-split .vb-story-empty-cta {
+  align-self: stretch;
+}
+
 /* ─── Empty / loading ─── */
 
 .vb-empty,
@@ -394,6 +504,94 @@
 }
 
 .vb-context-item:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+  color: var(--text-header, #fff);
+}
+
+/* ─── Inline rename (SKY-115) ─── */
+
+.vb-rename-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.vb-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--accent, #00f0ff);
+  border-radius: 3px;
+  color: var(--text-header, #fff);
+  font: inherit;
+  font-size: var(--text-sm, 0.8rem);
+  padding: 1px 5px;
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #00f0ff) 25%, transparent);
+  line-height: 1.4;
+}
+
+.vb-rename-input:focus {
+  border-color: var(--accent, #00f0ff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #00f0ff) 30%, transparent);
+}
+
+.vb-rename-error {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 0;
+  right: 0;
+  font-size: var(--text-xs, 0.7rem);
+  color: #ff6b6b;
+  padding: 2px 5px;
+  background: var(--glass-fill-fallback, rgba(20,20,30,0.96));
+  border: 1px solid rgba(255,107,107,0.3);
+  border-radius: 0 0 3px 3px;
+  z-index: 10;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+
+/* ─── Focus rings (SKY-143) ─── */
+
+.vb-scope-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.vb-section-add:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.vb-tree-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}
+
+.vb-item-row:hover .vb-inline-add,
+.vb-inline-add:focus-visible {
+  opacity: 1;
+}
+
+.vb-inline-add:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+  color: var(--text-header, #fff);
+}
+
+.vb-row:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+  color: var(--text-body, rgba(255,255,255,0.85));
+}
+
+.vb-context-item:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
   background: var(--glass-highlight, rgba(255,255,255,0.06));
   color: var(--text-header, #fff);
 }
