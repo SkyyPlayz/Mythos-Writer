@@ -201,7 +201,7 @@ function StoryVault({
                                 tabIndex={0}
                                 onClick={() => onSelectScene(scene, chapter, story)}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
+                                  if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault();
                                     onSelectScene(scene, chapter, story);
                                   }

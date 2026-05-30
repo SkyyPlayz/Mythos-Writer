@@ -293,3 +293,22 @@
   gap: 8px;
   margin-top: 4px;
 }
+
+/* Focus rings */
+.entity-group-header:focus-visible {
+  outline: 2px solid var(--focus-ring, #6366f1);
+  outline-offset: -2px;
+}
+
+.entity-item-select:focus-visible {
+  outline: 2px solid var(--focus-ring, #6366f1);
+  outline-offset: -2px;
+}
+
+.entity-item-delete:focus-visible,
+.entity-btn-danger-sm:focus-visible,
+.entity-btn-ghost-sm:focus-visible,
+.entity-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #6366f1);
+  outline-offset: 2px;
+}
