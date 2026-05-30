@@ -8,7 +8,7 @@
     "electron-main"
   ],
   "scripts": {
-    "dev": "npm run rebuild:native && electron-vite dev",
+    "dev": "electron-vite dev",
     "build": "electron-vite build && electron-builder --win zip",
     "build:installer": "electron-vite build && electron-builder --win nsis",
     "dist": "electron-vite build && electron-builder --win",
