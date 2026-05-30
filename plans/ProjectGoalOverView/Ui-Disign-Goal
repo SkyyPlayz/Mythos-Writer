@@ -1,5 +1,5 @@
 ### Overview
-**Liquid Glass Dark Neon** blends translucent, frosted-glass surfaces with controlled neon illumination to create a futuristic, readable workspace. The goal is a calm, immersive UI where depth and hierarchy are communicated by **light, blur, and subtle motion** rather than heavy borders. Prioritize long-session comfort: reduce bloom, keep text contrast high, and use neon as a directional accent rather than the primary color for large text blocks.
+**Liquid Neon** blends translucent, frosted-glass surfaces with controlled neon illumination to create a futuristic, readable workspace. The goal is a calm, immersive UI where depth and hierarchy are communicated by **light, blur, and subtle motion** rather than heavy borders. Prioritize long-session comfort: reduce bloom, keep text contrast high, and use neon as a directional accent rather than the primary color for large text blocks.
 
 
 ## in app
@@ -7,7 +7,7 @@ The Mythos writer app should have a smooth consistant and unifor design across t
 ---
 
 ## Concise summary
-This is a prescriptive design spec for a **Liquid Glass Dark Neon** UI: a dark, glassmorphic canvas with high-contrast text, frosted translucent panels, and restrained cyan/violet/magenta neon accents used as directional lighting rather than surface color. The brief is intentionally prescriptive and production-ready, with component behaviors, motion specs, implementation notes, and accessibility constraints.
+This is a prescriptive design spec for a **Liquid Neon** UI: a dark, glassmorphic canvas with high-contrast text, frosted translucent panels, and restrained cyan/violet/magenta neon accents used as directional lighting rather than surface color. The brief is intentionally prescriptive and production-ready, with component behaviors, motion specs, implementation notes, and accessibility constraints.
 
 ---
 

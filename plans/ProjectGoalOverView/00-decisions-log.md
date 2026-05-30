@@ -11,7 +11,7 @@ For the full plain-language explanation of every question and the recommended de
 | ID | Decision | Notes |
 | --- | --- | --- |
 | 0.1 | **Keep Obsidian backwards-compatibility.** | Compat is low-cost and does not constrain UX innovation. Documented in [01-overview.md → Obsidian compatibility (CEO decision)](01-overview.md#obsidian-compatibility-ceo-decision). |
-| 0.2 | **Adopt "Liquid Glass Dark Neon" as the official visual identity (MYT-516).** | Board-supplied brief + reference images. Applies uniformly across the app and adds a continuous Softness↔Contrast slider. Documented in [12-visual-design-system.md](12-visual-design-system.md); design + implementation delegated via MYT-516 child issues. |
+| 0.2 | **Adopt "Liquid Neon" as the official visual identity (MYT-516).** | Board-supplied brief + reference images. Applies uniformly across the app and adds a continuous Softness↔Contrast slider. Documented in [12-visual-design-system.md](12-visual-design-system.md); design + implementation delegated via MYT-516 child issues. |
 
 ---
 

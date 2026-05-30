@@ -21,6 +21,7 @@ import { safeVaultJoin } from './vault/safeVaultJoin.js';
 export {
   safeVaultJoin,
   safeVaultIpcJoin,
+  safeVaultDirIpcJoin,
   VAULT_IPC_ALLOWED_EXTENSIONS,
 } from './vault/safeVaultJoin.js';
 export type { SafeVaultJoinOptions } from './vault/safeVaultJoin.js';
@@ -408,6 +409,59 @@ export function readSceneFile(vaultRoot: string, relativePath: string): SceneFil
   };
 }
 
+// ─── SKY-10: chapter.md (chapter-level metadata) ───
+//
+// `chapter.md` lives at the root of the chapter folder. It holds the stable
+// chapter `id` (so renaming the folder does not lose identity), title, order,
+// and any optional chapter-level prose (epigraph, author notes). It is the
+// chapter analog of a scene file and is excluded from scene reindexing.
+
+export const CHAPTER_META_FILENAME = 'chapter.md';
+
+export interface ChapterFileData {
+  id: string;
+  title: string;
+  storyId?: string;
+  order?: number;
+  prose: string;
+}
+
+export function chapterMetaPath(chapterRelPath: string): string {
+  return path.posix.join(chapterRelPath.split(path.sep).join('/'), CHAPTER_META_FILENAME);
+}
+
+export function writeChapterMetaFile(
+  vaultRoot: string,
+  chapterRelPath: string,
+  data: ChapterFileData,
+): void {
+  const fm: Frontmatter = {
+    id: data.id,
+    title: data.title,
+    ...(data.storyId ? { storyId: data.storyId } : {}),
+    ...(data.order !== undefined ? { order: data.order } : {}),
+    schemaVersion: 1,
+    updatedAt: new Date().toISOString(),
+  };
+  writeVaultFileAtomic(vaultRoot, chapterMetaPath(chapterRelPath), serializeFrontmatter(fm, data.prose));
+}
+
+export function readChapterMetaFile(vaultRoot: string, chapterRelPath: string): ChapterFileData | null {
+  const rel = chapterMetaPath(chapterRelPath);
+  const full = safePath(vaultRoot, rel);
+  if (!fs.existsSync(full)) return null;
+  const { content } = readVaultFile(vaultRoot, rel);
+  const { frontmatter, prose } = parseFrontmatter(content);
+  if (!frontmatter.id) return null;
+  return {
+    id: String(frontmatter.id),
+    title: String(frontmatter.title ?? path.basename(chapterRelPath)),
+    storyId: frontmatter.storyId ? String(frontmatter.storyId) : undefined,
+    order: frontmatter.order !== undefined ? Number(frontmatter.order) : undefined,
+    prose,
+  };
+}
+
 // ─── Entity file ───
 
 export interface EntityFileData {
@@ -583,9 +637,14 @@ function collectMarkdownFiles(dir: string, base = ''): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
     const rel = base ? `${base}/${entry.name}` : entry.name;
-    if (entry.isDirectory() && !entry.name.startsWith('.')) {
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('.')) continue;
+      // SKY-10: skip `versions/` — snapshot files are not scenes.
+      if (entry.name === 'versions') continue;
       results.push(...collectMarkdownFiles(path.join(dir, entry.name), rel));
     } else if (entry.name.endsWith('.md')) {
+      // SKY-10: chapter.md is metadata, not a scene.
+      if (entry.name === CHAPTER_META_FILENAME) continue;
       results.push(rel);
     }
   }

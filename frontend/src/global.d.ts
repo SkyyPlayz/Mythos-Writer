@@ -9,6 +9,44 @@ interface SceneSnapshot {
   createdAt: string;
 }
 
+// SKY-10 — Per-scene versioned drafts
+type VersionIntent =
+  | 'save'
+  | 'auto'
+  | 'agent-suggestion-applied'
+  | 'pre-rollback'
+  | 'migration';
+
+interface SceneVersion {
+  sceneId: string;
+  ts: string;
+  content: string;
+  intent: VersionIntent;
+  contentHash: string;
+}
+
+// SKY-10 — Legacy migration plan
+interface MigrationPlanChange {
+  kind: 'create-dir' | 'write-file' | 'snapshot-legacy' | 'unlink-file';
+  path: string;
+  description: string;
+}
+
+interface MigrationPlan {
+  planId: string;
+  storyPath: string;
+  detectedLegacyFiles: string[];
+  changes: MigrationPlanChange[];
+  createdAt: string;
+}
+
+interface MigrationApplyResult {
+  planId: string;
+  storyPath: string;
+  appliedChanges: number;
+  snapshotsWritten: string[];
+}
+
 interface EntityEntry {
   id: string;
   name: string;
@@ -98,8 +136,8 @@ interface EditModeConfig {
   showBetaRead: boolean;
 }
 
-/** Liquid Glass theme customization. All values optional; absent = LIQUID_GLASS_DEFAULTS. */
-interface LiquidGlassPrefs {
+/** Liquid Neon theme customization. All values optional; absent = LIQUID_NEON_DEFAULTS. */
+interface LiquidNeonPrefs {
   /** 'default' = built-in CSS gradient; file path = background image (MYT-716). */
   background: 'default' | string;
   style: number;
@@ -142,6 +180,14 @@ interface LiquidGlassPrefs {
   accentColor?: string;
   /** Neon border colour slot. Default 'cyan'. */
   neonBorderColor?: 'cyan' | 'violet' | 'magenta';
+
+  // ── Neon color customization (SKY-127) ───────────────────────────────────
+  /** Cyan neon color hex. Default '#00f0ff'. */
+  neonColorCyan?: string;
+  /** Violet neon color hex. Default '#9b5fff'. */
+  neonColorViolet?: string;
+  /** Magenta neon color hex. Default '#ff4dff'. */
+  neonColorMagenta?: string;
 }
 
 
@@ -170,8 +216,8 @@ interface AppSettings {
   onboardingComplete?: boolean;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
-  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
-  liquidGlass?: LiquidGlassPrefs;
+  /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
+  liquidNeon?: LiquidNeonPrefs;
   /** Voice IO settings (MYT-205). */
   voice?: {
     enabled: boolean;
@@ -201,6 +247,13 @@ interface AppSettings {
   telemetry?: {
     enabled: boolean;
     sessionId: string;
+  };
+  /** SKY-130: last active scene + cursor position, restored on next launch. */
+  lastOpenedScene?: {
+    sceneId: string;
+    scenePath: string;
+    scrollTop: number;
+    cursorLine: number;
   };
 }
 
@@ -271,9 +324,19 @@ interface Window {
 
     // Versioning — per-scene snapshots
     snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotSaveSync: (sceneId: string, content: string) => void;
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
+
+    // SKY-10 — Per-scene versioned drafts
+    versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
+    versionGet: (sceneId: string, ts: string) => Promise<{ version: SceneVersion | null }>;
+    versionRollback: (sceneId: string, ts: string) => Promise<{ restoredVersion: SceneVersion; preRollbackVersion: SceneVersion }>;
+
+    // SKY-10 — Legacy single-file-per-chapter migration
+    migrationDryRun: (storyPath?: string) => Promise<{ plans: MigrationPlan[] }>;
+    migrationApply: (planId: string, storyPath: string) => Promise<{ result: MigrationApplyResult }>;
 
     // Entity CRUD
     entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
@@ -299,7 +362,21 @@ interface Window {
 
     // App settings
     settingsGet: () => Promise<AppSettings>;
-    settingsSet: (settings: AppSettings) => Promise<{ saved: boolean }>;
+    /**
+     * MYT-788: optional `tokens` carries one-shot registration tokens from
+     * voicePickBinary, required when changing stt.localBinaryPath,
+     * tts.localBinaryPath, or tts.localModelPath.
+     */
+    settingsSet: (
+      settings: AppSettings,
+      tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
+    ) => Promise<{ saved: boolean; error?: string }>;
+    /** Test connection to an AI provider (MYT-779). */
+    settingsTestConnection: (provider: { kind: string; apiKey?: string; baseUrl?: string; model: string }) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
+    /** Main-process file picker for local voice binary / model selection (MYT-788). */
+    voicePickBinary: (
+      kind: 'stt-binary' | 'tts-binary' | 'tts-model',
+    ) => Promise<{ path: string | null; cancelled: boolean; registrationToken: string | null }>;
     getAgentConfig: () => Promise<unknown>;
     setAgentConfig: (agent: string, config: unknown) => Promise<unknown>;
     agentBudgetUsage: () => Promise<{
@@ -345,6 +422,8 @@ interface Window {
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
     sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<import('./types').Scene>;
+    // SKY-115: inline scene rename (title-only, manifest update)
+    sceneRename: (payload: { sceneId: string; title: string }) => Promise<{ scene: import('./types').Scene } | { error: string }>;
 
     // Auto-updater (MYT-245) — feature-flagged; safe no-ops in dev
     onUpdateStatus: (cb: (data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => void) => () => void;
@@ -368,7 +447,7 @@ interface Window {
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
 
-    // Liquid Glass background image (MYT-716)
+    // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
     loadBgImage: (filePath: string) => Promise<{ dataUrl: string | null }>;
 
@@ -410,6 +489,8 @@ interface Window {
     onWritingModeChanged: (cb: (data: { mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }) => void) => () => void;
 
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
+    // MYT-789: setPaths now requires a per-path registrationToken from
+    // vault:pick-folder, or the path must already be in recent-projects.
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
     // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
     vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
@@ -431,6 +512,7 @@ interface Window {
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
     moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
+    mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)
@@ -482,6 +564,31 @@ interface Window {
     onVoiceSpeakChunk: (cb: (event: { speakId: string; chunk: Uint8Array }) => void) => () => void;
     onVoiceSpeakDone: (cb: (event: { speakId: string }) => void) => () => void;
     onVoiceSpeakError: (cb: (event: { speakId: string; error: string }) => void) => () => void;
+
+    // Brainstorm Agent routing (SKY-20) — layoutMode-aware destination resolution
+    brainstormGetSettings: () => Promise<{
+      layoutMode: 'default' | 'blank' | 'imported';
+      notesRouting: Partial<Record<'character' | 'location' | 'item' | 'note', string>>;
+    }>;
+    brainstormWriteNote: (payload: { category: 'character' | 'location' | 'item' | 'note'; name: string; content: string }) => Promise<
+      | { status: 'written'; path: string; suggestionId: string; reason: 'default-layout' | 'remembered' }
+      | { status: 'needs_routing'; stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; name: string }
+    >;
+    brainstormResolveRouting: (payload: { stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; destination: string; remember: boolean }) => Promise<{
+      status: 'written';
+      path: string;
+      notesRouting: Partial<Record<'character' | 'location' | 'item' | 'note', string>>;
+    }>;
+    brainstormResetCategoryRouting: (category: 'character' | 'location' | 'item' | 'note') => Promise<{
+      notesRouting: Partial<Record<'character' | 'location' | 'item' | 'note', string>>;
+    }>;
+    brainstormListNotesFolders: () => Promise<{
+      folders: Array<{ path: string; label: string }>;
+      notesVaultRoot: string;
+    }>;
+
+    // SKY-130: persist last-opened scene + cursor for cross-restart restore
+    sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

@@ -22,8 +22,8 @@ export function maskApiKey(key: string | undefined | null): string {
 }
 
 // Mask every API-key-shaped field on AppSettings before it crosses the IPC
-// boundary to the renderer. Currently apiKey (legacy), provider.apiKey, and
-// voice.openaiApiKey (OpenAI Whisper cloud fallback).
+// boundary to the renderer. Currently: apiKey (Anthropic legacy field),
+// provider.apiKey (active provider), and voice.openaiApiKey.
 export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
   const masked: AppSettings = { ...settings, apiKey: maskApiKey(settings.apiKey) };
   if (settings.provider?.apiKey) {
@@ -45,6 +45,14 @@ export function reconcileSettingsFromRenderer(
 ): AppSettings {
   const apiKey = incoming.apiKey === maskApiKey(stored.apiKey) ? stored.apiKey : incoming.apiKey;
   const reconciled: AppSettings = { ...incoming, apiKey };
+  // Reconcile provider.apiKey: if the renderer echoes back the masked preview, preserve the stored key.
+  if (incoming.provider && stored.provider?.apiKey) {
+    const incomingProviderKey = incoming.provider.apiKey;
+    const rawStored = stored.provider.apiKey;
+    if (incomingProviderKey === maskApiKey(rawStored)) {
+      reconciled.provider = { ...incoming.provider, apiKey: rawStored };
+    }
+  }
   if (
     stored.voice?.openaiApiKey
     && incoming.voice

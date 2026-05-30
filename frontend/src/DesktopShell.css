@@ -5,7 +5,7 @@
   overflow: hidden;
   background: var(--bg-base);
   /* Background image wallpaper (MYT-613) — layered behind all glass panels.
-     --bg-app-image is 'none' (transparent) by default; set by applyLiquidGlassTokens. */
+     --bg-app-image is 'none' (transparent) by default; set by applyLiquidNeonTokens. */
   background-image: var(--bg-app-image, none);
   background-size: cover;
   background-position: center;
@@ -127,6 +127,9 @@
   cursor: pointer;
   border-radius: 4px;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .app-menu-dropdown-item:hover {
@@ -138,6 +141,13 @@
   height: 1px;
   background: var(--border-default);
   margin: 4px 0;
+}
+
+.app-menu-shortcut-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  margin-left: 16px;
 }
 
 /* View toggle (Editor / Brainstorm) */
@@ -694,4 +704,94 @@
   background: var(--accent);
   border-color: var(--accent);
   color: var(--bg-canvas);
+}
+
+/* ─── Distraction-free focus mode (SKY-133) ─── */
+
+/* Hide the toolbar button until hover to keep it from dominating */
+.app-menu-df-btn {
+  background: none;
+  border: none;
+  padding: 2px 7px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  line-height: 1.6;
+  -webkit-app-region: no-drag;
+}
+
+.app-menu-df-btn:hover {
+  color: var(--text-primary);
+  background: var(--border-default);
+}
+
+.app-menu-df-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Full-bleed shell when focus mode is active */
+.desktop-shell.distraction-free {
+  background: var(--bg-canvas, #0b0e13);
+}
+
+.distraction-free .shell-center-column {
+  /* Takes full height since app-menu-bar is unmounted */
+  height: 100vh;
+}
+
+/* Generous prose margins — Ulysses / iA Writer style */
+.distraction-free .tiptap-editor-wrap {
+  padding: 5rem 12%;
+}
+
+.distraction-free .tiptap-content {
+  max-width: 660px;
+}
+
+/* Fixed overlay: hint + status bar */
+.focus-mode-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 200;
+}
+
+.focus-hint {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  opacity: 1;
+  transition: opacity 1s ease;
+  white-space: nowrap;
+}
+
+.focus-hint.focus-hint-hidden {
+  opacity: 0;
+}
+
+.focus-status-bar {
+  position: absolute;
+  bottom: 2rem;
+  right: 2.5rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  opacity: 0.4;
+  transition: opacity var(--dur-hover-in, 180ms);
+}
+
+.focus-status-bar:hover {
+  opacity: 1;
+}
+
+.focus-save-ok {
+  color: var(--success, #16a34a);
 }

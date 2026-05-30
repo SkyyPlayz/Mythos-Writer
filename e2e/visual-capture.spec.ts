@@ -1,7 +1,7 @@
 /**
  * visual-capture.spec.ts — MYT-726
  *
- * Captures render artifacts for the MYT-531 Liquid Glass visual gate:
+ * Captures render artifacts for the MYT-531 Liquid Neon visual gate:
  *
  *   §9.2  9 surfaces × 2 viewports (1440×900 desktop, 390×844 mobile) = 18 shots
  *   §9.3  Style slider (lg-softness) at 0 / 0.5 / 1 × 2 viewports       = 6 shots
@@ -76,7 +76,7 @@ function seedUserData(userData: string, vaultDir: string): void {
     stories: [
       {
         id: storyId,
-        title: 'The Liquid Glass Chronicles',
+        title: 'The Liquid Neon Chronicles',
         path: `stories/${storyId}`,
         chapters: [
           {
@@ -372,7 +372,7 @@ test('§9.3 — slider sweep at 0 / 0.5 / 1 (2 viewports)', async () => {
 // ─── §9.5 — Reference image inventory ────────────────────────────────────────
 //
 // The reference images are already in-repo at:
-//   plans/ProjectGoalOverView/Liduid-Glass-Dark-Neon- theme- exampels/
+//   plans/ProjectGoalOverView/Liquid-Neon-theme-examples/
 //
 // This test logs their paths so the UX reviewer knows where to find them for
 // the side-by-side comparison with the §9.2 captures above.
@@ -380,7 +380,7 @@ test('§9.3 — slider sweep at 0 / 0.5 / 1 (2 viewports)', async () => {
 test('§9.5 — log reference image paths for side-by-side review', async () => {
   const refDir = path.resolve(
     __dirname,
-    '../plans/ProjectGoalOverView/Liduid-Glass-Dark-Neon- theme- exampels',
+    '../plans/ProjectGoalOverView/Liquid-Neon-theme-examples',
   );
 
   const refs = fs.existsSync(refDir)
@@ -389,12 +389,12 @@ test('§9.5 — log reference image paths for side-by-side review', async () => 
 
   // Map reference images to comparable §9.2 surfaces
   const pairs: { ref: string; capture: string }[] = [
-    { ref: 'Liquid Glass Dark Neon writing app example 1.png', capture: 's2-editor-desktop.png' },
-    { ref: 'Liquid Glass Dark Neon writing app example 2.png', capture: 's2-editor-mobile.png' },
-    { ref: 'Liquid glass Dark Neon Agent chat box example1.png', capture: 's5-agent-chat-desktop.png' },
+    { ref: 'Liquid Neon writing app example 1.png', capture: 's2-editor-desktop.png' },
+    { ref: 'Liquid Neon writing app example 2.png', capture: 's2-editor-mobile.png' },
+    { ref: 'Liquid Neon Agent chat box example1.png', capture: 's5-agent-chat-desktop.png' },
     { ref: 'Notes navigator example .png', capture: 's4-notes-tab-desktop.png' },
-    { ref: 'Mythos writer in Liquid glass dark neon example 1.png', capture: 's1-app-shell-desktop.png' },
-    { ref: 'Mythos writer in Liquid glass dark neon example 2.png', capture: 's1-app-shell-mobile.png' },
+    { ref: 'Mythos writer Liquid Neon example 1.png', capture: 's1-app-shell-desktop.png' },
+    { ref: 'Mythos writer Liquid Neon example 2.png', capture: 's1-app-shell-mobile.png' },
     { ref: 'Cosmic neon grapgh view example.png', capture: 's6-graph-desktop.png' },
     { ref: 'Mythos writer notes example 1.png', capture: 's4-notes-tab-mobile.png' },
   ];

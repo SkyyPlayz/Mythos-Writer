@@ -1,0 +1,163 @@
+/* SKY-10: SceneHistoryPane styles — keep visually quiet so the editor remains primary. */
+.scene-history-pane {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-width: 360px;
+  background: var(--surface-1, #1a1d24);
+  color: var(--text-primary, #e7e9ee);
+  border-left: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
+  padding: 16px 12px;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.scene-history-pane header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scene-history-pane h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.scene-history-close {
+  background: transparent;
+  color: var(--text-muted, #9aa1ad);
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.scene-history-close:hover {
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+}
+
+.scene-history-empty,
+.scene-history-loading {
+  color: var(--text-muted, #9aa1ad);
+  margin: 0;
+  padding: 12px 0;
+}
+
+.scene-history-error {
+  color: var(--danger, #ff7373);
+  margin: 0;
+  padding: 12px 0;
+}
+
+.scene-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  outline: none;
+}
+
+.scene-history-list:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent, #6f8aff) inset;
+  border-radius: 6px;
+}
+
+.scene-history-row {
+  display: grid;
+  grid-template-columns: 72px 90px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.scene-history-row:hover,
+.scene-history-row.is-active {
+  background: var(--surface-3, rgba(255, 255, 255, 0.06));
+}
+
+.scene-history-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #9aa1ad);
+}
+
+.scene-history-intent {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  background: rgba(111, 138, 255, 0.12);
+  color: var(--accent, #6f8aff);
+}
+.scene-history-intent--auto {
+  background: rgba(154, 161, 173, 0.12);
+  color: var(--text-muted, #9aa1ad);
+}
+.scene-history-intent--pre-rollback {
+  background: rgba(255, 200, 100, 0.12);
+  color: #ffc864;
+}
+.scene-history-intent--migration {
+  background: rgba(124, 255, 175, 0.12);
+  color: #7cffaf;
+}
+.scene-history-intent--agent-suggestion-applied {
+  background: rgba(255, 138, 138, 0.12);
+  color: #ff8a8a;
+}
+
+.scene-history-delta {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-muted, #9aa1ad);
+}
+
+.scene-history-restore {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--text-primary, #e7e9ee);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  cursor: pointer;
+}
+.scene-history-restore:hover {
+  background: var(--surface-3, rgba(255, 255, 255, 0.08));
+}
+
+.scene-history-confirm {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--surface-3, rgba(255, 255, 255, 0.06));
+  border-radius: 8px;
+}
+.scene-history-confirm p {
+  margin: 0 0 12px 0;
+}
+.scene-history-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.scene-history-confirm-actions button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.1));
+  background: transparent;
+  color: var(--text-primary, #e7e9ee);
+  cursor: pointer;
+}
+.scene-history-confirm-actions button.primary {
+  background: var(--accent, #6f8aff);
+  border-color: var(--accent, #6f8aff);
+  color: #0e1116;
+}
