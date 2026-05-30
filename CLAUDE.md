@@ -19,6 +19,30 @@ is part of the implementation, not a follow-up step.
 These checks are defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 as the `ci`, `build-macos`, and `build-linux` jobs.
 
+## Never merge a PR with failing required checks
+
+This rule is non-negotiable, regardless of whether GitHub branch protection
+currently enforces it:
+
+- Before clicking `gh pr merge` or the Merge button, confirm `gh pr checks <num>`
+  shows **all three** of `ci`, `build-linux`, and `build-macos` as `pass`.
+- If a required check is red, fix the cause on the PR branch and push again.
+  Do not merge "to fix on main" — that is what produced the SKY-143 and SKY-157
+  incidents (PRs #156 and #162 merged with red `ci` + `build-linux`, leaving
+  main red until subsequent fix-forward commits).
+- A red required check that is unrelated to the PR's diff (e.g. inherited from
+  a previously merged broken commit on main) is still a hard block on merging.
+  Open a separate fix issue, get main green first, then rebase the PR.
+- If you believe a required check is genuinely broken (infra, runner, flake)
+  and not testing real product code, escalate and get explicit human approval
+  before merging — do not unilaterally override.
+
+Pre-merge command:
+
+```bash
+gh pr checks <num>   # all three required checks must show `pass`
+```
+
 ## What each check enforces
 
 - **`ci`** (ubuntu): frontend lint, frontend + electron-main type-checks,
