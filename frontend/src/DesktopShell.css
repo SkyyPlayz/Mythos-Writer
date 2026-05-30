@@ -700,7 +700,7 @@
   color: inherit;
   cursor: pointer;
 }
-.prompt-modal-ok {
+.prompt-modal-actions .prompt-modal-ok {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--bg-canvas);
