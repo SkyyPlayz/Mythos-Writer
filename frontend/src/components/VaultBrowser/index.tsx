@@ -358,9 +358,10 @@ interface NotesVaultProps {
   onContextChange?: (context: 'file' | 'folder' | null) => void;
   activeTag: string | null;
   onTagFilter: (tag: string | null) => void;
+  iconMap?: Record<string, string>;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap }: NotesVaultProps) {
   const allNotesItems = items.filter(isNotesItem);
   const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
 
@@ -535,6 +536,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           onRenameChange={setEditValue}
           onRenameCommit={handleRenameCommit}
           onRenameCancel={handleRenameCancel}
+          iconMap={iconMap}
         />
       )}
       <ContextMenu
@@ -586,6 +588,13 @@ export default function VaultBrowser({
   const [scope, setScope] = useState<VaultScope>('both');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
+  const [notesIconMap, setNotesIconMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    window.api.notesVaultReadIcons().then((m) => {
+      if (m && typeof m === 'object') setNotesIconMap(m as Record<string, string>);
+    }).catch(() => {});
+  }, [notesItems.length]);
 
   const showStory = scope === 'story' || scope === 'both';
   const showNotes = scope === 'notes' || scope === 'both';
@@ -654,6 +663,7 @@ export default function VaultBrowser({
                 onContextChange={onContextChange}
                 activeTag={activeTag}
                 onTagFilter={setActiveTag}
+                iconMap={notesIconMap}
               />
             )}
           </div>

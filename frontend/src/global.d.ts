@@ -659,6 +659,12 @@ interface Window {
     goalsLogWords: (date: string, wordsAdded: number) => Promise<{ ok: boolean }>;
     goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
     goalsResetStreak: () => Promise<{ ok: boolean }>;
+
+    // SKY-194: Iconize — per-node icon IPC
+    notesVaultReadIcons: () => Promise<Record<string, string>>;
+    vaultReadIcons: () => Promise<Record<string, string>>;
+    iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
+    iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
