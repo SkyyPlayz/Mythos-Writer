@@ -255,6 +255,10 @@ interface AppSettings {
     scrollTop: number;
     cursorLine: number;
   };
+  /** SKY-192: automatic wikilink linker. Absent = suggest mode. */
+  autoLinker?: {
+    mode: 'off' | 'suggest' | 'auto';
+  };
 }
 
 interface GenerationLogRow {
@@ -287,6 +291,15 @@ interface BrainstormExtractedEntity {
   name: string;
   type: 'character' | 'location' | 'item' | 'note';
   suggestionId: string;
+}
+
+// SKY-193: Tag Wrangler
+interface NotesTagEntry {
+  name: string;
+  fullName: string;
+  count: number;
+  paths: string[];
+  children: NotesTagEntry[];
 }
 
 // SKY-190: Note Templates
@@ -610,6 +623,10 @@ interface Window {
 
     // SKY-190: Note Templates
     noteTemplateList: (kind?: string) => Promise<{ templates: NoteTemplate[] }>;
+    // SKY-193: Tag Wrangler
+    notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
+    notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
+    notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

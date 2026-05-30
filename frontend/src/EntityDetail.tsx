@@ -35,6 +35,7 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [name, setName] = useState(entity.name);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join(', '));
   const [tags, setTags] = useState((entity.tags ?? []).join(', '));
+  const [noAutoLink, setNoAutoLink] = useState(!!entity.properties?.noAutoLink);
   const [prose, setProse] = useState('');
   const [proseLoading, setProseLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +51,7 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setName(entity.name);
     setAliases((entity.aliases ?? []).join(', '));
     setTags((entity.tags ?? []).join(', '));
+    setNoAutoLink(!!entity.properties?.noAutoLink);
     setDirty(false);
     setError('');
     setDeleteConfirm(false);
@@ -103,12 +105,19 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     try {
       const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
       const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
+      const updatedProps: Record<string, unknown> = { ...(entity.properties ?? {}) };
+      if (noAutoLink) {
+        updatedProps.noAutoLink = true;
+      } else {
+        delete updatedProps.noAutoLink;
+      }
       const updated = await window.api.entityUpdate({
         id: entity.id,
         name: name.trim() || entity.name,
         aliases: aliasList,
         tags: tagList,
         prose,
+        properties: Object.keys(updatedProps).length > 0 ? updatedProps : undefined,
       });
       setDirty(false);
       onUpdated(updated);
@@ -209,6 +218,18 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
             onChange={(e) => { setTags(e.target.value); markDirty(); }}
             placeholder="protagonist, mage…"
           />
+        </div>
+
+        <div className="entity-det-field entity-det-field-inline">
+          <label className="entity-det-label entity-det-label-check">
+            <input
+              type="checkbox"
+              checked={noAutoLink}
+              onChange={(e) => { setNoAutoLink(e.target.checked); markDirty(); }}
+              aria-label="Skip auto-link for this entity"
+            />
+            Skip auto-link (common nouns like &ldquo;Mom&rdquo;, &ldquo;the King&rdquo;)
+          </label>
         </div>
 
         <div className="entity-det-field entity-det-field-prose">
