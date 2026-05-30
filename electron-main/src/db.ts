@@ -1,8 +1,9 @@
 // SQLite persistence layer — suggestions, audit log, timeline entries.
 // Opens and creates the DB at <vault>/.mythos/state.db on first call.
-// All operations are synchronous (better-sqlite3).
+// All operations are synchronous (node:sqlite built-in).
 
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
+import type { SQLInputValue } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
 
@@ -77,12 +78,12 @@ export interface DbGenerationLog {
 
 // ─── Module state ───
 
-let _db: Database.Database | null = null;
+let _db: DatabaseSync | null = null;
 let _dbPath: string | null = null;
 
 // ─── Lifecycle ───
 
-export function openDb(vaultRoot: string): Database.Database {
+export function openDb(vaultRoot: string): DatabaseSync {
   const mythosDir = path.join(vaultRoot, '.mythos');
   const dbPath = path.join(mythosDir, 'state.db');
 
@@ -98,9 +99,9 @@ export function openDb(vaultRoot: string): Database.Database {
     fs.mkdirSync(mythosDir, { recursive: true });
   }
 
-  _db = new Database(dbPath);
+  _db = new DatabaseSync(dbPath);
   _dbPath = dbPath;
-  _db.pragma('journal_mode = WAL');
+  _db.exec('PRAGMA journal_mode = WAL');
   runMigrations(_db);
   return _db;
 }
@@ -113,7 +114,7 @@ export function closeDb(): void {
   }
 }
 
-export function getDb(): Database.Database {
+export function getDb(): DatabaseSync {
   if (!_db) throw new Error('DB not open — call openDb() first');
   return _db;
 }
@@ -122,8 +123,9 @@ export function getDb(): Database.Database {
 // Uses SQLite PRAGMA user_version to track schema version.
 // Each entry runs exactly once; new entries are appended for future versions.
 
-function runMigrations(db: Database.Database): void {
-  const currentVersion = db.pragma('user_version', { simple: true }) as number;
+function runMigrations(db: DatabaseSync): void {
+  const pragmaRow = db.prepare('PRAGMA user_version').get() as { user_version: number } | undefined;
+  const currentVersion = pragmaRow?.user_version ?? 0;
 
   if (currentVersion < 1) {
     db.exec(`
@@ -160,7 +162,7 @@ function runMigrations(db: Database.Database): void {
         created_at    TEXT NOT NULL
       );
     `);
-    db.pragma('user_version = 1');
+    db.exec('PRAGMA user_version = 1');
   }
 
   if (currentVersion < 2) {
@@ -179,17 +181,17 @@ function runMigrations(db: Database.Database): void {
         payload_digest TEXT
       );
     `);
-    db.pragma('user_version = 2');
+    db.exec('PRAGMA user_version = 2');
   }
 
   if (currentVersion < 3) {
     db.exec(`ALTER TABLE suggestions ADD COLUMN target_kind TEXT;`);
-    db.pragma('user_version = 3');
+    db.exec('PRAGMA user_version = 3');
   }
 
   if (currentVersion < 4) {
     db.exec(`ALTER TABLE suggestions ADD COLUMN budget_exceeded INTEGER NOT NULL DEFAULT 0;`);
-    db.pragma('user_version = 4');
+    db.exec('PRAGMA user_version = 4');
   }
 
   if (currentVersion < 5) {
@@ -197,7 +199,7 @@ function runMigrations(db: Database.Database): void {
       ALTER TABLE generation_log ADD COLUMN prompt_text TEXT;
       ALTER TABLE generation_log ADD COLUMN response_text TEXT;
     `);
-    db.pragma('user_version = 5');
+    db.exec('PRAGMA user_version = 5');
   }
 
   if (currentVersion < 6) {
@@ -213,7 +215,7 @@ function runMigrations(db: Database.Database): void {
       );
       CREATE INDEX IF NOT EXISTS idx_provenance_entity ON provenance (entity_id, entity_kind);
     `);
-    db.pragma('user_version = 6');
+    db.exec('PRAGMA user_version = 6');
   }
 
   if (currentVersion < 7) {
@@ -231,7 +233,7 @@ function runMigrations(db: Database.Database): void {
         indexed_at TEXT NOT NULL
       );
     `);
-    db.pragma('user_version = 7');
+    db.exec('PRAGMA user_version = 7');
   }
 
   if (currentVersion < 8) {
@@ -246,7 +248,7 @@ function runMigrations(db: Database.Database): void {
       );
       CREATE INDEX IF NOT EXISTS idx_beta_read_scene ON beta_read_comments (scene_id);
     `);
-    db.pragma('user_version = 8');
+    db.exec('PRAGMA user_version = 8');
   }
 
   if (currentVersion < 9) {
@@ -260,7 +262,7 @@ function runMigrations(db: Database.Database): void {
         created_at    TEXT NOT NULL
       );
     `);
-    db.pragma('user_version = 9');
+    db.exec('PRAGMA user_version = 9');
   }
 
   if (currentVersion < 10) {
@@ -275,7 +277,7 @@ function runMigrations(db: Database.Database): void {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_archive_ignore_unique
         ON archive_ignore_list (entity_id, prop_key, scene_path);
     `);
-    db.pragma('user_version = 10');
+    db.exec('PRAGMA user_version = 10');
   }
 
   if (currentVersion < 11) {
@@ -285,7 +287,7 @@ function runMigrations(db: Database.Database): void {
         value TEXT NOT NULL
       );
     `);
-    db.pragma('user_version = 11');
+    db.exec('PRAGMA user_version = 11');
   }
 
   if (currentVersion < 12) {
@@ -328,7 +330,7 @@ export function upsertSuggestion(s: DbSuggestion): void {
          (@id, @source_agent, @confidence, @rationale, @target_kind, @target_path, @target_anchor,
           @payload_json, @status, @created_at, @applied_at, @applied_run_id, @budget_exceeded)`
     )
-    .run(s);
+    .run(s as unknown as Record<string, SQLInputValue>);
 }
 
 export function updateSuggestionBudgetExceeded(id: string, exceeded: boolean): void {
@@ -365,19 +367,19 @@ export function listSuggestions(status?: SuggestionStatus, sourceAgent?: string)
   if (status && sourceAgent) {
     return db
       .prepare('SELECT * FROM suggestions WHERE status = ? AND source_agent = ? ORDER BY created_at DESC')
-      .all(status, sourceAgent) as DbSuggestion[];
+      .all(status, sourceAgent) as unknown as DbSuggestion[];
   }
   if (status) {
     return db
       .prepare('SELECT * FROM suggestions WHERE status = ? ORDER BY created_at DESC')
-      .all(status) as DbSuggestion[];
+      .all(status) as unknown as DbSuggestion[];
   }
   if (sourceAgent) {
     return db
       .prepare('SELECT * FROM suggestions WHERE source_agent = ? ORDER BY created_at DESC')
-      .all(sourceAgent) as DbSuggestion[];
+      .all(sourceAgent) as unknown as DbSuggestion[];
   }
-  return db.prepare('SELECT * FROM suggestions ORDER BY created_at DESC').all() as DbSuggestion[];
+  return db.prepare('SELECT * FROM suggestions ORDER BY created_at DESC').all() as unknown as DbSuggestion[];
 }
 
 // ─── Audit log ───
@@ -388,7 +390,7 @@ export function insertAuditLog(entry: DbAuditLog): void {
       `INSERT INTO audit_log (id, suggestion_id, action, snapshot_path, actor, created_at)
        VALUES (@id, @suggestion_id, @action, @snapshot_path, @actor, @created_at)`
     )
-    .run(entry);
+    .run(entry as unknown as Record<string, SQLInputValue>);
 }
 
 export function listAuditLog(suggestionId?: string): DbAuditLog[] {
@@ -396,9 +398,9 @@ export function listAuditLog(suggestionId?: string): DbAuditLog[] {
   if (suggestionId) {
     return db
       .prepare('SELECT * FROM audit_log WHERE suggestion_id = ? ORDER BY created_at DESC')
-      .all(suggestionId) as DbAuditLog[];
+      .all(suggestionId) as unknown as DbAuditLog[];
   }
-  return db.prepare('SELECT * FROM audit_log ORDER BY created_at DESC').all() as DbAuditLog[];
+  return db.prepare('SELECT * FROM audit_log ORDER BY created_at DESC').all() as unknown as DbAuditLog[];
 }
 
 // ─── Timeline entries ───
@@ -411,7 +413,7 @@ export function upsertTimelineEntry(entry: DbTimelineEntry): void {
        VALUES
          (@id, @scene_path, @inferred_time, @confidence, @source, @notes_json, @created_at)`
     )
-    .run(entry);
+    .run(entry as unknown as Record<string, SQLInputValue>);
 }
 
 export function listTimelineEntries(scenePath?: string): DbTimelineEntry[] {
@@ -419,9 +421,9 @@ export function listTimelineEntries(scenePath?: string): DbTimelineEntry[] {
   if (scenePath) {
     return db
       .prepare('SELECT * FROM timeline_entries WHERE scene_path = ? ORDER BY inferred_time ASC')
-      .all(scenePath) as DbTimelineEntry[];
+      .all(scenePath) as unknown as DbTimelineEntry[];
   }
-  return db.prepare('SELECT * FROM timeline_entries ORDER BY inferred_time ASC').all() as DbTimelineEntry[];
+  return db.prepare('SELECT * FROM timeline_entries ORDER BY inferred_time ASC').all() as unknown as DbTimelineEntry[];
 }
 
 // ─── Generation log ───
@@ -448,9 +450,9 @@ interface GenerationLogOpts {
   search?: string;
 }
 
-function buildGenerationLogWhere(opts: Omit<GenerationLogOpts, 'limit' | 'offset'>): { where: string; params: unknown[] } {
+function buildGenerationLogWhere(opts: Omit<GenerationLogOpts, 'limit' | 'offset'>): { where: string; params: SQLInputValue[] } {
   const conditions: string[] = [];
-  const params: unknown[] = [];
+  const params: SQLInputValue[] = [];
   if (opts.agent) { conditions.push('agent = ?'); params.push(opts.agent); }
   if (opts.dateFrom) { conditions.push('created_at >= ?'); params.push(opts.dateFrom); }
   if (opts.dateTo) { conditions.push('created_at <= ?'); params.push(opts.dateTo); }
@@ -468,7 +470,7 @@ export function listGenerationLog(opts: GenerationLogOpts = {}): DbGenerationLog
   const { where, params } = buildGenerationLogWhere(opts);
   return db
     .prepare(`SELECT * FROM generation_log ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset) as DbGenerationLog[];
+    .all(...params, limit, offset) as unknown as DbGenerationLog[];
 }
 
 export function countGenerationLog(opts: Omit<GenerationLogOpts, 'limit' | 'offset'> = {}): number {
@@ -501,7 +503,7 @@ export function insertProvenance(entry: DbProvenance): void {
       `INSERT INTO provenance (id, entity_id, entity_kind, agent_id, agent_type, run_id, created_at)
        VALUES (@id, @entity_id, @entity_kind, @agent_id, @agent_type, @run_id, @created_at)`
     )
-    .run(entry);
+    .run(entry as unknown as Record<string, SQLInputValue>);
 }
 
 export function getProvenance(id: string): DbProvenance | null {
@@ -517,11 +519,11 @@ export function listProvenanceForEntity(entityId: string, entityKind?: string): 
   if (entityKind) {
     return db
       .prepare('SELECT * FROM provenance WHERE entity_id = ? AND entity_kind = ? ORDER BY created_at DESC')
-      .all(entityId, entityKind) as DbProvenance[];
+      .all(entityId, entityKind) as unknown as DbProvenance[];
   }
   return db
     .prepare('SELECT * FROM provenance WHERE entity_id = ? ORDER BY created_at DESC')
-    .all(entityId) as DbProvenance[];
+    .all(entityId) as unknown as DbProvenance[];
 }
 
 export function listProvenance(opts: { agentId?: string; entityKind?: string; limit?: number } = {}): DbProvenance[] {
@@ -530,21 +532,21 @@ export function listProvenance(opts: { agentId?: string; entityKind?: string; li
   if (opts.agentId && opts.entityKind) {
     return db
       .prepare('SELECT * FROM provenance WHERE agent_id = ? AND entity_kind = ? ORDER BY created_at DESC LIMIT ?')
-      .all(opts.agentId, opts.entityKind, limit) as DbProvenance[];
+      .all(opts.agentId, opts.entityKind, limit) as unknown as DbProvenance[];
   }
   if (opts.agentId) {
     return db
       .prepare('SELECT * FROM provenance WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?')
-      .all(opts.agentId, limit) as DbProvenance[];
+      .all(opts.agentId, limit) as unknown as DbProvenance[];
   }
   if (opts.entityKind) {
     return db
       .prepare('SELECT * FROM provenance WHERE entity_kind = ? ORDER BY created_at DESC LIMIT ?')
-      .all(opts.entityKind, limit) as DbProvenance[];
+      .all(opts.entityKind, limit) as unknown as DbProvenance[];
   }
   return db
     .prepare('SELECT * FROM provenance ORDER BY created_at DESC LIMIT ?')
-    .all(limit) as DbProvenance[];
+    .all(limit) as unknown as DbProvenance[];
 }
 
 // ─── Beta-Read Comments ───
@@ -564,7 +566,7 @@ export function insertBetaReadComment(c: DbBetaReadComment): void {
       `INSERT INTO beta_read_comments (id, scene_id, anchor_text, comment_text, created_at, dismissed_at)
        VALUES (@id, @scene_id, @anchor_text, @comment_text, @created_at, @dismissed_at)`
     )
-    .run(c);
+    .run(c as unknown as Record<string, SQLInputValue>);
 }
 
 export function listBetaReadComments(sceneId: string): DbBetaReadComment[] {
@@ -574,7 +576,7 @@ export function listBetaReadComments(sceneId: string): DbBetaReadComment[] {
         WHERE scene_id = ? AND dismissed_at IS NULL
         ORDER BY created_at ASC`
     )
-    .all(sceneId) as DbBetaReadComment[];
+    .all(sceneId) as unknown as DbBetaReadComment[];
 }
 
 export function dismissBetaReadComment(id: string): void {
@@ -602,7 +604,7 @@ export function insertManifestMigrationLog(entry: DbManifestMigrationLog): void 
        VALUES
          (@id, @manifest_path, @from_version, @to_version, @backup_path, @created_at)`
     )
-    .run(entry);
+    .run(entry as unknown as Record<string, SQLInputValue>);
 }
 
 // ─── Budget window counters ───
@@ -637,7 +639,7 @@ export function insertArchiveIgnore(entry: DbArchiveIgnore): void {
       `INSERT OR IGNORE INTO archive_ignore_list (id, entity_id, prop_key, scene_path, created_at)
        VALUES (@id, @entity_id, @prop_key, @scene_path, @created_at)`
     )
-    .run(entry);
+    .run(entry as unknown as Record<string, SQLInputValue>);
 }
 
 export function isArchiveIgnored(entityId: string, propKey: string, scenePath: string): boolean {
@@ -652,7 +654,7 @@ export function isArchiveIgnored(entityId: string, propKey: string, scenePath: s
 export function listArchiveIgnores(): DbArchiveIgnore[] {
   return getDb()
     .prepare('SELECT * FROM archive_ignore_list ORDER BY created_at DESC')
-    .all() as DbArchiveIgnore[];
+    .all() as unknown as DbArchiveIgnore[];
 }
 
 // ─── Scene notes (SKY-55) ───

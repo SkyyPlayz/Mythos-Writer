@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Story, Scene, Chapter } from '../../types';
 import { useVaultFiles } from './useVaultFiles';
 import { useTreeState } from './useTreeState';
@@ -6,6 +6,7 @@ import { buildTree, flattenTree } from './treeUtils';
 import type { FlatRow } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
+import { validateRenameName } from './renameUtils';
 import './VaultBrowser.css';
 
 // ─── Filters ───
@@ -14,16 +15,50 @@ import './VaultBrowser.css';
 // bookkeeping (manifest backups, versions/snapshots/git) so they don't show
 // up in the tree.
 
-const INTERNAL_FILES = new Set(['manifest.json', 'manifest.json.bak']);
 const INTERNAL_PREFIXES = ['.versions', '.snapshots', '.git'];
 
 function isNotesItem(item: { path: string; name: string }): boolean {
   if (item.name.startsWith('.')) return false;
-  if (INTERNAL_FILES.has(item.path)) return false;
   for (const prefix of INTERNAL_PREFIXES) {
     if (item.path === prefix || item.path.startsWith(prefix + '/')) return false;
   }
   return true;
+}
+
+// ─── Inline scene rename input (Story Vault) ───
+
+function SceneRenameInput({
+  value,
+  error,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  value: string;
+  error: string | null;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}) {
+  const cancelledRef = useRef(false);
+  return (
+    <span className="vb-rename-wrap">
+      <input
+        className="vb-rename-input"
+        autoFocus
+        value={value}
+        aria-label="Rename scene"
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); cancelledRef.current = false; onCommit(); }
+          if (e.key === 'Escape') { e.preventDefault(); cancelledRef.current = true; onCancel(); }
+        }}
+        onBlur={() => { if (!cancelledRef.current) onCommit(); }}
+      />
+      {error && <span className="vb-rename-error" role="alert">{error}</span>}
+    </span>
+  );
 }
 
 // ─── Story Vault (manifest-based) ───
@@ -35,6 +70,7 @@ interface StoryVaultProps {
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
+  onRenameScene: (sceneId: string, title: string) => Promise<void>;
 }
 
 function StoryVault({
@@ -44,6 +80,7 @@ function StoryVault({
   onCreateStory,
   onCreateChapter,
   onCreateScene,
+  onRenameScene,
 }: StoryVaultProps) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(() => {
     try {
@@ -59,6 +96,10 @@ function StoryVault({
     } catch { /**/ }
     return new Set();
   });
+
+  const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (stories.length === 1 && expandedStories.size === 0) {
@@ -84,6 +125,30 @@ function StoryVault({
     });
   };
 
+  const startRenameScene = useCallback((scene: Scene) => {
+    setEditingSceneId(scene.id);
+    setEditValue(scene.title);
+    setEditError(null);
+  }, []);
+
+  const commitRenameScene = useCallback(async () => {
+    if (!editingSceneId) return;
+    const err = validateRenameName(editValue);
+    if (err) { setEditError(err); return; }
+    try {
+      await onRenameScene(editingSceneId, editValue.trim());
+      setEditingSceneId(null);
+      setEditError(null);
+    } catch (e) {
+      setEditError((e as Error).message || 'Rename failed');
+    }
+  }, [editingSceneId, editValue, onRenameScene]);
+
+  const cancelRenameScene = useCallback(() => {
+    setEditingSceneId(null);
+    setEditError(null);
+  }, []);
+
   return (
     <div className="vb-story-vault" data-testid="vb-story-vault">
       <div className="vb-section-header">
@@ -99,7 +164,23 @@ function StoryVault({
       </div>
       <div className="vb-story-content">
         {stories.length === 0 ? (
-          <div className="vb-empty">No stories yet. Click + to create one.</div>
+          <div className="vb-story-empty" data-testid="vb-story-empty">
+            <div className="vb-story-empty-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <p className="vb-story-empty-heading">Begin your first story</p>
+            <p className="vb-story-empty-sub">Create a story, add chapters and scenes, and start writing.</p>
+            <button
+              className="vb-story-empty-cta"
+              data-testid="vb-story-empty-cta"
+              onClick={onCreateStory}
+            >
+              New Story
+            </button>
+            <p className="vb-story-empty-footer">Or use the + button above</p>
+          </div>
         ) : (
           stories.map((story) => {
             const storyExp = expandedStories.has(story.id);
@@ -154,27 +235,43 @@ function StoryVault({
                           {chapterExp &&
                             [...chapter.scenes]
                               .sort((a, b) => a.order - b.order)
-                              .map((scene) => (
-                                <div
-                                  key={scene.id}
-                                  className={`vb-row vb-scene-row${selectedSceneId === scene.id ? ' vb-selected' : ''}`}
-                                  style={{ paddingLeft: 36 }}
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={() => onSelectScene(scene, chapter, story)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      onSelectScene(scene, chapter, story);
-                                    }
-                                  }}
-                                  title={scene.title}
-                                >
-                                  <span className="vb-chevron" aria-hidden="true" />
-                                  <span className="vb-icon" aria-hidden="true">📄</span>
-                                  <span className="vb-name">{scene.title}</span>
-                                </div>
-                              ))}
+                              .map((scene) => {
+                                const isEditing = editingSceneId === scene.id;
+                                return (
+                                  <div
+                                    key={scene.id}
+                                    className={`vb-row vb-scene-row${selectedSceneId === scene.id ? ' vb-selected' : ''}`}
+                                    style={{ paddingLeft: 36 }}
+                                    role="button"
+                                    tabIndex={0}
+                                    data-testid={`vb-scene-${scene.id}`}
+                                    onClick={() => { if (!isEditing) onSelectScene(scene, chapter, story); }}
+                                    onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
+                                    onKeyDown={(e) => {
+                                      if (isEditing) return;
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        onSelectScene(scene, chapter, story);
+                                      }
+                                    }}
+                                    title={isEditing ? undefined : scene.title}
+                                  >
+                                    <span className="vb-chevron" aria-hidden="true" />
+                                    <span className="vb-icon" aria-hidden="true">📄</span>
+                                    {isEditing ? (
+                                      <SceneRenameInput
+                                        value={editValue}
+                                        error={editError}
+                                        onChange={setEditValue}
+                                        onCommit={commitRenameScene}
+                                        onCancel={cancelRenameScene}
+                                      />
+                                    ) : (
+                                      <span className="vb-name">{scene.title}</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                         </div>
                       );
                     })}
@@ -187,15 +284,71 @@ function StoryVault({
   );
 }
 
+// ─── Notes Vault Empty State ───
+
+interface NotesVaultEmptyStateProps {
+  onCreate: () => void;
+}
+
+function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
+  return (
+    <section
+      className="vb-notes-empty"
+      role="region"
+      aria-labelledby="vb-notes-empty-heading"
+      data-testid="vb-notes-empty"
+    >
+      <span className="vb-notes-empty-icon" aria-hidden="true">
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <rect x="4" y="3" width="14" height="18" rx="2" />
+          <line x1="7" y1="8" x2="14" y2="8" />
+          <line x1="7" y1="12" x2="14" y2="12" />
+          <line x1="7" y1="16" x2="11" y2="16" />
+          <path d="M16.5 14.5 L20 18 L18 20 L14.5 16.5 Z" />
+        </svg>
+      </span>
+      <h2 id="vb-notes-empty-heading" className="vb-notes-empty-heading">
+        Capture your first idea
+      </h2>
+      <p className="vb-notes-empty-sub">
+        Notes are for ideas, characters, places, and lore — anything that supports your scenes but isn&apos;t part of them.
+      </p>
+      <button
+        className="vb-notes-empty-cta"
+        type="button"
+        onClick={onCreate}
+        data-testid="vb-notes-empty-cta"
+      >
+        + New note
+      </button>
+      <p className="vb-notes-empty-footer">
+        Or chat with Brainstorm — it&apos;ll file notes for you.
+      </p>
+    </section>
+  );
+}
+
 // ─── Notes Vault (file-based, virtualized) ───
 
 interface NotesVaultProps {
   items: ReturnType<typeof useVaultFiles>['items'];
   onOpenFile?: (path: string) => void;
   onReload: () => void;
+  onContextChange?: (context: 'file' | 'folder' | null) => void;
 }
 
-function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVaultProps) {
   const notesItems = items.filter(isNotesItem);
   const tree = buildTree(notesItems);
 
@@ -213,6 +366,11 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
   const [ctxRow, setCtxRow] = useState<FlatRow | null>(null);
   const [ctxPos, setCtxPos] = useState({ x: 0, y: 0 });
 
+  // ─── Rename state ───
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+
   const handleContextMenu = useCallback((e: React.MouseEvent, row: FlatRow) => {
     e.preventDefault();
     setCtxRow(row);
@@ -223,9 +381,52 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
     (path: string) => {
       select(path);
       onOpenFile?.(path);
+      onContextChange?.('file');
     },
-    [select, onOpenFile],
+    [select, onOpenFile, onContextChange],
   );
+
+  const handleToggleFolder = useCallback(
+    (path: string) => {
+      toggle(path);
+      onContextChange?.('folder');
+    },
+    [toggle, onContextChange],
+  );
+
+  const handleStartRename = useCallback((row: FlatRow) => {
+    if (row.node.isDirectory || !row.node.name.endsWith('.md')) return;
+    setEditingPath(row.node.path);
+    setEditValue(row.node.name.slice(0, -3));
+    setEditError(null);
+  }, []);
+
+  const handleRenameCommit = useCallback(async () => {
+    if (!editingPath) return;
+    const err = validateRenameName(editValue);
+    if (err) { setEditError(err); return; }
+    const trimmed = editValue.trim();
+    const slash = editingPath.lastIndexOf('/');
+    const dir = slash > 0 ? editingPath.slice(0, slash + 1) : '';
+    const newPath = dir + trimmed + '.md';
+    if (newPath === editingPath) { setEditingPath(null); return; }
+    const pathExists = notesItems.some((item) => item.path === newPath);
+    if (pathExists) { setEditError('A file with that name already exists'); return; }
+    try {
+      await window.api.moveVault(editingPath, newPath);
+      setEditingPath(null);
+      setEditError(null);
+      onReload();
+      select(newPath);
+    } catch (e) {
+      setEditError((e as Error).message || 'Rename failed');
+    }
+  }, [editingPath, editValue, notesItems, onReload, select]);
+
+  const handleRenameCancel = useCallback(() => {
+    setEditingPath(null);
+    setEditError(null);
+  }, []);
 
   const handleNewNote = useCallback(
     async (dirPath: string) => {
@@ -234,7 +435,7 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
       const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
       const rel = dirPath ? `${dirPath}/${slug || 'note'}.md` : `${slug || 'note'}.md`;
       try {
-        await window.api.writeVault(
+        await window.api.writeNotesVault(
           rel,
           `---\ntitle: "${name.trim()}"\ncreatedAt: ${new Date().toISOString()}\n---\n\n`,
         );
@@ -253,9 +454,9 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
       const name = prompt('Folder name:');
       if (!name?.trim()) return;
       const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
-      const rel = dirPath ? `${dirPath}/${slug || 'folder'}/.gitkeep` : `${slug || 'folder'}/.gitkeep`;
+      const rel = dirPath ? `${dirPath}/${slug || 'folder'}` : `${slug || 'folder'}`;
       try {
-        await window.api.writeVault(rel, '');
+        await window.api.mkdirNotesVault(rel);
         await onReload();
       } catch (e) {
         console.error('Failed to create folder:', e);
@@ -280,14 +481,21 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
         </button>
       </div>
       {notesItems.length === 0 ? (
-        <div className="vb-empty">No notes yet. Click + to create one.</div>
+        <NotesVaultEmptyState onCreate={() => handleNewNote('')} />
       ) : (
         <VirtualTree
           data-testid="vb-notes-tree"
           rows={rows}
-          onToggle={toggle}
+          onToggle={handleToggleFolder}
           onOpen={handleOpen}
           onContextMenu={handleContextMenu}
+          editingPath={editingPath}
+          editingValue={editValue}
+          editError={editError}
+          onStartRename={handleStartRename}
+          onRenameChange={setEditValue}
+          onRenameCommit={handleRenameCommit}
+          onRenameCancel={handleRenameCancel}
         />
       )}
       <ContextMenu
@@ -297,6 +505,7 @@ function NotesVault({ items, onOpenFile, onReload }: NotesVaultProps) {
         onClose={() => setCtxRow(null)}
         onNewNote={handleNewNote}
         onNewFolder={handleNewFolder}
+        onRename={handleStartRename}
       />
     </div>
   );
@@ -314,6 +523,7 @@ export interface VaultBrowserProps {
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenFile?: (path: string) => void;
+  onContextChange?: (context: 'file' | 'folder' | null) => void;
 }
 
 export default function VaultBrowser({
@@ -324,12 +534,18 @@ export default function VaultBrowser({
   onCreateChapter,
   onCreateScene,
   onOpenFile,
+  onContextChange,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
-  const { items, loading, reload } = useVaultFiles();
+  const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
 
   const showStory = scope === 'story' || scope === 'both';
   const showNotes = scope === 'notes' || scope === 'both';
+
+  const handleRenameScene = useCallback(async (sceneId: string, title: string): Promise<void> => {
+    const result = await window.api.sceneRename({ sceneId, title });
+    if (result && 'error' in result) throw new Error((result as { error: string }).error);
+  }, []);
 
   return (
     <div className="vault-browser" data-testid="vault-browser">
@@ -370,6 +586,7 @@ export default function VaultBrowser({
               onCreateStory={onCreateStory}
               onCreateChapter={onCreateChapter}
               onCreateScene={onCreateScene}
+              onRenameScene={handleRenameScene}
             />
           </div>
         )}
@@ -378,13 +595,14 @@ export default function VaultBrowser({
 
         {showNotes && (
           <div className={`vb-section${scope === 'both' ? ' vb-section-notes-split' : ' vb-section-full'}`}>
-            {loading ? (
+            {notesLoading ? (
               <div className="vb-loading">Loading…</div>
             ) : (
               <NotesVault
-                items={items}
+                items={notesItems}
                 onOpenFile={onOpenFile}
-                onReload={reload}
+                onReload={notesReload}
+                onContextChange={onContextChange}
               />
             )}
           </div>

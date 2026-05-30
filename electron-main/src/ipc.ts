@@ -3,6 +3,7 @@
 
 import { ipcMain, ipcRenderer } from 'electron';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
+import { sanitizeIpcError } from './ipcErrors.js';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -66,6 +67,7 @@ export const IPC_CHANNELS = {
 
   // Versioning — per-scene snapshots
   SNAPSHOT_SAVE: 'snapshot:save',
+  SNAPSHOT_SAVE_SYNC: 'snapshot:save-sync',
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
@@ -90,8 +92,9 @@ export const IPC_CHANNELS = {
   // App settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  SETTINGS_TEST_CONNECTION: 'settings:testConnection',
 
-  // Liquid Glass background image (MYT-613)
+  // Liquid Neon background image (MYT-613)
   BG_PICK: 'bg:pick',
   BG_LOAD: 'bg:load',
 
@@ -118,6 +121,8 @@ export const IPC_CHANNELS = {
   SCENE_LIST: 'scene:list',
   SCENE_GET: 'scene:get',
   SCENE_SAVE: 'scene:save',
+  // Inline rename (SKY-115) — title-only update, does not touch prose
+  SCENE_RENAME: 'scene:rename',
 
   // Auto-updater (MYT-245) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
@@ -174,6 +179,12 @@ export const IPC_CHANNELS = {
   // Text-to-speech (MYT-339) — streams audio chunks to renderer; cancellable mid-stream
   VOICE_SPEAK: 'voice:speak',
 
+  // Main-process file picker for local STT/TTS binary or model selection (MYT-788).
+  // Returns a one-shot registration token bound to the chosen path; the
+  // renderer must echo it back in settings:set to change the corresponding
+  // localBinaryPath / localModelPath field.
+  VOICE_PICK_BINARY: 'voice:pickBinary',
+
   // Per-agent config (MYT-343) — enable/model/threshold/budget per agent
   SETTINGS_GET_AGENT_CONFIG: 'settings:getAgentConfig',
   SETTINGS_SET_AGENT_CONFIG: 'settings:setAgentConfig',
@@ -203,6 +214,8 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_LIST: 'notesVault:list',
   NOTES_VAULT_DELETE: 'notesVault:delete',
   NOTES_VAULT_MOVE: 'notesVault:move',
+  // SKY-95: dedicated mkdir avoids the dotfile block on .gitkeep placeholders.
+  NOTES_VAULT_MKDIR: 'notesVault:mkdir',
   NOTES_VAULT_WATCH_START: 'notesVault:watchStart',
   NOTES_VAULT_WATCH_STOP: 'notesVault:watchStop',
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
@@ -240,10 +253,26 @@ export const IPC_CHANNELS = {
   BRAINSTORM_RESOLVE_ROUTING: 'brainstorm:resolveRouting',
   BRAINSTORM_RESET_CATEGORY_ROUTING: 'brainstorm:resetCategoryRouting',
   BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
-
   // SKY-55: per-scene notes persisted to vault DB
   NOTES_GET: 'notes:get',
   NOTES_SET: 'notes:set',
+
+  // SKY-12.3: two-vault sample project loader. Copies the bundled sample
+  // from resources/sample-project/ into <parentPath>/Story Vault/ and
+  // <parentPath>/Notes Vault/, reindexes both, and calls setPaths.
+  VAULT_LOAD_SAMPLE_TWO_VAULT: 'vault:load-sample-twovault',
+
+  // SKY-12.4: first-run onboarding completion flag. Called by the wizard's
+  // onComplete handler to persist onboardingComplete=true. Thin channel so
+  // the wizard never needs to send the full settings object back.
+  ONBOARDING_COMPLETE: 'onboarding:complete',
+
+  // SKY-12.4: debug reset (MYTHOS_DEV=1 only). Clears vaultRoot, notesVaultRoot,
+  // and onboardingComplete so the wizard re-appears on next boot.
+  ONBOARDING_RESET: 'onboarding:reset',
+
+  // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
+  SESSION_SCENE_SAVE: 'session:saveScene',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -279,12 +308,15 @@ export function isFromTopFrame(event: IpcMainInvokeEvent | IpcMainEvent): boolea
 
 export function setupIpcMain(handlers: IpcHandlers) {
   for (const [channel, handler] of Object.entries(handlers)) {
-    ipcMain.handle(channel, (event, payload) => {
+    // `await` is required so async rejections are caught here and sanitized
+    // before they reach the renderer. Previously thrown fs errors (ENOENT,
+    // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
+    ipcMain.handle(channel, async (event, payload) => {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       try {
-        return handler(payload);
+        return await handler(payload);
       } catch (error) {
-        return { error: (error as Error).message };
+        return sanitizeIpcError(channel, error);
       }
     });
   }
@@ -339,6 +371,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) => Promise<SettingsTestConnectionResponse>;
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
   [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => SuggestionsGetResponse;
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
@@ -364,6 +397,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
   [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
+  [IPC_CHANNELS.SCENE_RENAME]: (payload: SceneRenamePayload) => SceneRenameResponse;
   [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
@@ -374,6 +408,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: (payload: VoicePickBinaryPayload) => Promise<VoicePickBinaryResponse>;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse>;
   [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse>;
   [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => Promise<VaultValidatePathResponse>;
@@ -397,6 +432,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
@@ -409,6 +445,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
+  // SKY-12 onboarding channels
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
+  // SKY-130: session persistence
+  [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-55: per-scene notes persisted to vault DB
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
   [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
@@ -468,6 +510,15 @@ export interface VaultMoveResponse {
   fromPath: string;
   toPath: string;
   moved: boolean;
+}
+
+export interface VaultMkdirPayload {
+  path: string;
+}
+
+export interface VaultMkdirResponse {
+  path: string;
+  created: boolean;
 }
 
 export interface VaultChooseFolderPayload {
@@ -657,6 +708,27 @@ export interface VaultOpenFolderResponse {
  */
 export interface VaultPickFolderResponse {
   vaultRoot: string | null;
+  cancelled: boolean;
+  registrationToken: string | null;
+}
+
+/**
+ * Payload for VOICE_PICK_BINARY (MYT-788). `kind` controls which file extensions
+ * the dialog suggests (executable vs. piper .onnx model); the dialog itself
+ * never restricts to those filters — the user can pick any file.
+ */
+export interface VoicePickBinaryPayload {
+  kind: 'stt-binary' | 'tts-binary' | 'tts-model';
+}
+
+/**
+ * Response from VOICE_PICK_BINARY. `registrationToken` is a one-shot, 60s-TTL
+ * token bound to the chosen path; settings:set requires it when changing the
+ * corresponding localBinaryPath / localModelPath field. `cancelled` is true
+ * when the user dismissed the dialog without selecting a file.
+ */
+export interface VoicePickBinaryResponse {
+  path: string | null;
   cancelled: boolean;
   registrationToken: string | null;
 }
@@ -1054,9 +1126,9 @@ export interface ProviderSettings {
   model: string;
 }
 
-/** Liquid Glass advanced theme customization (MYT-613 / MYT-716). All values optional;
- *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
-export interface LiquidGlassPrefs {
+/** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;
+ *  absent fields fall back to LIQUID_NEON_DEFAULTS in theme.ts. */
+export interface LiquidNeonPrefs {
   softnessContrast: number;
   glass: number;
   blur: number;
@@ -1110,16 +1182,55 @@ export interface AppSettings {
     enabled: boolean;
     sessionId: string;
   };
-  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
-  liquidGlass?: LiquidGlassPrefs;
+  /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
+  liquidNeon?: LiquidNeonPrefs;
+  /** SKY-130: last-opened scene for cross-restart restore. */
+  lastOpenedScene?: LastOpenedScene;
+}
+
+/** SKY-130: persisted cross-restart scene + cursor position. */
+export interface LastOpenedScene {
+  sceneId: string;
+  scenePath: string;
+  scrollTop: number;
+  cursorLine: number;
+}
+
+export interface SessionSaveScenePayload {
+  sceneId: string;
+  scenePath: string;
+  scrollTop: number;
+  cursorLine: number;
 }
 
 export interface SettingsSetPayload {
   settings: AppSettings;
+  /**
+   * MYT-788: registration tokens proving the renderer-supplied voice binary
+   * and model paths came from a main-process file picker (voice:pickBinary).
+   * Required only when the corresponding path field actually changes — echoes
+   * of the existing value, and clearing the field, are accepted without a
+   * token.
+   */
+  sttBinaryToken?: string;
+  ttsBinaryToken?: string;
+  ttsModelToken?: string;
 }
 
 export interface SettingsSetResponse {
   saved: boolean;
+  /** Present when settings:set failed the voice-spawn gate (MYT-788). */
+  error?: string;
+}
+
+export interface SettingsTestConnectionPayload {
+  provider: ProviderSettings;
+}
+
+export interface SettingsTestConnectionResponse {
+  ok: boolean;
+  latencyMs: number;
+  error?: string;
 }
 
 // ─── Multi-project types (MYT-374) ───────────────────────────────────────────
@@ -1490,6 +1601,16 @@ export interface SceneSaveResponse {
   scene: SceneEntry;
 }
 
+// SKY-115: inline scene rename (title-only, manifest update)
+export interface SceneRenamePayload {
+  sceneId: string;
+  title: string;
+}
+
+export interface SceneRenameResponse {
+  scene: SceneEntry;
+}
+
 // ─── Vault Graph types (Phase 5 — MYT-163) ───
 
 export interface VaultGraphNode {
@@ -1712,6 +1833,18 @@ export interface VaultLoadSampleResponse {
   vaultRoot: string;
 }
 
+// ─── SKY-12.3: two-vault sample project loader ───
+
+export interface VaultLoadSampleTwoVaultPayload {
+  parentPath: string;
+}
+
+export interface VaultLoadSampleTwoVaultResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+  error?: string;
+}
+
 // ─── First-run onboarding (MYT-820) ───
 
 export interface VaultCreateBlankPayload {
@@ -1734,6 +1867,18 @@ export interface VaultValidatePathResponse {
 
 export interface VaultPickFolderByPathPayload {
   sourcePath: string;
+}
+
+// SKY-12.3: two-vault sample project loader.
+export interface VaultLoadSampleTwoVaultPayload {
+  /** Parent directory under which Story Vault/ and Notes Vault/ will be created. */
+  parentPath: string;
+}
+
+export interface VaultLoadSampleTwoVaultResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+  error?: string;
 }
 
 // ─── Per-agent config IPC types (MYT-343) ───
@@ -1801,7 +1946,7 @@ export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
 }
 
-// ─── Liquid Glass background image (MYT-613) ───
+// ─── Liquid Neon background image (MYT-613) ────
 
 export interface BgPickResponse {
   filePath: string | null;
@@ -1876,6 +2021,8 @@ export interface VaultGetPathsResponse {
   notesVaultPath: string;
 }
 
+export type VaultSeedMode = 'default' | 'blank';
+
 export interface VaultSetPathsPayload {
   storyVaultPath: string;
   notesVaultPath: string;
@@ -1884,6 +2031,11 @@ export interface VaultSetPathsPayload {
   // in the recent-projects allowlist.
   storyVaultToken?: string;
   notesVaultToken?: string;
+  /** SKY-12.2: controls whether the new vaults are scaffolded with the full
+   *  SKY-15 folder layout ('default', the prior behavior) or created as empty
+   *  roots with only a manifest.json ('blank'). Defaults to 'default' when
+   *  absent for backwards compatibility with SKY-9 callers. */
+  seedMode?: VaultSeedMode;
 }
 
 export interface VaultSetPathsResponse {
@@ -2052,3 +2204,4 @@ export interface NotesSetPayload {
 export interface NotesSetResponse {
   ok: true;
 }
+
