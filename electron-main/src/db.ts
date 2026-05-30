@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 
 // ─── Domain types ───
 
@@ -288,6 +289,39 @@ function runMigrations(db: DatabaseSync): void {
       );
     `);
     db.exec('PRAGMA user_version = 11');
+  }
+
+  if (currentVersion < 12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notes (
+        id         INTEGER PRIMARY KEY,
+        scene_id   TEXT UNIQUE NOT NULL,
+        content    TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.exec('PRAGMA user_version = 12');
+  }
+
+  if (currentVersion < 13) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tags (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        color      TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name_nocase ON tags (lower(name));
+      CREATE TABLE IF NOT EXISTS item_tags (
+        item_id   TEXT NOT NULL,
+        item_kind TEXT NOT NULL,
+        tag_id    TEXT NOT NULL,
+        PRIMARY KEY (item_id, item_kind, tag_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags (tag_id);
+      CREATE INDEX IF NOT EXISTS idx_item_tags_item ON item_tags (item_id);
+    `);
+    db.exec('PRAGMA user_version = 13');
   }
 }
 
@@ -658,4 +692,124 @@ export function countTokensInWindow(agent: string, windowMs: number): number {
     )
     .get(agent, windowStart) as { total: number };
   return row.total;
+}
+
+// ─── Scene notes (SKY-55) ───
+
+export function getNoteBySceneId(sceneId: string): string {
+  const row = getDb()
+    .prepare('SELECT content FROM notes WHERE scene_id = ?')
+    .get(sceneId) as { content: string } | undefined;
+  return row?.content ?? '';
+}
+
+export function upsertNote(sceneId: string, content: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO notes (scene_id, content, updated_at)
+       VALUES (?, ?, strftime('%s', 'now'))
+       ON CONFLICT(scene_id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`
+    )
+    .run(sceneId, content);
+}
+
+// ─── Tags (SKY-158) ───
+
+export interface DbTag {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
+/** Returns existing tag (case-insensitive) or creates a new one. */
+export function upsertTag(name: string, color?: string | null): DbTag {
+  const db = getDb();
+  const trimmed = name.trim();
+  const existing = db.prepare('SELECT * FROM tags WHERE lower(name) = lower(?)').get(trimmed) as DbTag | undefined;
+  if (existing) return existing;
+  const tag: DbTag = { id: randomUUID(), name: trimmed, color: color ?? null, created_at: new Date().toISOString() };
+  db.prepare('INSERT OR IGNORE INTO tags (id, name, color, created_at) VALUES (@id, @name, @color, @created_at)').run(tag as unknown as Record<string, SQLInputValue>);
+  return (db.prepare('SELECT * FROM tags WHERE lower(name) = lower(?)').get(trimmed) as unknown as DbTag) ?? tag;
+}
+
+export function getTagByName(name: string): DbTag | null {
+  return (getDb().prepare('SELECT * FROM tags WHERE lower(name) = lower(?)').get(name.trim()) as DbTag | undefined) ?? null;
+}
+
+export function listTags(): DbTag[] {
+  return getDb().prepare('SELECT * FROM tags ORDER BY name COLLATE NOCASE ASC').all() as unknown as DbTag[];
+}
+
+export function deleteTag(id: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM item_tags WHERE tag_id = ?').run(id);
+  db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+}
+
+export function renameTag(id: string, newName: string): DbTag {
+  const db = getDb();
+  db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(newName.trim(), id);
+  return db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as unknown as DbTag;
+}
+
+/** Replaces the full tag set for an item in SQLite junction table. */
+export function setItemTags(itemId: string, itemKind: string, tagNames: string[]): void {
+  const db = getDb();
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM item_tags WHERE item_id = ? AND item_kind = ?').run(itemId, itemKind);
+    for (const name of tagNames) {
+      const tag = upsertTag(name);
+      db.prepare('INSERT OR IGNORE INTO item_tags (item_id, item_kind, tag_id) VALUES (?, ?, ?)').run(itemId, itemKind, tag.id);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export function getItemTags(itemId: string): string[] {
+  const rows = getDb().prepare(
+    'SELECT t.name FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE it.item_id = ? ORDER BY t.name COLLATE NOCASE'
+  ).all(itemId) as { name: string }[];
+  return rows.map((r) => r.name);
+}
+
+export function getItemsForTag(tagName: string): Array<{ itemId: string; itemKind: string }> {
+  const rows = getDb().prepare(
+    'SELECT it.item_id, it.item_kind FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE lower(t.name) = lower(?)'
+  ).all(tagName.trim()) as Array<{ item_id: string; item_kind: string }>;
+  return rows.map((r) => ({ itemId: r.item_id, itemKind: r.item_kind }));
+}
+
+/** Apply/remove tags for multiple items atomically. Returns count of updated items. */
+export function bulkApplyTags(
+  itemIds: string[],
+  itemKind: string,
+  addTags: string[],
+  removeTags: string[],
+): number {
+  const db = getDb();
+  db.exec('BEGIN');
+  try {
+    for (const itemId of itemIds) {
+      for (const name of removeTags) {
+        const tag = getTagByName(name);
+        if (tag) {
+          db.prepare('DELETE FROM item_tags WHERE item_id = ? AND item_kind = ? AND tag_id = ?').run(itemId, itemKind, tag.id);
+        }
+      }
+      for (const name of addTags) {
+        const t = upsertTag(name);
+        db.prepare('INSERT OR IGNORE INTO item_tags (item_id, item_kind, tag_id) VALUES (?, ?, ?)').run(itemId, itemKind, t.id);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return itemIds.length;
 }

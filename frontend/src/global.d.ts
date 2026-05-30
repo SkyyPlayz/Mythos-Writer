@@ -458,7 +458,7 @@ interface Window {
     onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => () => void;
 
     // Search (MYT-251)
-    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) => Promise<unknown>;
+    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<unknown>;
 
     // EPUB export (MYT-342)
     exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) => Promise<unknown>;
@@ -592,6 +592,21 @@ interface Window {
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
+
+    // SKY-55: per-scene notes
+    notesGet?: (sceneId: string) => Promise<{ content: string }>;
+    notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
+
+    // SKY-158: Tags
+    tagsList?: () => Promise<{ tags: Array<{ id: string; name: string; color?: string | null; createdAt: string }> }>;
+    tagsUpsert?: (name: string, color?: string | null) => Promise<{ tag: { id: string; name: string; color?: string | null; createdAt: string } }>;
+    tagsDelete?: (id: string) => Promise<{ deleted: boolean }>;
+    tagsRename?: (id: string, name: string) => Promise<{ tag: { id: string; name: string; color?: string | null; createdAt: string } }>;
+    tagsForItem?: (itemId: string, itemKind: 'scene' | 'entity') => Promise<{ tags: string[] }>;
+    tagsSetForItem?: (itemId: string, itemKind: 'scene' | 'entity', tags: string[]) => Promise<{ tags: string[] }>;
+    tagsItemsForTag?: (tagName: string) => Promise<{ items: Array<{ itemId: string; itemKind: 'scene' | 'entity' }> }>;
+    tagsBulkApply?: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) => Promise<{ updated: number }>;
+    sceneSetTags?: (payload: { sceneId: string; tags: string[] }) => Promise<{ scene: unknown }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

@@ -124,8 +124,30 @@ export function searchVault(
   query: string,
   scope: 'story' | 'notes' | 'both',
   limit = 20,
+  filterTags?: string[],
 ): SearchResult[] {
-  if (!query.trim()) return [];
+  // Tag-only filter: if no query but tags provided, return all items with those tags
+  if (!query.trim() && filterTags?.length) {
+    const lowerTags = filterTags.map((t) => t.toLowerCase());
+    const placeholders = lowerTags.map(() => '?').join(', ');
+    const params: (string | number)[] = [...lowerTags];
+    let sql = `
+      SELECT fi.doc_id, fi.vault, fi.kind, fi.title
+      FROM fts_index fi
+      JOIN item_tags it ON it.item_id = fi.doc_id
+      JOIN tags t ON t.id = it.tag_id
+      WHERE lower(t.name) IN (${placeholders})
+    `;
+    if (scope !== 'both') { sql += ` AND fi.vault = ?`; params.push(scope); }
+    sql += ` GROUP BY fi.doc_id ORDER BY fi.title LIMIT ?`;
+    params.push(limit);
+    try {
+      const rows = db.prepare(sql).all(...params) as Array<{ doc_id: string; vault: string; kind: string; title: string }>;
+      return rows.map((r) => ({ docId: r.doc_id, vault: r.vault as 'story' | 'notes', kind: r.kind, title: r.title, snippet: '', rank: 0 }));
+    } catch { return []; }
+  }
+
+  if (!query.trim() && !filterTags?.length) return [];
 
   const sanitized = sanitizeFtsQuery(query);
   if (!sanitized) return [];
@@ -221,5 +243,17 @@ export function searchVault(
     } catch { /* non-fatal */ }
   }
 
+  if (filterTags?.length) {
+    const lowerTags = filterTags.map((t) => t.toLowerCase());
+    const placeholders = lowerTags.map(() => '?').join(', ');
+    const taggedDocIds = new Set<string>();
+    try {
+      const rows = db.prepare(
+        `SELECT DISTINCT it.item_id FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE lower(t.name) IN (${placeholders})`
+      ).all(...lowerTags) as { item_id: string }[];
+      for (const r of rows) taggedDocIds.add(r.item_id);
+    } catch { /* non-fatal */ }
+    return results.filter((r) => taggedDocIds.has(r.docId)).slice(0, limit);
+  }
   return results.slice(0, limit);
 }

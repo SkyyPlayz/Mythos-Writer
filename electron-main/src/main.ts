@@ -112,6 +112,17 @@ import {
   UNTRUSTED_FRAME_REJECTION,
   type SettingsTestConnectionPayload,
   type SessionSaveScenePayload,
+  type TagsUpsertPayload,
+  type TagsDeletePayload,
+  type TagsRenamePayload,
+  type TagsForItemPayload,
+  type TagsSetForItemPayload,
+  type TagsItemsForTagPayload,
+  type TagsBulkApplyPayload,
+  type SceneSetTagsPayload,
+  type NotesGetPayload,
+  type NotesSetPayload,
+  type TagEntry,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -148,6 +159,17 @@ import {
   countTokensInWindow,
   countSuggestionsInWindow,
   insertProvenance,
+  getNoteBySceneId,
+  upsertNote,
+  listTags,
+  upsertTag,
+  deleteTag,
+  renameTag,
+  setItemTags,
+  getItemTags,
+  getItemsForTag,
+  bulkApplyTags,
+  type DbTag,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -220,7 +242,7 @@ import {
   migrateSecretsFromSettingsFile,
   persistSecretsAndStripSettings,
 } from './secrets/migration.js';
-import { buildFullIndex, searchVault } from './search.js';
+import { indexDocument, buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import {
@@ -668,6 +690,11 @@ function buildTextExport(
       };
     }
   }
+}
+
+// ─── Tag helper ───
+function dbTagToEntry(t: DbTag): TagEntry {
+  return { id: t.id, name: t.name, color: t.color, createdAt: t.created_at };
 }
 
 // ─── IPC Handlers ───
@@ -1174,6 +1201,7 @@ const handlers: IpcHandlers = {
     const manifest = readManifest(getManifestPath());
     const entry = createEntity(getVaultRoot(), manifest, payload);
     writeManifest(getManifestPath(), manifest);
+    setItemTags(entry.id, 'entity', entry.tags ?? []);
     return entry;
   },
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => {
@@ -1192,6 +1220,7 @@ const handlers: IpcHandlers = {
       properties: payload.properties,
     });
     writeManifest(getManifestPath(), manifest);
+    if (payload.tags !== undefined) setItemTags(payload.id, 'entity', payload.tags);
     return entry;
   },
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => {
@@ -1212,6 +1241,164 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     return getEntityBacklinks(getVaultRoot(), manifest, payload.entityId);
+  },
+
+  // SKY-55: per-scene notes
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => {
+    ensureVaultDir();
+    const content = getNoteBySceneId(payload.sceneId);
+    return { content };
+  },
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => {
+    ensureVaultDir();
+    upsertNote(payload.sceneId, payload.content);
+    return { saved: true };
+  },
+
+  // SKY-158: Tag system
+  [IPC_CHANNELS.TAGS_LIST]: () => {
+    const tags = listTags();
+    return { tags: tags.map(dbTagToEntry) };
+  },
+  [IPC_CHANNELS.TAGS_UPSERT]: (payload: TagsUpsertPayload) => {
+    const tag = upsertTag(payload.name, payload.color);
+    return { tag: dbTagToEntry(tag) };
+  },
+  [IPC_CHANNELS.TAGS_DELETE]: (payload: TagsDeletePayload) => {
+    deleteTag(payload.id);
+    return { deleted: true };
+  },
+  [IPC_CHANNELS.TAGS_RENAME]: (payload: TagsRenamePayload) => {
+    ensureVaultDir();
+    const oldTag = listTags().find((t) => t.id === payload.id);
+    const tag = renameTag(payload.id, payload.name);
+    // Cascade rename through manifest entity/scene tags
+    if (oldTag) {
+      const manifest = readManifest(getManifestPath());
+      let changed = false;
+      for (const entity of manifest.entities) {
+        if (entity.tags?.includes(oldTag.name)) {
+          entity.tags = entity.tags.map((t) => (t === oldTag.name ? tag.name : t));
+          changed = true;
+        }
+      }
+      for (const story of manifest.stories) {
+        for (const chapter of story.chapters) {
+          for (const scene of chapter.scenes) {
+            if (scene.card?.tags?.includes(oldTag.name)) {
+              scene.card.tags = scene.card.tags.map((t) => (t === oldTag.name ? tag.name : t));
+              changed = true;
+            }
+          }
+        }
+      }
+      if (changed) {
+        writeManifest(getManifestPath(), manifest);
+        buildFullIndex(getDb(), getVaultRoot(), manifest);
+      }
+    }
+    return { tag: dbTagToEntry(tag) };
+  },
+  [IPC_CHANNELS.TAGS_FOR_ITEM]: (payload: TagsForItemPayload) => {
+    const tags = getItemTags(payload.itemId);
+    return { tags };
+  },
+  [IPC_CHANNELS.TAGS_SET_FOR_ITEM]: (payload: TagsSetForItemPayload) => {
+    setItemTags(payload.itemId, payload.itemKind, payload.tags);
+    // Sync tags back to manifest for entities
+    if (payload.itemKind === 'entity') {
+      const manifest = readManifest(getManifestPath());
+      const entity = manifest.entities.find((e) => e.id === payload.itemId);
+      if (entity) {
+        entity.tags = payload.tags;
+        writeManifest(getManifestPath(), manifest);
+      }
+    } else if (payload.itemKind === 'scene') {
+      const manifest = readManifest(getManifestPath());
+      let found = null as import('./ipc.js').SceneEntry | null;
+      outer: for (const story of manifest.stories) {
+        for (const chapter of story.chapters) {
+          const s = chapter.scenes.find((sc) => sc.id === payload.itemId);
+          if (s) { found = s; break outer; }
+        }
+      }
+      if (!found) found = manifest.scenes.find((s) => s.id === payload.itemId) ?? null;
+      if (found) {
+        if (!found.card) found.card = {};
+        found.card.tags = payload.tags;
+        writeManifest(getManifestPath(), manifest);
+        // Re-index scene with updated tags
+        let prose = '';
+        try { prose = readSceneFile(getVaultRoot(), found.path).prose; } catch { /* ignore */ }
+        indexDocument(getDb(), {
+          docId: found.id, vault: 'story', kind: 'scene', title: found.title,
+          body: [payload.tags.join(' '), prose].filter(Boolean).join('\n'),
+        });
+      }
+    }
+    return { tags: payload.tags };
+  },
+  [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => {
+    const items = getItemsForTag(payload.tagName);
+    return { items: items.map((i) => ({ itemId: i.itemId, itemKind: i.itemKind as 'scene' | 'entity' })) };
+  },
+  [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => {
+    const updated = bulkApplyTags(
+      payload.itemIds,
+      payload.itemKind,
+      payload.addTags ?? [],
+      payload.removeTags ?? [],
+    );
+    // Sync to manifest
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    let manifestChanged = false;
+    for (const itemId of payload.itemIds) {
+      const newTags = getItemTags(itemId);
+      if (payload.itemKind === 'entity') {
+        const entity = manifest.entities.find((e) => e.id === itemId);
+        if (entity) { entity.tags = newTags; manifestChanged = true; }
+      } else {
+        for (const story of manifest.stories) {
+          for (const chapter of story.chapters) {
+            const scene = chapter.scenes.find((s) => s.id === itemId);
+            if (scene) {
+              if (!scene.card) scene.card = {};
+              scene.card.tags = newTags;
+              manifestChanged = true;
+            }
+          }
+        }
+      }
+    }
+    if (manifestChanged) writeManifest(getManifestPath(), manifest);
+    return { updated };
+  },
+  [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    let found = null as import('./ipc.js').SceneEntry | null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const s = chapter.scenes.find((sc) => sc.id === payload.sceneId);
+        if (s) { found = s; break outer; }
+      }
+    }
+    if (!found) found = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+    if (!found.card) found.card = {};
+    found.card.tags = payload.tags;
+    found.updatedAt = new Date().toISOString();
+    writeManifest(getManifestPath(), manifest);
+    setItemTags(payload.sceneId, 'scene', payload.tags);
+    // Re-index scene
+    let prose = '';
+    try { prose = readSceneFile(getVaultRoot(), found.path).prose; } catch { /* ignore */ }
+    indexDocument(getDb(), {
+      docId: found.id, vault: 'story', kind: 'scene', title: found.title,
+      body: [payload.tags.join(' '), prose].filter(Boolean).join('\n'),
+    });
+    return { scene: found };
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
@@ -1660,7 +1847,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => {
     ensureVaultDir();
     const t0 = Date.now();
-    const results = searchVault(getDb(), payload.query, payload.scope, payload.limit ?? 20);
+    const results = searchVault(getDb(), payload.query, payload.scope, payload.limit ?? 20, payload.filterTags);
     return { results, elapsed_ms: Date.now() - t0 };
   },
 

@@ -126,6 +126,6 @@ describe('GlobalSearchPanel', () => {
     render(<GlobalSearchPanel onNavigate={() => {}} onClose={() => {}} />);
     fireEvent.click(screen.getByText('Story Vault'));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'hero' } });
-    await waitFor(() => expect(searchVault).toHaveBeenCalledWith('hero', 'story', 20), { timeout: 600 });
+    await waitFor(() => expect(searchVault).toHaveBeenCalledWith('hero', 'story', 20, undefined), { timeout: 600 });
   });
 });

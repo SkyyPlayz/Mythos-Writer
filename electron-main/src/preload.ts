@@ -312,8 +312,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('scene:save', payload),
 
   // Search (MYT-251)
-  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) =>
-    ipcRenderer.invoke('search:query', { query, scope, limit }),
+  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) =>
+    ipcRenderer.invoke('search:query', { query, scope, limit, filterTags }),
 
   // Writing Assistant scheduled scan (MYT-233)
   writingScan: (sceneId: string, prose: string, scenePath: string) =>
@@ -494,6 +494,22 @@ contextBridge.exposeInMainWorld('api', {
   goalsSetGoal: (dailyGoal: number) =>
     ipcRenderer.invoke('goals:setGoal', { dailyGoal }),
   goalsResetStreak: () => ipcRenderer.invoke('goals:resetStreak', undefined),
+
+  // SKY-55: per-scene notes
+  notesGet: (sceneId: string) => ipcRenderer.invoke('notes:get', { sceneId }),
+  notesSet: (sceneId: string, content: string) => ipcRenderer.invoke('notes:set', { sceneId, content }),
+
+  // SKY-158: Tags
+  tagsList: () => ipcRenderer.invoke('tags:list', undefined),
+  tagsUpsert: (name: string, color?: string | null) => ipcRenderer.invoke('tags:upsert', { name, color }),
+  tagsDelete: (id: string) => ipcRenderer.invoke('tags:delete', { id }),
+  tagsRename: (id: string, name: string) => ipcRenderer.invoke('tags:rename', { id, name }),
+  tagsForItem: (itemId: string, itemKind: 'scene' | 'entity') => ipcRenderer.invoke('tags:forItem', { itemId, itemKind }),
+  tagsSetForItem: (itemId: string, itemKind: 'scene' | 'entity', tags: string[]) => ipcRenderer.invoke('tags:setForItem', { itemId, itemKind, tags }),
+  tagsItemsForTag: (tagName: string) => ipcRenderer.invoke('tags:itemsForTag', { tagName }),
+  tagsBulkApply: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) =>
+    ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
+  sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

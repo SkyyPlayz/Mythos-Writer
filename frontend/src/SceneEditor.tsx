@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import SceneHistory from './SceneHistory';
+import TagInput from './TagInput';
 import { countWords, readingTimeMinutes } from './wordStats';
 import { useSaveStatus } from './hooks/useSaveStatus';
 import type { SaveStatus } from './hooks/useSaveStatus';
@@ -33,6 +34,9 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
   const [content, setContent] = useState(initialContent);
   const [showHistory, setShowHistory] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [sceneTags, setSceneTags] = useState<string[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagsLoaded, setTagsLoaded] = useState(false);
   const [wordStats, setWordStats] = useState<{ words: number; mins: number } | null>(
     () => initialWordStats(initialContent)
   );
@@ -99,6 +103,25 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
         window.api.snapshotSave(sceneId, contentRef.current).catch(() => {});
       }
     };
+  }, [sceneId]);
+
+  // Load scene tags and all tags for autocomplete
+  useEffect(() => {
+    Promise.all([
+      window.api.tagsForItem?.(sceneId, 'scene') ?? Promise.resolve({ tags: [] }),
+      window.api.tagsList?.() ?? Promise.resolve({ tags: [] }),
+    ]).then(([itemR, allR]) => {
+      setSceneTags((itemR as { tags: string[] }).tags ?? []);
+      setAllTags(((allR as { tags: Array<{ name: string }> }).tags ?? []).map((t) => t.name));
+      setTagsLoaded(true);
+    }).catch(() => setTagsLoaded(true));
+  }, [sceneId]);
+
+  const handleTagsChange = useCallback(async (tags: string[]) => {
+    setSceneTags(tags);
+    try {
+      await window.api.sceneSetTags?.({ sceneId, tags });
+    } catch { /* non-fatal */ }
   }, [sceneId]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -194,6 +217,13 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
         placeholder="Start writing your scene…"
         spellCheck
       />
+
+      {tagsLoaded && (
+        <div className="scene-tags-panel">
+          <span className="scene-tags-label">Tags</span>
+          <TagInput value={sceneTags} onChange={handleTagsChange} allTags={allTags} />
+        </div>
+      )}
 
       {showHistory && (
         <SceneHistory
