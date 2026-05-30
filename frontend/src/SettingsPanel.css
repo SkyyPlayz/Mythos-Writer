@@ -1115,3 +1115,17 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.settings-btn-danger {
+  padding: 5px 14px;
+  background: none;
+  border: 1px solid var(--state-danger);
+  border-radius: 5px;
+  color: var(--state-danger);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.settings-btn-danger:hover {
+  background: var(--state-danger-bg);
+}

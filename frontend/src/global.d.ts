@@ -7,6 +7,7 @@ interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  label?: string;
 }
 
 // SKY-10 — Per-scene versioned drafts
@@ -323,11 +324,13 @@ interface Window {
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;
 
     // Versioning — per-scene snapshots
-    snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotSave: (sceneId: string, content: string, label?: string) => Promise<SceneSnapshot>;
     snapshotSaveSync: (sceneId: string, content: string) => void;
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
+    snapshotDelete: (sceneId: string, snapshotId: string) => Promise<{ deleted: boolean }>;
+    snapshotDeleteAll: (sceneId?: string) => Promise<{ deleted: number }>;
 
     // SKY-10 — Per-scene versioned drafts
     versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;

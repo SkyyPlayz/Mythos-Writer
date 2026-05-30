@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
+import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
 
 const INVALID_SCENE_IDS = [
   '../outside',
@@ -238,5 +238,117 @@ describe('retention cap', () => {
     const remaining = listSnapshots(tmpDir, 'scene-age');
     expect(remaining).toHaveLength(1);
     expect(remaining[0].content).toBe('New content');
+  });
+});
+
+describe('label field', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-label-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('stores label when provided', () => {
+    const snap = saveSnapshot(tmpDir, 'scene-lbl', 'Text', undefined, 'My checkpoint');
+    expect(snap.label).toBe('My checkpoint');
+    const found = getSnapshot(tmpDir, 'scene-lbl', snap.id);
+    expect(found?.label).toBe('My checkpoint');
+  });
+
+  it('stores no label when omitted', () => {
+    const snap = saveSnapshot(tmpDir, 'scene-nolbl', 'Text');
+    expect(snap.label).toBeUndefined();
+  });
+});
+
+describe('deleteSnapshot', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-del-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('deletes a snapshot by id', () => {
+    const snap = saveSnapshot(tmpDir, 'scene-del', 'Content');
+    const result = deleteSnapshot(tmpDir, 'scene-del', snap.id);
+    expect(result).toBe(true);
+    expect(listSnapshots(tmpDir, 'scene-del')).toHaveLength(0);
+  });
+
+  it('returns false for unknown id', () => {
+    saveSnapshot(tmpDir, 'scene-del2', 'Content');
+    expect(deleteSnapshot(tmpDir, 'scene-del2', 'non-existent-id')).toBe(false);
+  });
+
+  it('leaves other snapshots intact', () => {
+    const s1 = saveSnapshot(tmpDir, 'scene-del3', 'First');
+    const s2 = saveSnapshot(tmpDir, 'scene-del3', 'Second');
+    deleteSnapshot(tmpDir, 'scene-del3', s1.id);
+    const remaining = listSnapshots(tmpDir, 'scene-del3');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(s2.id);
+  });
+});
+
+describe('deleteAllSnapshotsForScene', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-delas-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('removes all snapshots for a scene', async () => {
+    saveSnapshot(tmpDir, 'scene-all', 'A');
+    saveSnapshot(tmpDir, 'scene-all', 'B');
+    const count = deleteAllSnapshotsForScene(tmpDir, 'scene-all');
+    expect(count).toBe(2);
+    expect(listSnapshots(tmpDir, 'scene-all')).toHaveLength(0);
+  });
+
+  it('returns 0 when scene has no snapshots', async () => {
+    expect(deleteAllSnapshotsForScene(tmpDir, 'no-such-scene')).toBe(0);
+  });
+});
+
+describe('deleteAllSnapshotsVault', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-delav-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('removes all snapshots across all scenes', async () => {
+    saveSnapshot(tmpDir, 'scene-va', 'A1');
+    saveSnapshot(tmpDir, 'scene-va', 'A2');
+    saveSnapshot(tmpDir, 'scene-vb', 'B1');
+    const count = deleteAllSnapshotsVault(tmpDir);
+    expect(count).toBe(3);
+    expect(listSnapshots(tmpDir, 'scene-va')).toHaveLength(0);
+    expect(listSnapshots(tmpDir, 'scene-vb')).toHaveLength(0);
+  });
+
+  it('returns 0 when vault has no snapshots dir', async () => {
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-empty-'));
+    try {
+        expect(deleteAllSnapshotsVault(emptyDir)).toBe(0);
+    } finally {
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
   });
 });
