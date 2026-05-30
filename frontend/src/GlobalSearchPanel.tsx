@@ -5,12 +5,17 @@ import './GlobalSearchPanel.css';
 type SearchScope = 'story' | 'notes' | 'both';
 
 interface SearchResultItem {
+  resultType?: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
   title: string;
   snippet: string;
   rank: number;
+  entityId?: string;
+  entityType?: string;
+  name?: string;
+  score?: number;
 }
 
 interface Props {

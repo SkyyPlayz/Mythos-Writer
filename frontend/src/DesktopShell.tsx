@@ -79,12 +79,17 @@ function blocksToMarkdown(scene: Scene): string {
 type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
 
 interface SearchResultItem {
+  resultType?: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
   title: string;
   snippet: string;
   rank: number;
+  entityId?: string;
+  entityType?: string;
+  name?: string;
+  score?: number;
 }
 
 interface AppMenuBarProps {

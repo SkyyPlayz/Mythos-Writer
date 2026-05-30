@@ -298,6 +298,12 @@ export const IPC_CHANNELS = {
   TAGS_ITEMS_FOR_TAG: 'tags:itemsForTag',
   TAGS_BULK_APPLY: 'tags:bulkApply',
   SCENE_SET_TAGS: 'scene:setTags',
+
+  // SKY-170: Scene ↔ entity links + @mention parsing
+  SCENE_ENTITY_LINKS_LIST: 'sceneEntityLinks:list',
+  SCENE_ENTITY_LINKS_UPSERT: 'sceneEntityLinks:upsert',
+  SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
+  ENTITY_LINKED_SCENES: 'entity:linkedScenes',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -499,6 +505,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => TagsItemsForTagResponse;
   [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => TagsBulkApplyResponse;
   [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => SceneSetTagsResponse;
+
+  // SKY-170: Scene ↔ entity links
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload) => SceneEntityLink[];
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLink;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => LinkedScene[];
 }
 
 // ─── Payload / Response types ───
@@ -1710,12 +1722,18 @@ export interface SearchQueryPayload {
 }
 
 export interface SearchResultItem {
+  resultType?: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
   title: string;
   snippet: string;
   rank: number;
+  // Entity-specific fields (present when resultType === 'entity')
+  entityId?: string;
+  entityType?: string;
+  name?: string;
+  score?: number;
 }
 
 export interface SearchQueryResponse {

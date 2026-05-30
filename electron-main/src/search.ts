@@ -15,6 +15,7 @@ export interface FtsDoc {
 }
 
 export interface SearchResult {
+  resultType: 'scene';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
@@ -22,6 +23,23 @@ export interface SearchResult {
   snippet: string;
   rank: number;
 }
+
+export interface EntitySearchResult {
+  resultType: 'entity';
+  entityId: string;
+  entityType: string;
+  name: string;
+  snippet: string;
+  score: number;
+  // Backward-compat aliases so existing navigation code (docId/vault/kind/title/rank) keeps working
+  docId: string;
+  vault: 'notes';
+  kind: string;
+  title: string;
+  rank: number;
+}
+
+export type AnySearchResult = SearchResult | EntitySearchResult;
 
 // ─── Index mutations ───
 
@@ -86,7 +104,8 @@ export function buildFullIndex(db: DatabaseSync, vaultRoot: string, manifest: Ma
       insertMeta.run(scene.id, now);
     }
 
-    // Notes vault — entities
+    // Notes vault — entities (kept in fts_index for buildFullIndex compat; entity_fts is the
+    // primary search path, managed by the entity manager via upsertEntityFts)
     for (const entity of manifest.entities ?? []) {
       let prose = '';
       try {
@@ -125,25 +144,25 @@ export function searchVault(
   scope: 'story' | 'notes' | 'both',
   limit = 20,
   filterTags?: string[],
-): SearchResult[] {
-  // Tag-only filter: if no query but tags provided, return all items with those tags
+): AnySearchResult[] {
+  // Tag-only filter: if no query but tags provided, return all scene items with those tags
   if (!query.trim() && filterTags?.length) {
     const lowerTags = filterTags.map((t) => t.toLowerCase());
     const placeholders = lowerTags.map(() => '?').join(', ');
     const params: (string | number)[] = [...lowerTags];
-    let sql = `
+    const sql = `
       SELECT fi.doc_id, fi.vault, fi.kind, fi.title
       FROM fts_index fi
       JOIN item_tags it ON it.item_id = fi.doc_id
       JOIN tags t ON t.id = it.tag_id
       WHERE lower(t.name) IN (${placeholders})
+        AND fi.vault = 'story'
+      GROUP BY fi.doc_id ORDER BY fi.title LIMIT ?
     `;
-    if (scope !== 'both') { sql += ` AND fi.vault = ?`; params.push(scope); }
-    sql += ` GROUP BY fi.doc_id ORDER BY fi.title LIMIT ?`;
     params.push(limit);
     try {
       const rows = db.prepare(sql).all(...params) as Array<{ doc_id: string; vault: string; kind: string; title: string }>;
-      return rows.map((r) => ({ docId: r.doc_id, vault: r.vault as 'story' | 'notes', kind: r.kind, title: r.title, snippet: '', rank: 0 }));
+      return rows.map((r) => ({ resultType: 'scene' as const, docId: r.doc_id, vault: r.vault as 'story' | 'notes', kind: r.kind, title: r.title, snippet: '', rank: 0 }));
     } catch { return []; }
   }
 
@@ -156,92 +175,121 @@ export function searchVault(
   const tokens = sanitized.split(/\s+/).filter(Boolean);
   const ftsQuery = tokens.map((t) => `${t}*`).join(' ');
 
-  const results: SearchResult[] = [];
+  const results: AnySearchResult[] = [];
+  const seenIds = new Set<string>();
 
-  try {
-    // column index for snippet(): doc_id=0 vault=1 kind=2 title=3 body=4
-    // We want body snippets (index 4) or fallback to title (index 3)
-    let sql = `
-      SELECT doc_id, vault, kind, title,
-             snippet(fts_index, 4, '[[', ']]', '…', 24) AS snippet,
-             rank
-      FROM fts_index
-      WHERE fts_index MATCH ?
-    `;
-    const params: (string | number)[] = [ftsQuery];
-
-    if (scope !== 'both') {
-      sql += ` AND vault = ?`;
-      params.push(scope);
-    }
-
-    sql += ` ORDER BY rank LIMIT ?`;
-    params.push(limit);
-
-    const rows = db.prepare(sql).all(...params) as Array<{
-      doc_id: string;
-      vault: string;
-      kind: string;
-      title: string;
-      snippet: string;
-      rank: number;
-    }>;
-
-    for (const row of rows) {
-      results.push({
-        docId: row.doc_id,
-        vault: row.vault as 'story' | 'notes',
-        kind: row.kind,
-        title: row.title,
-        snippet: row.snippet ?? '',
-        rank: row.rank,
-      });
-    }
-  } catch {
-    // FTS5 syntax error — skip FTS results
-  }
-
-  // Additional fuzzy name match for character/location titles using LIKE
-  // (catches substrings the FTS stemmer might miss, e.g. partial name)
-  if (scope !== 'story') {
-    const fuzzyTerm = `%${tokens.join('%')}%`.toLowerCase();
-    let fuzzySql = `
-      SELECT doc_id, vault, kind, title
-      FROM fts_index
-      WHERE lower(title) LIKE ?
-        AND kind IN ('character', 'location', 'item')
-    `;
-    const fuzzyParams: (string | number)[] = [fuzzyTerm];
-    if (scope === 'notes') {
-      fuzzySql += ` AND vault = 'notes'`;
-    }
-    fuzzySql += ` LIMIT ?`;
-    fuzzyParams.push(10);
-
+  // ─── Scene results from fts_index (vault = 'story' only) ───
+  if (scope === 'story' || scope === 'both') {
     try {
-      const fuzzyRows = db.prepare(fuzzySql).all(...fuzzyParams) as Array<{
+      // column index for snippet(): doc_id=0 vault=1 kind=2 title=3 body=4
+      const sql = `
+        SELECT doc_id, vault, kind, title,
+               snippet(fts_index, 4, '[[', ']]', '…', 24) AS snippet,
+               rank
+        FROM fts_index
+        WHERE fts_index MATCH ?
+          AND vault = 'story'
+        ORDER BY rank LIMIT ?
+      `;
+      const rows = db.prepare(sql).all(ftsQuery, limit) as Array<{
         doc_id: string;
         vault: string;
         kind: string;
         title: string;
+        snippet: string;
+        rank: number;
       }>;
-
-      const seen = new Set(results.map((r) => r.docId));
-      for (const row of fuzzyRows) {
-        if (!seen.has(row.doc_id)) {
-          results.push({
-            docId: row.doc_id,
-            vault: row.vault as 'story' | 'notes',
-            kind: row.kind,
-            title: row.title,
-            snippet: '',
-            rank: 0,
-          });
-          seen.add(row.doc_id);
-        }
+      for (const row of rows) {
+        seenIds.add(row.doc_id);
+        results.push({
+          resultType: 'scene',
+          docId: row.doc_id,
+          vault: row.vault as 'story' | 'notes',
+          kind: row.kind,
+          title: row.title,
+          snippet: row.snippet ?? '',
+          rank: row.rank,
+        });
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      // FTS5 syntax error — skip scene results
+    }
   }
+
+  // ─── Entity results from entity_fts + entity_index ───
+  if (scope === 'notes' || scope === 'both') {
+    try {
+      // snippet columns: entity_id=0(UNINDEXED) name=1 aliases=2 notes_text=3 custom_fields_text=4
+      const sql = `
+        SELECT ef.entity_id, ei.type AS entity_type, ei.name,
+               snippet(entity_fts, 1, '[[', ']]', '…', 24) AS name_snippet,
+               snippet(entity_fts, 3, '[[', ']]', '…', 24) AS notes_snippet,
+               ef.rank
+        FROM entity_fts ef
+        JOIN entity_index ei ON ei.id = ef.entity_id
+        WHERE entity_fts MATCH ?
+        ORDER BY ef.rank LIMIT ?
+      `;
+      const rows = db.prepare(sql).all(ftsQuery, limit) as Array<{
+        entity_id: string;
+        entity_type: string;
+        name: string;
+        name_snippet: string;
+        notes_snippet: string;
+        rank: number;
+      }>;
+      for (const row of rows) {
+        if (seenIds.has(row.entity_id)) continue;
+        seenIds.add(row.entity_id);
+        const snippet = row.notes_snippet || row.name_snippet || '';
+        results.push({
+          resultType: 'entity',
+          entityId: row.entity_id,
+          entityType: row.entity_type,
+          name: row.name,
+          snippet,
+          score: row.rank,
+          docId: row.entity_id,
+          vault: 'notes',
+          kind: row.entity_type,
+          title: row.name,
+          rank: row.rank,
+        });
+      }
+    } catch {
+      // FTS5 syntax error or missing entity_fts table — skip entity FTS results
+    }
+
+    // Fuzzy LIKE fallback for partial entity name matches (substrings FTS prefix misses)
+    const fuzzyTerm = `%${tokens.join('%')}%`.toLowerCase();
+    try {
+      const fuzzyRows = db.prepare(`
+        SELECT id, type, name FROM entity_index
+        WHERE lower(name) LIKE ?
+        LIMIT 10
+      `).all(fuzzyTerm) as Array<{ id: string; type: string; name: string }>;
+      for (const row of fuzzyRows) {
+        if (seenIds.has(row.id)) continue;
+        seenIds.add(row.id);
+        results.push({
+          resultType: 'entity',
+          entityId: row.id,
+          entityType: row.type,
+          name: row.name,
+          snippet: '',
+          score: 0,
+          docId: row.id,
+          vault: 'notes',
+          kind: row.type,
+          title: row.name,
+          rank: 0,
+        });
+      }
+    } catch { /* non-fatal — entity_index may not exist in older DBs */ }
+  }
+
+  // Sort by FTS5 rank (negative: lower = better relevance). Score-0 items (LIKE fallback) sort last.
+  results.sort((a, b) => a.rank - b.rank);
 
   if (filterTags?.length) {
     const lowerTags = filterTags.map((t) => t.toLowerCase());
