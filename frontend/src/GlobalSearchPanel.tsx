@@ -56,8 +56,12 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
     if (initialTagFilter) setActiveTagFilters([initialTagFilter]);
   }, [initialTagFilter]);
 
-  // Capture phase so Escape fires before editor keybindings swallow it
+  // Capture phase so Escape fires before editor keybindings swallow it.
+  // Guard with `open` so the listener only exists while the panel is visible —
+  // an always-mounted listener intercepts Escape app-wide and breaks other UI
+  // such as VaultBrowser inline rename (TC-V-07).
   useEffect(() => {
+    if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
@@ -66,7 +70,7 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  }, [open, onClose]);
 
   const runSearch = useCallback(async (q: string, s: SearchScope, tagFilters?: string[]) => {
     const filters = tagFilters ?? activeTagFilters;
