@@ -412,6 +412,11 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
     () => [...story.chapters].sort((a, b) => a.order - b.order),
     [story.chapters],
   );
+  const activeSceneRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedSceneId]);
 
   return (
     <div className="book-outline-view">
@@ -435,6 +440,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                       return (
                         <div
                           key={scene.id}
+                          ref={isActiveScene ? activeSceneRef : null}
                           className={`book-outline-scene${isActiveScene ? ' active-scene' : ''}`}
                           role="button"
                           tabIndex={0}
@@ -442,7 +448,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') { e.preventDefault(); onSelectScene(scene, chapter); }
                           }}
-                          aria-pressed={isActiveScene}
+                          aria-current={isActiveScene ? 'true' : undefined}
                         >
                           {scene.title}
                         </div>
@@ -1025,6 +1031,7 @@ export default function DesktopShell() {
     // Scene not found (deleted/moved) — silently skip per spec
   }, [loading, appSettings, stories, handleSelectScene]);
 
+  // SKY-206: keep outline highlight in sync with the active scene (immediate on selection change)
   // SKY-130: debounced cursor persistence as user types/navigates
   const handleCursorPosChange = useCallback((pos: number) => {
     if (!selectedScene) return;
@@ -1583,6 +1590,12 @@ export default function DesktopShell() {
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+            onSelectScene={(sc, ch) => {
+              if (selectedStory) {
+                handleSelectScene(sc, ch, selectedStory);
+                setViewDepth('scene');
+              }
+            }}
           />
         </div>
       )}
