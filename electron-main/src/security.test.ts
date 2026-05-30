@@ -35,6 +35,9 @@ describe('secureWebPreferences — BrowserWindow security flags', () => {
   it('experimentalFeatures is off', () => {
     expect(secureWebPreferences({ preloadPath: '/tmp/p.js' }).experimentalFeatures).toBe(false);
   });
+  it('spellcheck is on (SKY-114: enables native spell-check in the scene editor)', () => {
+    expect(secureWebPreferences({ preloadPath: '/tmp/p.js' }).spellcheck).toBe(true);
+  });
   it('preload path is forwarded verbatim', () => {
     const p = '/abs/path/to/preload.js';
     expect(secureWebPreferences({ preloadPath: p }).preload).toBe(p);
@@ -95,6 +98,14 @@ describe('main.ts wiring — secureWebPreferences is the source of truth for the
     const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
     expect(mainSrc).toMatch(/'will-navigate'/);
     expect(mainSrc).toMatch(/event\.preventDefault\(\)/);
+  });
+
+  it('main.ts wires the context-menu handler for spell-check suggestions (SKY-114)', () => {
+    const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+    expect(mainSrc).toMatch(/'context-menu'/);
+    expect(mainSrc).toMatch(/dictionarySuggestions/);
+    expect(mainSrc).toMatch(/replaceMisspelling/);
+    expect(mainSrc).toMatch(/addWordToSpellCheckerDictionary/);
   });
 });
 
