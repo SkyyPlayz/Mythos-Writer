@@ -71,6 +71,8 @@ export const IPC_CHANNELS = {
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
+  SNAPSHOT_DELETE: 'snapshot:delete',
+  SNAPSHOT_DELETE_ALL: 'snapshot:delete-all',
 
   // Versioned drafts — Phase 2 (MYT-198), SKY-10 upgrade
   VERSION_LIST: 'version:list',
@@ -281,6 +283,33 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
+
+  // SKY-55: per-scene notes
+  NOTES_GET: 'notes:get',
+  NOTES_SET: 'notes:set',
+
+  // SKY-158: Tag & cross-reference system
+  TAGS_LIST: 'tags:list',
+  TAGS_UPSERT: 'tags:upsert',
+  TAGS_DELETE: 'tags:delete',
+  TAGS_RENAME: 'tags:rename',
+  TAGS_FOR_ITEM: 'tags:forItem',
+  TAGS_SET_FOR_ITEM: 'tags:setForItem',
+  TAGS_ITEMS_FOR_TAG: 'tags:itemsForTag',
+  TAGS_BULK_APPLY: 'tags:bulkApply',
+  SCENE_SET_TAGS: 'scene:setTags',
+
+  // SKY-154: Writing Goals & Progress Dashboard
+  GOALS_LOG_WORDS: 'goals:logWords',
+  GOALS_GET_STATS: 'goals:getStats',
+  GOALS_SET_GOAL: 'goals:setGoal',
+  GOALS_RESET_STREAK: 'goals:resetStreak',
+
+  // SKY-170: Scene-to-entity links
+  SCENE_ENTITY_LINKS_LIST: 'sceneEntityLinks:list',
+  SCENE_ENTITY_LINKS_UPSERT: 'sceneEntityLinks:upsert',
+  SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
+  ENTITY_LINKED_SCENES: 'entity:linkedScenes',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -366,6 +395,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
   [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
   [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => SnapshotDeleteResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => SnapshotDeleteAllResponse;
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
@@ -463,8 +494,35 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-156: Project Templates
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
-  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse>;
-  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse;
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse | { error: string }>;
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
+
+  // SKY-55: per-scene notes
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
+
+  // SKY-158: Tag & cross-reference system
+  [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;
+  [IPC_CHANNELS.TAGS_UPSERT]: (payload: TagsUpsertPayload) => TagsUpsertResponse;
+  [IPC_CHANNELS.TAGS_DELETE]: (payload: TagsDeletePayload) => TagsDeleteResponse;
+  [IPC_CHANNELS.TAGS_RENAME]: (payload: TagsRenamePayload) => TagsRenameResponse;
+  [IPC_CHANNELS.TAGS_FOR_ITEM]: (payload: TagsForItemPayload) => TagsForItemResponse;
+  [IPC_CHANNELS.TAGS_SET_FOR_ITEM]: (payload: TagsSetForItemPayload) => TagsSetForItemResponse;
+  [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => TagsItemsForTagResponse;
+  [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => TagsBulkApplyResponse;
+  [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => SceneSetTagsResponse;
+
+  // SKY-154: Writing Goals
+  [IPC_CHANNELS.GOALS_LOG_WORDS]: (payload: GoalsLogWordsPayload) => GoalsLogWordsResponse;
+  [IPC_CHANNELS.GOALS_GET_STATS]: (payload: never) => GoalsGetStatsResponse;
+  [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => GoalsSetGoalResponse;
+  [IPC_CHANNELS.GOALS_RESET_STREAK]: (payload: never) => GoalsResetStreakResponse;
+
+  // SKY-170: Scene-to-entity links
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload) => SceneEntityLinksListResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLinksUpsertResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
 }
 
 // ─── Payload / Response types ───
@@ -623,7 +681,7 @@ export interface SceneTimestamp {
 export interface EntityEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   path: string;
   aliases?: string[];
   tags?: string[];
@@ -782,11 +840,15 @@ export interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  /** Human-readable name set on manual saves or special triggers (e.g. "Pre-export snapshot"). */
+  label?: string;
 }
 
 export interface SnapshotSavePayload {
   sceneId: string;
   content: string;
+  /** Optional label for the snapshot; auto-saves leave this unset. */
+  label?: string;
 }
 
 export interface SnapshotListPayload {
@@ -815,6 +877,24 @@ export interface SnapshotRestorePayload {
 export interface SnapshotRestoreResponse {
   restored: SceneSnapshot;
   preRestoreSnapshot: SceneSnapshot;
+}
+
+export interface SnapshotDeletePayload {
+  sceneId: string;
+  snapshotId: string;
+}
+
+export interface SnapshotDeleteResponse {
+  deleted: boolean;
+}
+
+export interface SnapshotDeleteAllPayload {
+  /** When provided, deletes all for that scene. Omit to delete all across the vault. */
+  sceneId?: string;
+}
+
+export interface SnapshotDeleteAllResponse {
+  deleted: number;
 }
 
 // ─── Versioned drafts types (SKY-10 upgrade of MYT-198) ───
@@ -1650,6 +1730,7 @@ export interface SearchQueryPayload {
   query: string;
   scope: SearchScope;
   limit?: number;
+  filterTags?: string[];
 }
 
 export interface SearchResultItem {
@@ -2268,4 +2349,102 @@ export interface TemplateSaveAsPayload {
 export interface TemplateSaveAsResponse {
   ok: true;
   id: string;
+}
+
+// ─── SKY-55: per-scene notes ───
+export interface NotesGetPayload { sceneId: string }
+export interface NotesGetResponse { content: string }
+export interface NotesSetPayload { sceneId: string; content: string }
+export interface NotesSetResponse { saved: boolean }
+
+// ─── Tag types (SKY-158) ───
+
+export interface TagEntry {
+  id: string;
+  name: string;
+  color?: string | null;
+  createdAt: string;
+}
+
+export interface TagsListResponse { tags: TagEntry[] }
+export interface TagsUpsertPayload { name: string; color?: string | null }
+export interface TagsUpsertResponse { tag: TagEntry }
+export interface TagsDeletePayload { id: string }
+export interface TagsDeleteResponse { deleted: boolean }
+export interface TagsRenamePayload { id: string; name: string }
+export interface TagsRenameResponse { tag: TagEntry }
+export interface TagsForItemPayload { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsForItemResponse { tags: string[] }
+export interface TagsSetForItemPayload { itemId: string; itemKind: 'scene' | 'entity'; tags: string[] }
+export interface TagsSetForItemResponse { tags: string[] }
+export interface TagsItemsForTagPayload { tagName: string }
+export interface TagsItemsForTagItem { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsItemsForTagResponse { items: TagsItemsForTagItem[] }
+export interface TagsBulkApplyPayload {
+  itemIds: string[];
+  itemKind: 'scene' | 'entity';
+  addTags?: string[];
+  removeTags?: string[];
+}
+export interface TagsBulkApplyResponse { updated: number }
+export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
+export interface SceneSetTagsResponse { scene: SceneEntry }
+
+// ─── SKY-154: Writing Goals types ───
+export interface GoalsLogWordsPayload { date: string; wordsAdded: number; }
+export type GoalsLogWordsResponse = { ok: true };
+export interface HeatmapEntry { date: string; words: number; }
+export interface GoalsGetStatsResponse { todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: HeatmapEntry[]; }
+export interface GoalsSetGoalPayload { dailyGoal: number; }
+export type GoalsSetGoalResponse = { ok: true };
+export type GoalsResetStreakResponse = { ok: true };
+
+// ─── SKY-170: Scene-to-entity links ─────────────────────────────────────────
+
+export interface SceneEntityLink {
+  sceneId: string;
+  entityId: string;
+  linkKind: 'mention' | 'tag';
+  createdAt: string;
+}
+
+export interface LinkedScene {
+  sceneId: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
+}
+
+export interface SceneEntityLinksListPayload {
+  sceneId: string;
+}
+
+export interface SceneEntityLinksListResponse {
+  links: SceneEntityLink[];
+}
+
+export interface SceneEntityLinksUpsertPayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+
+export interface SceneEntityLinksUpsertResponse {
+  link: SceneEntityLink;
+}
+
+export interface SceneEntityLinksDeletePayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+
+export interface EntityLinkedScenesPayload {
+  entityId: string;
+}
+
+export interface EntityLinkedScenesResponse {
+  scenes: LinkedScene[];
 }

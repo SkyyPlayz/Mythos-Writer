@@ -456,6 +456,48 @@ function NotesVault({ onOpenPath, onContextChange }: NotesVaultProps) {
 
 // ─── Main component ───
 
+// ─── Tags Section ───
+
+interface TagsSectionProps {
+  onTagFilter?: (tag: string) => void;
+}
+
+function TagsSection({ onTagFilter }: TagsSectionProps) {
+  const [open, setOpen] = useState(false);
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.api.tagsList?.().then((r: { tags: Array<{ id: string; name: string }> }) => {
+      setTags(r.tags ?? []);
+    }).catch(() => {});
+  }, [open]);
+
+  return (
+    <div className="vs-section vs-tags-section">
+      <SectionHeader label="Tags" open={open} onToggle={() => setOpen((o) => !o)} />
+      {open && (
+        <div className="vs-section-content vs-tags-content">
+          {tags.length === 0 ? (
+            <div className="vs-empty">No tags yet.</div>
+          ) : (
+            tags.map((tag) => (
+              <button
+                key={tag.id}
+                className="vs-tag-pill"
+                onClick={() => onTagFilter?.(tag.name)}
+                title={`Filter by tag: ${tag.name}`}
+              >
+                {tag.name}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface VaultSidebarProps {
   stories: Story[];
   selectedSceneId: string | null;
@@ -465,6 +507,7 @@ export interface VaultSidebarProps {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenVaultPath?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  onTagFilter?: (tag: string) => void;
 }
 
 export default function VaultSidebar({
@@ -476,6 +519,7 @@ export default function VaultSidebar({
   onCreateScene,
   onOpenVaultPath,
   onContextChange,
+  onTagFilter,
 }: VaultSidebarProps) {
   return (
     <div className="vault-sidebar">
@@ -489,6 +533,8 @@ export default function VaultSidebar({
       />
       <div className="vs-divider" aria-hidden="true" />
       <NotesVault onOpenPath={onOpenVaultPath} onContextChange={onContextChange} />
+      <div className="vs-divider" aria-hidden="true" />
+      <TagsSection onTagFilter={onTagFilter} />
     </div>
   );
 }

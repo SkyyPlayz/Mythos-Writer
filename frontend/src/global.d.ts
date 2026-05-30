@@ -7,6 +7,7 @@ interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  label?: string;
 }
 
 // SKY-10 — Per-scene versioned drafts
@@ -255,6 +256,8 @@ interface AppSettings {
     scrollTop: number;
     cursorLine: number;
   };
+  /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
+  seenTips?: Record<string, boolean>;
 }
 
 interface GenerationLogRow {
@@ -323,11 +326,13 @@ interface Window {
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;
 
     // Versioning — per-scene snapshots
-    snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotSave: (sceneId: string, content: string, label?: string) => Promise<SceneSnapshot>;
     snapshotSaveSync: (sceneId: string, content: string) => void;
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
+    snapshotDelete: (sceneId: string, snapshotId: string) => Promise<{ deleted: boolean }>;
+    snapshotDeleteAll: (sceneId?: string) => Promise<{ deleted: number }>;
 
     // SKY-10 — Per-scene versioned drafts
     versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
@@ -455,7 +460,7 @@ interface Window {
     onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => () => void;
 
     // Search (MYT-251)
-    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) => Promise<unknown>;
+    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<unknown>;
 
     // EPUB export (MYT-342)
     exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) => Promise<unknown>;
@@ -589,6 +594,27 @@ interface Window {
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
+
+    // SKY-55: per-scene notes
+    notesGet?: (sceneId: string) => Promise<{ content: string }>;
+    notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
+
+    // SKY-158: Tags
+    tagsList?: () => Promise<{ tags: Array<{ id: string; name: string; color?: string | null; createdAt: string }> }>;
+    tagsUpsert?: (name: string, color?: string | null) => Promise<{ tag: { id: string; name: string; color?: string | null; createdAt: string } }>;
+    tagsDelete?: (id: string) => Promise<{ deleted: boolean }>;
+    tagsRename?: (id: string, name: string) => Promise<{ tag: { id: string; name: string; color?: string | null; createdAt: string } }>;
+    tagsForItem?: (itemId: string, itemKind: 'scene' | 'entity') => Promise<{ tags: string[] }>;
+    tagsSetForItem?: (itemId: string, itemKind: 'scene' | 'entity', tags: string[]) => Promise<{ tags: string[] }>;
+    tagsItemsForTag?: (tagName: string) => Promise<{ items: Array<{ itemId: string; itemKind: 'scene' | 'entity' }> }>;
+    tagsBulkApply?: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) => Promise<{ updated: number }>;
+    sceneSetTags?: (payload: { sceneId: string; tags: string[] }) => Promise<{ scene: unknown }>;
+
+    // SKY-154: Writing Goals
+    goalsGetStats: () => Promise<{ todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: Array<{ date: string; words: number }>; }>;
+    goalsLogWords: (date: string, wordsAdded: number) => Promise<{ ok: boolean }>;
+    goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
+    goalsResetStreak: () => Promise<{ ok: boolean }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

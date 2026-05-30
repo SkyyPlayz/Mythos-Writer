@@ -642,7 +642,6 @@ describe('voice spawn gate (MYT-788)', () => {
       () => makeSettings(undefined, { enabled: true, provider: 'local', localBinaryPath: bin }),
     );
     const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as { error: string };
-    // IPC sanitizes raw spawn-gate errors to a fixed category message (INVALID_INPUT).
     expect(result.error).toBe('Voice request was invalid — check the input and settings.');
   });
 
@@ -671,7 +670,6 @@ describe('voice spawn gate (MYT-788)', () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0].speakId).toBe(speakId);
-    // IPC sanitizes raw spawn-gate errors to a fixed category message (INVALID_INPUT).
     expect(errors[0].error).toBe('Voice request was invalid — check the input and settings.');
   });
 

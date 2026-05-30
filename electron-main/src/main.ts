@@ -43,6 +43,8 @@ import {
   type SnapshotListPayload,
   type SnapshotGetPayload,
   type SnapshotRestorePayload,
+  type SnapshotDeletePayload,
+  type SnapshotDeleteAllPayload,
   type EntityCreatePayload,
   type EntityReadPayload,
   type EntityUpdatePayload,
@@ -110,6 +112,23 @@ import {
   UNTRUSTED_FRAME_REJECTION,
   type SettingsTestConnectionPayload,
   type SessionSaveScenePayload,
+  type TagsUpsertPayload,
+  type TagsDeletePayload,
+  type TagsRenamePayload,
+  type TagsForItemPayload,
+  type TagsSetForItemPayload,
+  type TagsItemsForTagPayload,
+  type TagsBulkApplyPayload,
+  type SceneSetTagsPayload,
+  type NotesGetPayload,
+  type NotesSetPayload,
+  type TagEntry,
+  type GoalsLogWordsPayload,
+  type GoalsSetGoalPayload,
+  type SceneEntityLinksListPayload,
+  type SceneEntityLinksUpsertPayload,
+  type SceneEntityLinksDeletePayload,
+  type EntityLinkedScenesPayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -146,6 +165,22 @@ import {
   countTokensInWindow,
   countSuggestionsInWindow,
   insertProvenance,
+  getNoteBySceneId,
+  upsertNote,
+  listTags,
+  upsertTag,
+  deleteTag,
+  renameTag,
+  setItemTags,
+  getItemTags,
+  getItemsForTag,
+  bulkApplyTags,
+  type DbTag,
+  upsertSceneEntityLink,
+  deleteSceneEntityLink,
+  listSceneEntityLinks,
+  listLinkedSceneIds,
+  deleteStaleSceneMentionLinks,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -156,7 +191,7 @@ import {
   validateSttShape,
   validateTtsShape,
 } from './voiceGate.js';
-import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
+import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
 import {
@@ -218,7 +253,7 @@ import {
   migrateSecretsFromSettingsFile,
   persistSecretsAndStripSettings,
 } from './secrets/migration.js';
-import { buildFullIndex, searchVault } from './search.js';
+import { indexDocument, buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import {
@@ -250,6 +285,7 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
+import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
@@ -374,6 +410,17 @@ function resolveSceneChapterDir(sceneId: string): string | null {
     if (flat) return path.posix.dirname(flat.path.split(path.sep).join('/'));
   } catch { /* missing manifest — treat as no history */ }
   return null;
+}
+
+// SKY-170: extract entity IDs from entity:// markdown links ([label](entity://ent_*))
+function parseMentionEntityIds(prose: string): Set<string> {
+  const ids = new Set<string>();
+  const re = /\[[^\]]*\]\(entity:\/\/(ent_[^)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(prose)) !== null) {
+    ids.add(m[1]);
+  }
+  return ids;
 }
 
 function ensureVaultDir() {
@@ -665,6 +712,26 @@ function buildTextExport(
         defaultFilename: 'vault-export',
       };
     }
+  }
+}
+
+// ─── Tag helper ───
+function dbTagToEntry(t: DbTag): TagEntry {
+  return { id: t.id, name: t.name, color: t.color, createdAt: t.created_at };
+}
+
+// ─── Export helpers (SKY-153) ───
+function safeEF(s: string): string { return s.replace(/[/\?%*:|"<>]/g, '-').trim() || 'export'; }
+function readSEF(sc: import('./ipc.js').SceneEntry): ExportableScene { let p = ''; try { p = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ } return { title: sc.title, prose: p }; }
+function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js').ExportScope, fmt: 'markdown'|'plaintext'): { content: string; defaultFilename: string } {
+  const toC = (ch: import('./ipc.js').ChapterEntry): ExportableChapter => ({ title: ch.title, scenes: [...ch.scenes].sort((a,b)=>a.order-b.order).map(readSEF) });
+  const toSt = (st: import('./ipc.js').StoryEntry): ExportableStory => ({ title: st.title, chapters: [...st.chapters].sort((a,b)=>a.order-b.order).map(toC) });
+  const md = fmt === 'markdown';
+  switch (scope.kind) {
+    case 'scene': { let f2: import('./ipc.js').SceneEntry|null=null; outer: for (const st of manifest.stories) for (const ch of st.chapters) { const sc=ch.scenes.find((s)=>s.id===scope.sceneId); if(sc){f2=sc;break outer;} } if (!f2) f2=(manifest.scenes??[]).find((s: import('./ipc.js').SceneEntry)=>s.id===scope.sceneId)??null; if (!f2) throw new Error(`Scene not found: ${scope.sceneId}`); const es=readSEF(f2); return { content: md ? sceneToMarkdown(es) : sceneToPlaintext(es), defaultFilename: safeEF(f2.title) }; }
+    case 'chapter': { const st=manifest.stories.find((s)=>s.id===scope.storyId); if(!st) throw new Error(`Story not found: ${scope.storyId}`); const ch=st.chapters.find((c)=>c.id===scope.chapterId); if(!ch) throw new Error(`Chapter not found: ${scope.chapterId}`); const scenes=[...ch.scenes].sort((a,b)=>a.order-b.order).map(readSEF); return { content: md ? chapterToMarkdown(ch.title,scenes) : chapterToPlaintext(ch.title,scenes), defaultFilename: safeEF(ch.title) }; }
+    case 'story': { const st=manifest.stories.find((s)=>s.id===scope.storyId); if(!st) throw new Error(`Story not found: ${scope.storyId}`); const es=toSt(st); return { content: md ? storyToMarkdown(es) : storyToPlaintext(es), defaultFilename: safeEF(st.title) }; }
+    case 'vault': return { content: md ? vaultToMarkdown(manifest.stories.map(toSt)) : vaultToPlaintext(manifest.stories.map(toSt)), defaultFilename: 'vault-export' };
   }
 }
 
@@ -1034,7 +1101,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => {
     ensureVaultDir();
     const { snapshots: retention } = loadAppSettings();
-    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention);
+    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention, payload.label);
   },
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => {
     ensureVaultDir();
@@ -1068,6 +1135,19 @@ const handlers: IpcHandlers = {
     // Write the restored content to vault markdown
     writeVaultFileAtomic(getVaultRoot(), payload.scenePath, target.content);
     return { restored: target, preRestoreSnapshot };
+  },
+
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => {
+    ensureVaultDir();
+    const deleted = deleteSnapshot(getVaultRoot(), payload.sceneId, payload.snapshotId);
+    return { deleted };
+  },
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => {
+    ensureVaultDir();
+    const deleted = payload.sceneId
+      ? deleteAllSnapshotsForScene(getVaultRoot(), payload.sceneId)
+      : deleteAllSnapshotsVault(getVaultRoot());
+    return { deleted };
   },
 
   // ─── Versioned drafts (SKY-10 upgrade of MYT-198) ───
@@ -1159,6 +1239,7 @@ const handlers: IpcHandlers = {
     const manifest = readManifest(getManifestPath());
     const entry = createEntity(getVaultRoot(), manifest, payload);
     writeManifest(getManifestPath(), manifest);
+    setItemTags(entry.id, 'entity', entry.tags ?? []);
     return entry;
   },
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => {
@@ -1177,6 +1258,7 @@ const handlers: IpcHandlers = {
       properties: payload.properties,
     });
     writeManifest(getManifestPath(), manifest);
+    if (payload.tags !== undefined) setItemTags(payload.id, 'entity', payload.tags);
     return entry;
   },
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => {
@@ -1197,6 +1279,164 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     return getEntityBacklinks(getVaultRoot(), manifest, payload.entityId);
+  },
+
+  // SKY-55: per-scene notes
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => {
+    ensureVaultDir();
+    const content = getNoteBySceneId(payload.sceneId);
+    return { content };
+  },
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => {
+    ensureVaultDir();
+    upsertNote(payload.sceneId, payload.content);
+    return { saved: true };
+  },
+
+  // SKY-158: Tag system
+  [IPC_CHANNELS.TAGS_LIST]: () => {
+    const tags = listTags();
+    return { tags: tags.map(dbTagToEntry) };
+  },
+  [IPC_CHANNELS.TAGS_UPSERT]: (payload: TagsUpsertPayload) => {
+    const tag = upsertTag(payload.name, payload.color);
+    return { tag: dbTagToEntry(tag) };
+  },
+  [IPC_CHANNELS.TAGS_DELETE]: (payload: TagsDeletePayload) => {
+    deleteTag(payload.id);
+    return { deleted: true };
+  },
+  [IPC_CHANNELS.TAGS_RENAME]: (payload: TagsRenamePayload) => {
+    ensureVaultDir();
+    const oldTag = listTags().find((t) => t.id === payload.id);
+    const tag = renameTag(payload.id, payload.name);
+    // Cascade rename through manifest entity/scene tags
+    if (oldTag) {
+      const manifest = readManifest(getManifestPath());
+      let changed = false;
+      for (const entity of manifest.entities) {
+        if (entity.tags?.includes(oldTag.name)) {
+          entity.tags = entity.tags.map((t) => (t === oldTag.name ? tag.name : t));
+          changed = true;
+        }
+      }
+      for (const story of manifest.stories) {
+        for (const chapter of story.chapters) {
+          for (const scene of chapter.scenes) {
+            if (scene.card?.tags?.includes(oldTag.name)) {
+              scene.card.tags = scene.card.tags.map((t) => (t === oldTag.name ? tag.name : t));
+              changed = true;
+            }
+          }
+        }
+      }
+      if (changed) {
+        writeManifest(getManifestPath(), manifest);
+        buildFullIndex(getDb(), getVaultRoot(), manifest);
+      }
+    }
+    return { tag: dbTagToEntry(tag) };
+  },
+  [IPC_CHANNELS.TAGS_FOR_ITEM]: (payload: TagsForItemPayload) => {
+    const tags = getItemTags(payload.itemId);
+    return { tags };
+  },
+  [IPC_CHANNELS.TAGS_SET_FOR_ITEM]: (payload: TagsSetForItemPayload) => {
+    setItemTags(payload.itemId, payload.itemKind, payload.tags);
+    // Sync tags back to manifest for entities
+    if (payload.itemKind === 'entity') {
+      const manifest = readManifest(getManifestPath());
+      const entity = manifest.entities.find((e) => e.id === payload.itemId);
+      if (entity) {
+        entity.tags = payload.tags;
+        writeManifest(getManifestPath(), manifest);
+      }
+    } else if (payload.itemKind === 'scene') {
+      const manifest = readManifest(getManifestPath());
+      let found = null as import('./ipc.js').SceneEntry | null;
+      outer: for (const story of manifest.stories) {
+        for (const chapter of story.chapters) {
+          const s = chapter.scenes.find((sc) => sc.id === payload.itemId);
+          if (s) { found = s; break outer; }
+        }
+      }
+      if (!found) found = manifest.scenes.find((s) => s.id === payload.itemId) ?? null;
+      if (found) {
+        if (!found.card) found.card = {};
+        found.card.tags = payload.tags;
+        writeManifest(getManifestPath(), manifest);
+        // Re-index scene with updated tags
+        let prose = '';
+        try { prose = readSceneFile(getVaultRoot(), found.path).prose; } catch { /* ignore */ }
+        indexDocument(getDb(), {
+          docId: found.id, vault: 'story', kind: 'scene', title: found.title,
+          body: [payload.tags.join(' '), prose].filter(Boolean).join('\n'),
+        });
+      }
+    }
+    return { tags: payload.tags };
+  },
+  [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => {
+    const items = getItemsForTag(payload.tagName);
+    return { items: items.map((i) => ({ itemId: i.itemId, itemKind: i.itemKind as 'scene' | 'entity' })) };
+  },
+  [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => {
+    const updated = bulkApplyTags(
+      payload.itemIds,
+      payload.itemKind,
+      payload.addTags ?? [],
+      payload.removeTags ?? [],
+    );
+    // Sync to manifest
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    let manifestChanged = false;
+    for (const itemId of payload.itemIds) {
+      const newTags = getItemTags(itemId);
+      if (payload.itemKind === 'entity') {
+        const entity = manifest.entities.find((e) => e.id === itemId);
+        if (entity) { entity.tags = newTags; manifestChanged = true; }
+      } else {
+        for (const story of manifest.stories) {
+          for (const chapter of story.chapters) {
+            const scene = chapter.scenes.find((s) => s.id === itemId);
+            if (scene) {
+              if (!scene.card) scene.card = {};
+              scene.card.tags = newTags;
+              manifestChanged = true;
+            }
+          }
+        }
+      }
+    }
+    if (manifestChanged) writeManifest(getManifestPath(), manifest);
+    return { updated };
+  },
+  [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    let found = null as import('./ipc.js').SceneEntry | null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const s = chapter.scenes.find((sc) => sc.id === payload.sceneId);
+        if (s) { found = s; break outer; }
+      }
+    }
+    if (!found) found = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+    if (!found.card) found.card = {};
+    found.card.tags = payload.tags;
+    found.updatedAt = new Date().toISOString();
+    writeManifest(getManifestPath(), manifest);
+    setItemTags(payload.sceneId, 'scene', payload.tags);
+    // Re-index scene
+    let prose = '';
+    try { prose = readSceneFile(getVaultRoot(), found.path).prose; } catch { /* ignore */ }
+    indexDocument(getDb(), {
+      docId: found.id, vault: 'story', kind: 'scene', title: found.title,
+      body: [payload.tags.join(' '), prose].filter(Boolean).join('\n'),
+    });
+    return { scene: found };
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
@@ -1294,6 +1534,12 @@ const handlers: IpcHandlers = {
     });
     return { saved: true };
   },
+
+  // SKY-154
+  [IPC_CHANNELS.GOALS_LOG_WORDS]: (payload: GoalsLogWordsPayload) => { logWords(payload.date, payload.wordsAdded); return { ok: true as const }; },
+  [IPC_CHANNELS.GOALS_GET_STATS]: () => { const today = new Date().toISOString().slice(0, 10); return getWritingStats(today); },
+  [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => { setDailyGoal(payload.dailyGoal); return { ok: true as const }; },
+  [IPC_CHANNELS.GOALS_RESET_STREAK]: () => { const today = new Date().toISOString().slice(0, 10); resetStreak(today); return { ok: true as const }; },
 
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
     const t0 = Date.now();
@@ -1587,6 +1833,17 @@ const handlers: IpcHandlers = {
     });
 
     writeManifest(getManifestPath(), manifest);
+
+    // SKY-170: parse @mentions and sync scene_entity_links rows
+    try {
+      const mentionedIds = parseMentionEntityIds(payload.prose);
+      const now2 = new Date().toISOString();
+      for (const entityId of mentionedIds) {
+        upsertSceneEntityLink({ id: crypto.randomUUID(), scene_id: found.id, entity_id: entityId, link_kind: 'mention', created_at: now2 });
+      }
+      deleteStaleSceneMentionLinks(found.id, [...mentionedIds]);
+    } catch { /* non-fatal — scene save still succeeds */ }
+
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
     return { scene: found };
   },
@@ -1645,7 +1902,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => {
     ensureVaultDir();
     const t0 = Date.now();
-    const results = searchVault(getDb(), payload.query, payload.scope, payload.limit ?? 20);
+    const results = searchVault(getDb(), payload.query, payload.scope, payload.limit ?? 20, payload.filterTags);
     return { results, elapsed_ms: Date.now() - t0 };
   },
 
@@ -1929,6 +2186,16 @@ const handlers: IpcHandlers = {
       language: payload.metadata?.language,
       chapters,
     });
+    // SKY-157: pre-export snapshot for every scene in the story
+    const { snapshots: retention } = loadAppSettings();
+    for (const ch of story.chapters) {
+      for (const sc of ch.scenes) {
+        try {
+          const prose = readSceneFile(getVaultRoot(), sc.path).prose;
+          saveSnapshot(getVaultRoot(), sc.id, prose, retention, 'Pre-export snapshot');
+        } catch { /* missing scene — skip */ }
+      }
+    }
     writeFileAtomic(filePath, buffer);
     return { path: filePath, cancelled: false };
   },
@@ -2012,6 +2279,13 @@ const handlers: IpcHandlers = {
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
 
     const buffer = await buildDocx({ title: docxTitle, chapters: docxChapters });
+    // SKY-157: pre-export snapshot for every scene being exported
+    const { snapshots: retentionDocx } = loadAppSettings();
+    for (const ch of docxChapters) {
+      for (const sc of ch.scenes) {
+        if (sc.prose) saveSnapshot(getVaultRoot(), sc.id, sc.prose, retentionDocx, 'Pre-export snapshot');
+      }
+    }
     writeFileAtomic(result.filePath, buffer);
     return { path: result.filePath, cancelled: false };
   },
@@ -2968,6 +3242,70 @@ const handlers: IpcHandlers = {
     if (!name) return { error: 'Template name is required' };
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
+  },
+
+  // ─── SKY-170: Scene-to-entity links ───
+
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload): import('./ipc.js').SceneEntityLinksListResponse => {
+    ensureVaultDir();
+    const rows = listSceneEntityLinks(payload.sceneId);
+    return {
+      links: rows.map((r) => ({
+        sceneId: r.scene_id,
+        entityId: r.entity_id,
+        linkKind: r.link_kind as 'mention' | 'tag',
+        createdAt: r.created_at,
+      })),
+    };
+  },
+
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload): import('./ipc.js').SceneEntityLinksUpsertResponse => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const row = { id: crypto.randomUUID(), scene_id: payload.sceneId, entity_id: payload.entityId, link_kind: payload.kind, created_at: now };
+    upsertSceneEntityLink(row);
+    return {
+      link: {
+        sceneId: row.scene_id,
+        entityId: row.entity_id,
+        linkKind: row.link_kind,
+        createdAt: row.created_at,
+      },
+    };
+  },
+
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload): void => {
+    ensureVaultDir();
+    deleteSceneEntityLink(payload.sceneId, payload.entityId, payload.kind);
+  },
+
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload): import('./ipc.js').EntityLinkedScenesResponse => {
+    ensureVaultDir();
+    const rows = listLinkedSceneIds(payload.entityId);
+    if (rows.length === 0) return { scenes: [] };
+
+    const manifest = readManifest(getManifestPath());
+    const scenes: import('./ipc.js').LinkedScene[] = [];
+
+    for (const row of rows) {
+      for (const story of manifest.stories) {
+        for (const chapter of story.chapters) {
+          const scene = chapter.scenes.find((s) => s.id === row.scene_id);
+          if (scene) {
+            scenes.push({
+              sceneId: scene.id,
+              sceneTitle: scene.title,
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              storyId: story.id,
+              linkKind: row.link_kind as 'mention' | 'tag',
+            });
+          }
+        }
+      }
+    }
+
+    return { scenes };
   },
 
 };

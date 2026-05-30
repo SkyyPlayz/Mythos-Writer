@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { EntityEntry, EntityType } from './types';
+import TagInput from './TagInput';
 import './EntityDetail.css';
 
 const TYPE_LABELS: Record<EntityType, string> = {
@@ -34,7 +35,8 @@ interface Props {
 export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, onOpenScene }: Props) {
   const [name, setName] = useState(entity.name);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join(', '));
-  const [tags, setTags] = useState((entity.tags ?? []).join(', '));
+  const [tags, setTags] = useState<string[]>(entity.tags ?? []);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [prose, setProse] = useState('');
   const [proseLoading, setProseLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,11 +51,18 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   useEffect(() => {
     setName(entity.name);
     setAliases((entity.aliases ?? []).join(', '));
-    setTags((entity.tags ?? []).join(', '));
+    setTags(entity.tags ?? []);
     setDirty(false);
     setError('');
     setDeleteConfirm(false);
   }, [entity.id]);
+
+  // Load all tags for autocomplete
+  useEffect(() => {
+    window.api.tagsList?.().then((r: { tags: Array<{ name: string }> }) => {
+      setAllTags(r.tags.map((t) => t.name));
+    }).catch(() => {});
+  }, []);
 
   // Load prose from vault file
   useEffect(() => {
@@ -102,12 +111,11 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setError('');
     try {
       const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
-      const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
       const updated = await window.api.entityUpdate({
         id: entity.id,
         name: name.trim() || entity.name,
         aliases: aliasList,
-        tags: tagList,
+        tags,
         prose,
       });
       setDirty(false);
@@ -198,17 +206,8 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
         </div>
 
         <div className="entity-det-field">
-          <label className="entity-det-label">
-            Tags
-            <span className="entity-det-hint">comma-separated</span>
-          </label>
-          <input
-            className="entity-det-input"
-            type="text"
-            value={tags}
-            onChange={(e) => { setTags(e.target.value); markDirty(); }}
-            placeholder="protagonist, mage…"
-          />
+          <label className="entity-det-label">Tags</label>
+          <TagInput value={tags} onChange={(t) => { setTags(t); markDirty(); }} allTags={allTags} />
         </div>
 
         <div className="entity-det-field entity-det-field-prose">
