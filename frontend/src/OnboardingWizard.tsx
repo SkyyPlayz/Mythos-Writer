@@ -38,6 +38,16 @@ type Api = {
   templateList: () => Promise<{ templates: TemplateItem[] }>;
 };
 
+interface TemplateItem {
+  id: string;
+  name: string;
+  description: string;
+  story: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
+  notes: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
+  isUserTemplate?: boolean;
+  savedAt?: string;
+}
+
 function api(): Api {
   return (window as unknown as { api: Api }).api;
 }
