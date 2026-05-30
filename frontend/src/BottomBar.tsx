@@ -6,6 +6,10 @@ interface Props {
   selectedChapter: Chapter | null;
   selectedStory: Story | null;
   onNavigateScene: (direction: 'prev' | 'next') => void;
+  /** SKY-204: active vault note path (when a note is open instead of a scene). */
+  activeNotePath?: string | null;
+  /** SKY-204: word count for the active vault note. */
+  activeNoteWordCount?: number;
 }
 
 export default function BottomBar({
@@ -13,6 +17,8 @@ export default function BottomBar({
   selectedChapter,
   selectedStory,
   onNavigateScene,
+  activeNotePath,
+  activeNoteWordCount,
 }: Props) {
   const allScenes: { scene: Scene; chapter: Chapter; story: Story }[] = [];
   if (selectedStory) {
@@ -36,12 +42,16 @@ export default function BottomBar({
         .reduce((a, b) => a + b, 0)
     : 0;
 
+  // SKY-204: when a vault note is active instead of a scene, show note stats.
+  const noteFileName = activeNotePath ? activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? '' : '';
+  const isNoteActive = !!activeNotePath && !selectedScene;
+
   return (
     <div className="bottom-bar">
       <div className="bottom-nav">
         <button
           className="bottom-nav-btn"
-          disabled={!hasPrev}
+          disabled={isNoteActive || !hasPrev}
           onClick={() => onNavigateScene('prev')}
           title="Previous scene"
         >
@@ -49,7 +59,7 @@ export default function BottomBar({
         </button>
         <button
           className="bottom-nav-btn"
-          disabled={!hasNext}
+          disabled={isNoteActive || !hasNext}
           onClick={() => onNavigateScene('next')}
           title="Next scene"
         >
@@ -58,7 +68,16 @@ export default function BottomBar({
       </div>
 
       <div className="bottom-meta">
-        {selectedScene ? (
+        {isNoteActive ? (
+          <>
+            <span className="bottom-breadcrumb">
+              <span className="bottom-scene-name">{noteFileName}</span>
+            </span>
+            <span className="bottom-stats">
+              {(activeNoteWordCount ?? 0).toLocaleString()} words
+            </span>
+          </>
+        ) : selectedScene ? (
           <>
             <span className="bottom-breadcrumb">
               {selectedStory?.title}

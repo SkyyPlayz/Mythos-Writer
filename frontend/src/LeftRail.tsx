@@ -24,6 +24,8 @@ interface Props {
   onOpenVaultPath?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
   onExport?: (scope: ExportScope) => void;
+  /** SKY-204: whether journal mode is enabled (shows Daily Notes section in vault tab). */
+  journalModeEnabled?: boolean;
 }
 
 export default function LeftRail({
@@ -41,6 +43,7 @@ export default function LeftRail({
   onOpenVaultPath,
   onContextChange,
   onExport,
+  journalModeEnabled,
 }: Props) {
   return (
     <div className="left-rail">
@@ -132,6 +135,7 @@ export default function LeftRail({
             onOpenFile={onOpenVaultPath}
             onContextChange={onContextChange}
             onExport={onExport}
+            journalModeEnabled={journalModeEnabled}
           />
         )}
         {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} />}
