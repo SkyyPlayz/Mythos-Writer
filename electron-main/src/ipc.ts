@@ -2480,6 +2480,7 @@ export interface SceneEntityLink {
   entityId: string;
   linkKind: 'mention' | 'tag';
   createdAt: string;
+}
 export interface LinkedScene {
   sceneId: string;
   sceneTitle: string;
@@ -2487,6 +2488,7 @@ export interface LinkedScene {
   chapterTitle: string;
   storyId: string;
   linkKind: 'mention' | 'tag';
+}
 export interface SceneEntityLinksListPayload {
   sceneId: string;
 }
