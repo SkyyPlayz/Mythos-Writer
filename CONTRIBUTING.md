@@ -25,7 +25,7 @@ Three jobs must be green before a PR can merge:
 |---|---|
 | `CI / ci (pull_request)` | Lint, type-checks, unit tests, Electron build, Playwright E2E |
 | `CI / build-macos (pull_request)` | Same checks + macOS DMG packaging |
-| `CI / build-linux (pull_request)` | Same checks + Linux AppImage packaging + smoke test |
+| `CI / build-linux (pull_request)` | Same checks + Linux AppImage / .deb / .rpm packaging, artifact verification, and AppImage smoke test |
 
 These are defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 **Do not bypass or skip these checks.**
@@ -115,3 +115,66 @@ fix: prevent snapshot path traversal via sceneId parameter
 
 Refs: MYT-638
 ```
+
+## Linux packages
+
+The `build-linux` CI job produces three installable artifacts bundled under the
+`linux-packages` artifact:
+
+| Format | File | Target distros |
+|--------|------|----------------|
+| AppImage | `Mythos Writer-*.AppImage` | Any x64 Linux |
+| Debian package | `Mythos Writer-*.deb` | Debian, Ubuntu, and derivatives |
+| RPM package | `Mythos Writer-*.rpm` | Fedora, RHEL, openSUSE, and derivatives |
+
+### AppImage
+
+No installation required. Download, make executable, and run:
+
+```bash
+chmod +x "Mythos Writer-*.AppImage"
+./"Mythos Writer-*.AppImage"
+```
+
+Configuration is stored in `~/.config/Mythos Writer/`.
+
+**Uninstall:** delete the AppImage file. User data remains in `~/.config/Mythos Writer/`.
+
+### Debian / Ubuntu (.deb)
+
+```bash
+# Install
+sudo apt install ./"Mythos Writer-*.deb"
+# or: sudo dpkg -i "Mythos Writer-*.deb"
+
+# Uninstall (keeps user config)
+sudo apt remove mythos-writer
+
+# Uninstall and remove user config
+sudo apt purge mythos-writer
+```
+
+Install paths:
+
+| Path | Contents |
+|------|----------|
+| `/opt/Mythos Writer/` | Application binaries and resources |
+| `/usr/share/applications/mythos-writer.desktop` | Desktop entry |
+| `~/.config/Mythos Writer/` | User configuration and vault index |
+
+### Fedora / RHEL / openSUSE (.rpm)
+
+```bash
+# Install (dnf — Fedora 22+, RHEL 8+)
+sudo dnf install ./"Mythos Writer-*.rpm"
+
+# Install (rpm — any RPM-based distro)
+sudo rpm -i "Mythos Writer-*.rpm"
+
+# Uninstall
+sudo dnf remove mythos-writer
+# or: sudo rpm -e mythos-writer
+```
+
+Install paths mirror the Debian layout above (`/opt/Mythos Writer/` for binaries,
+`~/.config/Mythos Writer/` for user data).
