@@ -752,6 +752,12 @@ export default function DesktopShell() {
       }
 
       const mod = e.metaKey || e.ctrlKey;
+      // Ctrl+K — open global vault search
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setGlobalSearchOpen(true);
+        return;
+      }
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
@@ -1548,15 +1554,15 @@ export default function DesktopShell() {
           {budgetToast}
         </div>
       )}
-      {globalSearchOpen && (
-        <GlobalSearchPanel
-          onNavigate={(result) => {
-            handleSearchNavigate(result);
-            setGlobalSearchOpen(false);
-          }}
-          onClose={() => setGlobalSearchOpen(false)}
-        />
-      )}
+      <GlobalSearchPanel
+        open={globalSearchOpen}
+        defaultScope={view === 'editor' ? 'story' : view === 'brainstorm' ? 'notes' : 'both'}
+        onNavigate={(result) => {
+          handleSearchNavigate(result);
+          setGlobalSearchOpen(false);
+        }}
+        onClose={() => setGlobalSearchOpen(false)}
+      />
       {promptModal}
     </div>
   );

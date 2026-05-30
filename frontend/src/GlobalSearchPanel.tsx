@@ -14,9 +14,12 @@ interface SearchResultItem {
 }
 
 interface Props {
+  open: boolean;
   onNavigate: (result: SearchResultItem) => void;
   onClose: () => void;
   initialTagFilter?: string;
+  /** Context-aware initial scope. Defaults to 'both'. */
+  defaultScope?: SearchScope;
 }
 
 const KIND_ICONS: Record<string, string> = {
@@ -34,9 +37,9 @@ const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
   { id: 'notes', label: 'Notes Vault' },
 ];
 
-export default function GlobalSearchPanel({ onNavigate, onClose, initialTagFilter }: Props) {
+export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both' }: Props) {
   const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<SearchScope>('both');
+  const [scope, setScope] = useState<SearchScope>(defaultScope);
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -46,8 +49,8 @@ export default function GlobalSearchPanel({ onNavigate, onClose, initialTagFilte
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (open) inputRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (initialTagFilter) setActiveTagFilters([initialTagFilter]);
@@ -141,6 +144,8 @@ export default function GlobalSearchPanel({ onNavigate, onClose, initialTagFilte
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
+
+  if (!open) return null;
 
   return (
     <div className="gsp-backdrop" onClick={onClose} role="presentation">
