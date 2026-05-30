@@ -76,6 +76,16 @@ interface EntityBacklinkScene {
   snippet: string;
 }
 
+interface EntityRelationshipRow {
+  id: string;
+  label: string;
+  direction: 'outgoing' | 'incoming';
+  otherEntityId: string;
+  otherEntityName: string;
+  otherEntityType: 'character' | 'location' | 'item' | 'concept' | 'other';
+  createdAt: string;
+}
+
 interface VaultCheckInconsistency {
   id: string;
   entityName: string;
@@ -350,6 +360,9 @@ interface Window {
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+    entityRelationshipsList: (entityId: string) => Promise<{ entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] }>;
+    entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
+    entityRelationshipsDelete: (relationshipId: string) => Promise<void>;
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;

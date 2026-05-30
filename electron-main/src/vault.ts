@@ -520,6 +520,7 @@ export function defaultManifest(vaultRoot: string): Manifest {
     chapters: [],
     provenance: {},
     boardReferences: [],
+    relationships: [],
   };
 }
 

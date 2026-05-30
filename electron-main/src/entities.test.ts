@@ -10,6 +10,9 @@ import {
   listEntities,
   reindexEntities,
   entityRelPath,
+  listEntityRelationships,
+  createEntityRelationship,
+  deleteEntityRelationship,
 } from './entities.js';
 import { defaultManifest } from './vault.js';
 import type { Manifest } from './ipc.js';
@@ -178,6 +181,65 @@ describe('listEntities', () => {
     const chars = listEntities(tmpDir, manifest, 'character');
     expect(chars).toHaveLength(2);
     expect(chars.every((e) => e.type === 'character')).toBe(true);
+  });
+});
+
+describe('entityRelationships', () => {
+  let fromEntity: ReturnType<typeof createEntity>;
+  let toEntity: ReturnType<typeof createEntity>;
+
+  beforeEach(() => {
+    fromEntity = createEntity(tmpDir, manifest, { name: 'Aria Voss', type: 'character' });
+    toEntity = createEntity(tmpDir, manifest, { name: 'The Silver Order', type: 'concept' });
+  });
+
+  it('creates a relationship and returns it as outgoing row from fromEntity', () => {
+    const row = createEntityRelationship(manifest, fromEntity.id, toEntity.id, 'allied with');
+    expect(row.direction).toBe('outgoing');
+    expect(row.label).toBe('allied with');
+    expect(row.otherEntityId).toBe(toEntity.id);
+    expect(row.otherEntityName).toBe('The Silver Order');
+    expect(row.otherEntityType).toBe('concept');
+    expect(manifest.relationships).toHaveLength(1);
+  });
+
+  it('lists relationships for fromEntity as outgoing and toEntity as incoming', () => {
+    createEntityRelationship(manifest, fromEntity.id, toEntity.id, 'allied with');
+    const fromResult = listEntityRelationships(manifest, fromEntity.id);
+    expect(fromResult.relationships).toHaveLength(1);
+    expect(fromResult.relationships[0].direction).toBe('outgoing');
+
+    const toResult = listEntityRelationships(manifest, toEntity.id);
+    expect(toResult.relationships).toHaveLength(1);
+    expect(toResult.relationships[0].direction).toBe('incoming');
+    expect(toResult.relationships[0].otherEntityName).toBe('Aria Voss');
+  });
+
+  it('allLabels includes the created label', () => {
+    createEntityRelationship(manifest, fromEntity.id, toEntity.id, 'enemy of');
+    const { allLabels } = listEntityRelationships(manifest, fromEntity.id);
+    expect(allLabels).toContain('enemy of');
+  });
+
+  it('deletes a relationship from the manifest', () => {
+    const row = createEntityRelationship(manifest, fromEntity.id, toEntity.id, 'allied with');
+    deleteEntityRelationship(manifest, row.id);
+    expect(manifest.relationships).toHaveLength(0);
+    const { relationships } = listEntityRelationships(manifest, fromEntity.id);
+    expect(relationships).toHaveLength(0);
+  });
+
+  it('throws when fromEntityId does not exist', () => {
+    expect(() => createEntityRelationship(manifest, 'bad-id', toEntity.id, 'allied with')).toThrow();
+  });
+
+  it('throws when toEntityId does not exist', () => {
+    expect(() => createEntityRelationship(manifest, fromEntity.id, 'bad-id', 'allied with')).toThrow();
+  });
+
+  it('returns empty list for entity with no relationships', () => {
+    const { relationships } = listEntityRelationships(manifest, fromEntity.id);
+    expect(relationships).toHaveLength(0);
   });
 });
 

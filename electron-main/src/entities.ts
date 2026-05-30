@@ -11,7 +11,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
 } from './vault.js';
-import type { EntityEntry, Manifest } from './ipc.js';
+import type { EntityEntry, EntityRelationship, EntityRelationshipRow, Manifest } from './ipc.js';
 
 // ─── Path helpers ───
 
@@ -317,6 +317,81 @@ export function getEntityBacklinks(
   }
 
   return { entityId, scenes: results };
+}
+
+// ─── Entity Relationships (SKY-169 / SKY-174) ───
+
+function rels(manifest: Manifest): EntityRelationship[] {
+  return manifest.relationships ?? [];
+}
+
+function enrichRow(
+  rel: EntityRelationship,
+  entityId: string,
+  manifest: Manifest
+): EntityRelationshipRow | null {
+  const isOutgoing = rel.fromEntityId === entityId;
+  const otherId = isOutgoing ? rel.toEntityId : rel.fromEntityId;
+  const other = manifest.entities.find((e) => e.id === otherId);
+  if (!other) return null;
+  return {
+    id: rel.id,
+    label: rel.label,
+    direction: isOutgoing ? 'outgoing' : 'incoming',
+    otherEntityId: otherId,
+    otherEntityName: other.name,
+    otherEntityType: other.type,
+    createdAt: rel.createdAt,
+  };
+}
+
+export function listEntityRelationships(
+  manifest: Manifest,
+  entityId: string
+): { entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] } {
+  const rows = rels(manifest)
+    .filter((r) => r.fromEntityId === entityId || r.toEntityId === entityId)
+    .map((r) => enrichRow(r, entityId, manifest))
+    .filter((r): r is EntityRelationshipRow => r !== null);
+
+  const allLabels = [...new Set(rels(manifest).map((r) => r.label))].sort();
+
+  return { entityId, relationships: rows, allLabels };
+}
+
+export function createEntityRelationship(
+  manifest: Manifest,
+  fromEntityId: string,
+  toEntityId: string,
+  label: string
+): EntityRelationshipRow {
+  if (!manifest.entities.find((e) => e.id === fromEntityId)) {
+    throw new Error(`Entity not found: ${fromEntityId}`);
+  }
+  if (!manifest.entities.find((e) => e.id === toEntityId)) {
+    throw new Error(`Entity not found: ${toEntityId}`);
+  }
+
+  const rel: EntityRelationship = {
+    id: crypto.randomUUID(),
+    fromEntityId,
+    toEntityId,
+    label: label.trim(),
+    createdAt: new Date().toISOString(),
+  };
+
+  manifest.relationships = [...rels(manifest), rel];
+
+  const row = enrichRow(rel, fromEntityId, manifest);
+  if (!row) throw new Error('Failed to enrich newly created relationship');
+  return row;
+}
+
+export function deleteEntityRelationship(
+  manifest: Manifest,
+  relationshipId: string
+): void {
+  manifest.relationships = rels(manifest).filter((r) => r.id !== relationshipId);
 }
 
 // ─── Vault reindex: scan entities/ folder for orphan entity files ───

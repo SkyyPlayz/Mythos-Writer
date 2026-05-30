@@ -90,6 +90,10 @@ export const IPC_CHANNELS = {
   ENTITY_DELETE: 'entity:delete',
   ENTITY_LIST: 'entity:list',
   ENTITY_BACKLINKS: 'entity:backlinks',
+  // Entity relationships (SKY-169 / SKY-174)
+  ENTITY_RELATIONSHIPS_LIST: 'entity:relationships:list',
+  ENTITY_RELATIONSHIPS_CREATE: 'entity:relationships:create',
+  ENTITY_RELATIONSHIPS_DELETE: 'entity:relationships:delete',
 
   // App settings
   SETTINGS_GET: 'settings:get',
@@ -408,6 +412,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => EntityDeleteResponse;
   [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => EntityListResponse;
   [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_LIST]: (payload: EntityRelationshipsListPayload) => EntityRelationshipsListResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_CREATE]: (payload: EntityRelationshipsCreatePayload) => EntityRelationshipsCreateResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_DELETE]: (payload: EntityRelationshipsDeletePayload) => void;
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) => Promise<SettingsTestConnectionResponse>;
@@ -616,6 +623,8 @@ export interface Manifest {
   provenance: Record<string, string>;
   /** Scene Crafter board file paths */
   boardReferences: string[];
+  /** Entity relationship edges (SKY-169) */
+  relationships?: EntityRelationship[];
 }
 
 export interface StoryEntry {
@@ -1041,6 +1050,53 @@ export interface EntityBacklinkScene {
 export interface EntityBacklinksResponse {
   entityId: string;
   scenes: EntityBacklinkScene[];
+}
+
+// ─── Entity Relationships (SKY-169 / SKY-174) ───
+
+export interface EntityRelationship {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+  createdAt: string;
+}
+
+/** A relationship row enriched with direction + the other entity's display info. */
+export interface EntityRelationshipRow {
+  id: string;
+  label: string;
+  direction: 'outgoing' | 'incoming';
+  otherEntityId: string;
+  otherEntityName: string;
+  otherEntityType: EntityEntry['type'];
+  createdAt: string;
+}
+
+export interface EntityRelationshipsListPayload {
+  entityId: string;
+}
+
+export interface EntityRelationshipsListResponse {
+  entityId: string;
+  relationships: EntityRelationshipRow[];
+  /** All unique labels in the vault — used for label typeahead. */
+  allLabels: string[];
+}
+
+export interface EntityRelationshipsCreatePayload {
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+}
+
+export interface EntityRelationshipsCreateResponse {
+  /** Relationship as seen from the fromEntity (outgoing). */
+  relationship: EntityRelationshipRow;
+}
+
+export interface EntityRelationshipsDeletePayload {
+  relationshipId: string;
 }
 
 // ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───

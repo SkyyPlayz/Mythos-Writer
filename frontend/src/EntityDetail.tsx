@@ -47,6 +47,17 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [backlinksOpen, setBacklinksOpen] = useState(true);
   const [backlinksLoading, setBacklinksLoading] = useState(false);
 
+  // Relationships state
+  const [relationships, setRelationships] = useState<EntityRelationshipRow[]>([]);
+  const [relsOpen, setRelsOpen] = useState(true);
+  const [relsLoading, setRelsLoading] = useState(false);
+  const [allLabels, setAllLabels] = useState<string[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addLabel, setAddLabel] = useState('');
+  const [addTargetId, setAddTargetId] = useState('');
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
+
   // Reset form when entity changes
   useEffect(() => {
     setName(entity.name);
@@ -55,6 +66,9 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setDirty(false);
     setError('');
     setDeleteConfirm(false);
+    setShowAddForm(false);
+    setAddLabel('');
+    setAddTargetId('');
   }, [entity.id]);
 
   // Load all tags for autocomplete
@@ -104,6 +118,28 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     return off;
   }, [loadBacklinks]);
 
+  // Load relationships and all vault entities for the picker
+  const loadRelationships = useCallback(async () => {
+    setRelsLoading(true);
+    try {
+      const [relsResult, entitiesResult] = await Promise.all([
+        window.api.entityRelationshipsList(entity.id),
+        window.api.entityList(),
+      ]);
+      setRelationships(relsResult.relationships ?? []);
+      setAllLabels(relsResult.allLabels ?? []);
+      setAllEntities((entitiesResult.entities ?? []).filter((e) => e.id !== entity.id));
+    } catch {
+      setRelationships([]);
+    } finally {
+      setRelsLoading(false);
+    }
+  }, [entity.id]);
+
+  useEffect(() => {
+    loadRelationships();
+  }, [loadRelationships]);
+
   const markDirty = useCallback(() => setDirty(true), []);
 
   const handleSave = async () => {
@@ -133,6 +169,33 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
       onDeleted(entity.id);
     } catch (err) {
       setError(String(err));
+    }
+  };
+
+  const handleAddRelationship = async () => {
+    if (!addLabel.trim() || !addTargetId) return;
+    setAddSubmitting(true);
+    try {
+      const result = await window.api.entityRelationshipsCreate(entity.id, addTargetId, addLabel.trim());
+      setRelationships((prev) => [...prev, result.relationship]);
+      setAllLabels((prev) => (prev.includes(result.relationship.label) ? prev : [...prev, result.relationship.label].sort()));
+      setAddLabel('');
+      setAddTargetId('');
+      setShowAddForm(false);
+    } catch {
+      // ignore — keep form open
+    } finally {
+      setAddSubmitting(false);
+    }
+  };
+
+  const handleDeleteRelationship = async (relId: string) => {
+    setRelationships((prev) => prev.filter((r) => r.id !== relId));
+    try {
+      await window.api.entityRelationshipsDelete(relId);
+    } catch {
+      // reload on failure to restore correct state
+      loadRelationships();
     }
   };
 
@@ -225,6 +288,117 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
         </div>
 
         {error && <div className="entity-det-error">{error}</div>}
+
+        {/* Relationships panel */}
+        <div className="entity-det-relationships">
+          <button
+            className="entity-det-rel-header"
+            onClick={() => setRelsOpen((o) => !o)}
+            aria-expanded={relsOpen}
+          >
+            <span className="entity-det-rel-chevron">{relsOpen ? '▾' : '▸'}</span>
+            <span className="entity-det-rel-title">Relationships</span>
+            <span className="entity-det-rel-count">
+              {relsLoading ? '…' : relationships.length}
+            </span>
+          </button>
+          {relsOpen && (
+            <div className="entity-det-rel-body">
+              {relsLoading ? (
+                <div className="entity-det-rel-empty">Loading…</div>
+              ) : relationships.length === 0 && !showAddForm ? (
+                <div className="entity-det-rel-empty">
+                  No relationships yet.{' '}
+                  <button className="entity-det-rel-add-link" onClick={() => setShowAddForm(true)}>
+                    + Add Relationship
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <ul className="entity-det-rel-list">
+                    {relationships.map((rel) => (
+                      <li key={rel.id} className="entity-det-rel-row">
+                        {rel.direction === 'outgoing' ? (
+                          <>
+                            <span className="entity-det-rel-label">{rel.label}</span>
+                            <span className="entity-det-rel-arrow">→</span>
+                            <span className="entity-det-rel-chip">
+                              {TYPE_ICONS[rel.otherEntityType]}{' '}{rel.otherEntityName}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="entity-det-rel-arrow">←</span>
+                            <span className="entity-det-rel-label">{rel.label}</span>
+                            <span className="entity-det-rel-chip">
+                              {TYPE_ICONS[rel.otherEntityType]}{' '}{rel.otherEntityName}
+                            </span>
+                          </>
+                        )}
+                        <button
+                          className="entity-det-rel-delete"
+                          onClick={() => handleDeleteRelationship(rel.id)}
+                          title="Remove relationship"
+                          aria-label="Remove relationship"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {!showAddForm && (
+                    <button className="entity-det-rel-add-row" onClick={() => setShowAddForm(true)}>
+                      + Add Relationship
+                    </button>
+                  )}
+                </>
+              )}
+              {showAddForm && (
+                <div className="entity-det-rel-form">
+                  <input
+                    className="entity-det-rel-form-label"
+                    type="text"
+                    placeholder="Label (e.g. allied with)"
+                    value={addLabel}
+                    onChange={(e) => setAddLabel(e.target.value)}
+                    list="entity-det-rel-labels"
+                    autoFocus
+                  />
+                  <datalist id="entity-det-rel-labels">
+                    {allLabels.map((l) => <option key={l} value={l} />)}
+                  </datalist>
+                  <select
+                    className="entity-det-rel-form-target"
+                    value={addTargetId}
+                    onChange={(e) => setAddTargetId(e.target.value)}
+                  >
+                    <option value="">— pick entity —</option>
+                    {allEntities.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {TYPE_ICONS[e.type]} {e.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="entity-det-rel-form-actions">
+                    <button
+                      className="entity-det-btn entity-det-btn-primary"
+                      onClick={handleAddRelationship}
+                      disabled={!addLabel.trim() || !addTargetId || addSubmitting}
+                    >
+                      {addSubmitting ? 'Adding…' : 'Add'}
+                    </button>
+                    <button
+                      className="entity-det-btn entity-det-btn-ghost"
+                      onClick={() => { setShowAddForm(false); setAddLabel(''); setAddTargetId(''); }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Backlinks panel */}
         <div className="entity-det-backlinks">
