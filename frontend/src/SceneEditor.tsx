@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import SceneHistory from './SceneHistory';
+import TagInput from './TagInput';
 import { countWords, readingTimeMinutes } from './wordStats';
 import { useSaveStatus } from './hooks/useSaveStatus';
 import type { SaveStatus } from './hooks/useSaveStatus';
@@ -33,9 +34,16 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
   const [content, setContent] = useState(initialContent);
   const [showHistory, setShowHistory] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [sceneTags, setSceneTags] = useState<string[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagsLoaded, setTagsLoaded] = useState(false);
   const [wordStats, setWordStats] = useState<{ words: number; mins: number } | null>(
     () => initialWordStats(initialContent)
   );
+  // Snapshot name dialog state (SKY-157)
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [snapshotName, setSnapshotName] = useState('');
+
   const { saveStatus, markDirty, markSaving, markSaved, markError } = useSaveStatus();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,11 +53,11 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
   contentRef.current = content;
 
   const takeSnapshot = useCallback(
-    async (text: string) => {
-      if (text === lastSnapshotRef.current) return;
+    async (text: string, label?: string) => {
+      if (!label && text === lastSnapshotRef.current) return;
       markSaving();
       try {
-        await window.api.snapshotSave(sceneId, text);
+        await window.api.snapshotSave(sceneId, text, ...(label ? [label] : []));
         lastSnapshotRef.current = text;
         markSaved();
       } catch {
@@ -87,7 +95,6 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
   }, [sceneId]);
 
   // Flush snapshot on unmount (in-app navigation); clear pending debounces.
-  // Uses contentRef so the cleanup only fires on true unmount, not on every keystroke.
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -96,6 +103,25 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
         window.api.snapshotSave(sceneId, contentRef.current).catch(() => {});
       }
     };
+  }, [sceneId]);
+
+  // Load scene tags and all tags for autocomplete
+  useEffect(() => {
+    Promise.all([
+      window.api.tagsForItem?.(sceneId, 'scene') ?? Promise.resolve({ tags: [] }),
+      window.api.tagsList?.() ?? Promise.resolve({ tags: [] }),
+    ]).then(([itemR, allR]) => {
+      setSceneTags((itemR as { tags: string[] }).tags ?? []);
+      setAllTags(((allR as { tags: Array<{ name: string }> }).tags ?? []).map((t) => t.name));
+      setTagsLoaded(true);
+    }).catch(() => setTagsLoaded(true));
+  }, [sceneId]);
+
+  const handleTagsChange = useCallback(async (tags: string[]) => {
+    setSceneTags(tags);
+    try {
+      await window.api.sceneSetTags?.({ sceneId, tags });
+    } catch { /* non-fatal */ }
   }, [sceneId]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -109,6 +135,19 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
     setContent(restoredContent);
     lastSnapshotRef.current = restoredContent;
     setShowHistory(false);
+  };
+
+  const openNameDialog = () => {
+    const today = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    setSnapshotName(`Snapshot — ${today}`);
+    dismissMenu();
+    setShowNameDialog(true);
+  };
+
+  const confirmNamedSnapshot = async () => {
+    setShowNameDialog(false);
+    const label = snapshotName.trim() || undefined;
+    await takeSnapshot(content, label);
   };
 
   return (
@@ -127,14 +166,33 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
           >
             History
           </button>
-          <button
-            onClick={() => {
-              dismissMenu();
-              takeSnapshot(content);
-            }}
-          >
-            Save snapshot now
+          <button onClick={openNameDialog}>
+            Save Snapshot…
           </button>
+        </div>
+      )}
+
+      {showNameDialog && (
+        <div className="scene-snapshot-dialog-overlay" onClick={() => setShowNameDialog(false)}>
+          <div className="scene-snapshot-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 className="scene-snapshot-dialog-title">Save Snapshot</h3>
+            <input
+              className="scene-snapshot-dialog-input"
+              type="text"
+              value={snapshotName}
+              onChange={(e) => setSnapshotName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmNamedSnapshot();
+                if (e.key === 'Escape') setShowNameDialog(false);
+              }}
+              autoFocus
+              placeholder="Snapshot name…"
+            />
+            <div className="scene-snapshot-dialog-actions">
+              <button className="btn-cancel" onClick={() => setShowNameDialog(false)}>Cancel</button>
+              <button className="btn-save" onClick={confirmNamedSnapshot}>Save</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -159,6 +217,13 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
         placeholder="Start writing your scene…"
         spellCheck
       />
+
+      {tagsLoaded && (
+        <div className="scene-tags-panel">
+          <span className="scene-tags-label">Tags</span>
+          <TagInput value={sceneTags} onChange={handleTagsChange} allTags={allTags} />
+        </div>
+      )}
 
       {showHistory && (
         <SceneHistory

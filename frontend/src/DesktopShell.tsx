@@ -15,9 +15,12 @@ import VaultGraphView from './VaultGraphView';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
+import SceneHistory from './SceneHistory';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
+import TourModal from './TourModal';
+import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
@@ -100,9 +103,10 @@ interface AppMenuBarProps {
   onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
+  onOpenTour: () => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -273,6 +277,15 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         title="Distraction-free mode (F11)"
       >
         ⊡
+      </button>
+      <button
+        className="app-menu-tour-btn"
+        onClick={onOpenTour}
+        aria-label="Quick tour"
+        title="Quick tour"
+        data-testid="toolbar-tour-btn"
+      >
+        ?
       </button>
       <button
         className="app-menu-gear-btn"
@@ -469,7 +482,11 @@ export default function DesktopShell() {
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
+  const [showSceneHistory, setShowSceneHistory] = useState(false);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
+  const [restoreKey, setRestoreKey] = useState(0);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
@@ -488,6 +505,40 @@ export default function DesktopShell() {
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
   }, []);
+
+  // SKY-152: seenTips
+  const seenTips: Record<string, boolean> = (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {};
+  const handleDismissTip = useCallback(async (key: string) => {
+    if (!appSettings) return;
+    const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
+    setAppSettings(updatedSettings);
+    window.api.settingsSet(updatedSettings).catch(() => {});
+  }, [appSettings, seenTips]);
+
+  const handleManualSnapshot = useCallback(async () => {
+    if (!selectedScene) return;
+    const content = selectedScene.blocks.map(b => b.content).join('\n\n');
+    try {
+      await (window as any).api.snapshotSave?.(selectedScene.id, content);
+      setSnapshotSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      // non-fatal
+    }
+  }, [selectedScene]);
+
+  const handleSceneRestore = useCallback((content: string) => {
+    if (!selectedScene) return;
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
+    setRestoreKey(k => k + 1);
+    setShowSceneHistory(false);
+  }, [selectedScene]);
 
   const handleJumpToText = useCallback((text: string) => {
     editorApiRef.current?.jumpToText(text);
@@ -527,6 +578,12 @@ export default function DesktopShell() {
       setBetaReadComments([]);
     }
   }, [selectedScene?.id, loadBetaReadComments]);
+
+  useEffect(() => {
+    setSnapshotSavedAt(null);
+    setShowSceneHistory(false);
+    setRestoreKey(0);
+  }, [selectedScene?.id]);
 
   const handleBetaReadRequest = useCallback(async (selectedText: string) => {
     if (!selectedScene || betaReadLoading) return;
@@ -1209,6 +1266,7 @@ export default function DesktopShell() {
           onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
+          onOpenTour={() => setTourOpen(true)}
         />
       )}
       {distractionFree && (
@@ -1240,6 +1298,9 @@ export default function DesktopShell() {
       )}
       {shortcutsOpen && (
         <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
+      )}
+      {tourOpen && (
+        <TourModal onClose={() => setTourOpen(false)} />
       )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
@@ -1347,33 +1408,62 @@ export default function DesktopShell() {
               }}
             />
           ) : selectedScene ? (
-            <div className="shell-editor-beta-wrap">
-              <BlockEditor
-                key={selectedScene.id}
-                scene={selectedScene}
-                onBlocksChange={handleBlocksChange}
-                onDraftStateChange={handleDraftStateChange}
-                onEditorReady={handleEditorReady}
-                onBetaReadRequest={handleBetaReadRequest}
-                wikiLinkSuggestions={wikiLinkSuggestions}
-                onAcceptWikiLink={handleEditorAcceptWikiLink}
-                onRejectWikiLink={handleEditorRejectWikiLink}
-                initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                onCursorPosChange={handleCursorPosChange}
-              />
-              {(betaReadComments.length > 0 || betaReadLoading) && (
-                <div className="shell-beta-margin">
-                  {betaReadLoading && (
-                    <div className="br-loading" aria-live="polite">
-                      <span className="wa-spinner" aria-hidden="true" />
-                      Reading…
-                    </div>
-                  )}
-                  <BetaReadMargin
-                    comments={betaReadComments}
-                    onDismiss={handleBetaReadDismiss}
-                  />
-                </div>
+            <div className="shell-editor-scene-wrap">
+              <div className="scene-snapshot-toolbar">
+                <button
+                  className="scene-snapshot-save"
+                  onClick={handleManualSnapshot}
+                >
+                  Save snapshot now
+                </button>
+                <span className="scene-autosave" aria-live="polite">
+                  {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
+                </span>
+                <button
+                  className="btn-history"
+                  onClick={() => setShowSceneHistory(true)}
+                  aria-label="Open scene history"
+                >
+                  History
+                </button>
+              </div>
+              <div className="shell-editor-beta-wrap">
+                <BlockEditor
+                  key={`${selectedScene.id}-${restoreKey}`}
+                  scene={selectedScene}
+                  onBlocksChange={handleBlocksChange}
+                  onDraftStateChange={handleDraftStateChange}
+                  onEditorReady={handleEditorReady}
+                  onBetaReadRequest={handleBetaReadRequest}
+                  wikiLinkSuggestions={wikiLinkSuggestions}
+                  onAcceptWikiLink={handleEditorAcceptWikiLink}
+                  onRejectWikiLink={handleEditorRejectWikiLink}
+                  initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                  onCursorPosChange={handleCursorPosChange}
+                />
+                {(betaReadComments.length > 0 || betaReadLoading) && (
+                  <div className="shell-beta-margin">
+                    {betaReadLoading && (
+                      <div className="br-loading" aria-live="polite">
+                        <span className="wa-spinner" aria-hidden="true" />
+                        Reading…
+                      </div>
+                    )}
+                    <BetaReadMargin
+                      comments={betaReadComments}
+                      onDismiss={handleBetaReadDismiss}
+                    />
+                  </div>
+                )}
+              </div>
+              {showSceneHistory && (
+                <SceneHistory
+                  sceneId={selectedScene.id}
+                  scenePath={selectedScene.path}
+                  currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                  onRestore={handleSceneRestore}
+                  onClose={() => setShowSceneHistory(false)}
+                />
               )}
             </div>
           ) : selectedEntity ? (
@@ -1393,6 +1483,12 @@ export default function DesktopShell() {
               <p className="shell-editor-empty-sub">
                 No stories yet? Click the <strong>+</strong> button in the Stories panel to create your first story.
               </p>
+              <PaneTip
+                tipKey="editor"
+                text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                seen={seenTips['editor'] ?? false}
+                onDismiss={handleDismissTip}
+              />
             </div>
           )}
         </div>

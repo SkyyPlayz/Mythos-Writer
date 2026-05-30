@@ -33,6 +33,8 @@ describe('entityRelPath', () => {
     expect(entityRelPath('item', '1')).toBe('entities/items/1.md');
     expect(entityRelPath('concept', '2')).toBe('entities/concepts/2.md');
     expect(entityRelPath('other', '3')).toBe('entities/others/3.md');
+    expect(entityRelPath('faction', '4')).toBe('entities/factions/4.md');
+    expect(entityRelPath('event', '5')).toBe('entities/events/5.md');
   });
 });
 
