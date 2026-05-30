@@ -182,6 +182,14 @@
   --state-warning: #fbbf24;
   --state-info: var(--neon-cyan);
 
+  /* State background fills — for banners / badges / inline notices that need a
+     tinted surface, not just text. Mixed against --bg-inset so the same alias
+     reads correctly on a panel or in a well. The 18% mix lands at ≥ 7:1 for
+     adjacent --state-* text on the resulting surface (MYT-520 §0 rule 1). */
+  --state-danger-bg: color-mix(in srgb, var(--state-danger) 18%, var(--bg-inset));
+  --state-success-bg: color-mix(in srgb, var(--state-success) 18%, var(--bg-inset));
+  --state-warning-bg: color-mix(in srgb, var(--state-warning) 18%, var(--bg-inset));
+
   /* =========================================================================
    * Compatibility aliases.
    * The existing components were authored against a token vocabulary that was
