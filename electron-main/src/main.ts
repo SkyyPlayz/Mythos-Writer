@@ -156,7 +156,7 @@ import {
   validateSttShape,
   validateTtsShape,
 } from './voiceGate.js';
-import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
+import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
 import {
@@ -950,7 +950,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => {
     ensureVaultDir();
     const { snapshots: retention } = loadAppSettings();
-    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention);
+    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention, payload.label);
   },
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => {
     ensureVaultDir();
@@ -984,6 +984,19 @@ const handlers: IpcHandlers = {
     // Write the restored content to vault markdown
     writeVaultFileAtomic(getVaultRoot(), payload.scenePath, target.content);
     return { restored: target, preRestoreSnapshot };
+  },
+
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => {
+    ensureVaultDir();
+    const deleted = deleteSnapshot(getVaultRoot(), payload.sceneId, payload.snapshotId);
+    return { deleted };
+  },
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => {
+    ensureVaultDir();
+    const deleted = payload.sceneId
+      ? deleteAllSnapshotsForScene(getVaultRoot(), payload.sceneId)
+      : deleteAllSnapshotsVault(getVaultRoot());
+    return { deleted };
   },
 
   // ─── Versioned drafts (SKY-10 upgrade of MYT-198) ───
@@ -1845,6 +1858,16 @@ const handlers: IpcHandlers = {
       language: payload.metadata?.language,
       chapters,
     });
+    // SKY-157: pre-export snapshot for every scene in the story
+    const { snapshots: retention } = loadAppSettings();
+    for (const ch of story.chapters) {
+      for (const sc of ch.scenes) {
+        try {
+          const prose = readSceneFile(getVaultRoot(), sc.path).prose;
+          saveSnapshot(getVaultRoot(), sc.id, prose, retention, 'Pre-export snapshot');
+        } catch { /* missing scene — skip */ }
+      }
+    }
     writeFileAtomic(filePath, buffer);
     return { path: filePath, cancelled: false };
   },
@@ -1880,6 +1903,16 @@ const handlers: IpcHandlers = {
       }));
 
     const buffer = await buildDocx({ title: story.title, chapters });
+    // SKY-157: pre-export snapshot for every scene in the story
+    const { snapshots: retentionDocx } = loadAppSettings();
+    for (const ch of story.chapters) {
+      for (const sc of ch.scenes) {
+        try {
+          const prose = readSceneFile(getVaultRoot(), sc.path).prose;
+          saveSnapshot(getVaultRoot(), sc.id, prose, retentionDocx, 'Pre-export snapshot');
+        } catch { /* missing scene — skip */ }
+      }
+    }
     writeFileAtomic(result.filePath, buffer);
     return { path: result.filePath, cancelled: false };
   },

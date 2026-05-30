@@ -116,8 +116,8 @@ contextBridge.exposeInMainWorld('api', {
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
 
   // Versioning — per-scene snapshots
-  snapshotSave: (sceneId: string, content: string) =>
-    ipcRenderer.invoke('snapshot:save', { sceneId, content }),
+  snapshotSave: (sceneId: string, content: string, label?: string) =>
+    ipcRenderer.invoke('snapshot:save', { sceneId, content, label }),
   snapshotSaveSync: (sceneId: string, content: string) =>
     ipcRenderer.sendSync('snapshot:save-sync', { sceneId, content }),
   snapshotList: (sceneId: string) =>
@@ -126,6 +126,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('snapshot:get', { sceneId, snapshotId }),
   snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) =>
     ipcRenderer.invoke('snapshot:restore', { sceneId, snapshotId, scenePath }),
+  snapshotDelete: (sceneId: string, snapshotId: string) =>
+    ipcRenderer.invoke('snapshot:delete', { sceneId, snapshotId }),
+  snapshotDeleteAll: (sceneId?: string) =>
+    ipcRenderer.invoke('snapshot:delete-all', { sceneId }),
 
   // SKY-10 — Per-scene versioned drafts (history pane + rollback)
   versionList: (sceneId: string) =>
