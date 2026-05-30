@@ -505,6 +505,8 @@ export default function DesktopShell() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
+  // SKY-192: entity registry for the auto-linker
+  const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
 
   // SKY-130: cross-restart scene/cursor restore refs
   const pendingCursorPosRef = useRef<number | null>(null);
@@ -673,6 +675,27 @@ export default function DesktopShell() {
   useEffect(() => {
     loadVault();
   }, [loadVault]);
+
+  // SKY-192: load entities for the auto-linker on mount and vault changes
+  const loadEntities = useCallback(async () => {
+    try {
+      const res = await window.api.entityList();
+      setAllEntities(res.entities ?? []);
+    } catch {
+      // non-fatal; auto-linker just won't suggest anything
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEntities();
+  }, [loadEntities]);
+
+  useEffect(() => {
+    const off = window.api.onVaultFileChanged(() => {
+      loadEntities();
+    });
+    return off;
+  }, [loadEntities]);
 
   // Handle project switches pushed from main process
   useEffect(() => {
@@ -1457,6 +1480,8 @@ export default function DesktopShell() {
                   wikiLinkSuggestions={wikiLinkSuggestions}
                   onAcceptWikiLink={handleEditorAcceptWikiLink}
                   onRejectWikiLink={handleEditorRejectWikiLink}
+                  autoLinkerEntities={allEntities}
+                  autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   initialCursorPos={pendingCursorPosRef.current ?? undefined}
                   onCursorPosChange={handleCursorPosChange}
                 />

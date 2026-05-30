@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
 
 const BASE_SETTINGS: AppSettings = {
@@ -493,6 +493,8 @@ describe('OnboardingWizard — error states from spec §6', () => {
     await waitFor(() => expect(screen.getByTestId('screen-import-dryrun')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByTestId('dry-run-banner')).toBeInTheDocument());
     expect(screen.getByTestId('dry-run-banner').textContent).toMatch(/failed/i);
+    // Drain any pending React state updates so they don't fire after JSDOM teardown.
+    await act(async () => {});
   });
 
   it('E-disk-full: ENOSPC during import shows disk-full specific copy in banner', async () => {
@@ -505,6 +507,8 @@ describe('OnboardingWizard — error states from spec §6', () => {
     fireEvent.click(screen.getByTestId('confirm-import'));
     await waitFor(() => expect(screen.getByTestId('dry-run-banner')).toBeInTheDocument());
     expect(screen.getByTestId('dry-run-banner').textContent).toMatch(/disk space/);
+    // Drain any pending React state updates so they don't fire after JSDOM teardown.
+    await act(async () => {});
   });
 });
 

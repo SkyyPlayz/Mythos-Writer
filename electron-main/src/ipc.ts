@@ -283,11 +283,16 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
+  // SKY-190: Note Templates — per-note variable/prompt/pick templates
+  NOTE_TEMPLATE_LIST: 'note-template:list',
 
+  // SKY-193: Tag Wrangler — list / rename / merge notes-vault tags
+  NOTES_TAG_LIST: 'notesVault:tag:list',
+  NOTES_TAG_RENAME: 'notesVault:tag:rename',
+  NOTES_TAG_MERGE: 'notesVault:tag:merge',
   // SKY-55: per-scene notes
   NOTES_GET: 'notes:get',
   NOTES_SET: 'notes:set',
-
   // SKY-158: Tag & cross-reference system
   TAGS_LIST: 'tags:list',
   TAGS_UPSERT: 'tags:upsert',
@@ -298,18 +303,22 @@ export const IPC_CHANNELS = {
   TAGS_ITEMS_FOR_TAG: 'tags:itemsForTag',
   TAGS_BULK_APPLY: 'tags:bulkApply',
   SCENE_SET_TAGS: 'scene:setTags',
-
   // SKY-154: Writing Goals & Progress Dashboard
   GOALS_LOG_WORDS: 'goals:logWords',
   GOALS_GET_STATS: 'goals:getStats',
   GOALS_SET_GOAL: 'goals:setGoal',
   GOALS_RESET_STREAK: 'goals:resetStreak',
-
   // SKY-170: Scene-to-entity links
   SCENE_ENTITY_LINKS_LIST: 'sceneEntityLinks:list',
   SCENE_ENTITY_LINKS_UPSERT: 'sceneEntityLinks:upsert',
   SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
   ENTITY_LINKED_SCENES: 'entity:linkedScenes',
+
+  // SKY-194: Iconize — per-node icons with bundled + user icon packs
+  NOTES_VAULT_READ_ICONS: 'notesVault:readIcons',
+  VAULT_READ_ICONS: 'vault:readIcons',
+  ICONS_LIST_USER_PACKS: 'icons:listUserPacks',
+  ICONS_READ_SVG: 'icons:readSvg',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -496,6 +505,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
   [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse | { error: string }>;
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
+  // SKY-190: Note Templates
+  [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
+  // SKY-193: Tag Wrangler
+  [IPC_CHANNELS.NOTES_TAG_LIST]: (payload: never) => NotesTagListResponse;
+  [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: NotesTagRenamePayload) => NotesTagRenameResponse;
+  [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: NotesTagMergePayload) => NotesTagMergeResponse;
 
   // SKY-55: per-scene notes
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
@@ -523,6 +538,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLinksUpsertResponse;
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
+
+  // SKY-194: Iconize — per-node icon IPC
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (payload: never) => { packName: string; icons: string[] }[];
+  [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }) => { svg: string | null };
 }
 
 // ─── Payload / Response types ───
@@ -678,6 +699,11 @@ export interface SceneTimestamp {
   duration?: string;
 }
 
+export interface EntityRelation {
+  type: string;
+  target: string; // entity id
+}
+
 export interface EntityEntry {
   id: string;
   name: string;
@@ -685,6 +711,7 @@ export interface EntityEntry {
   path: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -993,6 +1020,7 @@ export interface EntityCreatePayload {
   type: EntityEntry['type'];
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   prose?: string;
   properties?: Record<string, unknown>;
 }
@@ -1006,6 +1034,7 @@ export interface EntityUpdatePayload {
   name?: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   prose?: string;
   properties?: Record<string, unknown>;
 }
@@ -2352,21 +2381,76 @@ export interface TemplateSaveAsResponse {
   id: string;
 }
 
+// ─── SKY-190: Note Templates ──────────────────────────────────────────────────
+
+export interface NoteTemplateField {
+  key: string;
+  kind: 'literal' | 'prompt' | 'pick';
+  label: string;
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note';
+  body: string;
+  fields: NoteTemplateField[];
+}
+
+export interface NoteTemplateListPayload {
+  kind?: string;
+}
+
+export interface NoteTemplateListResponse {
+  templates: NoteTemplate[];
+}
+
+// ─── SKY-193: Tag Wrangler ───
+
+export interface NotesTagEntry {
+  name: string;
+  fullName: string;
+  count: number;
+  paths: string[];
+  children: NotesTagEntry[];
+}
+
+export interface NotesTagListResponse {
+  tags: NotesTagEntry[];
+}
+
+export interface NotesTagRenamePayload {
+  oldTag: string;
+  newTag: string;
+}
+
+export interface NotesTagRenameResponse {
+  affectedFiles: number;
+}
+
+export interface NotesTagMergePayload {
+  sourceTag: string;
+  targetTag: string;
+}
+
+export interface NotesTagMergeResponse {
+  affectedFiles: number;
+}
 // ─── SKY-55: per-scene notes ───
 export interface NotesGetPayload { sceneId: string }
 export interface NotesGetResponse { content: string }
 export interface NotesSetPayload { sceneId: string; content: string }
 export interface NotesSetResponse { saved: boolean }
-
 // ─── Tag types (SKY-158) ───
-
 export interface TagEntry {
   id: string;
   name: string;
   color?: string | null;
   createdAt: string;
 }
-
 export interface TagsListResponse { tags: TagEntry[] }
 export interface TagsUpsertPayload { name: string; color?: string | null }
 export interface TagsUpsertResponse { tag: TagEntry }
@@ -2390,7 +2474,6 @@ export interface TagsBulkApplyPayload {
 export interface TagsBulkApplyResponse { updated: number }
 export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
 export interface SceneSetTagsResponse { scene: SceneEntry }
-
 // ─── SKY-154: Writing Goals types ───
 export interface GoalsLogWordsPayload { date: string; wordsAdded: number; }
 export type GoalsLogWordsResponse = { ok: true };
@@ -2399,16 +2482,13 @@ export interface GoalsGetStatsResponse { todayWords: number; weekWords: number; 
 export interface GoalsSetGoalPayload { dailyGoal: number; }
 export type GoalsSetGoalResponse = { ok: true };
 export type GoalsResetStreakResponse = { ok: true };
-
 // ─── SKY-170: Scene-to-entity links ─────────────────────────────────────────
-
 export interface SceneEntityLink {
   sceneId: string;
   entityId: string;
   linkKind: 'mention' | 'tag';
   createdAt: string;
 }
-
 export interface LinkedScene {
   sceneId: string;
   sceneTitle: string;
@@ -2417,35 +2497,28 @@ export interface LinkedScene {
   storyId: string;
   linkKind: 'mention' | 'tag';
 }
-
 export interface SceneEntityLinksListPayload {
   sceneId: string;
 }
-
 export interface SceneEntityLinksListResponse {
   links: SceneEntityLink[];
 }
-
 export interface SceneEntityLinksUpsertPayload {
   sceneId: string;
   entityId: string;
   kind: 'mention' | 'tag';
 }
-
 export interface SceneEntityLinksUpsertResponse {
   link: SceneEntityLink;
 }
-
 export interface SceneEntityLinksDeletePayload {
   sceneId: string;
   entityId: string;
   kind: 'mention' | 'tag';
 }
-
 export interface EntityLinkedScenesPayload {
   entityId: string;
 }
-
 export interface EntityLinkedScenesResponse {
   scenes: LinkedScene[];
 }

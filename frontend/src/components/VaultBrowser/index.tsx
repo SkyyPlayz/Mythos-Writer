@@ -9,6 +9,8 @@ import type { FlatRow } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
+import NoteTemplateDialog from '../NoteTemplateDialog';
+import TagPane from '../TagPane';
 import './VaultBrowser.css';
 
 // ─── Filters ───
@@ -354,10 +356,35 @@ interface NotesVaultProps {
   onOpenFile?: (path: string) => void;
   onReload: () => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  activeTag: string | null;
+  onTagFilter: (tag: string | null) => void;
+  iconMap?: Record<string, string>;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVaultProps) {
-  const notesItems = items.filter(isNotesItem);
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap }: NotesVaultProps) {
+  const allNotesItems = items.filter(isNotesItem);
+  const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!activeTag) { setTagPaths(null); return; }
+    window.api.notesTagList().then((result) => {
+      if (!result || 'error' in result) return;
+      const { tags } = result as { tags: NotesTagEntry[] };
+      const paths = new Set<string>();
+      function gather(entries: NotesTagEntry[]) {
+        for (const e of entries) {
+          if (e.fullName === activeTag) e.paths.forEach((p) => paths.add(p));
+          gather(e.children);
+        }
+      }
+      gather(tags);
+      setTagPaths(paths);
+    }).catch(() => setTagPaths(null));
+  }, [activeTag]);
+
+  const notesItems = tagPaths
+    ? allNotesItems.filter((item) => !item.isDirectory && tagPaths.has(item.path))
+    : allNotesItems;
   const tree = buildTree(notesItems);
 
   const { expanded, selected, toggle, initExpand, select } = useTreeState('notes');
@@ -373,6 +400,10 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
 
   const [ctxRow, setCtxRow] = useState<FlatRow | null>(null);
   const [ctxPos, setCtxPos] = useState({ x: 0, y: 0 });
+
+  // ─── Template dialog state ───
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogDirPath, setDialogDirPath] = useState('');
 
   // ─── Rename state ───
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -437,22 +468,18 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
   }, []);
 
   const handleNewNote = useCallback(
-    async (dirPath: string) => {
-      const name = prompt('Note name (without .md):');
-      if (!name?.trim()) return;
-      const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
-      const rel = dirPath ? `${dirPath}/${slug || 'note'}.md` : `${slug || 'note'}.md`;
-      try {
-        await window.api.writeNotesVault(
-          rel,
-          `---\ntitle: "${name.trim()}"\ncreatedAt: ${new Date().toISOString()}\n---\n\n`,
-        );
-        await onReload();
-        select(rel);
-        onOpenFile?.(rel);
-      } catch (e) {
-        console.error('Failed to create note:', e);
-      }
+    (dirPath: string) => {
+      setDialogDirPath(dirPath);
+      setDialogOpen(true);
+    },
+    [],
+  );
+
+  const handleNoteCreated = useCallback(
+    async (path: string) => {
+      await onReload();
+      select(path);
+      onOpenFile?.(path);
     },
     [onReload, select, onOpenFile],
   );
@@ -488,8 +515,13 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
           +
         </button>
       </div>
-      {notesItems.length === 0 ? (
+      <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
+      {allNotesItems.length === 0 ? (
         <NotesVaultEmptyState onCreate={() => handleNewNote('')} />
+      ) : notesItems.length === 0 && activeTag ? (
+        <div className="vb-notes-no-match" data-testid="vb-notes-no-match">
+          No notes with tag <strong>{activeTag}</strong>
+        </div>
       ) : (
         <VirtualTree
           data-testid="vb-notes-tree"
@@ -504,6 +536,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
           onRenameChange={setEditValue}
           onRenameCommit={handleRenameCommit}
           onRenameCancel={handleRenameCancel}
+          iconMap={iconMap}
         />
       )}
       <ContextMenu
@@ -514,6 +547,12 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
         onNewNote={handleNewNote}
         onNewFolder={handleNewFolder}
         onRename={handleStartRename}
+      />
+      <NoteTemplateDialog
+        open={dialogOpen}
+        dirPath={dialogDirPath}
+        onClose={() => setDialogOpen(false)}
+        onCreated={handleNoteCreated}
       />
     </div>
   );
@@ -547,7 +586,15 @@ export default function VaultBrowser({
   onExport,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
+  const [notesIconMap, setNotesIconMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    window.api.notesVaultReadIcons().then((m) => {
+      if (m && typeof m === 'object') setNotesIconMap(m as Record<string, string>);
+    }).catch(() => {});
+  }, [notesItems.length]);
 
   const showStory = scope === 'story' || scope === 'both';
   const showNotes = scope === 'notes' || scope === 'both';
@@ -614,6 +661,9 @@ export default function VaultBrowser({
                 onOpenFile={onOpenFile}
                 onReload={notesReload}
                 onContextChange={onContextChange}
+                activeTag={activeTag}
+                onTagFilter={setActiveTag}
+                iconMap={notesIconMap}
               />
             )}
           </div>

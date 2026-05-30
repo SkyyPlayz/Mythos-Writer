@@ -4,6 +4,11 @@ export type BlockType = 'prose' | 'heading' | 'dialogue' | 'action' | 'descripti
 
 export type EntityType = 'character' | 'location' | 'item' | 'concept' | 'other';
 
+export interface EntityRelation {
+  type: string;
+  target: string; // entity id
+}
+
 export interface EntityEntry {
   id: string;
   name: string;
@@ -11,6 +16,7 @@ export interface EntityEntry {
   path: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;

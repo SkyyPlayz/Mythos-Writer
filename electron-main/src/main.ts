@@ -236,8 +236,10 @@ import {
   deleteEntity,
   listEntities,
   reindexEntities,
+  migrateEntityAliases,
   getEntityBacklinks,
 } from './entities.js';
+import { getReciprocal } from './entityRelations.js';
 import {
   buildArchiveIndex,
   getArchiveIndex,
@@ -285,8 +287,10 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates } from './templates.js';
+import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
 
@@ -1254,6 +1258,7 @@ const handlers: IpcHandlers = {
       name: payload.name,
       aliases: payload.aliases,
       tags: payload.tags,
+      relations: payload.relations,
       prose: payload.prose,
       properties: payload.properties,
     });
@@ -1272,6 +1277,7 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     reindexEntities(getVaultRoot(), manifest);
+    migrateEntityAliases(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), manifest);
     return { entities: listEntities(getVaultRoot(), manifest, payload.type) };
   },
@@ -3244,8 +3250,25 @@ const handlers: IpcHandlers = {
     return { ok: true as const, id };
   },
 
-  // ─── SKY-170: Scene-to-entity links ───
+  // SKY-190: Note Templates
+  [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: import('./ipc.js').NoteTemplateListPayload): import('./ipc.js').NoteTemplateListResponse => {
+    return { templates: listNoteTemplates(payload?.kind) };
+  },
 
+  // SKY-193: Tag Wrangler
+  [IPC_CHANNELS.NOTES_TAG_LIST]: (): import('./ipc.js').NotesTagListResponse => {
+    const tags = listNotesTags(getNotesVaultRoot());
+    return { tags };
+  },
+  [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: import('./ipc.js').NotesTagRenamePayload): import('./ipc.js').NotesTagRenameResponse => {
+    const { oldTag, newTag } = payload ?? {};
+    return renameNotesTag(getNotesVaultRoot(), oldTag, newTag);
+  },
+  [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: import('./ipc.js').NotesTagMergePayload): import('./ipc.js').NotesTagMergeResponse => {
+    const { sourceTag, targetTag } = payload ?? {};
+    return mergeNotesTags(getNotesVaultRoot(), sourceTag, targetTag);
+  },
+  // ─── SKY-170: Scene-to-entity links ───
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload): import('./ipc.js').SceneEntityLinksListResponse => {
     ensureVaultDir();
     const rows = listSceneEntityLinks(payload.sceneId);
@@ -3258,7 +3281,6 @@ const handlers: IpcHandlers = {
       })),
     };
   },
-
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload): import('./ipc.js').SceneEntityLinksUpsertResponse => {
     ensureVaultDir();
     const now = new Date().toISOString();
@@ -3273,20 +3295,16 @@ const handlers: IpcHandlers = {
       },
     };
   },
-
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload): void => {
     ensureVaultDir();
     deleteSceneEntityLink(payload.sceneId, payload.entityId, payload.kind);
   },
-
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload): import('./ipc.js').EntityLinkedScenesResponse => {
     ensureVaultDir();
     const rows = listLinkedSceneIds(payload.entityId);
     if (rows.length === 0) return { scenes: [] };
-
     const manifest = readManifest(getManifestPath());
     const scenes: import('./ipc.js').LinkedScene[] = [];
-
     for (const row of rows) {
       for (const story of manifest.stories) {
         for (const chapter of story.chapters) {
@@ -3304,9 +3322,26 @@ const handlers: IpcHandlers = {
         }
       }
     }
-
     return { scenes };
   },
+  // SKY-194: Iconize — per-node icon IPC
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string> => {
+    return batchReadVaultIcons(getNotesVaultRoot());
+  },
+  [IPC_CHANNELS.VAULT_READ_ICONS]: (): Record<string, string> => {
+    return batchReadVaultIcons(getVaultRoot());
+  },
+  [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (): import('./iconPacks.js').UserIconPack[] => {
+    const iconsDir = path.join(app.getPath('home'), 'Mythos', '.icons');
+    return listUserIconPacks(iconsDir);
+  },
+  [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }): { svg: string | null } => {
+    const iconsDir = path.join(app.getPath('home'), 'Mythos', '.icons');
+    const { packName, iconName } = payload ?? {};
+    const svg = readUserPackSvg(iconsDir, packName, iconName);
+    return { svg };
+  },
+
 
 };
 
@@ -3604,6 +3639,63 @@ function autoApplyVaultWrite(
     suggestion.payload_json
   ) {
     try {
+      const payloadData = JSON.parse(suggestion.payload_json) as {
+        kind?: string;
+        content?: string;
+        prose?: string;
+        relationType?: string;
+        sourceEntityId?: string;
+        sourceEntityPath?: string;
+        targetEntityId?: string;
+        targetEntityPath?: string;
+      };
+
+      // ─── Typed-relation apply ───
+      if (payloadData.kind === 'typed-relation') {
+        const {
+          relationType,
+          sourceEntityId,
+          sourceEntityPath,
+          targetEntityId,
+          targetEntityPath,
+        } = payloadData;
+        if (!relationType || !sourceEntityId || !sourceEntityPath || !targetEntityId || !targetEntityPath) {
+          return { finalStatus: 'accepted', snapshotPath: null };
+        }
+        const manifest = readManifest(getManifestPath());
+
+        const sourceEntry = manifest.entities.find((e) => e.id === sourceEntityId);
+        if (sourceEntry) {
+          const existingRelations = sourceEntry.relations ?? [];
+          const alreadyHas = existingRelations.some(
+            (r) => r.type === relationType && r.target === targetEntityId,
+          );
+          if (!alreadyHas) {
+            updateEntity(getVaultRoot(), manifest, sourceEntityId, {
+              relations: [...existingRelations, { type: relationType, target: targetEntityId }],
+            });
+          }
+        }
+
+        const reciprocal = getReciprocal(relationType);
+        const targetEntry = manifest.entities.find((e) => e.id === targetEntityId);
+        if (targetEntry) {
+          const existingRelations = targetEntry.relations ?? [];
+          const alreadyHas = existingRelations.some(
+            (r) => r.type === reciprocal && r.target === sourceEntityId,
+          );
+          if (!alreadyHas) {
+            updateEntity(getVaultRoot(), manifest, targetEntityId, {
+              relations: [...existingRelations, { type: reciprocal, target: sourceEntityId }],
+            });
+          }
+        }
+
+        writeManifest(getManifestPath(), manifest);
+        return { finalStatus: 'applied', snapshotPath: null };
+      }
+
+      // ─── Standard vault-write apply ───
       const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
       if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
       const relSnapshotPath = path.join(
@@ -3613,8 +3705,8 @@ function autoApplyVaultWrite(
 
       let originalContent = '';
       try {
-        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
-        originalContent = content;
+        const { content: vc } = readVaultFile(getVaultRoot(), suggestion.target_path);
+        originalContent = vc;
       } catch { /* new file — empty original */ }
 
       fs.writeFileSync(
@@ -3623,7 +3715,6 @@ function autoApplyVaultWrite(
         'utf-8',
       );
 
-      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
       const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
       const { prose: newProse } = parseFrontmatter(newContent);
       mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {
