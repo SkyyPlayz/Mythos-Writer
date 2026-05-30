@@ -530,6 +530,10 @@ contextBridge.exposeInMainWorld('api', {
   tagsBulkApply: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) =>
     ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
   sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
+  // SKY-203: Note-level backlinks
+  noteBacklinks: (notePath: string) =>
+    ipcRenderer.invoke('notesVault:backlinks', { notePath }),
+
   // SKY-194: Iconize — per-node icon IPC
   notesVaultReadIcons: () =>
     ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
