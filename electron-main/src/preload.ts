@@ -116,8 +116,8 @@ contextBridge.exposeInMainWorld('api', {
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
 
   // Versioning — per-scene snapshots
-  snapshotSave: (sceneId: string, content: string) =>
-    ipcRenderer.invoke('snapshot:save', { sceneId, content }),
+  snapshotSave: (sceneId: string, content: string, label?: string) =>
+    ipcRenderer.invoke('snapshot:save', { sceneId, content, label }),
   snapshotSaveSync: (sceneId: string, content: string) =>
     ipcRenderer.sendSync('snapshot:save-sync', { sceneId, content }),
   snapshotList: (sceneId: string) =>
@@ -126,6 +126,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('snapshot:get', { sceneId, snapshotId }),
   snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) =>
     ipcRenderer.invoke('snapshot:restore', { sceneId, snapshotId, scenePath }),
+  snapshotDelete: (sceneId: string, snapshotId: string) =>
+    ipcRenderer.invoke('snapshot:delete', { sceneId, snapshotId }),
+  snapshotDeleteAll: (sceneId?: string) =>
+    ipcRenderer.invoke('snapshot:delete-all', { sceneId }),
 
   // SKY-10 — Per-scene versioned drafts (history pane + rollback)
   versionList: (sceneId: string) =>
@@ -394,9 +398,17 @@ contextBridge.exposeInMainWorld('api', {
   exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) =>
     ipcRenderer.invoke('export:epub', { storyId, metadata, targetPath }),
 
-  // DOCX export (MYT-252)
-  exportDocx: (storyId: string) =>
-    ipcRenderer.invoke('export:docx', { storyId }),
+  // DOCX export (MYT-252, extended SKY-153)
+  exportDocx: (storyId: string | undefined, scope?: unknown) =>
+    ipcRenderer.invoke('export:docx', scope ? { scope } : { storyId }),
+
+  // Markdown export (SKY-153)
+  exportMarkdown: (scope: unknown) =>
+    ipcRenderer.invoke('export:markdown', { scope }),
+
+  // Plain text export (SKY-153)
+  exportPlaintext: (scope: unknown) =>
+    ipcRenderer.invoke('export:plaintext', { scope }),
 
   // Vault Graph View (MYT-249)
   vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
@@ -473,6 +485,20 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notes:get', { sceneId }),
   notesSet: (sceneId: string, content: string) =>
     ipcRenderer.invoke('notes:set', { sceneId, content }),
+  // SKY-156: Project Templates
+  templateList: () => ipcRenderer.invoke('template:list', undefined),
+  templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) =>
+    ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
+  templateSaveAs: (name: string) =>
+    ipcRenderer.invoke('template:saveAs', { name }),
+
+  // SKY-154: Writing Goals & Progress Dashboard
+  goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
+  goalsLogWords: (date: string, wordsAdded: number) =>
+    ipcRenderer.invoke('goals:logWords', { date, wordsAdded }),
+  goalsSetGoal: (dailyGoal: number) =>
+    ipcRenderer.invoke('goals:setGoal', { dailyGoal }),
+  goalsResetStreak: () => ipcRenderer.invoke('goals:resetStreak', undefined),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

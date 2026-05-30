@@ -71,6 +71,8 @@ export const IPC_CHANNELS = {
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
+  SNAPSHOT_DELETE: 'snapshot:delete',
+  SNAPSHOT_DELETE_ALL: 'snapshot:delete-all',
 
   // Versioned drafts — Phase 2 (MYT-198), SKY-10 upgrade
   VERSION_LIST: 'version:list',
@@ -161,6 +163,12 @@ export const IPC_CHANNELS = {
 
   // DOCX export (MYT-252)
   EXPORT_DOCX: 'export:docx',
+
+  // Multi-scope Markdown export (SKY-153)
+  EXPORT_MARKDOWN: 'export:markdown',
+
+  // Multi-scope plain text export (SKY-153)
+  EXPORT_PLAINTEXT: 'export:plaintext',
 
   // Obsidian vault import wizard (MYT-244)
   VAULT_OBSIDIAN_DRY_RUN: 'vault:obsidian-dry-run',
@@ -273,6 +281,11 @@ export const IPC_CHANNELS = {
 
   // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
   SESSION_SCENE_SAVE: 'session:saveScene',
+
+  // SKY-156: Project Templates — bundled + user-saved vault structures
+  TEMPLATE_LIST: 'template:list',
+  TEMPLATE_SCAFFOLD: 'template:scaffold',
+  TEMPLATE_SAVE_AS: 'template:saveAs',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -358,6 +371,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
   [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
   [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => SnapshotDeleteResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => SnapshotDeleteAllResponse;
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
@@ -405,6 +420,8 @@ export interface IpcHandlers {
   // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
+  [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
+  [IPC_CHANNELS.EXPORT_PLAINTEXT]: (payload: ExportPlaintextPayload) => Promise<ExportPlaintextResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
@@ -454,6 +471,10 @@ export interface IpcHandlers {
   // SKY-55: per-scene notes persisted to vault DB
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
   [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
+  // SKY-156: Project Templates
+  [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse>;
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse;
 }
 
 // ─── Payload / Response types ───
@@ -771,11 +792,15 @@ export interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  /** Human-readable name set on manual saves or special triggers (e.g. "Pre-export snapshot"). */
+  label?: string;
 }
 
 export interface SnapshotSavePayload {
   sceneId: string;
   content: string;
+  /** Optional label for the snapshot; auto-saves leave this unset. */
+  label?: string;
 }
 
 export interface SnapshotListPayload {
@@ -804,6 +829,24 @@ export interface SnapshotRestorePayload {
 export interface SnapshotRestoreResponse {
   restored: SceneSnapshot;
   preRestoreSnapshot: SceneSnapshot;
+}
+
+export interface SnapshotDeletePayload {
+  sceneId: string;
+  snapshotId: string;
+}
+
+export interface SnapshotDeleteResponse {
+  deleted: boolean;
+}
+
+export interface SnapshotDeleteAllPayload {
+  /** When provided, deletes all for that scene. Omit to delete all across the vault. */
+  sceneId?: string;
+}
+
+export interface SnapshotDeleteAllResponse {
+  deleted: number;
 }
 
 // ─── Versioned drafts types (SKY-10 upgrade of MYT-198) ───
@@ -1753,10 +1796,40 @@ export interface ExportEpubResponse {
 // ─── DOCX export (MYT-252) ───
 
 export interface ExportDocxPayload {
-  storyId: string;
+  // Legacy: whole-story by storyId. Kept for backward compat.
+  storyId?: string;
+  // SKY-153: full scope control; takes precedence over storyId when present.
+  scope?: ExportScope;
 }
 
 export interface ExportDocxResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
+// ─── Multi-scope export (SKY-153) ───
+
+/** What to include in a Markdown / plain-text / DOCX export. */
+export type ExportScope =
+  | { kind: 'scene'; sceneId: string }
+  | { kind: 'chapter'; chapterId: string; storyId: string }
+  | { kind: 'story'; storyId: string }
+  | { kind: 'vault' };
+
+export interface ExportMarkdownPayload {
+  scope: ExportScope;
+}
+
+export interface ExportMarkdownResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
+export interface ExportPlaintextPayload {
+  scope: ExportScope;
+}
+
+export interface ExportPlaintextResponse {
   path: string | null;
   cancelled: boolean;
 }
@@ -2205,3 +2278,45 @@ export interface NotesSetResponse {
   ok: true;
 }
 
+// ─── SKY-156: Project Templates ───────────────────────────────────────────────
+
+export interface TemplateNode {
+  name: string;
+  children?: TemplateNode[];
+  starterNote?: string;
+}
+
+export interface TemplateDefinition {
+  id: string;
+  name: string;
+  description: string;
+  story: TemplateNode[];
+  notes: TemplateNode[];
+  isUserTemplate?: boolean;
+  savedAt?: string;
+}
+
+export interface TemplateListResponse {
+  templates: TemplateDefinition[];
+}
+
+export interface TemplateScaffoldPayload {
+  templateId: string;
+  storyVaultPath: string;
+  notesVaultPath: string;
+}
+
+export interface TemplateScaffoldResponse {
+  ok: true;
+  storyVaultPath: string;
+  notesVaultPath: string;
+}
+
+export interface TemplateSaveAsPayload {
+  name: string;
+}
+
+export interface TemplateSaveAsResponse {
+  ok: true;
+  id: string;
+}

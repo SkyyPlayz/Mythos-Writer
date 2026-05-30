@@ -5,6 +5,7 @@ import './OnboardingWizard.css';
 
 type WizardScreen =
   | 'welcome'
+  | 'template-picker'
   | 'default-path'
   | 'blank-path'
   | 'import-source'
@@ -51,7 +52,19 @@ type Api = {
   obsidianPickFolderByPath: (sourcePath: string) => Promise<{ vaultRoot: string | null; registrationToken: string | null; error?: string }>;
   onObsidianImportProgress?: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
   onboardingComplete: () => Promise<{ ok: boolean }>;
+  templateList: () => Promise<{ templates: TemplateItem[] }>;
+  templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string } | { error: string }>;
 };
+
+interface TemplateItem {
+  id: string;
+  name: string;
+  description: string;
+  story: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
+  notes: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
+  isUserTemplate?: boolean;
+  savedAt?: string;
+}
 
 function api(): Api {
   return (window as unknown as { api: Api }).api;
@@ -292,6 +305,10 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   // Blank vault flow
   const [blankPath, setBlankPath] = useState('~/Mythos');
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem | null>(null);
+  const [templateParentPath, setTemplateParentPath] = useState<string>('');
+  const [templatePathStatus, setTemplatePathStatus] = useState<PathStatus>('new');
   const [blankPathStatus, setBlankPathStatus] = useState<PathStatus>('new');
 
   // Import flow
@@ -579,6 +596,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (screen === 'template-picker' && templates.length === 0) {
+      api().templateList().then((res) => {
+        if ('templates' in res) setTemplates(res.templates);
+      }).catch(() => {});
+    }
+  }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Step indicator ─────────────────────────────────────────────────────────
 
   const stepInfo = STEP_MAP[screen];
@@ -669,6 +694,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               onActivate={() => { setError(''); setScreen('sample-path'); }}
               testId="card-sample"
             />
+            <PickerCard
+              icon="📋"
+              title="Start from template"
+              description="Pick a bundled project template (Novel, Short Story, World-building Bible, or Series Bible) and apply it to a new vault."
+              ctaLabel="Browse templates &#x2192;"
+              onActivate={() => { setError(''); setScreen('template-picker'); }}
+              testId="card-template"
+            />
           </div>
 
           {error && <p className="onboarding-error" role="alert">{error}</p>}
@@ -687,7 +720,107 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
         </div>
       )}
 
-      {/* ── S1a Default layout ── */}
+      {/* ── Template Picker (SKY-156) ── */}
+      {screen === 'template-picker' && (
+        <div className="onboarding-card onboarding-card--wide" data-testid="screen-template-picker">
+          <div className="onboarding-top-bar">
+            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>&#x2190; Back</button>
+          </div>
+          <h2 className="onboarding-title">Choose a project template</h2>
+          <p className="onboarding-subtitle">
+            Select a template to apply to a new vault, then choose where to put it.
+          </p>
+          <div className="template-grid" role="list">
+            {templates.map((tmpl) => (
+              <button
+                key={tmpl.id}
+                role="listitem"
+                className={`template-card${selectedTemplate?.id === tmpl.id ? ' template-card--selected' : ''}`}
+                onClick={() => setSelectedTemplate(tmpl)}
+                data-testid={`template-${tmpl.id}`}
+                aria-pressed={selectedTemplate?.id === tmpl.id}
+              >
+                {tmpl.isUserTemplate && <span className="template-card__badge">Saved</span>}
+                <span className="template-card__name">{tmpl.name}</span>
+                <span className="template-card__desc">{tmpl.description}</span>
+              </button>
+            ))}
+          </div>
+          {selectedTemplate && (
+            <div className="template-preview">
+              <h3 className="template-preview__title">{selectedTemplate.name} &#x2014; structure preview</h3>
+              <div className="template-preview__cols">
+                <div>
+                  <strong>Story Vault</strong>
+                  <ul className="template-tree">
+                    {selectedTemplate.story.map((n) => (
+                      <li key={n.name}>{n.name}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <strong>Notes Vault</strong>
+                  <ul className="template-tree">
+                    {selectedTemplate.notes.map((n) => (
+                      <li key={n.name}>{n.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <FolderPathField
+                label="Parent folder"
+                value={templateParentPath}
+                onChange={(v) => {
+                  setTemplateParentPath(v);
+                  setTemplatePathStatus('checking');
+                  api().validatePath(v).then((r) => {
+                    setTemplatePathStatus(!r.writable ? 'not-writable' : 'new');
+                  }).catch(() => setTemplatePathStatus('unknown'));
+                }}
+                onBlur={() => {}}
+                onBrowse={async () => {
+                  const r = await api().pickFolder();
+                  if (!r.cancelled && r.vaultRoot) setTemplateParentPath(r.vaultRoot);
+                }}
+                status={templatePathStatus}
+                disabled={busy}
+                testId="template-path-input"
+              />
+              {error && <p className="onboarding-error" role="alert">{error}</p>}
+              <div className="onboarding-actions">
+                <button
+                  className="btn-primary"
+                  disabled={busy || !templateParentPath || templatePathStatus === 'not-writable' || templatePathStatus === 'checking' || templatePathStatus === 'unknown'}
+                  onClick={async () => {
+                    setBusy(true);
+                    setError('');
+                    try {
+                      const base = templateParentPath.replace(/[/\\]+$/, '');
+                      const res = await api().templateScaffold(
+                        selectedTemplate.id,
+                        `${base}/Story Vault`,
+                        `${base}/Notes Vault`,
+                      );
+                      if ('error' in res) { setError(res.error); return; }
+                      await api().vaultSetPaths(res.storyVaultPath, res.notesVaultPath, { seedMode: 'blank' });
+                      await api().onboardingComplete();
+                      onComplete(initialSettings);
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : 'Failed to apply template');
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {busy ? 'Creating…' : `Apply "${selectedTemplate.name}"`}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+            {/* ── S1a Default layout ── */}
       {screen === 'default-path' && (
         <div className="onboarding-card" data-testid="screen-default-path">
           <div className="onboarding-top-bar">
