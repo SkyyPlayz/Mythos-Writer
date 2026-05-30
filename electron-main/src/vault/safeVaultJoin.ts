@@ -181,3 +181,15 @@ export function safeVaultIpcJoin(
     allowedExtensions: VAULT_IPC_ALLOWED_EXTENSIONS,
   });
 }
+
+/**
+ * Directory-creation variant for the notesVault:mkdir IPC channel.
+ * Same traversal guards as safeVaultIpcJoin but without the extension
+ * allow-list — directories have no file extension.
+ */
+export function safeVaultDirIpcJoin(vaultRoot: string, relPath: string): string {
+  return safeVaultJoin(vaultRoot, relPath, {
+    writeMode: true,
+    rejectDotfiles: true,
+  });
+}

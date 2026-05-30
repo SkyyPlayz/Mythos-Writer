@@ -3,6 +3,7 @@
 
 import { ipcMain, ipcRenderer } from 'electron';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
+import { sanitizeIpcError } from './ipcErrors.js';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -57,19 +58,28 @@ export const IPC_CHANNELS = {
   AGENT_VAULT_CHECK: 'agent:vault-check',
   AGENT_ARCHIVE: 'agent:archive',
 
+  // Agent persona files (MYT-816)
+  AGENT_PERSONA_READ: 'agent:persona:read',
+  AGENT_PERSONA_RESET: 'agent:persona:reset',
+
   // System
   SYSTEM_INFO: 'system:info',
 
   // Versioning — per-scene snapshots
   SNAPSHOT_SAVE: 'snapshot:save',
+  SNAPSHOT_SAVE_SYNC: 'snapshot:save-sync',
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
 
-  // Versioned drafts — Phase 2 (MYT-198)
+  // Versioned drafts — Phase 2 (MYT-198), SKY-10 upgrade
   VERSION_LIST: 'version:list',
   VERSION_GET: 'version:get',
   VERSION_ROLLBACK: 'version:rollback',
+
+  // SKY-10 — Legacy single-file-per-chapter migration
+  MIGRATION_DRY_RUN: 'migration:dryRun',
+  MIGRATION_APPLY: 'migration:apply',
 
   // Entity CRUD
   ENTITY_CREATE: 'entity:create',
@@ -82,8 +92,9 @@ export const IPC_CHANNELS = {
   // App settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  SETTINGS_TEST_CONNECTION: 'settings:testConnection',
 
-  // Liquid Glass background image (MYT-613)
+  // Liquid Neon background image (MYT-613)
   BG_PICK: 'bg:pick',
   BG_LOAD: 'bg:load',
 
@@ -110,6 +121,8 @@ export const IPC_CHANNELS = {
   SCENE_LIST: 'scene:list',
   SCENE_GET: 'scene:get',
   SCENE_SAVE: 'scene:save',
+  // Inline rename (SKY-115) — title-only update, does not touch prose
+  SCENE_RENAME: 'scene:rename',
 
   // Auto-updater (MYT-245) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
@@ -166,6 +179,12 @@ export const IPC_CHANNELS = {
   // Text-to-speech (MYT-339) — streams audio chunks to renderer; cancellable mid-stream
   VOICE_SPEAK: 'voice:speak',
 
+  // Main-process file picker for local STT/TTS binary or model selection (MYT-788).
+  // Returns a one-shot registration token bound to the chosen path; the
+  // renderer must echo it back in settings:set to change the corresponding
+  // localBinaryPath / localModelPath field.
+  VOICE_PICK_BINARY: 'voice:pickBinary',
+
   // Per-agent config (MYT-343) — enable/model/threshold/budget per agent
   SETTINGS_GET_AGENT_CONFIG: 'settings:getAgentConfig',
   SETTINGS_SET_AGENT_CONFIG: 'settings:setAgentConfig',
@@ -184,6 +203,29 @@ export const IPC_CHANNELS = {
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
+  // SKY-9: Notes-Vault-scoped file IO. The existing VAULT_* channels stay
+  // bound to the Story Vault root; this is the symmetric set rooted at the
+  // separately-configured Notes Vault. Used by VaultBrowser to render the
+  // AI workspace without leaking from the Story Vault, and by Brainstorm /
+  // Writing-Assistant downstream work that needs to read or persist notes
+  // independent of the manuscript.
+  NOTES_VAULT_READ: 'notesVault:read',
+  NOTES_VAULT_WRITE: 'notesVault:write',
+  NOTES_VAULT_LIST: 'notesVault:list',
+  NOTES_VAULT_DELETE: 'notesVault:delete',
+  NOTES_VAULT_MOVE: 'notesVault:move',
+  // SKY-95: dedicated mkdir avoids the dotfile block on .gitkeep placeholders.
+  NOTES_VAULT_MKDIR: 'notesVault:mkdir',
+  NOTES_VAULT_WATCH_START: 'notesVault:watchStart',
+  NOTES_VAULT_WATCH_STOP: 'notesVault:watchStop',
+  // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
+  // renderer has one move channel per vault root.
+  VAULT_MOVE: 'vault:move',
+  // SKY-9: generic folder picker for the Settings UI. Distinct from
+  // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
+  // and from BG_PICK (image picker). Returns the chosen absolute path with
+  // no side effects; the Settings panel persists via vaultSetPaths.
+  VAULT_CHOOSE_FOLDER: 'vault:chooseFolder',
 
   // Per-agent budget usage (MYT-722) — rolling 1-hour token + suggestion totals
   AGENT_BUDGET_USAGE: 'agent:budgetUsage',
@@ -195,6 +237,39 @@ export const IPC_CHANNELS = {
   // App data backup / restore (MYT-346)
   APP_BACKUP_APP_DATA: 'app:backupAppData',
   APP_RESTORE_APP_DATA: 'app:restoreAppData',
+
+  // First-run onboarding (MYT-820)
+  VAULT_CREATE_BLANK: 'vault:create-blank',
+  VAULT_VALIDATE_PATH: 'vault:validate-path',
+  VAULT_PICK_FOLDER_BY_PATH: 'vault:pick-folder-by-path',
+
+  // SKY-20: Brainstorm Agent routing — Blank-mode vaults ask-once-per-category
+  // and remember the choice. The renderer calls WRITE_NOTE for every extracted
+  // fact; main resolves the destination from layoutMode + persisted memory.
+  // When memory is missing, the file is staged and the renderer prompts; the
+  // user's pick is then committed via RESOLVE_ROUTING.
+  BRAINSTORM_GET_SETTINGS: 'brainstorm:getSettings',
+  BRAINSTORM_WRITE_NOTE: 'brainstorm:writeNote',
+  BRAINSTORM_RESOLVE_ROUTING: 'brainstorm:resolveRouting',
+  BRAINSTORM_RESET_CATEGORY_ROUTING: 'brainstorm:resetCategoryRouting',
+  BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
+
+  // SKY-12.3: two-vault sample project loader. Copies the bundled sample
+  // from resources/sample-project/ into <parentPath>/Story Vault/ and
+  // <parentPath>/Notes Vault/, reindexes both, and calls setPaths.
+  VAULT_LOAD_SAMPLE_TWO_VAULT: 'vault:load-sample-twovault',
+
+  // SKY-12.4: first-run onboarding completion flag. Called by the wizard's
+  // onComplete handler to persist onboardingComplete=true. Thin channel so
+  // the wizard never needs to send the full settings object back.
+  ONBOARDING_COMPLETE: 'onboarding:complete',
+
+  // SKY-12.4: debug reset (MYTHOS_DEV=1 only). Clears vaultRoot, notesVaultRoot,
+  // and onboardingComplete so the wizard re-appears on next boot.
+  ONBOARDING_RESET: 'onboarding:reset',
+
+  // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
+  SESSION_SCENE_SAVE: 'session:saveScene',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -230,12 +305,15 @@ export function isFromTopFrame(event: IpcMainInvokeEvent | IpcMainEvent): boolea
 
 export function setupIpcMain(handlers: IpcHandlers) {
   for (const [channel, handler] of Object.entries(handlers)) {
-    ipcMain.handle(channel, (event, payload) => {
+    // `await` is required so async rejections are caught here and sanitized
+    // before they reach the renderer. Previously thrown fs errors (ENOENT,
+    // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
+    ipcMain.handle(channel, async (event, payload) => {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       try {
-        return handler(payload);
+        return await handler(payload);
       } catch (error) {
-        return { error: (error as Error).message };
+        return sanitizeIpcError(channel, error);
       }
     });
   }
@@ -280,6 +358,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
+  [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: MigrationDryRunPayload) => MigrationDryRunResponse;
+  [IPC_CHANNELS.MIGRATION_APPLY]: (payload: MigrationApplyPayload) => MigrationApplyResponse;
   [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => EntityEntry;
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => EntityEntry | null;
   [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
@@ -288,6 +368,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) => Promise<SettingsTestConnectionResponse>;
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
   [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => SuggestionsGetResponse;
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
@@ -313,6 +394,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
   [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
+  [IPC_CHANNELS.SCENE_RENAME]: (payload: SceneRenamePayload) => SceneRenameResponse;
   [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
@@ -323,7 +405,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
-  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: never) => Promise<VaultLoadSampleResponse>;
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: (payload: VoicePickBinaryPayload) => Promise<VoicePickBinaryResponse>;
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse>;
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse>;
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => Promise<VaultValidatePathResponse>;
+  [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: (payload: VaultPickFolderByPathPayload) => Promise<VaultPickFolderResponse>;
   [IPC_CHANNELS.TIMELINE_INFER]: (payload: TimelineInferPayload) => TimelineInferResponse;
   // APP_CHECK_FOR_UPDATE and APP_INSTALL_UPDATE are registered directly in initAutoUpdater()
   // (async handlers — not routed through setupIpcMain)
@@ -338,11 +424,30 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
+  [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
+  [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
+  [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
+  [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
   [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
   [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
+  [IPC_CHANNELS.BRAINSTORM_GET_SETTINGS]: (payload: never) => BrainstormGetSettingsResponse;
+  [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: BrainstormWriteNotePayload) => BrainstormWriteNoteResponse;
+  [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
+  [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
+  [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
+  // SKY-12 onboarding channels
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
+  // SKY-130: session persistence
+  [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
 }
 
 // ─── Payload / Response types ───
@@ -388,6 +493,36 @@ export interface VaultDeletePayload {
 export interface VaultDeleteResponse {
   path: string;
   deleted: boolean;
+}
+
+export interface VaultMovePayload {
+  fromPath: string;
+  toPath: string;
+}
+
+export interface VaultMoveResponse {
+  fromPath: string;
+  toPath: string;
+  moved: boolean;
+}
+
+export interface VaultMkdirPayload {
+  path: string;
+}
+
+export interface VaultMkdirResponse {
+  path: string;
+  created: boolean;
+}
+
+export interface VaultChooseFolderPayload {
+  title?: string;
+  defaultPath?: string;
+}
+
+export interface VaultChooseFolderResponse {
+  path: string | null;
+  cancelled: boolean;
 }
 
 // ─── Full manifest schema ───
@@ -571,6 +706,27 @@ export interface VaultPickFolderResponse {
   registrationToken: string | null;
 }
 
+/**
+ * Payload for VOICE_PICK_BINARY (MYT-788). `kind` controls which file extensions
+ * the dialog suggests (executable vs. piper .onnx model); the dialog itself
+ * never restricts to those filters — the user can pick any file.
+ */
+export interface VoicePickBinaryPayload {
+  kind: 'stt-binary' | 'tts-binary' | 'tts-model';
+}
+
+/**
+ * Response from VOICE_PICK_BINARY. `registrationToken` is a one-shot, 60s-TTL
+ * token bound to the chosen path; settings:set requires it when changing the
+ * corresponding localBinaryPath / localModelPath field. `cancelled` is true
+ * when the user dismissed the dialog without selecting a file.
+ */
+export interface VoicePickBinaryResponse {
+  path: string | null;
+  cancelled: boolean;
+  registrationToken: string | null;
+}
+
 export interface VaultGetRootResponse {
   vaultRoot: string;
 }
@@ -644,13 +800,23 @@ export interface SnapshotRestoreResponse {
   preRestoreSnapshot: SceneSnapshot;
 }
 
-// ─── Versioned drafts types (Phase 2 — MYT-198) ───
+// ─── Versioned drafts types (SKY-10 upgrade of MYT-198) ───
+
+export type VersionIntent =
+  | 'save'
+  | 'auto'
+  | 'agent-suggestion-applied'
+  | 'pre-rollback'
+  | 'migration';
 
 export interface SceneVersion {
   sceneId: string;
-  /** Sanitized ISO timestamp — the filename stem under .versions/<sceneId>/. */
+  /** Sanitized ISO timestamp + 8-char content hash — sortable filename stem. */
   ts: string;
   content: string;
+  intent: VersionIntent;
+  /** Full sha256(content) hex. */
+  contentHash: string;
 }
 
 export interface VersionListPayload {
@@ -678,6 +844,49 @@ export interface VersionRollbackPayload {
 export interface VersionRollbackResponse {
   restoredVersion: SceneVersion;
   preRollbackVersion: SceneVersion;
+}
+
+// ─── SKY-10: Legacy-layout migration ───
+
+export interface MigrationPlanChange {
+  kind: 'create-dir' | 'write-file' | 'snapshot-legacy' | 'unlink-file';
+  /** Vault-relative path the change targets. */
+  path: string;
+  /** Human-readable description for the dry-run modal. */
+  description: string;
+}
+
+export interface MigrationPlan {
+  planId: string;
+  storyPath: string;
+  detectedLegacyFiles: string[];
+  changes: MigrationPlanChange[];
+  createdAt: string;
+}
+
+export interface MigrationDryRunPayload {
+  /** Optional — when omitted, scans every story under Manuscript/. */
+  storyPath?: string;
+}
+
+export interface MigrationDryRunResponse {
+  plans: MigrationPlan[];
+}
+
+export interface MigrationApplyPayload {
+  planId: string;
+  storyPath: string;
+}
+
+export interface MigrationApplyResult {
+  planId: string;
+  storyPath: string;
+  appliedChanges: number;
+  snapshotsWritten: string[];
+}
+
+export interface MigrationApplyResponse {
+  result: MigrationApplyResult;
 }
 
 // ─── Entity IPC payload / response types ───
@@ -911,9 +1120,9 @@ export interface ProviderSettings {
   model: string;
 }
 
-/** Liquid Glass advanced theme customization (MYT-613 / MYT-716). All values optional;
- *  absent fields fall back to LIQUID_GLASS_DEFAULTS in theme.ts. */
-export interface LiquidGlassPrefs {
+/** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;
+ *  absent fields fall back to LIQUID_NEON_DEFAULTS in theme.ts. */
+export interface LiquidNeonPrefs {
   softnessContrast: number;
   glass: number;
   blur: number;
@@ -967,16 +1176,55 @@ export interface AppSettings {
     enabled: boolean;
     sessionId: string;
   };
-  /** Liquid Glass customization overrides (MYT-613). Absent = all defaults. */
-  liquidGlass?: LiquidGlassPrefs;
+  /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
+  liquidNeon?: LiquidNeonPrefs;
+  /** SKY-130: last-opened scene for cross-restart restore. */
+  lastOpenedScene?: LastOpenedScene;
+}
+
+/** SKY-130: persisted cross-restart scene + cursor position. */
+export interface LastOpenedScene {
+  sceneId: string;
+  scenePath: string;
+  scrollTop: number;
+  cursorLine: number;
+}
+
+export interface SessionSaveScenePayload {
+  sceneId: string;
+  scenePath: string;
+  scrollTop: number;
+  cursorLine: number;
 }
 
 export interface SettingsSetPayload {
   settings: AppSettings;
+  /**
+   * MYT-788: registration tokens proving the renderer-supplied voice binary
+   * and model paths came from a main-process file picker (voice:pickBinary).
+   * Required only when the corresponding path field actually changes — echoes
+   * of the existing value, and clearing the field, are accepted without a
+   * token.
+   */
+  sttBinaryToken?: string;
+  ttsBinaryToken?: string;
+  ttsModelToken?: string;
 }
 
 export interface SettingsSetResponse {
   saved: boolean;
+  /** Present when settings:set failed the voice-spawn gate (MYT-788). */
+  error?: string;
+}
+
+export interface SettingsTestConnectionPayload {
+  provider: ProviderSettings;
+}
+
+export interface SettingsTestConnectionResponse {
+  ok: boolean;
+  latencyMs: number;
+  error?: string;
 }
 
 // ─── Multi-project types (MYT-374) ───────────────────────────────────────────
@@ -1010,6 +1258,8 @@ export interface TelemetryReportPayload {
 
 export interface TelemetryReportResponse {
   queued: boolean;
+  /** Set when validation rejects the payload (MYT-794). */
+  error?: string;
 }
 
 // ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
@@ -1337,9 +1587,21 @@ export interface SceneSavePayload {
   prose: string;
   title?: string;
   order?: number;
+  /** SKY-10: classifies the save so snapshots can dedupe autosaves. Defaults to 'save'. */
+  intent?: VersionIntent;
 }
 
 export interface SceneSaveResponse {
+  scene: SceneEntry;
+}
+
+// SKY-115: inline scene rename (title-only, manifest update)
+export interface SceneRenamePayload {
+  sceneId: string;
+  title: string;
+}
+
+export interface SceneRenameResponse {
   scene: SceneEntry;
 }
 
@@ -1524,6 +1786,11 @@ export interface ObsidianNameCollision {
   file: string;
 }
 
+export interface ObsidianRestructuredEntry {
+  from: string;
+  to: string;
+}
+
 export interface VaultObsidianDryRunReport {
   /** Total .md files found */
   notesCount: number;
@@ -1535,6 +1802,10 @@ export interface VaultObsidianDryRunReport {
   missingFrontmatter: string[];
   /** Non-null when the folder is unreadable (e.g. permissions) */
   fatalError: string | null;
+  /** Notes that will be moved to match the Notes Vault layout (MYT-820) */
+  restructured?: ObsidianRestructuredEntry[];
+  /** Notes that keep their current path unchanged (MYT-820) */
+  leftAsIs?: string[];
 }
 
 export interface VaultObsidianRegisterPayload {
@@ -1547,8 +1818,61 @@ export interface VaultObsidianRegisterResponse {
   notesIndexed: number;
 }
 
+export interface VaultLoadSamplePayload {
+  /** Optional custom destination; defaults to ~/Documents/Mythos Sample if omitted */
+  targetPath?: string;
+}
+
 export interface VaultLoadSampleResponse {
   vaultRoot: string;
+}
+
+// ─── SKY-12.3: two-vault sample project loader ───
+
+export interface VaultLoadSampleTwoVaultPayload {
+  parentPath: string;
+}
+
+export interface VaultLoadSampleTwoVaultResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+  error?: string;
+}
+
+// ─── First-run onboarding (MYT-820) ───
+
+export interface VaultCreateBlankPayload {
+  targetPath: string;
+}
+
+export interface VaultCreateBlankResponse {
+  vaultRoot: string;
+}
+
+export interface VaultValidatePathPayload {
+  path: string;
+}
+
+export interface VaultValidatePathResponse {
+  exists: boolean;
+  isEmpty: boolean;
+  writable: boolean;
+}
+
+export interface VaultPickFolderByPathPayload {
+  sourcePath: string;
+}
+
+// SKY-12.3: two-vault sample project loader.
+export interface VaultLoadSampleTwoVaultPayload {
+  /** Parent directory under which Story Vault/ and Notes Vault/ will be created. */
+  parentPath: string;
+}
+
+export interface VaultLoadSampleTwoVaultResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+  error?: string;
 }
 
 // ─── Per-agent config IPC types (MYT-343) ───
@@ -1560,6 +1884,30 @@ export interface SetAgentConfigPayload {
 
 export interface SetAgentConfigResponse {
   saved: boolean;
+}
+
+// ─── Agent persona IPC types (MYT-816) ───
+
+export type AgentPersonaName = 'writingAssistant' | 'brainstorm';
+export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
+
+export interface AgentPersonaReadPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaReadResponse {
+  content: string;
+  isCustom: boolean;
+}
+
+export interface AgentPersonaResetPayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+}
+
+export interface AgentPersonaResetResponse {
+  success: boolean;
 }
 
 // ─── Archive confirmation dialog (MYT-376) ───
@@ -1592,7 +1940,7 @@ export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
 }
 
-// ─── Liquid Glass background image (MYT-613) ───
+// ─── Liquid Neon background image (MYT-613) ────
 
 export interface BgPickResponse {
   filePath: string | null;
@@ -1667,15 +2015,28 @@ export interface VaultGetPathsResponse {
   notesVaultPath: string;
 }
 
+export type VaultSeedMode = 'default' | 'blank';
+
 export interface VaultSetPathsPayload {
   storyVaultPath: string;
   notesVaultPath: string;
+  // MYT-789: at least one proof of user intent is required per path. The
+  // tokens come from vault:pick-folder; alternatively the path may already be
+  // in the recent-projects allowlist.
+  storyVaultToken?: string;
+  notesVaultToken?: string;
+  /** SKY-12.2: controls whether the new vaults are scaffolded with the full
+   *  SKY-15 folder layout ('default', the prior behavior) or created as empty
+   *  roots with only a manifest.json ('blank'). Defaults to 'default' when
+   *  absent for backwards compatibility with SKY-9 callers. */
+  seedMode?: VaultSeedMode;
 }
 
 export interface VaultSetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
   saved: boolean;
+  error?: string;
 }
 
 // ─── Writing modes (MYT-347) ───
@@ -1741,4 +2102,80 @@ export interface RestoreAppDataResponse {
   /** True when the caller must re-call with confirmed: true to proceed. */
   requiresConfirmation?: boolean;
   cancelled?: boolean;
+}
+
+// ─── Brainstorm Agent routing (SKY-20) ───
+
+export type BrainstormFactType = 'character' | 'location' | 'item' | 'note';
+
+export interface BrainstormGetSettingsResponse {
+  /** Vault layout mode the user picked at onboarding. */
+  layoutMode: 'default' | 'blank' | 'imported';
+  /** Per-category folder choices for Blank-mode vaults. Keys are FactType. */
+  notesRouting: Partial<Record<BrainstormFactType, string>>;
+}
+
+export interface BrainstormWriteNotePayload {
+  category: BrainstormFactType;
+  name: string;
+  content: string;
+}
+
+export type BrainstormWriteNoteResponse =
+  | {
+      status: 'written';
+      /** Vault-relative path of the written note. */
+      path: string;
+      suggestionId: string;
+      /** How the destination was resolved — for telemetry/tests. */
+      reason: 'default-layout' | 'remembered';
+    }
+  | {
+      status: 'needs_routing';
+      /** Staged file path (vault-relative). Caller invokes RESOLVE_ROUTING
+       *  with the user's chosen folder; main moves the file there. */
+      stagedPath: string;
+      category: BrainstormFactType;
+      name: string;
+    };
+
+export interface BrainstormResolveRoutingPayload {
+  /** Path returned by WRITE_NOTE when status was needs_routing. */
+  stagedPath: string;
+  category: BrainstormFactType;
+  /** User-picked destination folder, vault-relative POSIX path. */
+  destination: string;
+  /** When true, persist the destination as the new default for `category`.
+   *  When false, this is a one-off route — memory is not updated. */
+  remember: boolean;
+}
+
+export interface BrainstormResolveRoutingResponse {
+  status: 'written';
+  /** Final vault-relative path after the move. */
+  path: string;
+  /** Echoed back so the renderer can update its memory cache. */
+  notesRouting: Partial<Record<BrainstormFactType, string>>;
+}
+
+export interface BrainstormResetCategoryRoutingPayload {
+  category: BrainstormFactType;
+}
+
+export interface BrainstormResetCategoryRoutingResponse {
+  notesRouting: Partial<Record<BrainstormFactType, string>>;
+}
+
+export interface BrainstormFolderEntry {
+  /** Vault-relative POSIX path (no leading slash). */
+  path: string;
+  /** Display label for the folder picker. */
+  label: string;
+}
+
+export interface BrainstormListNotesFoldersResponse {
+  /** Existing folders inside the Notes Vault, suitable for the picker.
+   *  Sorted alphabetically; depth-limited so the picker stays usable. */
+  folders: BrainstormFolderEntry[];
+  notesVaultRoot: string;
 }

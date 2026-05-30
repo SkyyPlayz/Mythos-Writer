@@ -11,7 +11,7 @@ For the full plain-language explanation of every question and the recommended de
 | ID | Decision | Notes |
 | --- | --- | --- |
 | 0.1 | **Keep Obsidian backwards-compatibility.** | Compat is low-cost and does not constrain UX innovation. Documented in [01-overview.md → Obsidian compatibility (CEO decision)](01-overview.md#obsidian-compatibility-ceo-decision). |
-| 0.2 | **Adopt "Liquid Glass Dark Neon" as the official visual identity (MYT-516).** | Board-supplied brief + reference images. Applies uniformly across the app and adds a continuous Softness↔Contrast slider. Documented in [12-visual-design-system.md](12-visual-design-system.md); design + implementation delegated via MYT-516 child issues. |
+| 0.2 | **Adopt "Liquid Neon" as the official visual identity (MYT-516).** | Board-supplied brief + reference images. Applies uniformly across the app and adds a continuous Softness↔Contrast slider. Documented in [12-visual-design-system.md](12-visual-design-system.md); design + implementation delegated via MYT-516 child issues. |
 
 ---
 
@@ -21,7 +21,7 @@ For the full plain-language explanation of every question and the recommended de
 | --- | --- | --- | --- |
 | 1.2 | External tagline | "A writing app, with an extra brain, to keep everything in mind so you don't have to." | [01-overview.md](01-overview.md) (top quote) |
 | 4.1 | Default AI provider | **BYO any model** — cloud APIs, local runtimes (Ollama, LM Studio, llama.cpp), and custom agent providers like HermesAI. Model-agnostic by design. | [04-brainstorm-agent.md → Model choice](04-brainstorm-agent.md#model-choice--bring-your-own) |
-| 4.5 | Frontmatter / vault layout | Default folder structure: `Mythos Vault/Universes/<World>/...` for worldbuilding, `Mythos Vault/Story ideas/<Story>/...` for story-specific notes. Agent falls back to default frontmatter schemas when structure doesn't fit. | [02-storage-and-organization.md → Default folder layout](02-storage-and-organization.md#default-folder-layout-inside-the-notes-vault) and [04-brainstorm-agent.md → Vault structure](04-brainstorm-agent.md#vault-structure-the-agent-builds-against) |
+| 4.5 | Frontmatter / vault layout | **Superseded by [SKY-15](/SKY/issues/SKY-15) ([#document-plan](/SKY/issues/SKY-15#document-plan)) — the original Q4.5 wording was an example, not a spec.** Authoritative default structure now: parent `~/Mythos/` with siblings `Story Vault/` and `Notes Vault/`; Notes Vault top level is `Universes/`, `Stories/`, `Inbox/`, `Research/`, `Daily Notes/`, `Archive/`; Story Vault is per-story → `Manuscript/` → numbered chapter folders → numbered scene files with seeded `Outline.md` + `Synopsis.md`. Brainstorm Agent falls back to frontmatter schemas when structure doesn't fit. | [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan) is the source of record; [02-storage-and-organization.md](02-storage-and-organization.md) and [04-brainstorm-agent.md](04-brainstorm-agent.md) mirror it. |
 | 5.2 | Where inline suggestions render | **Two modes**: heartbeat scans land in the sidebar; **Beta-Read Mode** writes Word-style inline comments anchored to highlighted spans, visible in Edit Mode. | [05-writing-assistant.md → Beta-Read Mode](05-writing-assistant.md#beta-read-mode) |
 | 6.6 | Continuity-issue UI | Checkbox-style todo list in the Brainstorm Agent's sidebar. Click an issue to expand, answer inline, and the answer routes back to the Brainstorm Agent. | [06-archive-agent.md → Continuity issues in Brainstorm sidebar](06-archive-agent.md#continuity-issues-live-in-the-brainstorm-sidebar) and [04-brainstorm-agent.md → How it interacts](04-brainstorm-agent.md#how-it-interacts-with-the-rest-of-the-app) |
 | 10.4 | Local-model support at MVP | Cloud-only at MVP is acceptable. **Full local-model + BYO-provider support is the immediate post-MVP priority** (highest-priority next task). | [10-releases-and-roadmap.md → Full local-model and BYO-provider support](10-releases-and-roadmap.md#full-local-model-and-byo-provider-support-immediate-post-mvp-priority) |
@@ -57,3 +57,11 @@ If a decision needs to change later:
 3. Optionally open a follow-up issue and link it here.
 
 The Q&A Explainer document on MYT-183 is the conversation record and should not be edited retroactively — it captures what was decided in that round.
+
+---
+
+## Implementation log
+
+| Date | Issue | Change |
+| --- | --- | --- |
+| 2026-05-28 | SKY-9 | Two-vault foundation lands against the board-accepted [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan) (which supersedes the old Q4.5 example). Default vault roots are now `~/Mythos/Story Vault/` and `~/Mythos/Notes Vault/` as siblings under `~/Mythos/`; existing installs keep persisted paths. Notes Vault scaffolds the six SKY-15 top-level folders (`Universes/`, `Stories/`, `Inbox/`, `Research/`, `Daily Notes/`, `Archive/`) with `.gitkeep` sentinels, plus a seeded `My First Universe/{Characters,Locations,Factions,History,Systems,Items}/` example and a per-story `Stories/My First Story/` folder. Story Vault scaffolds `My First Story/Manuscript/01 - Opening/01 - Scene One.md` plus seeded `Outline.md` and `Synopsis.md`. Added `layoutMode` to `VaultSettings` (`default` \| `blank` \| `imported`) so the seeding hook honors Blank-mode (only the top-level vault folder is created). `ensure*VaultDir` seeds when the root exists but is empty (not only when missing). Added Notes-Vault-scoped IPC handlers `notesVault:read/write/list/delete/move` plus `vault:move` for symmetry; renderer bridge exposes `readNotesVault`/`writeNotesVault`/`listNotesVault`/`deleteNotesVault`/`moveNotesVault` and `moveVault`. Settings UI gained a "Vault paths" section backed by a new generic `vault:chooseFolder` IPC decoupled from the Obsidian-import token flow. Brainstorm asks-once-per-category routing in Blank-mode vaults (SKY-15 item 5) is split into a separate Brainstorm-Agent child issue blocked by SKY-9. |

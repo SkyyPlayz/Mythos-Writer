@@ -1,6 +1,8 @@
 // Main process entry — Electron app lifecycle + IPC handlers
-import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler } from './security.js';
+import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
+import { readBgImageAsDataUrl } from './bgLoad.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -19,6 +21,12 @@ import {
   type VaultListResponse,
   type VaultDeletePayload,
   type VaultDeleteResponse,
+  type VaultMovePayload,
+  type VaultMoveResponse,
+  type VaultMkdirPayload,
+  type VaultMkdirResponse,
+  type VaultChooseFolderPayload,
+  type VaultChooseFolderResponse,
   type Manifest,
   type ManifestWritePayload,
   type ManifestWriteResponse,
@@ -79,18 +87,38 @@ import {
   type BetaReadScanPayload,
   type VaultObsidianDryRunPayload,
   type VaultObsidianRegisterPayload,
+  type VaultLoadSamplePayload,
   type VaultLoadSampleResponse,
+  type VaultCreateBlankPayload,
+  type VaultCreateBlankResponse,
+  type VaultValidatePathPayload,
+  type VaultValidatePathResponse,
+  type VaultPickFolderByPathPayload,
   type ProjectEntry,
   type ProjectSwitchPayload,
   type ArchiveConfirmPayload,
   type BgLoadPayload,
   type VaultSetPathsPayload,
+  type VaultLoadSampleTwoVaultPayload,
+  type VaultLoadSampleTwoVaultResponse,
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  type AgentPersonaReadPayload,
+  type AgentPersonaResetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
+  type SettingsTestConnectionPayload,
+  type SessionSaveScenePayload,
 } from './ipc.js';
+import { wrapIpcHandler } from './ipcErrors.js';
+import {
+  buildAgentSystemPrompt,
+  loadPersonaFile,
+  resetPersonaFile,
+  type AgentPersonaName,
+  type PersonaKey,
+} from './agentPersona.js';
 import {
   openDb,
   closeDb,
@@ -121,14 +149,23 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
+import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
+import {
+  checkVoiceSettingsUpdate,
+  seedTrustedBinariesFromSettings,
+  validateSttShape,
+  validateTtsShape,
+} from './voiceGate.js';
 import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
+import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
 import {
   readVaultFile,
   writeVaultFileAtomic,
   writeFileAtomic,
   listVaultFiles,
   deleteVaultFile,
+  moveVaultFile,
   readManifest,
   writeManifest,
   defaultManifest,
@@ -141,10 +178,12 @@ import {
   stopNotesVaultWatcher,
   scaffoldStoryVault,
   scaffoldNotesVault,
+  isEmptyOrMissing,
   parseFrontmatter,
   serializeFrontmatter,
   safePath,
   safeVaultIpcJoin,
+  safeVaultDirIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -154,6 +193,7 @@ import {
   mergeProvenanceFrontmatter,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
+import { assertValidManifest } from './manifestValidate.js';
 import {
   createEntity,
   readEntity,
@@ -182,12 +222,12 @@ import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage } from './streaming.js';
+import { streamFromProvider } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
   reportEvent,
-  TELEMETRY_EVENT_TYPES,
-  type TelemetryEventType,
+  validateTelemetryPayload,
 } from './telemetry.js';
 import {
   parseScanTips,
@@ -197,6 +237,14 @@ import {
 } from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
+import {
+  loadBrainstormSettings,
+  setCategoryRouting,
+  resolveDestination,
+  normalizeRoutingDestination,
+  listNotesVaultFolders,
+  BLANK_MODE_STAGING_DIR,
+} from './brainstormRouting.js';
 
 const require = createRequire(import.meta.url);
 
@@ -227,6 +275,12 @@ function registerAgentCancelHandlers(): void {
 interface VaultSettings {
   vaultRoot: string;
   notesVaultRoot?: string;
+  // SKY-9 / SKY-15: which onboarding layout the user picked. Absent on
+  // existing installs is treated as 'default' for back-compat. 'imported'
+  // is set by the Obsidian importer once SKY-12 lands its picker — for
+  // seeding purposes the main side maps it to 'blank' so we don't overwrite
+  // imported content.
+  layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
 }
 
@@ -249,12 +303,26 @@ function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
 }
 
+// SKY-9 / SKY-15: first-run defaults sit side-by-side under ~/Mythos/ with
+// each vault as its own folder, per the board-accepted SKY-15 plan. Existing
+// installs keep whatever `vault-settings.json` already persisted — the
+// defaults only fire when there is no persisted root, so this is a
+// fresh-install-only change. No on-disk migration of user content.
 function defaultVaultRoot(): string {
-  return path.join(app.getPath('home'), 'MythosWriter', 'StoryVault');
+  return path.join(app.getPath('home'), 'Mythos', 'Story Vault');
 }
 
 function defaultNotesVaultRoot(): string {
-  return path.join(app.getPath('home'), 'MythosWriter', 'NotesVault');
+  return path.join(app.getPath('home'), 'Mythos', 'Notes Vault');
+}
+
+// SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
+// treated as 'blank' here — the importer wrote its own content; we must not
+// scaffold over it. Absent = 'default' for back-compat with installs that
+// predate the field.
+function getLayoutMode(): 'default' | 'blank' {
+  const mode = loadVaultSettings().layoutMode ?? 'default';
+  return mode === 'default' ? 'default' : 'blank';
 }
 
 function loadVaultSettings(): VaultSettings {
@@ -281,12 +349,37 @@ const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
 const getNotesVaultRoot = () =>
   loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
 
+/**
+ * SKY-10: locate a scene's chapter directory (relative path inside the vault)
+ * by looking it up in the manifest. Returns null when the scene id is not
+ * known so callers can degrade to an empty history rather than throw.
+ */
+function resolveSceneChapterDir(sceneId: string): string | null {
+  try {
+    const manifest = readManifest(getManifestPath());
+    for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        if (chapter.scenes.find((s) => s.id === sceneId)) {
+          return chapter.path;
+        }
+      }
+    }
+    const flat = manifest.scenes.find((s) => s.id === sceneId);
+    if (flat) return path.posix.dirname(flat.path.split(path.sep).join('/'));
+  } catch { /* missing manifest — treat as no history */ }
+  return null;
+}
+
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
-  const isNew = !fs.existsSync(vaultRoot);
-  if (isNew) {
+  // SKY-9: treat a missing OR empty directory as needing first-run seeding so
+  // a user who pre-creates the folder still gets the canonical layout.
+  // Scaffold itself is idempotent — never touches existing entries.
+  if (!fs.existsSync(vaultRoot)) {
     fs.mkdirSync(vaultRoot, { recursive: true });
-    scaffoldStoryVault(vaultRoot);
+  }
+  if (isEmptyOrMissing(vaultRoot)) {
+    scaffoldStoryVault(vaultRoot, getLayoutMode());
   }
   // Open DB before manifest migration so the audit callback can log immediately.
   openDb(vaultRoot);
@@ -324,11 +417,77 @@ function ensureVaultDir() {
   }
 }
 
+// SKY-20: helpers used by the brainstorm routing IPC handlers below. Kept
+// near ensureNotesVaultDir so the staging-dir + frontmatter shape live in
+// the same area of the file.
+function joinNotesPath(...segments: string[]): string {
+  return segments
+    .map((s) => s.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+    .filter((s) => s.length > 0)
+    .join('/');
+}
+
+function renderBrainstormNote(args: {
+  category: 'character' | 'location' | 'item' | 'note';
+  name: string;
+  content: string;
+  suggestionId: string;
+  now: string;
+}): string {
+  return [
+    '---',
+    `agent: brainstorm`,
+    `suggestionId: ${args.suggestionId}`,
+    `type: ${args.category}`,
+    `name: ${args.name}`,
+    `createdAt: ${args.now}`,
+    '---',
+    '',
+    `# ${args.name}`,
+    '',
+    args.content,
+    '',
+  ].join('\n');
+}
+
+function persistBrainstormSuggestion(
+  suggestionId: string,
+  relPath: string,
+  payload: { category: string; name: string; content: string },
+  now: string,
+): void {
+  try {
+    upsertSuggestion({
+      id: suggestionId,
+      source_agent: 'brainstorm',
+      confidence: 0.8,
+      rationale: `${payload.category}: ${payload.name} — ${payload.content}`,
+      target_kind: 'vault',
+      target_path: relPath,
+      target_anchor: null,
+      payload_json: JSON.stringify({ type: payload.category, name: payload.name, description: payload.content }),
+      status: 'proposed',
+      created_at: now,
+      applied_at: null,
+      applied_run_id: null,
+      budget_exceeded: 0,
+    });
+  } catch {
+    // Logging is best-effort — a DB hiccup must not block the agent from
+    // creating notes the user is watching land.
+  }
+}
+
 function ensureNotesVaultDir() {
   const notesVaultRoot = getNotesVaultRoot();
+  // SKY-9 / SKY-15: same empty-dir trigger as ensureVaultDir so a user who
+  // pre-creates ~/Mythos/Notes Vault/ still gets the six-folder layout seeded.
+  // Blank/imported modes skip scaffolding (the scaffold function is a no-op).
   if (!fs.existsSync(notesVaultRoot)) {
     fs.mkdirSync(notesVaultRoot, { recursive: true });
-    scaffoldNotesVault(notesVaultRoot);
+  }
+  if (isEmptyOrMissing(notesVaultRoot)) {
+    scaffoldNotesVault(notesVaultRoot, getLayoutMode());
   }
 }
 
@@ -350,6 +509,15 @@ function notifyVaultChanged(filePath: string) {
     mainWindow.webContents.send('vault:file-changed', { path: relativePath });
     // Debounced reindex — auto-sync markdown prose back to manifest
     scheduleReindex();
+  }
+}
+
+// Notify renderer when the notes vault changes so it can refresh entity state.
+// Fires on external edits (e.g. Obsidian) and schedules an FTS rebuild.
+function notifyNotesVaultChanged(_filePath: string) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    scheduleReindex();
+    mainWindow.webContents.send('vault:notes-updated', { count: 1 });
   }
 }
 
@@ -453,6 +621,10 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
     ensureVaultDir();
+    // MYT-792: validate before touching disk. assertValidManifest throws
+    // ManifestValidationError on the first invalid field; setupIpcMain's
+    // try/catch converts it into { error } for the renderer.
+    assertValidManifest(payload?.manifest);
     writeManifest(getManifestPath(), payload.manifest);
     const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
     return { path: getManifestPath(), bytes };
@@ -814,14 +986,20 @@ const handlers: IpcHandlers = {
     return { restored: target, preRestoreSnapshot };
   },
 
-  // ─── Versioned drafts (Phase 2 — MYT-198) ───
+  // ─── Versioned drafts (SKY-10 upgrade of MYT-198) ───
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => {
     ensureVaultDir();
-    return { versions: listVersions(getVaultRoot(), payload.sceneId) };
+    const chapterRelPath = resolveSceneChapterDir(payload.sceneId);
+    if (!chapterRelPath) return { versions: [] };
+    return { versions: listVersions(getVaultRoot(), payload.sceneId, { chapterRelPath }) };
   },
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => {
     ensureVaultDir();
-    return { version: getVersion(getVaultRoot(), payload.sceneId, payload.ts) };
+    const chapterRelPath = resolveSceneChapterDir(payload.sceneId);
+    if (!chapterRelPath) return { version: null };
+    return {
+      version: getVersion(getVaultRoot(), payload.sceneId, payload.ts, { chapterRelPath }),
+    };
   },
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => {
     ensureVaultDir();
@@ -838,6 +1016,7 @@ const handlers: IpcHandlers = {
     if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
 
     safePath(getVaultRoot(), found.path);
+    const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
 
     let currentProse = '';
     try {
@@ -849,6 +1028,7 @@ const handlers: IpcHandlers = {
       payload.sceneId,
       payload.ts,
       currentProse,
+      { chapterRelPath },
     );
 
     // Write restored prose back into the scene file, preserving frontmatter
@@ -875,6 +1055,18 @@ const handlers: IpcHandlers = {
 
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
     return { restoredVersion, preRollbackVersion };
+  },
+
+  // ─── SKY-10: Legacy single-file-per-chapter migration ───
+  [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: import('./ipc.js').MigrationDryRunPayload) => {
+    ensureVaultDir();
+    const plans = buildMigrationPlans(getVaultRoot(), payload.storyPath);
+    return { plans };
+  },
+  [IPC_CHANNELS.MIGRATION_APPLY]: (payload: import('./ipc.js').MigrationApplyPayload) => {
+    ensureVaultDir();
+    const result = applyMigrationPlan(getVaultRoot(), payload.storyPath, payload.planId);
+    return { result };
   },
 
   // ─── Entity CRUD ───
@@ -924,7 +1116,17 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
-    return maskSettingsForRenderer(loadAppSettings());
+    const s = maskSettingsForRenderer(loadAppSettings());
+    // SKY-12.4: if the configured vault roots don't exist on disk, force
+    // onboardingComplete=false so the wizard re-appears on next boot. This
+    // handles the case where the user moves or deletes the vault folder.
+    const vaultSettings = loadVaultSettings();
+    const storyMissing = !fs.existsSync(vaultSettings.vaultRoot);
+    const notesMissing = !fs.existsSync(vaultSettings.notesVaultRoot ?? defaultNotesVaultRoot());
+    if (storyMissing || notesMissing) {
+      return { ...s, onboardingComplete: false };
+    }
+    return s;
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
     const current = loadAppSettings();
@@ -932,6 +1134,26 @@ const handlers: IpcHandlers = {
     // renderer echoes back the masked preview unchanged, preserve the stored
     // raw key. See settings-masking.ts (MYT-424).
     const reconciled = reconcileSettingsFromRenderer(payload.settings, current);
+    // MYT-788: shape-validate stt/tts and gate any renderer-driven change to
+    // the local binary / model paths. A failed gate aborts the whole write —
+    // we deliberately do not persist a "mostly-OK" settings object, because
+    // the rejected path field would survive next reload via reconciliation.
+    const sttShape = validateSttShape(reconciled.stt);
+    if (!sttShape.ok) return { saved: false, error: sttShape.error };
+    const ttsShape = validateTtsShape(reconciled.tts);
+    if (!ttsShape.ok) return { saved: false, error: ttsShape.error };
+    const voiceGate = checkVoiceSettingsUpdate(
+      reconciled.stt,
+      current.stt,
+      reconciled.tts,
+      current.tts,
+      {
+        sttBinaryToken: payload.sttBinaryToken,
+        ttsBinaryToken: payload.ttsBinaryToken,
+        ttsModelToken: payload.ttsModelToken,
+      },
+    );
+    if (!voiceGate.ok) return { saved: false, error: voiceGate.error };
     // Regenerate sessionId when telemetry is being disabled (privacy: unlink future sessions).
     let telemetry = reconciled.telemetry;
     if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
@@ -952,6 +1174,61 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler();
     }
     return { saved: true };
+  },
+
+  // SKY-12.4: mark onboarding as complete without sending back the full settings object.
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: () => {
+    const current = loadAppSettings();
+    saveAppSettings({ ...current, onboardingComplete: true });
+    return { ok: true as const };
+  },
+
+  // SKY-12.4: debug reset — clears vault paths and onboardingComplete so the
+  // wizard re-appears on next boot. Only available when MYTHOS_DEV=1 is set.
+  [IPC_CHANNELS.ONBOARDING_RESET]: () => {
+    if (process.env.MYTHOS_DEV !== '1') {
+      return { ok: true as const };
+    }
+    saveVaultSettings({ vaultRoot: defaultVaultRoot(), notesVaultRoot: undefined, layoutMode: undefined });
+    const current = loadAppSettings();
+    saveAppSettings({ ...current, onboardingComplete: false });
+    return { ok: true as const };
+  },
+
+  // SKY-130: thin write that persists only the last-opened scene + cursor position.
+  // Bypasses the full settings:set reconciliation path (API key masking, scan scheduler).
+  [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => {
+    const current = loadAppSettings();
+    saveAppSettings({
+      ...current,
+      lastOpenedScene: {
+        sceneId: payload.sceneId,
+        scenePath: payload.scenePath,
+        scrollTop: payload.scrollTop,
+        cursorLine: payload.cursorLine,
+      },
+    });
+    return { saved: true };
+  },
+
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
+    const t0 = Date.now();
+    try {
+      const ac = new AbortController();
+      for await (const _ of streamFromProvider(
+        { kind: payload.provider.kind, apiKey: payload.provider.apiKey, baseUrl: payload.provider.baseUrl, model: payload.provider.model },
+        { messages: [{ role: 'user', content: 'Hi' }], maxTokens: 1, signal: ac.signal },
+      )) {
+        ac.abort();
+        break;
+      }
+      return { ok: true, latencyMs: Date.now() - t0 };
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return { ok: true, latencyMs: Date.now() - t0 };
+      }
+      return { ok: false, latencyMs: Date.now() - t0, error: e instanceof Error ? e.message : 'Unknown error' };
+    }
   },
 
   // MYT-343: per-agent config get/set
@@ -1198,6 +1475,23 @@ const handlers: IpcHandlers = {
       found.blocks.push({ id: crypto.randomUUID(), type: 'prose', order: 0, content: payload.prose, updatedAt: nowStr });
     }
 
+    // SKY-10: pre-save snapshot — capture the on-disk state being replaced.
+    // We snapshot the prior prose before overwriting so the timeline is
+    // "what existed before this save."
+    const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
+    let priorProse: string | null = null;
+    try {
+      priorProse = readSceneFile(getVaultRoot(), found.path).prose;
+    } catch { /* new file — nothing to snapshot */ }
+    if (priorProse !== null) {
+      try {
+        saveVersion(getVaultRoot(), found.id, priorProse, {
+          chapterRelPath,
+          intent: payload.intent ?? 'save',
+        });
+      } catch { /* snapshot failure is non-fatal — save still proceeds */ }
+    }
+
     // Atomic write: temp → fdatasync → rename
     writeSceneFileAtomic(getVaultRoot(), found.path, {
       id: found.id,
@@ -1208,12 +1502,31 @@ const handlers: IpcHandlers = {
       prose: payload.prose,
     });
 
-    // Snapshot the saved prose — non-fatal if it fails
-    try { saveVersion(getVaultRoot(), found.id, payload.prose); } catch { /* ignore */ }
-
     writeManifest(getManifestPath(), manifest);
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
     return { scene: found };
+  },
+
+  // ─── Scene inline rename (SKY-115) ───
+  [IPC_CHANNELS.SCENE_RENAME]: (payload: import('./ipc.js').SceneRenamePayload) => {
+    ensureVaultDir();
+    const trimmed = payload.title.trim();
+    if (!trimmed) throw new Error('Scene title cannot be empty');
+    const manifest = readManifest(getManifestPath());
+    let renamedScene = null as import('./ipc.js').SceneEntry | null;
+    outerRename: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === payload.sceneId);
+        if (scene) { renamedScene = scene; break outerRename; }
+      }
+    }
+    if (!renamedScene) renamedScene = manifest.scenes.find((s) => s.id === payload.sceneId) ?? null;
+    if (!renamedScene) throw new Error(`Scene not found: ${payload.sceneId}`);
+    renamedScene.title = trimmed;
+    renamedScene.updatedAt = new Date().toISOString();
+    writeManifest(getManifestPath(), manifest);
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: renamedScene.id, path: renamedScene.path });
+    return { scene: renamedScene };
   },
 
   // ─── Beta-Read Mode (MYT-237) ───
@@ -1468,7 +1781,7 @@ const handlers: IpcHandlers = {
     };
   },
 
-  // ─── Liquid Glass background image (MYT-613) ───
+  // ─── Liquid Neon background image (MYT-613) ────
   [IPC_CHANNELS.BG_PICK]: async () => {
     const result = await dialog.showOpenDialog({
       title: 'Choose App Background Image',
@@ -1483,20 +1796,7 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.BG_LOAD]: async (payload: BgLoadPayload) => {
-    try {
-      const { filePath } = payload;
-      if (!filePath || !fs.existsSync(filePath)) return { dataUrl: null };
-      const ext = path.extname(filePath).toLowerCase().slice(1);
-      const mimeMap: Record<string, string> = {
-        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-        webp: 'image/webp', gif: 'image/gif', avif: 'image/avif',
-      };
-      const mime = mimeMap[ext] ?? 'image/jpeg';
-      const data = fs.readFileSync(filePath);
-      return { dataUrl: `data:${mime};base64,${data.toString('base64')}` };
-    } catch {
-      return { dataUrl: null };
-    }
+    return readBgImageAsDataUrl(payload.filePath);
   },
 
   // ─── EPUB export (MYT-342) ───
@@ -1598,6 +1898,36 @@ const handlers: IpcHandlers = {
     return { vaultRoot: result.filePaths[0], cancelled: false, registrationToken: token };
   },
 
+  // ─── Voice binary/model picker (MYT-788) ───
+  // Main-process file dialog → one-shot registration token bound to the chosen
+  // path. settings:set requires this token to change stt.localBinaryPath,
+  // tts.localBinaryPath, or tts.localModelPath, so a renderer can never
+  // promote an arbitrary local executable into the spawn surface.
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: async (payload: { kind: 'stt-binary' | 'tts-binary' | 'tts-model' }) => {
+    const title =
+      payload?.kind === 'tts-model'
+        ? 'Select Local TTS Voice Model (.onnx)'
+        : payload?.kind === 'tts-binary'
+          ? 'Select Local TTS Binary (Piper)'
+          : 'Select Local STT Binary (whisper.cpp)';
+    const filters =
+      payload?.kind === 'tts-model'
+        ? [{ name: 'Piper voice model', extensions: ['onnx'] }, { name: 'All files', extensions: ['*'] }]
+        : [{ name: 'All files', extensions: ['*'] }];
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title,
+      buttonLabel: 'Select',
+      filters,
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { path: null, cancelled: true, registrationToken: null };
+    }
+    const chosen = result.filePaths[0];
+    const token = generateRegistrationToken(chosen);
+    return { path: chosen, cancelled: false, registrationToken: token };
+  },
+
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: async (_payload: VaultObsidianDryRunPayload) => {
     const { registrationToken } = _payload;
     // MYT-360 / MYT-367: token must come from vault:pick-folder. Peek (consume:false)
@@ -1639,8 +1969,10 @@ const handlers: IpcHandlers = {
     return { vaultRoot: validated.vaultRoot, notesIndexed: scanned };
   },
 
-  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (): Promise<VaultLoadSampleResponse> => {
-    const sampleRoot = path.join(app.getPath('documents'), 'Mythos Writer Sample');
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (payload: VaultLoadSamplePayload): Promise<VaultLoadSampleResponse> => {
+    const defaultRoot = path.join(app.getPath('documents'), 'Mythos Sample');
+    const rawPath = payload?.targetPath ?? defaultRoot;
+    const sampleRoot = rawPath.replace(/^~/, app.getPath('home'));
     if (!fs.existsSync(sampleRoot)) {
       fs.mkdirSync(sampleRoot, { recursive: true });
 
@@ -1990,9 +2322,124 @@ const handlers: IpcHandlers = {
     return { vaultRoot: sampleRoot };
   },
 
+  // SKY-12.3: copy the bundled sample project into a two-vault layout.
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: async (
+    payload: VaultLoadSampleTwoVaultPayload,
+  ): Promise<VaultLoadSampleTwoVaultResponse> => {
+    const { parentPath } = payload;
+    if (!parentPath || typeof parentPath !== 'string') {
+      return { storyVaultPath: '', notesVaultPath: '', error: 'parentPath must be a non-empty string' };
+    }
+    // Resolve the bundled sample-project dir: dev = <repo>/sample-project,
+    // packaged = <app>/resources/sample-project.
+    const sampleProjectDir = app.isPackaged
+      ? path.join(process.resourcesPath, 'sample-project')
+      : path.join(app.getAppPath(), '..', 'sample-project');
+
+    if (!fs.existsSync(sampleProjectDir)) {
+      return { storyVaultPath: '', notesVaultPath: '', error: `Sample project bundle not found at: ${sampleProjectDir}` };
+    }
+
+    const storyVaultPath = path.join(parentPath, 'Story Vault');
+    const notesVaultPath = path.join(parentPath, 'Notes Vault');
+
+    // Refuse to clobber non-empty targets.
+    for (const [label, target] of [['Story Vault', storyVaultPath], ['Notes Vault', notesVaultPath]] as const) {
+      if (fs.existsSync(target) && !isEmptyOrMissing(target)) {
+        return { storyVaultPath: '', notesVaultPath: '', error: `Target for ${label} already exists and is not empty: ${target}` };
+      }
+    }
+
+    // Copy story-vault/ → Story Vault/ and notes-vault/ → Notes Vault/.
+    const cpR = (src: string, dst: string) => fs.cpSync(src, dst, { recursive: true, force: false });
+    try {
+      cpR(path.join(sampleProjectDir, 'story-vault'), storyVaultPath);
+      cpR(path.join(sampleProjectDir, 'notes-vault'), notesVaultPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { storyVaultPath: '', notesVaultPath: '', error: `Failed to copy sample project: ${msg}` };
+    }
+
+    // Persist the new vault paths and index both vaults.
+    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath, layoutMode: 'default' });
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced } = reindexVault(storyVaultPath, manifest);
+    writeManifest(getManifestPath(), synced);
+    try { buildFullIndex(getDb(), storyVaultPath, synced); } catch { /* non-fatal */ }
+    await stopVaultWatcher();
+    await startVaultWatcher(storyVaultPath, notifyVaultChanged);
+
+    return { storyVaultPath, notesVaultPath };
+  },
+
+  // ─── First-run onboarding (MYT-820) ───
+
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: async (payload: VaultValidatePathPayload): Promise<VaultValidatePathResponse> => {
+    const raw = payload?.path ?? '';
+    const resolved = raw.replace(/^~/, app.getPath('home'));
+    try {
+      const exists = fs.existsSync(resolved);
+      if (!exists) {
+        // Check parent is writable so we can create it
+        const parent = path.dirname(resolved);
+        const parentExists = fs.existsSync(parent);
+        if (!parentExists) return { exists: false, isEmpty: true, writable: false };
+        const probe = path.join(parent, `.mythos-probe-${Date.now()}`);
+        try {
+          fs.writeFileSync(probe, '');
+          fs.unlinkSync(probe);
+          return { exists: false, isEmpty: true, writable: true };
+        } catch {
+          return { exists: false, isEmpty: true, writable: false };
+        }
+      }
+      const entries = fs.readdirSync(resolved);
+      const isEmpty = entries.length === 0;
+      const probe = path.join(resolved, `.mythos-probe-${Date.now()}`);
+      try {
+        fs.writeFileSync(probe, '');
+        fs.unlinkSync(probe);
+        return { exists: true, isEmpty, writable: true };
+      } catch {
+        return { exists: true, isEmpty, writable: false };
+      }
+    } catch {
+      return { exists: false, isEmpty: true, writable: false };
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: async (payload: VaultCreateBlankPayload): Promise<VaultCreateBlankResponse> => {
+    const raw = payload?.targetPath ?? '';
+    const resolved = raw.replace(/^~/, app.getPath('home'));
+    fs.mkdirSync(resolved, { recursive: true });
+    saveVaultSettings({ vaultRoot: resolved });
+    ensureVaultDir();
+    await stopVaultWatcher();
+    await startVaultWatcher(resolved, notifyVaultChanged);
+    return { vaultRoot: resolved };
+  },
+
+  [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: async (payload: VaultPickFolderByPathPayload): Promise<import('./ipc.js').VaultPickFolderResponse> => {
+    const { sourcePath } = payload;
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return { vaultRoot: null, cancelled: false, registrationToken: null };
+    }
+    const token = generateRegistrationToken(sourcePath);
+    return { vaultRoot: sourcePath, cancelled: false, registrationToken: token };
+  },
+
   // ─── Telemetry (MYT-344) ───
   [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: import('./ipc.js').TelemetryReportPayload) => {
-    reportEvent({ type: payload.type as TelemetryEventType, meta: payload.meta });
+    // MYT-794: validate renderer-supplied payload before it reaches the event
+    // store. Unknown event types and malformed meta are rejected with a typed
+    // error instead of being silently coerced through.
+    const result = validateTelemetryPayload(payload);
+    if (!result.ok) {
+      return { queued: false, error: result.error };
+    }
+    reportEvent(result.event);
     return { queued: true };
   },
 
@@ -2005,10 +2452,18 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
-    const newRoot = payload.vaultRoot;
-    if (!newRoot || typeof newRoot !== 'string') {
-      return { vaultRoot: getVaultRoot(), switched: false, error: 'Invalid vault root' };
+    // MYT-789: gate the switch behind the recent-projects allowlist. Without
+    // this, a renderer could re-root the vault sandbox at any existing,
+    // writable directory and then read or overwrite arbitrary files via the
+    // rest of the vault:* IPC surface.
+    const gate = checkProjectSwitchGate(
+      payload?.vaultRoot,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: gate.error };
     }
+    const newRoot = gate.vaultRoot;
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
@@ -2028,8 +2483,9 @@ const handlers: IpcHandlers = {
       writeManifest(getManifestPath(), synced);
       try { buildFullIndex(getDb(), newRoot, synced); } catch { /* non-fatal */ }
     } catch { /* non-fatal */ }
-    // Restart file watcher and scheduler
+    // Restart file watchers and scheduler
     await startVaultWatcher(newRoot, notifyVaultChanged);
+    await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
     startWritingScanScheduler();
     // Notify renderer to reload
     if (mainWindow) {
@@ -2048,11 +2504,204 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
-    const { storyVaultPath, notesVaultPath } = payload;
-    validateVaultPath(storyVaultPath, 'storyVaultPath');
-    validateVaultPath(notesVaultPath, 'notesVaultPath');
-    saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath });
-    return { storyVaultPath, notesVaultPath, saved: true };
+    // MYT-789: gate the new vault roots behind either a registration token
+    // (issued by vault:pick-folder) or membership in the recent-projects
+    // allowlist. Without this, any absolute, writable directory passes
+    // validateVaultPath and the renderer can re-root the vault sandbox at
+    // $HOME or /, escaping every other vault:* sandbox check.
+    const gate = checkSetPathsGate(
+      payload,
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) {
+      return { storyVaultPath: getVaultRoot(), notesVaultPath: getNotesVaultRoot(), saved: false, error: gate.error };
+    }
+    validateVaultPath(gate.storyVaultPath, 'storyVaultPath');
+    validateVaultPath(gate.notesVaultPath, 'notesVaultPath');
+    // SKY-12.2: persist the layout mode chosen during onboarding. 'blank'
+    // suppresses SKY-15 scaffold folders so the Brainstorm Agent learns the
+    // user's own pattern instead of imposing one. 'default' is the prior
+    // behavior (full SKY-15 seeding). Absent seedMode defaults to 'default'
+    // for backwards compatibility with SKY-9 and Settings-panel callers.
+    const layoutMode: 'default' | 'blank' = payload.seedMode === 'blank' ? 'blank' : 'default';
+    saveVaultSettings({ vaultRoot: gate.storyVaultPath, notesVaultRoot: gate.notesVaultPath, layoutMode });
+    // Seed the freshly-configured roots. The scaffold functions are idempotent
+    // and respect the layoutMode persisted above, so 'blank' callers get
+    // only the vault roots + manifest.json, while 'default' callers get the
+    // full SKY-15 folder layout.
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    return { storyVaultPath: gate.storyVaultPath, notesVaultPath: gate.notesVaultPath, saved: true };
+  },
+
+  // SKY-9: Notes-Vault-scoped CRUD. Mirrors VAULT_* but rooted
+  // at the separately-configured notes vault path. Uses the same `path`
+  // helpers and case-sensitive resolution as the Story Vault handlers so
+  // Linux CI behaves the same as macOS. Every endpoint goes through
+  // safeVaultIpcJoin (`.md` / `.json` only, no dotfiles, no traversal).
+  [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.path, false);
+    return readVaultFile(root, payload.path);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.path, true);
+    return writeVaultFileAtomic(root, payload.path, payload.content);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    if (payload.root) safePath(root, payload.root);
+    return listVaultFiles(root, payload.root);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.path, true);
+    return deleteVaultFile(root, payload.path);
+  },
+  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultIpcJoin(root, payload.fromPath, true);
+    safeVaultIpcJoin(root, payload.toPath, true);
+    return moveVaultFile(root, payload.fromPath, payload.toPath);
+  },
+
+  // SKY-95: create a directory directly so handleNewFolder in VaultBrowser
+  // doesn't need a .gitkeep placeholder (which safeVaultIpcJoin rejects).
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload): VaultMkdirResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const absPath = safeVaultDirIpcJoin(root, payload.path);
+    fs.mkdirSync(absPath, { recursive: true });
+    return { path: payload.path, created: true };
+  },
+
+  // SKY-9: Story-Vault rename. Same shape as NOTES_VAULT_MOVE rooted at the
+  // story vault. moveVaultFile() refuses to cross the vault boundary by
+  // resolving both endpoints through realSafePath before fs.renameSync.
+  [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
+    ensureVaultDir();
+    const root = getVaultRoot();
+    safeVaultIpcJoin(root, payload.fromPath, true);
+    safeVaultIpcJoin(root, payload.toPath, true);
+    return moveVaultFile(root, payload.fromPath, payload.toPath);
+  },
+
+  // SKY-9: generic folder picker for the Settings panel. Returns the chosen
+  // absolute path with no side effects; the renderer then calls vaultSetPaths
+  // to persist. Distinct from VAULT_PICK_FOLDER (Obsidian import — tags with
+  // a registration token) so this surface stays decoupled.
+  [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: async (
+    payload: VaultChooseFolderPayload,
+  ): Promise<VaultChooseFolderResponse> => {
+    const result = await dialog.showOpenDialog({
+      title: payload?.title ?? 'Choose Folder',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: payload?.defaultPath,
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { path: null, cancelled: true };
+    }
+    return { path: result.filePaths[0], cancelled: false };
+  },
+
+  // ─── Brainstorm Agent routing (SKY-20) ───
+  // The Brainstorm Agent always writes into the Notes Vault (never the Story
+  // Vault — that boundary is set by SKY-15). In Default mode the destination
+  // is deterministic; in Blank/imported mode the agent asks once per category
+  // and remembers the choice. Files are written to the Notes Vault root via
+  // writeVaultFileAtomic + safeVaultIpcJoin, so all the same path-traversal
+  // and dotfile guards as NOTES_VAULT_WRITE apply.
+  [IPC_CHANNELS.BRAINSTORM_GET_SETTINGS]: () => {
+    const settings = loadBrainstormSettings(app.getPath('userData'));
+    return {
+      layoutMode: loadVaultSettings().layoutMode ?? 'default',
+      notesRouting: settings.notesRouting,
+    };
+  },
+  [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: import('./ipc.js').BrainstormWriteNotePayload) => {
+    ensureNotesVaultDir();
+    const userData = app.getPath('userData');
+    const layoutMode = loadVaultSettings().layoutMode ?? 'default';
+    const { notesRouting } = loadBrainstormSettings(userData);
+    const resolution = resolveDestination(payload.category, layoutMode, notesRouting);
+
+    const suggestionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const safeName = payload.name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
+    const fileName = `${safeName}.md`;
+    const body = renderBrainstormNote({
+      category: payload.category,
+      name: payload.name,
+      content: payload.content,
+      suggestionId,
+      now,
+    });
+
+    const root = getNotesVaultRoot();
+    if (resolution.kind === 'resolved') {
+      const relPath = joinNotesPath(resolution.relativeDir, fileName);
+      safeVaultIpcJoin(root, relPath, true);
+      writeVaultFileAtomic(root, relPath, body);
+      persistBrainstormSuggestion(suggestionId, relPath, payload, now);
+      return {
+        status: 'written' as const,
+        path: relPath,
+        suggestionId,
+        reason: resolution.reason,
+      };
+    }
+    // needs_user_choice → stage the file under the staging dir so it survives
+    // a renderer crash. The renderer prompts the user and calls RESOLVE.
+    const stagedRel = joinNotesPath(BLANK_MODE_STAGING_DIR, `${suggestionId}__${fileName}`);
+    safeVaultIpcJoin(root, stagedRel, true);
+    writeVaultFileAtomic(root, stagedRel, body);
+    return {
+      status: 'needs_routing' as const,
+      stagedPath: stagedRel,
+      category: payload.category,
+      name: payload.name,
+    };
+  },
+  [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (
+    payload: import('./ipc.js').BrainstormResolveRoutingPayload,
+  ) => {
+    ensureNotesVaultDir();
+    const userData = app.getPath('userData');
+    const root = getNotesVaultRoot();
+    const destination = normalizeRoutingDestination(payload.destination);
+    const fileName = path.posix.basename(payload.stagedPath);
+    // Strip the `<suggestionId>__` prefix so the user sees a clean filename.
+    const cleanFileName = fileName.replace(/^[0-9a-f-]{36}__/i, '');
+    const targetRel = joinNotesPath(destination, cleanFileName);
+    safeVaultIpcJoin(root, payload.stagedPath, true);
+    safeVaultIpcJoin(root, targetRel, true);
+    moveVaultFile(root, payload.stagedPath, targetRel);
+    const settings = payload.remember
+      ? setCategoryRouting(userData, payload.category, destination)
+      : loadBrainstormSettings(userData);
+    return {
+      status: 'written' as const,
+      path: targetRel,
+      notesRouting: settings.notesRouting,
+    };
+  },
+  [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (
+    payload: import('./ipc.js').BrainstormResetCategoryRoutingPayload,
+  ) => {
+    const userData = app.getPath('userData');
+    const settings = setCategoryRouting(userData, payload.category, null);
+    return { notesRouting: settings.notesRouting };
+  },
+  [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: () => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    return { folders: listNotesVaultFolders(root), notesVaultRoot: root };
   },
 
   // ─── Writing modes (MYT-347) ───
@@ -2133,12 +2782,22 @@ function createWindow() {
   // electron-vite emits the preload to out/preload/preload.js, while this
   // file runs from out/main/. (The packaged app preserves the same layout.)
   const preloadPath = path.join(__dirname, '../preload/preload.js');
+
+  const saved = loadWindowState(app.getPath('userData'));
+  const displays = screen.getAllDisplays().map((d) => d.bounds);
+  const restoreBounds = saved && isBoundsOnScreen(saved, displays)
+    ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
+    : { width: 1200, height: 800 };
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    ...restoreBounds,
     title: 'Mythos Writer',
     webPreferences: secureWebPreferences({ preloadPath }),
   });
+
+  if (saved?.isMaximized) {
+    mainWindow.maximize();
+  }
 
   // MYT-776: deny renderer-initiated popups by default; route http(s) URLs to
   // the user's system browser via shell.openExternal instead of opening an
@@ -2158,6 +2817,50 @@ function createWindow() {
     if (!isAllowed) event.preventDefault();
   });
 
+  // SKY-114: use system locale for the spell checker, falling back to en-US.
+  // setSpellCheckerLanguages accepts an array; Electron tries each in order.
+  // Strip POSIX modifiers (@posix, @euro) and convert underscores to hyphens
+  // to produce a valid BCP-47 code (e.g. "en-US@posix" → "en-US").
+  const rawLocale = app.getSystemLocale() || 'en-US';
+  const spellLang = rawLocale.split('@')[0].replace(/_/g, '-') || 'en-US';
+  mainWindow.webContents.session.setSpellCheckerLanguages([spellLang, 'en-US']);
+
+  // SKY-114: native context menu with spell-check suggestions.
+  // Only shown when there is relevant content (misspelling or editable/selection).
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menuItems: Electron.MenuItemConstructorOptions[] = [];
+
+    if (params.misspelledWord) {
+      if (params.dictionarySuggestions.length > 0) {
+        for (const suggestion of params.dictionarySuggestions) {
+          menuItems.push({
+            label: suggestion,
+            click: () => mainWindow?.webContents.replaceMisspelling(suggestion),
+          });
+        }
+      } else {
+        menuItems.push({ label: 'No suggestions', enabled: false });
+      }
+      menuItems.push({ type: 'separator' });
+      menuItems.push({
+        label: 'Add to Dictionary',
+        click: () => mainWindow?.webContents.session
+          .addWordToSpellCheckerDictionary(params.misspelledWord),
+      });
+      menuItems.push({ type: 'separator' });
+    }
+
+    if (params.isEditable) {
+      menuItems.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' });
+    } else if (params.selectionText) {
+      menuItems.push({ role: 'copy' });
+    }
+
+    if (menuItems.length > 0) {
+      Menu.buildFromTemplate(menuItems).popup({ window: mainWindow ?? undefined });
+    }
+  });
+
   // Load the Vite-built renderer
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -2165,6 +2868,22 @@ function createWindow() {
     // electron-vite outputs renderer to out/renderer/ relative to out/main/
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
+
+  mainWindow.on('close', () => {
+    if (mainWindow) {
+      const isMaximized = mainWindow.isMaximized();
+      // getNormalBounds returns the restored (non-maximized) size so we preserve
+      // a sensible window size even when the user closes while maximized.
+      const bounds = isMaximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+      saveWindowState(app.getPath('userData'), {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        isMaximized,
+      });
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -2407,12 +3126,15 @@ function loadAppSettings(): AppSettings {
   let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
-      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings>;
+      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings> & { liquidGlass?: AppSettings['liquidNeon'] };
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
+      // One-shot migration: legacy key liquidGlass → liquidNeon (MYT-814)
+      const liquidNeon = raw.liquidNeon ?? raw.liquidGlass;
       base = {
         ...SETTINGS_DEFAULTS,
         ...raw,
+        ...(liquidNeon ? { liquidNeon } : {}),
         agents: {
           writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, ...(rawAgents.writingAssistant ?? {}) },
           brainstorm: { ...SETTINGS_DEFAULTS.agents.brainstorm, ...(rawAgents.brainstorm ?? {}) },
@@ -2495,7 +3217,7 @@ function getValidatedApiKey(): string {
 
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
-  ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_BRAINSTORM, wrapIpcHandler(IPC_CHANNELS.AGENT_BRAINSTORM, async (event, payload: AgentBrainstormPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.brainstorm;
     if (!agentSettings.enabled) {
@@ -2516,16 +3238,7 @@ function registerBrainstormHandler() {
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
 
-    const systemPrompt = `You are a Brainstorm Agent for fiction authors. Help the author develop their story world through conversation. You discuss story ideas, characters, locations, themes, plot arcs, world-building, and narrative goals.
-
-When you identify or introduce a specific named story fact — a character, location, item, or worldbuilding note — include a structured tag so the app can extract it:
-
-[FACT:character|Character Name|One-sentence description]
-[FACT:location|Place Name|One-sentence description]
-[FACT:item|Item Name|One-sentence description]
-[FACT:note|Note Title|Key content of the note]
-
-Be creative, ask clarifying questions, and help the author think deeper about their story. These FACT tags will appear in a "Detected Facts" panel so the author can save them to their vault.`;
+    const systemPrompt = buildAgentSystemPrompt(app.getPath('userData'), 'brainstorm');
 
     const messages = [
       ...(payload.history ?? []).map((m) => ({
@@ -2605,13 +3318,13 @@ Be creative, ask clarifying questions, and help the author think deeper about th
     }
 
     return { text: fullText, requestId };
-  });
+  }));
 }
 
 // ─── Writing Assistant streaming handler ───
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
-  ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, wrapIpcHandler(IPC_CHANNELS.AGENT_WRITING_ASSISTANT, async (event, payload: AgentWritingAssistantPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const agentSettings = loadAppSettings().agents.writingAssistant;
     if (!agentSettings.enabled) {
@@ -2656,7 +3369,7 @@ function registerWritingAssistantHandler() {
       {
         model,
         max_tokens: 1024,
-        system: 'You are a Writing Assistant for fiction authors. Read the scene context carefully and give concise, specific advice on craft, pacing, character voice, and narrative clarity. Never rewrite the author\'s text without being asked. Suggestions only.',
+        system: buildAgentSystemPrompt(app.getPath('userData'), 'writingAssistant'),
         messages: [{ role: 'user', content: userContent }],
       },
       { signal: controller.signal },
@@ -2709,13 +3422,13 @@ function registerWritingAssistantHandler() {
     }
 
     return { text: fullText, requestId };
-  });
+  }));
 }
 
 // ─── Vault Agent handlers ───
 function registerVaultAgentHandlers() {
   // agent:vault-index — builds in-memory index of all vault entities
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_INDEX, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_INDEX, (event) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
@@ -2749,10 +3462,10 @@ function registerVaultAgentHandlers() {
     });
 
     return { entities: indexed };
-  });
+  }));
 
   // agent:vault-check — streams Claude continuity analysis and returns parsed inconsistencies
-  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const apiKey = getValidatedApiKey();
 
@@ -2879,7 +3592,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     }
 
     return { text: fullText, inconsistencies, requestId };
-  });
+  }));
 }
 
 // ─── Writing Assistant scan core (MYT-711) ───
@@ -2950,7 +3663,7 @@ async function runWritingScan(
 
 // ─── Writing Assistant scheduled scan handler (MYT-233 / MYT-711) ───
 function registerWritingScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.WRITING_SCAN, wrapIpcHandler(IPC_CHANNELS.WRITING_SCAN, async (event, payload: WritingScanPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
@@ -2974,7 +3687,7 @@ function registerWritingScanHandler(): void {
     const model = settings.agents.writingAssistant.model || 'claude-haiku-4-5-20251001';
 
     return runWritingScan(payload.prose, payload.scenePath, payload.sceneId, client, model);
-  });
+  }));
 }
 
 // ─── Writing Assistant scheduled heartbeat (MYT-711) ───
@@ -3071,7 +3784,7 @@ function startWritingScanScheduler(): void {
 // ─── Beta-Read Mode on-demand scan handler (MYT-711) ───
 // Runs an LLM analysis of a scene and auto-generates anchored BetaReadComments.
 function registerBetaReadScanHandler(): void {
-  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
+  ipcMain.handle(IPC_CHANNELS.BETA_READ_SCAN, wrapIpcHandler(IPC_CHANNELS.BETA_READ_SCAN, async (event, payload: BetaReadScanPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const settings = loadAppSettings();
     if (!settings.agents.writingAssistant.enabled) {
@@ -3153,6 +3866,21 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
         });
       } catch { /* non-fatal */ }
     }
+  }));
+}
+
+// ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
+function registerAgentPersonaHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (_event, payload: AgentPersonaReadPayload) => {
+    const { agentName, key } = payload;
+    const file = loadPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { content: file.content, isCustom: file.isCustom };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (_event, payload: AgentPersonaResetPayload) => {
+    const { agentName, key } = payload;
+    resetPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
+    return { success: true };
   });
 }
 
@@ -3164,10 +3892,14 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
 app.disableHardwareAcceleration();
 
 app.whenReady().then(async () => {
+  performance.mark('app:ready-start');
+  const appReadyT0 = performance.now();
+
   ensureVaultDir();
   ensureNotesVaultDir();
   // Track current vault in recent projects list on every launch
   addToRecentProjects(getVaultRoot());
+  performance.mark('app:vault-init-end');
   // MYT-777: initialise the encrypted credential store, then run the one-shot
   // migration that lifts any plaintext API keys out of app-settings.json into
   // safeStorage. Must precede initTelemetry — that path can rewrite settings.
@@ -3182,10 +3914,27 @@ app.whenReady().then(async () => {
   }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();
+  // MYT-788: seed the voice-binary trusted set from persisted settings — those
+  // paths got there through a previous gated write (or pre-existed before the
+  // gate was introduced and remain trustable as user-controlled state).
+  seedTrustedBinariesFromSettings(loadAppSettings());
+  performance.mark('app:secrets-end');
   setupIpcMain(handlers);
+  // Synchronous IPC for beforeunload flush — ensures content is persisted before window closes.
+  ipcMain.on(IPC_CHANNELS.SNAPSHOT_SAVE_SYNC, (event, payload: SnapshotSavePayload) => {
+    if (isFromTopFrame(event)) {
+      try {
+        ensureVaultDir();
+        const { snapshots: retention } = loadAppSettings();
+        saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention);
+      } catch { /* non-fatal — don't block close */ }
+    }
+    event.returnValue = null;
+  });
   registerAgentCancelHandlers();
   registerBrainstormHandler();
   registerWritingAssistantHandler();
+  registerAgentPersonaHandlers();
   registerVaultAgentHandlers();
   registerWritingScanHandler();
   registerBetaReadScanHandler();
@@ -3195,16 +3944,32 @@ app.whenReady().then(async () => {
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
   );
+  performance.mark('app:ipc-ready');
   createWindow();
+  performance.mark('app:window-created');
+  console.log(`[perf] app:startup → window: ${(performance.now() - appReadyT0).toFixed(0)} ms`);
   initAutoUpdater();
-  // Build initial FTS index (non-fatal)
-  try {
-    const manifest = readManifest(getManifestPath());
-    buildFullIndex(getDb(), getVaultRoot(), manifest);
-  } catch { /* non-fatal — index rebuilt on next watcher event */ }
 
-  // Start watching vault for external markdown changes
+  // Start watching both vaults for external markdown changes.
+  // Watchers run before FTS so their async dynamic-import yields the event
+  // loop, giving the renderer's first IPC calls (e.g. settingsGet) a window
+  // to be processed before indexing starts.
   await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
+  await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
+
+  // Defer FTS index build to the next event-loop tick so any IPC messages
+  // queued during watcher init (typically the renderer's settingsGet) are
+  // processed first. Safe because the watcher re-indexes on every vault change.
+  setImmediate(() => {
+    performance.mark('app:fts-build-start');
+    const ftsBuildT0 = performance.now();
+    try {
+      const manifest = readManifest(getManifestPath());
+      buildFullIndex(getDb(), getVaultRoot(), manifest);
+    } catch { /* non-fatal — index rebuilt on next watcher event */ }
+    performance.mark('app:fts-build-end');
+    console.log(`[perf] app:fts-build: ${(performance.now() - ftsBuildT0).toFixed(0)} ms`);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -3216,6 +3981,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', async () => {
   stopWritingScanScheduler();
   await stopVaultWatcher();
+  await stopNotesVaultWatcher();
   closeDb();
   if (process.platform !== 'darwin') {
     app.quit();

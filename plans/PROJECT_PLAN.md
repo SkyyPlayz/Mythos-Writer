@@ -70,7 +70,7 @@ Three named AI agents assist the author across these surfaces. None of them auto
 **Status:** In progress
 
 - [x] Block-based editor component built on **TipTap**, with markdown round-trip
-- [ ] **Two-vault layout**: Story Vault (chapters/scenes) + Notes Vault (worldbuilding/lore), each a separate folder path; default Notes Vault structure: `Mythos Vault/Universes/<World>/...` and `Mythos Vault/Story ideas/<Story>/...`.
+- [ ] **Two-vault layout**: Story Vault + Notes Vault as sibling folders under `~/Mythos/` (each independently relocatable). Notes Vault default structure: `Universes/<World>/{Characters,Locations,Factions,History,Systems,Items}/` for worldbuilding, plus `Stories/`, `Inbox/`, `Research/`, `Daily Notes/`, `Archive/` at the top level. Story Vault default: per-story → `Manuscript/` → numbered chapter folders → numbered scene files, with seeded `Outline.md` + `Synopsis.md`. Authoritative spec: [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan) (replaces the old Q4.5 example).
 - [ ] Per-chapter / per-scene file layout in the Story Vault
 - [ ] Project/vault browser sidebar
 - [ ] Save/load documents from vault
@@ -100,7 +100,7 @@ Supporting work:
 
 **User-facing polish:**
 
-- [ ] **First-run onboarding**: three paths — (1) **Start blank** (empty Mythos Vault at default path), (2) **Import existing Obsidian vault** (wizard with dry-run report), (3) **Open sample project** (pre-built worldbuilding example with Universes/Story ideas layout; recommended for new users).
+- [ ] **First-run onboarding**: four paths — (1) **Use the default layout** *(recommended)* — both vaults seeded with the SKY-15 default structure including an example universe + story, (2) **Start blank** — both vaults created at the chosen paths with only the top-level vault folders (no `Universes/`, no `Stories/` scaffolding; the Brainstorm Agent learns the user's pattern instead of imposing one), (3) **Import existing Obsidian vault** (wizard with dry-run report), (4) **Open sample project** (pre-built worldbuilding example). Authoritative spec: [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan).
 
 **Distribution & deployment:**
 

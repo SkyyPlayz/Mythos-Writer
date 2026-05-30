@@ -29,6 +29,7 @@ interface Props {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onReorderScenes: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
   onOpenVaultPath?: (path: string) => void;
+  onContextChange?: (context: 'file' | 'folder' | null) => void;
 }
 
 export default function LeftRail({
@@ -44,6 +45,7 @@ export default function LeftRail({
   onCreateScene,
   onReorderScenes,
   onOpenVaultPath,
+  onContextChange,
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -118,6 +120,7 @@ export default function LeftRail({
             onCreateChapter={onCreateChapter}
             onCreateScene={onCreateScene}
             onOpenFile={onOpenVaultPath}
+            onContextChange={onContextChange}
           />
         )}
         {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} />}

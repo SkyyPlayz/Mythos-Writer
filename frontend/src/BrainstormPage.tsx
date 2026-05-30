@@ -64,8 +64,31 @@ interface DetectedFact {
   type: 'character' | 'location' | 'item' | 'note';
   name: string;
   content: string;
-  savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review';
+  savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review' | 'needs_routing';
 }
+
+// SKY-20: a pending routing prompt rendered as a chat bubble. When the
+// Brainstorm agent emits a fact whose category has no remembered destination
+// in a Blank-mode vault, main stages the file and tells the renderer to ask.
+interface RoutingPrompt {
+  factId: string;
+  stagedPath: string;
+  category: 'character' | 'location' | 'item' | 'note';
+  name: string;
+  /** User's currently selected destination — controlled component state. */
+  destination: string;
+  /** Free-text input for "create a new folder under root" mode. */
+  customFolder: string;
+}
+
+type NoteCategory = 'character' | 'location' | 'item' | 'note';
+
+const CATEGORY_LABEL: Record<NoteCategory, string> = {
+  character: 'character',
+  location: 'location',
+  item: 'item',
+  note: 'note',
+};
 
 function extractFacts(text: string): Omit<DetectedFact, 'id' | 'savedStatus'>[] {
   const factPattern = /\[FACT:(character|location|item|note)\|([^\]|]+)\|([^\]]+)\]/gi;
@@ -113,6 +136,10 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
   const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
+  // SKY-20: routing state — list of pending prompts plus the folder catalog
+  // pulled from the Notes Vault. Both are populated lazily on first need.
+  const [routingPrompts, setRoutingPrompts] = useState<RoutingPrompt[]>([]);
+  const [notesFolders, setNotesFolders] = useState<Array<{ path: string; label: string }>>([]);
 
   const streamIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef<string>('');
@@ -260,6 +287,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setLoading(false);
     setDraftSizeWarning(false);
     setShowRecoveryBanner(false);
+    setRoutingPrompts([]);
     localStorage.removeItem(DRAFT_KEY);
   }, []);
 
@@ -329,55 +357,8 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
           savedStatus: 'saving' as const,
         }));
         setFacts((prev) => [...prev, ...newFacts]);
-
         for (const fact of newFacts) {
-          (async () => {
-            try {
-              const listResult = await window.api.entityList();
-              const existingEntities: Array<{ id: string; name: string; path: string }> =
-                (listResult as { entities?: Array<{ id: string; name: string; path: string }> })?.entities ?? [];
-              const existing = existingEntities.find(
-                (e) => e.name.toLowerCase() === fact.name.toLowerCase(),
-              );
-              if (existing) {
-                const suggestionId = crypto.randomUUID();
-                const now = new Date().toISOString();
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (window.api as any).suggestionsUpsert({
-                  id: suggestionId,
-                  source_agent: 'brainstorm',
-                  confidence: 0.8,
-                  rationale: `Brainstorm proposes updating "${fact.name}" (${fact.type}): ${fact.content}`,
-                  target_kind: 'vault',
-                  target_path: existing.path,
-                  target_anchor: null,
-                  payload_json: JSON.stringify({ prose: `# ${fact.name}\n\n${fact.content}\n` }),
-                  status: 'proposed',
-                  created_at: now,
-                  applied_at: null,
-                  applied_run_id: null,
-                  budget_exceeded: 0,
-                });
-                setFacts((prev) =>
-                  prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'pending_review' } : f2)),
-                );
-              } else {
-                await window.api.entityCreate({
-                  name: fact.name,
-                  type: fact.type === 'note' ? 'other' : fact.type,
-                  prose: fact.content,
-                  tags: ['brainstorm'],
-                });
-                setFacts((prev) =>
-                  prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'saved' } : f2)),
-                );
-              }
-            } catch {
-              setFacts((prev) =>
-                prev.map((f2) => (f2.id === fact.id ? { ...f2, savedStatus: 'error' } : f2)),
-              );
-            }
-          })();
+          void persistFactWithRouting(fact);
         }
       }
 
@@ -481,65 +462,123 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     }
   }, [isRecording]);
 
-  const saveFactToVault = useCallback(
-    async (factId: string) => {
-      const fact = facts.find((f) => f.id === factId);
-      if (!fact) return;
+  // SKY-20: load the Notes Vault folder catalog the first time we need it for
+  // a routing prompt. Cached for the session so the picker is instant on the
+  // 2nd…Nth prompt. Listing is a cheap fs.readdir walk, depth-capped at 3.
+  const ensureNotesFolders = useCallback(async () => {
+    if (notesFolders.length > 0) return notesFolders;
+    try {
+      const { folders } = await window.api.brainstormListNotesFolders();
+      setNotesFolders(folders);
+      return folders;
+    } catch {
+      return [];
+    }
+  }, [notesFolders]);
 
+  // SKY-20: per-fact persistence with layoutMode-aware routing. Default-mode
+  // vaults land in the seeded category folder immediately. Blank-mode vaults
+  // either reuse a remembered destination (silent) or stage the file and
+  // surface a routing prompt for the user to pick a destination.
+  const persistFactWithRouting = useCallback(
+    async (fact: DetectedFact) => {
+      try {
+        const result = await window.api.brainstormWriteNote({
+          category: fact.type,
+          name: fact.name,
+          content: fact.content,
+        });
+        if (result.status === 'written') {
+          setFacts((prev) =>
+            prev.map((f) => (f.id === fact.id ? { ...f, savedStatus: 'saved' } : f)),
+          );
+          return;
+        }
+        // status === 'needs_routing' — main staged the file; we ask the user.
+        await ensureNotesFolders();
+        setFacts((prev) =>
+          prev.map((f) => (f.id === fact.id ? { ...f, savedStatus: 'needs_routing' } : f)),
+        );
+        setRoutingPrompts((prev) => [
+          ...prev,
+          {
+            factId: fact.id,
+            stagedPath: result.stagedPath,
+            category: result.category,
+            name: result.name,
+            destination: '',
+            customFolder: '',
+          },
+        ]);
+        announce(`Where should ${result.category}s like "${result.name}" be saved?`);
+      } catch {
+        setFacts((prev) =>
+          prev.map((f) => (f.id === fact.id ? { ...f, savedStatus: 'error' } : f)),
+        );
+      }
+    },
+    [announce, ensureNotesFolders],
+  );
+
+  // SKY-20: commit the user's pick — main moves the staged file and (when
+  // `remember` is true) persists the choice as the new default for this
+  // category in the session and on disk.
+  const resolveRoutingPrompt = useCallback(
+    async (factId: string, remember: boolean) => {
+      const prompt = routingPrompts.find((p) => p.factId === factId);
+      if (!prompt) return;
+      const chosen = (prompt.customFolder.trim() || prompt.destination || '').trim();
+      // Empty string is a legitimate choice — it pins the note at the vault root.
+      // We just need an explicit selection (any of the two inputs touched).
+      if (prompt.destination === '' && prompt.customFolder.trim() === '' && prompt.destination !== '') {
+        return;
+      }
       setFacts((prev) =>
         prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saving' } : f)),
       );
-
       try {
-        // Check if an entity with the same name already exists.
-        // If it does, the edit must go through the suggestion/confirmation flow.
-        const listResult = await window.api.entityList();
-        const existingEntities: Array<{ id: string; name: string; path: string }> =
-          (listResult as { entities?: Array<{ id: string; name: string; path: string }> })?.entities ?? [];
-        const existing = existingEntities.find(
-          (e) => e.name.toLowerCase() === fact.name.toLowerCase(),
+        await window.api.brainstormResolveRouting({
+          stagedPath: prompt.stagedPath,
+          category: prompt.category,
+          destination: chosen,
+          remember,
+        });
+        setFacts((prev) =>
+          prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
         );
-
-        if (existing) {
-          const suggestionId = crypto.randomUUID();
-          const now = new Date().toISOString();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (window.api as any).suggestionsUpsert({
-            id: suggestionId,
-            source_agent: 'brainstorm',
-            confidence: 0.8,
-            rationale: `Brainstorm proposes updating "${fact.name}" (${fact.type}): ${fact.content}`,
-            target_kind: 'vault',
-            target_path: existing.path,
-            target_anchor: null,
-            payload_json: JSON.stringify({ prose: `# ${fact.name}\n\n${fact.content}\n` }),
-            status: 'proposed',
-            created_at: now,
-            applied_at: null,
-            applied_run_id: null,
-            budget_exceeded: 0,
-          });
-          setFacts((prev) =>
-            prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'pending_review' } : f)),
-          );
-        } else {
-          await window.api.entityCreate({
-            name: fact.name,
-            type: fact.type === 'note' ? 'other' : fact.type,
-            prose: fact.content,
-            tags: ['brainstorm'],
-          });
-          setFacts((prev) =>
-            prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
-          );
-        }
+        setRoutingPrompts((prev) => prev.filter((p) => p.factId !== factId));
+        // Folder list may have grown if the user typed a new path — refresh.
+        if (prompt.customFolder.trim()) setNotesFolders([]);
+        announce(`Saved to ${chosen || 'vault root'}.`);
       } catch {
         setFacts((prev) =>
           prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'error' } : f)),
         );
       }
     },
-    [facts],
+    [routingPrompts, announce],
+  );
+
+  const updateRoutingPrompt = useCallback(
+    (factId: string, updates: Partial<RoutingPrompt>) => {
+      setRoutingPrompts((prev) =>
+        prev.map((p) => (p.factId === factId ? { ...p, ...updates } : p)),
+      );
+    },
+    [],
+  );
+
+  // Manual retry from the facts panel — re-runs the same routing-aware path.
+  const saveFactToVault = useCallback(
+    async (factId: string) => {
+      const fact = facts.find((f) => f.id === factId);
+      if (!fact) return;
+      setFacts((prev) =>
+        prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saving' } : f)),
+      );
+      await persistFactWithRouting(fact);
+    },
+    [facts, persistFactWithRouting],
   );
 
   useEffect(() => {
@@ -699,6 +738,82 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                     </div>
                   </div>
                 )}
+              </div>
+            ))}
+            {routingPrompts.map((prompt) => (
+              <div
+                key={prompt.factId}
+                className="bs-message bs-message-assistant bs-routing-prompt"
+                role="group"
+                aria-label={`Where to save ${CATEGORY_LABEL[prompt.category]}s`}
+                data-testid={`brainstorm-routing-prompt-${prompt.category}`}
+              >
+                <div className="bs-assistant-bubble bs-routing-bubble">
+                  <p className="bs-routing-question">
+                    Where should I put <strong>{CATEGORY_LABEL[prompt.category]}</strong> notes
+                    like <em>&ldquo;{prompt.name}&rdquo;</em>?
+                  </p>
+                  <label className="bs-routing-row">
+                    <span className="bs-routing-label">Folder</span>
+                    <select
+                      className="bs-routing-select"
+                      value={prompt.destination}
+                      onChange={(e) =>
+                        updateRoutingPrompt(prompt.factId, {
+                          destination: e.target.value,
+                          customFolder: '',
+                        })
+                      }
+                      aria-label="Choose existing folder"
+                      data-testid={`brainstorm-routing-select-${prompt.category}`}
+                    >
+                      <option value="" disabled>
+                        Choose a folder…
+                      </option>
+                      {notesFolders.map((f) => (
+                        <option key={f.path} value={f.path}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="bs-routing-row">
+                    <span className="bs-routing-label">…or create</span>
+                    <input
+                      className="bs-routing-input"
+                      type="text"
+                      placeholder="e.g. Worldbuilding/People"
+                      value={prompt.customFolder}
+                      onChange={(e) =>
+                        updateRoutingPrompt(prompt.factId, {
+                          customFolder: e.target.value,
+                          destination: e.target.value.trim() ? '' : prompt.destination,
+                        })
+                      }
+                      aria-label="Create new folder"
+                      data-testid={`brainstorm-routing-input-${prompt.category}`}
+                    />
+                  </label>
+                  <div className="bs-routing-actions">
+                    <button
+                      className="bs-routing-save-btn"
+                      type="button"
+                      disabled={!prompt.destination && !prompt.customFolder.trim()}
+                      onClick={() => void resolveRoutingPrompt(prompt.factId, true)}
+                      data-testid={`brainstorm-routing-save-${prompt.category}`}
+                    >
+                      Save here & remember
+                    </button>
+                    <button
+                      className="bs-routing-once-btn"
+                      type="button"
+                      disabled={!prompt.destination && !prompt.customFolder.trim()}
+                      onClick={() => void resolveRoutingPrompt(prompt.factId, false)}
+                    >
+                      Just this once
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
             <div ref={messagesEndRef} />

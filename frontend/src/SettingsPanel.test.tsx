@@ -13,16 +13,32 @@ const defaultSettings: AppSettings = {
 
 const mockSettingsGet = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockVaultGetPaths = vi.fn();
+const mockVaultSetPaths = vi.fn();
+const mockChooseVaultFolder = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
+
+const defaultVaultPaths = {
+  storyVaultPath: '/home/test/Mythos/Story Vault',
+  notesVaultPath: '/home/test/Mythos/Notes Vault',
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
   mockSettingsGet.mockResolvedValue(defaultSettings);
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+  mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+    Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+  );
+  mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
+    vaultGetPaths: mockVaultGetPaths,
+    vaultSetPaths: mockVaultSetPaths,
+    chooseVaultFolder: mockChooseVaultFolder,
   };
 });
 
@@ -40,7 +56,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    const dark = screen.getByRole('radio', { name: /dark \(liquid glass\)/i }) as HTMLInputElement;
+    const dark = screen.getByRole('radio', { name: /liquid neon/i }) as HTMLInputElement;
     const highContrast = screen.getByRole('radio', { name: /high contrast/i }) as HTMLInputElement;
     expect(dark.checked).toBe(true);
 
@@ -472,6 +488,28 @@ describe('SettingsPanel', () => {
     expect(document.activeElement).toBe(last);
   });
 
+  // ── MYT-801: Escape key closes dialog ──
+
+  it('closes the dialog when Escape is pressed', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(mockOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close the main dialog when Escape is pressed while the Advanced popover is open', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }));
+    expect(screen.getByRole('dialog', { name: /advanced ui settings/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: /advanced ui settings/i })).not.toBeInTheDocument();
+    expect(mockOnClose).not.toHaveBeenCalled();
+  });
+
   // ── MYT-668: voice settings ──
 
   it('renders voice section with enable toggle', async () => {
@@ -498,5 +536,108 @@ describe('SettingsPanel', () => {
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
     expect(saved.voice?.enabled).toBe(true);
+  });
+
+  // ── MYT-779: AI providers section ──
+
+  it('renders AI Provider section with provider selector', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(screen.getByRole('heading', { name: /^ai provider$/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /ai provider/i })).toBeInTheDocument();
+  });
+
+  it('defaults provider selector to Anthropic', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    const select = screen.getByRole('combobox', { name: /ai provider/i }) as HTMLSelectElement;
+    expect(select.value).toBe('anthropic');
+  });
+
+  it('shows all five provider options', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    const select = screen.getByRole('combobox', { name: /ai provider/i }) as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toContain('anthropic');
+    expect(values).toContain('openai');
+    expect(values).toContain('ollama');
+    expect(values).toContain('lmstudio');
+    expect(values).toContain('custom');
+  });
+
+  it('shows API key field for cloud providers', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    expect(screen.getByRole('textbox', { name: /default model for this provider/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/provider api key/i)).toBeInTheDocument();
+  });
+
+  it('shows base URL field when switching to ollama', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
+    expect(screen.getByLabelText(/provider base url/i)).toBeInTheDocument();
+  });
+
+  it('provider kind is included in saved settings', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.provider?.kind).toBe('openai');
+  });
+
+  it('renders test connection button', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('button', { name: /test provider connection/i }));
+    expect(screen.getByRole('button', { name: /test provider connection/i })).toBeInTheDocument();
+  });
+
+  // ── MYT-779: Telemetry section ──
+
+  it('renders Telemetry section with opt-in toggle', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(screen.getByRole('heading', { name: /^telemetry$/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /enable telemetry/i })).toBeInTheDocument();
+  });
+
+  it('telemetry toggle is off by default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
+    const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('shows telemetry data list', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('list', { name: /telemetry data items/i }));
+    expect(screen.getByRole('list', { name: /telemetry data items/i })).toBeInTheDocument();
+  });
+
+  it('telemetry toggle change is included in saved settings', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable telemetry/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.telemetry?.enabled).toBe(true);
+  });
+
+  it('telemetry restores enabled state from loaded settings', async () => {
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, telemetry: { enabled: true, sessionId: 'abc' } });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
+    const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
   });
 });

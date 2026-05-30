@@ -13,7 +13,7 @@
     background var(--dur-hover-in) var(--ease-out);
 }
 
-/* §4: Focus-mode visual de-emphasis — recedes until hovered/focused */
+/* §4: Focus-mode visual de-emphasis — no chrome, dims to near-invisible until hovered */
 .depth-slider-bar[data-writing-mode="focus"] {
   opacity: 0.35;
   background: transparent;
@@ -110,7 +110,7 @@
   max-width: 240px;
 }
 
-/* §6: Empty state */
+/* §6: Empty state — shown when depth=scene but chapter has no scenes */
 .depth-empty-msg {
   font-size: var(--text-xs);
   color: var(--text-muted);
@@ -118,7 +118,7 @@
   font-style: italic;
 }
 
-/* §6: Loading skeleton */
+/* §6: Loading skeleton — shimmer placeholder while manifest indexes */
 .depth-slider-skeleton {
   display: flex;
   align-items: center;

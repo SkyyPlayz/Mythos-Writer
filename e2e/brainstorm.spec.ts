@@ -90,7 +90,8 @@ function seedUserData(userData: string, vaultDir: string): void {
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   };
-  const vaultSettings = { vaultRoot: vaultDir };
+  // notesVaultRoot must point into vaultDir so TC-BST-03 can find the written file.
+  const vaultSettings = { vaultRoot: vaultDir, notesVaultRoot: vaultDir };
 
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
@@ -284,9 +285,9 @@ test('TC-BST-03: detected fact is auto-saved as an entity file with correct fron
   await expect(savedLabel).toBeVisible({ timeout: 8_000 });
   await expect(savedLabel).toContainText('Saved');
 
-  // An entity .md file must appear on disk.
-  // createEntity writes to: <vaultDir>/entities/characters/<uuid>.md
-  const entityDir = path.join(vaultDir, 'entities', 'characters');
+  // brainstorm:writeNote writes to notesVaultRoot/Universes/<universe>/Characters/<name>.md
+  // in default layout mode. notesVaultRoot is seeded to vaultDir.
+  const entityDir = path.join(vaultDir, 'Universes', 'My First Universe', 'Characters');
   const found = await waitUntil(() => {
     if (!fs.existsSync(entityDir)) return false;
     return fs.readdirSync(entityDir).some((f) => f.endsWith('.md'));
@@ -301,15 +302,12 @@ test('TC-BST-03: detected fact is auto-saved as an entity file with correct fron
   // Must start with a YAML frontmatter block.
   expect(content.startsWith('---'), 'Entity file must start with a YAML frontmatter block').toBe(true);
 
-  // Required frontmatter fields must be present.
+  // Required frontmatter fields present in the brainstorm note format.
   expect(content).toContain(`name: ${MOCK_FACT_NAME}`);
   expect(content).toContain('type: character');
-  expect(content).toContain('id:');         // UUID is present but value is non-deterministic
+  expect(content).toContain('suggestionId:');  // brainstorm:writeNote uses suggestionId, not id
   expect(content).toContain('createdAt:');
-  expect(content).toContain('updatedAt:');
-
-  // saveFactToVault passes tags: ['brainstorm'] → file must include "brainstorm".
-  expect(content).toContain('brainstorm');
+  expect(content).toContain('agent: brainstorm');
 
   // Prose body (after the closing ---) must contain the fact description.
   expect(content).toContain(MOCK_FACT_DESC);
