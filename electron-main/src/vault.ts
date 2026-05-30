@@ -21,6 +21,7 @@ import { safeVaultJoin } from './vault/safeVaultJoin.js';
 export {
   safeVaultJoin,
   safeVaultIpcJoin,
+  safeVaultDirIpcJoin,
   VAULT_IPC_ALLOWED_EXTENSIONS,
 } from './vault/safeVaultJoin.js';
 export type { SafeVaultJoinOptions } from './vault/safeVaultJoin.js';

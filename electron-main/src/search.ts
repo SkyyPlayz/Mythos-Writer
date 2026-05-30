@@ -1,6 +1,6 @@
 // FTS5 search subsystem — indexes both vaults, serves SEARCH_QUERY IPC.
 // Uses SQLite FTS5 with porter stemming; incremental re-index on vault watcher events.
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { Manifest } from './ipc.js';
 import { readVaultFile, parseFrontmatter } from './vault.js';
 
@@ -25,7 +25,7 @@ export interface SearchResult {
 
 // ─── Index mutations ───
 
-export function indexDocument(db: Database.Database, doc: FtsDoc): void {
+export function indexDocument(db: DatabaseSync, doc: FtsDoc): void {
   // FTS5 doesn't support UPDATE — delete then insert
   db.prepare('DELETE FROM fts_index WHERE doc_id = ?').run(doc.docId);
   db.prepare(
@@ -36,15 +36,16 @@ export function indexDocument(db: Database.Database, doc: FtsDoc): void {
   ).run(doc.docId, new Date().toISOString());
 }
 
-export function deleteDocumentFromIndex(db: Database.Database, docId: string): void {
+export function deleteDocumentFromIndex(db: DatabaseSync, docId: string): void {
   db.prepare('DELETE FROM fts_index WHERE doc_id = ?').run(docId);
   db.prepare('DELETE FROM fts_indexed_at WHERE doc_id = ?').run(docId);
 }
 
 // ─── Full rebuild ───
 
-export function buildFullIndex(db: Database.Database, vaultRoot: string, manifest: Manifest): void {
-  const tx = db.transaction(() => {
+export function buildFullIndex(db: DatabaseSync, vaultRoot: string, manifest: Manifest): void {
+  db.exec('BEGIN');
+  try {
     db.prepare('DELETE FROM fts_index').run();
     db.prepare('DELETE FROM fts_indexed_at').run();
 
@@ -100,9 +101,12 @@ export function buildFullIndex(db: Database.Database, vaultRoot: string, manifes
       insertFts.run(entity.id, 'notes', entity.type, entity.name, bodyParts.join('\n'));
       insertMeta.run(entity.id, now);
     }
-  });
 
-  tx();
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 // ─── Query ───
@@ -116,7 +120,7 @@ function sanitizeFtsQuery(raw: string): string {
 }
 
 export function searchVault(
-  db: Database.Database,
+  db: DatabaseSync,
   query: string,
   scope: 'story' | 'notes' | 'both',
   limit = 20,

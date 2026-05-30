@@ -67,6 +67,7 @@ export const IPC_CHANNELS = {
 
   // Versioning — per-scene snapshots
   SNAPSHOT_SAVE: 'snapshot:save',
+  SNAPSHOT_SAVE_SYNC: 'snapshot:save-sync',
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
@@ -120,6 +121,8 @@ export const IPC_CHANNELS = {
   SCENE_LIST: 'scene:list',
   SCENE_GET: 'scene:get',
   SCENE_SAVE: 'scene:save',
+  // Inline rename (SKY-115) — title-only update, does not touch prose
+  SCENE_RENAME: 'scene:rename',
 
   // Auto-updater (MYT-245) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
@@ -214,6 +217,8 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_LIST: 'notesVault:list',
   NOTES_VAULT_DELETE: 'notesVault:delete',
   NOTES_VAULT_MOVE: 'notesVault:move',
+  // SKY-95: dedicated mkdir avoids the dotfile block on .gitkeep placeholders.
+  NOTES_VAULT_MKDIR: 'notesVault:mkdir',
   NOTES_VAULT_WATCH_START: 'notesVault:watchStart',
   NOTES_VAULT_WATCH_STOP: 'notesVault:watchStop',
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
@@ -251,6 +256,23 @@ export const IPC_CHANNELS = {
   BRAINSTORM_RESOLVE_ROUTING: 'brainstorm:resolveRouting',
   BRAINSTORM_RESET_CATEGORY_ROUTING: 'brainstorm:resetCategoryRouting',
   BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
+
+  // SKY-12.3: two-vault sample project loader. Copies the bundled sample
+  // from resources/sample-project/ into <parentPath>/Story Vault/ and
+  // <parentPath>/Notes Vault/, reindexes both, and calls setPaths.
+  VAULT_LOAD_SAMPLE_TWO_VAULT: 'vault:load-sample-twovault',
+
+  // SKY-12.4: first-run onboarding completion flag. Called by the wizard's
+  // onComplete handler to persist onboardingComplete=true. Thin channel so
+  // the wizard never needs to send the full settings object back.
+  ONBOARDING_COMPLETE: 'onboarding:complete',
+
+  // SKY-12.4: debug reset (MYTHOS_DEV=1 only). Clears vaultRoot, notesVaultRoot,
+  // and onboardingComplete so the wizard re-appears on next boot.
+  ONBOARDING_RESET: 'onboarding:reset',
+
+  // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
+  SESSION_SCENE_SAVE: 'session:saveScene',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -375,6 +397,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
   [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
+  [IPC_CHANNELS.SCENE_RENAME]: (payload: SceneRenamePayload) => SceneRenameResponse;
   [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
@@ -410,6 +433,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
@@ -422,6 +446,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
+  // SKY-12 onboarding channels
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
+  // SKY-130: session persistence
+  [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
 }
 
 // ─── Payload / Response types ───
@@ -478,6 +508,15 @@ export interface VaultMoveResponse {
   fromPath: string;
   toPath: string;
   moved: boolean;
+}
+
+export interface VaultMkdirPayload {
+  path: string;
+}
+
+export interface VaultMkdirResponse {
+  path: string;
+  created: boolean;
 }
 
 export interface VaultChooseFolderPayload {
@@ -1143,6 +1182,23 @@ export interface AppSettings {
   };
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
+  /** SKY-130: last-opened scene for cross-restart restore. */
+  lastOpenedScene?: LastOpenedScene;
+}
+
+/** SKY-130: persisted cross-restart scene + cursor position. */
+export interface LastOpenedScene {
+  sceneId: string;
+  scenePath: string;
+  scrollTop: number;
+  cursorLine: number;
+}
+
+export interface SessionSaveScenePayload {
+  sceneId: string;
+  scenePath: string;
+  scrollTop: number;
+  cursorLine: number;
 }
 
 export interface SettingsSetPayload {
@@ -1543,6 +1599,16 @@ export interface SceneSaveResponse {
   scene: SceneEntry;
 }
 
+// SKY-115: inline scene rename (title-only, manifest update)
+export interface SceneRenamePayload {
+  sceneId: string;
+  title: string;
+}
+
+export interface SceneRenameResponse {
+  scene: SceneEntry;
+}
+
 // ─── Vault Graph types (Phase 5 — MYT-163) ───
 
 export interface VaultGraphNode {
@@ -1776,6 +1842,18 @@ export interface VaultLoadSampleResponse {
   vaultRoot: string;
 }
 
+// ─── SKY-12.3: two-vault sample project loader ───
+
+export interface VaultLoadSampleTwoVaultPayload {
+  parentPath: string;
+}
+
+export interface VaultLoadSampleTwoVaultResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+  error?: string;
+}
+
 // ─── First-run onboarding (MYT-820) ───
 
 export interface VaultCreateBlankPayload {
@@ -1798,6 +1876,18 @@ export interface VaultValidatePathResponse {
 
 export interface VaultPickFolderByPathPayload {
   sourcePath: string;
+}
+
+// SKY-12.3: two-vault sample project loader.
+export interface VaultLoadSampleTwoVaultPayload {
+  /** Parent directory under which Story Vault/ and Notes Vault/ will be created. */
+  parentPath: string;
+}
+
+export interface VaultLoadSampleTwoVaultResponse {
+  storyVaultPath: string;
+  notesVaultPath: string;
+  error?: string;
 }
 
 // ─── Per-agent config IPC types (MYT-343) ───
@@ -1940,6 +2030,8 @@ export interface VaultGetPathsResponse {
   notesVaultPath: string;
 }
 
+export type VaultSeedMode = 'default' | 'blank';
+
 export interface VaultSetPathsPayload {
   storyVaultPath: string;
   notesVaultPath: string;
@@ -1948,6 +2040,11 @@ export interface VaultSetPathsPayload {
   // in the recent-projects allowlist.
   storyVaultToken?: string;
   notesVaultToken?: string;
+  /** SKY-12.2: controls whether the new vaults are scaffolded with the full
+   *  SKY-15 folder layout ('default', the prior behavior) or created as empty
+   *  roots with only a manifest.json ('blank'). Defaults to 'default' when
+   *  absent for backwards compatibility with SKY-9 callers. */
+  seedMode?: VaultSeedMode;
 }
 
 export interface VaultSetPathsResponse {

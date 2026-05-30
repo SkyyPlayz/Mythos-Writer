@@ -180,6 +180,14 @@ interface LiquidNeonPrefs {
   accentColor?: string;
   /** Neon border colour slot. Default 'cyan'. */
   neonBorderColor?: 'cyan' | 'violet' | 'magenta';
+
+  // ── Neon color customization (SKY-127) ───────────────────────────────────
+  /** Cyan neon color hex. Default '#00f0ff'. */
+  neonColorCyan?: string;
+  /** Violet neon color hex. Default '#9b5fff'. */
+  neonColorViolet?: string;
+  /** Magenta neon color hex. Default '#ff4dff'. */
+  neonColorMagenta?: string;
 }
 
 
@@ -239,6 +247,13 @@ interface AppSettings {
   telemetry?: {
     enabled: boolean;
     sessionId: string;
+  };
+  /** SKY-130: last active scene + cursor position, restored on next launch. */
+  lastOpenedScene?: {
+    sceneId: string;
+    scenePath: string;
+    scrollTop: number;
+    cursorLine: number;
   };
 }
 
@@ -309,6 +324,7 @@ interface Window {
 
     // Versioning — per-scene snapshots
     snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotSaveSync: (sceneId: string, content: string) => void;
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
@@ -406,7 +422,8 @@ interface Window {
     // Chapter / scene creation — enforces Manuscript/<book>/<chapter>/<scene>.md layout
     chapterCreate: (payload: { storyId: string; title: string; order?: number }) => Promise<import('./types').Chapter>;
     sceneCreate: (payload: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<import('./types').Scene>;
-    sceneSave: (payload: { sceneId: string; prose: string; title?: string; order?: number; intent?: string }) => Promise<{ scene: import('./types').Scene }>;
+    // SKY-115: inline scene rename (title-only, manifest update)
+    sceneRename: (payload: { sceneId: string; title: string }) => Promise<{ scene: import('./types').Scene } | { error: string }>;
 
     // Auto-updater (MYT-245) — feature-flagged; safe no-ops in dev
     onUpdateStatus: (cb: (data: { state: 'checking' | 'available' | 'not-available' | 'downloading' | 'ready'; version?: string; releaseNotes?: string | null }) => void) => () => void;
@@ -475,7 +492,16 @@ interface Window {
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
-    vaultSetPaths: (args: { storyVaultPath: string; notesVaultPath: string; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean; error?: string }>;
+    // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
+    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
+    validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
+    // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
+    loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
+    // SKY-12.4: mark onboarding complete (persisted to main-process settings)
+    onboardingComplete: () => Promise<{ ok: boolean }>;
+    // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
+    onboardingReset: () => Promise<{ ok: boolean }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
@@ -486,6 +512,7 @@ interface Window {
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
     moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
+    mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)
@@ -559,6 +586,9 @@ interface Window {
       folders: Array<{ path: string; label: string }>;
       notesVaultRoot: string;
     }>;
+
+    // SKY-130: persist last-opened scene + cursor for cross-restart restore
+    sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

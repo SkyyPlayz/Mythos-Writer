@@ -48,6 +48,16 @@
       rgba(155, 95, 255, 0.6) 50%,
       rgba(255, 77, 255, 0.6) 100%);
 
+  /* ── Neon border tokens (SKY-127) — window chrome multi-color treatment ──── */
+  --border-neon-default: 0 0 16px var(--grad-neon), 0 0 2px var(--neon-cyan);
+  --border-neon-hover: 0 0 24px var(--grad-neon), 0 0 4px var(--neon-cyan);
+  --border-neon-context-folder: 0 0 16px
+      linear-gradient(120deg, #9b5fff 0%, #ff4dff 50%, #9b5fff 100%),
+      0 0 2px var(--neon-violet);
+  --border-neon-context-file: 0 0 16px
+      linear-gradient(120deg, #00f0ff 0%, #9b5fff 50%, #00f0ff 100%),
+      0 0 2px var(--neon-cyan);
+
   /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
   /* Background image override — set by applyLiquidNeonTokens (MYT-613/716).
      'none' keeps the plain --bg-base colour; any other value shows as a
