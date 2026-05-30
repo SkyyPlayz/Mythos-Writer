@@ -323,6 +323,54 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 13');
   }
+
+  if (currentVersion < 14) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS entity_index (
+        id            TEXT PRIMARY KEY,
+        type          TEXT NOT NULL,
+        name          TEXT NOT NULL,
+        aliases       TEXT,
+        tags          TEXT,
+        status        TEXT NOT NULL DEFAULT 'active',
+        core_fields   TEXT,
+        custom_fields TEXT,
+        notes_text    TEXT,
+        file_path     TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS entity_index_type   ON entity_index(type);
+      CREATE INDEX IF NOT EXISTS entity_index_status ON entity_index(status);
+
+      CREATE TABLE IF NOT EXISTS entity_relationships (
+        id             TEXT PRIMARY KEY,
+        from_entity_id TEXT NOT NULL REFERENCES entity_index(id) ON DELETE CASCADE,
+        to_entity_id   TEXT NOT NULL REFERENCES entity_index(id) ON DELETE CASCADE,
+        label          TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        UNIQUE(from_entity_id, to_entity_id, label)
+      );
+
+      CREATE TABLE IF NOT EXISTS scene_entity_links (
+        id         TEXT PRIMARY KEY,
+        scene_id   TEXT NOT NULL,
+        entity_id  TEXT NOT NULL REFERENCES entity_index(id) ON DELETE CASCADE,
+        link_kind  TEXT NOT NULL DEFAULT 'mention',
+        created_at TEXT NOT NULL,
+        UNIQUE(scene_id, entity_id, link_kind)
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS entity_fts USING fts5(
+        entity_id UNINDEXED,
+        name,
+        aliases,
+        notes_text,
+        custom_fields_text
+      );
+    `);
+    db.exec('PRAGMA user_version = 14');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -812,4 +860,147 @@ export function bulkApplyTags(
     throw e;
   }
   return itemIds.length;
+}
+
+// ─── Entity index (SKY-164) ───
+
+export type EntityStatus = 'active' | 'archived' | 'deleted';
+
+export interface DbEntityIndex {
+  id: string;
+  type: string;
+  name: string;
+  aliases: string | null;
+  tags: string | null;
+  status: EntityStatus;
+  core_fields: string | null;
+  custom_fields: string | null;
+  notes_text: string | null;
+  file_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function upsertEntityIndex(e: DbEntityIndex): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO entity_index
+         (id, type, name, aliases, tags, status, core_fields, custom_fields,
+          notes_text, file_path, created_at, updated_at)
+       VALUES
+         (@id, @type, @name, @aliases, @tags, @status, @core_fields, @custom_fields,
+          @notes_text, @file_path, @created_at, @updated_at)`
+    )
+    .run(e as unknown as Record<string, SQLInputValue>);
+}
+
+export function getEntityIndex(id: string): DbEntityIndex | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM entity_index WHERE id = ?')
+      .get(id) as DbEntityIndex | undefined) ?? null
+  );
+}
+
+export function listEntityIndex(type?: string): DbEntityIndex[] {
+  const db = getDb();
+  if (type) {
+    return db
+      .prepare('SELECT * FROM entity_index WHERE type = ? ORDER BY name ASC')
+      .all(type) as unknown as DbEntityIndex[];
+  }
+  return db.prepare('SELECT * FROM entity_index ORDER BY name ASC').all() as unknown as DbEntityIndex[];
+}
+
+export function deleteEntityIndex(id: string): void {
+  getDb().prepare('DELETE FROM entity_index WHERE id = ?').run(id);
+}
+
+// ─── Entity relationships ───
+
+export interface DbEntityRelationship {
+  id: string;
+  from_entity_id: string;
+  to_entity_id: string;
+  label: string;
+  created_at: string;
+}
+
+export function insertEntityRelationship(r: DbEntityRelationship): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO entity_relationships
+         (id, from_entity_id, to_entity_id, label, created_at)
+       VALUES (@id, @from_entity_id, @to_entity_id, @label, @created_at)`
+    )
+    .run(r as unknown as Record<string, SQLInputValue>);
+}
+
+export function listEntityRelationships(fromEntityId: string): DbEntityRelationship[] {
+  return getDb()
+    .prepare('SELECT * FROM entity_relationships WHERE from_entity_id = ? ORDER BY created_at ASC')
+    .all(fromEntityId) as unknown as DbEntityRelationship[];
+}
+
+export function deleteEntityRelationship(id: string): void {
+  getDb().prepare('DELETE FROM entity_relationships WHERE id = ?').run(id);
+}
+
+// ─── Scene entity links ───
+
+export interface DbSceneEntityLink {
+  id: string;
+  scene_id: string;
+  entity_id: string;
+  link_kind: string;
+  created_at: string;
+}
+
+export function insertSceneEntityLink(l: DbSceneEntityLink): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO scene_entity_links
+         (id, scene_id, entity_id, link_kind, created_at)
+       VALUES (@id, @scene_id, @entity_id, @link_kind, @created_at)`
+    )
+    .run(l as unknown as Record<string, SQLInputValue>);
+}
+
+export function listSceneEntityLinks(sceneId: string): DbSceneEntityLink[] {
+  return getDb()
+    .prepare('SELECT * FROM scene_entity_links WHERE scene_id = ? ORDER BY created_at ASC')
+    .all(sceneId) as unknown as DbSceneEntityLink[];
+}
+
+export function deleteSceneEntityLinks(sceneId: string): void {
+  getDb().prepare('DELETE FROM scene_entity_links WHERE scene_id = ?').run(sceneId);
+}
+
+// ─── Entity FTS ───
+
+export function upsertEntityFts(
+  entityId: string,
+  name: string,
+  aliases: string | null,
+  notesText: string | null,
+  customFieldsText: string | null
+): void {
+  const db = getDb();
+  db.prepare('DELETE FROM entity_fts WHERE entity_id = ?').run(entityId);
+  db
+    .prepare(
+      `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(entityId, name, aliases ?? '', notesText ?? '', customFieldsText ?? '');
+}
+
+export function deleteEntityFts(entityId: string): void {
+  getDb().prepare('DELETE FROM entity_fts WHERE entity_id = ?').run(entityId);
+}
+
+export function searchEntityFts(query: string): Array<{ entity_id: string }> {
+  return getDb()
+    .prepare('SELECT entity_id FROM entity_fts WHERE entity_fts MATCH ? ORDER BY rank')
+    .all(query) as unknown as Array<{ entity_id: string }>;
 }
