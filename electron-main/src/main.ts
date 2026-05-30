@@ -125,9 +125,6 @@ import {
   type TagEntry,
   type GoalsLogWordsPayload,
   type GoalsSetGoalPayload,
-  type EntityRelationshipsListPayload,
-  type EntityRelationshipsCreatePayload,
-  type EntityRelationshipsDeletePayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -175,11 +172,6 @@ import {
   getItemsForTag,
   bulkApplyTags,
   type DbTag,
-  insertEntityRelationship,
-  listEntityRelationships,
-  listEntityRelationshipsByToEntity,
-  getEntityRelationship,
-  deleteEntityRelationship,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -254,7 +246,8 @@ import {
 } from './secrets/migration.js';
 import { indexDocument, buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
-import { buildDocx } from './docx.js';import {
+import { buildDocx } from './docx.js';
+import {
   sceneToMarkdown, chapterToMarkdown, storyToMarkdown, vaultToMarkdown,
   sceneToPlaintext, chapterToPlaintext, storyToPlaintext, vaultToPlaintext,
   type ExportableScene, type ExportableChapter, type ExportableStory,
