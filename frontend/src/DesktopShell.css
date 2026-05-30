@@ -700,10 +700,10 @@
   color: inherit;
   cursor: pointer;
 }
-.prompt-modal-ok {
+.prompt-modal-actions .prompt-modal-ok {
   background: var(--accent, #7c5cff);
   border-color: var(--accent, #7c5cff);
-  color: #fff;
+  color: var(--bg-canvas, #0b0e13);
 }
 
 /* ─── Distraction-free focus mode (SKY-133) ─── */
