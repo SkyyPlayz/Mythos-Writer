@@ -24,18 +24,26 @@ function extractProse(markdown: string): string {
   return match ? match[1].trimStart() : markdown;
 }
 
+interface ProposedRelation {
+  suggestionId: string;
+  relationType: string;
+  targetEntityId: string;
+  targetEntityName: string;
+  rationale: string;
+}
+
 interface Props {
   entity: EntityEntry;
   onClose: () => void;
   onUpdated: (entity: EntityEntry) => void;
   onDeleted: (id: string) => void;
   onOpenScene?: (scenePath: string) => void;
+  onOpenEntity?: (entityId: string) => void;
 }
 
-export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, onOpenScene }: Props) {
+export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, onOpenScene, onOpenEntity }: Props) {
   const [name, setName] = useState(entity.name);
   const [aliases, setAliases] = useState((entity.aliases ?? []).join(', '));
-  const [tags, setTags] = useState((entity.tags ?? []).join(', '));
   const [noAutoLink, setNoAutoLink] = useState(!!entity.properties?.noAutoLink);
   const [tags, setTags] = useState<string[]>(entity.tags ?? []);
   const [allTags, setAllTags] = useState<string[]>([]);
@@ -49,11 +57,16 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [backlinksOpen, setBacklinksOpen] = useState(true);
   const [backlinksLoading, setBacklinksLoading] = useState(false);
 
+  // Relations state
+  const [relationsOpen, setRelationsOpen] = useState(true);
+  const [entityNameMap, setEntityNameMap] = useState<Map<string, string>>(new Map());
+  const [proposedRelations, setProposedRelations] = useState<ProposedRelation[]>([]);
+  const [proposedRelationsLoading, setProposedRelationsLoading] = useState(false);
+
   // Reset form when entity changes
   useEffect(() => {
     setName(entity.name);
     setAliases((entity.aliases ?? []).join(', '));
-    setTags((entity.tags ?? []).join(', '));
     setNoAutoLink(!!entity.properties?.noAutoLink);
     setTags(entity.tags ?? []);
     setDirty(false);
@@ -108,6 +121,94 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     return off;
   }, [loadBacklinks]);
 
+  // Build entity id to name map for rendering relation targets
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await window.api.entityList();
+        const map = new Map<string, string>();
+        for (const e of result.entities) map.set(e.id, e.name);
+        setEntityNameMap(map);
+      } catch {
+        // silent -- relations render raw IDs as fallback
+      }
+    })();
+  }, []);
+
+  // Load proposed typed-relation suggestions targeting this entity
+  const loadProposedRelations = useCallback(async () => {
+    setProposedRelationsLoading(true);
+    try {
+      const result = await window.api.suggestionsList('proposed', 'archive');
+      const proposed: ProposedRelation[] = [];
+      for (const s of result.suggestions) {
+        if (!s.payload_json) continue;
+        try {
+          const p = JSON.parse(s.payload_json) as {
+            kind?: string;
+            relationType?: string;
+            sourceEntityId?: string;
+            targetEntityId?: string;
+            targetEntityName?: string;
+            sourceEntityName?: string;
+          };
+          if (
+            p.kind === 'typed-relation' &&
+            (p.sourceEntityId === entity.id || p.targetEntityId === entity.id)
+          ) {
+            proposed.push({
+              suggestionId: s.id,
+              relationType: p.relationType ?? '',
+              targetEntityId:
+                p.sourceEntityId === entity.id
+                  ? (p.targetEntityId ?? '')
+                  : (p.sourceEntityId ?? ''),
+              targetEntityName:
+                p.sourceEntityId === entity.id
+                  ? (p.targetEntityName ?? '')
+                  : (p.sourceEntityName ?? ''),
+              rationale: s.rationale,
+            });
+          }
+        } catch {
+          // malformed payload -- skip
+        }
+      }
+      setProposedRelations(proposed);
+    } catch {
+      setProposedRelations([]);
+    } finally {
+      setProposedRelationsLoading(false);
+    }
+  }, [entity.id]);
+
+  useEffect(() => {
+    loadProposedRelations();
+  }, [loadProposedRelations]);
+
+  const handleAcceptRelation = useCallback(
+    async (suggestionId: string) => {
+      try {
+        await window.api.suggestionsAccept(suggestionId);
+        setProposedRelations((prev) => prev.filter((r) => r.suggestionId !== suggestionId));
+        const updated = await window.api.entityRead(entity.id);
+        if (updated) onUpdated(updated);
+      } catch {
+        // silent -- user can retry
+      }
+    },
+    [entity.id, onUpdated],
+  );
+
+  const handleRejectRelation = useCallback(async (suggestionId: string) => {
+    try {
+      await window.api.suggestionsReject(suggestionId);
+      setProposedRelations((prev) => prev.filter((r) => r.suggestionId !== suggestionId));
+    } catch {
+      // silent
+    }
+  }, []);
+
   const markDirty = useCallback(() => setDirty(true), []);
 
   const handleSave = async () => {
@@ -115,7 +216,6 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setError('');
     try {
       const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
-      const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
       const updatedProps: Record<string, unknown> = { ...(entity.properties ?? {}) };
       if (noAutoLink) {
         updatedProps.noAutoLink = true;
@@ -147,6 +247,9 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
       setError(String(err));
     }
   };
+
+  const currentRelations = entity.relations ?? [];
+  const totalRelations = currentRelations.length + proposedRelations.length;
 
   return (
     <div className="entity-detail">

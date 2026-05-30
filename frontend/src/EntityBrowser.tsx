@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EntityEntry, EntityType } from './types';
+import { NodeIcon } from './NodeIcon';
 import './EntityBrowser.css';
 
 const TYPE_LABELS: Record<EntityType, string> = {
@@ -246,6 +247,9 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
                       onClick={() => onSelectEntity(entity)}
                       aria-pressed={entity.id === selectedEntityId}
                     >
+                      <span className="entity-item-icon" aria-hidden="true">
+                        <NodeIcon icon={entity.properties?.icon as string | undefined} fallback={TYPE_ICONS[type]} />
+                      </span>
                       <span className="entity-item-name">{entity.name}</span>
                     </button>
                     {deleteConfirm === entity.id ? (

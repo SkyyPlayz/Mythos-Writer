@@ -1450,35 +1450,6 @@ export default function DesktopShell() {
               }}
             />
           ) : selectedScene ? (
-            <div className="shell-editor-beta-wrap">
-              <BlockEditor
-                key={selectedScene.id}
-                scene={selectedScene}
-                onBlocksChange={handleBlocksChange}
-                onDraftStateChange={handleDraftStateChange}
-                onEditorReady={handleEditorReady}
-                onBetaReadRequest={handleBetaReadRequest}
-                wikiLinkSuggestions={wikiLinkSuggestions}
-                onAcceptWikiLink={handleEditorAcceptWikiLink}
-                onRejectWikiLink={handleEditorRejectWikiLink}
-                autoLinkerEntities={allEntities}
-                autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
-                initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                onCursorPosChange={handleCursorPosChange}
-              />
-              {(betaReadComments.length > 0 || betaReadLoading) && (
-                <div className="shell-beta-margin">
-                  {betaReadLoading && (
-                    <div className="br-loading" aria-live="polite">
-                      <span className="wa-spinner" aria-hidden="true" />
-                      Reading…
-                    </div>
-                  )}
-                  <BetaReadMargin
-                    comments={betaReadComments}
-                    onDismiss={handleBetaReadDismiss}
-                  />
-                </div>
             <div className="shell-editor-scene-wrap">
               <div className="scene-snapshot-toolbar">
                 <button
@@ -1509,6 +1480,8 @@ export default function DesktopShell() {
                   wikiLinkSuggestions={wikiLinkSuggestions}
                   onAcceptWikiLink={handleEditorAcceptWikiLink}
                   onRejectWikiLink={handleEditorRejectWikiLink}
+                  autoLinkerEntities={allEntities}
+                  autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   initialCursorPos={pendingCursorPosRef.current ?? undefined}
                   onCursorPosChange={handleCursorPosChange}
                 />
