@@ -286,6 +286,8 @@ import {
   normalizeRoutingDestination,
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
+  selectContext,
+  type ContextCandidate,
 } from './brainstormRouting.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
@@ -3144,6 +3146,37 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     return { folders: listNotesVaultFolders(root), notesVaultRoot: root };
+  },
+  // SKY-196: select vault notes that fit inside the token budget for context injection.
+  // Reads up to 100 .md files from the Notes Vault, parses frontmatter for type/name,
+  // then delegates scoring and budgeting to selectContext().
+  [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (
+    payload: import('./ipc.js').BrainstormSelectContextPayload,
+  ) => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const { items } = listVaultFiles(root);
+    const FACT_TYPES = new Set(['character', 'location', 'item', 'note']);
+    const MAX_CANDIDATES = 100;
+    const candidates: ContextCandidate[] = [];
+    for (const item of items) {
+      if (candidates.length >= MAX_CANDIDATES) break;
+      if (item.isDirectory) continue;
+      if (!item.name.endsWith('.md')) continue;
+      // Skip hidden paths (staging dir, .git, etc.)
+      if (item.path.split(path.sep).some((seg) => seg.startsWith('.'))) continue;
+      try {
+        const { content } = readVaultFile(root, item.path);
+        const { frontmatter, prose } = parseFrontmatter(content);
+        const rawType = frontmatter.type as string | undefined;
+        const type = rawType && FACT_TYPES.has(rawType)
+          ? (rawType as ContextCandidate['type'])
+          : 'note';
+        const name = (frontmatter.name as string | undefined) || item.name.replace(/\.md$/, '');
+        candidates.push({ path: item.path, name, type, content: prose.trim() });
+      } catch { /* skip unreadable or corrupt files */ }
+    }
+    return selectContext({ candidates, ...payload });
   },
 
   // ─── Writing modes (MYT-347) ───

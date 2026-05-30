@@ -261,6 +261,8 @@ export const IPC_CHANNELS = {
   BRAINSTORM_RESOLVE_ROUTING: 'brainstorm:resolveRouting',
   BRAINSTORM_RESET_CATEGORY_ROUTING: 'brainstorm:resetCategoryRouting',
   BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
+  // SKY-196: token-budgeted context selection for Brainstorm AI requests
+  BRAINSTORM_SELECT_CONTEXT: 'brainstorm:selectContext',
 
   // SKY-12.3: two-vault sample project loader. Copies the bundled sample
   // from resources/sample-project/ into <parentPath>/Story Vault/ and
@@ -495,6 +497,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
+  [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (payload: BrainstormSelectContextPayload) => BrainstormSelectContextResponse;
   // SKY-12 onboarding channels
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
@@ -2336,6 +2339,40 @@ export interface BrainstormListNotesFoldersResponse {
    *  Sorted alphabetically; depth-limited so the picker stays usable. */
   folders: BrainstormFolderEntry[];
   notesVaultRoot: string;
+}
+
+// ─── SKY-196: Brainstorm context selection ────────────────────────────────────
+
+/** A vault note that was scored for context inclusion. */
+export interface BrainstormContextItem {
+  path: string;
+  name: string;
+  type: BrainstormFactType;
+  content: string;
+  /** Approximate token cost used for budget accounting. */
+  estimatedTokens: number;
+  /** Human-readable reason this item was included or excluded. */
+  whyIncluded: string;
+}
+
+export interface BrainstormSelectContextPayload {
+  /** The user's current message (highest-priority for name matching). */
+  userMessage: string;
+  /** Concatenated prior conversation text (lower-priority name matching). */
+  conversationText: string;
+  /** Token ceiling for included items. Defaults to 4 000. */
+  tokenBudget?: number;
+}
+
+export interface BrainstormSelectContextResponse {
+  /** Items included in the context within the budget. */
+  included: BrainstormContextItem[];
+  /** Items that were candidates but would have exceeded the budget. */
+  excluded: BrainstormContextItem[];
+  /** Total tokens consumed by included items. */
+  usedTokens: number;
+  /** The budget that was applied. */
+  budgetTokens: number;
 }
 
 // ─── SKY-156: Project Templates ───────────────────────────────────────────────
