@@ -353,6 +353,82 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
 
         {error && <div className="entity-det-error">{error}</div>}
 
+        {/* Connections (typed relations) panel */}
+        <div className="entity-det-backlinks">
+          <button
+            className="entity-det-backlinks-header"
+            onClick={() => setRelationsOpen((o) => !o)}
+            aria-expanded={relationsOpen}
+          >
+            <span className="entity-det-backlinks-chevron">{relationsOpen ? '▾' : '▸'}</span>
+            <span className="entity-det-backlinks-title">Connections</span>
+            <span className="entity-det-backlinks-count">
+              {proposedRelationsLoading ? '…' : totalRelations}
+            </span>
+          </button>
+          {relationsOpen && (
+            <div className="entity-det-backlinks-body">
+              {currentRelations.length === 0 && proposedRelations.length === 0 && (
+                <div className="entity-det-backlinks-empty">
+                  No connections yet. Run Archive scan to detect relations from brainstorm transcripts.
+                </div>
+              )}
+              {currentRelations.length > 0 && (
+                <ul className="entity-det-backlinks-list" aria-label="Confirmed connections">
+                  {currentRelations.map((rel, i) => {
+                    const targetName = entityNameMap.get(rel.target) ?? rel.target;
+                    return (
+                      <li key={rel.type + '-' + rel.target + '-' + i} className="entity-det-relation-item">
+                        <span className="entity-det-relation-type">{rel.type}</span>
+                        <button
+                          className="entity-det-backlink-scene"
+                          onClick={() => onOpenEntity?.(rel.target)}
+                          disabled={!onOpenEntity}
+                          aria-label={'Open ' + targetName}
+                        >
+                          {targetName}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {proposedRelations.length > 0 && (
+                <div className="entity-det-proposed-relations" aria-label="Proposed connections">
+                  <div className="entity-det-proposed-header">Proposed by Archive</div>
+                  {proposedRelations.map((pr) => (
+                    <div key={pr.suggestionId} className="entity-det-proposed-item">
+                      <div className="entity-det-proposed-desc">
+                        <span className="entity-det-relation-type">{pr.relationType}</span>
+                        <span className="entity-det-proposed-target">
+                          {pr.targetEntityName || pr.targetEntityId}
+                        </span>
+                      </div>
+                      <p className="entity-det-proposed-rationale">{pr.rationale}</p>
+                      <div className="entity-det-proposed-actions">
+                        <button
+                          className="entity-det-btn entity-det-btn-primary entity-det-btn-sm"
+                          onClick={() => handleAcceptRelation(pr.suggestionId)}
+                          aria-label={'Accept relation: ' + pr.relationType + ' ' + pr.targetEntityName}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          className="entity-det-btn entity-det-btn-ghost entity-det-btn-sm"
+                          onClick={() => handleRejectRelation(pr.suggestionId)}
+                          aria-label={'Reject relation: ' + pr.relationType + ' ' + pr.targetEntityName}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Backlinks panel */}
         <div className="entity-det-backlinks">
           <button

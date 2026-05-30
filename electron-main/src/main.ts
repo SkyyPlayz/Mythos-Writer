@@ -239,6 +239,7 @@ import {
   migrateEntityAliases,
   getEntityBacklinks,
 } from './entities.js';
+import { getReciprocal } from './entityRelations.js';
 import {
   buildArchiveIndex,
   getArchiveIndex,
@@ -1258,6 +1259,7 @@ const handlers: IpcHandlers = {
       name: payload.name,
       aliases: payload.aliases,
       tags: payload.tags,
+      relations: payload.relations,
       prose: payload.prose,
       properties: payload.properties,
     });
@@ -3634,6 +3636,63 @@ function autoApplyVaultWrite(
     suggestion.payload_json
   ) {
     try {
+      const payloadData = JSON.parse(suggestion.payload_json) as {
+        kind?: string;
+        content?: string;
+        prose?: string;
+        relationType?: string;
+        sourceEntityId?: string;
+        sourceEntityPath?: string;
+        targetEntityId?: string;
+        targetEntityPath?: string;
+      };
+
+      // ─── Typed-relation apply ───
+      if (payloadData.kind === 'typed-relation') {
+        const {
+          relationType,
+          sourceEntityId,
+          sourceEntityPath,
+          targetEntityId,
+          targetEntityPath,
+        } = payloadData;
+        if (!relationType || !sourceEntityId || !sourceEntityPath || !targetEntityId || !targetEntityPath) {
+          return { finalStatus: 'accepted', snapshotPath: null };
+        }
+        const manifest = readManifest(getManifestPath());
+
+        const sourceEntry = manifest.entities.find((e) => e.id === sourceEntityId);
+        if (sourceEntry) {
+          const existingRelations = sourceEntry.relations ?? [];
+          const alreadyHas = existingRelations.some(
+            (r) => r.type === relationType && r.target === targetEntityId,
+          );
+          if (!alreadyHas) {
+            updateEntity(getVaultRoot(), manifest, sourceEntityId, {
+              relations: [...existingRelations, { type: relationType, target: targetEntityId }],
+            });
+          }
+        }
+
+        const reciprocal = getReciprocal(relationType);
+        const targetEntry = manifest.entities.find((e) => e.id === targetEntityId);
+        if (targetEntry) {
+          const existingRelations = targetEntry.relations ?? [];
+          const alreadyHas = existingRelations.some(
+            (r) => r.type === reciprocal && r.target === sourceEntityId,
+          );
+          if (!alreadyHas) {
+            updateEntity(getVaultRoot(), manifest, targetEntityId, {
+              relations: [...existingRelations, { type: reciprocal, target: sourceEntityId }],
+            });
+          }
+        }
+
+        writeManifest(getManifestPath(), manifest);
+        return { finalStatus: 'applied', snapshotPath: null };
+      }
+
+      // ─── Standard vault-write apply ───
       const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
       if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
       const relSnapshotPath = path.join(
@@ -3643,8 +3702,8 @@ function autoApplyVaultWrite(
 
       let originalContent = '';
       try {
-        const { content } = readVaultFile(getVaultRoot(), suggestion.target_path);
-        originalContent = content;
+        const { content: vc } = readVaultFile(getVaultRoot(), suggestion.target_path);
+        originalContent = vc;
       } catch { /* new file — empty original */ }
 
       fs.writeFileSync(
@@ -3653,7 +3712,6 @@ function autoApplyVaultWrite(
         'utf-8',
       );
 
-      const payloadData = JSON.parse(suggestion.payload_json) as { content?: string; prose?: string };
       const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
       const { prose: newProse } = parseFrontmatter(newContent);
       mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {

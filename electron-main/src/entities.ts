@@ -11,7 +11,8 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
 } from './vault.js';
-import type { EntityEntry, Manifest } from './ipc.js';
+import type { EntityEntry, EntityRelation, Manifest } from './ipc.js';
+import { parseRelationsBlock, serializeRelations, stripRelationsBlock } from './entityRelations.js';
 
 // ─── Path helpers ───
 
@@ -27,6 +28,7 @@ interface EntityFrontmatter {
   type: EntityEntry['type'];
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -49,12 +51,33 @@ function serializeEntityFrontmatter(fm: EntityFrontmatter, prose: string): strin
   }
   lines.push(`createdAt: ${fm.createdAt}`);
   lines.push(`updatedAt: ${fm.updatedAt}`);
+  if (fm.relations?.length) {
+    lines.push('---', '');
+    const relBlock = serializeRelations(fm.relations);
+    return (
+      lines.slice(0, -2).join('\n') +
+      '\n' +
+      relBlock +
+      '---\n' +
+      prose
+    );
+  }
   lines.push('---', '');
   return lines.join('\n') + prose;
 }
 
 function parseEntityFrontmatter(raw: string): { fm: EntityFrontmatter; prose: string } | null {
-  const { frontmatter, prose } = parseFrontmatter(raw);
+  // Extract raw frontmatter text between the --- delimiters.
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  const rawFrontmatterText = fmMatch ? fmMatch[1] : '';
+
+  // Parse relations from the block YAML before the standard parser strips them.
+  const relations = parseRelationsBlock(rawFrontmatterText);
+
+  // Strip the relations block so parseFrontmatter doesn't choke on multi-line YAML.
+  const strippedRaw = stripRelationsBlock(raw);
+
+  const { frontmatter, prose } = parseFrontmatter(strippedRaw);
   if (!frontmatter.id || !frontmatter.name || !frontmatter.type) return null;
 
   const knownKeys = new Set(['id', 'name', 'type', 'aliases', 'tags', 'createdAt', 'updatedAt']);
@@ -70,6 +93,7 @@ function parseEntityFrontmatter(raw: string): { fm: EntityFrontmatter; prose: st
       type: frontmatter.type as EntityEntry['type'],
       aliases: Array.isArray(frontmatter.aliases) ? frontmatter.aliases.map(String) : undefined,
       tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+      relations: relations.length > 0 ? relations : undefined,
       properties: Object.keys(properties).length > 0 ? properties : undefined,
       createdAt: String(frontmatter.createdAt ?? new Date().toISOString()),
       updatedAt: String(frontmatter.updatedAt ?? new Date().toISOString()),
@@ -86,6 +110,7 @@ function fmToEntry(fm: EntityFrontmatter, relPath: string): EntityEntry {
     path: relPath,
     aliases: fm.aliases,
     tags: fm.tags,
+    relations: fm.relations,
     properties: fm.properties,
     createdAt: fm.createdAt,
     updatedAt: fm.updatedAt,
@@ -102,6 +127,7 @@ export function createEntity(
     type: EntityEntry['type'];
     aliases?: string[];
     tags?: string[];
+    relations?: EntityRelation[];
     prose?: string;
     properties?: Record<string, unknown>;
   }
@@ -116,6 +142,7 @@ export function createEntity(
     type: opts.type,
     aliases: opts.aliases?.length ? opts.aliases : undefined,
     tags: opts.tags?.length ? opts.tags : undefined,
+    relations: opts.relations?.length ? opts.relations : undefined,
     properties: opts.properties && Object.keys(opts.properties).length > 0 ? opts.properties : undefined,
     createdAt: now,
     updatedAt: now,
@@ -159,6 +186,7 @@ export function updateEntity(
     name?: string;
     aliases?: string[];
     tags?: string[];
+    relations?: EntityRelation[];
     prose?: string;
     properties?: Record<string, unknown>;
   }
@@ -173,6 +201,7 @@ export function updateEntity(
     type: entry.type,
     aliases: entry.aliases,
     tags: entry.tags,
+    relations: entry.relations,
     properties: entry.properties,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
@@ -194,6 +223,7 @@ export function updateEntity(
     ...(changes.name !== undefined ? { name: changes.name } : {}),
     ...(changes.aliases !== undefined ? { aliases: changes.aliases } : {}),
     ...(changes.tags !== undefined ? { tags: changes.tags } : {}),
+    ...(changes.relations !== undefined ? { relations: changes.relations } : {}),
     ...(changes.properties !== undefined ? { properties: changes.properties } : {}),
     updatedAt: new Date().toISOString(),
   };

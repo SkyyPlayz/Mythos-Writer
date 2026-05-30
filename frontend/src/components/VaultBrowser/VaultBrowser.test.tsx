@@ -51,6 +51,9 @@ beforeEach(() => {
     notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
     notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+    vaultReadIcons: vi.fn().mockResolvedValue({}),
+    iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
   };
 });
 

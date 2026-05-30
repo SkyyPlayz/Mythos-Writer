@@ -1,4 +1,5 @@
-// Archive Agent — local vault indexer, inconsistency detector, wiki-link suggester.
+// Archive Agent — local vault indexer, inconsistency detector, wiki-link suggester,
+// and typed-relation proposer.
 // No LLM dependency; pure text analysis against vault entity data.
 // All suggestions are proposed-only (status='proposed', never auto-applied here).
 
@@ -7,6 +8,7 @@ import type { Manifest, EntityEntry } from './ipc.js';
 import { listEntities } from './entities.js';
 import { readVaultFile } from './vault.js';
 import type { DbSuggestion } from './db.js';
+import { detectRelationSuggestions } from './entityRelations.js';
 
 // ─── Types ───
 
@@ -29,6 +31,7 @@ export interface ArchiveScanResult {
   suggestions: DbSuggestion[];
   inconsistenciesFound: number;
   wikiLinksFound: number;
+  relationsFound: number;
 }
 
 export type ArchiveIndexStatus = 'idle' | 'indexing' | 'ready';
@@ -298,9 +301,11 @@ export function runArchiveScan(
 ): ArchiveScanResult {
   const inconsistencies = detectInconsistencies(sceneText, index, scenePath, ignoreList);
   const wikiLinks = detectWikiLinkOpportunities(sceneText, index, scenePath);
+  const relations = detectRelationSuggestions(sceneText, index);
   return {
-    suggestions: [...inconsistencies, ...wikiLinks],
+    suggestions: [...inconsistencies, ...wikiLinks, ...relations],
     inconsistenciesFound: inconsistencies.length,
     wikiLinksFound: wikiLinks.length,
+    relationsFound: relations.length,
   };
 }

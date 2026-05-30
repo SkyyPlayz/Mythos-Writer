@@ -693,6 +693,11 @@ export interface SceneTimestamp {
   duration?: string;
 }
 
+export interface EntityRelation {
+  type: string;
+  target: string; // entity id
+}
+
 export interface EntityEntry {
   id: string;
   name: string;
@@ -700,6 +705,7 @@ export interface EntityEntry {
   path: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -1008,6 +1014,7 @@ export interface EntityCreatePayload {
   type: EntityEntry['type'];
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   prose?: string;
   properties?: Record<string, unknown>;
 }
@@ -1021,6 +1028,7 @@ export interface EntityUpdatePayload {
   name?: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   prose?: string;
   properties?: Record<string, unknown>;
 }

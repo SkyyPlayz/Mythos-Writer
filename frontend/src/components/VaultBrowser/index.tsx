@@ -10,6 +10,7 @@ import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
 import NoteTemplateDialog from '../NoteTemplateDialog';
+import { NodeIcon } from '../../NodeIcon';
 import TagPane from '../TagPane';
 import './VaultBrowser.css';
 
@@ -266,7 +267,7 @@ function StoryVault({
                                     title={isEditing ? undefined : scene.title}
                                   >
                                     <span className="vb-chevron" aria-hidden="true" />
-                                    <span className="vb-icon" aria-hidden="true">📄</span>
+                                    <span className="vb-icon" aria-hidden="true"><NodeIcon icon={iconMap?.[scene.path]} fallback="📄" /></span>
                                     {isEditing ? (
                                       <SceneRenameInput
                                         value={editValue}
