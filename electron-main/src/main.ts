@@ -23,6 +23,8 @@ import {
   type VaultDeleteResponse,
   type VaultMovePayload,
   type VaultMoveResponse,
+  type VaultMkdirPayload,
+  type VaultMkdirResponse,
   type VaultChooseFolderPayload,
   type VaultChooseFolderResponse,
   type Manifest,
@@ -181,6 +183,7 @@ import {
   serializeFrontmatter,
   safePath,
   safeVaultIpcJoin,
+  safeVaultDirIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -2568,6 +2571,16 @@ const handlers: IpcHandlers = {
     return moveVaultFile(root, payload.fromPath, payload.toPath);
   },
 
+  // SKY-95: create a directory directly so handleNewFolder in VaultBrowser
+  // doesn't need a .gitkeep placeholder (which safeVaultIpcJoin rejects).
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload): VaultMkdirResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const absPath = safeVaultDirIpcJoin(root, payload.path);
+    fs.mkdirSync(absPath, { recursive: true });
+    return { path: payload.path, created: true };
+  },
+
   // SKY-9: Story-Vault rename. Same shape as NOTES_VAULT_MOVE rooted at the
   // story vault. moveVaultFile() refuses to cross the vault boundary by
   // resolving both endpoints through realSafePath before fs.renameSync.
@@ -3879,10 +3892,14 @@ function registerAgentPersonaHandlers(): void {
 app.disableHardwareAcceleration();
 
 app.whenReady().then(async () => {
+  performance.mark('app:ready-start');
+  const appReadyT0 = performance.now();
+
   ensureVaultDir();
   ensureNotesVaultDir();
   // Track current vault in recent projects list on every launch
   addToRecentProjects(getVaultRoot());
+  performance.mark('app:vault-init-end');
   // MYT-777: initialise the encrypted credential store, then run the one-shot
   // migration that lifts any plaintext API keys out of app-settings.json into
   // safeStorage. Must precede initTelemetry — that path can rewrite settings.
@@ -3901,6 +3918,7 @@ app.whenReady().then(async () => {
   // paths got there through a previous gated write (or pre-existed before the
   // gate was introduced and remain trustable as user-controlled state).
   seedTrustedBinariesFromSettings(loadAppSettings());
+  performance.mark('app:secrets-end');
   setupIpcMain(handlers);
   // Synchronous IPC for beforeunload flush — ensures content is persisted before window closes.
   ipcMain.on(IPC_CHANNELS.SNAPSHOT_SAVE_SYNC, (event, payload: SnapshotSavePayload) => {
@@ -3926,17 +3944,32 @@ app.whenReady().then(async () => {
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
   );
+  performance.mark('app:ipc-ready');
   createWindow();
+  performance.mark('app:window-created');
+  console.log(`[perf] app:startup → window: ${(performance.now() - appReadyT0).toFixed(0)} ms`);
   initAutoUpdater();
-  // Build initial FTS index (non-fatal)
-  try {
-    const manifest = readManifest(getManifestPath());
-    buildFullIndex(getDb(), getVaultRoot(), manifest);
-  } catch { /* non-fatal — index rebuilt on next watcher event */ }
 
-  // Start watching both vaults for external markdown changes
+  // Start watching both vaults for external markdown changes.
+  // Watchers run before FTS so their async dynamic-import yields the event
+  // loop, giving the renderer's first IPC calls (e.g. settingsGet) a window
+  // to be processed before indexing starts.
   await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
   await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
+
+  // Defer FTS index build to the next event-loop tick so any IPC messages
+  // queued during watcher init (typically the renderer's settingsGet) are
+  // processed first. Safe because the watcher re-indexes on every vault change.
+  setImmediate(() => {
+    performance.mark('app:fts-build-start');
+    const ftsBuildT0 = performance.now();
+    try {
+      const manifest = readManifest(getManifestPath());
+      buildFullIndex(getDb(), getVaultRoot(), manifest);
+    } catch { /* non-fatal — index rebuilt on next watcher event */ }
+    performance.mark('app:fts-build-end');
+    console.log(`[perf] app:fts-build: ${(performance.now() - ftsBuildT0).toFixed(0)} ms`);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
