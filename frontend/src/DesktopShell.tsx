@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
+import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens } from './theme';
 import LeftRail from './LeftRail';
@@ -104,9 +105,10 @@ interface AppMenuBarProps {
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
   onOpenTour: () => void;
+  onOpenExport?: (scope: ExportScope) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -124,6 +126,11 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         }
       })
       .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  };
+
+  const handleExportFormat = () => {
+    if (!selectedStoryId) { alert('Select a story first to export.'); return; }
+    onOpenExport?.({ kind: 'story', storyId: selectedStoryId });
   };
 
   const handleExportDocx = () => {
@@ -167,6 +174,8 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Markdown…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Plain Text…</button>
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
               <div className="app-menu-separator" role="separator" />
@@ -479,6 +488,7 @@ export default function DesktopShell() {
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
+  const [exportScope, setExportScope] = useState<ExportScope | null>(null);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -1273,6 +1283,7 @@ export default function DesktopShell() {
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
           onOpenTour={() => setTourOpen(true)}
+          onOpenExport={(scope: ExportScope) => setExportScope(scope)}
         />
       )}
       {distractionFree && (
@@ -1308,6 +1319,7 @@ export default function DesktopShell() {
       {tourOpen && (
         <TourModal onClose={() => setTourOpen(false)} />
       )}
+      {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
       )}
@@ -1351,6 +1363,7 @@ export default function DesktopShell() {
             onReorderScenes={handleReorderScenes}
             onOpenVaultPath={handleOpenSceneByPath}
             onContextChange={setVaultContext}
+          onExport={(scope: ExportScope) => setExportScope(scope)}
           />
         </div>
       )}

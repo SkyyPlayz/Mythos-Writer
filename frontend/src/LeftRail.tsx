@@ -1,4 +1,5 @@
 import type { Story, Chapter, Scene, EntityEntry } from './types';
+import type { ExportScope } from './ExportDialog';
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
 import SuggestionReview from './SuggestionReview';
@@ -22,6 +23,7 @@ interface Props {
   onReorderScenes: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
   onOpenVaultPath?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  onExport?: (scope: ExportScope) => void;
 }
 
 export default function LeftRail({
@@ -38,6 +40,7 @@ export default function LeftRail({
   onReorderScenes,
   onOpenVaultPath,
   onContextChange,
+  onExport,
 }: Props) {
   return (
     <div className="left-rail">
@@ -128,6 +131,7 @@ export default function LeftRail({
             onCreateScene={onCreateScene}
             onOpenFile={onOpenVaultPath}
             onContextChange={onContextChange}
+            onExport={onExport}
           />
         )}
         {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} />}
