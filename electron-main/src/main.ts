@@ -43,6 +43,8 @@ import {
   type SnapshotListPayload,
   type SnapshotGetPayload,
   type SnapshotRestorePayload,
+  type SnapshotDeletePayload,
+  type SnapshotDeleteAllPayload,
   type EntityCreatePayload,
   type EntityReadPayload,
   type EntityUpdatePayload,
@@ -110,6 +112,8 @@ import {
   UNTRUSTED_FRAME_REJECTION,
   type SettingsTestConnectionPayload,
   type SessionSaveScenePayload,
+  type GoalsLogWordsPayload,
+  type GoalsSetGoalPayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -156,7 +160,7 @@ import {
   validateSttShape,
   validateTtsShape,
 } from './voiceGate.js';
-import { saveSnapshot, listSnapshots, getSnapshot } from './snapshots.js';
+import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
 import {
@@ -220,8 +224,7 @@ import {
 } from './secrets/migration.js';
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
-import { buildDocx } from './docx.js';
-import {
+import { buildDocx } from './docx.js';import {
   sceneToMarkdown, chapterToMarkdown, storyToMarkdown, vaultToMarkdown,
   sceneToPlaintext, chapterToPlaintext, storyToPlaintext, vaultToPlaintext,
   type ExportableScene, type ExportableChapter, type ExportableStory,
@@ -250,6 +253,7 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
+import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
@@ -668,6 +672,20 @@ function buildTextExport(
   }
 }
 
+// ─── Export helpers (SKY-153) ───
+function safeEF(s: string): string { return s.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'export'; }
+function readSEF(sc: import('./ipc.js').SceneEntry): ExportableScene { let p = ''; try { p = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ } return { title: sc.title, prose: p }; }
+function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js').ExportScope, fmt: 'markdown'|'plaintext'): { content: string; defaultFilename: string } {
+  const toC = (ch: import('./ipc.js').ChapterEntry): ExportableChapter => ({ title: ch.title, scenes: [...ch.scenes].sort((a,b)=>a.order-b.order).map(readSEF) });
+  const toSt = (st: import('./ipc.js').StoryEntry): ExportableStory => ({ title: st.title, chapters: [...st.chapters].sort((a,b)=>a.order-b.order).map(toC) });
+  const md = fmt === 'markdown';
+  switch (scope.kind) {
+    case 'scene': { let f2: import('./ipc.js').SceneEntry|null=null; outer: for (const st of manifest.stories) for (const ch of st.chapters) { const sc=ch.scenes.find((s)=>s.id===scope.sceneId); if(sc){f2=sc;break outer;} } if (!f2) f2=(manifest.scenes??[]).find((s: import('./ipc.js').SceneEntry)=>s.id===scope.sceneId)??null; if (!f2) throw new Error(`Scene not found: ${scope.sceneId}`); const es=readSEF(f2); return { content: md ? sceneToMarkdown(es) : sceneToPlaintext(es), defaultFilename: safeEF(f2.title) }; }
+    case 'chapter': { const st=manifest.stories.find((s)=>s.id===scope.storyId); if(!st) throw new Error(`Story not found: ${scope.storyId}`); const ch=st.chapters.find((c)=>c.id===scope.chapterId); if(!ch) throw new Error(`Chapter not found: ${scope.chapterId}`); const scenes=[...ch.scenes].sort((a,b)=>a.order-b.order).map(readSEF); return { content: md ? chapterToMarkdown(ch.title,scenes) : chapterToPlaintext(ch.title,scenes), defaultFilename: safeEF(ch.title) }; }
+    case 'story': { const st=manifest.stories.find((s)=>s.id===scope.storyId); if(!st) throw new Error(`Story not found: ${scope.storyId}`); const es=toSt(st); return { content: md ? storyToMarkdown(es) : storyToPlaintext(es), defaultFilename: safeEF(st.title) }; }
+    case 'vault': return { content: md ? vaultToMarkdown(manifest.stories.map(toSt)) : vaultToPlaintext(manifest.stories.map(toSt)), defaultFilename: 'vault-export' };
+  }
+}
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
@@ -1034,7 +1052,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => {
     ensureVaultDir();
     const { snapshots: retention } = loadAppSettings();
-    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention);
+    return saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention, payload.label);
   },
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => {
     ensureVaultDir();
@@ -1068,6 +1086,19 @@ const handlers: IpcHandlers = {
     // Write the restored content to vault markdown
     writeVaultFileAtomic(getVaultRoot(), payload.scenePath, target.content);
     return { restored: target, preRestoreSnapshot };
+  },
+
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => {
+    ensureVaultDir();
+    const deleted = deleteSnapshot(getVaultRoot(), payload.sceneId, payload.snapshotId);
+    return { deleted };
+  },
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => {
+    ensureVaultDir();
+    const deleted = payload.sceneId
+      ? deleteAllSnapshotsForScene(getVaultRoot(), payload.sceneId)
+      : deleteAllSnapshotsVault(getVaultRoot());
+    return { deleted };
   },
 
   // ─── Versioned drafts (SKY-10 upgrade of MYT-198) ───
@@ -1294,6 +1325,12 @@ const handlers: IpcHandlers = {
     });
     return { saved: true };
   },
+
+  // SKY-154
+  [IPC_CHANNELS.GOALS_LOG_WORDS]: (payload: GoalsLogWordsPayload) => { logWords(payload.date, payload.wordsAdded); return { ok: true as const }; },
+  [IPC_CHANNELS.GOALS_GET_STATS]: () => { const today = new Date().toISOString().slice(0, 10); return getWritingStats(today); },
+  [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => { setDailyGoal(payload.dailyGoal); return { ok: true as const }; },
+  [IPC_CHANNELS.GOALS_RESET_STREAK]: () => { const today = new Date().toISOString().slice(0, 10); resetStreak(today); return { ok: true as const }; },
 
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
     const t0 = Date.now();
@@ -1929,6 +1966,16 @@ const handlers: IpcHandlers = {
       language: payload.metadata?.language,
       chapters,
     });
+    // SKY-157: pre-export snapshot for every scene in the story
+    const { snapshots: retention } = loadAppSettings();
+    for (const ch of story.chapters) {
+      for (const sc of ch.scenes) {
+        try {
+          const prose = readSceneFile(getVaultRoot(), sc.path).prose;
+          saveSnapshot(getVaultRoot(), sc.id, prose, retention, 'Pre-export snapshot');
+        } catch { /* missing scene — skip */ }
+      }
+    }
     writeFileAtomic(filePath, buffer);
     return { path: filePath, cancelled: false };
   },
@@ -2012,6 +2059,13 @@ const handlers: IpcHandlers = {
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
 
     const buffer = await buildDocx({ title: docxTitle, chapters: docxChapters });
+    // SKY-157: pre-export snapshot for every scene being exported
+    const { snapshots: retentionDocx } = loadAppSettings();
+    for (const ch of docxChapters) {
+      for (const sc of ch.scenes) {
+        if (sc.prose) saveSnapshot(getVaultRoot(), sc.id, sc.prose, retentionDocx, 'Pre-export snapshot');
+      }
+    }
     writeFileAtomic(result.filePath, buffer);
     return { path: result.filePath, cancelled: false };
   },

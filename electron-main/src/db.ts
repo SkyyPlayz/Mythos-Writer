@@ -289,6 +289,16 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 11');
   }
+
+  if (currentVersion < 12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS writing_log (
+        log_date     TEXT NOT NULL PRIMARY KEY,
+        words_added  INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.exec('PRAGMA user_version = 12');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───

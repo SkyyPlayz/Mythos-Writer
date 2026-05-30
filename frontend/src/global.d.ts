@@ -7,6 +7,7 @@ interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  label?: string;
 }
 
 // SKY-10 — Per-scene versioned drafts
@@ -255,6 +256,8 @@ interface AppSettings {
     scrollTop: number;
     cursorLine: number;
   };
+  /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
+  seenTips?: Record<string, boolean>;
 }
 
 interface GenerationLogRow {
@@ -323,11 +326,13 @@ interface Window {
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;
 
     // Versioning — per-scene snapshots
-    snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotSave: (sceneId: string, content: string, label?: string) => Promise<SceneSnapshot>;
     snapshotSaveSync: (sceneId: string, content: string) => void;
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
+    snapshotDelete: (sceneId: string, snapshotId: string) => Promise<{ deleted: boolean }>;
+    snapshotDeleteAll: (sceneId?: string) => Promise<{ deleted: number }>;
 
     // SKY-10 — Per-scene versioned drafts
     versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
@@ -589,6 +594,10 @@ interface Window {
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
+    goalsGetStats: () => Promise<{ todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: Array<{ date: string; words: number }>; }>;
+    goalsLogWords: (date: string, wordsAdded: number) => Promise<{ ok: boolean }>;
+    goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
+    goalsResetStreak: () => Promise<{ ok: boolean }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

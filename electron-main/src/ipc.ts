@@ -71,6 +71,8 @@ export const IPC_CHANNELS = {
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
+  SNAPSHOT_DELETE: 'snapshot:delete',
+  SNAPSHOT_DELETE_ALL: 'snapshot:delete-all',
 
   // Versioned drafts — Phase 2 (MYT-198), SKY-10 upgrade
   VERSION_LIST: 'version:list',
@@ -281,6 +283,12 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
+
+  // SKY-154: Writing Goals & Progress Dashboard
+  GOALS_LOG_WORDS: 'goals:logWords',
+  GOALS_GET_STATS: 'goals:getStats',
+  GOALS_SET_GOAL: 'goals:setGoal',
+  GOALS_RESET_STREAK: 'goals:resetStreak',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -366,6 +374,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
   [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
   [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => SnapshotDeleteResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => SnapshotDeleteAllResponse;
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
@@ -782,11 +792,15 @@ export interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  /** Human-readable name set on manual saves or special triggers (e.g. "Pre-export snapshot"). */
+  label?: string;
 }
 
 export interface SnapshotSavePayload {
   sceneId: string;
   content: string;
+  /** Optional label for the snapshot; auto-saves leave this unset. */
+  label?: string;
 }
 
 export interface SnapshotListPayload {
@@ -815,6 +829,24 @@ export interface SnapshotRestorePayload {
 export interface SnapshotRestoreResponse {
   restored: SceneSnapshot;
   preRestoreSnapshot: SceneSnapshot;
+}
+
+export interface SnapshotDeletePayload {
+  sceneId: string;
+  snapshotId: string;
+}
+
+export interface SnapshotDeleteResponse {
+  deleted: boolean;
+}
+
+export interface SnapshotDeleteAllPayload {
+  /** When provided, deletes all for that scene. Omit to delete all across the vault. */
+  sceneId?: string;
+}
+
+export interface SnapshotDeleteAllResponse {
+  deleted: number;
 }
 
 // ─── Versioned drafts types (SKY-10 upgrade of MYT-198) ───
@@ -2269,3 +2301,12 @@ export interface TemplateSaveAsResponse {
   ok: true;
   id: string;
 }
+
+// SKY-154 types
+export interface GoalsLogWordsPayload { date: string; wordsAdded: number; }
+export type GoalsLogWordsResponse = { ok: true };
+export interface HeatmapEntry { date: string; words: number; }
+export interface GoalsGetStatsResponse { todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: HeatmapEntry[]; }
+export interface GoalsSetGoalPayload { dailyGoal: number; }
+export type GoalsSetGoalResponse = { ok: true };
+export type GoalsResetStreakResponse = { ok: true };
