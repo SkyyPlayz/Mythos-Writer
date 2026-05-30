@@ -19,6 +19,7 @@ import os from 'os';
 import { spawn } from 'child_process';
 import type { AppSettings, SttSettings, TtsSettings, VoiceTranscribePayload, VoiceTranscribeResponse } from './ipc.js';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
+import { checkSpawnPath, MAX_STT_AUDIO_BYTES, MAX_TTS_TEXT_BYTES } from './voiceGate.js';
 
 // ─── Channel names ──────────────────────────────────────────────────────────
 
@@ -333,6 +334,14 @@ export function registerVoiceHandlers(
       return { error: 'voice:transcribe requires non-empty audio data' };
     }
 
+    // MYT-788: cap renderer-supplied audio so it cannot blow up the host with
+    // arbitrarily large temp-file writes before spawn.
+    if (audioBuf.length > MAX_STT_AUDIO_BYTES) {
+      return {
+        error: `voice:transcribe audio exceeds limit (${audioBuf.length} > ${MAX_STT_AUDIO_BYTES} bytes)`,
+      };
+    }
+
     try {
       return await transcribeAudio(audioBuf, payload.mimeType ?? 'audio/webm', sttSettings);
     } catch (err) {
@@ -355,12 +364,22 @@ export function registerVoiceHandlers(
       return { error: 'TTS is not enabled in settings (tts.enabled = false)' };
     }
 
+    // MYT-788: cap renderer-supplied text so it cannot blow up the host with
+    // an unbounded write to the child's stdin.
+    const text = payload?.text ?? '';
+    const textBytes = Buffer.byteLength(text, 'utf8');
+    if (textBytes > MAX_TTS_TEXT_BYTES) {
+      return {
+        error: `voice:speak text exceeds limit (${textBytes} > ${MAX_TTS_TEXT_BYTES} bytes)`,
+      };
+    }
+
     const speakId = crypto.randomUUID();
     const abortController = new AbortController();
     activeSpeakSessions.set(speakId, abortController);
 
     const voiceId = payload?.voiceId ?? ttsSettings.voiceId;
-    speakAsync(speakId, payload?.text ?? '', voiceId, ttsSettings, getSender, abortController.signal)
+    speakAsync(speakId, text, voiceId, ttsSettings, getSender, abortController.signal)
       .finally(() => activeSpeakSessions.delete(speakId));
 
     return { speakId } satisfies VoiceSpeakResponse;
@@ -413,9 +432,15 @@ export async function transcribeAudio(
   if (provider === 'local' || provider === 'auto') {
     const binPath = settings.localBinaryPath;
     if (binPath && fs.existsSync(binPath)) {
-      return transcribeLocal(binPath, audio, mimeType);
-    }
-    if (provider === 'local') {
+      const gate = checkSpawnPath(binPath);
+      if (gate.ok) {
+        return transcribeLocal(gate.realPath ?? binPath, audio, mimeType);
+      }
+      if (provider === 'local') {
+        throw new InvalidVoiceInputError(`Local STT refused: ${gate.error}`);
+      }
+      // provider === 'auto' falls through to cloud below.
+    } else if (provider === 'local') {
       throw new InvalidVoiceInputError(
         `Local STT binary not found at path: ${binPath ?? '(stt.localBinaryPath not configured)'}`,
       );
@@ -441,6 +466,8 @@ async function transcribeLocal(
   audio: Buffer,
   mimeType: string,
 ): Promise<VoiceTranscribeResponse> {
+  // Caller (transcribeAudio) is responsible for the MYT-788 trusted-set gate
+  // and passes in the resolved real-path of the binary.
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';
   const tmpFile = path.join(os.tmpdir(), `mythos-stt-${crypto.randomUUID()}.${ext}`);
 
@@ -541,11 +568,20 @@ async function speakAsync(
       const binPath = settings.localBinaryPath;
       const modelPath = settings.localModelPath;
       if (binPath && modelPath && fs.existsSync(binPath)) {
-        await speakWithPiper(binPath, modelPath, text, signal, sendChunk);
-        pushSpeakDone(getSender, speakId);
-        return;
-      }
-      if (provider === 'local') {
+        const binGate = checkSpawnPath(binPath);
+        const modelGate = checkSpawnPath(modelPath);
+        if (binGate.ok && modelGate.ok) {
+          await speakWithPiper(binGate.realPath ?? binPath, modelGate.realPath ?? modelPath, text, signal, sendChunk);
+          pushSpeakDone(getSender, speakId);
+          return;
+        }
+        if (provider === 'local') {
+          throw new InvalidVoiceInputError(
+            `Local TTS refused: ${!binGate.ok ? binGate.error : modelGate.error}`,
+          );
+        }
+        // provider === 'auto' falls through to cloud below.
+      } else if (provider === 'local') {
         throw new InvalidVoiceInputError(
           `Local TTS binary not found at path: ${binPath ?? '(tts.localBinaryPath not configured)'}`,
         );
@@ -590,6 +626,8 @@ async function speakWithPiper(
   signal: AbortSignal,
   onChunk: (chunk: Buffer) => void,
 ): Promise<void> {
+  // Caller (speakAsync) is responsible for the MYT-788 trusted-set gate and
+  // passes in the resolved real-paths of the binary and model.
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(binaryPath, ['--model', modelPath, '--output-raw'], {
       timeout: 60_000,

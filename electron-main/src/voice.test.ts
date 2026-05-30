@@ -610,6 +610,123 @@ describe('voice:speak handler', () => {
   });
 });
 
+// ─── Voice spawn gate integration (MYT-788) ──────────────────────────────────
+//
+// Acceptance criterion: a renderer that gets an arbitrary local binary path
+// into the settings file (bypassing the settings:set gate) must still not be
+// able to trigger spawn. The transcribeAudio / speakAsync helpers consult the
+// trusted-set before reaching spawn.
+
+describe('voice spawn gate (MYT-788)', () => {
+  let tmpRoot: string;
+
+  beforeEach(async () => {
+    handleMap.clear();
+    onMap.clear();
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-voice-spawn-'));
+    const { __resetVoiceGate } = await import('./voiceGate.js');
+    __resetVoiceGate();
+  });
+
+  it('voice:transcribe refuses to spawn when binary exists but is not trusted', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const bin = path.join(tmpRoot, 'attacker-shell');
+    fs.writeFileSync(bin, '#!/bin/sh\necho pwned\n', { mode: 0o755 });
+
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, { enabled: true, provider: 'local', localBinaryPath: bin }),
+    );
+    const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as { error: string };
+    // IPC sanitizes raw spawn-gate errors to a fixed category message (INVALID_INPUT).
+    expect(result.error).toBe('Voice request was invalid — check the input and settings.');
+  });
+
+  it('voice:speak refuses to spawn when binary exists but is not trusted', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const bin = path.join(tmpRoot, 'attacker-shell');
+    const model = path.join(tmpRoot, 'voice.onnx');
+    fs.writeFileSync(bin, '#!/bin/sh\necho pwned\n', { mode: 0o755 });
+    fs.writeFileSync(model, '');
+
+    const errors: Array<{ speakId: string; error: string }> = [];
+    const mockSender = {
+      send: (ch: string, data: unknown) => {
+        if (ch === 'voice:speak:error') errors.push(data as { speakId: string; error: string });
+      },
+      isDestroyed: () => false,
+    };
+
+    registerVoiceHandlers(
+      () => mockSender,
+      () => makeSettings(undefined, undefined, { enabled: true, provider: 'local', localBinaryPath: bin, localModelPath: model }),
+    );
+    const { speakId } = (await invokeHandle('voice:speak', { text: 'hi' })) as { speakId: string };
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].speakId).toBe(speakId);
+    // IPC sanitizes raw spawn-gate errors to a fixed category message (INVALID_INPUT).
+    expect(errors[0].error).toBe('Voice request was invalid — check the input and settings.');
+  });
+
+  it('voice:speak rejects text exceeding the size cap before spawn', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const { MAX_TTS_TEXT_BYTES } = await import('./voiceGate.js');
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, undefined, { enabled: true, provider: 'cloud', cloudEndpoint: 'http://tts', cloudApiKey: 'k' }),
+    );
+    const giant = 'a'.repeat(MAX_TTS_TEXT_BYTES + 1);
+    const result = (await invokeHandle('voice:speak', { text: giant })) as { error: string };
+    expect(result.error).toMatch(/exceeds limit/i);
+    // Did not reach the cloud path either.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('voice:transcribe rejects audio exceeding the size cap', async () => {
+    const { MAX_STT_AUDIO_BYTES } = await import('./voiceGate.js');
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, { enabled: true, provider: 'cloud', cloudEndpoint: 'http://e', cloudApiKey: 'k' }),
+    );
+    // Use a Buffer just past the cap. allocUnsafe is cheap and we never read.
+    const giant = Buffer.allocUnsafe(MAX_STT_AUDIO_BYTES + 1);
+    const result = (await invokeHandle('voice:transcribe', { audio: giant, mimeType: 'audio/wav' })) as { error: string };
+    expect(result.error).toMatch(/exceeds limit/i);
+  });
+
+  it('voice:transcribe falls through to cloud when local binary refuses gate (provider=auto)', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const bin = path.join(tmpRoot, 'attacker-shell');
+    fs.writeFileSync(bin, '#!/bin/sh\n', { mode: 0o755 });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'cloud-fallback' }),
+    } as Response);
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, {
+        enabled: true,
+        provider: 'auto',
+        localBinaryPath: bin,
+        cloudEndpoint: 'http://cloud',
+        cloudApiKey: 'k',
+      }),
+    );
+    const result = (await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' })) as { text: string };
+    expect(result.text).toBe('cloud-fallback');
+    fetchSpy.mockRestore();
+  });
+});
+
 // ─── MYT-793: error categorization unit tests ────────────────────────────────
 
 describe('categorizeVoiceError', () => {
@@ -776,6 +893,7 @@ describe('voice error scrubbing (MYT-793 acceptance)', () => {
     expect(userMsg).not.toMatch(/trace_id/);
   });
 });
+
 
 // ─── Integration: local binary (gated on WHISPER_BIN env var) ────────────────
 

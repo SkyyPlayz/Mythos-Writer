@@ -711,6 +711,51 @@ describe('realSafePath — traversal & absolute-path hardening (MYT-672 / MYT-64
   });
 });
 
+// MYT-46: writeVaultFileAtomic must allow create-on-write semantics for nested
+// paths whose parent chain resolves cleanly under the vault root. The path-
+// traversal hardening (MYT-774) introduced safeVaultJoin; these tests ensure
+// the writeMode path continues to permit deeply-nested new paths.
+describe('writeVaultFileAtomic — nested create-on-write semantics (MYT-46 regression guard)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-myt46-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates a file in a 3-level nested path when no parent dirs exist', () => {
+    const relPath = 'level1/level2/level3/scene.md';
+    expect(() => writeVaultFileAtomic(tmpDir, relPath, '# Scene')).not.toThrow();
+    expect(fs.readFileSync(path.join(tmpDir, relPath), 'utf-8')).toBe('# Scene');
+  });
+
+  it('creates a file in a 1-level nested path when parent dir does not exist', () => {
+    const relPath = 'NewChapter/scene.md';
+    expect(() => writeVaultFileAtomic(tmpDir, relPath, 'content')).not.toThrow();
+    expect(fs.existsSync(path.join(tmpDir, relPath))).toBe(true);
+  });
+
+  it('creates a file in a deeply nested path while the vault is empty (no subdirs)', () => {
+    // Specifically tests the case from MYT-46: first write into a brand-new vault
+    // where every intermediate directory is absent.
+    const relPath = 'Manuscript/my-story/chapter-one/scene-1.md';
+    expect(() => writeVaultFileAtomic(tmpDir, relPath, 'Once upon a time')).not.toThrow();
+    const written = fs.readFileSync(path.join(tmpDir, relPath), 'utf-8');
+    expect(written).toBe('Once upon a time');
+  });
+
+  it('still rejects "../" traversal on nested new paths (MYT-774 regression guard)', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '../escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+
+  it('still rejects absolute paths on nested new paths (MYT-774 regression guard)', () => {
+    expect(() => writeVaultFileAtomic(tmpDir, '/tmp/escape.md', 'x')).toThrow(/Path traversal denied/);
+  });
+});
+
 describe('resolveEpubExportPath — export:epub targetPath containment (MYT-675)', () => {
   let tmpDir: string;
 

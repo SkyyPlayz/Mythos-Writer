@@ -377,7 +377,7 @@
   background: #6d28d9;
 }
 
-/* ── Liquid Glass appearance controls (MYT-613) ─────────────────────────── */
+/* ── Liquid Neon appearance controls (MYT-613) ──────────────────────────── */
 
 /* Background preview */
 .lg-bg-field {
@@ -1051,4 +1051,48 @@
 
 .settings-persona-error {
   color: #f87171;
+}
+
+/* ── Telemetry list (MYT-779) ── */
+.settings-telemetry-list {
+  margin: 6px 0 8px 0;
+  padding-left: 18px;
+}
+
+.settings-telemetry-item {
+  font-size: 0.78rem;
+  color: var(--text-muted, rgba(255,255,255,0.6));
+  margin-bottom: 3px;
+}
+
+/* ── Provider test connection status (MYT-779) ── */
+.settings-test-ok {
+  font-size: 0.78rem;
+  color: #4ade80;
+  margin-left: 8px;
+}
+
+.settings-test-error {
+  font-size: 0.78rem;
+  color: #f87171;
+  margin-left: 8px;
+}
+
+.settings-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-body, rgba(255,255,255,0.85));
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.settings-btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.settings-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -78,11 +78,14 @@ test('TC-SK10-01: edit → save → rollback restores prior text and snapshots t
     const sceneFile = path.join(vaultDir, 'My First Story', 'Manuscript', '01 - Opening', '01 - Scene One.md');
     expect(fs.existsSync(sceneFile)).toBe(true);
 
-    // Resolve sceneId from the manifest so the IPC calls below operate on the right entity.
-    const manifest = JSON.parse(fs.readFileSync(path.join(vaultDir, 'manifest.json'), 'utf-8')) as {
-      stories: Array<{ chapters: Array<{ scenes: Array<{ id: string }> }> }>;
+    // Resolve sceneId via IPC: vault:manifest:read triggers reindexVault, which
+    // populates manifest.scenes (the flat orphan list) from the scaffolded files.
+    // The nested stories[].chapters[].scenes[] structure is NOT populated on a
+    // fresh vault — use manifest.scenes[0] which is where new scene files land.
+    const manifest = await page.evaluate(() => (window as never as { api: { readManifest: () => Promise<unknown> } }).api.readManifest()) as {
+      scenes: Array<{ id: string }>;
     };
-    const sceneId = manifest.stories[0].chapters[0].scenes[0].id;
+    const sceneId = manifest.scenes[0].id;
 
     // Drive the renderer-facing IPC bridge directly via `window.api`.
     const saveOne = (prose: string): Promise<unknown> =>

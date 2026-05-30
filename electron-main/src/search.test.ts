@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { buildFullIndex, indexDocument, deleteDocumentFromIndex, searchVault } from './search.js';
 import type { Manifest } from './ipc.js';
 
 // ─── In-memory DB with migration 7 schema ───
 
-function makeDb(): Database.Database {
-  const db = new Database(':memory:');
-  db.pragma('journal_mode = WAL');
+function makeDb(): DatabaseSync {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA journal_mode = WAL');
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS fts_index USING fts5(
       doc_id    UNINDEXED,
@@ -41,7 +41,7 @@ function emptyManifest(): Manifest {
 }
 
 describe('search subsystem', () => {
-  let db: Database.Database;
+  let db: DatabaseSync;
 
   beforeEach(() => {
     db = makeDb();
@@ -145,18 +145,17 @@ describe('search subsystem', () => {
     const insert = db.prepare(
       `INSERT INTO fts_index (doc_id, vault, kind, title, body) VALUES (?, ?, ?, ?, ?)`
     );
-    const tx = db.transaction(() => {
-      for (let i = 0; i < 500; i++) {
-        insert.run(
-          `doc-${i}`,
-          i % 2 === 0 ? 'story' : 'notes',
-          'scene',
-          `Scene Title ${i}`,
-          `This is the body text for document ${i}. It contains various words and phrases.`,
-        );
-      }
-    });
-    tx();
+    db.exec('BEGIN');
+    for (let i = 0; i < 500; i++) {
+      insert.run(
+        `doc-${i}`,
+        i % 2 === 0 ? 'story' : 'notes',
+        'scene',
+        `Scene Title ${i}`,
+        `This is the body text for document ${i}. It contains various words and phrases.`,
+      );
+    }
+    db.exec('COMMIT');
 
     const t0 = Date.now();
     const results = searchVault(db, 'body text', 'both', 20);
