@@ -283,6 +283,21 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
+
+  // SKY-55: per-scene notes
+  NOTES_GET: 'notes:get',
+  NOTES_SET: 'notes:set',
+
+  // SKY-158: Tag & cross-reference system
+  TAGS_LIST: 'tags:list',
+  TAGS_UPSERT: 'tags:upsert',
+  TAGS_DELETE: 'tags:delete',
+  TAGS_RENAME: 'tags:rename',
+  TAGS_FOR_ITEM: 'tags:forItem',
+  TAGS_SET_FOR_ITEM: 'tags:setForItem',
+  TAGS_ITEMS_FOR_TAG: 'tags:itemsForTag',
+  TAGS_BULK_APPLY: 'tags:bulkApply',
+  SCENE_SET_TAGS: 'scene:setTags',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -469,6 +484,21 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
   [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse>;
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse;
+
+  // SKY-55: per-scene notes
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
+
+  // SKY-158: Tag & cross-reference system
+  [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;
+  [IPC_CHANNELS.TAGS_UPSERT]: (payload: TagsUpsertPayload) => TagsUpsertResponse;
+  [IPC_CHANNELS.TAGS_DELETE]: (payload: TagsDeletePayload) => TagsDeleteResponse;
+  [IPC_CHANNELS.TAGS_RENAME]: (payload: TagsRenamePayload) => TagsRenameResponse;
+  [IPC_CHANNELS.TAGS_FOR_ITEM]: (payload: TagsForItemPayload) => TagsForItemResponse;
+  [IPC_CHANNELS.TAGS_SET_FOR_ITEM]: (payload: TagsSetForItemPayload) => TagsSetForItemResponse;
+  [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => TagsItemsForTagResponse;
+  [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => TagsBulkApplyResponse;
+  [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => SceneSetTagsResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1676,6 +1706,7 @@ export interface SearchQueryPayload {
   query: string;
   scope: SearchScope;
   limit?: number;
+  filterTags?: string[];
 }
 
 export interface SearchResultItem {
@@ -2295,3 +2326,42 @@ export interface TemplateSaveAsResponse {
   ok: true;
   id: string;
 }
+
+// ─── SKY-55: per-scene notes ───
+export interface NotesGetPayload { sceneId: string }
+export interface NotesGetResponse { content: string }
+export interface NotesSetPayload { sceneId: string; content: string }
+export interface NotesSetResponse { saved: boolean }
+
+// ─── Tag types (SKY-158) ───
+
+export interface TagEntry {
+  id: string;
+  name: string;
+  color?: string | null;
+  createdAt: string;
+}
+
+export interface TagsListResponse { tags: TagEntry[] }
+export interface TagsUpsertPayload { name: string; color?: string | null }
+export interface TagsUpsertResponse { tag: TagEntry }
+export interface TagsDeletePayload { id: string }
+export interface TagsDeleteResponse { deleted: boolean }
+export interface TagsRenamePayload { id: string; name: string }
+export interface TagsRenameResponse { tag: TagEntry }
+export interface TagsForItemPayload { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsForItemResponse { tags: string[] }
+export interface TagsSetForItemPayload { itemId: string; itemKind: 'scene' | 'entity'; tags: string[] }
+export interface TagsSetForItemResponse { tags: string[] }
+export interface TagsItemsForTagPayload { tagName: string }
+export interface TagsItemsForTagItem { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsItemsForTagResponse { items: TagsItemsForTagItem[] }
+export interface TagsBulkApplyPayload {
+  itemIds: string[];
+  itemKind: 'scene' | 'entity';
+  addTags?: string[];
+  removeTags?: string[];
+}
+export interface TagsBulkApplyResponse { updated: number }
+export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
+export interface SceneSetTagsResponse { scene: SceneEntry }

@@ -16,6 +16,7 @@ interface SearchResultItem {
 interface Props {
   onNavigate: (result: SearchResultItem) => void;
   onClose: () => void;
+  initialTagFilter?: string;
 }
 
 const KIND_ICONS: Record<string, string> = {
@@ -33,12 +34,13 @@ const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
   { id: 'notes', label: 'Notes Vault' },
 ];
 
-export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
+export default function GlobalSearchPanel({ onNavigate, onClose, initialTagFilter }: Props) {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<SearchScope>('both');
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -46,6 +48,10 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (initialTagFilter) setActiveTagFilters([initialTagFilter]);
+  }, [initialTagFilter]);
 
   // Capture phase so Escape fires before editor keybindings swallow it
   useEffect(() => {
@@ -59,15 +65,16 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     return () => document.removeEventListener('keydown', handler, true);
   }, [onClose]);
 
-  const runSearch = useCallback(async (q: string, s: SearchScope) => {
-    if (!q.trim()) {
+  const runSearch = useCallback(async (q: string, s: SearchScope, tagFilters?: string[]) => {
+    const filters = tagFilters ?? activeTagFilters;
+    if (!q.trim() && !filters.length) {
       setResults([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const resp = await window.api.searchVault(q, s, 20) as { results?: SearchResultItem[] };
+      const resp = await window.api.searchVault(q, s, 20, filters.length ? filters : undefined) as { results?: SearchResultItem[] };
       if (resp?.results) {
         setResults(resp.results);
         setActiveIdx(-1);
@@ -77,7 +84,7 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeTagFilters]);
 
   const handleQueryChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,6 +151,21 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
         aria-modal="true"
         aria-label="Search vault"
       >
+        {activeTagFilters.length > 0 && (
+          <div className="gsp-tag-filters">
+            {activeTagFilters.map((t) => (
+              <span key={t} className="gsp-tag-filter">
+                #{t}
+                <button
+                  className="gsp-tag-filter-remove"
+                  onClick={() => setActiveTagFilters((fs) => fs.filter((f) => f !== t))}
+                  aria-label={`Remove tag filter ${t}`}
+                >×</button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="gsp-header">
           <span className="gsp-icon" aria-hidden="true">🔍</span>
           <input

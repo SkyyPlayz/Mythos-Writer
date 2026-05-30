@@ -186,3 +186,19 @@
 .scene-snapshot-dialog-actions .btn-save:hover {
   background: var(--accent-hover);
 }
+
+.scene-tags-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.1));
+}
+
+.scene-tags-label {
+  font-size: 12px;
+  color: var(--text-muted, #8c8fa8);
+  white-space: nowrap;
+  padding-top: 6px;
+  min-width: 32px;
+}
