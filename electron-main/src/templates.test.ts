@@ -453,4 +453,3 @@ describe('getNoteTemplate', () => {
     expect(getNoteTemplate('note:does-not-exist')).toBeUndefined();
   });
 });
-
