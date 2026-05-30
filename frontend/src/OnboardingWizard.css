@@ -824,3 +824,28 @@
     opacity: 0.5;
   }
 }
+
+/* ─── SKY-152: Project wizard ──────────────────────────────────────────────── */
+.onboarding-primary-cta { display: flex; justify-content: center; margin: 1.5rem 0 0.5rem; }
+.btn-primary--hero { font-size: 1.1rem; padding: 0.875rem 2rem; border-radius: var(--radius-md, 16px); }
+.onboarding-other-options { width: 100%; max-width: 1100px; }
+.onboarding-other-options__toggle { font-size: 0.875rem; opacity: 0.65; cursor: pointer; text-align: center; padding: 0.5rem; user-select: none; list-style: none; }
+.onboarding-other-options__toggle::-webkit-details-marker { display: none; }
+.onboarding-other-options__toggle::marker { display: none; }
+.onboarding-other-options__toggle:hover { opacity: 1; }
+.onboarding-other-options[open] .onboarding-other-options__toggle { margin-bottom: 1rem; }
+.onboarding-field { display: flex; flex-direction: column; gap: 0.5rem; }
+.genre-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.genre-chip { padding: 0.4rem 0.875rem; border-radius: var(--radius-full, 999px); border: 1px solid var(--color-border, #45475a); background: transparent; color: var(--color-text, #cdd6f4); font-family: inherit; font-size: 0.875rem; cursor: pointer; transition: border-color 120ms ease, background 120ms ease; }
+.genre-chip:hover { border-color: var(--color-accent, #89b4fa); }
+.genre-chip:focus-visible { outline: 2px solid var(--color-accent, #89b4fa); outline-offset: 2px; }
+.genre-chip--selected { border-color: var(--color-accent, #89b4fa); background: rgba(137,180,250,0.12); color: var(--color-accent, #89b4fa); }
+.goal-options { display: flex; flex-direction: column; gap: 0.625rem; }
+.goal-option { display: flex; align-items: center; gap: 0.875rem; padding: 0.875rem 1rem; border-radius: var(--radius-md, 16px); border: 1px solid var(--color-border, #45475a); background: var(--color-surface, #1e1e2e); color: var(--color-text, #cdd6f4); font-family: inherit; cursor: pointer; text-align: left; transition: border-color 120ms ease, background 120ms ease; }
+.goal-option:hover { border-color: var(--color-accent, #89b4fa); }
+.goal-option:focus-visible { outline: 2px solid var(--color-accent, #89b4fa); outline-offset: 2px; }
+.goal-option--selected { border-color: var(--color-accent, #89b4fa); background: rgba(137,180,250,0.08); }
+.goal-option__icon { font-size: 1.5rem; flex-shrink: 0; }
+.goal-option__label { font-weight: 600; font-size: 0.95rem; flex: 1; }
+.goal-option__desc { font-size: 0.825rem; opacity: 0.65; white-space: nowrap; }
+@media (max-width: 480px) { .goal-option__desc { display: none; } }
