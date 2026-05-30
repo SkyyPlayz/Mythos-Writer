@@ -17,10 +17,10 @@ import {
   checkCallBudget,
   enforceSuggestionBudget,
 } from './budget.js';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 let tmpDir: string;
-let db: Database.Database;
+let db: DatabaseSync;
 
 function makeGenLog(agent: string, tokens_in: number, createdAt: string, id?: string) {
   insertGenerationLog({

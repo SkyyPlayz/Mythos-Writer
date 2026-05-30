@@ -95,15 +95,18 @@ describe('migrations', () => {
 
   it('sets user_version to latest on first open', () => {
     const db = openDb(tmpDir);
-    expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(6);
+    const row = db.prepare('PRAGMA user_version').get() as { user_version: number } | undefined;
+    expect(row?.user_version ?? 0).toBeGreaterThanOrEqual(6);
   });
 
   it('migration is idempotent — re-open keeps user_version stable', () => {
     const db1 = openDb(tmpDir);
-    const v1 = db1.pragma('user_version', { simple: true }) as number;
+    const r1 = db1.prepare('PRAGMA user_version').get() as { user_version: number } | undefined;
+    const v1 = r1?.user_version ?? 0;
     closeDb();
     const db2 = openDb(tmpDir);
-    expect(db2.pragma('user_version', { simple: true })).toBe(v1);
+    const r2 = db2.prepare('PRAGMA user_version').get() as { user_version: number } | undefined;
+    expect(r2?.user_version ?? 0).toBe(v1);
     expect(listSuggestions()).toEqual([]);
   });
 });

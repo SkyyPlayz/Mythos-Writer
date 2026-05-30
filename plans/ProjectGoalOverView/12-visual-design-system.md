@@ -1,18 +1,18 @@
-# Visual Design System — Liquid Glass Dark Neon
+# Visual Design System — Liquid Neon
 
-> **CEO decision (MYT-516):** Mythos Writer's official visual identity is **Liquid Glass Dark Neon** — translucent frosted-glass surfaces with restrained neon accents, applied consistently across every surface of the app.
+> **CEO decision (MYT-516):** Mythos Writer's official visual identity is **Liquid Neon** — translucent frosted-glass surfaces with restrained neon accents, applied consistently across every surface of the app.
 
 ## Board decisions (MYT-516 follow-up)
 
 The board confirmed three points after reviewing the direction:
 
-- **Dark-only.** Liquid Glass Dark Neon is the **single app theme** — the previous light/system theme options are dropped. The WCAG **high-contrast** accessibility theme is retained (it composes with this theme; see [11-cross-cutting.md](11-cross-cutting.md#accessibility)).
+- **Dark-only.** Liquid Neon is the **single app theme** — the previous light/system theme options are dropped. The WCAG **high-contrast** accessibility theme is retained (it composes with this theme; see [11-cross-cutting.md](11-cross-cutting.md#accessibility)).
 - **Timing: phased (foundation now, polish later).** The board approved starting the **foundation now** — the design-system spec and a dark-only **token layer** (CSS variables) that in-flight components adopt as they're built, avoiding a costly second restyle pass. The **full glass/neon visual polish** and the **Softness↔Contrast slider** are deferred to the **next milestone after current core work lands** (see [10-releases-and-roadmap.md](10-releases-and-roadmap.md)). Neither phase blocks in-flight MVP work.
 - **Dedicated designer.** A **UX designer** (already on the roster) owns the design-system spec; engineering implements.
 
 This document is the product-level direction. The full design brief lives in
 [`Ui-Disign-Goal`](Ui-Disign-Goal); annotated reference images live in
-[`Liduid-Glass-Dark-Neon- theme- exampels/`](<Liduid-Glass-Dark-Neon- theme- exampels/Example photos.md>).
+[`Liquid-Neon-theme-examples/`](<Liquid-Neon-theme-examples/Example photos.md>).
 The detailed token set, component specs, and implementation are delegated (see **Workstream & ownership** below).
 
 ## Design intent
@@ -53,7 +53,7 @@ Requirements:
 ## Acceptance criteria (definition of done for the workstream)
 
 1. A documented token set (color, radii, blur, shadow, motion curves) implementing the palette in the brief.
-2. The Liquid Glass Dark Neon language applied uniformly to all primary surfaces.
+2. The Liquid Neon language applied uniformly to all primary surfaces.
 3. The Softness↔Contrast gradient slider, wired to tokens, persisted, contrast-floor-safe.
 4. Reduced-motion and high-contrast paths verified.
 5. Side-by-side review against the reference images, approved by UX and the board.
