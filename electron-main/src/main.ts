@@ -43,6 +43,8 @@ import {
   type SnapshotListPayload,
   type SnapshotGetPayload,
   type SnapshotRestorePayload,
+  type SnapshotDeletePayload,
+  type SnapshotDeleteAllPayload,
   type EntityCreatePayload,
   type EntityReadPayload,
   type EntityUpdatePayload,
