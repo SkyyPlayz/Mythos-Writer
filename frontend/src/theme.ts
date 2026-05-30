@@ -229,6 +229,11 @@ export function applyLiquidNeonTokens(
     root.style.setProperty('--neon-cyan', borderDef.accent);
   }
 
+  // Neon color customization (SKY-127) — user-configurable RGB values for window border
+  if (p.neonColorCyan) root.style.setProperty('--neon-cyan', p.neonColorCyan);
+  if (p.neonColorViolet) root.style.setProperty('--neon-violet', p.neonColorViolet);
+  if (p.neonColorMagenta) root.style.setProperty('--neon-magenta', p.neonColorMagenta);
+
   // Frame width: neonFrameWidth 0–100 → rest 0–2px, hover 1–4px
   if (p.neonFrameWidth !== undefined) {
     const t = p.neonFrameWidth / 100;
