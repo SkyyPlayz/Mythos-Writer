@@ -510,6 +510,13 @@ contextBridge.exposeInMainWorld('api', {
   tagsBulkApply: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) =>
     ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
   sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
+  // SKY-169: Entity relationships
+  entityRelationshipsList: (entityId: string) =>
+    ipcRenderer.invoke('entityRelationships:list', { entityId }),
+  entityRelationshipsCreate: (fromId: string, toId: string, label: string) =>
+    ipcRenderer.invoke('entityRelationships:create', { fromId, toId, label }),
+  entityRelationshipsDelete: (relationshipId: string) =>
+    ipcRenderer.invoke('entityRelationships:delete', { relationshipId }),
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

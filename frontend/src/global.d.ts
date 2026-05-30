@@ -76,6 +76,16 @@ interface EntityBacklinkScene {
   snippet: string;
 }
 
+
+interface EntityRelationship {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+  /** Direction relative to the queried entity: outgoing = this entity is the source. */
+  direction: 'outgoing' | 'incoming';
+  createdAt: string;
+}
 interface VaultCheckInconsistency {
   id: string;
   entityName: string;
@@ -348,6 +358,11 @@ interface Window {
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+    // SKY-169: Entity relationships
+    entityRelationshipsList: (entityId: string) => Promise<EntityRelationship[]>;
+    entityRelationshipsCreate: (fromId: string, toId: string, label: string) => Promise<EntityRelationship>;
+    entityRelationshipsDelete: (relationshipId: string) => Promise<void>;
+
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { buildFullIndex, indexDocument, deleteDocumentFromIndex, searchVault } from './search.js';
+import type { EntitySearchResult } from './search.js';
 import type { Manifest } from './ipc.js';
 
 // ─── In-memory DB with fts_index + entity_fts + entity_index schema ───
@@ -230,7 +231,7 @@ describe('search subsystem', () => {
     insertEntity(db, 'char-eira', 'character', 'Eira Moonshadow', '', '');
 
     const results = searchVault(db, 'Eira', 'notes');
-    const found = results.find((r) => r.docId === 'char-eira');
+    const found = results.find((r) => r.docId === 'char-eira') as EntitySearchResult | undefined;
     expect(found).toBeDefined();
     expect(found?.resultType).toBe('entity');
     expect(found?.entityId).toBe('char-eira');
@@ -245,7 +246,7 @@ describe('search subsystem', () => {
     insertEntity(db, 'loc-market', 'location', 'The Grand Bazaar', '', 'Famous trading post in the eastern quarter.');
 
     const results = searchVault(db, 'trading post', 'notes');
-    const found = results.find((r) => r.docId === 'loc-market');
+    const found = results.find((r) => r.docId === 'loc-market') as EntitySearchResult | undefined;
     expect(found).toBeDefined();
     expect(found?.resultType).toBe('entity');
     expect(found?.entityType).toBe('location');

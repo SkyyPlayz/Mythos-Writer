@@ -946,6 +946,34 @@ export function deleteEntityRelationship(id: string): void {
   getDb().prepare('DELETE FROM entity_relationships WHERE id = ?').run(id);
 }
 
+export interface DbEntityRelationshipAnnotated extends DbEntityRelationship {
+  direction: 'outgoing' | 'incoming';
+}
+
+/** List all relationships where entityId is either from or to, annotated with direction. */
+export function listEntityRelationshipsForEntity(entityId: string): DbEntityRelationshipAnnotated[] {
+  const db = getDb();
+  const outgoing = (db
+    .prepare('SELECT * FROM entity_relationships WHERE from_entity_id = ? ORDER BY created_at ASC')
+    .all(entityId) as unknown as DbEntityRelationship[])
+    .map(r => ({ ...r, direction: 'outgoing' as const }));
+  const incoming = (db
+    .prepare('SELECT * FROM entity_relationships WHERE to_entity_id = ? ORDER BY created_at ASC')
+    .all(entityId) as unknown as DbEntityRelationship[])
+    .map(r => ({ ...r, direction: 'incoming' as const }));
+  return [...outgoing, ...incoming];
+}
+
+export function getEntityRelationshipByTriplet(
+  fromId: string,
+  toId: string,
+  label: string,
+): DbEntityRelationship | undefined {
+  return getDb()
+    .prepare('SELECT * FROM entity_relationships WHERE from_entity_id = ? AND to_entity_id = ? AND label = ?')
+    .get(fromId, toId, label) as unknown as DbEntityRelationship | undefined;
+}
+
 // ─── Scene entity links ───
 
 export interface DbSceneEntityLink {
@@ -974,6 +1002,50 @@ export function listSceneEntityLinks(sceneId: string): DbSceneEntityLink[] {
 
 export function deleteSceneEntityLinks(sceneId: string): void {
   getDb().prepare('DELETE FROM scene_entity_links WHERE scene_id = ?').run(sceneId);
+}
+
+/** Upsert (INSERT OR IGNORE) and return the row. */
+export function upsertSceneEntityLink(l: DbSceneEntityLink): DbSceneEntityLink {
+  const db = getDb();
+  db.prepare(
+    `INSERT OR IGNORE INTO scene_entity_links (id, scene_id, entity_id, link_kind, created_at)
+     VALUES (@id, @scene_id, @entity_id, @link_kind, @created_at)`,
+  ).run(l as unknown as Record<string, SQLInputValue>);
+  return db
+    .prepare('SELECT * FROM scene_entity_links WHERE scene_id = ? AND entity_id = ? AND link_kind = ?')
+    .get(l.scene_id, l.entity_id, l.link_kind) as unknown as DbSceneEntityLink;
+}
+
+/** Delete a single specific link row. */
+export function deleteSpecificSceneEntityLink(
+  sceneId: string,
+  entityId: string,
+  linkKind: string,
+): void {
+  getDb()
+    .prepare('DELETE FROM scene_entity_links WHERE scene_id = ? AND entity_id = ? AND link_kind = ?')
+    .run(sceneId, entityId, linkKind);
+}
+
+/** Delete mention-kind links for a scene whose entity_id is NOT in keepEntityIds.
+ *  Used after SCENE_SAVE to prune stale @mention rows. */
+export function deleteStaleSceneMentions(sceneId: string, keepEntityIds: string[]): void {
+  const db = getDb();
+  if (keepEntityIds.length === 0) {
+    db.prepare("DELETE FROM scene_entity_links WHERE scene_id = ? AND link_kind = 'mention'").run(sceneId);
+    return;
+  }
+  const placeholders = keepEntityIds.map(() => '?').join(', ');
+  db.prepare(
+    `DELETE FROM scene_entity_links WHERE scene_id = ? AND link_kind = 'mention' AND entity_id NOT IN (${placeholders})`,
+  ).run(sceneId, ...keepEntityIds);
+}
+
+/** List all links where entity_id matches (for ENTITY_LINKED_SCENES). */
+export function listLinksForEntity(entityId: string): DbSceneEntityLink[] {
+  return getDb()
+    .prepare('SELECT * FROM scene_entity_links WHERE entity_id = ? ORDER BY created_at ASC')
+    .all(entityId) as unknown as DbSceneEntityLink[];
 }
 
 // ─── Entity FTS ───

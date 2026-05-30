@@ -289,3 +289,184 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ─── Relationships panel (SKY-174) ────────────────────────────────────────── */
+.entity-det-relationships {
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.entity-det-rel-body {
+  padding: 6px 0;
+}
+
+.entity-det-rel-empty-state {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  padding: 6px 12px;
+  font-style: italic;
+}
+
+.entity-det-rel-add-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--accent, #6366f1);
+  padding: 0;
+  font-style: normal;
+  text-decoration: underline;
+}
+
+.entity-det-rel-add-link:hover {
+  color: var(--accent-hover, #818cf8);
+}
+
+.entity-det-rel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entity-det-rel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+}
+
+.entity-det-rel-row:last-child {
+  border-bottom: none;
+}
+
+.entity-det-rel-desc {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.entity-det-rel-label {
+  color: var(--text-secondary, #aaa);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.entity-det-rel-arrow {
+  color: var(--text-muted, #666);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.entity-det-rel-arrow-in {
+  color: var(--accent, #6366f1);
+}
+
+.entity-det-rel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  background: var(--surface-alt, rgba(99, 102, 241, 0.12));
+  border: 1px solid var(--border, rgba(99, 102, 241, 0.25));
+  border-radius: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 160px;
+}
+
+.entity-det-rel-chip-icon {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.entity-det-rel-chip-name {
+  font-size: 11px;
+  color: var(--text-body, #e8eaf6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-det-rel-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #666);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+.entity-det-rel-delete:hover {
+  color: #f87171;
+}
+
+.entity-det-rel-add-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--accent, #6366f1);
+  padding: 5px 12px;
+  display: block;
+  width: 100%;
+  text-align: left;
+  transition: color 0.12s;
+}
+
+.entity-det-rel-add-btn:hover {
+  color: var(--accent-hover, #818cf8);
+}
+
+.entity-det-rel-form {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entity-det-rel-form-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.entity-det-rel-label-input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.entity-det-rel-entity-select {
+  flex: 1;
+  min-width: 120px;
+  background: var(--input-bg, #111);
+  border: 1px solid var(--border, #333);
+  border-radius: 5px;
+  color: var(--text, #eee);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.entity-det-rel-entity-select:focus {
+  border-color: var(--accent, #6366f1);
+}
+
+.entity-det-rel-form-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.entity-det-rel-form-error {
+  font-size: 11px;
+  color: #f87171;
+  padding: 4px 0;
+}

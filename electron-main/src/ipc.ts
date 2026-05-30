@@ -299,11 +299,10 @@ export const IPC_CHANNELS = {
   TAGS_BULK_APPLY: 'tags:bulkApply',
   SCENE_SET_TAGS: 'scene:setTags',
 
-  // SKY-170: Scene ↔ entity links + @mention parsing
-  SCENE_ENTITY_LINKS_LIST: 'sceneEntityLinks:list',
-  SCENE_ENTITY_LINKS_UPSERT: 'sceneEntityLinks:upsert',
-  SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
-  ENTITY_LINKED_SCENES: 'entity:linkedScenes',
+  // SKY-169: Entity relationships
+  ENTITY_RELATIONSHIPS_LIST: 'entityRelationships:list',
+  ENTITY_RELATIONSHIPS_CREATE: 'entityRelationships:create',
+  ENTITY_RELATIONSHIPS_DELETE: 'entityRelationships:delete',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -506,11 +505,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => TagsBulkApplyResponse;
   [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => SceneSetTagsResponse;
 
-  // SKY-170: Scene ↔ entity links
-  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload) => SceneEntityLink[];
-  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLink;
-  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
-  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => LinkedScene[];
+  // SKY-169: Entity relationships
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_LIST]: (payload: EntityRelationshipsListPayload) => EntityRelationship[];
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_CREATE]: (payload: EntityRelationshipsCreatePayload) => EntityRelationship;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_DELETE]: (payload: EntityRelationshipsDeletePayload) => void;
 }
 
 // ─── Payload / Response types ───
@@ -2383,3 +2381,33 @@ export interface TagsBulkApplyPayload {
 export interface TagsBulkApplyResponse { updated: number }
 export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
 export interface SceneSetTagsResponse { scene: SceneEntry }
+
+// ─── SKY-169: Entity relationship types ──────────────────────────────────────
+export interface EntityRelationship {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+  /** Direction relative to the queried entity: outgoing = this entity is the source. */
+  direction: 'outgoing' | 'incoming';
+  createdAt: string;
+}
+
+export interface EntityRelationshipsListPayload { entityId: string; }
+export interface EntityRelationshipsCreatePayload { fromId: string; toId: string; label: string; }
+export interface EntityRelationshipsDeletePayload { relationshipId: string; }
+
+// ─── SKY-170: Scene ↔ entity link types ──────────────────────────────────────
+export interface SceneEntityLink {
+  id: string;
+  sceneId: string;
+  entityId: string;
+  linkKind: string;
+  createdAt: string;
+}
+
+export interface SceneEntityLinksListPayload { sceneId: string; }
+export interface SceneEntityLinksUpsertPayload { sceneId: string; entityId: string; linkKind: string; }
+export interface SceneEntityLinksDeletePayload { sceneId: string; entityId: string; linkKind: string; }
+export interface EntityLinkedScenesPayload { entityId: string; }
+export interface LinkedScene { sceneId: string; scenePath: string; sceneTitle: string; linkKind: string; }

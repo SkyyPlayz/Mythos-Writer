@@ -123,6 +123,15 @@ import {
   type NotesGetPayload,
   type NotesSetPayload,
   type TagEntry,
+  type EntityRelationshipsListPayload,
+  type EntityRelationshipsCreatePayload,
+  type EntityRelationshipsDeletePayload,
+  type SceneEntityLinksListPayload,
+  type SceneEntityLinksUpsertPayload,
+  type SceneEntityLinksDeletePayload,
+  type EntityLinkedScenesPayload,
+  type SceneEntityLink,
+  type LinkedScene,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -169,7 +178,17 @@ import {
   getItemTags,
   getItemsForTag,
   bulkApplyTags,
+  insertEntityRelationship,
+  listEntityRelationshipsForEntity,
+  deleteEntityRelationship,
+  getEntityRelationshipByTriplet,
+  listSceneEntityLinks,
+  upsertSceneEntityLink,
+  deleteSpecificSceneEntityLink,
+  listLinksForEntity,
   type DbTag,
+  type DbEntityRelationshipAnnotated,
+  type DbSceneEntityLink,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -704,6 +723,24 @@ function dbTagToEntry(t: DbTag): TagEntry {
 }
 
 // ─── IPC Handlers ───
+// ─── Scene entity link helper (SKY-170) ────────────────────────────────────
+function dbLinkToIpc(r: DbSceneEntityLink): import('./ipc.js').SceneEntityLink {
+  return { id: r.id, sceneId: r.scene_id, entityId: r.entity_id, linkKind: r.link_kind, createdAt: r.created_at };
+}
+
+// ─── Entity relationship helper (SKY-169) ──────────────────────────────────
+function dbRelToIpc(r: DbEntityRelationshipAnnotated): import('./ipc.js').EntityRelationship {
+  return {
+    id: r.id,
+    fromEntityId: r.from_entity_id,
+    toEntityId: r.to_entity_id,
+    label: r.label,
+    direction: r.direction,
+    createdAt: r.created_at,
+  };
+}
+
+
 const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
   // at the IPC boundary. The low-level helpers also re-check traversal, so a
@@ -3197,6 +3234,52 @@ const handlers: IpcHandlers = {
     if (!name) return { error: 'Template name is required' };
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
+  },
+
+  // SKY-170: Scene ↔ entity links
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload): SceneEntityLink[] => {
+    return listSceneEntityLinks(payload.sceneId).map(dbLinkToIpc);
+  },
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload): SceneEntityLink => {
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const row: DbSceneEntityLink = { id, scene_id: payload.sceneId, entity_id: payload.entityId, link_kind: payload.linkKind, created_at: createdAt };
+    return dbLinkToIpc(upsertSceneEntityLink(row));
+  },
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => {
+    deleteSpecificSceneEntityLink(payload.sceneId, payload.entityId, payload.linkKind);
+  },
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload): LinkedScene[] => {
+    const manifest = readManifest(getManifestPath());
+    const sceneMap = new Map<string, import('./ipc.js').SceneEntry>();
+    for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        for (const scene of chapter.scenes) sceneMap.set(scene.id, scene);
+      }
+    }
+    for (const scene of manifest.scenes ?? []) sceneMap.set(scene.id, scene);
+    return listLinksForEntity(payload.entityId).map(link => {
+      const scene = sceneMap.get(link.scene_id);
+      return { sceneId: link.scene_id, scenePath: scene?.path ?? '', sceneTitle: scene?.title ?? '', linkKind: link.link_kind };
+    });
+  },
+
+  // SKY-169: Entity relationships
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_LIST]: (payload: EntityRelationshipsListPayload) => {
+    return listEntityRelationshipsForEntity(payload.entityId).map(dbRelToIpc);
+  },
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_CREATE]: (payload: EntityRelationshipsCreatePayload) => {
+    if (payload.fromId === payload.toId) throw new Error('Self-relationships are not allowed');
+    if (getEntityRelationshipByTriplet(payload.fromId, payload.toId, payload.label)) {
+      throw Object.assign(new Error('Relationship already exists'), { code: 'ENTITY_RELATIONSHIP_CONFLICT' });
+    }
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    insertEntityRelationship({ id, from_entity_id: payload.fromId, to_entity_id: payload.toId, label: payload.label, created_at: createdAt });
+    return dbRelToIpc({ id, from_entity_id: payload.fromId, to_entity_id: payload.toId, label: payload.label, created_at: createdAt, direction: 'outgoing' });
+  },
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_DELETE]: (payload: EntityRelationshipsDeletePayload) => {
+    deleteEntityRelationship(payload.relationshipId);
   },
 
 };

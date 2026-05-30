@@ -301,7 +301,7 @@ const GENRES = [
 ] as const;
 
 function sanitizeName(name: string): string {
-  return name.replace(/[\/\\:*?"<>|]/g, '-').trim() || 'My Story';
+  return name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'My Story';
 }
 
 function buildProjectOverview(name: string, genre: string, goal: WritingGoal): string {
