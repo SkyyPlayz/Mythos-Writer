@@ -140,6 +140,78 @@ describe('search subsystem', () => {
     expect(results[0].title).toBe('Kalen Blackwood');
   });
 
+  it('scene results have resultType "scene"', () => {
+    indexDocument(db, {
+      docId: 'scene-rt',
+      vault: 'story',
+      kind: 'scene',
+      title: 'The Iron Gate',
+      body: 'The iron gate creaked open at midnight.',
+    });
+
+    const results = searchVault(db, 'iron gate', 'story');
+    expect(results.length).toBeGreaterThan(0);
+    const scene = results.find((r) => r.docId === 'scene-rt');
+    expect(scene?.resultType).toBe('scene');
+  });
+
+  it('entity results have resultType "entity"', () => {
+    indexDocument(db, {
+      docId: 'ent-rt',
+      vault: 'notes',
+      kind: 'character',
+      title: 'Selene Ashveil',
+      body: 'A wandering scholar with silver hair.',
+    });
+
+    const results = searchVault(db, 'selene', 'notes');
+    expect(results.length).toBeGreaterThan(0);
+    const entity = results.find((r) => r.docId === 'ent-rt');
+    expect(entity?.resultType).toBe('entity');
+  });
+
+  it('mixed search returns both scene and entity results with correct resultType', () => {
+    indexDocument(db, {
+      docId: 'scene-mix',
+      vault: 'story',
+      kind: 'scene',
+      title: 'Thornwood Forest',
+      body: 'They crossed the thornwood at dawn.',
+    });
+    indexDocument(db, {
+      docId: 'ent-mix',
+      vault: 'notes',
+      kind: 'location',
+      title: 'Thornwood Forest',
+      body: 'An ancient cursed forest in the northern reaches.',
+    });
+
+    const results = searchVault(db, 'thornwood', 'both');
+    expect(results.length).toBeGreaterThan(0);
+
+    const sceneResult = results.find((r) => r.docId === 'scene-mix');
+    const entityResult = results.find((r) => r.docId === 'ent-mix');
+
+    expect(sceneResult?.resultType).toBe('scene');
+    expect(entityResult?.resultType).toBe('entity');
+  });
+
+  it('entity found via fuzzy name match has resultType "entity"', () => {
+    indexDocument(db, {
+      docId: 'char-fuzzy',
+      vault: 'notes',
+      kind: 'character',
+      title: 'Dawnstrider Vael',
+      body: 'A ranger of the eastern plains.',
+    });
+
+    // 'dawnstr' won't hit FTS stemmer but will hit the LIKE fallback
+    const results = searchVault(db, 'dawnstr', 'notes');
+    const found = results.find((r) => r.docId === 'char-fuzzy');
+    expect(found).toBeDefined();
+    expect(found?.resultType).toBe('entity');
+  });
+
   it('returns results within 200ms on vault with 500 documents (perf budget)', () => {
     // Insert 500 documents
     const insert = db.prepare(
