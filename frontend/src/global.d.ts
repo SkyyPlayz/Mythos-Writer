@@ -629,6 +629,13 @@ interface Window {
       folders: Array<{ path: string; label: string }>;
       notesVaultRoot: string;
     }>;
+    // SKY-196: token-budgeted vault context selection
+    brainstormSelectContext?: (payload: { userMessage: string; conversationText: string; tokenBudget?: number }) => Promise<{
+      included: Array<{ path: string; name: string; type: 'character' | 'location' | 'item' | 'note'; content: string; estimatedTokens: number; whyIncluded: string }>;
+      excluded: Array<{ path: string; name: string; type: 'character' | 'location' | 'item' | 'note'; content: string; estimatedTokens: number; whyIncluded: string }>;
+      usedTokens: number;
+      budgetTokens: number;
+    }>;
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
