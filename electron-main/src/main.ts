@@ -221,6 +221,11 @@ import {
 import { buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
+import {
+  sceneToMarkdown, chapterToMarkdown, storyToMarkdown, vaultToMarkdown,
+  sceneToPlaintext, chapterToPlaintext, storyToPlaintext, vaultToPlaintext,
+  type ExportableScene, type ExportableChapter, type ExportableStory,
+} from './exportFormatters.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage } from './streaming.js';
 import { streamFromProvider } from './provider.js';
 import {
@@ -245,6 +250,7 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
 
@@ -581,6 +587,84 @@ function validateVaultPath(p: string, field: string): void {
       return;
     }
     ancestor = path.dirname(ancestor);
+  }
+}
+
+// ─── Export helpers (SKY-153) ───
+
+function safeExportFilename(s: string): string {
+  return s.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'export';
+}
+
+function readSceneProseForExport(sc: import('./ipc.js').SceneEntry): ExportableScene {
+  let prose = '';
+  try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing file */ }
+  return { title: sc.title, prose };
+}
+
+function buildTextExport(
+  manifest: import('./ipc.js').Manifest,
+  scope: import('./ipc.js').ExportScope,
+  format: 'markdown' | 'plaintext',
+): { content: string; defaultFilename: string } {
+  const toChapter = (ch: import('./ipc.js').ChapterEntry): ExportableChapter => ({
+    title: ch.title,
+    scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readSceneProseForExport),
+  });
+  const toStory = (st: import('./ipc.js').StoryEntry): ExportableStory => ({
+    title: st.title,
+    chapters: [...st.chapters].sort((a, b) => a.order - b.order).map(toChapter),
+  });
+  const md = format === 'markdown';
+
+  switch (scope.kind) {
+    case 'scene': {
+      let found: import('./ipc.js').SceneEntry | null = null;
+      outer: for (const story of manifest.stories) {
+        for (const ch of story.chapters) {
+          const sc = ch.scenes.find((s) => s.id === scope.sceneId);
+          if (sc) { found = sc; break outer; }
+        }
+      }
+      if (!found) {
+        found = (manifest.scenes ?? []).find(
+          (s: import('./ipc.js').SceneEntry) => s.id === scope.sceneId,
+        ) ?? null;
+      }
+      if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
+      const exportScene = readSceneProseForExport(found);
+      return {
+        content: md ? sceneToMarkdown(exportScene) : sceneToPlaintext(exportScene),
+        defaultFilename: safeExportFilename(found.title),
+      };
+    }
+    case 'chapter': {
+      const story = manifest.stories.find((s) => s.id === scope.storyId);
+      if (!story) throw new Error(`Story not found: ${scope.storyId}`);
+      const ch = story.chapters.find((c) => c.id === scope.chapterId);
+      if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
+      const scenes = [...ch.scenes].sort((a, b) => a.order - b.order).map(readSceneProseForExport);
+      return {
+        content: md ? chapterToMarkdown(ch.title, scenes) : chapterToPlaintext(ch.title, scenes),
+        defaultFilename: safeExportFilename(ch.title),
+      };
+    }
+    case 'story': {
+      const story = manifest.stories.find((s) => s.id === scope.storyId);
+      if (!story) throw new Error(`Story not found: ${scope.storyId}`);
+      const exportStory = toStory(story);
+      return {
+        content: md ? storyToMarkdown(exportStory) : storyToPlaintext(exportStory),
+        defaultFilename: safeExportFilename(story.title),
+      };
+    }
+    case 'vault': {
+      const exportStories = manifest.stories.map(toStory);
+      return {
+        content: md ? vaultToMarkdown(exportStories) : vaultToPlaintext(exportStories),
+        defaultFilename: 'vault-export',
+      };
+    }
   }
 }
 
@@ -1849,38 +1933,116 @@ const handlers: IpcHandlers = {
     return { path: filePath, cancelled: false };
   },
 
-  // ─── DOCX export (MYT-252) ───
-  [IPC_CHANNELS.EXPORT_DOCX]: async (payload: { storyId: string }) => {
+  // ─── DOCX export (MYT-252, extended SKY-153) ───
+  [IPC_CHANNELS.EXPORT_DOCX]: async (payload: { storyId?: string; scope?: import('./ipc.js').ExportScope }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const story = manifest.stories.find((s) => s.id === payload.storyId);
-    if (!story) throw new Error(`Story not found: ${payload.storyId}`);
+
+    // Resolve scope: new scope field takes precedence; fall back to legacy storyId.
+    const scope: import('./ipc.js').ExportScope = payload.scope
+      ? payload.scope
+      : { kind: 'story', storyId: payload.storyId! };
+
+    let docxTitle = 'Export';
+    let docxChapters: Array<{ id: string; title: string; scenes: Array<{ id: string; title: string; prose: string }> }> = [];
+
+    if (scope.kind === 'scene') {
+      let found: import('./ipc.js').SceneEntry | null = null;
+      outer: for (const st of manifest.stories) {
+        for (const ch of st.chapters) {
+          const sc = ch.scenes.find((s) => s.id === scope.sceneId);
+          if (sc) { found = sc; break outer; }
+        }
+      }
+      if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
+      let prose = '';
+      try { prose = readSceneFile(getVaultRoot(), found.path).prose; } catch { /* missing */ }
+      docxTitle = found.title;
+      docxChapters = [{ id: found.id, title: found.title, scenes: [{ id: found.id, title: found.title, prose }] }];
+    } else if (scope.kind === 'chapter') {
+      const st = manifest.stories.find((s) => s.id === scope.storyId);
+      if (!st) throw new Error(`Story not found: ${scope.storyId}`);
+      const ch = st.chapters.find((c) => c.id === scope.chapterId);
+      if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
+      docxTitle = ch.title;
+      docxChapters = [{
+        id: ch.id,
+        title: ch.title,
+        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => {
+          let prose = '';
+          try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+          return { id: sc.id, title: sc.title, prose };
+        }),
+      }];
+    } else if (scope.kind === 'story') {
+      const st = manifest.stories.find((s) => s.id === scope.storyId);
+      if (!st) throw new Error(`Story not found: ${scope.storyId}`);
+      docxTitle = st.title;
+      docxChapters = [...st.chapters].sort((a, b) => a.order - b.order).map((ch) => ({
+        id: ch.id,
+        title: ch.title,
+        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => {
+          let prose = '';
+          try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+          return { id: sc.id, title: sc.title, prose };
+        }),
+      }));
+    } else {
+      docxTitle = 'Vault Export';
+      for (const st of manifest.stories) {
+        for (const ch of [...st.chapters].sort((a, b) => a.order - b.order)) {
+          docxChapters.push({
+            id: ch.id,
+            title: `${st.title} — ${ch.title}`,
+            scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => {
+              let prose = '';
+              try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+              return { id: sc.id, title: sc.title, prose };
+            }),
+          });
+        }
+      }
+    }
 
     const result = await dialog.showSaveDialog({
       title: 'Export DOCX',
-      defaultPath: `${story.title.replace(/[/\\?%*:|"<>]/g, '-')}.docx`,
+      defaultPath: `${docxTitle.replace(/[/\\?%*:|"<>]/g, '-')}.docx`,
       filters: [{ name: 'Word Document', extensions: ['docx'] }],
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
 
-    const chapters = story.chapters
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .map((ch) => ({
-        id: ch.id,
-        title: ch.title,
-        scenes: ch.scenes
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map((sc) => {
-            let prose = '';
-            try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
-            return { id: sc.id, title: sc.title, prose };
-          }),
-      }));
-
-    const buffer = await buildDocx({ title: story.title, chapters });
+    const buffer = await buildDocx({ title: docxTitle, chapters: docxChapters });
     writeFileAtomic(result.filePath, buffer);
+    return { path: result.filePath, cancelled: false };
+  },
+
+  // ─── Markdown + plain-text export (SKY-153) ───
+
+  [IPC_CHANNELS.EXPORT_MARKDOWN]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { content, defaultFilename } = buildTextExport(manifest, payload.scope, 'markdown');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Markdown',
+      defaultPath: `${defaultFilename}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+    writeFileAtomic(result.filePath, Buffer.from(content, 'utf-8'));
+    return { path: result.filePath, cancelled: false };
+  },
+
+  [IPC_CHANNELS.EXPORT_PLAINTEXT]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { content, defaultFilename } = buildTextExport(manifest, payload.scope, 'plaintext');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Plain Text',
+      defaultPath: `${defaultFilename}.txt`,
+      filters: [{ name: 'Plain Text', extensions: ['txt'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+    writeFileAtomic(result.filePath, Buffer.from(content, 'utf-8'));
     return { path: result.filePath, cancelled: false };
   },
 
@@ -2773,6 +2935,39 @@ const handlers: IpcHandlers = {
     } finally {
       ensureVaultDir();
     }
+  },
+  // SKY-156: Project Templates
+  [IPC_CHANNELS.TEMPLATE_LIST]: (): import('./ipc.js').TemplateListResponse => {
+    return { templates: listTemplates(app.getPath('userData')) };
+  },
+
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse | { error: string }> => {
+    const { templateId, storyVaultPath, notesVaultPath } = payload ?? {};
+    if (!templateId || !storyVaultPath || !notesVaultPath) {
+      return { error: 'templateId, storyVaultPath, and notesVaultPath are required' };
+    }
+    const templates = listTemplates(app.getPath('userData'));
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return { error: `Template not found: ${templateId}` };
+    const resolvedStory = storyVaultPath.replace(/^~/, app.getPath('home'));
+    const resolvedNotes = notesVaultPath.replace(/^~/, app.getPath('home'));
+    for (const [label, target] of [['Story Vault', resolvedStory], ['Notes Vault', resolvedNotes]] as const) {
+      if (
+        fs.existsSync(target) &&
+        fs.readdirSync(target).filter((e) => !e.startsWith('.')).length > 0
+      ) {
+        return { error: `${label} target is not empty: ${target}` };
+      }
+    }
+    scaffoldFromTemplate(resolvedStory, resolvedNotes, template);
+    return { ok: true as const, storyVaultPath: resolvedStory, notesVaultPath: resolvedNotes };
+  },
+
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: import('./ipc.js').TemplateSaveAsPayload): import('./ipc.js').TemplateSaveAsResponse | { error: string } => {
+    const name = (payload?.name ?? '').trim();
+    if (!name) return { error: 'Template name is required' };
+    const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
+    return { ok: true as const, id };
   },
 
 };

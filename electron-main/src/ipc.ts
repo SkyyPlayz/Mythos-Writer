@@ -162,6 +162,12 @@ export const IPC_CHANNELS = {
   // DOCX export (MYT-252)
   EXPORT_DOCX: 'export:docx',
 
+  // Multi-scope Markdown export (SKY-153)
+  EXPORT_MARKDOWN: 'export:markdown',
+
+  // Multi-scope plain text export (SKY-153)
+  EXPORT_PLAINTEXT: 'export:plaintext',
+
   // Obsidian vault import wizard (MYT-244)
   VAULT_OBSIDIAN_DRY_RUN: 'vault:obsidian-dry-run',
   VAULT_OBSIDIAN_REGISTER: 'vault:obsidian-register',
@@ -270,6 +276,11 @@ export const IPC_CHANNELS = {
 
   // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
   SESSION_SCENE_SAVE: 'session:saveScene',
+
+  // SKY-156: Project Templates — bundled + user-saved vault structures
+  TEMPLATE_LIST: 'template:list',
+  TEMPLATE_SCAFFOLD: 'template:scaffold',
+  TEMPLATE_SAVE_AS: 'template:saveAs',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -402,6 +413,8 @@ export interface IpcHandlers {
   // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
+  [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
+  [IPC_CHANNELS.EXPORT_PLAINTEXT]: (payload: ExportPlaintextPayload) => Promise<ExportPlaintextResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
@@ -448,6 +461,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
+  // SKY-156: Project Templates
+  [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse>;
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1747,10 +1764,40 @@ export interface ExportEpubResponse {
 // ─── DOCX export (MYT-252) ───
 
 export interface ExportDocxPayload {
-  storyId: string;
+  // Legacy: whole-story by storyId. Kept for backward compat.
+  storyId?: string;
+  // SKY-153: full scope control; takes precedence over storyId when present.
+  scope?: ExportScope;
 }
 
 export interface ExportDocxResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
+// ─── Multi-scope export (SKY-153) ───
+
+/** What to include in a Markdown / plain-text / DOCX export. */
+export type ExportScope =
+  | { kind: 'scene'; sceneId: string }
+  | { kind: 'chapter'; chapterId: string; storyId: string }
+  | { kind: 'story'; storyId: string }
+  | { kind: 'vault' };
+
+export interface ExportMarkdownPayload {
+  scope: ExportScope;
+}
+
+export interface ExportMarkdownResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
+export interface ExportPlaintextPayload {
+  scope: ExportScope;
+}
+
+export interface ExportPlaintextResponse {
   path: string | null;
   cancelled: boolean;
 }
@@ -2178,4 +2225,47 @@ export interface BrainstormListNotesFoldersResponse {
    *  Sorted alphabetically; depth-limited so the picker stays usable. */
   folders: BrainstormFolderEntry[];
   notesVaultRoot: string;
+}
+
+// ─── SKY-156: Project Templates ───────────────────────────────────────────────
+
+export interface TemplateNode {
+  name: string;
+  children?: TemplateNode[];
+  starterNote?: string;
+}
+
+export interface TemplateDefinition {
+  id: string;
+  name: string;
+  description: string;
+  story: TemplateNode[];
+  notes: TemplateNode[];
+  isUserTemplate?: boolean;
+  savedAt?: string;
+}
+
+export interface TemplateListResponse {
+  templates: TemplateDefinition[];
+}
+
+export interface TemplateScaffoldPayload {
+  templateId: string;
+  storyVaultPath: string;
+  notesVaultPath: string;
+}
+
+export interface TemplateScaffoldResponse {
+  ok: true;
+  storyVaultPath: string;
+  notesVaultPath: string;
+}
+
+export interface TemplateSaveAsPayload {
+  name: string;
+}
+
+export interface TemplateSaveAsResponse {
+  ok: true;
+  id: string;
 }
