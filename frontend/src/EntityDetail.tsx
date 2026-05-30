@@ -1,32 +1,219 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { EntityEntry, EntityType } from './types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { Markdown } from 'tiptap-markdown';
+import type { EntityEntry, EntityType, EntityBacklinkScene } from './types';
 import TagInput from './TagInput';
+import { EntityPicker, MultiEntityPicker } from './EntityPicker';
 import './EntityDetail.css';
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const TYPE_LABELS: Record<EntityType, string> = {
-  character: 'Character',
-  location: 'Location',
-  faction: 'Faction',
-  item: 'Item',
-  event: 'Event',
-  concept: 'Concept',
-  other: 'Other',
+  character: 'Character', location: 'Location', faction: 'Faction',
+  event: 'Event', item: 'Item', concept: 'Concept', other: 'Other',
 };
 
 const TYPE_ICONS: Record<EntityType, string> = {
-  character: '👤',
-  location: '📍',
-  faction: '⚔️',
-  item: '💎',
-  event: '📅',
-  concept: '💡',
-  other: '📄',
+  character: '👤', location: '📍', faction: '⚔️',
+  event: '📅', item: '💎', concept: '💡', other: '📄',
 };
+
+// Reserved core-field property keys per type (excluded from custom fields)
+const CORE_KEYS: Partial<Record<EntityType, string[]>> = {
+  character: ['role', 'age', 'gender', 'affiliationId', 'description'],
+  location:  ['locationType', 'climate', 'parentLocationId', 'description'],
+  faction:   ['factionType', 'alignment', 'headquartersId', 'description'],
+  event:     ['eventDate', 'participantIds', 'outcome', 'description'],
+  item:      ['itemType', 'ownerId', 'description'],
+  concept:   ['conceptType', 'description'],
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function extractProse(markdown: string): string {
   const match = markdown.match(/^---[\s\S]*?---\n?([\s\S]*)$/);
   return match ? match[1].trimStart() : markdown;
 }
+
+function strProp(props: Record<string, unknown>, key: string): string {
+  const v = props[key];
+  return typeof v === 'string' ? v : '';
+}
+
+function arrProp(props: Record<string, unknown>, key: string): string[] {
+  const v = props[key];
+  return Array.isArray(v) ? (v as string[]) : [];
+}
+
+interface CustomField { key: string; value: string; }
+
+function customFieldsFrom(props: Record<string, unknown>): CustomField[] {
+  const v = props['customFields'];
+  if (!Array.isArray(v)) return [];
+  return (v as CustomField[]).filter(f => f && typeof f.key === 'string');
+}
+
+function nonCoreProps(type: EntityType, props: Record<string, unknown>): Record<string, unknown> {
+  const reserved = new Set([...(CORE_KEYS[type] ?? []), 'customFields', 'noAutoLink']);
+  return Object.fromEntries(Object.entries(props).filter(([k]) => !reserved.has(k)));
+}
+
+// ─── CoreFields ───────────────────────────────────────────────────────────────
+
+interface CoreFieldsProps {
+  type: EntityType;
+  props: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+  onBlur: () => void;
+}
+
+function CoreFields({ type, props, onChange, onBlur }: CoreFieldsProps) {
+  const field = (key: string, label: string, placeholder = '') => (
+    <div className="entity-det-field" key={key}>
+      <label className="entity-det-label">{label}</label>
+      <input
+        className="entity-det-input"
+        value={strProp(props, key)}
+        placeholder={placeholder}
+        onChange={e => onChange(key, e.target.value)}
+        onBlur={onBlur}
+      />
+    </div>
+  );
+
+  const picker = (key: string, label: string, types: EntityType[]) => (
+    <div className="entity-det-field" key={key}>
+      <label className="entity-det-label">{label}</label>
+      <EntityPicker
+        allowedTypes={types}
+        value={strProp(props, key) || null}
+        onChange={id => { onChange(key, id ?? ''); onBlur(); }}
+        onBlur={onBlur}
+      />
+    </div>
+  );
+
+  const desc = (
+    <div className="entity-det-field entity-det-field-desc" key="description">
+      <label className="entity-det-label">Description</label>
+      <textarea
+        className="entity-det-desc"
+        value={strProp(props, 'description')}
+        onChange={e => onChange('description', e.target.value)}
+        onBlur={onBlur}
+        placeholder="…"
+        rows={3}
+      />
+    </div>
+  );
+
+  switch (type) {
+    case 'character': return <>{field('role', 'Role', 'e.g. Protagonist')}{field('age', 'Age')}{field('gender', 'Gender')}{picker('affiliationId', 'Affiliation', ['faction'])}{desc}</>;
+    case 'location':  return <>{field('locationType', 'Location Type', 'e.g. City, Forest')}{field('climate', 'Climate')}{picker('parentLocationId', 'Parent Location', ['location'])}{desc}</>;
+    case 'faction':   return <>{field('factionType', 'Faction Type', 'e.g. Guild, Empire')}{field('alignment', 'Alignment')}{picker('headquartersId', 'Headquarters', ['location'])}{desc}</>;
+    case 'event':     return <>
+      {field('eventDate', 'Event Date', 'e.g. Year 412')}
+      <div className="entity-det-field" key="participantIds">
+        <label className="entity-det-label">Participants</label>
+        <MultiEntityPicker
+          allowedTypes={['character', 'faction', 'location', 'item', 'concept', 'event', 'other']}
+          value={arrProp(props, 'participantIds')}
+          onChange={ids => { onChange('participantIds', ids); onBlur(); }}
+          onBlur={onBlur}
+          placeholder="Add participant…"
+        />
+      </div>
+      {field('outcome', 'Outcome')}
+      {desc}
+    </>;
+    case 'item':      return <>{field('itemType', 'Item Type', 'e.g. Weapon, Artifact')}{picker('ownerId', 'Owner', ['character'])}{desc}</>;
+    case 'concept':   return <>{field('conceptType', 'Concept Type', 'e.g. Magic System, Culture')}{desc}</>;
+    default:          return <>{desc}</>;
+  }
+}
+
+// ─── CustomFieldsSection ─────────────────────────────────────────────────────
+
+function CustomFieldsSection({ fields, onChange, onBlur }:
+  { fields: CustomField[]; onChange: (f: CustomField[]) => void; onBlur: () => void }) {
+
+  const update = (i: number, patch: Partial<CustomField>) => {
+    onChange(fields.map((f, idx) => idx === i ? { ...f, ...patch } : f));
+  };
+
+  return (
+    <div className="entity-det-custom">
+      <div className="entity-det-section-header">Custom Fields</div>
+      <div className={fields.length > 8 ? 'entity-det-custom-list entity-det-custom-scroll' : 'entity-det-custom-list'}>
+        {fields.map((f, i) => (
+          <div key={i} className="entity-det-custom-row">
+            <input
+              className="entity-det-input entity-det-custom-key"
+              value={f.key}
+              placeholder="Field name"
+              onChange={e => update(i, { key: e.target.value })}
+              onBlur={onBlur}
+            />
+            <input
+              className="entity-det-input entity-det-custom-val"
+              value={f.value}
+              placeholder="Value"
+              onChange={e => update(i, { value: e.target.value })}
+              onBlur={onBlur}
+            />
+            <button
+              className="entity-det-custom-remove"
+              onClick={() => { onChange(fields.filter((_, idx) => idx !== i)); onBlur(); }}
+              title="Remove field"
+            >×</button>
+          </div>
+        ))}
+      </div>
+      <button className="entity-det-add-field" onClick={() => onChange([...fields, { key: '', value: '' }])}>
+        + Add Field
+      </button>
+    </div>
+  );
+}
+
+// ─── NotesEditor ─────────────────────────────────────────────────────────────
+
+function NotesEditor({ initialContent, onBlur }:
+  { initialContent: string; onBlur: (md: string) => void }) {
+  const latestMd = useRef(initialContent);
+  const onBlurRef = useRef(onBlur);
+  onBlurRef.current = onBlur;
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [2, 3] } }),
+      Markdown,
+    ],
+    content: initialContent,
+    onUpdate({ editor: e }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = (e.storage as any).markdown.getMarkdown() as string;
+      latestMd.current = raw.endsWith('\n') ? raw : `${raw}\n`;
+    },
+  });
+
+  // Expose blur trigger
+  const handleWrapBlur = useCallback((e: React.FocusEvent) => {
+    // Only fire when focus leaves the editor entirely (not between nodes)
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      onBlurRef.current(latestMd.current);
+    }
+  }, []);
+
+  return (
+    <div className="entity-det-notes-editor" onBlur={handleWrapBlur}>
+      <EditorContent editor={editor} className="entity-notes-content" />
+    </div>
+  );
+}
+
+// ─── Proposed relation type ───────────────────────────────────────────────────
 
 interface ProposedRelation {
   suggestionId: string;
@@ -35,6 +222,8 @@ interface ProposedRelation {
   targetEntityName: string;
   rationale: string;
 }
+
+// ─── Props ───────────────────────────────────────────────────────────────────
 
 interface Props {
   entity: EntityEntry;
@@ -45,16 +234,19 @@ interface Props {
   onOpenEntity?: (entityId: string) => void;
 }
 
+// ─── EntityDetail ────────────────────────────────────────────────────────────
+
 export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, onOpenScene, onOpenEntity }: Props) {
   const [name, setName] = useState(entity.name);
-  const [aliases, setAliases] = useState((entity.aliases ?? []).join(', '));
-  const [noAutoLink, setNoAutoLink] = useState(!!entity.properties?.noAutoLink);
+  const [aliases, setAliases] = useState<string[]>(entity.aliases ?? []);
   const [tags, setTags] = useState<string[]>(entity.tags ?? []);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [noAutoLink, setNoAutoLink] = useState(!!entity.properties?.noAutoLink);
+  const [coreProps, setCoreProps] = useState<Record<string, unknown>>(entity.properties ?? {});
+  const [customFields, setCustomFields] = useState<CustomField[]>(customFieldsFrom(entity.properties ?? {}));
   const [prose, setProse] = useState('');
   const [proseLoading, setProseLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
   const [backlinks, setBacklinks] = useState<EntityBacklinkScene[]>([]);
@@ -81,13 +273,30 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [addTargetId, setAddTargetId] = useState('');
   const [addSubmitting, setAddSubmitting] = useState(false);
 
+  // Keep latest state in refs for save callbacks
+  const nameRef = useRef(name);
+  const aliasesRef = useRef(aliases);
+  const tagsRef = useRef(tags);
+  const corePropsRef = useRef(coreProps);
+  const customFieldsRef = useRef(customFields);
+  const proseRef = useRef(prose);
+  const noAutoLinkRef = useRef(noAutoLink);
+  nameRef.current = name;
+  aliasesRef.current = aliases;
+  tagsRef.current = tags;
+  corePropsRef.current = coreProps;
+  customFieldsRef.current = customFields;
+  proseRef.current = prose;
+  noAutoLinkRef.current = noAutoLink;
+
   // Reset form when entity changes
   useEffect(() => {
     setName(entity.name);
-    setAliases((entity.aliases ?? []).join(', '));
-    setNoAutoLink(!!entity.properties?.noAutoLink);
+    setAliases(entity.aliases ?? []);
     setTags(entity.tags ?? []);
-    setDirty(false);
+    setNoAutoLink(!!entity.properties?.noAutoLink);
+    setCoreProps(entity.properties ?? {});
+    setCustomFields(customFieldsFrom(entity.properties ?? {}));
     setError('');
     setDeleteConfirm(false);
     setShowAddForm(false);
@@ -97,8 +306,9 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
 
   // Load all tags for autocomplete
   useEffect(() => {
-    window.api.tagsList?.().then((r: { tags: Array<{ name: string }> }) => {
-      setAllTags(r.tags.map((t) => t.name));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window.api as any).tagsList?.().then((r: { tags: Array<{ name: string }> }) => {
+      setAllTags(r.tags.map(t => t.name));
     }).catch(() => {});
   }, []);
 
@@ -107,22 +317,27 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setProseLoading(true);
     (async () => {
       try {
-        const result = await window.api.readVault(entity.path);
-        setProse(extractProse(result.content));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await (window.api as any).readVault(entity.path);
+        const p = extractProse(result.content);
+        setProse(p);
+        proseRef.current = p;
       } catch {
         setProse('');
+        proseRef.current = '';
       } finally {
         setProseLoading(false);
       }
     })();
   }, [entity.id, entity.path]);
 
-  // Load backlinks whenever entity changes
+  // Load backlinks
   const loadBacklinks = useCallback(async () => {
     setBacklinksLoading(true);
     try {
       const result = await window.api.entityBacklinks(entity.id);
-      setBacklinks(result.scenes ?? []);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setBacklinks((result as any).scenes ?? []);
     } catch {
       setBacklinks([]);
     } finally {
@@ -182,58 +397,46 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     return off;
   }, [loadBacklinks, loadLinkedScenes]);
 
-  // Build entity id to name map for rendering relation targets
+  // Build entity name map for relation display
   useEffect(() => {
     (async () => {
       try {
         const result = await window.api.entityList();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const map = new Map<string, string>();
-        for (const e of result.entities) map.set(e.id, e.name);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const e of (result as any).entities) map.set(e.id, e.name);
         setEntityNameMap(map);
-      } catch {
-        // silent -- relations render raw IDs as fallback
-      }
+      } catch { /* noop */ }
     })();
   }, []);
 
-  // Load proposed typed-relation suggestions targeting this entity
+  // Load proposed typed-relation suggestions
   const loadProposedRelations = useCallback(async () => {
     setProposedRelationsLoading(true);
     try {
       const result = await window.api.suggestionsList('proposed', 'archive');
       const proposed: ProposedRelation[] = [];
-      for (const s of result.suggestions) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const s of (result as any).suggestions) {
         if (!s.payload_json) continue;
         try {
           const p = JSON.parse(s.payload_json) as {
-            kind?: string;
-            relationType?: string;
-            sourceEntityId?: string;
-            targetEntityId?: string;
-            targetEntityName?: string;
-            sourceEntityName?: string;
+            kind?: string; relationType?: string;
+            sourceEntityId?: string; targetEntityId?: string;
+            targetEntityName?: string; sourceEntityName?: string;
           };
-          if (
-            p.kind === 'typed-relation' &&
-            (p.sourceEntityId === entity.id || p.targetEntityId === entity.id)
-          ) {
+          if (p.kind === 'typed-relation' &&
+            (p.sourceEntityId === entity.id || p.targetEntityId === entity.id)) {
             proposed.push({
               suggestionId: s.id,
               relationType: p.relationType ?? '',
-              targetEntityId:
-                p.sourceEntityId === entity.id
-                  ? (p.targetEntityId ?? '')
-                  : (p.sourceEntityId ?? ''),
-              targetEntityName:
-                p.sourceEntityId === entity.id
-                  ? (p.targetEntityName ?? '')
-                  : (p.sourceEntityName ?? ''),
+              targetEntityId: p.sourceEntityId === entity.id ? (p.targetEntityId ?? '') : (p.sourceEntityId ?? ''),
+              targetEntityName: p.sourceEntityId === entity.id ? (p.targetEntityName ?? '') : (p.sourceEntityName ?? ''),
               rationale: s.rationale,
             });
           }
-        } catch {
-          // malformed payload -- skip
-        }
+        } catch { /* noop */ }
       }
       setProposedRelations(proposed);
     } catch {
@@ -243,34 +446,26 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     }
   }, [entity.id]);
 
-  useEffect(() => {
-    loadProposedRelations();
-  }, [loadProposedRelations]);
+  useEffect(() => { loadProposedRelations(); }, [loadProposedRelations]);
 
-  const handleAcceptRelation = useCallback(
-    async (suggestionId: string) => {
-      try {
-        await window.api.suggestionsAccept(suggestionId);
-        setProposedRelations((prev) => prev.filter((r) => r.suggestionId !== suggestionId));
-        const updated = await window.api.entityRead(entity.id);
-        if (updated) onUpdated(updated);
-      } catch {
-        // silent -- user can retry
-      }
-    },
-    [entity.id, onUpdated],
-  );
+  const handleAcceptRelation = useCallback(async (suggestionId: string) => {
+    try {
+      await window.api.suggestionsAccept(suggestionId);
+      setProposedRelations(prev => prev.filter(r => r.suggestionId !== suggestionId));
+      const updated = await window.api.entityRead(entity.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (updated) onUpdated(updated as any);
+    } catch { /* noop */ }
+  }, [entity.id, onUpdated]);
 
   const handleRejectRelation = useCallback(async (suggestionId: string) => {
     try {
       await window.api.suggestionsReject(suggestionId);
-      setProposedRelations((prev) => prev.filter((r) => r.suggestionId !== suggestionId));
-    } catch {
-      // silent
-    }
+      setProposedRelations(prev => prev.filter(r => r.suggestionId !== suggestionId));
+    } catch { /* noop */ }
   }, []);
 
-  const markDirty = useCallback(() => setDirty(true), []);
+  // ── Save on blur ─────────────────────────────────────────────────────────
 
   const handleAddRelationship = async () => {
     if (!addLabel.trim() || !addTargetId) return;
@@ -300,33 +495,45 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     }
   };
 
-  const handleSave = async () => {
+  const buildProps = useCallback((
+    overrideCore?: Record<string, unknown>,
+    overrideCustom?: CustomField[],
+    overrideNoAutoLink?: boolean,
+  ): Record<string, unknown> => {
+    const core = overrideCore ?? corePropsRef.current;
+    const custom = overrideCustom ?? customFieldsRef.current;
+    const nal = overrideNoAutoLink ?? noAutoLinkRef.current;
+    const extra = nonCoreProps(entity.type, core);
+    const merged: Record<string, unknown> = { ...core, ...extra, customFields: custom };
+    if (nal) merged.noAutoLink = true;
+    else delete merged.noAutoLink;
+    return merged;
+  }, [entity.type]);
+
+  const save = useCallback(async (overrides?: {
+    name?: string; aliases?: string[]; tags?: string[];
+    core?: Record<string, unknown>; custom?: CustomField[];
+    prose?: string; noAutoLink?: boolean;
+  }) => {
     setSaving(true);
     setError('');
     try {
-      const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
-      const updatedProps: Record<string, unknown> = { ...(entity.properties ?? {}) };
-      if (noAutoLink) {
-        updatedProps.noAutoLink = true;
-      } else {
-        delete updatedProps.noAutoLink;
-      }
       const updated = await window.api.entityUpdate({
         id: entity.id,
-        name: name.trim() || entity.name,
-        aliases: aliasList,
-        tags,
-        prose,
-        properties: Object.keys(updatedProps).length > 0 ? updatedProps : undefined,
+        name: (overrides?.name ?? nameRef.current).trim() || entity.name,
+        aliases: overrides?.aliases ?? aliasesRef.current,
+        tags: overrides?.tags ?? tagsRef.current,
+        prose: overrides?.prose ?? proseRef.current,
+        properties: buildProps(overrides?.core, overrides?.custom, overrides?.noAutoLink),
       });
-      setDirty(false);
-      onUpdated(updated);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onUpdated(updated as any);
     } catch (err) {
       setError(String(err));
     } finally {
       setSaving(false);
     }
-  };
+  }, [entity.id, entity.name, buildProps, onUpdated]);
 
   const handleDelete = async () => {
     try {
@@ -337,146 +544,167 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     }
   };
 
+  // ── Prop helpers ──────────────────────────────────────────────────────────
+
+  const handleCorePropChange = (key: string, value: unknown) => {
+    setCoreProps(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleCustomChange = (fields: CustomField[]) => {
+    setCustomFields(fields);
+    customFieldsRef.current = fields;
+  };
+
   const currentRelations = entity.relations ?? [];
   const totalRelations = currentRelations.length + proposedRelations.length;
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="entity-detail">
+      {/* ── Header ── */}
       <div className="entity-detail-header">
         <div className="entity-detail-header-left">
-          <span className="entity-detail-icon">{TYPE_ICONS[entity.type]}</span>
-          <span className="entity-detail-type">{TYPE_LABELS[entity.type]}</span>
+          <span className={`entity-type-chip entity-type-chip-${entity.type}`}>
+            <span className="entity-type-icon">{TYPE_ICONS[entity.type]}</span>
+            {TYPE_LABELS[entity.type]}
+          </span>
         </div>
         <div className="entity-detail-header-right">
-          {dirty && (
-            <button
-              className="entity-det-btn entity-det-btn-primary"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          )}
+          {saving && <span className="entity-det-saving">Saving…</span>}
           {deleteConfirm ? (
             <>
-              <button className="entity-det-btn entity-det-btn-danger" onClick={handleDelete}>
-                Confirm delete
-              </button>
-              <button
-                className="entity-det-btn entity-det-btn-ghost"
-                onClick={() => setDeleteConfirm(false)}
-              >
-                Cancel
-              </button>
+              <button className="entity-det-btn entity-det-btn-danger" onClick={handleDelete}>Confirm delete</button>
+              <button className="entity-det-btn entity-det-btn-ghost" onClick={() => setDeleteConfirm(false)}>Cancel</button>
             </>
           ) : (
-            <button
-              className="entity-det-btn entity-det-btn-ghost"
-              onClick={() => setDeleteConfirm(true)}
-              title="Delete entity"
-            >
+            <button className="entity-det-btn entity-det-btn-ghost" onClick={() => setDeleteConfirm(true)} title="Delete entity">
               Delete
             </button>
           )}
-          <button className="entity-det-btn entity-det-btn-ghost" onClick={onClose}>
-            ✕
-          </button>
+          <button className="entity-det-btn entity-det-btn-ghost" onClick={onClose}>✕</button>
         </div>
       </div>
 
       <div className="entity-detail-body">
+        {/* Name */}
         <div className="entity-det-field">
           <label className="entity-det-label">Name</label>
           <input
-            className="entity-det-input"
+            className="entity-det-input entity-det-name"
             type="text"
             value={name}
-            onChange={(e) => { setName(e.target.value); markDirty(); }}
+            onChange={e => setName(e.target.value)}
+            onBlur={() => save({ name })}
           />
         </div>
 
+        {/* Aliases — chip-style */}
         <div className="entity-det-field">
-          <label className="entity-det-label">
-            Aliases
-            <span className="entity-det-hint">comma-separated</span>
-          </label>
-          <input
-            className="entity-det-input"
-            type="text"
+          <label className="entity-det-label">Aliases</label>
+          <TagInput
             value={aliases}
-            onChange={(e) => { setAliases(e.target.value); markDirty(); }}
-            placeholder="Nickname, Alias…"
+            onChange={v => { setAliases(v); aliasesRef.current = v; }}
+            placeholder="Add alias…"
+            // Save after a chip is added/removed (TagInput calls onChange immediately)
+          />
+          {/* Hidden blur trigger: save after TagInput settles */}
+          <input
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', height: 0, width: 0 }}
+            onFocus={() => {}}
+            onBlur={() => save({ aliases })}
+            tabIndex={-1}
+            aria-hidden
           />
         </div>
 
+        {/* Tags — chip-style with autocomplete */}
         <div className="entity-det-field">
           <label className="entity-det-label">Tags</label>
-          <TagInput value={tags} onChange={(t) => { setTags(t); markDirty(); }} allTags={allTags} />
+          <TagInput
+            value={tags}
+            onChange={v => { setTags(v); tagsRef.current = v; save({ tags: v }); }}
+            allTags={allTags}
+            placeholder="Add tag…"
+          />
         </div>
 
+        {/* Skip auto-link */}
         <div className="entity-det-field entity-det-field-inline">
           <label className="entity-det-label entity-det-label-check">
             <input
               type="checkbox"
               checked={noAutoLink}
-              onChange={(e) => { setNoAutoLink(e.target.checked); markDirty(); }}
+              onChange={e => { setNoAutoLink(e.target.checked); noAutoLinkRef.current = e.target.checked; save({ noAutoLink: e.target.checked }); }}
               aria-label="Skip auto-link for this entity"
             />
             Skip auto-link (common nouns like &ldquo;Mom&rdquo;, &ldquo;the King&rdquo;)
           </label>
         </div>
 
-        <div className="entity-det-field entity-det-field-prose">
-          <label className="entity-det-label">Notes / Prose</label>
+        {/* ── Core fields section ── */}
+        <div className="entity-det-section">
+          <div className="entity-det-section-header">Details</div>
+          <CoreFields
+            type={entity.type}
+            props={coreProps}
+            onChange={handleCorePropChange}
+            onBlur={() => save({ core: corePropsRef.current })}
+          />
+        </div>
+
+        {/* ── Custom fields section ── */}
+        <CustomFieldsSection
+          fields={customFields}
+          onChange={handleCustomChange}
+          onBlur={() => save({ custom: customFieldsRef.current })}
+        />
+
+        {/* ── Notes (Tiptap) section ── */}
+        <div className="entity-det-section">
+          <div className="entity-det-section-header">Notes</div>
           {proseLoading ? (
             <div className="entity-det-prose-loading">Loading…</div>
           ) : (
-            <textarea
-              className="entity-det-prose"
-              value={prose}
-              onChange={(e) => { setProse(e.target.value); markDirty(); }}
-              placeholder="Character notes, backstory, description…"
+            <NotesEditor
+              key={entity.id}
+              initialContent={prose}
+              onBlur={md => { setProse(md); proseRef.current = md; save({ prose: md }); }}
             />
           )}
         </div>
 
         {error && <div className="entity-det-error">{error}</div>}
 
-        {/* Connections (typed relations) panel */}
+        {/* ── Connections (typed relations) panel ── */}
         <div className="entity-det-backlinks">
           <button
             className="entity-det-backlinks-header"
-            onClick={() => setRelationsOpen((o) => !o)}
+            onClick={() => setRelationsOpen(o => !o)}
             aria-expanded={relationsOpen}
           >
             <span className="entity-det-backlinks-chevron">{relationsOpen ? '▾' : '▸'}</span>
             <span className="entity-det-backlinks-title">Connections</span>
-            <span className="entity-det-backlinks-count">
-              {proposedRelationsLoading ? '…' : totalRelations}
-            </span>
+            <span className="entity-det-backlinks-count">{proposedRelationsLoading ? '…' : totalRelations}</span>
           </button>
           {relationsOpen && (
             <div className="entity-det-backlinks-body">
               {currentRelations.length === 0 && proposedRelations.length === 0 && (
-                <div className="entity-det-backlinks-empty">
-                  No connections yet. Run Archive scan to detect relations from brainstorm transcripts.
-                </div>
+                <div className="entity-det-backlinks-empty">No connections yet. Run Archive scan to detect relations.</div>
               )}
               {currentRelations.length > 0 && (
                 <ul className="entity-det-backlinks-list" aria-label="Confirmed connections">
                   {currentRelations.map((rel, i) => {
                     const targetName = entityNameMap.get(rel.target) ?? rel.target;
                     return (
-                      <li key={rel.type + '-' + rel.target + '-' + i} className="entity-det-relation-item">
+                      <li key={`${rel.type}-${rel.target}-${i}`} className="entity-det-relation-item">
                         <span className="entity-det-relation-type">{rel.type}</span>
                         <button
                           className="entity-det-backlink-scene"
                           onClick={() => onOpenEntity?.(rel.target)}
                           disabled={!onOpenEntity}
-                          aria-label={'Open ' + targetName}
-                        >
-                          {targetName}
-                        </button>
+                          aria-label={`Open ${targetName}`}
+                        >{targetName}</button>
                       </li>
                     );
                   })}
@@ -485,30 +713,16 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
               {proposedRelations.length > 0 && (
                 <div className="entity-det-proposed-relations" aria-label="Proposed connections">
                   <div className="entity-det-proposed-header">Proposed by Archive</div>
-                  {proposedRelations.map((pr) => (
+                  {proposedRelations.map(pr => (
                     <div key={pr.suggestionId} className="entity-det-proposed-item">
                       <div className="entity-det-proposed-desc">
                         <span className="entity-det-relation-type">{pr.relationType}</span>
-                        <span className="entity-det-proposed-target">
-                          {pr.targetEntityName || pr.targetEntityId}
-                        </span>
+                        <span className="entity-det-proposed-target">{pr.targetEntityName || pr.targetEntityId}</span>
                       </div>
                       <p className="entity-det-proposed-rationale">{pr.rationale}</p>
                       <div className="entity-det-proposed-actions">
-                        <button
-                          className="entity-det-btn entity-det-btn-primary entity-det-btn-sm"
-                          onClick={() => handleAcceptRelation(pr.suggestionId)}
-                          aria-label={'Accept relation: ' + pr.relationType + ' ' + pr.targetEntityName}
-                        >
-                          Accept
-                        </button>
-                        <button
-                          className="entity-det-btn entity-det-btn-ghost entity-det-btn-sm"
-                          onClick={() => handleRejectRelation(pr.suggestionId)}
-                          aria-label={'Reject relation: ' + pr.relationType + ' ' + pr.targetEntityName}
-                        >
-                          Reject
-                        </button>
+                        <button className="entity-det-btn entity-det-btn-primary entity-det-btn-sm" onClick={() => handleAcceptRelation(pr.suggestionId)}>Accept</button>
+                        <button className="entity-det-btn entity-det-btn-ghost entity-det-btn-sm" onClick={() => handleRejectRelation(pr.suggestionId)}>Reject</button>
                       </div>
                     </div>
                   ))}
@@ -518,18 +732,16 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
           )}
         </div>
 
-        {/* Backlinks panel */}
+        {/* ── Backlinks panel ── */}
         <div className="entity-det-backlinks">
           <button
             className="entity-det-backlinks-header"
-            onClick={() => setBacklinksOpen((o) => !o)}
+            onClick={() => setBacklinksOpen(o => !o)}
             aria-expanded={backlinksOpen}
           >
             <span className="entity-det-backlinks-chevron">{backlinksOpen ? '▾' : '▸'}</span>
             <span className="entity-det-backlinks-title">Backlinks</span>
-            <span className="entity-det-backlinks-count">
-              {backlinksLoading ? '…' : backlinks.length}
-            </span>
+            <span className="entity-det-backlinks-count">{backlinksLoading ? '…' : backlinks.length}</span>
           </button>
           {backlinksOpen && (
             <div className="entity-det-backlinks-body">
@@ -539,7 +751,7 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
                 <div className="entity-det-backlinks-empty">No scenes mention this entity yet.</div>
               ) : (
                 <ul className="entity-det-backlinks-list">
-                  {backlinks.map((bl) => (
+                  {backlinks.map(bl => (
                     <li key={bl.scenePath} className="entity-det-backlink-item">
                       <button
                         className="entity-det-backlink-scene"

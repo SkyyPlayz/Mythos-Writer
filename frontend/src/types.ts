@@ -22,6 +22,13 @@ export interface EntityEntry {
   updatedAt: string;
 }
 
+export interface EntityBacklinkScene {
+  sceneId: string;
+  sceneTitle: string;
+  scenePath: string;
+  snippet: string;
+}
+
 export type DraftState = 'in-progress' | 'review' | 'final';
 
 export interface Block {
