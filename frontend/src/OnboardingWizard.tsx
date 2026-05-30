@@ -6,9 +6,6 @@ import './OnboardingWizard.css';
 type WizardScreen =
   | 'welcome'
   | 'template-picker'
-  | 'project-name'
-  | 'genre'
-  | 'writing-goal'
   | 'default-path'
   | 'blank-path'
   | 'import-source'
@@ -19,8 +16,6 @@ type WizardScreen =
   | 'done';
 
 type SeedMode = 'default' | 'blank';
-
-type WritingGoal = 'first-draft' | 'revision' | 'world-building' | '';
 
 type PathStatus = 'checking' | 'new' | 'empty-ok' | 'non-empty' | 'not-writable' | 'unknown';
 
@@ -48,7 +43,7 @@ type Api = {
   vaultSetPaths: (
     storyVaultPath: string,
     notesVaultPath: string,
-    opts?: { seedMode?: SeedMode; storyVaultToken?: string; notesVaultToken?: string }
+    opts?: { seedMode?: SeedMode }
   ) => Promise<{ ok: true } | { error: string }>;
   loadSampleTwoVault: (
     parentPath: string
@@ -57,23 +52,8 @@ type Api = {
   obsidianPickFolderByPath: (sourcePath: string) => Promise<{ vaultRoot: string | null; registrationToken: string | null; error?: string }>;
   onObsidianImportProgress?: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
   onboardingComplete: () => Promise<{ ok: boolean }>;
-  writeVault?: (path: string, content: string) => Promise<unknown>;
-  writeNotesVault?: (path: string, content: string) => Promise<unknown>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string } | { error: string }>;
-  // SKY-320: one-click default Mythos Vault create (~/Mythos/Vaults/<name>/).
-  vaultCreateDefaultMythos: (opts?: {
-    parentPath?: string;
-    vaultName?: string;
-    seedMode?: SeedMode;
-  }) => Promise<{
-    mythosVaultRoot: string;
-    vaultRoot: string;
-    notesVaultRoot: string;
-    name: string;
-    created: boolean;
-    error?: string;
-  }>;
 };
 
 interface TemplateItem {
@@ -297,9 +277,6 @@ function ConfirmDialog({ title, body, primaryLabel, destructiveLabel, onPrimary,
 // ─── Step indicator helpers ───────────────────────────────────────────────────
 
 const STEP_MAP: Partial<Record<WizardScreen, [number, number]>> = {
-  'project-name':     [1, 3],
-  'genre':            [2, 3],
-  'writing-goal':     [3, 3],
   'default-path':     [1, 1],
   'blank-path':       [1, 1],
   'import-source':    [1, 3],
@@ -307,20 +284,6 @@ const STEP_MAP: Partial<Record<WizardScreen, [number, number]>> = {
   'import-progress':  [3, 3],
   'sample-path':      [1, 1],
 };
-
-const GENRES = [
-  'Fantasy', 'Science Fiction', 'Romance', 'Thriller',
-  'Mystery', 'Historical Fiction', 'Horror', 'Literary Fiction', 'Other',
-] as const;
-
-function sanitizeName(name: string): string {
-  return name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'My Story';
-}
-
-function buildProjectOverview(name: string, genre: string, goal: WritingGoal): string {
-  const goalLabel = goal === 'first-draft' ? 'First Draft' : goal === 'revision' ? 'Revision' : goal === 'world-building' ? 'World-Building' : 'First Draft';
-  return `# ${name}\n\n**Genre:** ${genre || 'Unspecified'}\n**Writing Goal:** ${goalLabel}\n\n## Synopsis\n\n*Write your synopsis here.*\n\n## Characters\n\n## Settings\n\n## Notes\n`;
-}
 
 const STORY_VAULT_DIR = 'Story Vault';
 const NOTES_VAULT_DIR = 'Notes Vault';
@@ -330,20 +293,11 @@ function joinPath(parent: string, child: string): string {
   return `${cleaned}/${child}`;
 }
 
-const FOCUSABLE_SELECTOR =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
-
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 export default function OnboardingWizard({ initialSettings, onComplete }: OnboardingWizardProps) {
   // Navigation
   const [screen, setScreen] = useState<WizardScreen>('welcome');
-
-  // Project wizard flow
-  const [projectFlow, setProjectFlow] = useState(false);
-  const [projectName, setProjectName] = useState('');
-  const [genre, setGenre] = useState('');
-  const [writingGoal, setWritingGoal] = useState<WritingGoal>('');
 
   // Default-layout flow
   const [defaultPath, setDefaultPath] = useState('~/Mythos');
@@ -366,7 +320,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, lastAction: '' });
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const cancelledRef = useRef(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
   const [dryRunBanner, setDryRunBanner] = useState('');
 
   // Sample flow
@@ -376,13 +329,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   // Shared
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  // MYT-789 / SKY-270: registration tokens from vault:pick-folder, bound to the
-  // parent dir the user picked. Cleared on manual path edit so a stale token
-  // cannot authorise a renderer-supplied path.
-  const [defaultPickedToken, setDefaultPickedToken] = useState<string | null>(null);
-  const [blankPickedToken, setBlankPickedToken] = useState<string | null>(null);
-  const [templatePickedToken, setTemplatePickedToken] = useState<string | null>(null);
 
   // ─── Validation helpers ─────────────────────────────────────────────────────
 
@@ -411,7 +357,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       }
       if (res.cancelled || !res.vaultRoot) return;
       setBlankPath(res.vaultRoot);
-      setBlankPickedToken(res.registrationToken);
       await validatePathStatus(res.vaultRoot, setBlankPathStatus);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to open folder picker');
@@ -420,7 +365,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   const handleBlankPathChange = (v: string) => {
     setBlankPath(v);
-    setBlankPickedToken(null);
     setBlankPathStatus('unknown');
   };
 
@@ -440,17 +384,13 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     onComplete(updated);
   }, [initialSettings, onComplete]);
 
-  const handleCreateVault = useCallback(async (parentPath: string, seedMode: SeedMode, pickToken?: string | null) => {
+  const handleCreateVault = useCallback(async (parentPath: string, seedMode: SeedMode) => {
     setError('');
     setBusy(true);
     try {
       const storyPath = joinPath(parentPath, STORY_VAULT_DIR);
       const notesPath = joinPath(parentPath, NOTES_VAULT_DIR);
-      const res = await api().vaultSetPaths(storyPath, notesPath, {
-        seedMode,
-        storyVaultToken: pickToken ?? undefined,
-        notesVaultToken: pickToken ?? undefined,
-      });
+      const res = await api().vaultSetPaths(storyPath, notesPath, { seedMode });
       if ('error' in res) throw new Error(res.error);
       finishOnboarding();
     } catch (e) {
@@ -460,48 +400,8 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   }, [finishOnboarding]);
 
-  const handleCreateBlankVault = () => handleCreateVault(blankPath, 'blank', blankPickedToken);
-  const handleCreateDefaultVault = () => handleCreateVault(defaultPath, 'default', defaultPickedToken);
-
-  const handleCreateProjectVault = useCallback(async () => {
-    setError('');
-    setBusy(true);
-    const safeName = sanitizeName(projectName);
-    try {
-      const storyPath = joinPath(defaultPath, STORY_VAULT_DIR);
-      const notesPath = joinPath(defaultPath, NOTES_VAULT_DIR);
-      const res = await api().vaultSetPaths(storyPath, notesPath, { seedMode: 'blank' });
-      if ('error' in res) throw new Error(res.error);
-      const sceneContent = `---\ntitle: "Scene 1"\ndraftState: in-progress\n---\n\n`;
-      await Promise.all([
-        api().writeVault?.(`Manuscript/${safeName}/Chapter 1/Scene 1.md`, sceneContent).catch(() => {}),
-        api().writeNotesVault?.(`${safeName}/Project Overview.md`, buildProjectOverview(safeName, genre, writingGoal)).catch(() => {}),
-      ]);
-      finishOnboarding();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create project');
-    } finally {
-      setBusy(false);
-    }
-  }, [defaultPath, projectName, genre, writingGoal, finishOnboarding]);
-
-  // SKY-320: one-click default setup. Skips the folder-picker step entirely
-  // — main creates `~/Mythos/Vaults/Mythos Vault/{Story Vault, Notes Vault}`
-  // and scaffolds the standard layout. Users who want a custom location still
-  // have the "Use the default layout" picker card below.
-  const handleOneClickDefault = useCallback(async () => {
-    setError('');
-    setBusy(true);
-    try {
-      const res = await api().vaultCreateDefaultMythos({ seedMode: 'default' });
-      if (res.error) throw new Error(res.error);
-      finishOnboarding();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create default vault');
-    } finally {
-      setBusy(false);
-    }
-  }, [finishOnboarding]);
+  const handleCreateBlankVault = () => handleCreateVault(blankPath, 'blank');
+  const handleCreateDefaultVault = () => handleCreateVault(defaultPath, 'default');
 
   // ─── Default-layout flow ───────────────────────────────────────────────────
 
@@ -514,7 +414,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       }
       if (res.cancelled || !res.vaultRoot) return;
       setDefaultPath(res.vaultRoot);
-      setDefaultPickedToken(res.registrationToken);
       await validatePathStatus(res.vaultRoot, setDefaultPathStatus);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to open folder picker');
@@ -523,7 +422,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   const handleDefaultPathChange = (v: string) => {
     setDefaultPath(v);
-    setDefaultPickedToken(null);
     setDefaultPathStatus('unknown');
   };
 
@@ -706,35 +604,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Move focus to the screen heading (or first focusable) on mount and screen transitions
-  useEffect(() => {
-    const el = overlayRef.current;
-    if (!el) return;
-    const heading = el.querySelector<HTMLElement>('h2, [class*="wordmark"]');
-    if (heading) {
-      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
-      heading.focus({ preventScroll: true });
-    } else {
-      el.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus({ preventScroll: true });
-    }
-  }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Tab') return;
-    const el = overlayRef.current;
-    if (!el) return;
-    const focusable = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey) {
-      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-    } else {
-      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
-    }
-  }, []);
-
-
   // ─── Step indicator ─────────────────────────────────────────────────────────
 
   const stepInfo = STEP_MAP[screen];
@@ -766,14 +635,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   // ─── Screen renders ─────────────────────────────────────────────────────────
 
   return (
-    <div
-      ref={overlayRef}
-      className="onboarding-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Onboarding wizard"
-      onKeyDown={handleKeyDown}
-    >
+    <div className="onboarding-overlay" role="dialog" aria-modal="true" aria-label="Onboarding wizard">
       {/* Cancel confirm dialog (renders above everything during S2c) */}
       {showCancelConfirm && (
         <ConfirmDialog
@@ -798,33 +660,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             <p className="onboarding-brand__tagline">Write the world before you write the book.</p>
           </div>
 
-          <div className="onboarding-primary-cta">
-            <button
-              className="btn-primary btn-primary--hero"
-              onClick={() => { setError(''); setProjectFlow(true); setScreen('project-name'); }}
-              data-testid="cta-create-project"
-            >
-              Create your first project →
-            </button>
-            {/* SKY-320: secondary one-click default lands a fully-scaffolded
-                Mythos Vault at ~/Mythos/Vaults/Mythos Vault/ with no folder
-                picker — for users who want zero ceremony. */}
-            <button
-              className="btn-secondary onboarding-default-quickstart__btn"
-              type="button"
-              onClick={handleOneClickDefault}
-              disabled={busy}
-              data-testid="quickstart-default-vault"
-            >
-              {busy ? 'Creating…' : '✨ Or use one-click default setup'}
-            </button>
-            <p className="onboarding-default-quickstart__hint">
-              Creates <code>~/Mythos/Vaults/Mythos Vault/</code> with Story Vault and Notes Vault — ready to go.
-            </p>
-          </div>
-
-          <details className="onboarding-other-options">
-            <summary className="onboarding-other-options__toggle">Other ways to get started</summary>
           <div className="picker-grid" role="group" aria-label="Choose how to get started">
             <PickerCard
               recommended
@@ -868,7 +703,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
               testId="card-template"
             />
           </div>
-          </details>
 
           {error && <p className="onboarding-error" role="alert">{error}</p>}
 
@@ -938,7 +772,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                 value={templateParentPath}
                 onChange={(v) => {
                   setTemplateParentPath(v);
-                  setTemplatePickedToken(null);
                   setTemplatePathStatus('checking');
                   api().validatePath(v).then((r) => {
                     setTemplatePathStatus(!r.writable ? 'not-writable' : 'new');
@@ -947,10 +780,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                 onBlur={() => {}}
                 onBrowse={async () => {
                   const r = await api().pickFolder();
-                  if (!r.cancelled && r.vaultRoot) {
-                    setTemplateParentPath(r.vaultRoot);
-                    setTemplatePickedToken(r.registrationToken);
-                  }
+                  if (!r.cancelled && r.vaultRoot) setTemplateParentPath(r.vaultRoot);
                 }}
                 status={templatePathStatus}
                 disabled={busy}
@@ -972,11 +802,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                         `${base}/Notes Vault`,
                       );
                       if ('error' in res) { setError(res.error); return; }
-                      await api().vaultSetPaths(res.storyVaultPath, res.notesVaultPath, {
-                        seedMode: 'blank',
-                        storyVaultToken: templatePickedToken ?? undefined,
-                        notesVaultToken: templatePickedToken ?? undefined,
-                      });
+                      await api().vaultSetPaths(res.storyVaultPath, res.notesVaultPath, { seedMode: 'blank' });
                       await api().onboardingComplete();
                       onComplete(initialSettings);
                     } catch (e) {
@@ -998,15 +824,10 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       {screen === 'default-path' && (
         <div className="onboarding-card" data-testid="screen-default-path">
           <div className="onboarding-top-bar">
-            <button
-              className="btn-ghost btn-back"
-              onClick={() => { setError(''); setScreen(projectFlow ? 'writing-goal' : 'welcome'); }}
-            >
-              ← Back
-            </button>
-            {!projectFlow && stepLabel && <span className="step-label">{stepLabel}</span>}
+            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
+            {stepLabel && <span className="step-label">{stepLabel}</span>}
           </div>
-          <h2 className="onboarding-title">{projectFlow ? 'Where should we save your project?' : 'Where should we put your vaults?'}</h2>
+          <h2 className="onboarding-title">Where should we put your vaults?</h2>
           <p className="onboarding-subtitle">
             We&apos;ll create <code>Story Vault/</code> and <code>Notes Vault/</code> side-by-side under this folder, seeded with the standard Mythos layout plus a starter universe and story.
           </p>
@@ -1025,25 +846,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           {error && <p className="onboarding-error" role="alert">{error}</p>}
 
           <div className="onboarding-actions">
-            {projectFlow ? (
-              <button
-                className="btn-primary"
-                onClick={handleCreateProjectVault}
-                disabled={isDefaultCTADisabled}
-                data-testid="create-project-vault"
-              >
-                {busy ? 'Creating…' : 'Create my project →'}
-              </button>
-            ) : (
-              <button
-                className="btn-primary"
-                onClick={handleCreateDefaultVault}
-                disabled={isDefaultCTADisabled}
-                data-testid="create-default-vault"
-              >
-                {busy ? 'Creating…' : 'Create vaults →'}
-              </button>
-            )}
+            <button
+              className="btn-primary"
+              onClick={handleCreateDefaultVault}
+              disabled={isDefaultCTADisabled}
+              data-testid="create-default-vault"
+            >
+              {busy ? 'Creating…' : 'Create vaults →'}
+            </button>
           </div>
         </div>
       )}
@@ -1366,101 +1176,6 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             >
               {busy ? 'Copying sample project…' : 'Open sample →'}
             </button>
-          </div>
-        </div>
-      )}
-
-
-      {/* ── P1 Project Name ── */}
-      {screen === 'project-name' && (
-        <div className="onboarding-card" data-testid="screen-project-name">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">What are you working on?</h2>
-          <p className="onboarding-subtitle">Give your project a name. You can always change it later.</p>
-          <div className="onboarding-field">
-            <label className="onboarding-label" htmlFor="project-name-input">Project name</label>
-            <input
-              id="project-name-input"
-              className="onboarding-input"
-              type="text"
-              placeholder="My Story"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              autoFocus
-              data-testid="project-name-input"
-              maxLength={80}
-            />
-          </div>
-          <div className="onboarding-actions">
-            <button className="btn-ghost" onClick={() => { setProjectName(''); setScreen('genre'); }} data-testid="skip-project-name">Skip</button>
-            <button className="btn-primary" onClick={() => setScreen('genre')} data-testid="next-to-genre">Next →</button>
-          </div>
-        </div>
-      )}
-
-      {/* ── P2 Genre ── */}
-      {screen === 'genre' && (
-        <div className="onboarding-card" data-testid="screen-genre">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('project-name'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">What genre are you writing?</h2>
-          <p className="onboarding-subtitle">We&apos;ll use this to personalize the Brainstorm Agent&apos;s suggestions.</p>
-          <div className="genre-grid" role="group" aria-label="Select genre">
-            {GENRES.map((g) => (
-              <button
-                key={g}
-                className={`genre-chip${genre === g ? ' genre-chip--selected' : ''}`}
-                onClick={() => setGenre(g)}
-                aria-pressed={genre === g}
-                data-testid={`genre-${g.toLowerCase().replace(/ /g, '-')}`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-          <div className="onboarding-actions">
-            <button className="btn-ghost" onClick={() => { setGenre(''); setScreen('writing-goal'); }} data-testid="skip-genre">Skip</button>
-            <button className="btn-primary" onClick={() => setScreen('writing-goal')} data-testid="next-to-goal">Next →</button>
-          </div>
-        </div>
-      )}
-
-      {/* ── P3 Writing Goal ── */}
-      {screen === 'writing-goal' && (
-        <div className="onboarding-card" data-testid="screen-writing-goal">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('genre'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">What&apos;s your writing goal?</h2>
-          <p className="onboarding-subtitle">This helps the Archive Agent focus on what matters most right now.</p>
-          <div className="goal-options" role="group" aria-label="Select writing goal">
-            {([
-              { value: 'first-draft' as WritingGoal, icon: '✏️', label: 'First Draft', desc: "I'm writing from scratch" },
-              { value: 'revision' as WritingGoal, icon: '🔄', label: 'Revision', desc: "I'm revising existing work" },
-              { value: 'world-building' as WritingGoal, icon: '🌍', label: 'World-Building', desc: "I'm building a fictional world" },
-            ]).map(({ value, icon, label, desc }) => (
-              <button
-                key={value}
-                className={`goal-option${writingGoal === value ? ' goal-option--selected' : ''}`}
-                onClick={() => setWritingGoal(value)}
-                aria-pressed={writingGoal === value}
-                data-testid={`goal-${value}`}
-              >
-                <span className="goal-option__icon" aria-hidden="true">{icon}</span>
-                <span className="goal-option__label">{label}</span>
-                <span className="goal-option__desc">{desc}</span>
-              </button>
-            ))}
-          </div>
-          <div className="onboarding-actions">
-            <button className="btn-ghost" onClick={() => { setWritingGoal(''); setScreen('default-path'); }} data-testid="skip-goal">Skip</button>
-            <button className="btn-primary" onClick={() => setScreen('default-path')} data-testid="next-to-path">Choose location →</button>
           </div>
         </div>
       )}
