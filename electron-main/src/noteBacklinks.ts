@@ -62,3 +62,4 @@ export function getNoteBacklinks(
   backlinks.sort((a, b) => a.path.localeCompare(b.path));
   return { notePath, backlinks };
 }
+
