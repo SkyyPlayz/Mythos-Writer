@@ -72,7 +72,7 @@ export interface LayoutPrefs {
   rightWidth: number;
   bottomHeight: number;
   rightTab: 'notes' | 'properties' | 'ai';
-  leftTab: 'stories' | 'vault' | 'entities' | 'review';
+  leftTab: 'stories' | 'vault' | 'entities' | 'review' | 'progress';
   writingMode?: WritingMode;
   focusPrefs?: FocusPrefs;
 }

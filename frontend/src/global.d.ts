@@ -256,6 +256,8 @@ interface AppSettings {
     scrollTop: number;
     cursorLine: number;
   };
+  /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
+  seenTips?: Record<string, boolean>;
 }
 
 interface GenerationLogRow {
@@ -607,6 +609,12 @@ interface Window {
     tagsItemsForTag?: (tagName: string) => Promise<{ items: Array<{ itemId: string; itemKind: 'scene' | 'entity' }> }>;
     tagsBulkApply?: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) => Promise<{ updated: number }>;
     sceneSetTags?: (payload: { sceneId: string; tags: string[] }) => Promise<{ scene: unknown }>;
+
+    // SKY-154: Writing Goals
+    goalsGetStats: () => Promise<{ todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: Array<{ date: string; words: number }>; }>;
+    goalsLogWords: (date: string, wordsAdded: number) => Promise<{ ok: boolean }>;
+    goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
+    goalsResetStreak: () => Promise<{ ok: boolean }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

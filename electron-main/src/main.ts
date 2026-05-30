@@ -123,6 +123,11 @@ import {
   type NotesGetPayload,
   type NotesSetPayload,
   type TagEntry,
+  type GoalsLogWordsPayload,
+  type GoalsSetGoalPayload,
+  type EntityRelationshipsListPayload,
+  type EntityRelationshipsCreatePayload,
+  type EntityRelationshipsDeletePayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -170,6 +175,11 @@ import {
   getItemsForTag,
   bulkApplyTags,
   type DbTag,
+  insertEntityRelationship,
+  listEntityRelationships,
+  listEntityRelationshipsByToEntity,
+  getEntityRelationship,
+  deleteEntityRelationship,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -244,8 +254,7 @@ import {
 } from './secrets/migration.js';
 import { indexDocument, buildFullIndex, searchVault } from './search.js';
 import { buildEpub } from './epub.js';
-import { buildDocx } from './docx.js';
-import {
+import { buildDocx } from './docx.js';import {
   sceneToMarkdown, chapterToMarkdown, storyToMarkdown, vaultToMarkdown,
   sceneToPlaintext, chapterToPlaintext, storyToPlaintext, vaultToPlaintext,
   type ExportableScene, type ExportableChapter, type ExportableStory,
@@ -274,6 +283,7 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
+import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
@@ -695,6 +705,21 @@ function buildTextExport(
 // ─── Tag helper ───
 function dbTagToEntry(t: DbTag): TagEntry {
   return { id: t.id, name: t.name, color: t.color, createdAt: t.created_at };
+}
+
+// ─── Export helpers (SKY-153) ───
+function safeEF(s: string): string { return s.replace(/[/\?%*:|"<>]/g, '-').trim() || 'export'; }
+function readSEF(sc: import('./ipc.js').SceneEntry): ExportableScene { let p = ''; try { p = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ } return { title: sc.title, prose: p }; }
+function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js').ExportScope, fmt: 'markdown'|'plaintext'): { content: string; defaultFilename: string } {
+  const toC = (ch: import('./ipc.js').ChapterEntry): ExportableChapter => ({ title: ch.title, scenes: [...ch.scenes].sort((a,b)=>a.order-b.order).map(readSEF) });
+  const toSt = (st: import('./ipc.js').StoryEntry): ExportableStory => ({ title: st.title, chapters: [...st.chapters].sort((a,b)=>a.order-b.order).map(toC) });
+  const md = fmt === 'markdown';
+  switch (scope.kind) {
+    case 'scene': { let f2: import('./ipc.js').SceneEntry|null=null; outer: for (const st of manifest.stories) for (const ch of st.chapters) { const sc=ch.scenes.find((s)=>s.id===scope.sceneId); if(sc){f2=sc;break outer;} } if (!f2) f2=(manifest.scenes??[]).find((s: import('./ipc.js').SceneEntry)=>s.id===scope.sceneId)??null; if (!f2) throw new Error(`Scene not found: ${scope.sceneId}`); const es=readSEF(f2); return { content: md ? sceneToMarkdown(es) : sceneToPlaintext(es), defaultFilename: safeEF(f2.title) }; }
+    case 'chapter': { const st=manifest.stories.find((s)=>s.id===scope.storyId); if(!st) throw new Error(`Story not found: ${scope.storyId}`); const ch=st.chapters.find((c)=>c.id===scope.chapterId); if(!ch) throw new Error(`Chapter not found: ${scope.chapterId}`); const scenes=[...ch.scenes].sort((a,b)=>a.order-b.order).map(readSEF); return { content: md ? chapterToMarkdown(ch.title,scenes) : chapterToPlaintext(ch.title,scenes), defaultFilename: safeEF(ch.title) }; }
+    case 'story': { const st=manifest.stories.find((s)=>s.id===scope.storyId); if(!st) throw new Error(`Story not found: ${scope.storyId}`); const es=toSt(st); return { content: md ? storyToMarkdown(es) : storyToPlaintext(es), defaultFilename: safeEF(st.title) }; }
+    case 'vault': return { content: md ? vaultToMarkdown(manifest.stories.map(toSt)) : vaultToPlaintext(manifest.stories.map(toSt)), defaultFilename: 'vault-export' };
+  }
 }
 
 // ─── IPC Handlers ───
@@ -1496,6 +1521,12 @@ const handlers: IpcHandlers = {
     });
     return { saved: true };
   },
+
+  // SKY-154
+  [IPC_CHANNELS.GOALS_LOG_WORDS]: (payload: GoalsLogWordsPayload) => { logWords(payload.date, payload.wordsAdded); return { ok: true as const }; },
+  [IPC_CHANNELS.GOALS_GET_STATS]: () => { const today = new Date().toISOString().slice(0, 10); return getWritingStats(today); },
+  [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => { setDailyGoal(payload.dailyGoal); return { ok: true as const }; },
+  [IPC_CHANNELS.GOALS_RESET_STREAK]: () => { const today = new Date().toISOString().slice(0, 10); resetStreak(today); return { ok: true as const }; },
 
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
     const t0 = Date.now();

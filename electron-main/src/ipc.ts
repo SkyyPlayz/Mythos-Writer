@@ -298,6 +298,12 @@ export const IPC_CHANNELS = {
   TAGS_ITEMS_FOR_TAG: 'tags:itemsForTag',
   TAGS_BULK_APPLY: 'tags:bulkApply',
   SCENE_SET_TAGS: 'scene:setTags',
+
+  // SKY-154: Writing Goals & Progress Dashboard
+  GOALS_LOG_WORDS: 'goals:logWords',
+  GOALS_GET_STATS: 'goals:getStats',
+  GOALS_SET_GOAL: 'goals:setGoal',
+  GOALS_RESET_STREAK: 'goals:resetStreak',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -499,6 +505,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => TagsItemsForTagResponse;
   [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => TagsBulkApplyResponse;
   [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => SceneSetTagsResponse;
+
+  // SKY-154: Writing Goals
+  [IPC_CHANNELS.GOALS_LOG_WORDS]: (payload: GoalsLogWordsPayload) => GoalsLogWordsResponse;
+  [IPC_CHANNELS.GOALS_GET_STATS]: (payload: never) => GoalsGetStatsResponse;
+  [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => GoalsSetGoalResponse;
+  [IPC_CHANNELS.GOALS_RESET_STREAK]: (payload: never) => GoalsResetStreakResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2365,3 +2377,12 @@ export interface TagsBulkApplyPayload {
 export interface TagsBulkApplyResponse { updated: number }
 export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
 export interface SceneSetTagsResponse { scene: SceneEntry }
+
+// ─── SKY-154: Writing Goals types ───
+export interface GoalsLogWordsPayload { date: string; wordsAdded: number; }
+export type GoalsLogWordsResponse = { ok: true };
+export interface HeatmapEntry { date: string; words: number; }
+export interface GoalsGetStatsResponse { todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: HeatmapEntry[]; }
+export interface GoalsSetGoalPayload { dailyGoal: number; }
+export type GoalsSetGoalResponse = { ok: true };
+export type GoalsResetStreakResponse = { ok: true };

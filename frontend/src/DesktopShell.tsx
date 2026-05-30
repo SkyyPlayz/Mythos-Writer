@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
+import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens } from './theme';
 import LeftRail from './LeftRail';
@@ -101,9 +102,10 @@ interface AppMenuBarProps {
   onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
+  onOpenExport?: (scope: ExportScope) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree , onOpenExport}: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -121,6 +123,11 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         }
       })
       .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  };
+
+  const handleExportFormat = () => {
+    if (!selectedStoryId) { alert('Select a story first to export.'); return; }
+    onOpenExport?.({ kind: 'story', storyId: selectedStoryId });
   };
 
   const handleExportDocx = () => {
@@ -164,6 +171,8 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Markdown…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Plain Text…</button>
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
               <div className="app-menu-separator" role="separator" />
@@ -467,6 +476,7 @@ export default function DesktopShell() {
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
+  const [exportScope, setExportScope] = useState<ExportScope | null>(null);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -484,7 +494,12 @@ export default function DesktopShell() {
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
 
   // SKY-130: cross-restart scene/cursor restore refs
-  const pendingCursorPosRef = useRef<number | null>(null);
+  // SKY-154: word-count delta tracking for goals dashboard
+  const prevWordCountRef = useRef<number>(0);
+  const wordsBufferRef = useRef<number>(0);
+  const goalsLogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const pendingCursorPosRef = useRef<number | null>(null);
   const sceneRestoreAttemptedRef = useRef(false);
   const restoreInProgressRef = useRef(false);
   const saveCursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -821,6 +836,21 @@ export default function DesktopShell() {
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
     (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
+    // SKY-154: track positive word-count delta for goals dashboard
+    const newWordCount = blocks.reduce(
+      (sum, b) => sum + b.content.trim().split(/\s+/).filter(Boolean).length, 0
+    );
+    const delta = newWordCount - prevWordCountRef.current;
+    if (delta > 0) wordsBufferRef.current += delta;
+    prevWordCountRef.current = newWordCount;
+    if (goalsLogTimerRef.current) clearTimeout(goalsLogTimerRef.current);
+    goalsLogTimerRef.current = setTimeout(() => {
+      if (wordsBufferRef.current > 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        window.api.goalsLogWords(today, wordsBufferRef.current).catch(() => {});
+        wordsBufferRef.current = 0;
+      }
+    }, 2000);
     // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
     if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
     saveIndicatorTimer.current = setTimeout(() => {
@@ -921,6 +951,10 @@ export default function DesktopShell() {
     setSelectedStory(story);
     setSelectedEntity(null);
     setVaultContext('file');
+    prevWordCountRef.current = scene.blocks.reduce(
+      (sum, b) => sum + b.content.trim().split(/\s+/).filter(Boolean).length, 0
+    );
+    wordsBufferRef.current = 0;
     if (!restoreInProgressRef.current) {
       // User-initiated open: clear any pending cursor restore and reset cursor to 0
       pendingCursorPosRef.current = null;
@@ -1244,6 +1278,7 @@ export default function DesktopShell() {
           onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
+          onOpenExport={(scope: ExportScope) => setExportScope(scope)}
         />
       )}
       {distractionFree && (
@@ -1276,6 +1311,7 @@ export default function DesktopShell() {
       {shortcutsOpen && (
         <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
+      {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
       )}
@@ -1319,6 +1355,7 @@ export default function DesktopShell() {
             onReorderScenes={handleReorderScenes}
             onOpenVaultPath={handleOpenSceneByPath}
             onContextChange={setVaultContext}
+          onExport={(scope: ExportScope) => setExportScope(scope)}
           />
         </div>
       )}
