@@ -201,6 +201,7 @@ import {
   deleteEntity,
   listEntities,
   reindexEntities,
+  migrateEntityAliases,
   getEntityBacklinks,
 } from './entities.js';
 import {
@@ -250,7 +251,7 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates } from './templates.js';
 
 const require = createRequire(import.meta.url);
 
@@ -1190,6 +1191,7 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     reindexEntities(getVaultRoot(), manifest);
+    migrateEntityAliases(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), manifest);
     return { entities: listEntities(getVaultRoot(), manifest, payload.type) };
   },
@@ -2968,6 +2970,11 @@ const handlers: IpcHandlers = {
     if (!name) return { error: 'Template name is required' };
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
+  },
+
+  // SKY-190: Note Templates
+  [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: import('./ipc.js').NoteTemplateListPayload): import('./ipc.js').NoteTemplateListResponse => {
+    return { templates: listNoteTemplates(payload?.kind) };
   },
 
 };

@@ -37,7 +37,10 @@ function serializeEntityFrontmatter(fm: EntityFrontmatter, prose: string): strin
   lines.push(`id: ${fm.id}`);
   lines.push(`name: ${fm.name}`);
   lines.push(`type: ${fm.type}`);
-  if (fm.aliases?.length) lines.push(`aliases: [${fm.aliases.join(', ')}]`);
+  // Write `aliases: []` even when empty so downstream readers (e.g. Linker)
+  // can distinguish "no aliases defined yet" (undefined, no line) from
+  // "migrated — confirmed no aliases" (explicit empty array).
+  if (fm.aliases !== undefined) lines.push(`aliases: [${fm.aliases.join(', ')}]`);
   if (fm.tags?.length) lines.push(`tags: [${fm.tags.join(', ')}]`);
   if (fm.properties && Object.keys(fm.properties).length > 0) {
     for (const [k, v] of Object.entries(fm.properties)) {
@@ -317,6 +320,35 @@ export function getEntityBacklinks(
   }
 
   return { entityId, scenes: results };
+}
+
+// ─── Migration: backfill aliases: [] on existing entity files ───
+// Scans all entities in the manifest and writes `aliases: []` to any file
+// that has no `aliases` field in its frontmatter.  This is idempotent and
+// additive — files with existing aliases are untouched.
+// Call once per vault open alongside reindexEntities.
+
+export function migrateEntityAliases(
+  vaultRoot: string,
+  manifest: Manifest,
+): { migrated: number } {
+  let migrated = 0;
+  for (const entry of manifest.entities) {
+    try {
+      const { content } = readVaultFile(vaultRoot, entry.path);
+      const parsed = parseEntityFrontmatter(content);
+      if (!parsed) continue;
+      if (parsed.fm.aliases !== undefined) continue;
+      const updatedFm: EntityFrontmatter = { ...parsed.fm, aliases: [] };
+      const newContent = serializeEntityFrontmatter(updatedFm, parsed.prose);
+      writeVaultFileAtomic(vaultRoot, entry.path, newContent);
+      entry.aliases = [];
+      migrated++;
+    } catch {
+      // skip unreadable or malformed files
+    }
+  }
+  return { migrated };
 }
 
 // ─── Vault reindex: scan entities/ folder for orphan entity files ───
