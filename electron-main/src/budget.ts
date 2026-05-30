@@ -1,7 +1,7 @@
 // Auto-apply policy enforcement and rolling window budget tracking.
 // Pure logic — no Electron imports, no module-level state; fully testable.
 
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { countSuggestionsInWindow, countTokensInWindow } from './db.js';
 
 export interface AgentBudgetSettings {
@@ -34,7 +34,7 @@ export function evaluateAutoApply(
   confidence: number,
   sourceAgent: string,
   settings: AgentBudgetSettings,
-  db: Database.Database,
+  db: DatabaseSync,
 ): AutoApplyResult {
   if (!settings.autoApply) {
     return { shouldAutoApply: false, budgetExceeded: false };
@@ -66,7 +66,7 @@ export function evaluateAutoApply(
 // This avoids coupling budget.ts to the module-level _db singleton.
 
 function countSuggestionsInWindowWithDb(
-  db: Database.Database,
+  db: DatabaseSync,
   sourceAgent: string,
   windowMs: number,
 ): number {
@@ -78,7 +78,7 @@ function countSuggestionsInWindowWithDb(
 }
 
 function countTokensInWindowWithDb(
-  db: Database.Database,
+  db: DatabaseSync,
   agent: string,
   windowMs: number,
 ): number {
@@ -108,7 +108,7 @@ const ONE_MINUTE_MS = 60 * 1000;
 export function checkCallBudget(
   agent: string,
   settings: Pick<AgentBudgetSettings, 'maxTokensPerHour' | 'maxTokensPerDay'> & { requestsPerMinute?: number },
-  db: Database.Database,
+  db: DatabaseSync,
 ): CallBudgetResult {
   if (settings.requestsPerMinute !== undefined) {
     const recentRequests = countRequestsInWindowWithDb(db, agent, ONE_MINUTE_MS);
@@ -141,7 +141,7 @@ export function assertAgentEnabled(agentName: string, enabled: boolean): void {
 }
 
 function countRequestsInWindowWithDb(
-  db: Database.Database,
+  db: DatabaseSync,
   agent: string,
   windowMs: number,
 ): number {
@@ -169,7 +169,7 @@ export function enforceSuggestionBudget(
   sourceAgent: string,
   autoApplyThreshold: number,
   tokensPerDay: number,
-  db: Database.Database,
+  db: DatabaseSync,
 ): SuggestionEnforcementResult {
   const dailyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_DAY_MS);
   if (dailyTokens >= tokensPerDay) {

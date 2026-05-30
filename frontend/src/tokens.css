@@ -48,6 +48,16 @@
       rgba(155, 95, 255, 0.6) 50%,
       rgba(255, 77, 255, 0.6) 100%);
 
+  /* ── Neon border tokens (SKY-127) — window chrome multi-color treatment ──── */
+  --border-neon-default: 0 0 16px var(--grad-neon), 0 0 2px var(--neon-cyan);
+  --border-neon-hover: 0 0 24px var(--grad-neon), 0 0 4px var(--neon-cyan);
+  --border-neon-context-folder: 0 0 16px
+      linear-gradient(120deg, #9b5fff 0%, #ff4dff 50%, #9b5fff 100%),
+      0 0 2px var(--neon-violet);
+  --border-neon-context-file: 0 0 16px
+      linear-gradient(120deg, #00f0ff 0%, #9b5fff 50%, #00f0ff 100%),
+      0 0 2px var(--neon-cyan);
+
   /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
   /* Background image override — set by applyLiquidNeonTokens (MYT-613/716).
      'none' keeps the plain --bg-base colour; any other value shows as a
@@ -254,14 +264,27 @@
   --color-surface-hover: var(--bg-hover);
   --color-surface-subtle: var(--bg-inset);
   --color-success: var(--state-success);
+  --color-success-bg: rgba(74, 222, 128, 0.12);
+  --color-success-border: rgba(74, 222, 128, 0.4);
   --color-danger: var(--state-danger);
   --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-danger-border: rgba(248, 113, 113, 0.4);
   --color-error: var(--state-danger);
   --color-warning: var(--state-warning);
   --color-warning-bg: rgba(251, 191, 36, 0.12);
   --color-warning-border: rgba(251, 191, 36, 0.4);
   --color-warning-text: #fbbf24;
   --color-archive-hint: var(--neon-violet);
+
+  /* Entity-category badge tokens — fact type chips in BrainstormPage */
+  --entity-char-bg: rgba(99, 102, 241, 0.20);
+  --entity-char-text: #a5b4fc;
+  --entity-loc-bg: rgba(16, 185, 129, 0.15);
+  --entity-loc-text: #6ee7b7;
+  --entity-item-bg: rgba(245, 158, 11, 0.15);
+  --entity-item-text: #fcd34d;
+  --entity-concept-bg: rgba(139, 92, 246, 0.18);
+  --entity-concept-text: #d8b4fe;
 }
 
 /* =============================================================================
@@ -307,6 +330,24 @@
   --accent-dim: #c9b6ff;
   --accent-dark: #c9b6ff;
   --surface-3: #1d232c;
+
+  /* State bg/border — higher opacity for legibility */
+  --color-success-bg: rgba(74, 222, 128, 0.22);
+  --color-success-border: rgba(74, 222, 128, 0.7);
+  --color-danger-bg: rgba(248, 113, 113, 0.22);
+  --color-danger-border: rgba(248, 113, 113, 0.7);
+  --color-warning-bg: rgba(251, 191, 36, 0.22);
+  --color-warning-border: rgba(251, 191, 36, 0.7);
+
+  /* Entity-category badges — solid, higher contrast text for AAA */
+  --entity-char-bg: rgba(99, 102, 241, 0.35);
+  --entity-char-text: #c7d2fe;
+  --entity-loc-bg: rgba(16, 185, 129, 0.25);
+  --entity-loc-text: #a7f3d0;
+  --entity-item-bg: rgba(245, 158, 11, 0.25);
+  --entity-item-text: #fde68a;
+  --entity-concept-bg: rgba(139, 92, 246, 0.30);
+  --entity-concept-text: #ede9fe;
 }
 
 /* OS-level increased-contrast request → clamp toward the high-contrast theme. */
