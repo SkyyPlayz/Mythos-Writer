@@ -331,6 +331,11 @@ export const IPC_CHANNELS = {
   // SKY-204: Daily Notes — opt-in journal mode
   DAILY_NOTE_OPEN_TODAY: 'dailyNote:openToday',
   DAILY_NOTE_GET_STREAK: 'dailyNote:getStreak',
+  // SKY-207: Per-scene custom frontmatter fields
+  CUSTOM_FIELDS_LIST: 'customFields:list',
+  CUSTOM_FIELDS_SET: 'customFields:set',
+  SCENE_PROPS_GET: 'scene:propsGet',
+  SCENE_PROPS_SET: 'scene:propsSet',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -567,6 +572,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }) => { smartFolder: SmartFolderEntry };
   [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }) => { success: boolean };
   [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }) => { results: SmartFolderResult[] };
+
+  // SKY-207: Per-scene custom frontmatter fields
+  [IPC_CHANNELS.CUSTOM_FIELDS_LIST]: (payload: never) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }) => { customFields: Record<string, unknown> };
+  [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }) => { ok: boolean };
 }
 
 // ─── Payload / Response types ───
@@ -653,6 +664,18 @@ export interface SmartFolderEntry {
   query: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// SKY-207: Per-scene custom frontmatter field schema
+export type FieldType = 'text' | 'number' | 'select';
+
+export interface CustomFieldDef {
+  id: string;
+  /** The frontmatter key (e.g. "mood", "tension"). Lowercase, no spaces. */
+  name: string;
+  type: FieldType;
+  /** Only for type "select". */
+  options?: string[];
 }
 
 export interface SmartFolderResult {
@@ -1767,6 +1790,8 @@ export interface SceneSavePayload {
   order?: number;
   /** SKY-10: classifies the save so snapshots can dedupe autosaves. Defaults to 'save'. */
   intent?: VersionIntent;
+  /** SKY-207: custom frontmatter field values to persist alongside prose. */
+  customFields?: Record<string, unknown>;
 }
 
 export interface SceneSaveResponse {

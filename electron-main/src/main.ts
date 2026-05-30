@@ -293,7 +293,8 @@ import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates,
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
 import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
-import type { SmartFolderEntry } from './ipc.js';
+import type { SmartFolderEntry, CustomFieldDef } from './ipc.js';
+import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 
 const require = createRequire(import.meta.url);
@@ -1816,13 +1817,15 @@ const handlers: IpcHandlers = {
     }
 
     // SKY-10: pre-save snapshot — capture the on-disk state being replaced.
-    // We snapshot the prior prose before overwriting so the timeline is
-    // "what existed before this save."
+    // SKY-207: single file read to get both prior prose (for snapshot) and existing custom fields.
     const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
     let priorProse: string | null = null;
+    let existingCustomFields: Record<string, unknown> | undefined;
     try {
-      priorProse = readSceneFile(getVaultRoot(), found.path).prose;
-    } catch { /* new file — nothing to snapshot */ }
+      const prior = readSceneFile(getVaultRoot(), found.path);
+      priorProse = prior.prose;
+      existingCustomFields = prior.customFields;
+    } catch { /* new file — nothing to snapshot or preserve */ }
     if (priorProse !== null) {
       try {
         saveVersion(getVaultRoot(), found.id, priorProse, {
@@ -1832,7 +1835,10 @@ const handlers: IpcHandlers = {
       } catch { /* snapshot failure is non-fatal — save still proceeds */ }
     }
 
-    // Atomic write: temp → fdatasync → rename
+    // Merge custom fields: payload fields take precedence; missing keys from payload keep disk values.
+    const mergedCustomFields = payload.customFields !== undefined
+      ? { ...existingCustomFields, ...payload.customFields }
+      : existingCustomFields;
     writeSceneFileAtomic(getVaultRoot(), found.path, {
       id: found.id,
       title: found.title,
@@ -1840,6 +1846,7 @@ const handlers: IpcHandlers = {
       storyId: found.storyId,
       order: found.order,
       prose: payload.prose,
+      customFields: mergedCustomFields,
     });
 
     writeManifest(getManifestPath(), manifest);
@@ -3513,6 +3520,84 @@ const handlers: IpcHandlers = {
     if (!query?.trim()) return { results: [] };
     const results = executeSmartQuery(getNotesVaultRoot(), query);
     return { results };
+  },
+
+  // ─── SKY-207: Custom frontmatter field schema ───
+
+  [IPC_CHANNELS.CUSTOM_FIELDS_LIST]: (): { fields: CustomFieldDef[] } => {
+    ensureVaultDir();
+    return { fields: readFieldDefs(getVaultRoot()) };
+  },
+
+  [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }): { fields: CustomFieldDef[] } => {
+    ensureVaultDir();
+    const { fields } = payload ?? {};
+    if (!Array.isArray(fields)) throw new Error('fields must be an array');
+    // Validate each definition
+    for (const f of fields) {
+      if (!f.id || typeof f.id !== 'string') throw new Error('Each field must have a string id');
+      if (!f.name || typeof f.name !== 'string') throw new Error('Each field must have a string name');
+      if (!['text', 'number', 'select'].includes(f.type)) throw new Error(`Invalid field type: ${f.type}`);
+      if (f.type === 'select' && f.options !== undefined && !Array.isArray(f.options)) {
+        throw new Error('Field options must be an array');
+      }
+    }
+    writeFieldDefs(getVaultRoot(), fields);
+    return { fields };
+  },
+
+  [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }): { customFields: Record<string, unknown> } => {
+    ensureVaultDir();
+    const { sceneId } = payload ?? {};
+    if (!sceneId) throw new Error('sceneId is required');
+    const manifest = readManifest(getManifestPath());
+    let scenePath: string | null = null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === sceneId);
+        if (scene) { scenePath = scene.path; break outer; }
+      }
+    }
+    if (!scenePath) {
+      const scene = manifest.scenes.find((s) => s.id === sceneId);
+      scenePath = scene?.path ?? null;
+    }
+    if (!scenePath) throw new Error(`Scene not found: ${sceneId}`);
+    safePath(getVaultRoot(), scenePath);
+    try {
+      const data = readSceneFile(getVaultRoot(), scenePath);
+      return { customFields: data.customFields ?? {} };
+    } catch {
+      return { customFields: {} };
+    }
+  },
+
+  [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }): { ok: boolean } => {
+    ensureVaultDir();
+    const { sceneId, customFields } = payload ?? {};
+    if (!sceneId) throw new Error('sceneId is required');
+    if (!customFields || typeof customFields !== 'object') throw new Error('customFields must be an object');
+    const manifest = readManifest(getManifestPath());
+    let scenePath: string | null = null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === sceneId);
+        if (scene) { scenePath = scene.path; break outer; }
+      }
+    }
+    if (!scenePath) {
+      const scene = manifest.scenes.find((s) => s.id === sceneId);
+      scenePath = scene?.path ?? null;
+    }
+    if (!scenePath) throw new Error(`Scene not found: ${sceneId}`);
+    safePath(getVaultRoot(), scenePath);
+    const existing = readSceneFile(getVaultRoot(), scenePath);
+    writeSceneFileAtomic(getVaultRoot(), scenePath, {
+      ...existing,
+      customFields: { ...existing.customFields, ...customFields },
+    });
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: sceneId, path: scenePath });
+    return { ok: true };
   },
 
 };
