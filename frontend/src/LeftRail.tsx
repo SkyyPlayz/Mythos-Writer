@@ -3,9 +3,10 @@ import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
 import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
+import ProgressDashboard from './ProgressDashboard';
 import './LeftRail.css';
 
-type Tab = 'stories' | 'vault' | 'entities' | 'review';
+type Tab = 'stories' | 'vault' | 'entities' | 'review' | 'progress';
 
 interface Props {
   activeTab: Tab;
@@ -82,6 +83,17 @@ export default function LeftRail({
         >
           Review
         </button>
+        <button
+          id="leftrail-tab-progress"
+          role="tab"
+          aria-selected={activeTab === 'progress'}
+          aria-controls="leftrail-tabpanel"
+          className={`rail-tab${activeTab === 'progress' ? ' active' : ''}`}
+          onClick={() => onTabChange('progress')}
+          aria-label="Writing Goals & Progress"
+        >
+          Goals
+        </button>
       </div>
       <div
         className="rail-content"
@@ -119,6 +131,7 @@ export default function LeftRail({
           />
         )}
         {activeTab === 'review' && <SuggestionReview onOpenVaultPath={onOpenVaultPath} />}
+        {activeTab === 'progress' && <ProgressDashboard stories={stories} />}
       </div>
     </div>
   );
