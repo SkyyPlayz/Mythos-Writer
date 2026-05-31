@@ -30,8 +30,46 @@ const SIDEBAR_TABS: { id: Tab; label: string }[] = [
   { id: 'outline', label: 'Outline' },
 ];
 
+const NOTES_SAVE_DEBOUNCE_MS = 600;
+
 function NotesPanel({ scene }: { scene: Scene | null }) {
   const [note, setNote] = useState('');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedSceneIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!scene) {
+      setNote('');
+      loadedSceneIdRef.current = null;
+      return;
+    }
+    if (scene.id === loadedSceneIdRef.current) return;
+    loadedSceneIdRef.current = scene.id;
+    setNote('');
+    window.api.notesGet?.(scene.id).then((res) => {
+      if (loadedSceneIdRef.current === scene.id) setNote(res.content);
+    }).catch(() => {});
+  }, [scene?.id]);
+
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+
+  const persistNote = (sceneId: string, value: string) => {
+    window.api.notesSet?.(sceneId, value).catch(() => {});
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setNote(value);
+    if (!scene) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => persistNote(scene.id, value), NOTES_SAVE_DEBOUNCE_MS);
+  };
+
+  const handleBlur = () => {
+    if (!scene) return;
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    persistNote(scene.id, note);
+  };
 
   if (!scene) {
     return (
@@ -48,7 +86,8 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
       <textarea
         className="notes-textarea"
         value={note}
-        onChange={(e) => setNote(e.target.value)}
+        onChange={handleChange}
+        onBlur={handleBlur}
         placeholder="Scene notes, reminders, loose ideas…"
       />
     </div>
