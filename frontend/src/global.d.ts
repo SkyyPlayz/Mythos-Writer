@@ -676,6 +676,12 @@ interface Window {
     goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
     goalsResetStreak: () => Promise<{ ok: boolean }>;
 
+    // SKY-203: Note-level backlinks
+    noteBacklinks: (notePath: string) => Promise<{
+      notePath: string;
+      backlinks: Array<{ path: string; name: string; snippet: string }>;
+    }>;
+
     // SKY-194: Iconize — per-node icon IPC
     notesVaultReadIcons: () => Promise<Record<string, string>>;
     vaultReadIcons: () => Promise<Record<string, string>>;

@@ -129,6 +129,7 @@ import {
   type SceneEntityLinksUpsertPayload,
   type SceneEntityLinksDeletePayload,
   type EntityLinkedScenesPayload,
+  type NoteBacklinksPayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -297,6 +298,7 @@ import {
 } from './brainstormRouting.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { getNoteBacklinks } from './noteBacklinks.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
 import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
 import type { SmartFolderEntry } from './ipc.js';
@@ -3443,6 +3445,12 @@ const handlers: IpcHandlers = {
     }
     return { scenes };
   },
+  // SKY-203: Note-level backlinks — scan all notes vault files for [[wikilinks]] targeting the given note
+  [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => {
+    ensureNotesVaultDir();
+    return getNoteBacklinks(getNotesVaultRoot(), payload?.notePath ?? '');
+  },
+
   // SKY-194: Iconize — per-node icon IPC
   [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string> => {
     return batchReadVaultIcons(getNotesVaultRoot());

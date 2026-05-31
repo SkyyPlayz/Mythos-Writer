@@ -316,6 +316,9 @@ export const IPC_CHANNELS = {
   SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
   ENTITY_LINKED_SCENES: 'entity:linkedScenes',
 
+  // SKY-203: Note-level backlinks — which notes link to a given note
+  NOTE_BACKLINKS: 'notesVault:backlinks',
+
   // SKY-194: Iconize — per-node icons with bundled + user icon packs
   NOTES_VAULT_READ_ICONS: 'notesVault:readIcons',
   VAULT_READ_ICONS: 'vault:readIcons',
@@ -554,6 +557,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLinksUpsertResponse;
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
+
+  // SKY-203: Note-level backlinks
+  [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => NoteBacklinksResponse;
 
   // SKY-194: Iconize — per-node icon IPC
   [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
@@ -1110,6 +1116,27 @@ export interface EntityBacklinkScene {
 export interface EntityBacklinksResponse {
   entityId: string;
   scenes: EntityBacklinkScene[];
+}
+
+// ─── Note backlinks (SKY-203) ───
+
+export interface NoteBacklinksPayload {
+  /** Vault-relative path of the note to find backlinks for (e.g. "my-note.md"). */
+  notePath: string;
+}
+
+export interface NoteBacklinkEntry {
+  /** Vault-relative path of the linking note. */
+  path: string;
+  /** Display name (filename without .md extension). */
+  name: string;
+  /** Short excerpt around the [[wikilink]] hit. */
+  snippet: string;
+}
+
+export interface NoteBacklinksResponse {
+  notePath: string;
+  backlinks: NoteBacklinkEntry[];
 }
 
 // ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───

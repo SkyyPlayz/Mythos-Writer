@@ -649,3 +649,103 @@
   color: var(--text-primary, #e0e0e0);
   border: 1px solid var(--border, #3a3a3a);
 }
+/* ─── Backlinks pane (SKY-203) ─── */
+
+.vb-backlinks {
+  border-top: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+}
+
+.vb-backlinks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: 500;
+  text-align: left;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vb-backlinks-toggle:hover {
+  color: var(--text-header, #fff);
+}
+
+.vb-backlinks-toggle:focus-visible {
+  outline: 2px solid var(--accent, #0af);
+  outline-offset: -2px;
+}
+
+.vb-backlinks-chevron {
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.vb-backlinks-body {
+  padding: 0 0 6px;
+}
+
+.vb-backlinks-status,
+.vb-backlinks-empty {
+  padding: 4px 14px 6px;
+  font-size: var(--text-xs, 0.72rem);
+  color: var(--text-muted, rgba(255,255,255,0.4));
+  font-style: italic;
+}
+
+.vb-backlinks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vb-backlinks-item {
+  display: flex;
+}
+
+.vb-backlinks-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-xs, 3px);
+  transition: background 80ms ease;
+}
+
+.vb-backlinks-btn:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+}
+
+.vb-backlinks-btn:focus-visible {
+  outline: 2px solid var(--accent, #0af);
+  outline-offset: -2px;
+}
+
+.vb-backlinks-name {
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: 500;
+  color: var(--text-header, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vb-backlinks-snippet {
+  font-size: 0.65rem;
+  color: var(--text-muted, rgba(255,255,255,0.45));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
