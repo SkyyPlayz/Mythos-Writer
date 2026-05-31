@@ -11,7 +11,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
 } from './vault.js';
-import type { EntityEntry, EntityRelation, Manifest } from './ipc.js';
+import type { EntityEntry, EntityRelation, EntityRelationship, EntityRelationshipRow, Manifest } from './ipc.js';
 import { parseRelationsBlock, serializeRelations, stripRelationsBlock } from './entityRelations.js';
 
 // ─── Path helpers ───
@@ -379,6 +379,52 @@ export function migrateEntityAliases(
     }
   }
   return { migrated };
+}
+
+// ─── Relationships (SKY-232) ───
+
+export function listEntityRelationships(
+  manifest: Manifest,
+  entityId: string
+): { entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] } {
+  const rels = manifest.relationships ?? [];
+  const rows: EntityRelationshipRow[] = [];
+  for (const rel of rels) {
+    let direction: 'outgoing' | 'incoming' | null = null;
+    let otherId: string | null = null;
+    if (rel.fromEntityId === entityId) { direction = 'outgoing'; otherId = rel.toEntityId; }
+    else if (rel.toEntityId === entityId) { direction = 'incoming'; otherId = rel.fromEntityId; }
+    if (!direction || !otherId) continue;
+    const other = manifest.entities.find((e) => e.id === otherId);
+    if (!other) continue;
+    rows.push({ id: rel.id, label: rel.label, direction, otherEntityId: other.id, otherEntityName: other.name, otherEntityType: other.type, createdAt: rel.createdAt });
+  }
+  const allLabels = [...new Set(rels.map((r) => r.label))].sort();
+  return { entityId, relationships: rows, allLabels };
+}
+
+export function createEntityRelationship(
+  manifest: Manifest,
+  fromEntityId: string,
+  toEntityId: string,
+  label: string
+): EntityRelationshipRow {
+  if (!manifest.entities.find((e) => e.id === fromEntityId)) throw new Error(`Entity not found: ${fromEntityId}`);
+  const toEntity = manifest.entities.find((e) => e.id === toEntityId);
+  if (!toEntity) throw new Error(`Entity not found: ${toEntityId}`);
+  const rel: EntityRelationship = { id: crypto.randomUUID(), fromEntityId, toEntityId, label, createdAt: new Date().toISOString() };
+  if (!manifest.relationships) manifest.relationships = [];
+  manifest.relationships.push(rel);
+  return { id: rel.id, label: rel.label, direction: 'outgoing', otherEntityId: toEntity.id, otherEntityName: toEntity.name, otherEntityType: toEntity.type, createdAt: rel.createdAt };
+}
+
+export function deleteEntityRelationship(
+  manifest: Manifest,
+  relationshipId: string
+): { deleted: boolean } {
+  const before = (manifest.relationships ?? []).length;
+  manifest.relationships = (manifest.relationships ?? []).filter((r) => r.id !== relationshipId);
+  return { deleted: manifest.relationships.length < before };
 }
 
 // ─── Vault reindex: scan entities/ folder for orphan entity files ───

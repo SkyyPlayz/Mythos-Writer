@@ -51,6 +51,9 @@ import {
   type EntityDeletePayload,
   type EntityListPayload,
   type EntityBacklinksPayload,
+  type EntityRelationshipsListPayload,
+  type EntityRelationshipsCreatePayload,
+  type EntityRelationshipsDeletePayload,
   type AgentWritingAssistantPayload,
   type AgentBrainstormPayload,
   type VaultCheckPayload,
@@ -241,6 +244,9 @@ import {
   reindexEntities,
   migrateEntityAliases,
   getEntityBacklinks,
+  listEntityRelationships,
+  createEntityRelationship,
+  deleteEntityRelationship,
 } from './entities.js';
 import { getReciprocal } from './entityRelations.js';
 import {
@@ -1335,6 +1341,25 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     return getEntityBacklinks(getVaultRoot(), manifest, payload.entityId);
+  },
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_LIST]: (payload: EntityRelationshipsListPayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return listEntityRelationships(manifest, payload.entityId);
+  },
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_CREATE]: (payload: EntityRelationshipsCreatePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const row = createEntityRelationship(manifest, payload.fromEntityId, payload.toEntityId, payload.label);
+    writeManifest(getManifestPath(), manifest);
+    return { relationship: row };
+  },
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_DELETE]: (payload: EntityRelationshipsDeletePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const result = deleteEntityRelationship(manifest, payload.relationshipId);
+    writeManifest(getManifestPath(), manifest);
+    return result;
   },
 
   // SKY-55: per-scene notes

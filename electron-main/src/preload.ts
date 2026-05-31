@@ -161,6 +161,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:backlinks', { entityId }),
   entityLinkedScenes: (entityId: string) =>
     ipcRenderer.invoke('entity:linkedScenes', { entityId }),
+  entityRelationshipsList: (entityId: string) =>
+    ipcRenderer.invoke('entity:relationships:list', { entityId }),
+  entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) =>
+    ipcRenderer.invoke('entity:relationships:create', { fromEntityId, toEntityId, label }),
+  entityRelationshipsDelete: (relationshipId: string) =>
+    ipcRenderer.invoke('entity:relationships:delete', { relationshipId }),
 
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),

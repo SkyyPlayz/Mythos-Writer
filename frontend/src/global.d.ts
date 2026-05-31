@@ -93,6 +93,16 @@ interface LinkedScene {
   linkKind: 'mention' | 'tag';
 }
 
+interface EntityRelationshipRow {
+  id: string;
+  label: string;
+  direction: 'outgoing' | 'incoming';
+  otherEntityId: string;
+  otherEntityName: string;
+  otherEntityType: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
+  createdAt: string;
+}
+
 interface VaultCheckInconsistency {
   id: string;
   entityName: string;
@@ -406,6 +416,9 @@ interface Window {
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
     entityLinkedScenes: (entityId: string) => Promise<{ scenes: LinkedScene[] }>;
+    entityRelationshipsList: (entityId: string) => Promise<{ entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] }>;
+    entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
+    entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;
@@ -723,6 +736,13 @@ interface Window {
     smartFolderUpdate?: (id: string, updates: { name?: string; query?: string }) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
     smartFolderDelete?: (id: string) => Promise<{ success: boolean }>;
     smartFolderQuery?: (query: string) => Promise<{ results: Array<{ path: string; title: string }> }>;
+
+    // SKY-232: Entity-to-entity relationships
+    entityLinkedScenes: (entityId: string) => Promise<{ scenes: LinkedScene[] }>;
+    entityRelationshipsList: (entityId: string) => Promise<{ entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] }>;
+    entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
+    entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
+
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
