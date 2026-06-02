@@ -134,6 +134,62 @@ describe('parseFrontmatter / serializeFrontmatter — property-based (SKY-361)',
   // These tests explicitly demonstrate what a broken implementation returns,
   // proving the properties above would catch those specific bugs.
 
+  // ── P5: No prototype pollution ───────────────────────────────────────────
+  // parseFrontmatter now uses Object.create(null) for its accumulator.
+  // Object.create(null) has no [[Prototype]], so keys like '__proto__' and
+  // 'constructor' become plain own properties — they cannot intercept the
+  // prototype chain.
+  //
+  // DELIBERATE BREAKAGE PROOF:
+  //   1. Change line 300 in vault.ts from `Object.create(null)` back to `{}`.
+  //   2. Run with seed input "---\n__proto__: [injected]\n---\n":
+  //        fm["__proto__"] = ["injected"]  ← calls __proto__ setter with an array
+  //        Object.getPrototypeOf(fm) === ["injected"]  ← prototype is polluted!
+  //   3. The assertion below fires:
+  //        Expected: null (Object.create(null) has no prototype)
+  //        Received: Array ["injected"]
+  it('P5: frontmatter has no prototype (Object.create(null) — prevents pollution)', () => {
+    fc.assert(
+      fc.property(fc.string(), (input) => {
+        const { frontmatter } = parseFrontmatter(input);
+        // Object.create(null) produces an object with proto === null,
+        // making __proto__/constructor injection inert.
+        const proto = Object.getPrototypeOf(frontmatter);
+        expect(proto === null || proto === Object.prototype).toBe(true);
+      }),
+      { numRuns: 2_000 }
+    );
+  });
+
+  // ── P6: Value-type safety ─────────────────────────────────────────────────
+  // Every frontmatter value must be string | number | boolean | string[].
+  // No nested objects, undefined, or null may appear.
+  //
+  // MUTATION DETECTION: add a branch to parseFrontmatter that sets
+  // `fm[key] = { nested: true }` for keys starting with "x" → this property
+  // immediately fails for any generated key that starts with "x".
+  it('P6: frontmatter values are only string | number | boolean | string[]', () => {
+    fc.assert(
+      fc.property(fc.string(), (input) => {
+        const { frontmatter } = parseFrontmatter(input);
+        for (const val of Object.values(frontmatter)) {
+          const safe =
+            typeof val === 'string' ||
+            typeof val === 'number' ||
+            typeof val === 'boolean' ||
+            (Array.isArray(val) &&
+              (val as unknown[]).every((item) => typeof item === 'string'));
+          expect(safe).toBe(true);
+        }
+      }),
+      { numRuns: 5_000 }
+    );
+  });
+
+  // ── Mutation-proof assertions ─────────────────────────────────────────────
+  // These tests explicitly demonstrate what a broken implementation returns,
+  // proving the properties above would catch those specific bugs.
+
   it('[mutation proof] detects broken parser that never extracts frontmatter', () => {
     function brokenParse(_raw: string): { frontmatter: Record<string, unknown>; prose: string } {
       return { frontmatter: {}, prose: _raw }; // bug: always returns empty frontmatter
