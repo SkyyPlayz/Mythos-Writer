@@ -18,7 +18,7 @@ import { PROPERTY_CONTRADICTION_PAIRS } from './archiveAgent.js';
 export interface LoreFact {
   entityId: string;
   entityName: string;
-  entityType: 'character' | 'location' | 'item' | 'concept' | 'other';
+  entityType: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   aliases: string[];
   /** Canonical property key → value pairs from the vault (e.g. hair → blonde). */
   properties: Record<string, string>;
