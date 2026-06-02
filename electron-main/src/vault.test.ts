@@ -338,7 +338,8 @@ describe('YAML frontmatter', () => {
     const result = parseFrontmatter(crashInput);
     // Input has no valid closing `---` alone on a line, so frontmatter must be empty.
     expect(Object.keys(result.frontmatter)).toHaveLength(0);
-    expect(result.prose).toBe(crashInput);
+    // SKY-398: null bytes are stripped before parsing; prose is the sanitized form.
+    expect(result.prose).toBe(crashInput.replace(/\x00/g, ''));
   });
 
   it('parseFrontmatter treats a key starting with --- as part of content when closing delimiter is unambiguous (SKY-384)', () => {
