@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import SceneHistory from './SceneHistory';
 import TagInput from './TagInput';
+import ScenePropertiesPanel from './ScenePropertiesPanel';
 import { countWords, readingTimeMinutes } from './wordStats';
 import { useSaveStatus } from './hooks/useSaveStatus';
 import type { SaveStatus } from './hooks/useSaveStatus';
@@ -224,6 +225,8 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
           <TagInput value={sceneTags} onChange={handleTagsChange} allTags={allTags} />
         </div>
       )}
+
+      <ScenePropertiesPanel sceneId={sceneId} />
 
       {showHistory && (
         <SceneHistory

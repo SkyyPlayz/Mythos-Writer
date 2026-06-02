@@ -1,0 +1,140 @@
+/* SKY-207: Scene properties panel */
+
+.scene-props-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--color-border, rgba(255 255 255 / 0.08));
+  flex-wrap: wrap;
+}
+
+.scene-props-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary, rgba(255 255 255 / 0.45));
+  padding-top: 6px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.scene-props-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  flex: 1;
+}
+
+.scene-props-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scene-props-field-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, rgba(255 255 255 / 0.55));
+  white-space: nowrap;
+  user-select: none;
+}
+
+.scene-props-input,
+.scene-props-select {
+  font-size: 0.8rem;
+  background: var(--color-surface-inset, rgba(0 0 0 / 0.25));
+  border: 1px solid var(--color-border, rgba(255 255 255 / 0.12));
+  border-radius: 4px;
+  color: var(--color-text, #e0e0e0);
+  padding: 3px 8px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.scene-props-input {
+  width: 120px;
+}
+
+.scene-props-input--number {
+  width: 72px;
+}
+
+.scene-props-select {
+  max-width: 140px;
+}
+
+.scene-props-input:focus,
+.scene-props-select:focus {
+  border-color: var(--color-accent, #7c6aff);
+}
+
+/* Custom fields definition list in settings */
+
+.cf-field-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cf-field-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--color-surface-inset, rgba(0 0 0 / 0.2));
+  font-size: 0.82rem;
+}
+
+.cf-field-name {
+  font-weight: 600;
+  color: var(--color-text, #e0e0e0);
+  flex: 1;
+}
+
+.cf-field-type {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent, #7c6aff);
+  opacity: 0.9;
+}
+
+.cf-field-options {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary, rgba(255 255 255 / 0.45));
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-field-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary, rgba(255 255 255 / 0.4));
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+
+.cf-field-remove:hover {
+  color: var(--color-danger, #ff6b6b);
+}
+
+.cf-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--color-surface-inset, rgba(0 0 0 / 0.2));
+  border-radius: 6px;
+  border: 1px solid var(--color-border, rgba(255 255 255 / 0.1));
+  margin-top: 4px;
+}

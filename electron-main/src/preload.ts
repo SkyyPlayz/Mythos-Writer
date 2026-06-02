@@ -558,6 +558,16 @@ contextBridge.exposeInMainWorld('api', {
   smartFolderQuery: (query: string) =>
     ipcRenderer.invoke('smartFolder:query', { query }),
 
+  // SKY-207: Per-scene custom frontmatter fields
+  customFieldsList: () =>
+    ipcRenderer.invoke('customFields:list', undefined),
+  customFieldsSet: (fields: unknown[]) =>
+    ipcRenderer.invoke('customFields:set', { fields }),
+  scenePropsGet: (sceneId: string) =>
+    ipcRenderer.invoke('scene:propsGet', { sceneId }),
+  scenePropsSet: (sceneId: string, customFields: Record<string, unknown>) =>
+    ipcRenderer.invoke('scene:propsSet', { sceneId, customFields }),
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

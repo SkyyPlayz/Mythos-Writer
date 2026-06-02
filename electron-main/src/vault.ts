@@ -347,11 +347,19 @@ export interface SceneFileData {
   outcome?: string;
   pov?: string;
   storyTime?: string;
+  /** SKY-207: writer-defined custom frontmatter fields (e.g. mood, tension). */
+  customFields?: Record<string, unknown>;
   prose: string;
 }
 
-export function writeSceneFile(vaultRoot: string, relativePath: string, data: SceneFileData): void {
-  const fm: Frontmatter = {
+/** Built-in frontmatter keys that are managed by the app. Custom fields must not shadow these. */
+const BUILTIN_FM_KEYS = new Set([
+  'id', 'title', 'chapterId', 'storyId', 'order', 'tags',
+  'goal', 'conflict', 'outcome', 'pov', 'storyTime', 'updatedAt',
+]);
+
+function buildSceneFrontmatter(data: SceneFileData): Frontmatter {
+  return {
     id: data.id,
     title: data.title,
     ...(data.chapterId ? { chapterId: data.chapterId } : {}),
@@ -363,35 +371,38 @@ export function writeSceneFile(vaultRoot: string, relativePath: string, data: Sc
     ...(data.outcome ? { outcome: data.outcome } : {}),
     ...(data.pov ? { pov: data.pov } : {}),
     ...(data.storyTime ? { storyTime: data.storyTime } : {}),
+    // SKY-207: custom fields go after built-ins; shadow protection via BUILTIN_FM_KEYS
+    ...(data.customFields
+      ? Object.fromEntries(
+          Object.entries(data.customFields).filter(
+            ([k, v]) => !BUILTIN_FM_KEYS.has(k) && v !== undefined && v !== null && v !== '',
+          ),
+        )
+      : {}),
     updatedAt: new Date().toISOString(),
   };
-  const content = serializeFrontmatter(fm, data.prose);
+}
+
+export function writeSceneFile(vaultRoot: string, relativePath: string, data: SceneFileData): void {
+  const content = serializeFrontmatter(buildSceneFrontmatter(data), data.prose);
   writeVaultFileAtomic(vaultRoot, relativePath, content);
 }
 
 /** Atomic variant of writeSceneFile — temp + fdatasync + rename. */
 export function writeSceneFileAtomic(vaultRoot: string, relativePath: string, data: SceneFileData): void {
-  const fm: Frontmatter = {
-    id: data.id,
-    title: data.title,
-    ...(data.chapterId ? { chapterId: data.chapterId } : {}),
-    ...(data.storyId ? { storyId: data.storyId } : {}),
-    ...(data.order !== undefined ? { order: data.order } : {}),
-    ...(data.tags?.length ? { tags: data.tags } : {}),
-    ...(data.goal ? { goal: data.goal } : {}),
-    ...(data.conflict ? { conflict: data.conflict } : {}),
-    ...(data.outcome ? { outcome: data.outcome } : {}),
-    ...(data.pov ? { pov: data.pov } : {}),
-    ...(data.storyTime ? { storyTime: data.storyTime } : {}),
-    updatedAt: new Date().toISOString(),
-  };
-  const content = serializeFrontmatter(fm, data.prose);
+  const content = serializeFrontmatter(buildSceneFrontmatter(data), data.prose);
   writeVaultFileAtomic(vaultRoot, relativePath, content);
 }
 
 export function readSceneFile(vaultRoot: string, relativePath: string): SceneFileData {
   const { content } = readVaultFile(vaultRoot, relativePath);
   const { frontmatter, prose } = parseFrontmatter(content);
+
+  // SKY-207: extract any key not in the built-in set as a custom field
+  const customFields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(frontmatter)) {
+    if (!BUILTIN_FM_KEYS.has(k)) customFields[k] = v;
+  }
 
   return {
     id: String(frontmatter.id ?? crypto.randomUUID()),
@@ -405,6 +416,7 @@ export function readSceneFile(vaultRoot: string, relativePath: string): SceneFil
     outcome: frontmatter.outcome ? String(frontmatter.outcome) : undefined,
     pov: frontmatter.pov ? String(frontmatter.pov) : undefined,
     storyTime: frontmatter.storyTime ? String(frontmatter.storyTime) : undefined,
+    customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
     prose,
   };
 }
