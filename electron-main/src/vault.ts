@@ -296,7 +296,11 @@ export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose
   // check). Strip them before any further processing.
   const sanitized = raw.replace(/\x00/g, '');
 
-  const match = sanitized.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  // Closing delimiter must be exactly "---" on its own line.  The original
+  // "\r?\n?" suffix was optional, meaning any line that merely starts with
+  // "---" (e.g. "---blled: v") was treated as the closing delimiter, losing
+  // all later keys on serialize→re-parse.  "(?:\r?\n|$)" requires end-of-line.
+  const match = sanitized.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/);
   if (!match) return { frontmatter: {}, prose: sanitized };
 
   // Object.create(null) prevents prototype-pollution: keys like '__proto__' or

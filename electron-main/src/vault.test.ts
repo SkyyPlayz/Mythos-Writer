@@ -305,6 +305,27 @@ describe('YAML frontmatter', () => {
     expect(typeof frontmatter).toBe('object');
     expect(typeof prose).toBe('string');
   });
+
+  it('SKY-398: closing delimiter must be exactly "---" on its own line', () => {
+    // Keys starting with "---" must NOT be confused for the closing delimiter.
+    // Regression for fuzz crash 03540bd: serializeFrontmatter emitted a key
+    // like "-----blled: v" and re-parse wrongly treated it as the closing "---".
+    const { frontmatter } = parseFrontmatter(
+      '---\n-----blled: 42\nname: test\n---\nprose',
+    );
+    expect(frontmatter['-----blled']).toBe(42);
+    expect(frontmatter['name']).toBe('test');
+  });
+
+  it('SKY-398: roundtrip survives a key starting with dashes', () => {
+    const fm = { '---key': 'val', normal: 'ok' };
+    const serialized = serializeFrontmatter(fm, 'prose here');
+    expect(() => parseFrontmatter(serialized)).not.toThrow();
+    const { frontmatter, prose } = parseFrontmatter(serialized);
+    expect(frontmatter['---key']).toBe('val');
+    expect(frontmatter['normal']).toBe('ok');
+    expect(prose).toBe('prose here');
+  });
 });
 
 describe('Obsidian-compatible scene files', () => {
