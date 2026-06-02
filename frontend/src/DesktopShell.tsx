@@ -1316,20 +1316,38 @@ export default function DesktopShell() {
   };
 
   const writingMode: WritingMode = layout.writingMode ?? 'normal';
-  const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
+  const focusPrefs: FocusPrefs = {
+    showLeftSidebar: false, showRightSidebar: false, showBottomBar: false,
+    showTitleBar: true, showStatusBar: true, showTabBar: true,
+    showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+    ...layout.focusPrefs,
+  };
+  const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
   const showRightSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
+  const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
+  const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
+  const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
 
   const focusWordCount = selectedScene
     ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
     : 0;
   const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
 
+  const shellClasses = [
+    'desktop-shell',
+    `writing-mode-${writingMode}`,
+    distractionFree && 'distraction-free',
+    inFocusOrDF && !focusPrefs.showSidebarButtons && 'focus-hide-sidebar-btns',
+    inFocusOrDF && !focusPrefs.showScrollbars && 'focus-hide-scrollbars',
+    inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={`desktop-shell writing-mode-${writingMode}${distractionFree ? ' distraction-free' : ''}`}>
+    <div className={shellClasses}>
       <UpdateBanner />
-      {!distractionFree && (
+      {showTitleBar && (
         <AppMenuBar
           view={view}
           onSetView={setView}
@@ -1348,7 +1366,7 @@ export default function DesktopShell() {
           onOpenExport={(scope: ExportScope) => setExportScope(scope)}
         />
       )}
-      {distractionFree && (
+      {showStatusOverlay && (
         <FocusModeOverlay
           wordCount={focusWordCount}
           readingMinutes={focusReadingMinutes}
@@ -1363,6 +1381,8 @@ export default function DesktopShell() {
             applyTheme(s.theme);
             applyLiquidNeonTokens(s.liquidNeon);
           }}
+          focusPrefs={focusPrefs}
+          onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
         />
       )}
       {historyOpen && (
@@ -1455,7 +1475,7 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {selectedStory && !distractionFree && (
+          {selectedStory && showTabBar && (
             <DepthSlider
               depth={viewDepth}
               onDepthChange={handleViewDepthChange}
