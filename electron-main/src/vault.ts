@@ -291,14 +291,16 @@ interface Frontmatter {
 }
 
 export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose: string } {
-  // The closing `---` must be alone on its line (only optional spaces/tabs after
-  // it, then a newline or end-of-string). This prevents a frontmatter key that
-  // starts with `---` (e.g. `---%*Polo: value`) from being mis-identified as
-  // the closing delimiter — which would cause a roundtrip key-set inconsistency
-  // caught by the fuzz harness (SKY-384, crash 47c4c1f3).
-  const match = raw.match(/^---\r?\n([\s\S]*?)\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/);
-  if (!match) return { frontmatter: {}, prose: raw };
+  // Null bytes (\x00) are not valid in YAML; strip them before processing
+  // (SKY-398: prevents ambiguous key comparisons in fuzz roundtrip checks).
+  const sanitized = raw.replace(/\x00/g, '');
 
+  // Closing delimiter must be exactly "---" on its own line (only optional
+  // spaces/tabs after it, then newline or end-of-string). This prevents a
+  // frontmatter key starting with "---" from being mis-identified as the
+  // closing delimiter (SKY-384, crash 47c4c1f3; SKY-398).
+  const match = sanitized.match(/^---\r?\n([\s\S]*?)\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, prose: sanitized };
   // Object.create(null) prevents prototype-pollution: keys like '__proto__' or
   // 'constructor' become plain own properties instead of intercepting prototype
   // chain operations.  Callers spread into {} literals, so downstream code is safe.
@@ -307,6 +309,7 @@ export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose
     const colon = line.indexOf(':');
     if (colon === -1) continue;
     const key = line.slice(0, colon).trim();
+    if (!key) continue;
     const val = line.slice(colon + 1).trim();
     // Parse arrays like `tags: [a, b]`
     if (val.startsWith('[') && val.endsWith(']')) {

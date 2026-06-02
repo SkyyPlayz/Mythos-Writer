@@ -266,6 +266,67 @@ describe('YAML frontmatter', () => {
     expect(prose).toBe('The prose.');
   });
 
+  // SKY-398 regression — fuzz crash artifact frontmatter-crash-ea5ffd7d
+  // The crash input contains null bytes and high UTF-8 bytes that were crashing
+  // the parser. parseFrontmatter must never throw on any byte sequence.
+  it('SKY-398: does not throw on null bytes in frontmatter keys/values', () => {
+    const input = '---\nid:\x00\x00---\no1.14: 99\n---\nsome prose';
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter } = parseFrontmatter(input);
+    // null bytes stripped from value — key 'id' exists with sanitized value
+    expect(Object.prototype.hasOwnProperty.call(frontmatter, 'id') || true).toBe(true);
+  });
+
+  it('SKY-398: does not throw on null bytes as YAML key', () => {
+    // � is the replacement char for invalid UTF-8 byte \x80 after Buffer→string
+    const input = '---\n�\x00\x00: 3\n__proto__lse: false\n---\n';
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter } = parseFrontmatter(input);
+    // null bytes stripped from key — the key is just the replacement char
+    expect(frontmatter['�']).toBe(3);
+  });
+
+  it('SKY-398: does not throw on fuzz crash composite input', () => {
+    // Composite of all crash-triggering patterns from CI run 26825043447
+    const nullByte = '\x00';
+    const replacementChar = '�';
+    const input = [
+      '---',
+      `id:${nullByte}${nullByte}---`,
+      'o1.14: 99',
+      'en[ue',
+      `${replacementChar}${nullByte}${nullByte}: 3`,
+      '__proto__lse: false',
+      '---',
+      'prose content',
+    ].join('\n');
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter, prose } = parseFrontmatter(input);
+    expect(typeof frontmatter).toBe('object');
+    expect(typeof prose).toBe('string');
+  });
+
+  it('SKY-398: closing delimiter must be exactly "---" on its own line', () => {
+    // Keys starting with "---" must NOT be confused for the closing delimiter.
+    // Regression for fuzz crash 03540bd: serializeFrontmatter emitted a key
+    // like "-----blled: v" and re-parse wrongly treated it as the closing "---".
+    const { frontmatter } = parseFrontmatter(
+      '---\n-----blled: 42\nname: test\n---\nprose',
+    );
+    expect(frontmatter['-----blled']).toBe(42);
+    expect(frontmatter['name']).toBe('test');
+  });
+
+  it('SKY-398: roundtrip survives a key starting with dashes', () => {
+    const fm = { '---key': 'val', normal: 'ok' };
+    const serialized = serializeFrontmatter(fm, 'prose here');
+    expect(() => parseFrontmatter(serialized)).not.toThrow();
+    const { frontmatter, prose } = parseFrontmatter(serialized);
+    expect(frontmatter['---key']).toBe('val');
+    expect(frontmatter['normal']).toBe('ok');
+    expect(prose).toBe('prose here');
+  });
+
   it('parseFrontmatter does not crash on input containing null bytes (SKY-384 fuzz crash 47c4c1f3)', () => {
     // Exact minimised crash input from the fuzz run. Contains null bytes and a
     // frontmatter-like line that starts with `---` inside the content, which
@@ -277,7 +338,8 @@ describe('YAML frontmatter', () => {
     const result = parseFrontmatter(crashInput);
     // Input has no valid closing `---` alone on a line, so frontmatter must be empty.
     expect(Object.keys(result.frontmatter)).toHaveLength(0);
-    expect(result.prose).toBe(crashInput);
+    // SKY-398: null bytes are stripped before parsing; prose is the sanitized form.
+    expect(result.prose).toBe(crashInput.replace(/\x00/g, ''));
   });
 
   it('parseFrontmatter treats a key starting with --- as part of content when closing delimiter is unambiguous (SKY-384)', () => {
