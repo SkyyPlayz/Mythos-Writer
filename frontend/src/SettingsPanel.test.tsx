@@ -713,4 +713,73 @@ describe('SettingsPanel', () => {
       })
     );
   });
+
+  // ── SKY-463: provider adapter guardrail ──
+
+  it('per-agent model selectors are enabled when Anthropic provider is active', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+
+    const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
+    const brainstormSelect = screen.getByLabelText(/brainstorm agent model/i) as HTMLSelectElement;
+    const archiveSelect = screen.getByLabelText(/archive agent model/i) as HTMLSelectElement;
+    expect(waSelect.disabled).toBe(false);
+    expect(brainstormSelect.disabled).toBe(false);
+    expect(archiveSelect.disabled).toBe(false);
+  });
+
+  it('per-agent model selectors are disabled when a non-Anthropic provider is selected', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
+
+    const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
+    const brainstormSelect = screen.getByLabelText(/brainstorm agent model/i) as HTMLSelectElement;
+    const archiveSelect = screen.getByLabelText(/archive agent model/i) as HTMLSelectElement;
+    expect(waSelect.disabled).toBe(true);
+    expect(brainstormSelect.disabled).toBe(true);
+    expect(archiveSelect.disabled).toBe(true);
+  });
+
+  it('per-agent model selectors are disabled for ollama provider', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
+
+    const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
+    expect(waSelect.disabled).toBe(true);
+  });
+
+  it('shows adapter hint text when a non-Anthropic provider is selected', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
+
+    expect(screen.getByTestId('wa-model-adapter-hint')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-model-adapter-hint')).toBeInTheDocument();
+    expect(screen.getByTestId('archive-model-adapter-hint')).toBeInTheDocument();
+  });
+
+  it('does not show adapter hint when Anthropic provider is active', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+
+    expect(screen.queryByTestId('wa-model-adapter-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brainstorm-model-adapter-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-model-adapter-hint')).not.toBeInTheDocument();
+  });
+
+  it('re-enables per-agent model selectors after switching back to Anthropic', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
+    expect((screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'anthropic' } });
+    expect((screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement).disabled).toBe(false);
+  });
 });
