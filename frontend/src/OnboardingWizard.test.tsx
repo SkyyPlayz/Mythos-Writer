@@ -296,6 +296,8 @@ describe('OnboardingWizard — S2b Dry-run report', () => {
     await goToDryRun();
     fireEvent.click(screen.getByTestId('confirm-import'));
     await waitFor(() => expect(screen.getByTestId('screen-import-progress')).toBeInTheDocument());
+    // Drain the pending obsidianRegister microtask so it doesn't fire after JSDOM teardown.
+    await act(async () => {});
   });
 
   it('forwards registrationToken from pickFolder to obsidianDryRun', async () => {
@@ -317,7 +319,7 @@ describe('OnboardingWizard — S2b Dry-run report', () => {
 describe('OnboardingWizard — S2c Import progress', () => {
   it('shows cancel button during import (spec: always reachable)', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 100)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -329,7 +331,7 @@ describe('OnboardingWizard — S2c Import progress', () => {
 
   it('cancel button shows confirm dialog', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 500)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -342,7 +344,7 @@ describe('OnboardingWizard — S2c Import progress', () => {
 
   it('"Keep going" on confirm dialog dismisses it', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 500)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
