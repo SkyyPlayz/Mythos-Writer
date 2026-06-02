@@ -2,9 +2,6 @@ name: Fuzz (60s)
 # Dedicated job for property-based tests + coverage-guided fuzzing (SKY-372).
 # This runs on every PR in addition to the fuzz steps in ci.yml so the
 # property/fuzz results are visible as a named check separate from the main CI.
-#
-# continue-on-error: true — remove once a clean baseline corpus run is
-# established and the CI self-hosted runner cache is warm.
 
 on:
   pull_request:
@@ -13,7 +10,6 @@ on:
 jobs:
   property-tests-and-fuzz:
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +34,10 @@ jobs:
 
       - name: Fuzz frontmatter parser (60s)
         run: npm run fuzz:frontmatter
+        working-directory: electron-main
+
+      - name: Fuzz DOCX/EPUB inline parsers (60s)
+        run: npm run fuzz:docxInline
         working-directory: electron-main
 
       - name: Upload fuzz crash artifacts
