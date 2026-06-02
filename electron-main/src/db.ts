@@ -74,6 +74,9 @@ export interface DbGenerationLog {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+  entity_count: number | null;
+  context_chars: number | null;
+  truncated: number | null;
 }
 
 // ─── Module state ───
@@ -289,6 +292,15 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 11');
   }
+
+  if (currentVersion < 12) {
+    db.exec(`
+      ALTER TABLE generation_log ADD COLUMN entity_count  INTEGER;
+      ALTER TABLE generation_log ADD COLUMN context_chars INTEGER;
+      ALTER TABLE generation_log ADD COLUMN truncated     INTEGER;
+    `);
+    db.exec('PRAGMA user_version = 12');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -416,17 +428,35 @@ export function listTimelineEntries(scenePath?: string): DbTimelineEntry[] {
 
 // ─── Generation log ───
 
-export function insertGenerationLog(entry: Omit<DbGenerationLog, 'prompt_text' | 'response_text'> & { prompt_text?: string | null; response_text?: string | null }): void {
+export function insertGenerationLog(
+  entry: Omit<DbGenerationLog, 'prompt_text' | 'response_text' | 'entity_count' | 'context_chars' | 'truncated'> & {
+    prompt_text?: string | null;
+    response_text?: string | null;
+    entity_count?: number | null;
+    context_chars?: number | null;
+    truncated?: boolean | null;
+  }
+): void {
+  const { truncated, ...rest } = entry;
   getDb()
     .prepare(
       `INSERT INTO generation_log
          (id, agent, model, endpoint, request_id, tokens_in, tokens_out,
-          latency_ms, error, created_at, payload_digest, prompt_text, response_text)
+          latency_ms, error, created_at, payload_digest, prompt_text, response_text,
+          entity_count, context_chars, truncated)
        VALUES
          (@id, @agent, @model, @endpoint, @request_id, @tokens_in, @tokens_out,
-          @latency_ms, @error, @created_at, @payload_digest, @prompt_text, @response_text)`
+          @latency_ms, @error, @created_at, @payload_digest, @prompt_text, @response_text,
+          @entity_count, @context_chars, @truncated)`
     )
-    .run({ prompt_text: null, response_text: null, ...entry });
+    .run({
+      prompt_text: null,
+      response_text: null,
+      entity_count: null,
+      context_chars: null,
+      truncated: truncated == null ? null : truncated ? 1 : 0,
+      ...rest,
+    });
 }
 
 interface GenerationLogOpts {
