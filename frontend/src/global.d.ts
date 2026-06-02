@@ -82,6 +82,17 @@ interface EntityBacklinkScene {
   snippet: string;
 }
 
+interface LinkedScene {
+  sceneId: string;
+  scenePath: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterOrder: number;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
+}
+
 interface VaultCheckInconsistency {
   id: string;
   entityName: string;
@@ -394,6 +405,7 @@ interface Window {
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+    entityLinkedScenes: (entityId: string) => Promise<{ scenes: LinkedScene[] }>;
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;

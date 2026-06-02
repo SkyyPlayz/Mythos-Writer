@@ -3433,9 +3433,11 @@ const handlers: IpcHandlers = {
           if (scene) {
             scenes.push({
               sceneId: scene.id,
+              scenePath: scene.path,
               sceneTitle: scene.title,
               chapterId: chapter.id,
               chapterTitle: chapter.title,
+              chapterOrder: chapter.order,
               storyId: story.id,
               linkKind: row.link_kind as 'mention' | 'tag',
             });
