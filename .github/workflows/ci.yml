@@ -51,7 +51,7 @@ jobs:
       - name: Fuzz — frontmatter parser (60 s)
         run: |
           mkdir -p electron-main/fuzz/crashes
-          cd electron-main && npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js fuzz/corpus/frontmatter -- -max_total_time=60 --sync -artifact_prefix=fuzz/crashes/frontmatter-
+          cd electron-main && npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js fuzz/corpus/frontmatter -- -max_total_time=60 -artifact_prefix=fuzz/crashes/frontmatter-
 
       - name: Fuzz — DOCX/EPUB inline parsers (60 s)
         run: |
