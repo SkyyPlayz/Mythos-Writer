@@ -4975,6 +4975,9 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
 // index, runs cross-chapter contradiction detection, logs results per chapter,
 // and returns aggregate drift metrics.
 function registerContinuityHandler(): void {
+  // The stub in the handlers object satisfies the IpcHandlers type but gets
+  // registered by setupIpcMain first. Remove it before installing the real handler.
+  ipcMain.removeHandler(IPC_CHANNELS.CONTINUITY_CHECK);
   ipcMain.handle(IPC_CHANNELS.CONTINUITY_CHECK, wrapIpcHandler(IPC_CHANNELS.CONTINUITY_CHECK, (event, payload: ContinuityCheckPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
 
