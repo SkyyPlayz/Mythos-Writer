@@ -1,11 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
 import ArchivePanel from './ArchivePanel';
 import './RightSidebar.css';
 
-type Tab = 'notes' | 'properties' | 'ai';
+type Tab = 'notes' | 'properties' | 'ai' | 'outline';
 
 interface Props {
   activeTab: Tab;
@@ -20,16 +20,56 @@ interface Props {
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
+  onSelectScene?: (scene: Scene, chapter: Chapter) => void;
 }
 
 const SIDEBAR_TABS: { id: Tab; label: string }[] = [
   { id: 'notes', label: 'Notes' },
   { id: 'properties', label: 'Properties' },
   { id: 'ai', label: 'Assistant' },
+  { id: 'outline', label: 'Outline' },
 ];
+
+const NOTES_SAVE_DEBOUNCE_MS = 600;
 
 function NotesPanel({ scene }: { scene: Scene | null }) {
   const [note, setNote] = useState('');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedSceneIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!scene) {
+      setNote('');
+      loadedSceneIdRef.current = null;
+      return;
+    }
+    if (scene.id === loadedSceneIdRef.current) return;
+    loadedSceneIdRef.current = scene.id;
+    setNote('');
+    window.api.notesGet?.(scene.id).then((res) => {
+      if (loadedSceneIdRef.current === scene.id) setNote(res.content);
+    }).catch(() => {});
+  }, [scene?.id]);
+
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+
+  const persistNote = (sceneId: string, value: string) => {
+    window.api.notesSet?.(sceneId, value).catch(() => {});
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setNote(value);
+    if (!scene) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => persistNote(scene.id, value), NOTES_SAVE_DEBOUNCE_MS);
+  };
+
+  const handleBlur = () => {
+    if (!scene) return;
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    persistNote(scene.id, note);
+  };
 
   if (!scene) {
     return (
@@ -46,8 +86,10 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
       <textarea
         className="notes-textarea"
         value={note}
-        onChange={(e) => setNote(e.target.value)}
+        onChange={handleChange}
+        onBlur={handleBlur}
         placeholder="Scene notes, reminders, loose ideas…"
+        aria-label="Scene notes"
       />
     </div>
   );
@@ -230,6 +272,84 @@ function AiPanel({
   );
 }
 
+function OutlineSidebarPanel({
+  story,
+  selectedChapterId,
+  selectedSceneId,
+  onSelectScene,
+}: {
+  story: Story | null;
+  selectedChapterId: string | null;
+  selectedSceneId: string | null;
+  onSelectScene?: (scene: Scene, chapter: Chapter) => void;
+}) {
+  const sortedChapters = useMemo(
+    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
+    [story],
+  );
+  const activeSceneRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedSceneId]);
+
+  if (!story) {
+    return (
+      <div className="sidebar-empty">
+        <div className="sidebar-empty-icon">📖</div>
+        <p>Select a story to see its outline.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="outline-sidebar-panel">
+      <div className="outline-sidebar-story-title">{story.title}</div>
+      {sortedChapters.length === 0 ? (
+        <div className="outline-sidebar-empty">No chapters yet.</div>
+      ) : (
+        sortedChapters.map((chapter) => {
+          const isActiveChapter = chapter.id === selectedChapterId;
+          const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
+          return (
+            <div
+              key={chapter.id}
+              className={`outline-sidebar-chapter${isActiveChapter ? ' active-chapter' : ''}`}
+            >
+              <div className="outline-sidebar-chapter-title">{chapter.title}</div>
+              <div className="outline-sidebar-scene-list">
+                {sortedScenes.length === 0 ? (
+                  <div className="outline-sidebar-no-scenes">No scenes</div>
+                ) : (
+                  sortedScenes.map((scene) => {
+                    const isActive = scene.id === selectedSceneId;
+                    return (
+                      <div
+                        key={scene.id}
+                        ref={isActive ? activeSceneRef : null}
+                        className={`outline-sidebar-scene${isActive ? ' active-scene' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-current={isActive ? 'true' : undefined}
+                        onClick={() => onSelectScene?.(scene, chapter)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); onSelectScene?.(scene, chapter); }
+                        }}
+                      >
+                        {scene.title}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 export default function RightSidebar({
   activeTab,
   onTabChange,
@@ -243,6 +363,7 @@ export default function RightSidebar({
   onJumpToText,
   onInsertWikiLink,
   onWikiLinkSuggestionsChange,
+  onSelectScene,
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -301,6 +422,14 @@ export default function RightSidebar({
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}
             onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
+          />
+        )}
+        {activeTab === 'outline' && (
+          <OutlineSidebarPanel
+            story={selectedStory}
+            selectedChapterId={selectedChapter?.id ?? null}
+            selectedSceneId={selectedScene?.id ?? null}
+            onSelectScene={onSelectScene}
           />
         )}
       </div>

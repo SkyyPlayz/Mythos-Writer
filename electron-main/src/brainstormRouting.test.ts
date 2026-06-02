@@ -16,6 +16,10 @@ import {
   listNotesVaultFolders,
   getBrainstormSettingsPath,
   BLANK_MODE_STAGING_DIR,
+  estimateTokens,
+  selectContext,
+  DEFAULT_CONTEXT_TOKEN_BUDGET,
+  type ContextCandidate,
 } from './brainstormRouting.js';
 
 function makeTmp(): string {
@@ -191,5 +195,110 @@ describe('listNotesVaultFolders', () => {
     expect(folders).toContain('a');
     expect(folders).toContain('a/b');
     expect(folders).not.toContain('a/b/c');
+  });
+});
+
+// ─── SKY-196: token estimation + context selection ────────────────────────────
+
+describe('estimateTokens', () => {
+  it('returns ceil(length / 4)', () => {
+    expect(estimateTokens('1234')).toBe(1);    // exactly 1
+    expect(estimateTokens('12345')).toBe(2);   // rounds up
+    expect(estimateTokens('')).toBe(0);
+  });
+
+  it('is deterministic for the same input', () => {
+    const t = estimateTokens('Hello, story world!');
+    expect(estimateTokens('Hello, story world!')).toBe(t);
+  });
+});
+
+describe('selectContext', () => {
+  const candidates: ContextCandidate[] = [
+    { path: 'chars/aria.md',   name: 'Aria Voss',      type: 'character', content: 'A young sorceress.' },
+    { path: 'locs/tarsel.md',  name: 'Tarsel',         type: 'location',  content: 'A city of bells.'   },
+    { path: 'items/sword.md',  name: 'Starfall Blade', type: 'item',      content: 'An ancient sword.'  },
+  ];
+
+  it('includes all candidates when budget is sufficient', () => {
+    const r = selectContext({ candidates, userMessage: '', conversationText: '', tokenBudget: 10_000 });
+    expect(r.included).toHaveLength(3);
+    expect(r.excluded).toHaveLength(0);
+  });
+
+  it('usedTokens equals sum of included estimatedTokens', () => {
+    const r = selectContext({ candidates, userMessage: '', conversationText: '', tokenBudget: 10_000 });
+    const sum = r.included.reduce((acc, i) => acc + i.estimatedTokens, 0);
+    expect(r.usedTokens).toBe(sum);
+  });
+
+  it('uses DEFAULT_CONTEXT_TOKEN_BUDGET when tokenBudget is omitted', () => {
+    const r = selectContext({ candidates, userMessage: '', conversationText: '' });
+    expect(r.budgetTokens).toBe(DEFAULT_CONTEXT_TOKEN_BUDGET);
+  });
+
+  it('excludes items that push past the budget and marks them "Budget limit reached"', () => {
+    // Budget of 1 token will exclude everything (cheapest item costs ≥ 5 tokens).
+    const r = selectContext({ candidates, userMessage: '', conversationText: '', tokenBudget: 1 });
+    expect(r.included).toHaveLength(0);
+    expect(r.excluded.length).toBeGreaterThan(0);
+    expect(r.excluded.every((i) => i.whyIncluded === 'Budget limit reached')).toBe(true);
+  });
+
+  it('prioritises items mentioned in the current user message (score 3)', () => {
+    const r = selectContext({
+      candidates, userMessage: 'Tell me about Tarsel', conversationText: '', tokenBudget: 10_000,
+    });
+    const tarsel = r.included.find((i) => i.name === 'Tarsel');
+    expect(tarsel).toBeDefined();
+    expect(tarsel?.whyIncluded).toBe('Mentioned in your message');
+    // Tarsel should sort before the others (highest score)
+    expect(r.included[0].name).toBe('Tarsel');
+  });
+
+  it('gives "Referenced in conversation" to conversation-only mentions (score 2)', () => {
+    const r = selectContext({
+      candidates, userMessage: 'hello', conversationText: 'Aria Voss appeared in chapter one.', tokenBudget: 10_000,
+    });
+    const aria = r.included.find((i) => i.name === 'Aria Voss');
+    expect(aria?.whyIncluded).toBe('Referenced in conversation');
+  });
+
+  it('gives "Background <type> context" to unmentioned items (score 1)', () => {
+    const r = selectContext({
+      candidates, userMessage: 'hello', conversationText: 'hello', tokenBudget: 10_000,
+    });
+    const blade = r.included.find((i) => i.name === 'Starfall Blade');
+    expect(blade?.whyIncluded).toBe('Background item context');
+  });
+
+  it('is deterministic — same input always produces same order', () => {
+    const r1 = selectContext({ candidates, userMessage: '', conversationText: '', tokenBudget: 10_000 });
+    const r2 = selectContext({ candidates, userMessage: '', conversationText: '', tokenBudget: 10_000 });
+    expect(r1.included.map((i) => i.name)).toEqual(r2.included.map((i) => i.name));
+  });
+
+  it('returns empty result for empty candidates list', () => {
+    const r = selectContext({ candidates: [], userMessage: 'anything', conversationText: '', tokenBudget: 10_000 });
+    expect(r.included).toHaveLength(0);
+    expect(r.excluded).toHaveLength(0);
+    expect(r.usedTokens).toBe(0);
+    expect(r.budgetTokens).toBe(10_000);
+  });
+
+  it('user-message match takes precedence over conversation match for the same name', () => {
+    const r = selectContext({
+      candidates, userMessage: 'Tarsel is great', conversationText: 'Tarsel was mentioned before', tokenBudget: 10_000,
+    });
+    const tarsel = r.included.find((i) => i.name === 'Tarsel');
+    expect(tarsel?.whyIncluded).toBe('Mentioned in your message');
+  });
+
+  it('orders same-score items by type then name (deterministic tiebreak)', () => {
+    // All items unmentioned → score 1 for all. Character < Location < Item by TYPE_ORDER.
+    const r = selectContext({ candidates, userMessage: '', conversationText: '', tokenBudget: 10_000 });
+    const names = r.included.map((i) => i.name);
+    expect(names.indexOf('Aria Voss')).toBeLessThan(names.indexOf('Tarsel'));
+    expect(names.indexOf('Tarsel')).toBeLessThan(names.indexOf('Starfall Blade'));
   });
 });

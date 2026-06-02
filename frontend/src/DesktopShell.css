@@ -180,6 +180,10 @@
   color: var(--text-primary);
 }
 
+.app-menu-tour-btn { background: none; border: none; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; padding: 2px 7px; cursor: pointer; border-radius: 50%; margin-left: 4px; -webkit-app-region: no-drag; line-height: 1.5; min-width: 20px; text-align: center; }
+.app-menu-tour-btn:hover { color: var(--text-header); background: var(--bg-elevated); }
+.app-menu-tour-btn:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
+
 .app-menu-gear-btn {
   background: none;
   border: none;
@@ -395,6 +399,22 @@
   color: var(--border-strong) !important;
 }
 
+.shell-editor-empty-cta {
+  margin-top: 8px;
+  background: var(--accent, #7c5cff);
+  color: var(--bg-canvas, #0b0e13);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 28px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.shell-editor-empty-cta:hover {
+  opacity: 0.88;
+}
+
 /* Loading / error states */
 .shell-loading {
   display: flex;
@@ -457,6 +477,62 @@
 @keyframes budget-toast-in {
   from { opacity: 0; transform: translateX(-50%) translateY(8px); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Scene wrapper — snapshot toolbar + editor + history overlay */
+.shell-editor-scene-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.scene-snapshot-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  background: var(--bg-panel, #1e1e2e);
+  border-bottom: 1px solid var(--border-subtle, #313244);
+  flex-shrink: 0;
+}
+
+.scene-snapshot-save {
+  padding: 4px 12px;
+  background: var(--bg-control, #313244);
+  border: 1px solid var(--border-subtle, #45475a);
+  border-radius: 5px;
+  color: var(--text-primary, #cdd6f4);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scene-snapshot-save:hover {
+  background: var(--bg-control-hover, #45475a);
+}
+
+.scene-autosave {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #6c7086);
+  flex: 1;
+  min-height: 1em;
+}
+
+.btn-history {
+  padding: 4px 12px;
+  background: var(--bg-control, #313244);
+  border: 1px solid var(--border-subtle, #45475a);
+  border-radius: 5px;
+  color: var(--text-primary, #cdd6f4);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-history:hover {
+  background: var(--bg-control-hover, #45475a);
 }
 
 /* Beta-Read margin panel (MYT-237) */
@@ -794,4 +870,27 @@
 
 .focus-save-ok {
   color: var(--success, #16a34a);
+}
+
+/* ─── Focus Mode element toggles (SKY-325) ─── */
+
+/* Hide the focus-prefs gear button when sidebar buttons are toggled off */
+.desktop-shell.focus-hide-sidebar-btns .writing-mode-prefs-btn {
+  display: none;
+}
+
+/* Hide all scrollbars while keeping content scrollable */
+.desktop-shell.focus-hide-scrollbars ::-webkit-scrollbar {
+  display: none;
+}
+.desktop-shell.focus-hide-scrollbars * {
+  scrollbar-width: none;
+}
+
+/* Hide file tree expand/collapse arrows */
+.desktop-shell.focus-hide-tree-arrows .vb-chevron,
+.desktop-shell.focus-hide-tree-arrows .vs-chevron,
+.desktop-shell.focus-hide-tree-arrows .vs-section-chevron,
+.desktop-shell.focus-hide-tree-arrows .nav-chevron {
+  visibility: hidden;
 }

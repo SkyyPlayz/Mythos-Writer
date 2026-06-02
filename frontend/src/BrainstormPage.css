@@ -39,6 +39,11 @@
   border-color: var(--border-strong);
 }
 
+.brainstorm-back-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
 .brainstorm-header-text {
   display: flex;
   flex-direction: column;
@@ -217,6 +222,24 @@
 .brainstorm-send-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.brainstorm-send-btn:focus-visible,
+.brainstorm-cancel-btn:focus-visible,
+.brainstorm-new-session-btn:focus-visible,
+.brainstorm-download-btn:focus-visible,
+.brainstorm-mic-btn:focus-visible,
+.brainstorm-recovery-dismiss-btn:focus-visible,
+.bs-routing-save-btn:focus-visible,
+.bs-routing-once-btn:focus-visible,
+.bs-stalled-retry-btn:focus-visible,
+.bs-stalled-cancel-btn:focus-visible,
+.bs-cont-kind-btn:focus-visible,
+.bs-cont-submit-btn:focus-visible,
+.bs-cont-label-btn:focus-visible,
+.bs-fact-retry-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
 }
 
 /* Facts column */
@@ -721,6 +744,110 @@
 
 .brainstorm-facts-header-divider {
   border-top: 1px solid var(--border-subtle);
+}
+
+/* SKY-196: Context used section */
+.bs-context-section {
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bs-context-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bs-context-header:hover {
+  background: var(--bg-hover);
+}
+
+.bs-context-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.bs-context-counts {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.bs-context-chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.bs-context-body {
+  padding: 0 12px 10px;
+}
+
+.bs-context-budget {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.bs-context-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.bs-context-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bs-context-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.bs-context-item-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.bs-context-item-type {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.bs-context-type-character { background: var(--entity-char-bg);    color: var(--entity-char-text); }
+.bs-context-type-location  { background: var(--entity-loc-bg);     color: var(--entity-loc-text); }
+.bs-context-type-item      { background: var(--entity-item-bg);    color: var(--entity-item-text); }
+
+.bs-context-item-why {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.bs-context-excluded {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .brainstorm-disabled {

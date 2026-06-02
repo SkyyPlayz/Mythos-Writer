@@ -48,6 +48,12 @@ beforeEach(() => {
     onVaultFileChanged: mockOnVaultFileChanged,
     writeVault: mockWriteVault,
     writeNotesVault: mockWriteNotesVault,
+    notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+    notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+    vaultReadIcons: vi.fn().mockResolvedValue({}),
+    iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
   };
 });
 
@@ -415,10 +421,18 @@ describe('StoryVault inline rename', () => {
     mockSceneRename.mockClear();
     (window as unknown as { api: unknown }).api = {
       listVault: mockListVault,
+      listNotesVault: mockListNotesVault,
       startVaultWatch: mockStartVaultWatch,
       onVaultFileChanged: mockOnVaultFileChanged,
       writeVault: mockWriteVault,
+      writeNotesVault: mockWriteNotesVault,
       sceneRename: mockSceneRename,
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+      notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+      notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      vaultReadIcons: vi.fn().mockResolvedValue({}),
+      iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
     };
   });
 
@@ -468,6 +482,483 @@ describe('StoryVault inline rename', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(mockSceneRename).not.toHaveBeenCalled();
+  });
+});
+
+// ─── VirtualTree ARIA structure (Notes Vault) ───
+
+const navItems = [
+  { path: 'concepts', name: 'concepts', isDirectory: true, modifiedAt: '' },
+  { path: 'concepts/magic.md', name: 'magic.md', isDirectory: false, modifiedAt: '' },
+  { path: 'worldbuilding.md', name: 'worldbuilding.md', isDirectory: false, modifiedAt: '' },
+];
+
+async function renderNotesTree() {
+  localStorage.clear();
+  mockListNotesVault.mockResolvedValue({ items: navItems });
+  render(<VaultBrowser {...baseProps} />);
+  fireEvent.click(screen.getByTestId('vb-scope-notes'));
+  // Wait for the virtualized tree rows to appear (concepts dir auto-expands)
+  await waitFor(() => expect(screen.getByTestId('vb-row-concepts')).toBeInTheDocument());
+}
+
+describe('VirtualTree ARIA attributes', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetAllMocks();
+    mockListVault.mockResolvedValue({ items: [] });
+    mockListNotesVault.mockResolvedValue({ items: [] });
+    mockStartVaultWatch.mockResolvedValue({ watching: true });
+    mockOnVaultFileChanged.mockReturnValue(vi.fn());
+    mockWriteVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
+    mockWriteNotesVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
+    (window as unknown as { api: unknown }).api = {
+      listVault: mockListVault,
+      listNotesVault: mockListNotesVault,
+      startVaultWatch: mockStartVaultWatch,
+      onVaultFileChanged: mockOnVaultFileChanged,
+      writeVault: mockWriteVault,
+      writeNotesVault: mockWriteNotesVault,
+      notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+  });
+
+  it('notes tree container has role="tree"', async () => {
+    await renderNotesTree();
+    const tree = screen.getByRole('tree', { name: 'Notes Vault' });
+    expect(tree).toBeInTheDocument();
+  });
+
+  it('notes tree has aria-label="Notes Vault"', async () => {
+    await renderNotesTree();
+    expect(screen.getByTestId('vb-notes-tree')).toHaveAttribute('aria-label', 'Notes Vault');
+  });
+
+  it('directory row has role="treeitem"', async () => {
+    await renderNotesTree();
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    expect(folderRow).toHaveAttribute('role', 'treeitem');
+  });
+
+  it('file row has role="treeitem"', async () => {
+    await renderNotesTree();
+    // concepts is auto-expanded so magic.md is visible
+    const fileRow = screen.getByTestId('vb-row-concepts/magic.md');
+    expect(fileRow).toHaveAttribute('role', 'treeitem');
+  });
+
+  it('root-level rows have aria-level=1', async () => {
+    await renderNotesTree();
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    const rootFileRow = screen.getByTestId('vb-row-worldbuilding.md');
+    expect(folderRow).toHaveAttribute('aria-level', '1');
+    expect(rootFileRow).toHaveAttribute('aria-level', '1');
+  });
+
+  it('nested rows have aria-level=2', async () => {
+    await renderNotesTree();
+    const nestedRow = screen.getByTestId('vb-row-concepts/magic.md');
+    expect(nestedRow).toHaveAttribute('aria-level', '2');
+  });
+
+  it('directory has aria-expanded="true" when expanded', async () => {
+    await renderNotesTree();
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    expect(folderRow).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('directory has aria-expanded="false" when collapsed', async () => {
+    await renderNotesTree();
+    // collapse the folder first
+    fireEvent.click(screen.getByTestId('vb-row-concepts'));
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'false');
+    });
+  });
+
+  it('file rows do not have aria-expanded', async () => {
+    await renderNotesTree();
+    const fileRow = screen.getByTestId('vb-row-worldbuilding.md');
+    expect(fileRow).not.toHaveAttribute('aria-expanded');
+  });
+
+  it('selected file has aria-selected="true"', async () => {
+    await renderNotesTree();
+    const fileRow = screen.getByTestId('vb-row-worldbuilding.md');
+    // click to select
+    fireEvent.click(fileRow);
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-worldbuilding.md')).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  it('unselected items have aria-selected="false"', async () => {
+    await renderNotesTree();
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    expect(folderRow).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('first row has tabIndex=0 (roving tabindex entry point)', async () => {
+    await renderNotesTree();
+    const firstRow = screen.getByTestId('vb-row-concepts');
+    expect(firstRow).toHaveAttribute('tabindex', '0');
+  });
+
+  it('non-first rows have tabIndex=-1 initially', async () => {
+    await renderNotesTree();
+    const nestedRow = screen.getByTestId('vb-row-concepts/magic.md');
+    const rootRow = screen.getByTestId('vb-row-worldbuilding.md');
+    expect(nestedRow).toHaveAttribute('tabindex', '-1');
+    expect(rootRow).toHaveAttribute('tabindex', '-1');
+  });
+});
+
+// ─── VirtualTree keyboard navigation ───
+
+describe('VirtualTree keyboard navigation', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetAllMocks();
+    mockListVault.mockResolvedValue({ items: [] });
+    mockListNotesVault.mockResolvedValue({ items: [] });
+    mockStartVaultWatch.mockResolvedValue({ watching: true });
+    mockOnVaultFileChanged.mockReturnValue(vi.fn());
+    mockWriteVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
+    mockWriteNotesVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
+    (window as unknown as { api: unknown }).api = {
+      listVault: mockListVault,
+      listNotesVault: mockListNotesVault,
+      startVaultWatch: mockStartVaultWatch,
+      onVaultFileChanged: mockOnVaultFileChanged,
+      writeVault: mockWriteVault,
+      writeNotesVault: mockWriteNotesVault,
+      notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+  });
+
+  it('ArrowDown moves tabIndex=0 to next row', async () => {
+    await renderNotesTree();
+    const first = screen.getByTestId('vb-row-concepts');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts/magic.md')).toHaveAttribute('tabindex', '0');
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('tabindex', '-1');
+    });
+  });
+
+  it('ArrowDown moves DOM focus to next row', async () => {
+    await renderNotesTree();
+    const first = screen.getByTestId('vb-row-concepts');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts/magic.md')).toHaveFocus();
+    });
+  });
+
+  it('ArrowUp moves tabIndex=0 back to previous row', async () => {
+    await renderNotesTree();
+    const first = screen.getByTestId('vb-row-concepts');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    await waitFor(() => expect(screen.getByTestId('vb-row-concepts/magic.md')).toHaveAttribute('tabindex', '0'));
+
+    const second = screen.getByTestId('vb-row-concepts/magic.md');
+    second.focus();
+    fireEvent.keyDown(second, { key: 'ArrowUp' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('tabindex', '0');
+      expect(screen.getByTestId('vb-row-concepts/magic.md')).toHaveAttribute('tabindex', '-1');
+    });
+  });
+
+  it('ArrowUp at first row keeps focus on first row', async () => {
+    await renderNotesTree();
+    const first = screen.getByTestId('vb-row-concepts');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowUp' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('tabindex', '0');
+    });
+  });
+
+  it('ArrowDown at last row keeps focus on last row', async () => {
+    await renderNotesTree();
+    // Navigate to last row (worldbuilding.md = index 2)
+    const first = screen.getByTestId('vb-row-concepts');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    await waitFor(() => screen.getByTestId('vb-row-concepts/magic.md').getAttribute('tabindex') === '0');
+
+    const second = screen.getByTestId('vb-row-concepts/magic.md');
+    second.focus();
+    fireEvent.keyDown(second, { key: 'ArrowDown' });
+    await waitFor(() => expect(screen.getByTestId('vb-row-worldbuilding.md')).toHaveAttribute('tabindex', '0'));
+
+    const last = screen.getByTestId('vb-row-worldbuilding.md');
+    last.focus();
+    fireEvent.keyDown(last, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-worldbuilding.md')).toHaveAttribute('tabindex', '0');
+    });
+  });
+
+  it('ArrowRight expands a collapsed directory', async () => {
+    await renderNotesTree();
+    // first collapse the folder
+    fireEvent.click(screen.getByTestId('vb-row-concepts'));
+    await waitFor(() => expect(screen.queryByTestId('vb-row-concepts/magic.md')).not.toBeInTheDocument());
+
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    folderRow.focus();
+    fireEvent.keyDown(folderRow, { key: 'ArrowRight' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByTestId('vb-row-concepts/magic.md')).toBeInTheDocument();
+    });
+  });
+
+  it('ArrowRight on already-expanded directory does nothing', async () => {
+    await renderNotesTree();
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    expect(folderRow).toHaveAttribute('aria-expanded', 'true');
+    folderRow.focus();
+    fireEvent.keyDown(folderRow, { key: 'ArrowRight' });
+    await waitFor(() => {
+      // still expanded, children still present
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByTestId('vb-row-concepts/magic.md')).toBeInTheDocument();
+    });
+  });
+
+  it('ArrowLeft collapses an expanded directory', async () => {
+    await renderNotesTree();
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    expect(folderRow).toHaveAttribute('aria-expanded', 'true');
+    folderRow.focus();
+    fireEvent.keyDown(folderRow, { key: 'ArrowLeft' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByTestId('vb-row-concepts/magic.md')).not.toBeInTheDocument();
+    });
+  });
+
+  it('ArrowLeft on collapsed directory does nothing', async () => {
+    await renderNotesTree();
+    // collapse first
+    fireEvent.click(screen.getByTestId('vb-row-concepts'));
+    await waitFor(() => expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'false'));
+
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    folderRow.focus();
+    fireEvent.keyDown(folderRow, { key: 'ArrowLeft' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'false');
+    });
+  });
+
+  it('Enter on directory toggles expand/collapse', async () => {
+    await renderNotesTree();
+    const folderRow = screen.getByTestId('vb-row-concepts');
+    expect(folderRow).toHaveAttribute('aria-expanded', 'true');
+    folderRow.focus();
+    fireEvent.keyDown(folderRow, { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'false');
+    });
+    // Enter again re-expands
+    fireEvent.keyDown(screen.getByTestId('vb-row-concepts'), { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('aria-expanded', 'true');
+    });
+  });
+
+  it('Enter on a file calls onOpenFile', async () => {
+    await renderNotesTree();
+    const fileRow = screen.getByTestId('vb-row-worldbuilding.md');
+    fileRow.focus();
+    fireEvent.keyDown(fileRow, { key: 'Enter' });
+    await waitFor(() => {
+      expect(baseProps.onOpenFile).toHaveBeenCalledWith('worldbuilding.md');
+    });
+  });
+
+  it('Space on a file calls onOpenFile', async () => {
+    await renderNotesTree();
+    const fileRow = screen.getByTestId('vb-row-worldbuilding.md');
+    fileRow.focus();
+    fireEvent.keyDown(fileRow, { key: ' ' });
+    await waitFor(() => {
+      expect(baseProps.onOpenFile).toHaveBeenCalledWith('worldbuilding.md');
+    });
+  });
+
+  it('clicking a row updates roving tabindex to that row', async () => {
+    await renderNotesTree();
+    const rootFile = screen.getByTestId('vb-row-worldbuilding.md');
+    fireEvent.click(rootFile);
+    await waitFor(() => {
+      expect(rootFile).toHaveAttribute('tabindex', '0');
+      expect(screen.getByTestId('vb-row-concepts')).toHaveAttribute('tabindex', '-1');
+    });
+  });
+
+  it('focusedIdx clamps when rows shrink after collapse', async () => {
+    await renderNotesTree();
+    // Navigate to magic.md (index 1)
+    const first = screen.getByTestId('vb-row-concepts');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    await waitFor(() => expect(screen.getByTestId('vb-row-concepts/magic.md')).toHaveAttribute('tabindex', '0'));
+
+    // Collapse the parent folder (removes magic.md from visible rows)
+    fireEvent.click(screen.getByTestId('vb-row-concepts'));
+    await waitFor(() => {
+      // magic.md gone; focusedIdx clamped to last visible row
+      expect(screen.queryByTestId('vb-row-concepts/magic.md')).not.toBeInTheDocument();
+      // some row still has tabIndex=0 (either concepts or worldbuilding.md)
+      const visibleRows = screen.getAllByRole('treeitem');
+      const focusedRows = visibleRows.filter((r) => r.getAttribute('tabindex') === '0');
+      expect(focusedRows).toHaveLength(1);
+    });
+  });
+});
+
+// ─── StoryVault ARIA tree roles ───
+
+describe('StoryVault ARIA tree roles', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetAllMocks();
+    mockListVault.mockResolvedValue({ items: [] });
+    mockListNotesVault.mockResolvedValue({ items: [] });
+    mockStartVaultWatch.mockResolvedValue({ watching: true });
+    mockOnVaultFileChanged.mockReturnValue(vi.fn());
+    mockWriteVault.mockResolvedValue({ path: 'x.md', bytes: 0 });
+    (window as unknown as { api: unknown }).api = {
+      listVault: mockListVault,
+      listNotesVault: mockListNotesVault,
+      startVaultWatch: mockStartVaultWatch,
+      onVaultFileChanged: mockOnVaultFileChanged,
+      writeVault: mockWriteVault,
+      sceneRename: vi.fn().mockResolvedValue({ scene: { id: 'sc1', title: 'Opening Scene' } }),
+      notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+  });
+
+  async function renderStoryTree() {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    // Story auto-expands (single story)
+    const chapterToggle = await screen.findByText('Chapter One');
+    fireEvent.click(chapterToggle);
+    await screen.findByTestId('vb-scene-sc1');
+  }
+
+  it('story content container has role="tree"', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    const tree = screen.getByRole('tree', { name: 'Story Vault' });
+    expect(tree).toBeInTheDocument();
+  });
+
+  it('story toggle button has role="treeitem"', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    const storyBtn = screen.getByText('Test Story').closest('button');
+    expect(storyBtn).toHaveAttribute('role', 'treeitem');
+  });
+
+  it('story toggle button has aria-level=1', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    const storyBtn = screen.getByText('Test Story').closest('button');
+    expect(storyBtn).toHaveAttribute('aria-level', '1');
+  });
+
+  it('story toggle has aria-expanded reflecting expansion state', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    // Single story auto-expands
+    const storyBtn = screen.getByText('Test Story').closest('button');
+    expect(storyBtn).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('chapter toggle button has role="treeitem"', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    const chapterBtn = await screen.findByText('Chapter One');
+    expect(chapterBtn.closest('button')).toHaveAttribute('role', 'treeitem');
+  });
+
+  it('chapter toggle button has aria-level=2', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    const chapterBtn = await screen.findByText('Chapter One');
+    expect(chapterBtn.closest('button')).toHaveAttribute('aria-level', '2');
+  });
+
+  it('chapter toggle has aria-expanded', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    const chapterBtn = await screen.findByText('Chapter One');
+    const btn = chapterBtn.closest('button')!;
+    // initially collapsed
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-expanded', 'true'));
+  });
+
+  it('expanded story chapters wrapped in role="group"', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
+    // story is auto-expanded, so a group should be present
+    const groups = screen.getAllByRole('group');
+    expect(groups.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('scene row has role="treeitem"', async () => {
+    await renderStoryTree();
+    const sceneRow = screen.getByTestId('vb-scene-sc1');
+    expect(sceneRow).toHaveAttribute('role', 'treeitem');
+  });
+
+  it('scene row has aria-level=3', async () => {
+    await renderStoryTree();
+    const sceneRow = screen.getByTestId('vb-scene-sc1');
+    expect(sceneRow).toHaveAttribute('aria-level', '3');
+  });
+
+  it('selected scene has aria-selected="true"', async () => {
+    render(<VaultBrowser {...baseProps} stories={storyWithScene} selectedSceneId="sc1" />);
+    const chapterToggle = await screen.findByText('Chapter One');
+    fireEvent.click(chapterToggle);
+    await screen.findByTestId('vb-scene-sc1');
+    expect(screen.getByTestId('vb-scene-sc1')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('unselected scene has aria-selected="false"', async () => {
+    await renderStoryTree();
+    expect(screen.getByTestId('vb-scene-sc1')).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('expanded chapter scenes wrapped in role="group"', async () => {
+    await renderStoryTree();
+    // After expanding chapter, scenes are in a group
+    const groups = screen.getAllByRole('group');
+    expect(groups.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('Enter on scene row calls onSelectScene', async () => {
+    await renderStoryTree();
+    const sceneRow = screen.getByTestId('vb-scene-sc1');
+    fireEvent.keyDown(sceneRow, { key: 'Enter' });
+    expect(baseProps.onSelectScene).toHaveBeenCalled();
+  });
+
+  it('Space on scene row calls onSelectScene', async () => {
+    await renderStoryTree();
+    const sceneRow = screen.getByTestId('vb-scene-sc1');
+    fireEvent.keyDown(sceneRow, { key: ' ' });
+    expect(baseProps.onSelectScene).toHaveBeenCalled();
   });
 });
 

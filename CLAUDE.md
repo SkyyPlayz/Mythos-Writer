@@ -4,6 +4,24 @@ This repository is built by autonomous agents. Behave like a software engineer
 who is responsible for delivering merge-ready branches, not a code drafter who
 waits for humans to discover breakage.
 
+## Read the plans first (required for all agents)
+
+Before asking the Board (`@Board`) any question, **read the project plans and
+goals in [`plans/ProjectGoalOverView/`](plans/ProjectGoalOverView/)**.
+
+The Board has already documented the product vision, feature goals, design
+system, and decisions. Most questions are already answered there.
+
+Mandatory reading before starting any task:
+- [`plans/ProjectGoalOverView/01-overview.md`](plans/ProjectGoalOverView/01-overview.md) — vision, guiding principles, two-vault model
+- [`plans/ProjectGoalOverView/00-decisions-log.md`](plans/ProjectGoalOverView/00-decisions-log.md) — decisions already made by the Board/CEO
+- [`plans/ProjectGoalOverView/questions.md`](plans/ProjectGoalOverView/questions.md) — open and answered questions
+- [`plans/ProjectGoalOverView/13-team-goals.md`](plans/ProjectGoalOverView/13-team-goals.md) — this policy in full, with a complete index of plan files
+- [`plans/PROJECT_PLAN.md`](plans/PROJECT_PLAN.md) — feature roadmap
+
+Only escalate to the Board after you have checked those files and the answer is
+genuinely not there. When you do ask, state which plan files you already read.
+
 ## CI is part of the spec
 
 Every branch must pass all three required pull-request checks before it is
@@ -18,6 +36,30 @@ is part of the implementation, not a follow-up step.
 
 These checks are defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 as the `ci`, `build-macos`, and `build-linux` jobs.
+
+## Never merge a PR with failing required checks
+
+This rule is non-negotiable, regardless of whether GitHub branch protection
+currently enforces it:
+
+- Before clicking `gh pr merge` or the Merge button, confirm `gh pr checks <num>`
+  shows **all three** of `ci`, `build-linux`, and `build-macos` as `pass`.
+- If a required check is red, fix the cause on the PR branch and push again.
+  Do not merge "to fix on main" — that is what produced the SKY-143 and SKY-157
+  incidents (PRs #156 and #162 merged with red `ci` + `build-linux`, leaving
+  main red until subsequent fix-forward commits).
+- A red required check that is unrelated to the PR's diff (e.g. inherited from
+  a previously merged broken commit on main) is still a hard block on merging.
+  Open a separate fix issue, get main green first, then rebase the PR.
+- If you believe a required check is genuinely broken (infra, runner, flake)
+  and not testing real product code, escalate and get explicit human approval
+  before merging — do not unilaterally override.
+
+Pre-merge command:
+
+```bash
+gh pr checks <num>   # all three required checks must show `pass`
+```
 
 ## What each check enforces
 

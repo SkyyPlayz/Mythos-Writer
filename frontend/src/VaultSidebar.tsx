@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type MouseEvent } from 'react';
 import type { Story, Chapter, Scene } from './types';
 import './VaultSidebar.css';
 
@@ -201,7 +201,7 @@ function StoryVault({
                                 tabIndex={0}
                                 onClick={() => onSelectScene(scene, chapter, story)}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
+                                  if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault();
                                     onSelectScene(scene, chapter, story);
                                   }
@@ -454,7 +454,427 @@ function NotesVault({ onOpenPath, onContextChange }: NotesVaultProps) {
   );
 }
 
+// ─── Smart Folders Section (SKY-205) ───
+
+interface SmartFolderEntry {
+  id: string;
+  name: string;
+  query: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SmartFolderResult {
+  path: string;
+  title: string;
+}
+
+interface SmartFolderSectionProps {
+  onOpenPath?: (path: string) => void;
+}
+
+function SmartFolderSection({ onOpenPath }: SmartFolderSectionProps) {
+  const [open, setOpen] = useState(false);
+  const [folders, setFolders] = useState<SmartFolderEntry[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [results, setResults] = useState<SmartFolderResult[]>([]);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newQuery, setNewQuery] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editQuery, setEditQuery] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadFolders = useCallback(() => {
+    window.api.smartFolderList?.().then((r: { smartFolders: SmartFolderEntry[] }) => {
+      setFolders(r.smartFolders ?? []);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    loadFolders();
+  }, [open, loadFolders]);
+
+  const runQuery = useCallback((folder: SmartFolderEntry) => {
+    setResultsLoading(true);
+    setQueryError(null);
+    window.api.smartFolderQuery?.(folder.query)
+      .then((r: { results: SmartFolderResult[] }) => {
+        setResults(r.results ?? []);
+        setResultsLoading(false);
+      })
+      .catch(() => {
+        setResults([]);
+        setResultsLoading(false);
+      });
+  }, []);
+
+  // Re-run active query when notes vault files change (debounced)
+  useEffect(() => {
+    const activeFolder = folders.find((f) => f.id === activeId);
+    if (!activeFolder) return;
+    const unsub = window.api.onVaultFileChanged?.(() => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => runQuery(activeFolder), 200);
+    });
+    return () => {
+      if (unsub) unsub();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [activeId, folders, runQuery]);
+
+  const handleSelectFolder = (folder: SmartFolderEntry) => {
+    if (activeId === folder.id) {
+      setActiveId(null);
+      setResults([]);
+      setQueryError(null);
+      return;
+    }
+    setActiveId(folder.id);
+    runQuery(folder);
+  };
+
+  const handleCreate = () => {
+    setCreating(true);
+    setNewName('');
+    setNewQuery('');
+  };
+
+  const handleCreateSubmit = () => {
+    const name = newName.trim();
+    const query = newQuery.trim();
+    if (!name || !query) return;
+    window.api.smartFolderCreate?.(name, query)
+      .then(() => {
+        setCreating(false);
+        loadFolders();
+      })
+      .catch(() => {});
+  };
+
+  const handleCreateCancel = () => {
+    setCreating(false);
+    setNewName('');
+    setNewQuery('');
+  };
+
+  const handleStartEdit = (folder: SmartFolderEntry, e: MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    setEditingId(folder.id);
+    setEditName(folder.name);
+    setEditQuery(folder.query);
+  };
+
+  const handleEditSubmit = (id: string) => {
+    const name = editName.trim();
+    const query = editQuery.trim();
+    if (!name || !query) return;
+    window.api.smartFolderUpdate?.(id, { name, query })
+      .then(() => {
+        setEditingId(null);
+        loadFolders();
+        // Re-query if this was the active folder
+        if (activeId === id) {
+          const updated = { id, name, query, createdAt: '', updatedAt: '' };
+          runQuery(updated);
+        }
+      })
+      .catch(() => {});
+  };
+
+  const handleEditCancel = () => {
+    setEditingId(null);
+  };
+
+  const handleDelete = (id: string, e: MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    window.api.smartFolderDelete?.(id)
+      .then(() => {
+        if (activeId === id) {
+          setActiveId(null);
+          setResults([]);
+          setQueryError(null);
+        }
+        loadFolders();
+      })
+      .catch(() => {});
+  };
+
+  const activeFolder = folders.find((f) => f.id === activeId);
+
+  return (
+    <div className="vs-section vs-sf-section">
+      <SectionHeader
+        label="Smart Folders"
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+        onAdd={open ? handleCreate : undefined}
+        addLabel="New Smart Folder"
+      />
+      {open && (
+        <div className="vs-section-content">
+          {folders.length === 0 && !creating && (
+            <div className="vs-empty">No smart folders yet. Press + to create one.</div>
+          )}
+
+          {folders.map((folder) =>
+            editingId === folder.id ? (
+              <div key={folder.id} className="vs-sf-edit-form" role="form" aria-label="Edit smart folder">
+                <input
+                  className="vs-sf-input"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Folder name"
+                  aria-label="Folder name"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleEditSubmit(folder.id);
+                    if (e.key === 'Escape') handleEditCancel();
+                  }}
+                />
+                <input
+                  className="vs-sf-input vs-sf-query-input"
+                  value={editQuery}
+                  onChange={(e) => setEditQuery(e.target.value)}
+                  placeholder="field: value AND field: value"
+                  aria-label="Query"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleEditSubmit(folder.id);
+                    if (e.key === 'Escape') handleEditCancel();
+                  }}
+                />
+                <div className="vs-sf-form-actions">
+                  <button className="vs-sf-btn-save" onClick={() => handleEditSubmit(folder.id)}>Save</button>
+                  <button className="vs-sf-btn-cancel" onClick={handleEditCancel}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div
+                key={folder.id}
+                className={`vs-sf-item${activeId === folder.id ? ' vs-sf-active' : ''}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={activeId === folder.id}
+                onClick={() => handleSelectFolder(folder)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSelectFolder(folder);
+                  }
+                }}
+              >
+                <span className="vs-sf-icon" aria-hidden="true">⟨∗⟩</span>
+                <span className="vs-sf-name" title={folder.query}>{folder.name}</span>
+                <button
+                  className="vs-sf-action"
+                  onClick={(e) => handleStartEdit(folder, e)}
+                  title="Edit"
+                  aria-label={`Edit ${folder.name}`}
+                >✎</button>
+                <button
+                  className="vs-sf-action vs-sf-delete"
+                  onClick={(e) => handleDelete(folder.id, e)}
+                  title="Delete"
+                  aria-label={`Delete ${folder.name}`}
+                >×</button>
+              </div>
+            )
+          )}
+
+          {creating && (
+            <div className="vs-sf-edit-form" role="form" aria-label="New smart folder">
+              <input
+                className="vs-sf-input"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Folder name"
+                aria-label="Folder name"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateSubmit();
+                  if (e.key === 'Escape') handleCreateCancel();
+                }}
+              />
+              <input
+                className="vs-sf-input vs-sf-query-input"
+                value={newQuery}
+                onChange={(e) => setNewQuery(e.target.value)}
+                placeholder="field: value AND field: value"
+                aria-label="Query"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateSubmit();
+                  if (e.key === 'Escape') handleCreateCancel();
+                }}
+              />
+              <div className="vs-sf-form-actions">
+                <button className="vs-sf-btn-save" onClick={handleCreateSubmit}>Save</button>
+                <button className="vs-sf-btn-cancel" onClick={handleCreateCancel}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {activeFolder && (
+            <div className="vs-sf-results" aria-label={`Results for ${activeFolder.name}`}>
+              <div className="vs-sf-results-header">
+                <span className="vs-sf-query-badge" title={activeFolder.query}>
+                  {activeFolder.query}
+                </span>
+              </div>
+              {resultsLoading ? (
+                <div className="vs-empty">Searching…</div>
+              ) : queryError ? (
+                <div className="vs-sf-error" role="alert">{queryError}</div>
+              ) : results.length === 0 ? (
+                <div className="vs-empty">No notes match this query.</div>
+              ) : (
+                <ul className="vs-sf-result-list" role="list">
+                  {results.map((r) => (
+                    <li key={r.path} className="vs-sf-result-item">
+                      <button
+                        className="vs-sf-result-btn"
+                        onClick={() => onOpenPath?.(r.path)}
+                        title={r.path}
+                      >
+                        <span className="vs-sf-result-icon" aria-hidden="true">📄</span>
+                        <span className="vs-sf-result-title">{r.title}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───
+
+// ─── Tags Section ───
+
+interface TagsSectionProps {
+  onTagFilter?: (tag: string) => void;
+}
+
+function TagsSection({ onTagFilter }: TagsSectionProps) {
+  const [open, setOpen] = useState(false);
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.api.tagsList?.().then((r: { tags: Array<{ id: string; name: string }> }) => {
+      setTags(r.tags ?? []);
+    }).catch(() => {});
+  }, [open]);
+
+  return (
+    <div className="vs-section vs-tags-section">
+      <SectionHeader label="Tags" open={open} onToggle={() => setOpen((o) => !o)} />
+      {open && (
+        <div className="vs-section-content vs-tags-content">
+          {tags.length === 0 ? (
+            <div className="vs-empty">No tags yet.</div>
+          ) : (
+            tags.map((tag) => (
+              <button
+                key={tag.id}
+                className="vs-tag-pill"
+                onClick={() => onTagFilter?.(tag.name)}
+                title={`Filter by tag: ${tag.name}`}
+              >
+                {tag.name}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SKY-204: Daily Notes section ───
+
+interface DailyNotesSectionProps {
+  onOpenPath?: (path: string) => void;
+}
+
+function DailyNotesSection({ onOpenPath }: DailyNotesSectionProps) {
+  const [open, setOpen] = useState(true);
+  const [streak, setStreak] = useState(0);
+  const [todayExists, setTodayExists] = useState(false);
+  const [opening, setOpening] = useState(false);
+
+  const loadStreak = useCallback(async () => {
+    try {
+      const r = await window.api.dailyNoteGetStreak();
+      setStreak(r.streakDays);
+      setTodayExists(r.todayExists);
+    } catch {
+      // vault may not be ready yet
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStreak();
+    const unsub = window.api.onVaultFileChanged?.(() => loadStreak());
+    return () => unsub?.();
+  }, [loadStreak]);
+
+  const handleOpenToday = useCallback(async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      const r = await window.api.dailyNoteOpenToday();
+      await loadStreak();
+      onOpenPath?.(r.path);
+    } catch {
+      // non-fatal
+    } finally {
+      setOpening(false);
+    }
+  }, [opening, loadStreak, onOpenPath]);
+
+  const streakLabel = streak > 0 ? `🔥 ${streak} day${streak === 1 ? '' : 's'}` : null;
+
+  return (
+    <div className="vs-section vs-daily-section">
+      <div className="vs-section-header">
+        <button
+          className="vs-section-toggle"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={`${open ? 'Collapse' : 'Expand'} Daily Notes`}
+        >
+          <span className="vs-section-chevron">{open ? '▾' : '▸'}</span>
+          <span className="vs-section-label">Daily Notes</span>
+          {streakLabel && (
+            <span className="vs-daily-streak" title={`Writing streak: ${streak} consecutive day${streak === 1 ? '' : 's'}`}>
+              {streakLabel}
+            </span>
+          )}
+        </button>
+      </div>
+      {open && (
+        <div className="vs-section-content vs-daily-content">
+          <button
+            className={`vs-daily-today-btn${todayExists ? ' vs-daily-today-btn--exists' : ''}`}
+            onClick={handleOpenToday}
+            disabled={opening}
+            aria-label="Open or create today's daily note"
+          >
+            {opening ? '…' : todayExists ? "Open Today's Note" : "Create Today's Note"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface VaultSidebarProps {
   stories: Story[];
@@ -465,6 +885,9 @@ export interface VaultSidebarProps {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenVaultPath?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  onTagFilter?: (tag: string) => void;
+  /** SKY-204: whether journal mode is enabled (shows Daily Notes section). */
+  journalModeEnabled?: boolean;
 }
 
 export default function VaultSidebar({
@@ -476,6 +899,8 @@ export default function VaultSidebar({
   onCreateScene,
   onOpenVaultPath,
   onContextChange,
+  onTagFilter,
+  journalModeEnabled,
 }: VaultSidebarProps) {
   return (
     <div className="vault-sidebar">
@@ -488,7 +913,17 @@ export default function VaultSidebar({
         onCreateScene={onCreateScene}
       />
       <div className="vs-divider" aria-hidden="true" />
+      {journalModeEnabled && (
+        <>
+          <DailyNotesSection onOpenPath={onOpenVaultPath} />
+          <div className="vs-divider" aria-hidden="true" />
+        </>
+      )}
       <NotesVault onOpenPath={onOpenVaultPath} onContextChange={onContextChange} />
+      <div className="vs-divider" aria-hidden="true" />
+      <SmartFolderSection onOpenPath={onOpenVaultPath} />
+      <div className="vs-divider" aria-hidden="true" />
+      <TagsSection onTagFilter={onTagFilter} />
     </div>
   );
 }

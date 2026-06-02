@@ -162,6 +162,109 @@ export function defaultLayoutDirFor(category: FactType): string {
  *  out of the user's vault browser by convention. */
 export const BLANK_MODE_STAGING_DIR = '.brainstorm-staging';
 
+// ─── Context selection (SKY-196) ─────────────────────────────────────────────
+
+/** Default token budget for vault context injected into a Brainstorm request.
+ *  4 000 tokens leaves ample headroom inside a 200 k context window. Callers
+ *  can override by passing `tokenBudget` to {@link selectContext}. */
+export const DEFAULT_CONTEXT_TOKEN_BUDGET = 4_000;
+
+/** Coarse token estimate — 4 characters per token.  Fast and
+ *  framework-agnostic; accurate enough for budget gating. */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** A vault note fed to {@link selectContext} as a candidate for context injection. */
+export interface ContextCandidate {
+  path: string;
+  name: string;
+  type: FactType;
+  content: string;
+}
+
+/** A candidate that has been scored, with a human-readable inclusion reason. */
+export interface ContextItem extends ContextCandidate {
+  /** Approximate token cost of name + content. */
+  estimatedTokens: number;
+  /** Why this item was (or was not) sent to Claude. */
+  whyIncluded: string;
+}
+
+export interface ContextSelectionResult {
+  /** Items that fit inside the token budget and were included in the prompt. */
+  included: ContextItem[];
+  /** Items that were candidates but pushed past the budget limit. */
+  excluded: ContextItem[];
+  /** Total tokens consumed by the included items. */
+  usedTokens: number;
+  /** The budget ceiling that was applied. */
+  budgetTokens: number;
+}
+
+/**
+ * Select vault notes to include in the Brainstorm AI context, staying within
+ * `tokenBudget` tokens.  Priority order:
+ *
+ *   1. Name appears in the current user message   (score 3)
+ *   2. Name appears anywhere in conversation history (score 2)
+ *   3. Background filler, ordered by type then name  (score 1)
+ *
+ * Each returned item carries a `whyIncluded` string for the "Context used"
+ * panel in the UI.  Candidates that exceed the budget go to `excluded` with
+ * reason `"Budget limit reached"`.
+ */
+export function selectContext(args: {
+  candidates: ContextCandidate[];
+  userMessage: string;
+  conversationText: string;
+  tokenBudget?: number;
+}): ContextSelectionResult {
+  const budget = args.tokenBudget ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
+  const userLow = args.userMessage.toLowerCase();
+  const convLow = args.conversationText.toLowerCase();
+
+  const TYPE_ORDER: Record<FactType, number> = { character: 0, location: 1, item: 2, note: 3 };
+
+  type Scored = ContextCandidate & { estimatedTokens: number; whyIncluded: string; _score: number };
+
+  const scored: Scored[] = args.candidates.map((c) => {
+    const nameLow = c.name.toLowerCase();
+    const inUser = userLow.includes(nameLow);
+    const inConv = !inUser && convLow.includes(nameLow);
+    const _score = inUser ? 3 : inConv ? 2 : 1;
+    const whyIncluded = inUser
+      ? 'Mentioned in your message'
+      : inConv
+        ? 'Referenced in conversation'
+        : `Background ${c.type} context`;
+    const estimatedTokens = estimateTokens(`${c.name}\n${c.content}`);
+    return { ...c, estimatedTokens, whyIncluded, _score };
+  });
+
+  scored.sort(
+    (a, b) =>
+      b._score - a._score ||
+      (TYPE_ORDER[a.type] ?? 4) - (TYPE_ORDER[b.type] ?? 4) ||
+      a.name.localeCompare(b.name),
+  );
+
+  const included: ContextItem[] = [];
+  const excluded: ContextItem[] = [];
+  let usedTokens = 0;
+
+  for (const { _score: _ignored, ...item } of scored) {
+    if (usedTokens + item.estimatedTokens <= budget) {
+      included.push(item);
+      usedTokens += item.estimatedTokens;
+    } else {
+      excluded.push({ ...item, whyIncluded: 'Budget limit reached' });
+    }
+  }
+
+  return { included, excluded, usedTokens, budgetTokens: budget };
+}
+
 // ─── Notes Vault folder listing for the picker ───
 
 /** A folder entry suitable for the routing picker UI. Vault-relative POSIX

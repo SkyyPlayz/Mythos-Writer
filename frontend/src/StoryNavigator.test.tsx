@@ -106,6 +106,22 @@ describe('StoryNavigator', () => {
     expect(screen.getByText(/no stories yet/i)).toBeInTheDocument();
   });
 
+  it('calls onCreateStory when the header + button is clicked', () => {
+    const onCreateStory = vi.fn();
+    render(<StoryNavigator {...makeProps({ onCreateStory })} />);
+    fireEvent.click(screen.getByTitle('New story'));
+    expect(onCreateStory).toHaveBeenCalled();
+  });
+
+  it('shows a New Story button in the empty state and calls onCreateStory when clicked', () => {
+    const onCreateStory = vi.fn();
+    render(<StoryNavigator {...makeProps({ stories: [], onCreateStory })} />);
+    const cta = screen.getByTestId('nav-empty-cta');
+    expect(cta).toBeInTheDocument();
+    fireEvent.click(cta);
+    expect(onCreateStory).toHaveBeenCalled();
+  });
+
   it('moves scene up when ArrowUp is pressed on a non-first scene', () => {
     const onReorderScenes = vi.fn();
     render(<StoryNavigator {...makeProps({ onReorderScenes })} />);

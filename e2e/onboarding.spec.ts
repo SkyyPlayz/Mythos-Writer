@@ -33,10 +33,12 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 async function launchFreshApp(userData: string): Promise<ElectronApplication> {
   // --headless when no X display is available (CI / WSL without X server).
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -60,11 +62,9 @@ async function waitUntil(
   return false;
 }
 
-/** Navigate from the welcome splash to the vault-choice step (common for all paths). */
+/** Wait for the welcome screen (entry point — vault choice cards are on this screen). */
 async function advanceToVaultChoice(page: Page): Promise<void> {
-  await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible({ timeout: 12_000 });
-  await page.getByRole('button', { name: /get started/i }).click();
-  await expect(page.locator('[data-testid="step-vault"]')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-testid="screen-welcome"]')).toBeVisible({ timeout: 12_000 });
 }
 
 // ─── TC-OB-01: Start Blank ────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ async function advanceToVaultChoice(page: Page): Promise<void> {
 
 test.describe('TC-OB-01: Start Blank', () => {
   let userData: string;
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -87,19 +87,23 @@ test.describe('TC-OB-01: Start Blank', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
   test('blank vault: wizard completes and manifest.json is created at default vault path', async () => {
     await advanceToVaultChoice(page);
 
-    // "Open sample project" is the default radio; switch to "Start blank"
-    await page.getByRole('radio', { name: /start with a blank vault/i }).click();
+    // Choose "Start blank" card — navigates to the path-picker screen
+    await page.locator('[data-testid="card-blank"]').click();
+    await expect(page.locator('[data-testid="screen-blank-path"]')).toBeVisible({ timeout: 8_000 });
 
-    // Click "Next" to proceed to the API key step
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.locator('[data-testid="step-apikey"]')).toBeVisible({ timeout: 8_000 });
+    // Route the vault inside userData so the manifest assertion below stays isolated
+    await page.locator('[data-testid="blank-path-input"]').fill(path.join(userData, 'vault'));
+
+    // Create the vault → wizard advances to API-key screen
+    await page.locator('[data-testid="create-blank-vault"]').click();
+    await expect(page.locator('[data-testid="screen-api-key"]')).toBeVisible({ timeout: 8_000 });
 
     // Skip the API key to finish onboarding
     await page.locator('[data-testid="skip-api-key"]').click();
@@ -169,7 +173,7 @@ function buildFixtureObsidianVault(dir: string): void {
 test.describe('TC-OB-02: Import Obsidian vault', () => {
   let userData: string;
   let fixtureDir: string;
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -181,7 +185,7 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(fixtureDir, { recursive: true, force: true });
   });
@@ -189,10 +193,11 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
   test('obsidian path: dry-run report shown with note count, import applied, DesktopShell loads', async () => {
     await advanceToVaultChoice(page);
 
-    // Select "Use existing Obsidian vault"
-    await page.getByRole('radio', { name: /use existing obsidian vault/i }).click();
+    // Choose "Import Obsidian vault" card — navigates to the import-source screen
+    await page.locator('[data-testid="card-import"]').click();
+    await expect(page.locator('[data-testid="screen-import-source"]')).toBeVisible({ timeout: 8_000 });
 
-    // Install IPC mocks BEFORE clicking Browse so the handler is in place
+    // Install IPC mocks BEFORE clicking Pick folder so the handler is in place
     // when the renderer invokes vault:pick-folder.
     const capturedFixtureDir = fixtureDir;
     await app.evaluate(
@@ -228,11 +233,11 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
       { fixturePath: capturedFixtureDir, noteCount: OBS_NOTE_COUNT },
     );
 
-    // Click "Browse…" → mocked vault:pick-folder fires immediately
-    await page.getByRole('button', { name: /browse/i }).click();
+    // Click "Pick folder" → mocked vault:pick-folder fires immediately
+    await page.locator('[data-testid="import-drop-zone-btn"]').click();
 
     // Dry-run report step must appear
-    const dryRunStep = page.locator('[data-testid="step-dry-run"]');
+    const dryRunStep = page.locator('[data-testid="screen-import-dryrun"]');
     await expect(dryRunStep).toBeVisible({ timeout: 12_000 });
 
     // Notes count must reflect the fixture vault
@@ -244,9 +249,13 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
     // No fatal scan error
     await expect(dryRunStep.locator('[data-testid="dry-run-fatal"]')).not.toBeVisible();
 
-    // Click "Import vault" → wizard calls obsidianRegister → advances to API key step
+    // Click "Import →" → wizard calls obsidianRegister → shows import-success screen
     await dryRunStep.locator('[data-testid="confirm-import"]').click();
-    await expect(page.locator('[data-testid="step-apikey"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="screen-import-success"]')).toBeVisible({ timeout: 12_000 });
+
+    // Advance from success confirmation to the API-key step
+    await page.locator('[data-testid="import-success-continue"]').click();
+    await expect(page.locator('[data-testid="screen-api-key"]')).toBeVisible({ timeout: 8_000 });
 
     // Skip API key → DesktopShell mounts
     await page.locator('[data-testid="skip-api-key"]').click();
@@ -258,7 +267,7 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
 //
 // "Open sample project" is the default vault choice. The wizard calls
 // vault:load-sample which creates the sample files at:
-//   <documents>/Mythos Writer Sample/
+//   <documents>/Mythos Sample/
 // and reindexes the vault. The test then verifies:
 //   • manifest.json exists in the sample vault
 //   • Manuscript/the-lost-horizon/ directory exists (the bundled story)
@@ -270,7 +279,7 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
 test.describe('TC-OB-03: Open sample project', () => {
   let userData: string;
   let sampleRoot = ''; // filled after app.evaluate() resolves the documents path
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -280,7 +289,7 @@ test.describe('TC-OB-03: Open sample project', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
     // Remove the sample vault created by vault:load-sample (lives in real documents dir)
     if (sampleRoot && fs.existsSync(sampleRoot)) {
@@ -291,21 +300,20 @@ test.describe('TC-OB-03: Open sample project', () => {
   test('sample project: Manuscript + Universes/Story ideas scaffolded on disk, DesktopShell loads', async () => {
     await advanceToVaultChoice(page);
 
-    // "Open sample project" is pre-selected (default); confirm it is checked
-    await expect(page.getByRole('radio', { name: /open sample project/i })).toBeChecked();
+    // Choose "Open sample project" card — navigates to the sample path-picker screen
+    await page.locator('[data-testid="card-sample"]').click();
+    await expect(page.locator('[data-testid="screen-sample-path"]')).toBeVisible({ timeout: 8_000 });
 
-    // Click "Next" → vault:load-sample handler runs (creates files on disk)
-    await page.getByRole('button', { name: 'Next' }).click();
+    // Resolve the documents path in the main process without require (ESM context)
+    sampleRoot = await app.evaluate(({ app: electronApp }) =>
+      electronApp.getPath('documents') + '/Mythos Sample'
+    );
 
-    // Resolving documents path via main process so the path is accurate for this OS
-    sampleRoot = await app.evaluate(({ app: electronApp }) => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pathMod = require('path') as typeof import('path');
-      return pathMod.join(electronApp.getPath('documents'), 'Mythos Writer Sample');
-    });
+    // Click "Open sample →" → vault:load-sample handler scaffolds ~20 files on disk
+    await page.locator('[data-testid="open-sample"]').click();
 
     // vault:load-sample may take a moment to create ~20 files
-    await expect(page.locator('[data-testid="step-apikey"]')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-testid="screen-api-key"]')).toBeVisible({ timeout: 20_000 });
 
     // Skip API key → DesktopShell mounts
     await page.locator('[data-testid="skip-api-key"]').click();

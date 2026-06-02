@@ -110,6 +110,11 @@
   border-color: #7c3aed;
 }
 
+.notes-textarea:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c3aed);
+  outline-offset: -1px;
+}
+
 .notes-textarea::placeholder {
   color: #3f3f46;
 }
@@ -602,4 +607,84 @@
 .writing-assistant-cancel-btn:hover {
   background: #7f1d1d;
   color: #fff;
+}
+
+/* SKY-206: Outline sidebar panel */
+.outline-sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.outline-sidebar-story-title {
+  font-size: 0.72rem;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 14px 8px;
+  border-bottom: 1px solid #27272a;
+  margin-bottom: 4px;
+}
+
+.outline-sidebar-empty {
+  font-size: 0.82rem;
+  color: #3f3f46;
+  padding: 12px 14px;
+}
+
+.outline-sidebar-chapter {
+  margin-bottom: 4px;
+}
+
+.outline-sidebar-chapter-title {
+  font-size: 0.72rem;
+  color: #71717a;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 14px 2px;
+}
+
+.outline-sidebar-chapter.active-chapter .outline-sidebar-chapter-title {
+  color: var(--accent-light, #a78bfa);
+}
+
+.outline-sidebar-scene-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.outline-sidebar-no-scenes {
+  font-size: 0.78rem;
+  color: #3f3f46;
+  padding: 2px 20px;
+}
+
+.outline-sidebar-scene {
+  font-size: 0.82rem;
+  color: #a1a1aa;
+  padding: 4px 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+  border: 1px solid transparent;
+  margin: 0 4px;
+}
+
+.outline-sidebar-scene:hover {
+  background: #27272a;
+  color: #d4d4d8;
+}
+
+.outline-sidebar-scene:focus-visible {
+  outline: 2px solid var(--accent, #7c3aed);
+  outline-offset: -2px;
+}
+
+.outline-sidebar-scene.active-scene {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent, #7c3aed) 30%, transparent);
+  color: var(--accent-light, #a78bfa);
+  font-weight: 500;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent, #7c3aed) 40%, transparent);
 }

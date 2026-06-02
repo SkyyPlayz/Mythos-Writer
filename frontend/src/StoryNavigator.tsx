@@ -110,7 +110,16 @@ export default function StoryNavigator({
 
       <div className="nav-tree">
         {stories.length === 0 && (
-          <p className="nav-empty">No stories yet. Create one to begin.</p>
+          <div className="nav-empty">
+            <p>No stories yet.</p>
+            <button
+              className="nav-empty-cta"
+              onClick={onCreateStory}
+              data-testid="nav-empty-cta"
+            >
+              New Story
+            </button>
+          </div>
         )}
 
         {stories.map((story) => (

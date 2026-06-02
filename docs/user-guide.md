@@ -11,6 +11,7 @@ This guide covers the main feature surfaces of Mythos Writer. For installation a
 3. [Brainstorm AI](#brainstorm-ai)
 4. [Settings and appearance](#settings-and-appearance)
 5. [Backup and portability](#backup-and-portability)
+6. [Entity system](user-guide/entities.md) *(separate guide)*
 
 ---
 

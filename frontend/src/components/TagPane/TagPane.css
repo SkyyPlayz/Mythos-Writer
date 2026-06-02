@@ -1,0 +1,297 @@
+/* TagPane — Notes Vault tag browser (SKY-193) */
+
+.tag-pane {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+}
+
+/* ─── Header ─── */
+
+.tp-header {
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.tp-header-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  font-size: var(--text-xs, 0.7rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  min-width: 0;
+}
+
+.tp-header-btn:hover {
+  color: var(--text-body, rgba(255,255,255,0.85));
+}
+
+.tp-header-label {
+  flex: 1;
+}
+
+.tp-clear-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--neon-cyan, #00f0ff);
+  color: #000;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.tp-clear-filter:hover {
+  opacity: 0.8;
+}
+
+/* ─── Body ─── */
+
+.tp-body {
+  padding: 2px 0 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tp-loading {
+  padding: 6px 12px;
+  font-size: var(--text-xs, 0.7rem);
+  color: var(--text-muted, rgba(255,255,255,0.4));
+}
+
+/* ─── Tag items ─── */
+
+.tp-tag-item {
+  --tp-depth: 0;
+}
+
+.tp-tag-item > .tp-tag-row,
+.tp-tag-item > .tp-chevron-btn,
+.tp-tag-item > .tp-chevron-spacer {
+  padding-left: calc(8px + var(--tp-depth) * 14px);
+}
+
+.tp-chevron-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+  padding: 0;
+  width: 20px;
+  display: none; /* rendered inline with row */
+}
+
+.tp-chevron-spacer {
+  display: inline-block;
+  width: 12px;
+}
+
+.tp-chevron {
+  font-size: 9px;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+}
+
+.tp-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px calc(8px + var(--tp-depth) * 14px);
+  border-radius: var(--radius-xs, 3px);
+  cursor: pointer;
+  color: var(--text-body, rgba(255,255,255,0.75));
+  font-size: var(--text-xs, 0.72rem);
+  min-height: 24px;
+  position: relative;
+  user-select: none;
+}
+
+.tp-tag-row:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.05));
+}
+
+.tp-tag-row.tp-tag-active {
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--neon-cyan, #00f0ff);
+}
+
+.tp-tag-row:hover .tp-tag-actions {
+  opacity: 1;
+}
+
+/* ─── Row contents ─── */
+
+.tp-tag-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-tag-count {
+  font-size: 0.65rem;
+  color: var(--text-muted, rgba(255,255,255,0.35));
+  background: var(--glass-bg, rgba(255,255,255,0.06));
+  border-radius: 8px;
+  padding: 0 4px;
+  min-width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.tp-tag-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 80ms;
+  flex-shrink: 0;
+}
+
+.tp-tag-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+  font-size: 11px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.tp-tag-action-btn:hover {
+  color: var(--text-body, rgba(255,255,255,0.85));
+  background: var(--glass-highlight, rgba(255,255,255,0.08));
+}
+
+/* ─── Inline rename ─── */
+
+.tp-rename-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tp-rename-input {
+  width: 100%;
+  background: var(--glass-bg, rgba(255,255,255,0.06));
+  border: 1px solid var(--neon-cyan, #00f0ff);
+  border-radius: 3px;
+  color: var(--text-body, rgba(255,255,255,0.9));
+  font-size: var(--text-xs, 0.72rem);
+  padding: 2px 5px;
+  outline: none;
+}
+
+.tp-rename-error {
+  font-size: 0.65rem;
+  color: var(--neon-magenta, #ff3dbb);
+  margin-top: 2px;
+}
+
+/* ─── Children indent ─── */
+
+.tp-children {
+  /* Indentation is handled by --tp-depth CSS var on each item */
+}
+
+/* ─── Merge dialog ─── */
+
+.tp-merge-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.tp-merge-dialog {
+  background: var(--panel-bg, #1a1a2e);
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.12));
+  border-radius: var(--radius-sm, 6px);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 260px;
+}
+
+.tp-merge-title {
+  font-size: var(--text-sm, 0.8rem);
+  color: var(--text-body, rgba(255,255,255,0.85));
+  margin: 0;
+}
+
+.tp-merge-select {
+  background: var(--glass-bg, rgba(255,255,255,0.06));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.12));
+  border-radius: 4px;
+  color: var(--text-body, rgba(255,255,255,0.85));
+  font-size: var(--text-sm, 0.8rem);
+  padding: 5px 8px;
+  outline: none;
+}
+
+.tp-merge-select:focus {
+  border-color: var(--neon-cyan, #00f0ff);
+}
+
+.tp-merge-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.tp-merge-cancel {
+  background: none;
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.12));
+  border-radius: 4px;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  font-size: var(--text-xs, 0.75rem);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.tp-merge-cancel:hover {
+  border-color: rgba(255,255,255,0.3);
+  color: var(--text-body, rgba(255,255,255,0.85));
+}
+
+.tp-merge-confirm {
+  background: rgba(0, 240, 255, 0.1);
+  border: 1px solid var(--neon-cyan, #00f0ff);
+  border-radius: 4px;
+  color: var(--neon-cyan, #00f0ff);
+  font-size: var(--text-xs, 0.75rem);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.tp-merge-confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tp-merge-confirm:not(:disabled):hover {
+  background: rgba(0, 240, 255, 0.18);
+}

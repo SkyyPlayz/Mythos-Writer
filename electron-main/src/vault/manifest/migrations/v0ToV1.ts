@@ -45,7 +45,7 @@ function migrateScene(raw: Raw, idx: number): ManifestSceneEntry {
 }
 
 function migrateEntity(raw: Raw, idx: number): ManifestEntityEntry {
-  const validTypes = ['character', 'location', 'item', 'concept', 'other'] as const;
+  const validTypes = ['character', 'location', 'faction', 'item', 'event', 'concept', 'other'] as const;
   type EType = typeof validTypes[number];
   const rawType = raw.type;
   const entityType: EType = validTypes.includes(rawType as EType) ? (rawType as EType) : 'other';

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
+import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
@@ -15,9 +17,12 @@ import VaultGraphView from './VaultGraphView';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
+import SceneHistory from './SceneHistory';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
+import TourModal from './TourModal';
+import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
@@ -100,9 +105,11 @@ interface AppMenuBarProps {
   onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
+  onOpenTour: () => void;
+  onOpenExport?: (scope: ExportScope) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -120,6 +127,11 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         }
       })
       .catch((err: Error) => alert(`Export failed: ${err.message}`));
+  };
+
+  const handleExportFormat = () => {
+    if (!selectedStoryId) { alert('Select a story first to export.'); return; }
+    onOpenExport?.({ kind: 'story', storyId: selectedStoryId });
   };
 
   const handleExportDocx = () => {
@@ -163,6 +175,8 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Markdown…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Plain Text…</button>
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
               <div className="app-menu-separator" role="separator" />
@@ -273,6 +287,15 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         title="Distraction-free mode (F11)"
       >
         ⊡
+      </button>
+      <button
+        className="app-menu-tour-btn"
+        onClick={onOpenTour}
+        aria-label="Quick tour"
+        title="Quick tour"
+        data-testid="toolbar-tour-btn"
+      >
+        ?
       </button>
       <button
         className="app-menu-gear-btn"
@@ -390,6 +413,11 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
     () => [...story.chapters].sort((a, b) => a.order - b.order),
     [story.chapters],
   );
+  const activeSceneRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedSceneId]);
 
   return (
     <div className="book-outline-view">
@@ -413,6 +441,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                       return (
                         <div
                           key={scene.id}
+                          ref={isActiveScene ? activeSceneRef : null}
                           className={`book-outline-scene${isActiveScene ? ' active-scene' : ''}`}
                           role="button"
                           tabIndex={0}
@@ -420,7 +449,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') { e.preventDefault(); onSelectScene(scene, chapter); }
                           }}
-                          aria-pressed={isActiveScene}
+                          aria-current={isActiveScene ? 'true' : undefined}
                         >
                           {scene.title}
                         </div>
@@ -466,10 +495,19 @@ export default function DesktopShell() {
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
+  const [exportScope, setExportScope] = useState<ExportScope | null>(null);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
+  const [showSceneHistory, setShowSceneHistory] = useState(false);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
+  const [restoreKey, setRestoreKey] = useState(0);
+  /** SKY-204: currently open vault note path (relative to notes vault root). */
+  const [openedNotePath, setOpenedNotePath] = useState<string | null>(null);
+  /** SKY-204: word count of the currently open vault note, updated live. */
+  const [openedNoteWordCount, setOpenedNoteWordCount] = useState(0);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
@@ -478,6 +516,8 @@ export default function DesktopShell() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
+  // SKY-192: entity registry for the auto-linker
+  const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
 
   // SKY-130: cross-restart scene/cursor restore refs
   const pendingCursorPosRef = useRef<number | null>(null);
@@ -488,6 +528,40 @@ export default function DesktopShell() {
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
   }, []);
+
+  // SKY-152: seenTips
+  const seenTips: Record<string, boolean> = (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {};
+  const handleDismissTip = useCallback(async (key: string) => {
+    if (!appSettings) return;
+    const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
+    setAppSettings(updatedSettings);
+    window.api.settingsSet(updatedSettings).catch(() => {});
+  }, [appSettings, seenTips]);
+
+  const handleManualSnapshot = useCallback(async () => {
+    if (!selectedScene) return;
+    const content = selectedScene.blocks.map(b => b.content).join('\n\n');
+    try {
+      await (window as any).api.snapshotSave?.(selectedScene.id, content);
+      setSnapshotSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      // non-fatal
+    }
+  }, [selectedScene]);
+
+  const handleSceneRestore = useCallback((content: string) => {
+    if (!selectedScene) return;
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
+    setRestoreKey(k => k + 1);
+    setShowSceneHistory(false);
+  }, [selectedScene]);
 
   const handleJumpToText = useCallback((text: string) => {
     editorApiRef.current?.jumpToText(text);
@@ -527,6 +601,12 @@ export default function DesktopShell() {
       setBetaReadComments([]);
     }
   }, [selectedScene?.id, loadBetaReadComments]);
+
+  useEffect(() => {
+    setSnapshotSavedAt(null);
+    setShowSceneHistory(false);
+    setRestoreKey(0);
+  }, [selectedScene?.id]);
 
   const handleBetaReadRequest = useCallback(async (selectedText: string) => {
     if (!selectedScene || betaReadLoading) return;
@@ -606,6 +686,45 @@ export default function DesktopShell() {
   useEffect(() => {
     loadVault();
   }, [loadVault]);
+
+  // SKY-204: auto-open today's daily note when journal mode is enabled.
+  // Runs once after settings load; creates the note silently in the background.
+  useEffect(() => {
+    if (!appSettings?.journalMode?.enabled) return;
+    window.api.dailyNoteOpenToday().then((r) => {
+      if (r.created) {
+        // Note was just created — open it automatically.
+        setOpenedNotePath(r.path);
+        setSelectedScene(null);
+        setSelectedChapter(null);
+        setSelectedStory(null);
+        setSelectedEntity(null);
+      }
+    }).catch(() => {});
+  // Only run when journal mode enabled setting becomes truthy (settings load or toggle).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appSettings?.journalMode?.enabled]);
+
+  // SKY-192: load entities for the auto-linker on mount and vault changes
+  const loadEntities = useCallback(async () => {
+    try {
+      const res = await window.api.entityList();
+      setAllEntities(res.entities ?? []);
+    } catch {
+      // non-fatal; auto-linker just won't suggest anything
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEntities();
+  }, [loadEntities]);
+
+  useEffect(() => {
+    const off = window.api.onVaultFileChanged(() => {
+      loadEntities();
+    });
+    return off;
+  }, [loadEntities]);
 
   // Handle project switches pushed from main process
   useEffect(() => {
@@ -695,6 +814,12 @@ export default function DesktopShell() {
       }
 
       const mod = e.metaKey || e.ctrlKey;
+      // Ctrl+K — open global vault search
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setGlobalSearchOpen(true);
+        return;
+      }
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
@@ -885,6 +1010,7 @@ export default function DesktopShell() {
     setSelectedChapter(chapter);
     setSelectedStory(story);
     setSelectedEntity(null);
+    setOpenedNotePath(null);
     setVaultContext('file');
     if (!restoreInProgressRef.current) {
       // User-initiated open: clear any pending cursor restore and reset cursor to 0
@@ -929,6 +1055,7 @@ export default function DesktopShell() {
     // Scene not found (deleted/moved) — silently skip per spec
   }, [loading, appSettings, stories, handleSelectScene]);
 
+  // SKY-206: keep outline highlight in sync with the active scene (immediate on selection change)
   // SKY-130: debounced cursor persistence as user types/navigates
   const handleCursorPosChange = useCallback((pos: number) => {
     if (!selectedScene) return;
@@ -943,17 +1070,25 @@ export default function DesktopShell() {
     }, 1000);
   }, [selectedScene]);
 
-  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
+  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories.
+  // If no scene matches, treat the path as a vault note and open it in the NoteViewer (SKY-204).
   const handleOpenSceneByPath = useCallback((scenePath: string) => {
     for (const story of stories) {
       for (const chapter of story.chapters) {
         const scene = chapter.scenes.find((sc) => sc.path === scenePath);
         if (scene) {
+          setOpenedNotePath(null);
           handleSelectScene(scene, chapter, story);
           return;
         }
       }
     }
+    // Not a story scene — open as a vault note.
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
+    setSelectedEntity(null);
+    setOpenedNotePath(scenePath);
   }, [stories, handleSelectScene]);
 
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
@@ -1181,20 +1316,38 @@ export default function DesktopShell() {
   };
 
   const writingMode: WritingMode = layout.writingMode ?? 'normal';
-  const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
+  const focusPrefs: FocusPrefs = {
+    showLeftSidebar: false, showRightSidebar: false, showBottomBar: false,
+    showTitleBar: true, showStatusBar: true, showTabBar: true,
+    showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+    ...layout.focusPrefs,
+  };
+  const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
   const showRightSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
+  const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
+  const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
+  const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
 
   const focusWordCount = selectedScene
     ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
     : 0;
   const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
 
+  const shellClasses = [
+    'desktop-shell',
+    `writing-mode-${writingMode}`,
+    distractionFree && 'distraction-free',
+    inFocusOrDF && !focusPrefs.showSidebarButtons && 'focus-hide-sidebar-btns',
+    inFocusOrDF && !focusPrefs.showScrollbars && 'focus-hide-scrollbars',
+    inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={`desktop-shell writing-mode-${writingMode}${distractionFree ? ' distraction-free' : ''}`}>
+    <div className={shellClasses}>
       <UpdateBanner />
-      {!distractionFree && (
+      {showTitleBar && (
         <AppMenuBar
           view={view}
           onSetView={setView}
@@ -1209,9 +1362,11 @@ export default function DesktopShell() {
           onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
+          onOpenTour={() => setTourOpen(true)}
+          onOpenExport={(scope: ExportScope) => setExportScope(scope)}
         />
       )}
-      {distractionFree && (
+      {showStatusOverlay && (
         <FocusModeOverlay
           wordCount={focusWordCount}
           readingMinutes={focusReadingMinutes}
@@ -1226,6 +1381,8 @@ export default function DesktopShell() {
             applyTheme(s.theme);
             applyLiquidNeonTokens(s.liquidNeon);
           }}
+          focusPrefs={focusPrefs}
+          onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
         />
       )}
       {historyOpen && (
@@ -1241,6 +1398,10 @@ export default function DesktopShell() {
       {shortcutsOpen && (
         <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
+      {tourOpen && (
+        <TourModal onClose={() => setTourOpen(false)} />
+      )}
+      {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
       )}
@@ -1284,6 +1445,8 @@ export default function DesktopShell() {
             onReorderScenes={handleReorderScenes}
             onOpenVaultPath={handleOpenSceneByPath}
             onContextChange={setVaultContext}
+            journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
+          onExport={(scope: ExportScope) => setExportScope(scope)}
           />
         </div>
       )}
@@ -1312,7 +1475,7 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {selectedStory && !distractionFree && (
+          {selectedStory && showTabBar && (
             <DepthSlider
               depth={viewDepth}
               onDepthChange={handleViewDepthChange}
@@ -1347,33 +1510,64 @@ export default function DesktopShell() {
               }}
             />
           ) : selectedScene ? (
-            <div className="shell-editor-beta-wrap">
-              <BlockEditor
-                key={selectedScene.id}
-                scene={selectedScene}
-                onBlocksChange={handleBlocksChange}
-                onDraftStateChange={handleDraftStateChange}
-                onEditorReady={handleEditorReady}
-                onBetaReadRequest={handleBetaReadRequest}
-                wikiLinkSuggestions={wikiLinkSuggestions}
-                onAcceptWikiLink={handleEditorAcceptWikiLink}
-                onRejectWikiLink={handleEditorRejectWikiLink}
-                initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                onCursorPosChange={handleCursorPosChange}
-              />
-              {(betaReadComments.length > 0 || betaReadLoading) && (
-                <div className="shell-beta-margin">
-                  {betaReadLoading && (
-                    <div className="br-loading" aria-live="polite">
-                      <span className="wa-spinner" aria-hidden="true" />
-                      Reading…
-                    </div>
-                  )}
-                  <BetaReadMargin
-                    comments={betaReadComments}
-                    onDismiss={handleBetaReadDismiss}
-                  />
-                </div>
+            <div className="shell-editor-scene-wrap">
+              <div className="scene-snapshot-toolbar">
+                <button
+                  className="scene-snapshot-save"
+                  onClick={handleManualSnapshot}
+                >
+                  Save snapshot now
+                </button>
+                <span className="scene-autosave" aria-live="polite">
+                  {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
+                </span>
+                <button
+                  className="btn-history"
+                  onClick={() => setShowSceneHistory(true)}
+                  aria-label="Open scene history"
+                >
+                  History
+                </button>
+              </div>
+              <div className="shell-editor-beta-wrap">
+                <BlockEditor
+                  key={`${selectedScene.id}-${restoreKey}`}
+                  scene={selectedScene}
+                  onBlocksChange={handleBlocksChange}
+                  onDraftStateChange={handleDraftStateChange}
+                  onEditorReady={handleEditorReady}
+                  onBetaReadRequest={handleBetaReadRequest}
+                  wikiLinkSuggestions={wikiLinkSuggestions}
+                  onAcceptWikiLink={handleEditorAcceptWikiLink}
+                  onRejectWikiLink={handleEditorRejectWikiLink}
+                  autoLinkerEntities={allEntities}
+                  autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                  initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                  onCursorPosChange={handleCursorPosChange}
+                />
+                {(betaReadComments.length > 0 || betaReadLoading) && (
+                  <div className="shell-beta-margin">
+                    {betaReadLoading && (
+                      <div className="br-loading" aria-live="polite">
+                        <span className="wa-spinner" aria-hidden="true" />
+                        Reading…
+                      </div>
+                    )}
+                    <BetaReadMargin
+                      comments={betaReadComments}
+                      onDismiss={handleBetaReadDismiss}
+                    />
+                  </div>
+                )}
+              </div>
+              {showSceneHistory && (
+                <SceneHistory
+                  sceneId={selectedScene.id}
+                  scenePath={selectedScene.path}
+                  currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                  onRestore={handleSceneRestore}
+                  onClose={() => setShowSceneHistory(false)}
+                />
               )}
             </div>
           ) : selectedEntity ? (
@@ -1385,14 +1579,40 @@ export default function DesktopShell() {
               onDeleted={() => setSelectedEntity(null)}
               onOpenScene={handleOpenSceneByPath}
             />
+          ) : openedNotePath ? (
+            // SKY-204: vault note viewer (daily notes and any other .md file)
+            <NoteViewer
+              key={openedNotePath}
+              path={openedNotePath}
+              onWordCountChange={setOpenedNoteWordCount}
+              onClose={() => setOpenedNotePath(null)}
+            />
           ) : (
             <div className="shell-editor-empty">
               <div className="shell-editor-empty-icon">✍️</div>
               <h2>Welcome to Mythos Writer</h2>
-              <p>Select a scene from the left panel to start writing.</p>
-              <p className="shell-editor-empty-sub">
-                No stories yet? Click the <strong>+</strong> button in the Stories panel to create your first story.
-              </p>
+              {stories.length === 0 ? (
+                <>
+                  <p>Create your first story to begin writing.</p>
+                  <button
+                    className="shell-editor-empty-cta"
+                    onClick={createStory}
+                    data-testid="shell-empty-new-story"
+                  >
+                    New Story
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Select a scene from the left panel to start writing.</p>
+                  <PaneTip
+                    tipKey="editor"
+                    text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                    seen={seenTips['editor'] ?? false}
+                    onDismiss={handleDismissTip}
+                  />
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1402,6 +1622,8 @@ export default function DesktopShell() {
             selectedChapter={selectedChapter}
             selectedStory={selectedStory}
             onNavigateScene={handleNavigateScene}
+            activeNotePath={openedNotePath}
+            activeNoteWordCount={openedNoteWordCount}
           />
         )}
       </div>
@@ -1443,6 +1665,12 @@ export default function DesktopShell() {
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+            onSelectScene={(sc, ch) => {
+              if (selectedStory) {
+                handleSelectScene(sc, ch, selectedStory);
+                setViewDepth('scene');
+              }
+            }}
           />
         </div>
       )}
@@ -1452,15 +1680,15 @@ export default function DesktopShell() {
           {budgetToast}
         </div>
       )}
-      {globalSearchOpen && (
-        <GlobalSearchPanel
-          onNavigate={(result) => {
-            handleSearchNavigate(result);
-            setGlobalSearchOpen(false);
-          }}
-          onClose={() => setGlobalSearchOpen(false)}
-        />
-      )}
+      <GlobalSearchPanel
+        open={globalSearchOpen}
+        defaultScope={view === 'editor' ? 'story' : view === 'brainstorm' ? 'notes' : 'both'}
+        onNavigate={(result) => {
+          handleSearchNavigate(result);
+          setGlobalSearchOpen(false);
+        }}
+        onClose={() => setGlobalSearchOpen(false)}
+      />
       {promptModal}
     </div>
   );

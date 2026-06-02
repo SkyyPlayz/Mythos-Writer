@@ -7,6 +7,7 @@ interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  label?: string;
 }
 
 // SKY-10 — Per-scene versioned drafts
@@ -47,13 +48,19 @@ interface MigrationApplyResult {
   snapshotsWritten: string[];
 }
 
+interface EntityRelation {
+  type: string;
+  target: string; // entity id
+}
+
 interface EntityEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   path: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -62,7 +69,7 @@ interface EntityEntry {
 interface VaultIndexEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   aliases?: string[];
   tags?: string[];
   keyFacts: string;
@@ -73,6 +80,27 @@ interface EntityBacklinkScene {
   sceneTitle: string;
   scenePath: string;
   snippet: string;
+}
+
+interface LinkedScene {
+  sceneId: string;
+  scenePath: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterOrder: number;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
+}
+
+interface EntityRelationshipRow {
+  id: string;
+  label: string;
+  direction: 'outgoing' | 'incoming';
+  otherEntityId: string;
+  otherEntityName: string;
+  otherEntityType: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
+  createdAt: string;
 }
 
 interface VaultCheckInconsistency {
@@ -93,6 +121,7 @@ interface Suggestion {
   rationale: string;
   createdAt: string;
   status: 'proposed' | 'accepted' | 'rejected' | 'ignored';
+  payload_json?: string | null;
 }
 
 interface AgentBudgetSettings {
@@ -255,6 +284,18 @@ interface AppSettings {
     scrollTop: number;
     cursorLine: number;
   };
+  /** SKY-192: automatic wikilink linker. Absent = suggest mode. */
+  autoLinker?: {
+    mode: 'off' | 'suggest' | 'auto';
+  };
+  /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
+  seenTips?: Record<string, boolean>;
+  /** SKY-204: opt-in daily notes / journal mode. */
+  journalMode?: {
+    enabled: boolean;
+    noteFolder?: string;
+    noteFormat?: string;
+  };
 }
 
 interface GenerationLogRow {
@@ -292,6 +333,33 @@ interface BrainstormExtractedEntity {
   suggestionId: string;
 }
 
+// SKY-193: Tag Wrangler
+interface NotesTagEntry {
+  name: string;
+  fullName: string;
+  count: number;
+  paths: string[];
+  children: NotesTagEntry[];
+}
+
+// SKY-190: Note Templates
+interface NoteTemplateField {
+  key: string;
+  kind: 'literal' | 'prompt' | 'pick';
+  label: string;
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note';
+  body: string;
+  fields: NoteTemplateField[];
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -326,11 +394,13 @@ interface Window {
     onVaultFileChanged: (cb: (event: unknown, data: { path: string }) => void) => () => void;
 
     // Versioning — per-scene snapshots
-    snapshotSave: (sceneId: string, content: string) => Promise<SceneSnapshot>;
+    snapshotSave: (sceneId: string, content: string, label?: string) => Promise<SceneSnapshot>;
     snapshotSaveSync: (sceneId: string, content: string) => void;
     snapshotList: (sceneId: string) => Promise<{ snapshots: SceneSnapshot[] }>;
     snapshotGet: (sceneId: string, snapshotId: string) => Promise<{ snapshot: SceneSnapshot | null }>;
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
+    snapshotDelete: (sceneId: string, snapshotId: string) => Promise<{ deleted: boolean }>;
+    snapshotDeleteAll: (sceneId?: string) => Promise<{ deleted: number }>;
 
     // SKY-10 — Per-scene versioned drafts
     versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
@@ -344,10 +414,14 @@ interface Window {
     // Entity CRUD
     entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
     entityRead: (id: string) => Promise<EntityEntry | null>;
-    entityUpdate: (payload: { id: string; name?: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
+    entityUpdate: (payload: { id: string; name?: string; aliases?: string[]; tags?: string[]; relations?: EntityRelation[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+    entityLinkedScenes: (entityId: string) => Promise<{ scenes: LinkedScene[] }>;
+    entityRelationshipsList: (entityId: string) => Promise<{ entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] }>;
+    entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
+    entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;
@@ -458,7 +532,7 @@ interface Window {
     onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => () => void;
 
     // Search (MYT-251)
-    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) => Promise<unknown>;
+    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<unknown>;
 
     // EPUB export (MYT-342)
     exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) => Promise<unknown>;
@@ -477,10 +551,26 @@ interface Window {
     // Telemetry (MYT-344) — opt-in, off by default
     telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) => Promise<unknown>;
 
-    // Multi-project switcher (MYT-374)
+    // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
     projectList: () => Promise<unknown>;
-    projectSwitch: (vaultRoot: string) => Promise<unknown>;
-    onProjectSwitched: (cb: (data: { vaultRoot: string }) => void) => () => void;
+    projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<unknown>;
+    onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
+
+    // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
+    // new bundle under ~/Mythos/Vaults/<auto-name>/; the renderer can supply
+    // a custom parent (e.g. a OneDrive folder) for Obsidian-style placement.
+    vaultCreateDefaultMythos: (opts?: {
+      parentPath?: string;
+      vaultName?: string;
+      seedMode?: 'default' | 'blank';
+    }) => Promise<{
+      mythosVaultRoot: string;
+      vaultRoot: string;
+      notesVaultRoot: string;
+      name: string;
+      created: boolean;
+      error?: string;
+    }>;
 
     // Archive confirmation dialog (MYT-376)
     archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') => Promise<unknown>;
@@ -496,7 +586,8 @@ interface Window {
     // vault:pick-folder, or the path must already be in recent-projects.
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
     // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
-    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-270 / MYT-789: storyVaultToken / notesVaultToken from vault:pick-folder satisfy the gate.
+    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
     validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
@@ -589,9 +680,72 @@ interface Window {
       folders: Array<{ path: string; label: string }>;
       notesVaultRoot: string;
     }>;
+    // SKY-196: token-budgeted vault context selection
+    brainstormSelectContext?: (payload: { userMessage: string; conversationText: string; tokenBudget?: number }) => Promise<{
+      included: Array<{ path: string; name: string; type: 'character' | 'location' | 'item' | 'note'; content: string; estimatedTokens: number; whyIncluded: string }>;
+      excluded: Array<{ path: string; name: string; type: 'character' | 'location' | 'item' | 'note'; content: string; estimatedTokens: number; whyIncluded: string }>;
+      usedTokens: number;
+      budgetTokens: number;
+    }>;
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
+
+    // SKY-190: Note Templates
+    noteTemplateList: (kind?: string) => Promise<{ templates: NoteTemplate[] }>;
+    // SKY-204: Daily Notes
+    dailyNoteOpenToday: () => Promise<{ path: string; created: boolean }>;
+    dailyNoteGetStreak: () => Promise<{ streakDays: number; todayExists: boolean }>;
+    // SKY-193: Tag Wrangler
+    notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
+    notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
+    notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number }>;
+    // SKY-55: per-scene notes
+    notesGet?: (sceneId: string) => Promise<{ content: string }>;
+    notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
+
+    // SKY-158: Tags
+    tagsList?: () => Promise<{ tags: Array<{ id: string; name: string; color?: string | null; createdAt: string }> }>;
+    tagsUpsert?: (name: string, color?: string | null) => Promise<{ tag: { id: string; name: string; color?: string | null; createdAt: string } }>;
+    tagsDelete?: (id: string) => Promise<{ deleted: boolean }>;
+    tagsRename?: (id: string, name: string) => Promise<{ tag: { id: string; name: string; color?: string | null; createdAt: string } }>;
+    tagsForItem?: (itemId: string, itemKind: 'scene' | 'entity') => Promise<{ tags: string[] }>;
+    tagsSetForItem?: (itemId: string, itemKind: 'scene' | 'entity', tags: string[]) => Promise<{ tags: string[] }>;
+    tagsItemsForTag?: (tagName: string) => Promise<{ items: Array<{ itemId: string; itemKind: 'scene' | 'entity' }> }>;
+    tagsBulkApply?: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) => Promise<{ updated: number }>;
+    sceneSetTags?: (payload: { sceneId: string; tags: string[] }) => Promise<{ scene: unknown }>;
+
+    // SKY-154: Writing Goals
+    goalsGetStats: () => Promise<{ todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: Array<{ date: string; words: number }>; }>;
+    goalsLogWords: (date: string, wordsAdded: number) => Promise<{ ok: boolean }>;
+    goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
+    goalsResetStreak: () => Promise<{ ok: boolean }>;
+
+    // SKY-203: Note-level backlinks
+    noteBacklinks: (notePath: string) => Promise<{
+      notePath: string;
+      backlinks: Array<{ path: string; name: string; snippet: string }>;
+    }>;
+
+    // SKY-194: Iconize — per-node icon IPC
+    notesVaultReadIcons: () => Promise<Record<string, string>>;
+    vaultReadIcons: () => Promise<Record<string, string>>;
+    iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
+    iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
+
+    // SKY-205: Smart Folders — frontmatter-backed persistent queries
+    smartFolderList?: () => Promise<{ smartFolders: Array<{ id: string; name: string; query: string; createdAt: string; updatedAt: string }> }>;
+    smartFolderCreate?: (name: string, query: string) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderUpdate?: (id: string, updates: { name?: string; query?: string }) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderDelete?: (id: string) => Promise<{ success: boolean }>;
+    smartFolderQuery?: (query: string) => Promise<{ results: Array<{ path: string; title: string }> }>;
+
+    // SKY-232: Entity-to-entity relationships
+    entityLinkedScenes: (entityId: string) => Promise<{ scenes: LinkedScene[] }>;
+    entityRelationshipsList: (entityId: string) => Promise<{ entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] }>;
+    entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
+    entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
+
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

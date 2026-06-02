@@ -88,7 +88,7 @@ describe('Anthropic routing (§1)', () => {
     let capturedKey = '';
     const mockStream = async function* () { yield 'Hi'; };
     const mockMessages = { stream: vi.fn().mockReturnValue(mockStream()) };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation((opts: { apiKey: string }) => {
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(opts: { apiKey: string }) {
       capturedKey = opts.apiKey;
       return { messages: mockMessages };
     });
@@ -105,7 +105,7 @@ describe('Anthropic routing (§1)', () => {
     ];
     const mockStream = async function* () { for (const c of fakeChunks) yield c; };
     const mockMessages = { stream: vi.fn().mockReturnValue(mockStream()) };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({ messages: mockMessages }));
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ messages: mockMessages });
 
     const tokens = await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq()));
     expect(tokens).toEqual(['Hello', ' World']);
@@ -119,7 +119,7 @@ describe('Anthropic routing (§1)', () => {
         return (async function* () {})();
       }),
     };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({ messages: mockMessages }));
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ messages: mockMessages });
 
     await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq({ system: 'You are a writer.' })));
     expect((capturedParams as { system: string }).system).toBe('You are a writer.');
@@ -133,7 +133,7 @@ describe('Anthropic routing (§1)', () => {
         return (async function* () {})();
       }),
     };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({ messages: mockMessages }));
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ messages: mockMessages });
 
     await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq()));
     expect(capturedParams).not.toHaveProperty('system');
