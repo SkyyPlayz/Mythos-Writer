@@ -170,7 +170,7 @@ function StoryVault({
           +
         </button>
       </div>
-      <div className="vb-story-content">
+      <div className="vb-story-content" role="tree" aria-label="Story Vault">
         {stories.length === 0 ? (
           <div className="vb-story-empty" data-testid="vb-story-empty">
             <div className="vb-story-empty-icon" aria-hidden="true">
@@ -193,11 +193,13 @@ function StoryVault({
           stories.map((story) => {
             const storyExp = expandedStories.has(story.id);
             return (
-              <div key={story.id}>
+              <div key={story.id} role="none">
                 <div className="vb-item-row" onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'story',storyId:story.id});}}>
                   <button
                     className="vb-tree-toggle"
                     onClick={() => toggleStory(story.id)}
+                    role="treeitem"
+                    aria-level={1}
                     aria-expanded={storyExp}
                   >
                     <span className="vb-chevron" aria-hidden="true">{storyExp ? '▾' : '▸'}</span>
@@ -213,77 +215,87 @@ function StoryVault({
                     +
                   </button>
                 </div>
-                {storyExp &&
-                  [...story.chapters]
-                    .sort((a, b) => a.order - b.order)
-                    .map((chapter) => {
-                      const chapterExp = expandedChapters.has(chapter.id);
-                      return (
-                        <div key={chapter.id}>
-                          <div className="vb-item-row" onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'chapter',storyId:story.id,chapterId:chapter.id});}}>
-                            <button
-                              className="vb-tree-toggle"
-                              style={{ paddingLeft: 20 }}
-                              onClick={() => toggleChapter(chapter.id)}
-                              aria-expanded={chapterExp}
-                            >
-                              <span className="vb-chevron" aria-hidden="true">{chapterExp ? '▾' : '▸'}</span>
-                              <span className="vb-icon" aria-hidden="true">📑</span>
-                              <span className="vb-name">{chapter.title}</span>
-                            </button>
-                            <button
-                              className="vb-inline-add"
-                              onClick={() => onCreateScene(story.id, chapter.id)}
-                              title="New Scene"
-                              aria-label={`New scene in ${chapter.title}`}
-                            >
-                              +
-                            </button>
+                {storyExp && (
+                  <div role="group">
+                    {[...story.chapters]
+                      .sort((a, b) => a.order - b.order)
+                      .map((chapter) => {
+                        const chapterExp = expandedChapters.has(chapter.id);
+                        return (
+                          <div key={chapter.id} role="none">
+                            <div className="vb-item-row" onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'chapter',storyId:story.id,chapterId:chapter.id});}}>
+                              <button
+                                className="vb-tree-toggle"
+                                style={{ paddingLeft: 20 }}
+                                onClick={() => toggleChapter(chapter.id)}
+                                role="treeitem"
+                                aria-level={2}
+                                aria-expanded={chapterExp}
+                              >
+                                <span className="vb-chevron" aria-hidden="true">{chapterExp ? '▾' : '▸'}</span>
+                                <span className="vb-icon" aria-hidden="true">📑</span>
+                                <span className="vb-name">{chapter.title}</span>
+                              </button>
+                              <button
+                                className="vb-inline-add"
+                                onClick={() => onCreateScene(story.id, chapter.id)}
+                                title="New Scene"
+                                aria-label={`New scene in ${chapter.title}`}
+                              >
+                                +
+                              </button>
+                            </div>
+                            {chapterExp && (
+                              <div role="group">
+                                {[...chapter.scenes]
+                                  .sort((a, b) => a.order - b.order)
+                                  .map((scene) => {
+                                    const isEditing = editingSceneId === scene.id;
+                                    return (
+                                      <div
+                                        key={scene.id}
+                                        className={`vb-row vb-scene-row${selectedSceneId === scene.id ? ' vb-selected' : ''}`}
+                                        style={{ paddingLeft: 36 }}
+                                        role="treeitem"
+                                        aria-level={3}
+                                        aria-selected={selectedSceneId === scene.id}
+                                        tabIndex={0}
+                                        data-testid={`vb-scene-${scene.id}`}
+                                        onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'scene',storyId:story.id,chapterId:chapter.id,sceneId:scene.id});}}
+                                        onClick={() => { if (!isEditing) onSelectScene(scene, chapter, story); }}
+                                        onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
+                                        onKeyDown={(e) => {
+                                          if (isEditing) return;
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            onSelectScene(scene, chapter, story);
+                                          }
+                                        }}
+                                        title={isEditing ? undefined : scene.title}
+                                      >
+                                        <span className="vb-chevron" aria-hidden="true" />
+                                        <span className="vb-icon" aria-hidden="true">📄</span>
+                                        {isEditing ? (
+                                          <SceneRenameInput
+                                            value={editValue}
+                                            error={editError}
+                                            onChange={setEditValue}
+                                            onCommit={commitRenameScene}
+                                            onCancel={cancelRenameScene}
+                                          />
+                                        ) : (
+                                          <span className="vb-name">{scene.title}</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            )}
                           </div>
-                          {chapterExp &&
-                            [...chapter.scenes]
-                              .sort((a, b) => a.order - b.order)
-                              .map((scene) => {
-                                const isEditing = editingSceneId === scene.id;
-                                return (
-                                  <div
-                                    key={scene.id}
-                                    className={`vb-row vb-scene-row${selectedSceneId === scene.id ? ' vb-selected' : ''}`}
-                                    style={{ paddingLeft: 36 }}
-                                    role="button"
-                                    tabIndex={0}
-                                    data-testid={`vb-scene-${scene.id}`}
-                                    onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'scene',storyId:story.id,chapterId:chapter.id,sceneId:scene.id});}}
-                                    onClick={() => { if (!isEditing) onSelectScene(scene, chapter, story); }}
-                                    onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
-                                    onKeyDown={(e) => {
-                                      if (isEditing) return;
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        onSelectScene(scene, chapter, story);
-                                      }
-                                    }}
-                                    title={isEditing ? undefined : scene.title}
-                                  >
-                                    <span className="vb-chevron" aria-hidden="true" />
-                                    <span className="vb-icon" aria-hidden="true">📄</span>
-                                    {isEditing ? (
-                                      <SceneRenameInput
-                                        value={editValue}
-                                        error={editError}
-                                        onChange={setEditValue}
-                                        onCommit={commitRenameScene}
-                                        onCancel={cancelRenameScene}
-                                      />
-                                    ) : (
-                                      <span className="vb-name">{scene.title}</span>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                  </div>
+                )}
               </div>
             );
           })
@@ -611,6 +623,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       ) : (
         <VirtualTree
           data-testid="vb-notes-tree"
+          label="Notes Vault"
           rows={rows}
           onToggle={handleToggleFolder}
           onOpen={handleOpen}
