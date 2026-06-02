@@ -60,6 +60,7 @@ describe('GlobalSearchPanel', () => {
 
   it('renders search results after debounce fires', async () => {
     const result = {
+      resultType: 'scene' as const,
       docId: 'scene-1',
       vault: 'story',
       kind: 'scene',
@@ -81,6 +82,7 @@ describe('GlobalSearchPanel', () => {
 
   it('calls onNavigate and onClose when a result is selected via mousedown', async () => {
     const result = {
+      resultType: 'scene' as const,
       docId: 'd1',
       vault: 'story' as const,
       kind: 'scene',
@@ -104,6 +106,7 @@ describe('GlobalSearchPanel', () => {
 
   it('navigates to first result on Enter when no item is active', async () => {
     const result = {
+      resultType: 'scene' as const,
       docId: 'd2',
       vault: 'story' as const,
       kind: 'scene',

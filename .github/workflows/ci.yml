@@ -5,13 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   ci:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +51,7 @@ jobs:
       - name: Fuzz — frontmatter parser (60 s)
         run: |
           mkdir -p electron-main/fuzz/crashes
-          cd electron-main && npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js fuzz/corpus/frontmatter -- -max_total_time=60 --sync -artifact_prefix=fuzz/crashes/frontmatter-
+          cd electron-main && npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js fuzz/corpus/frontmatter -- -max_total_time=60 -artifact_prefix=fuzz/crashes/frontmatter-
 
       - name: Fuzz — DOCX/EPUB inline parsers (60 s)
         run: |
@@ -87,10 +88,12 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:e2e:visual-capture
 
       - name: Upload visual-capture artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
+          retention-days: 7
 
       - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
@@ -106,27 +109,34 @@ jobs:
 
       - name: Upload visual-regression diffs on failure
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
+          retention-days: 7
 
       - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
         run: xvfb-run --auto-servernum npm run test:e2e:a11y
 
+      - name: E2E — Entity system regression create/alias/browse (SKY-220)
+        run: xvfb-run --auto-servernum npm run test:e2e:entity
+
       - name: Upload E2E report on failure
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report
           path: e2e-report/
+          retention-days: 7
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
-    # Running on self-hosted (Linux) so the required check CI/build-macos resolves green.
+    # Running on ubuntu-latest (Linux) so the required check CI/build-macos resolves green.
     # Replace with macos-latest and restore the packaging steps once billing is active
     # (est. June 2026) or a self-hosted macOS runner is added (MYT-749).
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: macOS build placeholder
@@ -135,7 +145,7 @@ jobs:
           echo "This stub keeps the CI / build-macos required check green until then."
 
   build-linux:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -168,10 +178,12 @@ jobs:
         run: npm run dist:linux
 
       - name: Upload Linux AppImage artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: linux-appimage
           path: dist-electron/*.AppImage
+          retention-days: 7
 
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via

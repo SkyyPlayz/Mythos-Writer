@@ -8,6 +8,7 @@ import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
@@ -412,6 +413,11 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
     () => [...story.chapters].sort((a, b) => a.order - b.order),
     [story.chapters],
   );
+  const activeSceneRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedSceneId]);
 
   return (
     <div className="book-outline-view">
@@ -435,6 +441,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                       return (
                         <div
                           key={scene.id}
+                          ref={isActiveScene ? activeSceneRef : null}
                           className={`book-outline-scene${isActiveScene ? ' active-scene' : ''}`}
                           role="button"
                           tabIndex={0}
@@ -442,7 +449,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') { e.preventDefault(); onSelectScene(scene, chapter); }
                           }}
-                          aria-pressed={isActiveScene}
+                          aria-current={isActiveScene ? 'true' : undefined}
                         >
                           {scene.title}
                         </div>
@@ -497,6 +504,10 @@ export default function DesktopShell() {
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [restoreKey, setRestoreKey] = useState(0);
+  /** SKY-204: currently open vault note path (relative to notes vault root). */
+  const [openedNotePath, setOpenedNotePath] = useState<string | null>(null);
+  /** SKY-204: word count of the currently open vault note, updated live. */
+  const [openedNoteWordCount, setOpenedNoteWordCount] = useState(0);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
@@ -675,6 +686,24 @@ export default function DesktopShell() {
   useEffect(() => {
     loadVault();
   }, [loadVault]);
+
+  // SKY-204: auto-open today's daily note when journal mode is enabled.
+  // Runs once after settings load; creates the note silently in the background.
+  useEffect(() => {
+    if (!appSettings?.journalMode?.enabled) return;
+    window.api.dailyNoteOpenToday().then((r) => {
+      if (r.created) {
+        // Note was just created — open it automatically.
+        setOpenedNotePath(r.path);
+        setSelectedScene(null);
+        setSelectedChapter(null);
+        setSelectedStory(null);
+        setSelectedEntity(null);
+      }
+    }).catch(() => {});
+  // Only run when journal mode enabled setting becomes truthy (settings load or toggle).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appSettings?.journalMode?.enabled]);
 
   // SKY-192: load entities for the auto-linker on mount and vault changes
   const loadEntities = useCallback(async () => {
@@ -981,6 +1010,7 @@ export default function DesktopShell() {
     setSelectedChapter(chapter);
     setSelectedStory(story);
     setSelectedEntity(null);
+    setOpenedNotePath(null);
     setVaultContext('file');
     if (!restoreInProgressRef.current) {
       // User-initiated open: clear any pending cursor restore and reset cursor to 0
@@ -1025,6 +1055,7 @@ export default function DesktopShell() {
     // Scene not found (deleted/moved) — silently skip per spec
   }, [loading, appSettings, stories, handleSelectScene]);
 
+  // SKY-206: keep outline highlight in sync with the active scene (immediate on selection change)
   // SKY-130: debounced cursor persistence as user types/navigates
   const handleCursorPosChange = useCallback((pos: number) => {
     if (!selectedScene) return;
@@ -1039,17 +1070,25 @@ export default function DesktopShell() {
     }, 1000);
   }, [selectedScene]);
 
-  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
+  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories.
+  // If no scene matches, treat the path as a vault note and open it in the NoteViewer (SKY-204).
   const handleOpenSceneByPath = useCallback((scenePath: string) => {
     for (const story of stories) {
       for (const chapter of story.chapters) {
         const scene = chapter.scenes.find((sc) => sc.path === scenePath);
         if (scene) {
+          setOpenedNotePath(null);
           handleSelectScene(scene, chapter, story);
           return;
         }
       }
     }
+    // Not a story scene — open as a vault note.
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
+    setSelectedEntity(null);
+    setOpenedNotePath(scenePath);
   }, [stories, handleSelectScene]);
 
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
@@ -1386,6 +1425,7 @@ export default function DesktopShell() {
             onReorderScenes={handleReorderScenes}
             onOpenVaultPath={handleOpenSceneByPath}
             onContextChange={setVaultContext}
+            journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           onExport={(scope: ExportScope) => setExportScope(scope)}
           />
         </div>
@@ -1519,6 +1559,14 @@ export default function DesktopShell() {
               onDeleted={() => setSelectedEntity(null)}
               onOpenScene={handleOpenSceneByPath}
             />
+          ) : openedNotePath ? (
+            // SKY-204: vault note viewer (daily notes and any other .md file)
+            <NoteViewer
+              key={openedNotePath}
+              path={openedNotePath}
+              onWordCountChange={setOpenedNoteWordCount}
+              onClose={() => setOpenedNotePath(null)}
+            />
           ) : (
             <div className="shell-editor-empty">
               <div className="shell-editor-empty-icon">✍️</div>
@@ -1542,6 +1590,8 @@ export default function DesktopShell() {
             selectedChapter={selectedChapter}
             selectedStory={selectedStory}
             onNavigateScene={handleNavigateScene}
+            activeNotePath={openedNotePath}
+            activeNoteWordCount={openedNoteWordCount}
           />
         )}
       </div>
@@ -1583,6 +1633,12 @@ export default function DesktopShell() {
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+            onSelectScene={(sc, ch) => {
+              if (selectedStory) {
+                handleSelectScene(sc, ch, selectedStory);
+                setViewDepth('scene');
+              }
+            }}
           />
         </div>
       )}

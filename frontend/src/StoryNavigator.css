@@ -212,3 +212,21 @@
   background: #052e16;
   color: #86efac;
 }
+
+/* Focus rings — all interactive tree items */
+.nav-add-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c3aed);
+  outline-offset: 2px;
+}
+
+.nav-story-toggle:focus-visible,
+.nav-chapter-toggle:focus-visible,
+.nav-inline-add:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c3aed);
+  outline-offset: -2px;
+}
+
+.nav-scene-row:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c3aed);
+  outline-offset: -2px;
+}

@@ -76,11 +76,19 @@ export const WikiLink = Node.create({
             );
 
             // Render the custom token to an HTML element that TipTap can parse.
+            // All four characters that are meaningful in HTML must be escaped:
+            // & first (to avoid double-escaping), then < > " for attribute and
+            // text contexts.  Without < / > escaping, [[<script>...]] would
+            // inject a live element into the editor DOM (XSS -- SKY-234).
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             md.renderer.rules['wiki_link'] = (tokens: any[], idx: number) => {
               const target = tokens[idx].attrGet('data-wiki-link') ?? '';
-              const escaped = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-              return `<span data-wiki-link="${escaped}">[[${target}]]</span>`;
+              const escaped = target
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+              return `<span data-wiki-link="${escaped}">[[${escaped}]]</span>`;
             };
           },
         },

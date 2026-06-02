@@ -45,8 +45,8 @@ function inlineRuns(line: string): TextRun[] {
     if (m[0].startsWith('**')) {
       runs.push(new TextRun({ text: m[2], bold: true }));
     } else {
-      // *…* or _…_
-      runs.push(new TextRun({ text: m[4] ?? m[5], italics: true }));
+      // *…* or _…_ — group 3 captures *italic*, group 4 captures _italic_
+      runs.push(new TextRun({ text: m[3] ?? m[4], italics: true }));
     }
     last = m.index + m[0].length;
   }

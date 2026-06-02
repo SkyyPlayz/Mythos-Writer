@@ -349,6 +349,92 @@ function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
   );
 }
 
+// ─── Backlinks Pane (SKY-203) ───
+
+const BACKLINKS_OPEN_KEY = 'vb-backlinks-open';
+
+function readBacklinksOpen(): boolean {
+  try { return localStorage.getItem(BACKLINKS_OPEN_KEY) !== 'false'; } catch { return true; }
+}
+function saveBacklinksOpen(v: boolean) {
+  try { localStorage.setItem(BACKLINKS_OPEN_KEY, v ? 'true' : 'false'); } catch { /* */ }
+}
+
+interface BacklinkEntry { path: string; name: string; snippet: string; }
+
+interface BacklinksPaneProps {
+  notePath: string;
+  onOpen: (path: string) => void;
+}
+
+function BacklinksPane({ notePath, onOpen }: BacklinksPaneProps) {
+  const [open, setOpen] = useState(readBacklinksOpen);
+  const [loading, setLoading] = useState(false);
+  const [backlinks, setBacklinks] = useState<BacklinkEntry[]>([]);
+  const prevPath = useRef<string>('');
+
+  useEffect(() => {
+    if (!open) return;
+    if (prevPath.current === notePath) return;
+    prevPath.current = notePath;
+    setLoading(true);
+    window.api.noteBacklinks(notePath)
+      .then((res) => { setBacklinks(res.backlinks ?? []); })
+      .catch(() => { setBacklinks([]); })
+      .finally(() => { setLoading(false); });
+  }, [notePath, open]);
+
+  const handleToggle = useCallback(() => {
+    setOpen((o) => {
+      const next = !o;
+      saveBacklinksOpen(next);
+      return next;
+    });
+  }, []);
+
+  return (
+    <div className="vb-backlinks" data-testid="vb-backlinks">
+      <button
+        className="vb-backlinks-toggle"
+        onClick={handleToggle}
+        aria-expanded={open}
+        aria-label={`${open ? 'Collapse' : 'Expand'} backlinks`}
+      >
+        <span className="vb-backlinks-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <span className="vb-backlinks-label">Backlinks</span>
+      </button>
+      {open && (
+        <div className="vb-backlinks-body">
+          {loading ? (
+            <div className="vb-backlinks-status" aria-live="polite">Scanning…</div>
+          ) : backlinks.length === 0 ? (
+            <div className="vb-backlinks-empty" data-testid="vb-backlinks-empty">
+              No notes link to this note.
+            </div>
+          ) : (
+            <ul className="vb-backlinks-list" role="list" aria-label="Notes linking to this note">
+              {backlinks.map((bl) => (
+                <li key={bl.path} className="vb-backlinks-item">
+                  <button
+                    className="vb-backlinks-btn"
+                    onClick={() => onOpen(bl.path)}
+                    title={bl.path}
+                  >
+                    <span className="vb-backlinks-name">{bl.name}</span>
+                    {bl.snippet && (
+                      <span className="vb-backlinks-snippet">{bl.snippet}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Notes Vault (file-based, virtualized) ───
 
 interface NotesVaultProps {
@@ -554,6 +640,9 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         onClose={() => setDialogOpen(false)}
         onCreated={handleNoteCreated}
       />
+      {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
+        <BacklinksPane notePath={selected} onOpen={handleOpen} />
+      )}
     </div>
   );
 }
@@ -572,6 +661,65 @@ export interface VaultBrowserProps {
   onOpenFile?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
   onExport?: (scope: ExportScope) => void;
+  /** SKY-204: whether journal mode is enabled (shows Daily Notes widget). */
+  journalModeEnabled?: boolean;
+}
+
+// SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
+function DailyNotesBanner({ onOpenFile }: { onOpenFile?: (path: string) => void }) {
+  const [streak, setStreak] = useState(0);
+  const [todayExists, setTodayExists] = useState(false);
+  const [opening, setOpening] = useState(false);
+
+  const loadStreak = useCallback(async () => {
+    try {
+      const r = await window.api.dailyNoteGetStreak();
+      setStreak(r.streakDays);
+      setTodayExists(r.todayExists);
+    } catch {
+      // vault not ready yet
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStreak();
+    const unsub = window.api.onVaultFileChanged?.(() => loadStreak());
+    return () => unsub?.();
+  }, [loadStreak]);
+
+  const handleOpen = useCallback(async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      const r = await window.api.dailyNoteOpenToday();
+      await loadStreak();
+      onOpenFile?.(r.path);
+    } catch {
+      // non-fatal
+    } finally {
+      setOpening(false);
+    }
+  }, [opening, loadStreak, onOpenFile]);
+
+  return (
+    <div className="vb-daily-banner">
+      <div className="vb-daily-streak">
+        {streak > 0 && (
+          <span title={`Journal streak: ${streak} consecutive day${streak === 1 ? '' : 's'}`}>
+            🔥 {streak} day{streak === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+      <button
+        className={`vb-daily-today-btn${todayExists ? ' vb-daily-today-btn--exists' : ''}`}
+        onClick={handleOpen}
+        disabled={opening}
+        aria-label="Open or create today's daily note"
+      >
+        {opening ? '…' : todayExists ? "Open Today's Note" : "Create Today's Note"}
+      </button>
+    </div>
+  );
 }
 
 export default function VaultBrowser({
@@ -584,6 +732,7 @@ export default function VaultBrowser({
   onOpenFile,
   onContextChange,
   onExport,
+  journalModeEnabled,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -606,6 +755,9 @@ export default function VaultBrowser({
 
   return (
     <div className="vault-browser" data-testid="vault-browser">
+      {journalModeEnabled && (
+        <DailyNotesBanner onOpenFile={onOpenFile} />
+      )}
       <div className="vb-scope-bar" role="group" aria-label="Vault scope">
         <button
           className={`vb-scope-btn${scope === 'story' ? ' vb-scope-active' : ''}`}

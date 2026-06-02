@@ -129,6 +129,7 @@ import {
   type SceneEntityLinksUpsertPayload,
   type SceneEntityLinksDeletePayload,
   type EntityLinkedScenesPayload,
+  type NoteBacklinksPayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -241,6 +242,12 @@ import {
 } from './entities.js';
 import { getReciprocal } from './entityRelations.js';
 import {
+  syncEntityToIndex,
+  removeEntityFromIndex,
+  readEntityProse,
+  syncAllEntitiesToIndex,
+} from './entitySync.js';
+import {
   buildArchiveIndex,
   getArchiveIndex,
   getArchiveStatus,
@@ -289,9 +296,13 @@ import {
   selectContext,
   type ContextCandidate,
 } from './brainstormRouting.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates } from './templates.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { getNoteBacklinks } from './noteBacklinks.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
+import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
+import type { SmartFolderEntry, CustomFieldDef } from './ipc.js';
+import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 
 const require = createRequire(import.meta.url);
@@ -826,6 +837,7 @@ const handlers: IpcHandlers = {
     const manifest = readManifest(getManifestPath());
     const { manifest: updated, scanned, updated: count } = reindexVault(getVaultRoot(), manifest);
     writeManifest(getManifestPath(), updated);
+    syncAllEntitiesToIndex(getVaultRoot(), updated.entities);
     return { scanned, updated: count };
   },
   [IPC_CHANNELS.VAULT_WATCH_START]: async () => {
@@ -1246,6 +1258,7 @@ const handlers: IpcHandlers = {
     const entry = createEntity(getVaultRoot(), manifest, payload);
     writeManifest(getManifestPath(), manifest);
     setItemTags(entry.id, 'entity', entry.tags ?? []);
+    syncEntityToIndex(entry, payload.prose ?? '');
     return entry;
   },
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => {
@@ -1266,6 +1279,7 @@ const handlers: IpcHandlers = {
     });
     writeManifest(getManifestPath(), manifest);
     if (payload.tags !== undefined) setItemTags(payload.id, 'entity', payload.tags);
+    syncEntityToIndex(entry, readEntityProse(getVaultRoot(), entry.path));
     return entry;
   },
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => {
@@ -1273,6 +1287,7 @@ const handlers: IpcHandlers = {
     const manifest = readManifest(getManifestPath());
     const result = deleteEntity(getVaultRoot(), manifest, payload.id);
     writeManifest(getManifestPath(), manifest);
+    removeEntityFromIndex(payload.id);
     return result;
   },
   [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => {
@@ -1814,13 +1829,15 @@ const handlers: IpcHandlers = {
     }
 
     // SKY-10: pre-save snapshot — capture the on-disk state being replaced.
-    // We snapshot the prior prose before overwriting so the timeline is
-    // "what existed before this save."
+    // SKY-207: single file read to get both prior prose (for snapshot) and existing custom fields.
     const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
     let priorProse: string | null = null;
+    let existingCustomFields: Record<string, unknown> | undefined;
     try {
-      priorProse = readSceneFile(getVaultRoot(), found.path).prose;
-    } catch { /* new file — nothing to snapshot */ }
+      const prior = readSceneFile(getVaultRoot(), found.path);
+      priorProse = prior.prose;
+      existingCustomFields = prior.customFields;
+    } catch { /* new file — nothing to snapshot or preserve */ }
     if (priorProse !== null) {
       try {
         saveVersion(getVaultRoot(), found.id, priorProse, {
@@ -1830,7 +1847,10 @@ const handlers: IpcHandlers = {
       } catch { /* snapshot failure is non-fatal — save still proceeds */ }
     }
 
-    // Atomic write: temp → fdatasync → rename
+    // Merge custom fields: payload fields take precedence; missing keys from payload keep disk values.
+    const mergedCustomFields = payload.customFields !== undefined
+      ? { ...existingCustomFields, ...payload.customFields }
+      : existingCustomFields;
     writeSceneFileAtomic(getVaultRoot(), found.path, {
       id: found.id,
       title: found.title,
@@ -1838,6 +1858,7 @@ const handlers: IpcHandlers = {
       storyId: found.storyId,
       order: found.order,
       prose: payload.prose,
+      customFields: mergedCustomFields,
     });
 
     writeManifest(getManifestPath(), manifest);
@@ -3254,14 +3275,14 @@ const handlers: IpcHandlers = {
     return { templates: listTemplates(app.getPath('userData')) };
   },
 
-  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse | { error: string }> => {
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse> => {
     const { templateId, storyVaultPath, notesVaultPath } = payload ?? {};
     if (!templateId || !storyVaultPath || !notesVaultPath) {
-      return { error: 'templateId, storyVaultPath, and notesVaultPath are required' };
+      throw new Error('templateId, storyVaultPath, and notesVaultPath are required');
     }
     const templates = listTemplates(app.getPath('userData'));
     const template = templates.find((t) => t.id === templateId);
-    if (!template) return { error: `Template not found: ${templateId}` };
+    if (!template) throw new Error(`Template not found: ${templateId}`);
     const resolvedStory = storyVaultPath.replace(/^~/, app.getPath('home'));
     const resolvedNotes = notesVaultPath.replace(/^~/, app.getPath('home'));
     for (const [label, target] of [['Story Vault', resolvedStory], ['Notes Vault', resolvedNotes]] as const) {
@@ -3269,16 +3290,16 @@ const handlers: IpcHandlers = {
         fs.existsSync(target) &&
         fs.readdirSync(target).filter((e) => !e.startsWith('.')).length > 0
       ) {
-        return { error: `${label} target is not empty: ${target}` };
+        throw new Error(`${label} target is not empty: ${target}`);
       }
     }
     scaffoldFromTemplate(resolvedStory, resolvedNotes, template);
     return { ok: true as const, storyVaultPath: resolvedStory, notesVaultPath: resolvedNotes };
   },
 
-  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: import('./ipc.js').TemplateSaveAsPayload): import('./ipc.js').TemplateSaveAsResponse | { error: string } => {
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: import('./ipc.js').TemplateSaveAsPayload): import('./ipc.js').TemplateSaveAsResponse => {
     const name = (payload?.name ?? '').trim();
-    if (!name) return { error: 'Template name is required' };
+    if (!name) throw new Error('Template name is required');
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
   },
@@ -3286,6 +3307,80 @@ const handlers: IpcHandlers = {
   // SKY-190: Note Templates
   [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: import('./ipc.js').NoteTemplateListPayload): import('./ipc.js').NoteTemplateListResponse => {
     return { templates: listNoteTemplates(payload?.kind) };
+  },
+
+  // SKY-204: Daily Notes — opt-in journal mode
+  [IPC_CHANNELS.DAILY_NOTE_OPEN_TODAY]: (): import('./ipc.js').DailyNoteOpenTodayResponse => {
+    const settings = loadAppSettings();
+    const jm = settings.journalMode;
+    const noteFolder = jm?.noteFolder ?? 'Daily Notes';
+    const notesRoot = getNotesVaultRoot();
+    ensureNotesVaultDir();
+
+    // Today in local time YYYY-MM-DD using UTC-noon trick avoids DST edge issues
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const relFolder = noteFolder;
+    const relPath = `${relFolder}/${today}.md`;
+    const absFolder = path.join(notesRoot, relFolder);
+    const absPath = path.join(notesRoot, relPath);
+
+    const alreadyExists = fs.existsSync(absPath);
+    if (!alreadyExists) {
+      fs.mkdirSync(absFolder, { recursive: true });
+      // Apply daily-note template if one is defined; otherwise use bare default.
+      const templates = listNoteTemplates('daily-note');
+      let content: string;
+      if (templates.length > 0) {
+        content = resolveNoteTemplate(templates[0].body, { date: today });
+      } else {
+        content = `---\ndate: "${today}"\n---\n\n# ${today}\n\n`;
+      }
+      fs.writeFileSync(absPath, content, 'utf8');
+    }
+
+    return { path: relPath, created: !alreadyExists };
+  },
+
+  [IPC_CHANNELS.DAILY_NOTE_GET_STREAK]: (): import('./ipc.js').DailyNoteGetStreakResponse => {
+    const settings = loadAppSettings();
+    const noteFolder = settings.journalMode?.noteFolder ?? 'Daily Notes';
+    const notesRoot = getNotesVaultRoot();
+    const absFolder = path.join(notesRoot, noteFolder);
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    if (!fs.existsSync(absFolder)) {
+      return { streakDays: 0, todayExists: false };
+    }
+
+    // Collect all dated filenames (YYYY-MM-DD.md) from the daily notes folder.
+    const files = fs.readdirSync(absFolder);
+    const dates = new Set(
+      files
+        .filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
+        .map((f) => f.slice(0, 10)),
+    );
+
+    const todayExists = dates.has(today);
+
+    // Walk backwards from today counting consecutive days with a note.
+    let streak = 0;
+    let current = todayExists ? today : (() => {
+      const d = new Date(today + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    while (dates.has(current)) {
+      streak++;
+      const d = new Date(current + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      current = d.toISOString().slice(0, 10);
+    }
+
+    return { streakDays: streak, todayExists };
   },
 
   // SKY-193: Tag Wrangler
@@ -3345,9 +3440,11 @@ const handlers: IpcHandlers = {
           if (scene) {
             scenes.push({
               sceneId: scene.id,
+              scenePath: scene.path,
               sceneTitle: scene.title,
               chapterId: chapter.id,
               chapterTitle: chapter.title,
+              chapterOrder: chapter.order,
               storyId: story.id,
               linkKind: row.link_kind as 'mention' | 'tag',
             });
@@ -3357,6 +3454,12 @@ const handlers: IpcHandlers = {
     }
     return { scenes };
   },
+  // SKY-203: Note-level backlinks — scan all notes vault files for [[wikilinks]] targeting the given note
+  [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => {
+    ensureNotesVaultDir();
+    return getNoteBacklinks(getNotesVaultRoot(), payload?.notePath ?? '');
+  },
+
   // SKY-194: Iconize — per-node icon IPC
   [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string> => {
     return batchReadVaultIcons(getNotesVaultRoot());
@@ -3375,6 +3478,147 @@ const handlers: IpcHandlers = {
     return { svg };
   },
 
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  [IPC_CHANNELS.SMART_FOLDER_LIST]: (): { smartFolders: SmartFolderEntry[] } => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return { smartFolders: manifest.smartFolders ?? [] };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_CREATE]: (payload: { name: string; query: string }): { smartFolder: SmartFolderEntry } => {
+    ensureVaultDir();
+    const { name, query } = payload ?? {};
+    if (!name?.trim()) throw new Error('Smart folder name is required');
+    if (!query?.trim()) throw new Error('Smart folder query is required');
+    const { error } = parseSmartQuery(query);
+    if (error) throw new Error(`Invalid query: ${error}`);
+    const manifest = readManifest(getManifestPath());
+    const now = new Date().toISOString();
+    const entry: SmartFolderEntry = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      query: query.trim(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    manifest.smartFolders = [...(manifest.smartFolders ?? []), entry];
+    writeManifest(getManifestPath(), manifest);
+    return { smartFolder: entry };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }): { smartFolder: SmartFolderEntry } => {
+    ensureVaultDir();
+    const { id, name, query } = payload ?? {};
+    if (!id) throw new Error('Smart folder id is required');
+    if (query !== undefined) {
+      const { error } = parseSmartQuery(query);
+      if (error) throw new Error(`Invalid query: ${error}`);
+    }
+    const manifest = readManifest(getManifestPath());
+    const folders = manifest.smartFolders ?? [];
+    const idx = folders.findIndex((f) => f.id === id);
+    if (idx === -1) throw new Error(`Smart folder not found: ${id}`);
+    folders[idx] = {
+      ...folders[idx],
+      ...(name !== undefined ? { name: name.trim() } : {}),
+      ...(query !== undefined ? { query: query.trim() } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    manifest.smartFolders = folders;
+    writeManifest(getManifestPath(), manifest);
+    return { smartFolder: folders[idx] };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }): { success: boolean } => {
+    ensureVaultDir();
+    const { id } = payload ?? {};
+    if (!id) throw new Error('Smart folder id is required');
+    const manifest = readManifest(getManifestPath());
+    manifest.smartFolders = (manifest.smartFolders ?? []).filter((f) => f.id !== id);
+    writeManifest(getManifestPath(), manifest);
+    return { success: true };
+  },
+  [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }): { results: import('./ipc.js').SmartFolderResult[] } => {
+    const { query } = payload ?? {};
+    if (!query?.trim()) return { results: [] };
+    const results = executeSmartQuery(getNotesVaultRoot(), query);
+    return { results };
+  },
+
+  // ─── SKY-207: Custom frontmatter field schema ───
+
+  [IPC_CHANNELS.CUSTOM_FIELDS_LIST]: (): { fields: CustomFieldDef[] } => {
+    ensureVaultDir();
+    return { fields: readFieldDefs(getVaultRoot()) };
+  },
+
+  [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }): { fields: CustomFieldDef[] } => {
+    ensureVaultDir();
+    const { fields } = payload ?? {};
+    if (!Array.isArray(fields)) throw new Error('fields must be an array');
+    // Validate each definition
+    for (const f of fields) {
+      if (!f.id || typeof f.id !== 'string') throw new Error('Each field must have a string id');
+      if (!f.name || typeof f.name !== 'string') throw new Error('Each field must have a string name');
+      if (!['text', 'number', 'select'].includes(f.type)) throw new Error(`Invalid field type: ${f.type}`);
+      if (f.type === 'select' && f.options !== undefined && !Array.isArray(f.options)) {
+        throw new Error('Field options must be an array');
+      }
+    }
+    writeFieldDefs(getVaultRoot(), fields);
+    return { fields };
+  },
+
+  [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }): { customFields: Record<string, unknown> } => {
+    ensureVaultDir();
+    const { sceneId } = payload ?? {};
+    if (!sceneId) throw new Error('sceneId is required');
+    const manifest = readManifest(getManifestPath());
+    let scenePath: string | null = null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === sceneId);
+        if (scene) { scenePath = scene.path; break outer; }
+      }
+    }
+    if (!scenePath) {
+      const scene = manifest.scenes.find((s) => s.id === sceneId);
+      scenePath = scene?.path ?? null;
+    }
+    if (!scenePath) throw new Error(`Scene not found: ${sceneId}`);
+    safePath(getVaultRoot(), scenePath);
+    try {
+      const data = readSceneFile(getVaultRoot(), scenePath);
+      return { customFields: data.customFields ?? {} };
+    } catch {
+      return { customFields: {} };
+    }
+  },
+
+  [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }): { ok: boolean } => {
+    ensureVaultDir();
+    const { sceneId, customFields } = payload ?? {};
+    if (!sceneId) throw new Error('sceneId is required');
+    if (!customFields || typeof customFields !== 'object') throw new Error('customFields must be an object');
+    const manifest = readManifest(getManifestPath());
+    let scenePath: string | null = null;
+    outer: for (const story of manifest.stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((s) => s.id === sceneId);
+        if (scene) { scenePath = scene.path; break outer; }
+      }
+    }
+    if (!scenePath) {
+      const scene = manifest.scenes.find((s) => s.id === sceneId);
+      scenePath = scene?.path ?? null;
+    }
+    if (!scenePath) throw new Error(`Scene not found: ${sceneId}`);
+    safePath(getVaultRoot(), scenePath);
+    const existing = readSceneFile(getVaultRoot(), scenePath);
+    writeSceneFileAtomic(getVaultRoot(), scenePath, {
+      ...existing,
+      customFields: { ...existing.customFields, ...customFields },
+    });
+    if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: sceneId, path: scenePath });
+    return { ok: true };
+  },
 
 };
 

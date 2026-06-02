@@ -317,6 +317,9 @@ function joinPath(parent: string, child: string): string {
   return `${cleaned}/${child}`;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 export default function OnboardingWizard({ initialSettings, onComplete }: OnboardingWizardProps) {
@@ -350,6 +353,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, lastAction: '' });
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const cancelledRef = useRef(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const [dryRunBanner, setDryRunBanner] = useState('');
 
   // Sample flow
@@ -656,6 +660,34 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Move focus to the screen heading (or first focusable) on mount and screen transitions
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
+    const heading = el.querySelector<HTMLElement>('h2, [class*="wordmark"]');
+    if (heading) {
+      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+      heading.focus({ preventScroll: true });
+    } else {
+      el.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus({ preventScroll: true });
+    }
+  }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const el = overlayRef.current;
+    if (!el) return;
+    const focusable = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }, []);
+
   // ─── Step indicator ─────────────────────────────────────────────────────────
 
   const stepInfo = STEP_MAP[screen];
@@ -687,7 +719,14 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   // ─── Screen renders ─────────────────────────────────────────────────────────
 
   return (
-    <div className="onboarding-overlay" role="dialog" aria-modal="true" aria-label="Onboarding wizard">
+    <div
+      ref={overlayRef}
+      className="onboarding-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Onboarding wizard"
+      onKeyDown={handleKeyDown}
+    >
       {/* Cancel confirm dialog (renders above everything during S2c) */}
       {showCancelConfirm && (
         <ConfirmDialog

@@ -316,11 +316,29 @@ export const IPC_CHANNELS = {
   SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
   ENTITY_LINKED_SCENES: 'entity:linkedScenes',
 
+  // SKY-203: Note-level backlinks — which notes link to a given note
+  NOTE_BACKLINKS: 'notesVault:backlinks',
+
   // SKY-194: Iconize — per-node icons with bundled + user icon packs
   NOTES_VAULT_READ_ICONS: 'notesVault:readIcons',
   VAULT_READ_ICONS: 'vault:readIcons',
   ICONS_LIST_USER_PACKS: 'icons:listUserPacks',
   ICONS_READ_SVG: 'icons:readSvg',
+
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  SMART_FOLDER_LIST: 'smartFolder:list',
+  SMART_FOLDER_CREATE: 'smartFolder:create',
+  SMART_FOLDER_UPDATE: 'smartFolder:update',
+  SMART_FOLDER_DELETE: 'smartFolder:delete',
+  SMART_FOLDER_QUERY: 'smartFolder:query',
+  // SKY-204: Daily Notes — opt-in journal mode
+  DAILY_NOTE_OPEN_TODAY: 'dailyNote:openToday',
+  DAILY_NOTE_GET_STREAK: 'dailyNote:getStreak',
+  // SKY-207: Per-scene custom frontmatter fields
+  CUSTOM_FIELDS_LIST: 'customFields:list',
+  CUSTOM_FIELDS_SET: 'customFields:set',
+  SCENE_PROPS_GET: 'scene:propsGet',
+  SCENE_PROPS_SET: 'scene:propsSet',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -510,6 +528,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
   // SKY-190: Note Templates
   [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
+  // SKY-204: Daily Notes
+  [IPC_CHANNELS.DAILY_NOTE_OPEN_TODAY]: (payload: never) => DailyNoteOpenTodayResponse;
+  [IPC_CHANNELS.DAILY_NOTE_GET_STREAK]: (payload: never) => DailyNoteGetStreakResponse;
   // SKY-193: Tag Wrangler
   [IPC_CHANNELS.NOTES_TAG_LIST]: (payload: never) => NotesTagListResponse;
   [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: NotesTagRenamePayload) => NotesTagRenameResponse;
@@ -542,11 +563,27 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
 
+  // SKY-203: Note-level backlinks
+  [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => NoteBacklinksResponse;
+
   // SKY-194: Iconize — per-node icon IPC
   [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
   [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
   [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (payload: never) => { packName: string; icons: string[] }[];
   [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }) => { svg: string | null };
+
+  // SKY-205: Smart Folders
+  [IPC_CHANNELS.SMART_FOLDER_LIST]: (payload: never) => { smartFolders: SmartFolderEntry[] };
+  [IPC_CHANNELS.SMART_FOLDER_CREATE]: (payload: { name: string; query: string }) => { smartFolder: SmartFolderEntry };
+  [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }) => { smartFolder: SmartFolderEntry };
+  [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }) => { success: boolean };
+  [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }) => { results: SmartFolderResult[] };
+
+  // SKY-207: Per-scene custom frontmatter fields
+  [IPC_CHANNELS.CUSTOM_FIELDS_LIST]: (payload: never) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }) => { customFields: Record<string, unknown> };
+  [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }) => { ok: boolean };
 }
 
 // ─── Payload / Response types ───
@@ -626,6 +663,33 @@ export interface VaultChooseFolderResponse {
 
 // ─── Full manifest schema ───
 
+export interface SmartFolderEntry {
+  id: string;
+  name: string;
+  /** Serialized query string, e.g. "pov: Lyra AND status: draft" */
+  query: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// SKY-207: Per-scene custom frontmatter field schema
+export type FieldType = 'text' | 'number' | 'select';
+
+export interface CustomFieldDef {
+  id: string;
+  /** The frontmatter key (e.g. "mood", "tension"). Lowercase, no spaces. */
+  name: string;
+  type: FieldType;
+  /** Only for type "select". */
+  options?: string[];
+}
+
+export interface SmartFolderResult {
+  /** Vault-relative path */
+  path: string;
+  title: string;
+}
+
 export interface Manifest {
   schemaVersion: number;
   version: string;
@@ -640,6 +704,8 @@ export interface Manifest {
   provenance: Record<string, string>;
   /** Scene Crafter board file paths */
   boardReferences: string[];
+  /** SKY-205: Named smart folders with frontmatter-backed queries */
+  smartFolders?: SmartFolderEntry[];
 }
 
 export interface StoryEntry {
@@ -1075,6 +1141,27 @@ export interface EntityBacklinksResponse {
   scenes: EntityBacklinkScene[];
 }
 
+// ─── Note backlinks (SKY-203) ───
+
+export interface NoteBacklinksPayload {
+  /** Vault-relative path of the note to find backlinks for (e.g. "my-note.md"). */
+  notePath: string;
+}
+
+export interface NoteBacklinkEntry {
+  /** Vault-relative path of the linking note. */
+  path: string;
+  /** Display name (filename without .md extension). */
+  name: string;
+  /** Short excerpt around the [[wikilink]] hit. */
+  snippet: string;
+}
+
+export interface NoteBacklinksResponse {
+  notePath: string;
+  backlinks: NoteBacklinkEntry[];
+}
+
 // ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───
 
 export interface AgentBrainstormPayload {
@@ -1309,6 +1396,18 @@ export interface AppSettings {
   liquidNeon?: LiquidNeonPrefs;
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;
+  /** SKY-204: opt-in daily notes / journal mode. */
+  journalMode?: JournalModeSettings;
+}
+
+/** SKY-204: daily notes journal mode configuration. */
+export interface JournalModeSettings {
+  /** Whether journal mode is active. Defaults to false. */
+  enabled: boolean;
+  /** Subfolder inside the Notes Vault for daily notes. Defaults to "Daily Notes". */
+  noteFolder?: string;
+  /** Date format for note filenames. Currently only "YYYY-MM-DD" is supported. */
+  noteFormat?: string;
 }
 
 /** SKY-130: persisted cross-restart scene + cursor position. */
@@ -1718,6 +1817,8 @@ export interface SceneSavePayload {
   order?: number;
   /** SKY-10: classifies the save so snapshots can dedupe autosaves. Defaults to 'save'. */
   intent?: VersionIntent;
+  /** SKY-207: custom frontmatter field values to persist alongside prose. */
+  customFields?: Record<string, unknown>;
 }
 
 export interface SceneSaveResponse {
@@ -2432,7 +2533,7 @@ export interface NoteTemplate {
   id: string;
   name: string;
   description: string;
-  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note';
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note' | 'daily-note';
   body: string;
   fields: NoteTemplateField[];
 }
@@ -2443,6 +2544,23 @@ export interface NoteTemplateListPayload {
 
 export interface NoteTemplateListResponse {
   templates: NoteTemplate[];
+}
+
+// ─── SKY-204: Daily Notes ─────────────────────────────────────────────────────
+
+/** Opens (or creates) today's daily note. Returns the relative path within the Notes Vault. */
+export interface DailyNoteOpenTodayResponse {
+  /** Relative path to today's note inside the Notes Vault (e.g. "Daily Notes/2025-01-15.md"). */
+  path: string;
+  /** True if the note was just created; false if it already existed. */
+  created: boolean;
+}
+
+export interface DailyNoteGetStreakResponse {
+  /** Number of consecutive calendar days with a daily note, ending today (or yesterday). */
+  streakDays: number;
+  /** True if today's note already exists on disk. */
+  todayExists: boolean;
 }
 
 // ─── SKY-193: Tag Wrangler ───
@@ -2528,9 +2646,11 @@ export interface SceneEntityLink {
 }
 export interface LinkedScene {
   sceneId: string;
+  scenePath: string;
   sceneTitle: string;
   chapterId: string;
   chapterTitle: string;
+  chapterOrder: number;
   storyId: string;
   linkKind: 'mention' | 'tag';
 }

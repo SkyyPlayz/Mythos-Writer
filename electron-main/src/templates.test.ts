@@ -282,8 +282,8 @@ describe('loadUserTemplates', () => {
 // ─── Note Template tests (SKY-190) ───────────────────────────────────────────
 
 describe('BUNDLED_NOTE_TEMPLATES', () => {
-  it('exports exactly 5 bundled note templates', () => {
-    expect(BUNDLED_NOTE_TEMPLATES).toHaveLength(5);
+  it('exports exactly 6 bundled note templates', () => {
+    expect(BUNDLED_NOTE_TEMPLATES).toHaveLength(6);
   });
 
   it('each note template has required fields', () => {
@@ -427,8 +427,8 @@ describe('resolveNoteTemplate', () => {
 });
 
 describe('listNoteTemplates', () => {
-  it('returns all 5 templates when no kind filter is given', () => {
-    expect(listNoteTemplates()).toHaveLength(5);
+  it('returns all 6 templates when no kind filter is given', () => {
+    expect(listNoteTemplates()).toHaveLength(6);
   });
 
   it('filters by kind correctly', () => {

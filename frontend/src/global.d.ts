@@ -56,7 +56,7 @@ interface EntityRelation {
 interface EntityEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   path: string;
   aliases?: string[];
   tags?: string[];
@@ -69,7 +69,7 @@ interface EntityEntry {
 interface VaultIndexEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   aliases?: string[];
   tags?: string[];
   keyFacts: string;
@@ -80,6 +80,17 @@ interface EntityBacklinkScene {
   sceneTitle: string;
   scenePath: string;
   snippet: string;
+}
+
+interface LinkedScene {
+  sceneId: string;
+  scenePath: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterOrder: number;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
 }
 
 interface VaultCheckInconsistency {
@@ -269,6 +280,12 @@ interface AppSettings {
   };
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
+  /** SKY-204: opt-in daily notes / journal mode. */
+  journalMode?: {
+    enabled: boolean;
+    noteFolder?: string;
+    noteFormat?: string;
+  };
 }
 
 interface GenerationLogRow {
@@ -388,6 +405,7 @@ interface Window {
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+    entityLinkedScenes: (entityId: string) => Promise<{ scenes: LinkedScene[] }>;
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;
@@ -642,6 +660,9 @@ interface Window {
 
     // SKY-190: Note Templates
     noteTemplateList: (kind?: string) => Promise<{ templates: NoteTemplate[] }>;
+    // SKY-204: Daily Notes
+    dailyNoteOpenToday: () => Promise<{ path: string; created: boolean }>;
+    dailyNoteGetStreak: () => Promise<{ streakDays: number; todayExists: boolean }>;
     // SKY-193: Tag Wrangler
     notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
     notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
@@ -667,11 +688,24 @@ interface Window {
     goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
     goalsResetStreak: () => Promise<{ ok: boolean }>;
 
+    // SKY-203: Note-level backlinks
+    noteBacklinks: (notePath: string) => Promise<{
+      notePath: string;
+      backlinks: Array<{ path: string; name: string; snippet: string }>;
+    }>;
+
     // SKY-194: Iconize — per-node icon IPC
     notesVaultReadIcons: () => Promise<Record<string, string>>;
     vaultReadIcons: () => Promise<Record<string, string>>;
     iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
     iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
+
+    // SKY-205: Smart Folders — frontmatter-backed persistent queries
+    smartFolderList?: () => Promise<{ smartFolders: Array<{ id: string; name: string; query: string; createdAt: string; updatedAt: string }> }>;
+    smartFolderCreate?: (name: string, query: string) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderUpdate?: (id: string, updates: { name?: string; query?: string }) => Promise<{ smartFolder: { id: string; name: string; query: string; createdAt: string; updatedAt: string } }>;
+    smartFolderDelete?: (id: string) => Promise<{ success: boolean }>;
+    smartFolderQuery?: (query: string) => Promise<{ results: Array<{ path: string; title: string }> }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

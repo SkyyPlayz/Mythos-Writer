@@ -3,140 +3,68 @@ import type { EntityEntry, EntityType } from './types';
 import { NodeIcon } from './NodeIcon';
 import './EntityBrowser.css';
 
+// The 6 canonical display types; 'other' is kept in EntityType for data compat only.
+const TYPE_ORDER: EntityType[] = ['character', 'location', 'faction', 'item', 'event', 'concept'];
+
 const TYPE_LABELS: Record<EntityType, string> = {
   character: 'Characters',
   location: 'Locations',
+  faction: 'Factions',
   item: 'Items',
+  event: 'Events',
   concept: 'Concepts',
   other: 'Other',
 };
 
-const TYPE_ORDER: EntityType[] = ['character', 'location', 'item', 'concept', 'other'];
+const TYPE_SINGULAR: Record<EntityType, string> = {
+  character: 'Character',
+  location: 'Location',
+  faction: 'Faction',
+  item: 'Item',
+  event: 'Event',
+  concept: 'Concept',
+  other: 'Other',
+};
 
 const TYPE_ICONS: Record<EntityType, string> = {
   character: '👤',
   location: '📍',
+  faction: '⚔️',
   item: '💎',
+  event: '📅',
   concept: '💡',
   other: '📄',
 };
 
-interface CreateDialogProps {
-  onConfirm: (name: string, type: EntityType, aliases: string[], tags: string[]) => Promise<void>;
-  onCancel: () => void;
+interface TypePickerProps {
+  onSelect: (type: EntityType) => void;
+  onClose: () => void;
 }
 
-const FOCUSABLE_SELECTOR =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+function TypePickerPopover({ onSelect, onClose }: TypePickerProps) {
+  const ref = useRef<HTMLDivElement>(null);
 
-function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
-  const [name, setName] = useState('');
-  const [type, setType] = useState<EntityType>('character');
-  const [aliases, setAliases] = useState('');
-  const [tags, setTags] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) { setError('Name is required.'); return; }
-    setSaving(true);
-    try {
-      const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
-      const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
-      await onConfirm(trimmed, type, aliasList, tagList);
-    } catch (err) {
-      setError(String(err));
-      setSaving(false);
-    }
-  };
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') { onCancel(); return; }
-    if (e.key === 'Tab' && dialogRef.current) {
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-      } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
-    }
-  }, [onCancel]);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
 
   return (
-    <div className="entity-dialog-overlay" onClick={onCancel}>
-      <div
-        ref={dialogRef}
-        className="entity-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-entity-title"
-        onKeyDown={handleKeyDown}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div id="create-entity-title" className="entity-dialog-header">New Entity</div>
-        <form onSubmit={handleSubmit} className="entity-dialog-form">
-          <label className="entity-dialog-label">
-            Type
-            <select
-              className="entity-dialog-select"
-              value={type}
-              onChange={(e) => setType(e.target.value as EntityType)}
-            >
-              {TYPE_ORDER.map((t) => (
-                <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-              ))}
-            </select>
-          </label>
-          <label className="entity-dialog-label">
-            Name *
-            <input
-              className="entity-dialog-input"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Aria Voss"
-              autoFocus
-            />
-          </label>
-          <label className="entity-dialog-label">
-            Aliases <span className="entity-dialog-hint">(comma-separated)</span>
-            <input
-              className="entity-dialog-input"
-              type="text"
-              value={aliases}
-              onChange={(e) => setAliases(e.target.value)}
-              placeholder="Aria, The Weaver"
-            />
-          </label>
-          <label className="entity-dialog-label">
-            Tags <span className="entity-dialog-hint">(comma-separated)</span>
-            <input
-              className="entity-dialog-input"
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="protagonist, mage"
-            />
-          </label>
-          {error && <div className="entity-dialog-error">{error}</div>}
-          <div className="entity-dialog-actions">
-            <button type="button" className="entity-btn entity-btn-ghost" onClick={onCancel}>
-              Cancel
-            </button>
-            <button type="submit" className="entity-btn entity-btn-primary" disabled={saving}>
-              {saving ? 'Creating…' : 'Create'}
-            </button>
-          </div>
-        </form>
-      </div>
+    <div ref={ref} className="entity-type-picker" role="menu" aria-label="Choose entity type">
+      {TYPE_ORDER.map((t) => (
+        <button
+          key={t}
+          className="entity-type-picker-item"
+          role="menuitem"
+          onClick={() => onSelect(t)}
+        >
+          <span className="entity-type-picker-icon">{TYPE_ICONS[t]}</span>
+          <span className="entity-type-picker-label">{TYPE_SINGULAR[t]}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -149,10 +77,9 @@ interface Props {
 export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Props) {
   const [entities, setEntities] = useState<EntityEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Set<EntityType>>(
-    new Set<EntityType>(['character', 'location', 'item', 'concept', 'other'])
-  );
-  const [showCreate, setShowCreate] = useState(false);
+  const [expanded, setExpanded] = useState<Set<EntityType>>(new Set(TYPE_ORDER));
+  const [showPicker, setShowPicker] = useState(false);
+  const [creating, setCreating] = useState<EntityType | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const createBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -176,18 +103,24 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
       return next;
     });
 
-  const handleCreate = async (
-    name: string,
-    type: EntityType,
-    aliases: string[],
-    tags: string[]
-  ) => {
-    const created = await window.api.entityCreate({ name, type, aliases, tags });
-    setShowCreate(false);
-    createBtnRef.current?.focus();
-    await loadEntities();
-    onSelectEntity(created);
-  };
+  const quickCreate = useCallback(async (type: EntityType) => {
+    setCreating(type);
+    setShowPicker(false);
+    try {
+      const created = await window.api.entityCreate({
+        name: `New ${TYPE_SINGULAR[type]}`,
+        type,
+        aliases: [],
+        tags: [],
+      });
+      await loadEntities();
+      onSelectEntity(created);
+    } catch {
+      // creation failed; leave browser as-is
+    } finally {
+      setCreating(null);
+    }
+  }, [loadEntities, onSelectEntity]);
 
   const handleDelete = async (id: string) => {
     await window.api.entityDelete(id);
@@ -202,27 +135,31 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
     {} as Record<EntityType, EntityEntry[]>
   );
 
-  const hasAny = entities.length > 0;
-
   return (
     <div className="entity-browser">
       <div className="entity-browser-toolbar">
-        <button ref={createBtnRef} className="entity-btn entity-btn-primary entity-btn-sm" onClick={() => setShowCreate(true)}>
-          + New Entity
-        </button>
-      </div>
-
-      {!hasAny && (
-        <div className="entity-empty">
-          <div className="entity-empty-icon">🗃️</div>
-          <p>No entities yet.</p>
-          <p className="entity-empty-sub">Create characters, locations, and items to track your world.</p>
+        <div className="entity-browser-toolbar-inner">
+          <button
+            ref={createBtnRef}
+            className="entity-btn entity-btn-primary entity-btn-sm"
+            onClick={() => setShowPicker((v) => !v)}
+            disabled={!!creating}
+            aria-haspopup="menu"
+            aria-expanded={showPicker}
+          >
+            {creating ? 'Creating…' : '+ New Entity'}
+          </button>
+          {showPicker && (
+            <TypePickerPopover
+              onSelect={quickCreate}
+              onClose={() => { setShowPicker(false); createBtnRef.current?.focus(); }}
+            />
+          )}
         </div>
-      )}
+      </div>
 
       {TYPE_ORDER.map((type) => {
         const items = grouped[type];
-        if (items.length === 0) return null;
         return (
           <div key={type} className="entity-group">
             <button
@@ -237,60 +174,68 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
             </button>
             {expanded.has(type) && (
               <div className="entity-items">
-                {items.map((entity) => (
-                  <div
-                    key={entity.id}
-                    className={`entity-item${entity.id === selectedEntityId ? ' selected' : ''}`}
-                  >
+                {items.length === 0 ? (
+                  <div className="entity-group-empty">
+                    <span className="entity-group-empty-text">
+                      No {TYPE_SINGULAR[type].toLowerCase()}s yet
+                    </span>
                     <button
-                      className="entity-item-select"
-                      onClick={() => onSelectEntity(entity)}
-                      aria-pressed={entity.id === selectedEntityId}
+                      className="entity-group-add-link"
+                      onClick={() => quickCreate(type)}
+                      disabled={!!creating}
                     >
-                      <span className="entity-item-icon" aria-hidden="true">
-                        <NodeIcon icon={entity.properties?.icon as string | undefined} fallback={TYPE_ICONS[type]} />
-                      </span>
-                      <span className="entity-item-name">{entity.name}</span>
+                      + Add
                     </button>
-                    {deleteConfirm === entity.id ? (
-                      <span className="entity-delete-confirm">
-                        <button
-                          className="entity-btn-danger-sm"
-                          onClick={() => handleDelete(entity.id)}
-                        >
-                          Delete
-                        </button>
-                        <button
-                          className="entity-btn-ghost-sm"
-                          onClick={() => setDeleteConfirm(null)}
-                        >
-                          Cancel
-                        </button>
-                      </span>
-                    ) : (
-                      <button
-                        className="entity-item-delete"
-                        aria-label="Delete entity"
-                        title="Delete entity"
-                        onClick={() => setDeleteConfirm(entity.id)}
-                      >
-                        ×
-                      </button>
-                    )}
                   </div>
-                ))}
+                ) : (
+                  items.map((entity) => (
+                    <div
+                      key={entity.id}
+                      className={`entity-item${entity.id === selectedEntityId ? ' selected' : ''}`}
+                    >
+                      <button
+                        className="entity-item-select"
+                        onClick={() => onSelectEntity(entity)}
+                        aria-pressed={entity.id === selectedEntityId}
+                      >
+                        <span className="entity-item-icon" aria-hidden="true">
+                          <NodeIcon icon={entity.properties?.icon as string | undefined} fallback={TYPE_ICONS[type]} />
+                        </span>
+                        <span className="entity-item-name">{entity.name}</span>
+                      </button>
+                      {deleteConfirm === entity.id ? (
+                        <span className="entity-delete-confirm">
+                          <button
+                            className="entity-btn-danger-sm"
+                            onClick={() => handleDelete(entity.id)}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            className="entity-btn-ghost-sm"
+                            onClick={() => setDeleteConfirm(null)}
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          className="entity-item-delete"
+                          aria-label="Delete entity"
+                          title="Delete entity"
+                          onClick={() => setDeleteConfirm(entity.id)}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
         );
       })}
-
-      {showCreate && (
-        <CreateDialog
-          onConfirm={handleCreate}
-          onCancel={() => { setShowCreate(false); createBtnRef.current?.focus(); }}
-        />
-      )}
     </div>
   );
 }

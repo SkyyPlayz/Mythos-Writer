@@ -326,6 +326,42 @@ describe('YAML frontmatter', () => {
     expect(frontmatter['normal']).toBe('ok');
     expect(prose).toBe('prose here');
   });
+
+  it('parseFrontmatter does not crash on input containing null bytes (SKY-384 fuzz crash 47c4c1f3)', () => {
+    // Exact minimised crash input from the fuzz run. Contains null bytes and a
+    // frontmatter-like line that starts with `---` inside the content, which
+    // previously tricked the non-greedy regex into treating it as the closing
+    // delimiter and causing a roundtrip key-set mismatch.
+    const crashInput =
+      '---\nidned:  =\n-.3.1tive--%*Polo:.\n ---%*Polo:.\n -1\n---totypeld:\x00\x00\nsD: t[u\nened:  =\n =\n-.3.1tive--%*Polo:.\n -1\n---typel';
+    // Must not throw.
+    const result = parseFrontmatter(crashInput);
+    // Input has no valid closing `---` alone on a line, so frontmatter must be empty.
+    expect(Object.keys(result.frontmatter)).toHaveLength(0);
+    expect(result.prose).toBe(crashInput);
+  });
+
+  it('parseFrontmatter treats a key starting with --- as part of content when closing delimiter is unambiguous (SKY-384)', () => {
+    // A frontmatter block where a key value contains `---` but the closing
+    // delimiter is properly alone on its line.
+    const raw = '---\ntitle: My Scene\n---value: x\n---\nProse.';
+    const { frontmatter, prose } = parseFrontmatter(raw);
+    // `---value` is inside the frontmatter block; closing delimiter is the lone `---`.
+    expect(frontmatter.title).toBe('My Scene');
+    expect(prose).toBe('Prose.');
+  });
+
+  it('serializeFrontmatter roundtrip is consistent when prose contains --- markers (SKY-384)', () => {
+    // Prose that contains `---` must not confuse the closing delimiter detection.
+    const fm = { id: 'z9', title: 'Divider Test' };
+    const prose = '---\nThis is a horizontal rule.\n---\nMore text.';
+    const serialized = serializeFrontmatter(fm, prose);
+    const { frontmatter, prose: reparsedProse } = parseFrontmatter(serialized);
+    expect(frontmatter.id).toBe('z9');
+    expect(frontmatter.title).toBe('Divider Test');
+    expect(reparsedProse).toBe(prose);
+  });
+  });
 });
 
 describe('Obsidian-compatible scene files', () => {
@@ -367,6 +403,70 @@ describe('Obsidian-compatible scene files', () => {
     expect(read.id).toBe('scene-002');
     expect(read.title).toBe('The Conflict');
     expect(read.prose).toBe('Tension rises.');
+  });
+
+  // SKY-207: custom frontmatter fields
+  it('writeSceneFile persists custom fields in frontmatter', () => {
+    writeSceneFile(tmpDir, 'cf-scene.md', {
+      id: 'cf-1',
+      title: 'Custom Fields Test',
+      prose: 'Prose here.',
+      customFields: { mood: 'tense', tension: 8, weather: 'stormy' },
+    });
+    const raw = fs.readFileSync(path.join(tmpDir, 'cf-scene.md'), 'utf-8');
+    expect(raw).toContain('mood: tense');
+    expect(raw).toContain('tension: 8');
+    expect(raw).toContain('weather: stormy');
+  });
+
+  it('readSceneFile extracts unknown frontmatter keys as customFields', () => {
+    writeSceneFile(tmpDir, 'cf-round.md', {
+      id: 'cf-2',
+      title: 'Round-trip',
+      prose: 'Some prose.',
+      customFields: { mood: 'calm', tension: 3 },
+    });
+    const read = readSceneFile(tmpDir, 'cf-round.md');
+    expect(read.customFields).toEqual({ mood: 'calm', tension: 3 });
+    // Built-in keys must not leak into customFields
+    expect(read.customFields).not.toHaveProperty('id');
+    expect(read.customFields).not.toHaveProperty('title');
+    expect(read.customFields).not.toHaveProperty('updatedAt');
+  });
+
+  it('custom fields do not overwrite built-in frontmatter keys', () => {
+    // If a custom field shares a name with a built-in key, it is silently dropped
+    writeSceneFile(tmpDir, 'cf-shadow.md', {
+      id: 'cf-3',
+      title: 'Shadow Test',
+      prose: 'Prose.',
+      customFields: { id: 'SHOULD_NOT_OVERWRITE', title: 'NOPE', mood: 'happy' },
+    });
+    const read = readSceneFile(tmpDir, 'cf-shadow.md');
+    expect(read.id).toBe('cf-3');
+    expect(read.title).toBe('Shadow Test');
+    expect(read.customFields?.mood).toBe('happy');
+    expect(read.customFields?.id).toBeUndefined();
+    expect(read.customFields?.title).toBeUndefined();
+  });
+
+  it('preserves existing custom fields not included in new write', () => {
+    // Simulate a save that only sets "mood", leaving "tension" from a prior write
+    writeSceneFile(tmpDir, 'cf-preserve.md', {
+      id: 'cf-4',
+      title: 'Preserve',
+      prose: 'Prose.',
+      customFields: { mood: 'calm', tension: 5 },
+    });
+    const existingData = readSceneFile(tmpDir, 'cf-preserve.md');
+    // Second write merges new + existing (as SCENE_SAVE handler does)
+    writeSceneFile(tmpDir, 'cf-preserve.md', {
+      ...existingData,
+      customFields: { ...existingData.customFields, mood: 'tense' },
+    });
+    const after = readSceneFile(tmpDir, 'cf-preserve.md');
+    expect(after.customFields?.mood).toBe('tense');
+    expect(after.customFields?.tension).toBe(5); // preserved
   });
 });
 
