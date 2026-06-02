@@ -36,7 +36,9 @@ const PROSE = 'The vault held every secret the kingdom had ever kept.';
 const STORY_TITLE = 'Vault Chronicles';
 const CHAPTER_TITLE = 'The First Chamber';
 const SCENE_TITLE = 'Descent';
-const ENTITY_NAME = 'Seraphine Dusk';
+// SKY-172 replaced CreateDialog with TypePickerPopover; entity names default to
+// "New {Type}" on creation. TC-V-06 uses this default name.
+const ENTITY_NAME = 'New Character';
 const SCENE_RENAMED = 'Renamed Scene Title';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -387,22 +389,21 @@ test('TC-V-06: create entity (note), entity shown in Entities tab, file written 
   // Wait for entity browser toolbar
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
-  // Click "+ New Entity" / primary add button
+  // Click "+ New Entity" — SKY-172 replaced CreateDialog with TypePickerPopover.
+  // Clicking the button opens a role="menu" popover; no dialog appears.
   await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').click();
 
-  // Entity creation dialog
-  const dialog = page.locator('[role="dialog"]');
-  await expect(dialog).toBeVisible({ timeout: 5_000 });
+  // Type picker popover
+  const picker = page.locator('.entity-type-picker');
+  await expect(picker).toBeVisible({ timeout: 5_000 });
 
-  // Fill the entity name (type field defaults to 'character')
-  const nameInput = dialog.locator('.entity-dialog-input').first();
-  await nameInput.fill(ENTITY_NAME);
+  // Select "Character" — entity is immediately created with the default name "New Character"
+  await picker.locator('.entity-type-picker-item', { hasText: 'Character' }).click();
 
-  // Submit
-  await dialog.locator('.entity-btn.entity-btn-primary').click();
+  // Picker closes after selection
+  await expect(picker).not.toBeVisible({ timeout: 6_000 });
 
-  // Dialog closes, entity appears in the list
-  await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+  // Entity appears in the browser with the default name
   const entityItem = page.locator('.entity-item-name', { hasText: ENTITY_NAME });
   await expect(entityItem).toBeVisible({ timeout: 8_000 });
 
