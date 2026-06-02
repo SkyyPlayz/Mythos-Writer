@@ -1,6 +1,11 @@
 {
   "name": "mythos-writer",
   "version": "0.1.0",
+  "description": "AI-powered desktop notes and writing app",
+  "author": {
+    "name": "SkyyPlayz",
+    "email": "skylordplayz@gmail.com"
+  },
   "private": true,
   "main": "out/main/main.js",
   "workspaces": [
@@ -14,7 +19,7 @@
     "dist": "electron-vite build && electron-builder --win",
     "dist:mac": "electron-vite build && electron-builder --mac dmg zip --publish never",
     "dist:mac:release": "electron-vite build && electron-builder --mac dmg zip",
-    "dist:linux": "electron-vite build && electron-builder --linux AppImage --publish never",
+    "dist:linux": "electron-vite build && electron-builder --linux --publish never",
     "build:electron": "electron-vite build",
     "start": "electron .",
     "package": "electron-builder --win zip",
