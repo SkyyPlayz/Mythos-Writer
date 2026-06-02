@@ -197,6 +197,34 @@
   color: #a89ff5;
 }
 
+/* ── Section headers (shown only when both scenes and entities are present) ── */
+
+.gsp-section-header {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, rgba(232, 232, 232, 0.38));
+  padding: 10px 10px 4px;
+  user-select: none;
+}
+
+.gsp-section-header:first-child {
+  padding-top: 4px;
+}
+
+/* ── Entity type chip ── */
+
+.gsp-result-type-chip {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  background: rgba(180, 140, 80, 0.18);
+  color: #c9a85c;
+}
+
 /* ── Footer ── */
 
 .gsp-footer {
