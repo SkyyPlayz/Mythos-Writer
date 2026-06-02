@@ -168,6 +168,13 @@ const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-opus-4-7', label: 'claude-opus' },
 ];
 
+/**
+ * Provider kinds that have a registered adapter — mirrors electron-main/src/adapters/registry.ts.
+ * Per-agent model selectors are disabled when the active provider is not in this set,
+ * because MODEL_OPTIONS lists Anthropic (Claude) models that would be misleading otherwise.
+ */
+const ADAPTER_REGISTERED_PROVIDERS: ReadonlySet<ProviderKind> = new Set<ProviderKind>(['anthropic']);
+
 const BUDGET_DEFAULTS: AgentBudgetSettings = {
   autoApply: false,
   confidenceThreshold: 0.85,
@@ -452,6 +459,10 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
+
+  // True when the active provider has a registered adapter that supports Anthropic model IDs.
+  // When false, per-agent model selectors are disabled to prevent misleading Claude-model choices.
+  const agentModelSelectorsEnabled = ADAPTER_REGISTERED_PROVIDERS.has(providerKind);
 
   const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(
     agent: A,
@@ -971,10 +982,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     className="settings-input settings-select settings-input-sm"
                     value={settings.agents.writingAssistant.model}
                     aria-label="Writing Assistant model"
+                    disabled={!agentModelSelectorsEnabled}
+                    title={!agentModelSelectorsEnabled ? 'Per-agent model overrides require the Anthropic provider.' : undefined}
                     onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
                   >
                     {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
+                  {!agentModelSelectorsEnabled && (
+                    <p className="settings-hint" data-testid="wa-model-adapter-hint">Per-agent model overrides require the Anthropic provider.</p>
+                  )}
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-interval">Scan interval (s)</label>
@@ -1094,10 +1110,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     className="settings-input settings-select settings-input-sm"
                     value={settings.agents.brainstorm.model}
                     aria-label="Brainstorm Agent model"
+                    disabled={!agentModelSelectorsEnabled}
+                    title={!agentModelSelectorsEnabled ? 'Per-agent model overrides require the Anthropic provider.' : undefined}
                     onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
                   >
                     {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
+                  {!agentModelSelectorsEnabled && (
+                    <p className="settings-hint" data-testid="brainstorm-model-adapter-hint">Per-agent model overrides require the Anthropic provider.</p>
+                  )}
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-heartbeat">Heartbeat interval (min)</label>
@@ -1209,10 +1230,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     className="settings-input settings-select settings-input-sm"
                     value={settings.agents.archive.model}
                     aria-label="Archive Agent model"
+                    disabled={!agentModelSelectorsEnabled}
+                    title={!agentModelSelectorsEnabled ? 'Per-agent model overrides require the Anthropic provider.' : undefined}
                     onChange={(e) => setAgentField('archive', 'model', e.target.value)}
                   >
                     {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
+                  {!agentModelSelectorsEnabled && (
+                    <p className="settings-hint" data-testid="archive-model-adapter-hint">Per-agent model overrides require the Anthropic provider.</p>
+                  )}
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-interval">Continuity check interval (s)</label>
