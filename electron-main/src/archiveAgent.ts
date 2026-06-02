@@ -152,7 +152,7 @@ function buildSnippet(text: string, index: number, len: number): string {
 // Contradicting-phrase pairs keyed by vault property name.
 // Each entry is [vault-value-substring, scene-contradiction-phrase].
 
-const PROPERTY_CONTRADICTION_PAIRS: Record<string, Array<[string, string]>> = {
+export const PROPERTY_CONTRADICTION_PAIRS: Record<string, Array<[string, string]>> = {
   hair: [
     ['blonde', 'dark hair'],
     ['blonde', 'black hair'],

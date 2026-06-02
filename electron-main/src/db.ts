@@ -77,6 +77,18 @@ export interface DbGenerationLog {
   response_text: string | null;
 }
 
+export interface DbContinuityDriftLog {
+  id: string;
+  /** Groups all per-chapter rows from one multi-chapter check call. */
+  session_id: string;
+  scene_path: string;
+  checked_count: number;
+  mismatch_count: number;
+  drift_score: number;
+  mismatches_json: string | null;
+  created_at: string;
+}
+
 // ─── Module state ───
 
 let _db: DatabaseSync | null = null;
@@ -381,6 +393,23 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 15');
   }
+
+  if (currentVersion < 16) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS continuity_drift_log (
+        id              TEXT PRIMARY KEY,
+        session_id      TEXT NOT NULL,
+        scene_path      TEXT NOT NULL,
+        checked_count   INTEGER NOT NULL,
+        mismatch_count  INTEGER NOT NULL,
+        drift_score     REAL NOT NULL,
+        mismatches_json TEXT,
+        created_at      TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_continuity_session ON continuity_drift_log (session_id);
+    `);
+    db.exec('PRAGMA user_version = 16');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -573,6 +602,19 @@ export function truncateGenerationLogBody(row: DbGenerationLog): DbGenerationLog
       ? s.slice(0, BODY_TRUNCATE_BYTES) + '…'
       : s;
   return { ...row, prompt_text: truncate(row.prompt_text), response_text: truncate(row.response_text) };
+}
+
+// ─── Continuity drift log ───
+
+export function insertContinuityDriftLog(entry: DbContinuityDriftLog): void {
+  getDb()
+    .prepare(
+      `INSERT INTO continuity_drift_log
+         (id, session_id, scene_path, checked_count, mismatch_count, drift_score, mismatches_json, created_at)
+       VALUES
+         (@id, @session_id, @scene_path, @checked_count, @mismatch_count, @drift_score, @mismatches_json, @created_at)`
+    )
+    .run(entry as unknown as Record<string, SQLInputValue>);
 }
 
 // ─── Provenance ───

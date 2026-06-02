@@ -135,6 +135,7 @@ import {
   type SceneEntityLinksDeletePayload,
   type EntityLinkedScenesPayload,
   type NoteBacklinksPayload,
+  type ContinuityCheckPayload,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -187,6 +188,7 @@ import {
   listSceneEntityLinks,
   listLinkedSceneIds,
   deleteStaleSceneMentionLinks,
+  insertContinuityDriftLog,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -279,6 +281,7 @@ import {
   type ExportableScene, type ExportableChapter, type ExportableStory,
 } from './exportFormatters.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage } from './streaming.js';
+import { buildLoreFixture, checkMultiChapterContinuity } from './continuityEngine.js';
 import { streamFromProvider } from './provider.js';
 import {
   configureTelemetry,
@@ -787,6 +790,7 @@ function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js'
     case 'vault': return { content: md ? vaultToMarkdown(manifest.stories.map(toSt)) : vaultToPlaintext(manifest.stories.map(toSt)), defaultFilename: 'vault-export' };
   }
 }
+
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
@@ -3810,6 +3814,12 @@ const handlers: IpcHandlers = {
     return { ok: true };
   },
 
+  // SKY-445/SKY-458: Continuity check — stub in the handlers map so IpcHandlers type is satisfied.
+  // The real handler is registered via registerContinuityHandler() after app.whenReady, not here.
+  [IPC_CHANNELS.CONTINUITY_CHECK]: (_payload: import('./ipc.js').ContinuityCheckPayload): import('./ipc.js').ContinuityCheckResponse => {
+    return { chapters: [], totalCheckedCount: 0, totalMismatchCount: 0, driftScore: 0, sessionId: '' };
+  },
+
 };
 
 // ─── Create BrowserWindow ───
@@ -4960,6 +4970,52 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
   }));
 }
 
+// ─── Continuity drift check IPC handler (SKY-445/SKY-458) ────────────────────
+// Pure text analysis — no LLM. Builds the lore fixture from the current archive
+// index, runs cross-chapter contradiction detection, logs results per chapter,
+// and returns aggregate drift metrics.
+function registerContinuityHandler(): void {
+  // The stub in the handlers object satisfies the IpcHandlers type but gets
+  // registered by setupIpcMain first. Remove it before installing the real handler.
+  ipcMain.removeHandler(IPC_CHANNELS.CONTINUITY_CHECK);
+  ipcMain.handle(IPC_CHANNELS.CONTINUITY_CHECK, wrapIpcHandler(IPC_CHANNELS.CONTINUITY_CHECK, (event, payload: ContinuityCheckPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+
+    // Use the cached archive index if ready; rebuild if stale or absent.
+    let archiveIndex = getArchiveIndex();
+    if (!archiveIndex) {
+      archiveIndex = buildArchiveIndex(getVaultRoot(), manifest);
+    }
+
+    const fixture = buildLoreFixture(archiveIndex);
+    const metrics = checkMultiChapterContinuity(payload.chapters, fixture);
+
+    const sessionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    // Persist one row per chapter so drift trends are queryable over time.
+    for (const ch of metrics.chapters) {
+      try {
+        insertContinuityDriftLog({
+          id: crypto.randomUUID(),
+          session_id: sessionId,
+          scene_path: ch.scenePath,
+          checked_count: ch.checkedCount,
+          mismatch_count: ch.mismatchCount,
+          drift_score: ch.checkedCount > 0 ? ch.mismatchCount / ch.checkedCount : 0,
+          mismatches_json: ch.mismatches.length > 0 ? JSON.stringify(ch.mismatches) : null,
+          created_at: now,
+        });
+      } catch { /* non-fatal — metric logging must not block the response */ }
+    }
+
+    return { ...metrics, sessionId };
+  }));
+}
+
 // ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
 function registerAgentPersonaHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (_event, payload: AgentPersonaReadPayload) => {
@@ -5027,6 +5083,7 @@ app.whenReady().then(async () => {
   registerWritingAssistantHandler();
   registerAgentPersonaHandlers();
   registerVaultAgentHandlers();
+  registerContinuityHandler();
   registerWritingScanHandler();
   registerBetaReadScanHandler();
   registerStreamingHandlers(getValidatedApiKey);
