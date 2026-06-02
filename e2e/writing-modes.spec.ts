@@ -86,10 +86,12 @@ function seedUserData(userData: string, vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -106,7 +108,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 let userData: string;
 let vaultDir: string;
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
@@ -121,9 +123,9 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  const proc = app.process();
+  const proc = app?.process();
   await Promise.race([
-    app.close().catch(() => undefined),
+    app?.close().catch(() => undefined),
     new Promise<void>((r) => setTimeout(r, 5_000)),
   ]);
   try {

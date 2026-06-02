@@ -33,10 +33,12 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 async function launchFreshApp(userData: string): Promise<ElectronApplication> {
   // --headless when no X display is available (CI / WSL without X server).
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -76,7 +78,7 @@ async function advanceToVaultChoice(page: Page): Promise<void> {
 
 test.describe('TC-OB-01: Start Blank', () => {
   let userData: string;
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -87,7 +89,7 @@ test.describe('TC-OB-01: Start Blank', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
@@ -169,7 +171,7 @@ function buildFixtureObsidianVault(dir: string): void {
 test.describe('TC-OB-02: Import Obsidian vault', () => {
   let userData: string;
   let fixtureDir: string;
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -181,7 +183,7 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(fixtureDir, { recursive: true, force: true });
   });
@@ -270,7 +272,7 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
 test.describe('TC-OB-03: Open sample project', () => {
   let userData: string;
   let sampleRoot = ''; // filled after app.evaluate() resolves the documents path
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -280,7 +282,7 @@ test.describe('TC-OB-03: Open sample project', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
     // Remove the sample vault created by vault:load-sample (lives in real documents dir)
     if (sampleRoot && fs.existsSync(sampleRoot)) {

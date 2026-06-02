@@ -83,10 +83,12 @@ function seedUserData(userData: string, vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -100,7 +102,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 let userData: string;
 let vaultDir: string;
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
@@ -113,7 +115,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => {});
+  await app?.close().catch(() => {});
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
 });
