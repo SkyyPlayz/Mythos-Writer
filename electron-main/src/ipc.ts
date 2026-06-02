@@ -349,6 +349,9 @@ export const IPC_CHANNELS = {
   // Skips the folder picker; renderer either accepts the default parent
   // (~/Mythos/Vaults) or supplies one it already validated.
   VAULT_CREATE_DEFAULT_MYTHOS: 'vault:createDefaultMythos',
+
+  // SKY-445/SKY-458: Continuity drift detection — cross-chapter lore consistency check
+  CONTINUITY_CHECK: 'continuity:check',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -600,6 +603,9 @@ export interface IpcHandlers {
 
   // SKY-320: one-click Mythos Vault create
   [IPC_CHANNELS.VAULT_CREATE_DEFAULT_MYTHOS]: (payload: CreateDefaultMythosVaultPayload) => Promise<CreateDefaultMythosVaultResponse>;
+
+  // SKY-445/SKY-458: Continuity drift check
+  [IPC_CHANNELS.CONTINUITY_CHECK]: (payload: ContinuityCheckPayload) => ContinuityCheckResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1278,6 +1284,37 @@ export interface VaultCheckInconsistency {
 export interface VaultCheckResponse {
   text: string;
   inconsistencies: VaultCheckInconsistency[];
+}
+
+// ─── Continuity check types (SKY-445/SKY-458) ───
+
+export interface ContinuityCheckPayload {
+  chapters: Array<{ text: string; scenePath: string }>;
+}
+
+export interface ContinuityCheckMismatch {
+  entityName: string;
+  propKey: string;
+  canonicalValue: string;
+  contradictingPhrase: string;
+  snippet: string;
+}
+
+export interface ContinuityCheckChapterResult {
+  scenePath: string;
+  entitiesReferenced: string[];
+  checkedCount: number;
+  mismatchCount: number;
+  mismatches: ContinuityCheckMismatch[];
+}
+
+export interface ContinuityCheckResponse {
+  chapters: ContinuityCheckChapterResult[];
+  totalCheckedCount: number;
+  totalMismatchCount: number;
+  /** Ratio of mismatches to checks; 0 when no checks were performed. */
+  driftScore: number;
+  sessionId: string;
 }
 
 // ─── Archive Agent streaming types (Phase 3 — MYT-180) ───
