@@ -91,6 +91,11 @@ export const IPC_CHANNELS = {
   ENTITY_LIST: 'entity:list',
   ENTITY_BACKLINKS: 'entity:backlinks',
 
+  // Entity Relationships (SKY-232)
+  ENTITY_RELATIONSHIPS_LIST: 'entity:relationships:list',
+  ENTITY_RELATIONSHIPS_CREATE: 'entity:relationships:create',
+  ENTITY_RELATIONSHIPS_DELETE: 'entity:relationships:delete',
+
   // App settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
@@ -442,6 +447,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => EntityDeleteResponse;
   [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => EntityListResponse;
   [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_LIST]: (payload: EntityRelationshipsListPayload) => EntityRelationshipsListResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_CREATE]: (payload: EntityRelationshipsCreatePayload) => EntityRelationshipsCreateResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_DELETE]: (payload: EntityRelationshipsDeletePayload) => { deleted: boolean };
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) => Promise<SettingsTestConnectionResponse>;
@@ -714,6 +722,8 @@ export interface Manifest {
   boardReferences: string[];
   /** SKY-205: Named smart folders with frontmatter-backed queries */
   smartFolders?: SmartFolderEntry[];
+  /** Entity-to-entity relationships (SKY-232). */
+  relationships?: EntityRelationship[];
 }
 
 export interface StoryEntry {
@@ -1168,6 +1178,50 @@ export interface NoteBacklinkEntry {
 export interface NoteBacklinksResponse {
   notePath: string;
   backlinks: NoteBacklinkEntry[];
+}
+
+// ─── Entity Relationship types (SKY-232) ───
+
+export interface EntityRelationship {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+  createdAt: string;
+}
+
+export interface EntityRelationshipRow {
+  id: string;
+  label: string;
+  direction: 'outgoing' | 'incoming';
+  otherEntityId: string;
+  otherEntityName: string;
+  otherEntityType: EntityEntry['type'];
+  createdAt: string;
+}
+
+export interface EntityRelationshipsListPayload {
+  entityId: string;
+}
+
+export interface EntityRelationshipsListResponse {
+  entityId: string;
+  relationships: EntityRelationshipRow[];
+  allLabels: string[];
+}
+
+export interface EntityRelationshipsCreatePayload {
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+}
+
+export interface EntityRelationshipsCreateResponse {
+  relationship: EntityRelationshipRow;
+}
+
+export interface EntityRelationshipsDeletePayload {
+  relationshipId: string;
 }
 
 // ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───
@@ -2547,20 +2601,17 @@ export interface TemplateScaffoldPayload {
   notesVaultPath: string;
 }
 
-export interface TemplateScaffoldResponse {
-  ok: true;
-  storyVaultPath: string;
-  notesVaultPath: string;
-}
+export type TemplateScaffoldResponse =
+  | { ok: true; storyVaultPath: string; notesVaultPath: string }
+  | { error: string };
 
 export interface TemplateSaveAsPayload {
   name: string;
 }
 
-export interface TemplateSaveAsResponse {
-  ok: true;
-  id: string;
-}
+export type TemplateSaveAsResponse =
+  | { ok: true; id: string }
+  | { error: string };
 
 // ─── SKY-190: Note Templates ──────────────────────────────────────────────────
 
