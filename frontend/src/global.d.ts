@@ -554,7 +554,8 @@ interface Window {
     // vault:pick-folder, or the path must already be in recent-projects.
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
     // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
-    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-270 / MYT-789: storyVaultToken / notesVaultToken from vault:pick-folder satisfy the gate.
+    vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
     validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath

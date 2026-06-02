@@ -48,7 +48,7 @@ type Api = {
   vaultSetPaths: (
     storyVaultPath: string,
     notesVaultPath: string,
-    opts?: { seedMode?: SeedMode }
+    opts?: { seedMode?: SeedMode; storyVaultToken?: string; notesVaultToken?: string }
   ) => Promise<{ ok: true } | { error: string }>;
   loadSampleTwoVault: (
     parentPath: string
@@ -364,6 +364,13 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // MYT-789 / SKY-270: registration tokens from vault:pick-folder, bound to the
+  // parent dir the user picked. Cleared on manual path edit so a stale token
+  // cannot authorise a renderer-supplied path.
+  const [defaultPickedToken, setDefaultPickedToken] = useState<string | null>(null);
+  const [blankPickedToken, setBlankPickedToken] = useState<string | null>(null);
+  const [templatePickedToken, setTemplatePickedToken] = useState<string | null>(null);
+
   // ─── Validation helpers ─────────────────────────────────────────────────────
 
   const validatePathStatus = useCallback(async (path: string, setter: (s: PathStatus) => void) => {
@@ -391,6 +398,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       }
       if (res.cancelled || !res.vaultRoot) return;
       setBlankPath(res.vaultRoot);
+      setBlankPickedToken(res.registrationToken);
       await validatePathStatus(res.vaultRoot, setBlankPathStatus);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to open folder picker');
@@ -399,6 +407,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   const handleBlankPathChange = (v: string) => {
     setBlankPath(v);
+    setBlankPickedToken(null);
     setBlankPathStatus('unknown');
   };
 
@@ -418,13 +427,17 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     onComplete(updated);
   }, [initialSettings, onComplete]);
 
-  const handleCreateVault = useCallback(async (parentPath: string, seedMode: SeedMode) => {
+  const handleCreateVault = useCallback(async (parentPath: string, seedMode: SeedMode, pickToken?: string | null) => {
     setError('');
     setBusy(true);
     try {
       const storyPath = joinPath(parentPath, STORY_VAULT_DIR);
       const notesPath = joinPath(parentPath, NOTES_VAULT_DIR);
-      const res = await api().vaultSetPaths(storyPath, notesPath, { seedMode });
+      const res = await api().vaultSetPaths(storyPath, notesPath, {
+        seedMode,
+        storyVaultToken: pickToken ?? undefined,
+        notesVaultToken: pickToken ?? undefined,
+      });
       if ('error' in res) throw new Error(res.error);
       finishOnboarding();
     } catch (e) {
@@ -434,8 +447,8 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   }, [finishOnboarding]);
 
-  const handleCreateBlankVault = () => handleCreateVault(blankPath, 'blank');
-  const handleCreateDefaultVault = () => handleCreateVault(defaultPath, 'default');
+  const handleCreateBlankVault = () => handleCreateVault(blankPath, 'blank', blankPickedToken);
+  const handleCreateDefaultVault = () => handleCreateVault(defaultPath, 'default', defaultPickedToken);
 
   const handleCreateProjectVault = useCallback(async () => {
     setError('');
@@ -470,6 +483,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       }
       if (res.cancelled || !res.vaultRoot) return;
       setDefaultPath(res.vaultRoot);
+      setDefaultPickedToken(res.registrationToken);
       await validatePathStatus(res.vaultRoot, setDefaultPathStatus);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to open folder picker');
@@ -478,6 +492,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   const handleDefaultPathChange = (v: string) => {
     setDefaultPath(v);
+    setDefaultPickedToken(null);
     setDefaultPathStatus('unknown');
   };
 
@@ -876,6 +891,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                 value={templateParentPath}
                 onChange={(v) => {
                   setTemplateParentPath(v);
+                  setTemplatePickedToken(null);
                   setTemplatePathStatus('checking');
                   api().validatePath(v).then((r) => {
                     setTemplatePathStatus(!r.writable ? 'not-writable' : 'new');
@@ -884,7 +900,10 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                 onBlur={() => {}}
                 onBrowse={async () => {
                   const r = await api().pickFolder();
-                  if (!r.cancelled && r.vaultRoot) setTemplateParentPath(r.vaultRoot);
+                  if (!r.cancelled && r.vaultRoot) {
+                    setTemplateParentPath(r.vaultRoot);
+                    setTemplatePickedToken(r.registrationToken);
+                  }
                 }}
                 status={templatePathStatus}
                 disabled={busy}
@@ -906,7 +925,11 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                         `${base}/Notes Vault`,
                       );
                       if ('error' in res) { setError(res.error); return; }
-                      await api().vaultSetPaths(res.storyVaultPath, res.notesVaultPath, { seedMode: 'blank' });
+                      await api().vaultSetPaths(res.storyVaultPath, res.notesVaultPath, {
+                        seedMode: 'blank',
+                        storyVaultToken: templatePickedToken ?? undefined,
+                        notesVaultToken: templatePickedToken ?? undefined,
+                      });
                       await api().onboardingComplete();
                       onComplete(initialSettings);
                     } catch (e) {
