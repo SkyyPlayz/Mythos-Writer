@@ -265,6 +265,41 @@ describe('YAML frontmatter', () => {
     expect(frontmatter.tags).toEqual(['a', 'b']);
     expect(prose).toBe('The prose.');
   });
+
+  it('parseFrontmatter does not crash on input containing null bytes (SKY-384 fuzz crash 47c4c1f3)', () => {
+    // Exact minimised crash input from the fuzz run. Contains null bytes and a
+    // frontmatter-like line that starts with `---` inside the content, which
+    // previously tricked the non-greedy regex into treating it as the closing
+    // delimiter and causing a roundtrip key-set mismatch.
+    const crashInput =
+      '---\nidned:  =\n-.3.1tive--%*Polo:.\n ---%*Polo:.\n -1\n---totypeld:\x00\x00\nsD: t[u\nened:  =\n =\n-.3.1tive--%*Polo:.\n -1\n---typel';
+    // Must not throw.
+    const result = parseFrontmatter(crashInput);
+    // Input has no valid closing `---` alone on a line, so frontmatter must be empty.
+    expect(Object.keys(result.frontmatter)).toHaveLength(0);
+    expect(result.prose).toBe(crashInput);
+  });
+
+  it('parseFrontmatter treats a key starting with --- as part of content when closing delimiter is unambiguous (SKY-384)', () => {
+    // A frontmatter block where a key value contains `---` but the closing
+    // delimiter is properly alone on its line.
+    const raw = '---\ntitle: My Scene\n---value: x\n---\nProse.';
+    const { frontmatter, prose } = parseFrontmatter(raw);
+    // `---value` is inside the frontmatter block; closing delimiter is the lone `---`.
+    expect(frontmatter.title).toBe('My Scene');
+    expect(prose).toBe('Prose.');
+  });
+
+  it('serializeFrontmatter roundtrip is consistent when prose contains --- markers (SKY-384)', () => {
+    // Prose that contains `---` must not confuse the closing delimiter detection.
+    const fm = { id: 'z9', title: 'Divider Test' };
+    const prose = '---\nThis is a horizontal rule.\n---\nMore text.';
+    const serialized = serializeFrontmatter(fm, prose);
+    const { frontmatter, prose: reparsedProse } = parseFrontmatter(serialized);
+    expect(frontmatter.id).toBe('z9');
+    expect(frontmatter.title).toBe('Divider Test');
+    expect(reparsedProse).toBe(prose);
+  });
 });
 
 describe('Obsidian-compatible scene files', () => {

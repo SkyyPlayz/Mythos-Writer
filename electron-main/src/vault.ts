@@ -291,7 +291,12 @@ interface Frontmatter {
 }
 
 export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose: string } {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  // The closing `---` must be alone on its line (only optional spaces/tabs after
+  // it, then a newline or end-of-string). This prevents a frontmatter key that
+  // starts with `---` (e.g. `---%*Polo: value`) from being mis-identified as
+  // the closing delimiter — which would cause a roundtrip key-set inconsistency
+  // caught by the fuzz harness (SKY-384, crash 47c4c1f3).
+  const match = raw.match(/^---\r?\n([\s\S]*?)\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/);
   if (!match) return { frontmatter: {}, prose: raw };
 
   // Object.create(null) prevents prototype-pollution: keys like '__proto__' or
