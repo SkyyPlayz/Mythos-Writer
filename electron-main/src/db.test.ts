@@ -1,5 +1,6 @@
 // SQLite persistence layer tests — real DB in a temp directory, no mocks.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -26,6 +27,18 @@ import {
   getProvenance,
   listProvenanceForEntity,
   listProvenance,
+  upsertEntityIndex,
+  getEntityIndex,
+  listEntityIndex,
+  deleteEntityIndex,
+  insertEntityRelationship,
+  listEntityRelationships,
+  deleteEntityRelationship,
+  insertSceneEntityLink,
+  listSceneEntityLinks,
+  deleteSceneEntityLinks,
+  upsertEntityFts,
+  searchEntityFts,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
@@ -599,5 +612,271 @@ describe('provenance', () => {
       insertProvenance({ id: `lim${i}`, entity_id: `e${i}`, entity_kind: 'suggestion', agent_id: 'archive', agent_type: 'archive', run_id: null, created_at: now });
     }
     expect(listProvenance({ limit: 3 })).toHaveLength(3);
+  });
+});
+
+// ─── World DB migration (v14) ───
+
+describe('world DB migration — entity tables', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-entity-'));
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('sets user_version to 16 on fresh vault', () => {
+    const db = openDb(tmpDir);
+    const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
+    expect(row.user_version).toBe(16);
+  });
+
+  it('entity_index table exists with expected columns', () => {
+    const db = openDb(tmpDir);
+    const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
+    const names = cols.map((c) => c.name);
+    expect(names).toContain('id');
+    expect(names).toContain('type');
+    expect(names).toContain('name');
+    expect(names).toContain('status');
+    expect(names).toContain('file_path');
+    expect(names).toContain('created_at');
+    expect(names).toContain('updated_at');
+  });
+
+  it('entity_relationships table exists', () => {
+    const db = openDb(tmpDir);
+    const cols = db.prepare('PRAGMA table_info(entity_relationships)').all() as Array<{ name: string }>;
+    const names = cols.map((c) => c.name);
+    expect(names).toContain('from_entity_id');
+    expect(names).toContain('to_entity_id');
+    expect(names).toContain('label');
+  });
+
+  it('scene_entity_links table exists', () => {
+    const db = openDb(tmpDir);
+    const cols = db.prepare('PRAGMA table_info(scene_entity_links)').all() as Array<{ name: string }>;
+    const names = cols.map((c) => c.name);
+    expect(names).toContain('scene_id');
+    expect(names).toContain('entity_id');
+    expect(names).toContain('link_kind');
+  });
+
+  it('entity_fts virtual table exists', () => {
+    const db = openDb(tmpDir);
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='entity_fts'")
+      .get() as { name: string } | undefined;
+    expect(row?.name).toBe('entity_fts');
+  });
+
+  it('migration is idempotent — close/reopen keeps user_version at 16', () => {
+    openDb(tmpDir);
+    closeDb();
+    const db2 = openDb(tmpDir);
+    const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
+    expect(row.user_version).toBe(16);
+  });
+
+  it('upgrading from v13 reaches v16 with all entity tables and writing_log', () => {
+    const mythosDir = path.join(tmpDir, '.mythos');
+    fs.mkdirSync(mythosDir, { recursive: true });
+    const dbPath = path.join(mythosDir, 'state.db');
+    const seed = new DatabaseSync(dbPath);
+    seed.exec('PRAGMA journal_mode = WAL');
+    seed.exec(`
+      CREATE TABLE IF NOT EXISTS project_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS item_tags (item_id TEXT NOT NULL, item_kind TEXT NOT NULL, tag_id TEXT NOT NULL, PRIMARY KEY (item_id, item_kind, tag_id));
+    `);
+    seed.exec('PRAGMA user_version = 13');
+    seed.close();
+
+    const db = openDb(tmpDir);
+    const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
+    expect(row.user_version).toBe(16);
+    const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
+    expect(cols.length).toBeGreaterThan(0);
+    const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
+    expect(wlCols.map((c) => c.name)).toContain('log_date');
+  });
+});
+
+// ─── Entity index CRUD ───
+
+describe('entity_index CRUD', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-ei-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeEntity(overrides: Partial<Parameters<typeof upsertEntityIndex>[0]> = {}) {
+    return {
+      id: 'ent-1',
+      type: 'character',
+      name: 'Aria',
+      aliases: null,
+      tags: null,
+      status: 'active' as const,
+      core_fields: null,
+      custom_fields: null,
+      notes_text: null,
+      file_path: 'entities/characters/ent-1.md',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it('upserts and retrieves entity by id', () => {
+    upsertEntityIndex(makeEntity());
+    const row = getEntityIndex('ent-1');
+    expect(row).not.toBeNull();
+    expect(row!.name).toBe('Aria');
+    expect(row!.type).toBe('character');
+    expect(row!.status).toBe('active');
+  });
+
+  it('getEntityIndex returns null for unknown id', () => {
+    expect(getEntityIndex('no-such')).toBeNull();
+  });
+
+  it('listEntityIndex returns all entries', () => {
+    upsertEntityIndex(makeEntity({ id: 'e1', name: 'Aria', type: 'character' }));
+    upsertEntityIndex(makeEntity({ id: 'e2', name: 'Thornfeld', type: 'location', file_path: 'entities/locations/e2.md' }));
+    expect(listEntityIndex()).toHaveLength(2);
+  });
+
+  it('listEntityIndex filters by type — includes faction and event', () => {
+    upsertEntityIndex(makeEntity({ id: 'e1', name: 'Aria', type: 'character' }));
+    upsertEntityIndex(makeEntity({ id: 'e2', name: 'Thornfeld', type: 'location', file_path: 'entities/locations/e2.md' }));
+    upsertEntityIndex(makeEntity({ id: 'e3', name: 'Iron Hand', type: 'faction', file_path: 'entities/factions/e3.md' }));
+    upsertEntityIndex(makeEntity({ id: 'e4', name: 'The Fall', type: 'event', file_path: 'entities/events/e4.md' }));
+    expect(listEntityIndex('character')).toHaveLength(1);
+    expect(listEntityIndex('faction')).toHaveLength(1);
+    expect(listEntityIndex('event')).toHaveLength(1);
+  });
+
+  it('deleteEntityIndex removes the row', () => {
+    upsertEntityIndex(makeEntity());
+    deleteEntityIndex('ent-1');
+    expect(getEntityIndex('ent-1')).toBeNull();
+  });
+});
+
+// ─── Entity relationships CRUD ───
+
+describe('entity_relationships CRUD', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-er-'));
+    openDb(tmpDir);
+    const now = new Date().toISOString();
+    upsertEntityIndex({ id: 'e-a', type: 'character', name: 'Aria', aliases: null, tags: null, status: 'active', core_fields: null, custom_fields: null, notes_text: null, file_path: 'entities/characters/e-a.md', created_at: now, updated_at: now });
+    upsertEntityIndex({ id: 'e-b', type: 'location', name: 'Thornfeld', aliases: null, tags: null, status: 'active', core_fields: null, custom_fields: null, notes_text: null, file_path: 'entities/locations/e-b.md', created_at: now, updated_at: now });
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts and lists relationships', () => {
+    insertEntityRelationship({ id: 'rel-1', from_entity_id: 'e-a', to_entity_id: 'e-b', label: 'lives_in', created_at: new Date().toISOString() });
+    const rows = listEntityRelationships('e-a');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].label).toBe('lives_in');
+  });
+
+  it('ignores duplicate (from, to, label) inserts', () => {
+    const now = new Date().toISOString();
+    insertEntityRelationship({ id: 'rel-1', from_entity_id: 'e-a', to_entity_id: 'e-b', label: 'lives_in', created_at: now });
+    insertEntityRelationship({ id: 'rel-2', from_entity_id: 'e-a', to_entity_id: 'e-b', label: 'lives_in', created_at: now });
+    expect(listEntityRelationships('e-a')).toHaveLength(1);
+  });
+
+  it('deleteEntityRelationship removes the row', () => {
+    insertEntityRelationship({ id: 'rel-1', from_entity_id: 'e-a', to_entity_id: 'e-b', label: 'ally', created_at: new Date().toISOString() });
+    deleteEntityRelationship('rel-1');
+    expect(listEntityRelationships('e-a')).toHaveLength(0);
+  });
+});
+
+// ─── Scene entity links CRUD ───
+
+describe('scene_entity_links CRUD', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-sel-'));
+    openDb(tmpDir);
+    const now = new Date().toISOString();
+    upsertEntityIndex({ id: 'ent-x', type: 'character', name: 'X', aliases: null, tags: null, status: 'active', core_fields: null, custom_fields: null, notes_text: null, file_path: 'entities/characters/ent-x.md', created_at: now, updated_at: now });
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts and lists scene links', () => {
+    insertSceneEntityLink({ id: 'lnk-1', scene_id: 'scene-abc', entity_id: 'ent-x', link_kind: 'mention', created_at: new Date().toISOString() });
+    const rows = listSceneEntityLinks('scene-abc');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].link_kind).toBe('mention');
+  });
+
+  it('ignores duplicate (scene_id, entity_id, link_kind)', () => {
+    const now = new Date().toISOString();
+    insertSceneEntityLink({ id: 'lnk-1', scene_id: 's1', entity_id: 'ent-x', link_kind: 'mention', created_at: now });
+    insertSceneEntityLink({ id: 'lnk-2', scene_id: 's1', entity_id: 'ent-x', link_kind: 'mention', created_at: now });
+    expect(listSceneEntityLinks('s1')).toHaveLength(1);
+  });
+
+  it('deleteSceneEntityLinks removes all links for a scene', () => {
+    insertSceneEntityLink({ id: 'lnk-1', scene_id: 'sc1', entity_id: 'ent-x', link_kind: 'mention', created_at: new Date().toISOString() });
+    deleteSceneEntityLinks('sc1');
+    expect(listSceneEntityLinks('sc1')).toHaveLength(0);
+  });
+});
+
+// ─── Entity FTS ───
+
+describe('entity_fts', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-fts-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('upserts and searches entity FTS', () => {
+    upsertEntityFts('ent-1', 'Aria Voss', 'Aria', 'A powerful sorceress', null);
+    const results = searchEntityFts('sorceress');
+    expect(results.map((r) => r.entity_id)).toContain('ent-1');
+  });
+
+  it('upsert replaces existing FTS row (no duplicates)', () => {
+    upsertEntityFts('ent-1', 'Aria', null, 'old notes', null);
+    upsertEntityFts('ent-1', 'Aria Voss', null, 'new notes about magic', null);
+    expect(searchEntityFts('magic').map((r) => r.entity_id)).toContain('ent-1');
+    expect(searchEntityFts('old').map((r) => r.entity_id)).not.toContain('ent-1');
   });
 });

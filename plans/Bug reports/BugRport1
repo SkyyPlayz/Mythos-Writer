@@ -1,0 +1,53 @@
+neither the new story button, or the + button worked. 
+
+i can only write in the few chat boxes. not in the main writing section 
+writing section doesn't seem to have a text engine. i cant write in it.  
+
+Nothing to indicate what buttons i have already clicked. ![alt text](<bug refrence photos/Screenshot (73).png>)
+
+you already made a patch for this one, but it wasnt letting me make a file at first, so i figured id mention it. ![alt text](<bug refrence photos/Screenshot (75).png>)
+id make an easy "default" button than automatically creats your Mythos Vault with your Notes Vault and your story vault. (but id keep the manual option)
+and id make sure there is an easy way to make new Mythos vaults and swtich between them like in obsidian, so users can have compleatly seprate projects if they wish. 
+
+so in the files it will have a Vaults file. and it automatically makes you Mythos vault in that file. (id allow users to make vaults anywhere they want. so they could make a new vault in their onedrive like i did.)
+
+
+
+Auto apply sugjestions. 
+
+![alt text](<bug refrence photos/Screenshot (76).png>)
+
+I would break this into several different sections for the different kinds of sugjestions. 
+for instance. id have a seprate one for puncuation fixes, spelling fixes, sentence structure, ect. so users can fully customize what they want to auto apply.  
+
+
+
+voice input. 
+
+![alt text](<bug refrence photos/Screenshot (77).png>)
+
+add a box to select input device. 
+add an easy shortcut to enable and disable voice input. 
+add a push to talk option
+
+
+
+Neon border accent ![alt text](<bug refrence photos/Screenshot (78).png>)
+add a third neon border accent, so the border has 3 different colors that are all configurablke. 
+
+
+
+
+Entries?
+
+ ![alt text](<bug refrence photos/Screenshot (79).png>)
+ 
+ entries might be a nice way to quick add something. but these are all supposed to be notes in your note vault. maybe entries make automatically send to the brainstorm agent, and he quickly fills out the actual file. then your entry sections can work as a quick grab location for the scene crafter. 
+
+
+
+(Not a bug but worth looking into.)
+the obsidian plugin Hider 
+https://github.com/kepano/obsidian-hider
+could be a good source to refrence for building the focus mode. id also like something like this in the setting so users can fully customize their expiriance
+

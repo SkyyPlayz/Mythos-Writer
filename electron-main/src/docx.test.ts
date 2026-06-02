@@ -157,7 +157,7 @@ describe('buildDocx', () => {
     expect(docXml).toContain('<w:b');
   });
 
-  it('italic inline formatting preserved in runs', async () => {
+  it('italic inline formatting preserved in runs (_word_)', async () => {
     const input: DocxInput = {
       title: 'T',
       chapters: [
@@ -173,5 +173,55 @@ describe('buildDocx', () => {
     const docXml = await zip.file('word/document.xml')!.async('string');
     expect(docXml).toContain('softly');
     expect(docXml).toContain('<w:i');
+  });
+
+  // Regression test for fuzz crash SKY-400: inlineRuns read m[4] for *italic*
+  // but the regex puts *italic* content in group 3 and _italic_ in group 4.
+  // m[4] was undefined when *italic* matched, causing TextRun to receive
+  // text:undefined which crashes the docx library at runtime.
+  it('italic inline formatting preserved in runs (*word*)', async () => {
+    const input: DocxInput = {
+      title: 'T',
+      chapters: [
+        {
+          id: 'ch1',
+          title: 'Ch',
+          scenes: [{ id: 'sc1', title: 'S', prose: 'He said *quietly* to her.' }],
+        },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('quietly');
+    expect(docXml).toContain('<w:i');
+    // Must not contain the literal string "undefined" as a text run value
+    expect(docXml).not.toContain('>undefined<');
+  });
+
+  it('mixed bold and both italic forms in same prose block', async () => {
+    const input: DocxInput = {
+      title: 'T',
+      chapters: [
+        {
+          id: 'ch1',
+          title: 'Ch',
+          scenes: [
+            {
+              id: 'sc1',
+              title: 'S',
+              prose: '**Bold** and *star-italic* and _underscore-italic_ text.',
+            },
+          ],
+        },
+      ],
+    };
+    const buf = await buildDocx(input);
+    const zip = await loadDocxZip(buf);
+    const docXml = await zip.file('word/document.xml')!.async('string');
+    expect(docXml).toContain('Bold');
+    expect(docXml).toContain('star-italic');
+    expect(docXml).toContain('underscore-italic');
+    expect(docXml).not.toContain('>undefined<');
   });
 });

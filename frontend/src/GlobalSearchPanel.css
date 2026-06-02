@@ -197,6 +197,34 @@
   color: #a89ff5;
 }
 
+/* ── Section headers (shown only when both scenes and entities are present) ── */
+
+.gsp-section-header {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, rgba(232, 232, 232, 0.38));
+  padding: 10px 10px 4px;
+  user-select: none;
+}
+
+.gsp-section-header:first-child {
+  padding-top: 4px;
+}
+
+/* ── Entity type chip ── */
+
+.gsp-result-type-chip {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  background: rgba(180, 140, 80, 0.18);
+  color: #c9a85c;
+}
+
 /* ── Footer ── */
 
 .gsp-footer {
@@ -216,4 +244,26 @@
 .gsp-hint-sep {
   font-size: 11px;
   color: var(--text-muted, rgba(232, 232, 232, 0.25));
+}
+
+.gsp-tag-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
+.gsp-tag-filter {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 12px;
+  background: var(--accent, rgba(0,240,255,0.15));
+  border: 1px solid var(--accent, rgba(0,240,255,0.3));
+  font-size: 12px; color: var(--text-body, #e8eaf6);
+}
+.gsp-tag-filter-remove { background: none; border: none; cursor: pointer; color: var(--text-muted, #8c8fa8); padding: 0; font-size: 14px; }
+
+/* Focus rings */
+.gsp-scope-btn:focus-visible,
+.gsp-close-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c6af7);
+  outline-offset: 2px;
+}
+
+.gsp-result-item:focus-visible {
+  outline: 2px solid var(--focus-ring, #7c6af7);
+  outline-offset: -2px;
 }

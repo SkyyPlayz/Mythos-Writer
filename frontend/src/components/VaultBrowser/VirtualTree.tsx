@@ -3,6 +3,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import type { ListImperativeAPI } from 'react-window';
 import type { FlatRow } from './treeUtils';
+import { NodeIcon } from '../../NodeIcon';
 
 const ITEM_HEIGHT = 26;
 
@@ -20,6 +21,7 @@ interface RowData {
   onRenameCancel?: () => void;
   focusedIdx: number;
   onMoveFocus: (newIdx: number) => void;
+  iconMap?: Record<string, string>;
 }
 
 interface RowProps extends RowData {
@@ -28,34 +30,11 @@ interface RowProps extends RowData {
   style: CSSProperties;
 }
 
-function RenameInput({
-  value,
-  error,
-  onChange,
-  onCommit,
-  onCancel,
-}: {
-  value: string;
-  error?: string | null;
-  onChange: (v: string) => void;
-  onCommit: () => void;
-  onCancel: () => void;
-}) {
+function RenameInput({ value, error, onChange, onCommit, onCancel }: { value: string; error?: string | null; onChange: (v: string) => void; onCommit: () => void; onCancel: () => void; }) {
   const cancelledRef = useRef(false);
   return (
     <span className="vb-rename-wrap">
-      <input
-        className="vb-rename-input"
-        autoFocus
-        value={value}
-        aria-label="Rename"
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); cancelledRef.current = false; onCommit(); }
-          if (e.key === 'Escape') { e.preventDefault(); cancelledRef.current = true; onCancel(); }
-        }}
-        onBlur={() => { if (!cancelledRef.current) onCommit(); }}
-      />
+      <input className="vb-rename-input" autoFocus value={value} aria-label="Rename" onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); cancelledRef.current = false; onCommit(); } if (e.key === 'Escape') { e.preventDefault(); cancelledRef.current = true; onCancel(); } }} onBlur={() => { if (!cancelledRef.current) onCommit(); }} />
       {error && <span className="vb-rename-error" role="alert">{error}</span>}
     </span>
   );
@@ -64,7 +43,7 @@ function RenameInput({
 function Row({
   index, style, rows, onToggle, onOpen, onContextMenu,
   editingPath, editingValue, editError, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-  focusedIdx, onMoveFocus,
+  focusedIdx, onMoveFocus, iconMap,
   // ariaAttributes (aria-posinset/aria-setsize/role="listitem") is intentionally unused;
   // we emit role="treeitem" + aria-level instead.
 }: RowProps) {
@@ -80,7 +59,6 @@ function Row({
   }, [isFocused, row]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!row) return null;
-
   const { node, depth, isExpanded, isSelected } = row;
   const isMd = !node.isDirectory && node.name.endsWith('.md');
   const indent = 8 + depth * 14;
@@ -147,24 +125,14 @@ function Row({
       onFocus={() => { if (index !== focusedIdx) onMoveFocus(index); }}
       title={isEditing ? undefined : node.path}
     >
-      <span className="vb-chevron" aria-hidden="true">
-        {node.isDirectory ? (isExpanded ? '▾' : '▸') : ''}
-      </span>
+      <span className="vb-chevron" aria-hidden="true">{node.isDirectory ? (isExpanded ? '▾' : '▸') : ''}</span>
       <span className="vb-icon" aria-hidden="true">
-        {node.isDirectory ? (isExpanded ? '📂' : '📁') : isMd ? '📄' : '·'}
+        <NodeIcon icon={!node.isDirectory ? iconMap?.[node.path] : undefined} fallback={node.isDirectory ? (isExpanded ? '📂' : '📁') : isMd ? '📄' : '·'} />
       </span>
       {isEditing && onRenameChange && onRenameCommit && onRenameCancel ? (
-        <RenameInput
-          value={editingValue ?? ''}
-          error={editError}
-          onChange={onRenameChange}
-          onCommit={onRenameCommit}
-          onCancel={onRenameCancel}
-        />
+        <RenameInput value={editingValue ?? ''} error={editError} onChange={onRenameChange} onCommit={onRenameCommit} onCancel={onRenameCancel} />
       ) : (
-        <span className="vb-name">
-          {isMd ? node.name.slice(0, -3) : node.name}
-        </span>
+        <span className="vb-name">{isMd ? node.name.slice(0, -3) : node.name}</span>
       )}
     </div>
   );
@@ -184,6 +152,7 @@ interface VirtualTreeProps {
   onRenameCommit?: () => void;
   onRenameCancel?: () => void;
   label?: string;
+  iconMap?: Record<string, string>;
 }
 
 export default function VirtualTree({
@@ -200,6 +169,7 @@ export default function VirtualTree({
   onRenameCommit,
   onRenameCancel,
   label,
+  iconMap,
 }: VirtualTreeProps) {
   const [focusedIdx, setFocusedIdx] = useState(0);
   const listRef = useRef<ListImperativeAPI | null>(null);
@@ -217,7 +187,6 @@ export default function VirtualTree({
   }, [rows.length, focusedIdx]);
 
   if (rows.length === 0) return null;
-
   return (
     <div
       role="tree"
@@ -234,7 +203,7 @@ export default function VirtualTree({
           rows, onToggle, onOpen, onContextMenu,
           editingPath, editingValue, editError,
           onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-          focusedIdx, onMoveFocus,
+          focusedIdx, onMoveFocus, iconMap,
         }}
         style={{ overflowX: 'hidden' }}
       />

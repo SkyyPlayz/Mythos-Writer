@@ -1,7 +1,7 @@
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17,7 +17,7 @@
   max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 var(--glass-highlight);
+  box-shadow: var(--elev-3), inset 0 1px 0 var(--glass-highlight);
 }
 
 @supports (backdrop-filter: blur(1px)) {
@@ -33,21 +33,21 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #1f1f23;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .settings-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-header);
   margin: 0;
 }
 
 .settings-close {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 4px 6px;
@@ -56,8 +56,8 @@
 }
 
 .settings-close:hover {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-header);
 }
 
 .settings-body {
@@ -72,7 +72,7 @@
 .settings-loading {
   padding: 32px 20px;
   text-align: center;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
@@ -85,7 +85,7 @@
 .settings-section-title {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0;
@@ -110,7 +110,7 @@
 
 .settings-label {
   font-size: 0.82rem;
-  color: #a1a1aa;
+  color: var(--text-muted);
 }
 
 .settings-input-row {
@@ -119,10 +119,10 @@
 }
 
 .settings-input {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
   border-radius: 5px;
-  color: #e4e4e7;
+  color: var(--text-header);
   font-size: 0.85rem;
   padding: 6px 10px;
   outline: none;
@@ -131,16 +131,16 @@
 }
 
 .settings-input:focus {
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .settings-input-error {
-  border-color: #ef4444;
+  border-color: var(--state-danger);
 }
 
 .settings-input-error:focus {
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--state-danger) 25%, transparent);
 }
 
 .settings-input-sm {
@@ -154,9 +154,17 @@
 
 .settings-select {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2371717a'/%3E%3C/svg%3E");
+  /* Chevron drawn from two stacked linear-gradients so the stroke color is
+     token-driven and follows [data-contrast="high"]. SVG data-URIs cannot
+     reference CSS custom properties, which is why we avoid them here. */
+  background-image:
+    linear-gradient(135deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(45deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 13px) calc(50% - 1px),
+    calc(100% - 9px) calc(50% - 1px);
+  background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
-  background-position: right 8px center;
   padding-right: 24px;
   cursor: pointer;
 }
@@ -170,7 +178,7 @@
 
 .settings-slider {
   flex: 1;
-  accent-color: #7c3aed;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -181,16 +189,16 @@
 
 .settings-slider-value {
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   min-width: 32px;
   text-align: right;
 }
 
 .settings-reveal-btn {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
   border-radius: 5px;
-  color: #a1a1aa;
+  color: var(--text-muted);
   font-size: 0.78rem;
   padding: 6px 10px;
   cursor: pointer;
@@ -199,33 +207,33 @@
 }
 
 .settings-reveal-btn:hover {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-header);
 }
 
 .settings-error-msg {
   font-size: 0.78rem;
-  color: #f87171;
+  color: var(--state-danger);
   margin: 0;
 }
 
 .settings-saved-msg {
   font-size: 0.78rem;
-  color: #4ade80;
+  color: var(--state-success);
   margin: 0;
 }
 
 .settings-hint {
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   margin: 0;
 }
 
 /* Agent cards */
 
 .settings-agent-card {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
   border-radius: 7px;
   padding: 12px 14px;
   display: flex;
@@ -241,7 +249,7 @@
 
 .settings-agent-name {
   font-size: 0.85rem;
-  color: #d4d4d8;
+  color: var(--text-body);
   font-weight: 500;
 }
 
@@ -271,7 +279,7 @@
   display: block;
   width: 34px;
   height: 18px;
-  background: #27272a;
+  background: var(--bg-elevated);
   border-radius: 9px;
   position: relative;
   transition: background 0.15s;
@@ -284,22 +292,24 @@
   left: 2px;
   width: 14px;
   height: 14px;
-  background: #71717a;
+  background: var(--text-muted);
   border-radius: 50%;
   transition: transform 0.15s, background 0.15s;
 }
 
 .settings-toggle input:checked + .settings-toggle-track {
-  background: #7c3aed;
+  background: var(--accent);
 }
 
+/* Knob flips to --bg-canvas (dark) the moment the track flips to --accent
+   (cyan). White-on-cyan is 1.34:1 (WCAG fail); dark knob on cyan is ≈17:1. */
 .settings-toggle input:checked + .settings-toggle-track::after {
   transform: translateX(16px);
-  background: #fff;
+  background: var(--bg-canvas);
 }
 
 .settings-toggle input:focus-visible + .settings-toggle-track {
-  outline: 2px solid #7c3aed;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -315,12 +325,12 @@
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
-  color: #d4d4d8;
+  color: var(--text-body);
   cursor: pointer;
 }
 
 .settings-radio-label input[type='radio'] {
-  accent-color: #7c3aed;
+  accent-color: var(--accent);
   width: 15px;
   height: 15px;
   cursor: pointer;
@@ -330,7 +340,7 @@
 
 .settings-footer {
   padding: 12px 20px 16px;
-  border-top: 1px solid #1f1f23;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -358,23 +368,26 @@
 }
 
 .settings-btn-cancel {
-  background: #27272a;
-  color: #a1a1aa;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
 }
 
 .settings-btn-cancel:hover:not(:disabled) {
-  background: #3f3f46;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-header);
 }
 
+/* Primary save button: dark text on cyan accent. White-on-cyan is 1.34:1
+   (WCAG fail); --bg-canvas on --accent is ≈16:1.
+   Pairs with the switch-knob flip above — same contrast invariant. */
 .settings-btn-save {
-  background: #7c3aed;
-  color: #fff;
+  background: var(--accent);
+  color: var(--bg-canvas);
   font-weight: 500;
 }
 
 .settings-btn-save:hover:not(:disabled) {
-  background: #6d28d9;
+  background: var(--accent-hover);
 }
 
 /* ── Liquid Neon appearance controls (MYT-613) ──────────────────────────── */
@@ -394,9 +407,9 @@
   width: 128px;
   height: 64px;
   border-radius: 6px;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  background-color: #08091a;
+  background-color: var(--bg-canvas);
 }
 
 .lg-bg-actions {
@@ -406,10 +419,10 @@
 }
 
 .lg-btn-secondary {
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
-  color: #a1a1aa;
+  color: var(--text-muted);
   font-size: 0.82rem;
   padding: 5px 12px;
   cursor: pointer;
@@ -418,8 +431,8 @@
 }
 
 .lg-btn-secondary:hover:not(:disabled) {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-header);
 }
 
 .lg-btn-secondary:disabled {
@@ -437,12 +450,15 @@
 
 .lg-slider-main {
   flex: 1;
-  accent-color: #00f0ff;
+  /* Brand-axis slider always reads as cyan — even in [data-contrast="high"],
+     because the SOFTNESS↔CONTRAST axis is itself the brand identity, not a
+     semantic accent. Use the raw neon anchor, not --accent. */
+  accent-color: var(--neon-cyan);
 }
 
 .lg-axis-label {
   font-size: 0.72rem;
-  color: #52525b;
+  color: var(--text-muted);
   white-space: nowrap;
   min-width: 40px;
 }
@@ -464,7 +480,7 @@
   gap: 6px;
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.82rem;
   cursor: pointer;
   padding: 4px 0;
@@ -473,7 +489,7 @@
 }
 
 .lg-advanced-toggle:hover {
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 .lg-chevron {
@@ -492,7 +508,7 @@
   flex-direction: column;
   gap: 10px;
   padding: 10px 0 4px 12px;
-  border-left: 2px solid #27272a;
+  border-left: 2px solid var(--border-subtle);
   margin-left: 4px;
 }
 
@@ -518,7 +534,7 @@
   gap: 5px;
   cursor: pointer;
   font-size: 0.78rem;
-  color: #a1a1aa;
+  color: var(--text-muted);
 }
 
 .lg-swatch-label input[type='radio'] {
@@ -533,22 +549,25 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid #27272a;
+  border: 2px solid var(--border-subtle);
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
-.lg-swatch-cyan    { background: #00f0ff; }
-.lg-swatch-violet  { background: #9b5fff; }
-.lg-swatch-magenta { background: #ff4dff; }
+/* Swatches are the brand-axis anchors themselves — neon tokens, not --accent.
+   Each must keep its hue so the user can pick between cyan / violet / magenta
+   regardless of which one --accent is currently aliased to. */
+.lg-swatch-cyan    { background: var(--neon-cyan); }
+.lg-swatch-violet  { background: var(--neon-violet); }
+.lg-swatch-magenta { background: var(--neon-magenta); }
 
 .lg-swatch.lg-swatch-active {
-  border-color: #ffffff;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.2);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 20%, transparent);
 }
 
 .lg-swatch-name {
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 /* Text color swatches */
@@ -566,7 +585,7 @@
 
 .lg-color-row-label {
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   min-width: 40px;
   flex-shrink: 0;
 }
@@ -576,13 +595,13 @@
   width: 14px;
   height: 14px;
   border-radius: 3px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid var(--border-default);
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
 .lg-text-swatch.lg-swatch-active {
-  border-color: #ffffff;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 15%, transparent);
 }
 
 /* Reset row */
@@ -595,9 +614,9 @@
 
 .lg-btn-reset {
   background: transparent;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--border-default);
   border-radius: 5px;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.78rem;
   padding: 4px 12px;
   cursor: pointer;
@@ -605,9 +624,9 @@
 }
 
 .lg-btn-reset:hover {
-  background: #18181b;
-  color: #a1a1aa;
-  border-color: #52525b;
+  background: var(--bg-inset);
+  color: var(--text-body);
+  border-color: var(--border-strong);
 }
 
 /* ── Slider band with Advanced pill (MYT-716) ─────────────────────────────── */
@@ -627,10 +646,10 @@
 }
 
 .lg-advanced-pill {
-  background: rgba(0, 240, 255, 0.08);
-  border: 1px solid rgba(0, 240, 255, 0.25);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 999px;
-  color: #00f0ff;
+  color: var(--accent);
   font-size: 0.75rem;
   padding: 3px 10px;
   cursor: pointer;
@@ -640,14 +659,14 @@
 }
 
 .lg-advanced-pill:hover {
-  background: rgba(0, 240, 255, 0.14);
-  border-color: rgba(0, 240, 255, 0.45);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .lg-relink-btn {
   background: none;
   border: none;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.72rem;
   cursor: pointer;
   font-family: inherit;
@@ -657,7 +676,7 @@
 }
 
 .lg-relink-btn:hover {
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 /* ── Advanced popover overlay (MYT-716) ──────────────────────────────────── */
@@ -665,7 +684,7 @@
 .lg-popover-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -673,16 +692,16 @@
 }
 
 .lg-popover {
-  background: #131316;
-  border: 1px solid #2a2a2f;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 12px;
   width: 480px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8),
-              0 0 0 1px rgba(0, 240, 255, 0.06);
+  box-shadow: var(--elev-3),
+              0 0 0 1px var(--accent-soft);
   overflow: hidden;
 }
 
@@ -691,14 +710,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px 10px;
-  border-bottom: 1px solid #1f1f24;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .lg-popover-title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-header);
   margin: 0;
 }
 
@@ -720,7 +739,7 @@
 .lg-popover-section-title {
   font-size: 0.7rem;
   font-weight: 600;
-  color: #52525b;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0 0 2px;
@@ -733,7 +752,7 @@
 .lg-link-btn {
   background: none;
   border: none;
-  color: #00f0ff;
+  color: var(--accent);
   font-size: inherit;
   cursor: pointer;
   padding: 0;
@@ -747,7 +766,7 @@
   align-items: center;
   gap: 8px;
   padding-top: 4px;
-  border-top: 1px solid #1f1f24;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* ── Background section ───────────────────────────────────────────────────── */
@@ -757,9 +776,9 @@
   flex-direction: column;
   gap: 8px;
   padding: 8px;
-  background: #18181b;
+  background: var(--bg-inset);
   border-radius: 6px;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-subtle);
 }
 
 /* Mode toggle */
@@ -768,7 +787,7 @@
   gap: 0;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-subtle);
   width: fit-content;
 }
 
@@ -777,9 +796,9 @@
   align-items: center;
   padding: 4px 12px;
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   cursor: pointer;
-  background: #18181b;
+  background: var(--bg-inset);
   transition: background 0.1s, color 0.1s;
 }
 
@@ -791,12 +810,12 @@
 }
 
 .lg-mode-btn + .lg-mode-btn {
-  border-left: 1px solid #27272a;
+  border-left: 1px solid var(--border-subtle);
 }
 
 .lg-mode-btn-active {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-header);
 }
 
 /* Position 9-grid */
@@ -815,10 +834,10 @@
   width: 28px;
   height: 28px;
   border-radius: 4px;
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   cursor: pointer;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
@@ -831,14 +850,14 @@
 }
 
 .lg-position-cell-active {
-  background: #27272a;
-  color: #e4e4e7;
-  border-color: #3f3f46;
+  background: var(--bg-active);
+  color: var(--text-header);
+  border-color: var(--border-default);
 }
 
 .lg-position-cell:hover:not(.lg-position-cell-active) {
-  background: #1e1e22;
-  color: #a1a1aa;
+  background: var(--bg-hover);
+  color: var(--text-body);
 }
 
 /* ── Color picker control (MYT-716) ──────────────────────────────────────── */
@@ -859,10 +878,10 @@
 .lg-color-input {
   width: 28px;
   height: 28px;
-  border: 1px solid #27272a;
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   padding: 2px;
-  background: #18181b;
+  background: var(--bg-inset);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -887,23 +906,23 @@
 }
 
 .tcs-badge-pass {
-  background: rgba(74, 222, 128, 0.15);
-  color: #4ade80;
+  background: var(--state-success-bg);
+  color: var(--state-success);
 }
 
 .tcs-badge-warn {
-  background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
+  background: var(--state-warning-bg);
+  color: var(--state-warning);
 }
 
 .tcs-badge-fail {
-  background: rgba(248, 113, 113, 0.15);
-  color: #f87171;
+  background: var(--state-danger-bg);
+  color: var(--state-danger);
 }
 
 .lg-clamp-notice {
   font-size: 0.68rem;
-  color: #fbbf24;
+  color: var(--state-warning);
   white-space: nowrap;
 }
 
@@ -911,7 +930,7 @@
 
 .settings-persona-viewer {
   margin-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border-subtle);
   padding-top: 8px;
 }
 
@@ -919,7 +938,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-muted);
   font-size: 0.75rem;
   padding: 2px 0;
   display: flex;
@@ -929,7 +948,7 @@
 }
 
 .settings-persona-toggle:hover {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-body);
 }
 
 .settings-persona-chevron {
@@ -948,9 +967,9 @@
 }
 
 .settings-persona-tab {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.55);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
   border-radius: 4px 4px 0 0;
   padding: 3px 8px;
   font-size: 0.72rem;
@@ -962,24 +981,24 @@
 }
 
 .settings-persona-tab:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.85);
+  background: var(--bg-active);
+  color: var(--text-body);
 }
 
 .settings-persona-tab--active {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.95);
+  background: var(--bg-active);
+  color: var(--text-header);
   border-bottom-color: transparent;
 }
 
 .settings-persona-custom-badge {
-  color: #7dd3fc;
+  color: var(--accent);
   font-size: 0.55rem;
 }
 
 .settings-persona-content {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
   border-radius: 0 4px 4px 4px;
   padding: 8px;
 }
@@ -990,7 +1009,7 @@
   max-height: 320px;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--text-body);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.72rem;
   line-height: 1.5;
@@ -1001,7 +1020,7 @@
 }
 
 .settings-persona-textarea:focus {
-  outline: 2px solid rgba(125, 211, 252, 0.4);
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: 2px;
 }
 
@@ -1014,16 +1033,16 @@
 
 .settings-persona-custom-label {
   font-size: 0.68rem;
-  color: #7dd3fc;
-  background: rgba(125, 211, 252, 0.1);
+  color: var(--accent);
+  background: var(--accent-soft);
   padding: 1px 6px;
   border-radius: 3px;
 }
 
 .settings-persona-reset-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.7);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-strong);
+  color: var(--text-body);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 0.72rem;
@@ -1032,8 +1051,8 @@
 }
 
 .settings-persona-reset-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.9);
+  background: var(--bg-active);
+  color: var(--text-header);
 }
 
 .settings-persona-reset-btn:disabled {
@@ -1044,13 +1063,13 @@
 .settings-persona-loading,
 .settings-persona-error {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
   padding: 4px 0;
   margin: 0;
 }
 
 .settings-persona-error {
-  color: #f87171;
+  color: var(--state-danger);
 }
 
 /* ── Telemetry list (MYT-779) ── */
@@ -1061,27 +1080,27 @@
 
 .settings-telemetry-item {
   font-size: 0.78rem;
-  color: var(--text-muted, rgba(255,255,255,0.6));
+  color: var(--text-muted);
   margin-bottom: 3px;
 }
 
 /* ── Provider test connection status (MYT-779) ── */
 .settings-test-ok {
   font-size: 0.78rem;
-  color: #4ade80;
+  color: var(--state-success);
   margin-left: 8px;
 }
 
 .settings-test-error {
   font-size: 0.78rem;
-  color: #f87171;
+  color: var(--state-danger);
   margin-left: 8px;
 }
 
 .settings-btn-secondary {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--text-body, rgba(255,255,255,0.85));
+  background: var(--bg-hover);
+  border: 1px solid var(--border-strong);
+  color: var(--text-body);
   padding: 4px 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -1089,10 +1108,47 @@
 }
 
 .settings-btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--bg-active);
 }
 
 .settings-btn-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.settings-btn-danger {
+  padding: 5px 14px;
+  background: none;
+  border: 1px solid var(--state-danger);
+  border-radius: 5px;
+  color: var(--state-danger);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.settings-btn-danger:hover {
+  background: var(--state-danger-bg);
+}
+
+/* ── Focus Mode toggles (SKY-325) ── */
+.settings-focus-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.settings-focus-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.settings-focus-toggle:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 3px;
 }

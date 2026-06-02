@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { renderSnippet } from './SearchBar';
 import './GlobalSearchPanel.css';
 
 type SearchScope = 'story' | 'notes' | 'both';
 
 interface SearchResultItem {
+  resultType: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
@@ -14,17 +15,29 @@ interface SearchResultItem {
 }
 
 interface Props {
+  open: boolean;
   onNavigate: (result: SearchResultItem) => void;
   onClose: () => void;
+  initialTagFilter?: string;
+  /** Context-aware initial scope. Defaults to 'both'. */
+  defaultScope?: SearchScope;
 }
 
 const KIND_ICONS: Record<string, string> = {
   scene: '✍️',
-  character: '👤',
+  character: '👥',
   location: '📍',
   item: '🗡️',
   concept: '💡',
   other: '📄',
+};
+
+const KIND_LABELS: Record<string, string> = {
+  character: 'Character',
+  location: 'Location',
+  item: 'Item',
+  concept: 'Concept',
+  other: 'Entity',
 };
 
 const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
@@ -33,22 +46,38 @@ const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
   { id: 'notes', label: 'Notes Vault' },
 ];
 
-export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
+export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both' }: Props) {
   const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<SearchScope>('both');
+  const [scope, setScope] = useState<SearchScope>(defaultScope);
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  // Partition results into scenes and entities; keyboard nav uses the flat order.
+  const { sceneResults, entityResults, flatResults } = useMemo(() => {
+    const scenes = results.filter((r) => r.resultType === 'scene');
+    const entities = results.filter((r) => r.resultType === 'entity');
+    return { sceneResults: scenes, entityResults: entities, flatResults: [...scenes, ...entities] };
+  }, [results]);
 
-  // Capture phase so Escape fires before editor keybindings swallow it
   useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (initialTagFilter) setActiveTagFilters([initialTagFilter]);
+  }, [initialTagFilter]);
+
+  // Capture phase so Escape fires before editor keybindings swallow it.
+  // Guard with `open` so the listener only exists while the panel is visible ---
+  // an always-mounted listener intercepts Escape app-wide and breaks other UI
+  // such as VaultBrowser inline rename (TC-V-07).
+  useEffect(() => {
+    if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
@@ -57,17 +86,18 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  }, [open, onClose]);
 
-  const runSearch = useCallback(async (q: string, s: SearchScope) => {
-    if (!q.trim()) {
+  const runSearch = useCallback(async (q: string, s: SearchScope, tagFilters?: string[]) => {
+    const filters = tagFilters ?? activeTagFilters;
+    if (!q.trim() && !filters.length) {
       setResults([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const resp = await window.api.searchVault(q, s, 20) as { results?: SearchResultItem[] };
+      const resp = await window.api.searchVault(q, s, 20, filters.length ? filters : undefined) as { results?: SearchResultItem[] };
       if (resp?.results) {
         setResults(resp.results);
         setActiveIdx(-1);
@@ -77,7 +107,7 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeTagFilters]);
 
   const handleQueryChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,17 +142,17 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setActiveIdx((i) => Math.min(i + 1, results.length - 1));
+        setActiveIdx((i) => Math.min(i + 1, flatResults.length - 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setActiveIdx((i) => Math.max(i - 1, -1));
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        const target = activeIdx >= 0 ? results[activeIdx] : results[0];
+        const target = activeIdx >= 0 ? flatResults[activeIdx] : flatResults[0];
         if (target) handleSelect(target);
       }
     },
-    [results, activeIdx, handleSelect],
+    [flatResults, activeIdx, handleSelect],
   );
 
   useEffect(() => {
@@ -135,6 +165,41 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
+  if (!open) return null;
+
+  const hasBoth = sceneResults.length > 0 && entityResults.length > 0;
+
+  const renderResultItem = (result: SearchResultItem, flatIdx: number) => (
+    <button
+      key={result.docId}
+      data-idx={flatIdx}
+      className={`gsp-result-item${flatIdx === activeIdx ? ' active' : ''}`}
+      role="option"
+      aria-selected={flatIdx === activeIdx}
+      onMouseDown={(e) => { e.preventDefault(); handleSelect(result); }}
+      onMouseEnter={() => setActiveIdx(flatIdx)}
+    >
+      <span className="gsp-result-icon" aria-hidden="true">
+        {KIND_ICONS[result.kind] ?? KIND_ICONS.other}
+      </span>
+      <div className="gsp-result-body">
+        <span className="gsp-result-title">{result.title}</span>
+        {result.snippet && (
+          <span className="gsp-result-snippet">{renderSnippet(result.snippet)}</span>
+        )}
+      </div>
+      {result.resultType === 'entity' ? (
+        <span className="gsp-result-type-chip">
+          {KIND_LABELS[result.kind] ?? 'Entity'}
+        </span>
+      ) : (
+        <span className={`gsp-result-vault gsp-result-vault-${result.vault}`}>
+          {result.vault === 'story' ? 'Story' : 'Notes'}
+        </span>
+      )}
+    </button>
+  );
+
   return (
     <div className="gsp-backdrop" onClick={onClose} role="presentation">
       <div
@@ -144,6 +209,21 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
         aria-modal="true"
         aria-label="Search vault"
       >
+        {activeTagFilters.length > 0 && (
+          <div className="gsp-tag-filters">
+            {activeTagFilters.map((t) => (
+              <span key={t} className="gsp-tag-filter">
+                #{t}
+                <button
+                  className="gsp-tag-filter-remove"
+                  onClick={() => setActiveTagFilters((fs) => fs.filter((f) => f !== t))}
+                  aria-label={`Remove tag filter ${t}`}
+                >×</button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="gsp-header">
           <span className="gsp-icon" aria-hidden="true">🔍</span>
           <input
@@ -157,7 +237,7 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
             aria-label="Search vault"
             aria-controls="gsp-results"
             aria-autocomplete="list"
-            aria-expanded={results.length > 0}
+            aria-expanded={flatResults.length > 0}
             role="combobox"
             aria-haspopup="listbox"
           />
@@ -188,34 +268,31 @@ export default function GlobalSearchPanel({ onNavigate, onClose }: Props) {
           {loading && (
             <div className="gsp-state-msg" aria-live="polite">Searching…</div>
           )}
-          {!loading && query.trim() && results.length === 0 && (
+          {!loading && query.trim() && flatResults.length === 0 && (
             <div className="gsp-state-msg">No results for &ldquo;{query}&rdquo;</div>
           )}
-          {!loading && results.map((result, idx) => (
-            <button
-              key={result.docId}
-              data-idx={idx}
-              className={`gsp-result-item${idx === activeIdx ? ' active' : ''}`}
-              role="option"
-              aria-selected={idx === activeIdx}
-              onMouseDown={(e) => { e.preventDefault(); handleSelect(result); }}
-              onMouseEnter={() => setActiveIdx(idx)}
-            >
-              <span className="gsp-result-icon" aria-hidden="true">
-                {KIND_ICONS[result.kind] ?? KIND_ICONS.other}
-              </span>
-              <div className="gsp-result-body">
-                <span className="gsp-result-title">{result.title}</span>
-                {result.snippet && (
-                  <span className="gsp-result-snippet">{renderSnippet(result.snippet)}</span>
-                )}
-              </div>
-              <span className={`gsp-result-vault gsp-result-vault-${result.vault}`}>
-                {result.vault === 'story' ? 'Story' : 'Notes'}
-              </span>
-            </button>
-          ))}
-          {!loading && !query && (
+
+          {!loading && sceneResults.length > 0 && (
+            <>
+              {hasBoth && (
+                <div className="gsp-section-header" aria-hidden="true">Scenes</div>
+              )}
+              {sceneResults.map((result, i) => renderResultItem(result, i))}
+            </>
+          )}
+
+          {!loading && entityResults.length > 0 && (
+            <>
+              {hasBoth && (
+                <div className="gsp-section-header" aria-hidden="true">Entities</div>
+              )}
+              {entityResults.map((result, i) =>
+                renderResultItem(result, sceneResults.length + i)
+              )}
+            </>
+          )}
+
+          {!loading && !query && !activeTagFilters.length && (
             <div className="gsp-state-msg gsp-hint">
               Type to search across all scenes and notes.
             </div>

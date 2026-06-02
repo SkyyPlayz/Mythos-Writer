@@ -1,0 +1,65 @@
+.icon-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.icon-picker-modal {
+  background: var(--color-surface, #1e1e2e);
+  border: 1px solid var(--color-border, #313244);
+  border-radius: 8px;
+  width: 400px;
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.icon-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border, #313244);
+}
+.icon-picker-title { font-weight: 600; font-size: 14px; }
+.icon-picker-close {
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; color: var(--color-muted, #6c7086); line-height: 1; padding: 0 4px;
+}
+.icon-picker-close:hover { color: var(--color-text, #cdd6f4); }
+.icon-picker-tabs { display: flex; border-bottom: 1px solid var(--color-border, #313244); }
+.icon-picker-tab {
+  flex: 1; padding: 8px; background: none; border: none; cursor: pointer;
+  font-size: 12px; color: var(--color-muted, #6c7086); border-bottom: 2px solid transparent;
+}
+.icon-picker-tab.active { color: var(--color-accent, #cba6f7); border-bottom-color: var(--color-accent, #cba6f7); }
+.icon-picker-body { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.icon-picker-emoji-pane, .icon-picker-lucide-pane, .icon-picker-user-pane {
+  display: flex; flex-direction: column; height: 100%; overflow: hidden;
+}
+.icon-picker-search {
+  margin: 8px 12px; padding: 6px 10px;
+  background: var(--color-bg, #181825); border: 1px solid var(--color-border, #313244);
+  border-radius: 4px; color: var(--color-text, #cdd6f4); font-size: 13px; flex-shrink: 0;
+}
+.icon-picker-grid { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 12px 12px; overflow-y: auto; }
+.icon-picker-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px; min-width: 44px; background: none; border: 1px solid transparent;
+  border-radius: 4px; cursor: pointer; font-size: 18px; color: var(--color-text, #cdd6f4);
+}
+.icon-picker-cell:hover { background: var(--color-hover, #313244); border-color: var(--color-border, #45475a); }
+.icon-picker-cell.selected { background: var(--color-accent-bg, #313244); border-color: var(--color-accent, #cba6f7); }
+.icon-picker-label { font-size: 9px; color: var(--color-muted, #6c7086); max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-picker-empty { padding: 24px 16px; text-align: center; color: var(--color-muted, #6c7086); font-size: 13px; line-height: 1.5; }
+.icon-picker-pack-tabs { display: flex; gap: 4px; padding: 8px 12px 0; flex-shrink: 0; }
+.icon-picker-pack-tab { padding: 4px 10px; background: var(--color-bg, #181825); border: 1px solid var(--color-border, #313244); border-radius: 12px; cursor: pointer; font-size: 12px; color: var(--color-muted, #6c7086); }
+.icon-picker-pack-tab.active { color: var(--color-accent, #cba6f7); border-color: var(--color-accent, #cba6f7); }
+.icon-picker-footer { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--color-border, #313244); font-size: 12px; }
+.icon-picker-current-label { color: var(--color-muted, #6c7086); }
+.icon-picker-current { font-size: 16px; }
+.icon-picker-clear { margin-left: auto; background: none; border: 1px solid var(--color-border, #313244); border-radius: 4px; padding: 3px 8px; cursor: pointer; font-size: 11px; color: var(--color-muted, #6c7086); }
+.icon-picker-clear:hover { color: var(--color-text, #cdd6f4); }

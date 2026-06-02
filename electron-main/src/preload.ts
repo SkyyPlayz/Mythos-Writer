@@ -24,8 +24,9 @@ contextBridge.exposeInMainWorld('api', {
   vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
   // SKY-12.2: opts.seedMode = 'default' | 'blank' controls scaffold behavior.
   // Defaults to 'default' (full SKY-15 layout) when absent — backwards-compatible.
-  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) =>
-    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode }),
+  // SKY-270 / MYT-789: storyVaultToken / notesVaultToken come from vault:pick-folder.
+  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) =>
+    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode, storyVaultToken: opts?.storyVaultToken, notesVaultToken: opts?.notesVaultToken }),
   // SKY-12.2: pure filesystem check for the onboarding wizard path-picker.
   validatePath: (p: string) => ipcRenderer.invoke('vault:validate-path', { path: p }),
   // SKY-12.3: copy the bundled sample project into a two-vault layout.
@@ -116,8 +117,8 @@ contextBridge.exposeInMainWorld('api', {
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
 
   // Versioning — per-scene snapshots
-  snapshotSave: (sceneId: string, content: string) =>
-    ipcRenderer.invoke('snapshot:save', { sceneId, content }),
+  snapshotSave: (sceneId: string, content: string, label?: string) =>
+    ipcRenderer.invoke('snapshot:save', { sceneId, content, label }),
   snapshotSaveSync: (sceneId: string, content: string) =>
     ipcRenderer.sendSync('snapshot:save-sync', { sceneId, content }),
   snapshotList: (sceneId: string) =>
@@ -126,6 +127,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('snapshot:get', { sceneId, snapshotId }),
   snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) =>
     ipcRenderer.invoke('snapshot:restore', { sceneId, snapshotId, scenePath }),
+  snapshotDelete: (sceneId: string, snapshotId: string) =>
+    ipcRenderer.invoke('snapshot:delete', { sceneId, snapshotId }),
+  snapshotDeleteAll: (sceneId?: string) =>
+    ipcRenderer.invoke('snapshot:delete-all', { sceneId }),
 
   // SKY-10 — Per-scene versioned drafts (history pane + rollback)
   versionList: (sceneId: string) =>
@@ -154,6 +159,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:list', { type }),
   entityBacklinks: (entityId: string) =>
     ipcRenderer.invoke('entity:backlinks', { entityId }),
+  entityLinkedScenes: (entityId: string) =>
+    ipcRenderer.invoke('entity:linkedScenes', { entityId }),
+  entityRelationshipsList: (entityId: string) =>
+    ipcRenderer.invoke('entity:relationships:list', { entityId }),
+  entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) =>
+    ipcRenderer.invoke('entity:relationships:create', { fromEntityId, toEntityId, label }),
+  entityRelationshipsDelete: (relationshipId: string) =>
+    ipcRenderer.invoke('entity:relationships:delete', { relationshipId }),
 
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
@@ -308,8 +321,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('scene:save', payload),
 
   // Search (MYT-251)
-  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) =>
-    ipcRenderer.invoke('search:query', { query, scope, limit }),
+  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) =>
+    ipcRenderer.invoke('search:query', { query, scope, limit, filterTags }),
 
   // Writing Assistant scheduled scan (MYT-233)
   writingScan: (sceneId: string, prose: string, scenePath: string) =>
@@ -421,14 +434,20 @@ contextBridge.exposeInMainWorld('api', {
   telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) =>
     ipcRenderer.invoke('telemetry:report', { type, meta }),
 
-  // Multi-project switcher (MYT-374)
+  // Multi-project switcher (MYT-374, extended SKY-320)
   projectList: () => ipcRenderer.invoke('project:list', undefined),
-  projectSwitch: (vaultRoot: string) => ipcRenderer.invoke('project:switch', { vaultRoot }),
-  onProjectSwitched: (cb: (data: { vaultRoot: string }) => void) => {
-    const handler = (_: unknown, data: { vaultRoot: string }) => cb(data);
+  projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
+    ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
+  onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
+    const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);
     return () => ipcRenderer.removeListener('project:switched', handler);
   },
+
+  // One-click Mythos Vault create (SKY-320). The default flow passes no
+  // parentPath — main creates the bundle under ~/Mythos/Vaults/.
+  vaultCreateDefaultMythos: (opts?: { parentPath?: string; vaultName?: string; seedMode?: 'default' | 'blank' }) =>
+    ipcRenderer.invoke('vault:createDefaultMythos', opts ?? {}),
 
   // Archive confirmation dialog (MYT-376)
   archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>
@@ -472,6 +491,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('brainstorm:resetCategoryRouting', { category }),
   brainstormListNotesFolders: () =>
     ipcRenderer.invoke('brainstorm:listNotesFolders', undefined),
+  // SKY-196: token-budgeted vault context selection for Brainstorm AI requests
+  brainstormSelectContext: (payload: { userMessage: string; conversationText: string; tokenBudget?: number }) =>
+    ipcRenderer.invoke('brainstorm:selectContext', payload),
 
   // SKY-130: persist last-opened scene + cursor position for cross-restart restore.
   sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) =>
@@ -482,6 +504,23 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
   templateSaveAs: (name: string) =>
     ipcRenderer.invoke('template:saveAs', { name }),
+  // SKY-190: Note Templates
+  noteTemplateList: (kind?: string) =>
+    ipcRenderer.invoke('note-template:list', { kind }),
+
+  // SKY-204: Daily Notes
+  dailyNoteOpenToday: () =>
+    ipcRenderer.invoke('dailyNote:openToday', undefined),
+  dailyNoteGetStreak: () =>
+    ipcRenderer.invoke('dailyNote:getStreak', undefined),
+
+  // SKY-193: Tag Wrangler
+  notesTagList: () =>
+    ipcRenderer.invoke('notesVault:tag:list', undefined),
+  notesTagRename: (oldTag: string, newTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:rename', { oldTag, newTag }),
+  notesTagMerge: (sourceTag: string, targetTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
 
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
@@ -490,6 +529,60 @@ contextBridge.exposeInMainWorld('api', {
   goalsSetGoal: (dailyGoal: number) =>
     ipcRenderer.invoke('goals:setGoal', { dailyGoal }),
   goalsResetStreak: () => ipcRenderer.invoke('goals:resetStreak', undefined),
+
+
+  // SKY-55: per-scene notes
+  notesGet: (sceneId: string) => ipcRenderer.invoke('notes:get', { sceneId }),
+  notesSet: (sceneId: string, content: string) => ipcRenderer.invoke('notes:set', { sceneId, content }),
+
+  // SKY-158: Tags
+  tagsList: () => ipcRenderer.invoke('tags:list', undefined),
+  tagsUpsert: (name: string, color?: string | null) => ipcRenderer.invoke('tags:upsert', { name, color }),
+  tagsDelete: (id: string) => ipcRenderer.invoke('tags:delete', { id }),
+  tagsRename: (id: string, name: string) => ipcRenderer.invoke('tags:rename', { id, name }),
+  tagsForItem: (itemId: string, itemKind: 'scene' | 'entity') => ipcRenderer.invoke('tags:forItem', { itemId, itemKind }),
+  tagsSetForItem: (itemId: string, itemKind: 'scene' | 'entity', tags: string[]) => ipcRenderer.invoke('tags:setForItem', { itemId, itemKind, tags }),
+  tagsItemsForTag: (tagName: string) => ipcRenderer.invoke('tags:itemsForTag', { tagName }),
+  tagsBulkApply: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) =>
+    ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
+  sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
+  // SKY-203: Note-level backlinks
+  noteBacklinks: (notePath: string) =>
+    ipcRenderer.invoke('notesVault:backlinks', { notePath }),
+
+  // SKY-194: Iconize — per-node icon IPC
+  notesVaultReadIcons: () =>
+    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  vaultReadIcons: () =>
+    ipcRenderer.invoke('vault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  iconListUserPacks: () =>
+    ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
+  iconReadSvg: (packName: string, iconName: string) =>
+    ipcRenderer.invoke('icons:readSvg', { packName, iconName }) as unknown as Promise<{ svg: string | null }>,
+
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  smartFolderList: () =>
+    ipcRenderer.invoke('smartFolder:list', undefined),
+  smartFolderCreate: (name: string, query: string) =>
+    ipcRenderer.invoke('smartFolder:create', { name, query }),
+  smartFolderUpdate: (id: string, updates: { name?: string; query?: string }) =>
+    ipcRenderer.invoke('smartFolder:update', { id, ...updates }),
+  smartFolderDelete: (id: string) =>
+    ipcRenderer.invoke('smartFolder:delete', { id }),
+  smartFolderQuery: (query: string) =>
+    ipcRenderer.invoke('smartFolder:query', { query }),
+
+  // SKY-207: Per-scene custom frontmatter fields
+  customFieldsList: () =>
+    ipcRenderer.invoke('customFields:list', undefined),
+  customFieldsSet: (fields: unknown[]) =>
+    ipcRenderer.invoke('customFields:set', { fields }),
+  scenePropsGet: (sceneId: string) =>
+    ipcRenderer.invoke('scene:propsGet', { sceneId }),
+  scenePropsSet: (sceneId: string, customFields: Record<string, unknown>) =>
+    ipcRenderer.invoke('scene:propsSet', { sceneId, customFields }),
+
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

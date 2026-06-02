@@ -74,6 +74,13 @@ function stubApi(overrides: Record<string, unknown> = {}) {
       saved: true,
     }),
     chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }),
+    listNotesVault: vi.fn().mockResolvedValue({ items: [] }),
+    notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+    notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+    vaultReadIcons: vi.fn().mockResolvedValue({}),
+    iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
     ...overrides,
   };
 }
@@ -171,13 +178,13 @@ describe('Accessibility — EntityBrowser (Vault browser / Entities)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('CreateDialog open state has no axe violations', async () => {
+  it('TypePickerPopover open state has no axe violations', async () => {
     const { container, getByRole } = render(
       <EntityBrowser onSelectEntity={() => {}} selectedEntityId={null} />,
     );
     await waitFor(() => expect(container.querySelector('.entity-browser')).not.toBeNull());
     fireEvent.click(getByRole('button', { name: /new entity/i }));
-    await waitFor(() => expect(container.querySelector('[role="dialog"]')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('[role="menu"]')).not.toBeNull());
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
@@ -312,7 +319,7 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
     expect(tablist).not.toBeNull();
 
     const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
 
     const activeTab = container.querySelector('[aria-selected="true"]');
     expect(activeTab?.id).toBe('leftrail-tab-vault');
@@ -389,7 +396,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
     expect(tablist?.getAttribute('aria-label')).toBe('Sidebar panels');
 
     const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(4); // notes, properties, ai, outline
 
     const activeTab = container.querySelector('[aria-selected="true"]');
     expect(activeTab?.id).toBe('rightsidebar-tab-properties');
@@ -483,6 +490,77 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
 
     const notesTab = container.querySelector('#rightsidebar-tab-notes') as HTMLElement;
     fireEvent.keyDown(notesTab, { key: 'ArrowLeft' });
-    expect(onTabChange).toHaveBeenCalledWith('ai');
+    expect(onTabChange).toHaveBeenCalledWith('outline'); // wraps to last tab
+  });
+
+  it('outline tab active — no axe violations', async () => {
+    const story = {
+      id: 's1', title: 'My Story', path: '/s', order: 0,
+      chapters: [{
+        id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, createdAt: '', updatedAt: '',
+        scenes: [
+          { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
+          { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
+        ],
+      }],
+    };
+    const { container } = render(
+      <RightSidebar
+        activeTab="outline"
+        onTabChange={() => {}}
+        selectedScene={{ id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' }}
+        selectedChapter={{ id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: story.chapters[0].scenes, createdAt: '', updatedAt: '' }}
+        selectedStory={story as any}
+      />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('outline tab — active scene has aria-current="true"', () => {
+    const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
+    const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
+
+    const { container } = render(
+      <RightSidebar
+        activeTab="outline"
+        onTabChange={() => {}}
+        selectedScene={scene1}
+        selectedChapter={chapter}
+        selectedStory={story as any}
+      />,
+    );
+
+    const activeNode = container.querySelector('[aria-current="true"]');
+    expect(activeNode).not.toBeNull();
+    expect(activeNode?.textContent).toBe('Scene 1');
+
+    const inactiveNode = container.querySelector('.outline-sidebar-scene:not(.active-scene)');
+    expect(inactiveNode?.getAttribute('aria-current')).toBeNull();
+  });
+
+  it('outline tab — clicking a scene calls onSelectScene', () => {
+    const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
+    const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
+    const onSelectScene = vi.fn();
+
+    const { container } = render(
+      <RightSidebar
+        activeTab="outline"
+        onTabChange={() => {}}
+        selectedScene={scene1}
+        selectedChapter={chapter}
+        selectedStory={story as any}
+        onSelectScene={onSelectScene}
+      />,
+    );
+
+    const scene2Node = container.querySelector('.outline-sidebar-scene:not(.active-scene)') as HTMLElement;
+    fireEvent.click(scene2Node);
+    expect(onSelectScene).toHaveBeenCalledWith(scene2, chapter);
   });
 });

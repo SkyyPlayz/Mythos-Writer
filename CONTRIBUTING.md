@@ -1,5 +1,17 @@
 # Contributing to Mythos Writer
 
+## Code Quality Standard
+
+Every change on this repo must meet the **Code Quality Standard — Correct, Clear, Simple, Tested, Bulletproof**.
+
+- **Reviewers:** run the [Code Review Rubric](docs/code-review-rubric.md) on every PR.
+- **Authors:** verify the Definition of Done checklist in the PR template before requesting review.
+- **Priority order when qualities conflict:** correctness > readability > simplicity > maintainability > performance.
+
+Full details: [`docs/code-review-rubric.md`](docs/code-review-rubric.md) · Source report: [`plans/ProjectGoalOverView/13-Code-Quality.md`](plans/ProjectGoalOverView/13-Code-Quality.md)
+
+---
+
 ## Merge Policy
 
 All changes to `main` must go through a pull request that passes every required
@@ -57,6 +69,12 @@ the merge queue button). GitHub will rebase, run CI, and merge automatically.
 
 If the merge queue is not available on the current plan, use the manual rebase
 workflow above.
+
+## Testing
+
+Read [`docs/testing-strategy.md`](docs/testing-strategy.md) before writing or reviewing any test.
+It covers the pyramid shape, Arrange-Act-Assert, boundary-value analysis, regression discipline,
+and all other techniques required by the Code Quality Standard.
 
 ## Running CI locally
 
