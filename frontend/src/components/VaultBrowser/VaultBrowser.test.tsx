@@ -519,6 +519,9 @@ describe('VirtualTree ARIA attributes', () => {
       onVaultFileChanged: mockOnVaultFileChanged,
       writeVault: mockWriteVault,
       writeNotesVault: mockWriteNotesVault,
+      notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
     };
   });
 
@@ -631,6 +634,9 @@ describe('VirtualTree keyboard navigation', () => {
       onVaultFileChanged: mockOnVaultFileChanged,
       writeVault: mockWriteVault,
       writeNotesVault: mockWriteNotesVault,
+      notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
     };
   });
 
@@ -841,6 +847,9 @@ describe('StoryVault ARIA tree roles', () => {
       onVaultFileChanged: mockOnVaultFileChanged,
       writeVault: mockWriteVault,
       sceneRename: vi.fn().mockResolvedValue({ scene: { id: 'sc1', title: 'Opening Scene' } }),
+      notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
     };
   });
 
