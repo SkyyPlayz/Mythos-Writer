@@ -1,6 +1,7 @@
 import { List } from 'react-window';
-import { useRef } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import type { CSSProperties } from 'react';
+import type { ListImperativeAPI } from 'react-window';
 import type { FlatRow } from './treeUtils';
 
 const ITEM_HEIGHT = 26;
@@ -17,6 +18,8 @@ interface RowData {
   onRenameChange?: (val: string) => void;
   onRenameCommit?: () => void;
   onRenameCancel?: () => void;
+  focusedIdx: number;
+  onMoveFocus: (newIdx: number) => void;
 }
 
 interface RowProps extends RowData {
@@ -58,10 +61,24 @@ function RenameInput({
   );
 }
 
-function Row({ index, style, ariaAttributes, rows, onToggle, onOpen, onContextMenu,
+function Row({
+  index, style, rows, onToggle, onOpen, onContextMenu,
   editingPath, editingValue, editError, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
+  focusedIdx, onMoveFocus,
+  // ariaAttributes (aria-posinset/aria-setsize/role="listitem") is intentionally unused;
+  // we emit role="treeitem" + aria-level instead.
 }: RowProps) {
+  const rowRef = useRef<HTMLDivElement>(null);
   const row = rows[index];
+  const isFocused = index === focusedIdx;
+
+  useEffect(() => {
+    if (isFocused && row && rowRef.current && document.activeElement !== rowRef.current) {
+      rowRef.current.focus({ preventScroll: true });
+    }
+  // row changes when expand/collapse changes the visible set; refocus if still the focused slot
+  }, [isFocused, row]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!row) return null;
 
   const { node, depth, isExpanded, isSelected } = row;
@@ -71,6 +88,7 @@ function Row({ index, style, ariaAttributes, rows, onToggle, onOpen, onContextMe
   const isEditing = editingPath === node.path;
 
   function handleClick() {
+    onMoveFocus(index);
     if (node.isDirectory) onToggle(node.path);
     else if (isMd) onOpen(node.path);
   }
@@ -83,24 +101,51 @@ function Row({ index, style, ariaAttributes, rows, onToggle, onOpen, onContextMe
     }
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (isEditing) return;
+    const count = rows.length;
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (index < count - 1) onMoveFocus(index + 1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (index > 0) onMoveFocus(index - 1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (node.isDirectory && !isExpanded) onToggle(node.path);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (node.isDirectory && isExpanded) onToggle(node.path);
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        handleClick();
+        break;
+    }
+  }
+
   return (
     <div
+      ref={rowRef}
       style={{ ...style, paddingLeft: indent, display: 'flex', alignItems: 'center', boxSizing: 'border-box', gap: 4, paddingRight: 8 }}
       className={`vb-row${isSelected ? ' vb-selected' : ''}${node.isDirectory ? ' vb-dir' : ' vb-file'}${isMd ? ' vb-md' : ''}`}
       data-testid={`vb-row-${node.path}`}
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-expanded={node.isDirectory ? isExpanded : undefined}
+      aria-selected={isSelected}
+      tabIndex={isInteractive ? (isFocused ? 0 : -1) : undefined}
       onClick={isEditing ? undefined : handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, row); }}
-      tabIndex={isInteractive ? 0 : undefined}
-      onKeyDown={(e) => {
-        if (isEditing) return;
-        if (e.key === 'Enter') { e.preventDefault(); handleClick(); }
-        if (e.key === 'ArrowRight' && node.isDirectory && !isExpanded) { e.preventDefault(); onToggle(node.path); }
-        if (e.key === 'ArrowLeft' && node.isDirectory && isExpanded) { e.preventDefault(); onToggle(node.path); }
-      }}
+      onKeyDown={handleKeyDown}
+      onFocus={() => { if (index !== focusedIdx) onMoveFocus(index); }}
       title={isEditing ? undefined : node.path}
-      {...ariaAttributes}
-      role={isInteractive ? 'button' : ariaAttributes.role}
     >
       <span className="vb-chevron" aria-hidden="true">
         {node.isDirectory ? (isExpanded ? '▾' : '▸') : ''}
@@ -138,6 +183,7 @@ interface VirtualTreeProps {
   onRenameChange?: (val: string) => void;
   onRenameCommit?: () => void;
   onRenameCancel?: () => void;
+  label?: string;
 }
 
 export default function VirtualTree({
@@ -153,21 +199,42 @@ export default function VirtualTree({
   onRenameChange,
   onRenameCommit,
   onRenameCancel,
+  label,
 }: VirtualTreeProps) {
+  const [focusedIdx, setFocusedIdx] = useState(0);
+  const listRef = useRef<ListImperativeAPI | null>(null);
+
+  const onMoveFocus = useCallback((newIdx: number) => {
+    setFocusedIdx(newIdx);
+    listRef.current?.scrollToRow({ index: newIdx, align: 'auto' });
+  }, []);
+
+  // Clamp focusedIdx when rows shrink (e.g. parent folder collapses)
+  useEffect(() => {
+    if (rows.length > 0 && focusedIdx >= rows.length) {
+      setFocusedIdx(rows.length - 1);
+    }
+  }, [rows.length, focusedIdx]);
+
   if (rows.length === 0) return null;
 
   return (
     <div
+      role="tree"
+      aria-label={label}
       data-testid={testId}
       style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
     >
       <List<RowData>
+        listRef={listRef as React.Ref<ListImperativeAPI>}
         rowComponent={Row}
         rowCount={rows.length}
         rowHeight={ITEM_HEIGHT}
-        rowProps={{ rows, onToggle, onOpen, onContextMenu,
+        rowProps={{
+          rows, onToggle, onOpen, onContextMenu,
           editingPath, editingValue, editError,
           onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
+          focusedIdx, onMoveFocus,
         }}
         style={{ overflowX: 'hidden' }}
       />
