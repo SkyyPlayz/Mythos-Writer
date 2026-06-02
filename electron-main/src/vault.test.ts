@@ -362,7 +362,6 @@ describe('YAML frontmatter', () => {
     expect(frontmatter.title).toBe('Divider Test');
     expect(reparsedProse).toBe(prose);
   });
-  });
 });
 
 describe('Obsidian-compatible scene files', () => {
