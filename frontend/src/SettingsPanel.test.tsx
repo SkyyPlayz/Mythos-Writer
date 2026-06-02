@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SettingsPanel from './SettingsPanel';
+import type { FocusPrefs } from './types';
 
 const defaultSettings: AppSettings = {
   apiKey: '',
@@ -639,5 +640,77 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
+  });
+
+  // SKY-325: Focus Mode section
+  it('does not render Focus Mode section when onFocusPrefsChange is not provided', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('heading', { name: /^appearance$/i }));
+    expect(screen.queryByRole('heading', { name: /^focus mode$/i })).not.toBeInTheDocument();
+  });
+
+  it('renders Focus Mode section when onFocusPrefsChange is provided', async () => {
+    const prefs: FocusPrefs = {
+      showLeftSidebar: false, showRightSidebar: false, showBottomBar: false,
+      showTitleBar: true, showStatusBar: true, showTabBar: true,
+      showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+    };
+    render(
+      <SettingsPanel
+        onClose={mockOnClose}
+        focusPrefs={prefs}
+        onFocusPrefsChange={vi.fn()}
+      />
+    );
+    await waitFor(() => screen.getByRole('heading', { name: /^focus mode$/i }));
+    expect(screen.getByRole('checkbox', { name: /show title bar/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show status bar/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show tabs/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show sidebar collapse buttons/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show scrollbars/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show file tree toggle arrows/i })).toBeInTheDocument();
+  });
+
+  it('calls onFocusPrefsChange immediately when a Focus Mode toggle is clicked', async () => {
+    const mockOnFocusPrefsChange = vi.fn();
+    const prefs: FocusPrefs = {
+      showLeftSidebar: false, showRightSidebar: false, showBottomBar: false,
+      showTitleBar: true, showStatusBar: true, showTabBar: true,
+      showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+    };
+    render(
+      <SettingsPanel
+        onClose={mockOnClose}
+        focusPrefs={prefs}
+        onFocusPrefsChange={mockOnFocusPrefsChange}
+      />
+    );
+    await waitFor(() => screen.getByRole('checkbox', { name: /show title bar/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /show title bar/i }));
+    expect(mockOnFocusPrefsChange).toHaveBeenCalledWith({ ...prefs, showTitleBar: false });
+  });
+
+  it('Focus Mode "Reset to defaults" restores all toggles to true', async () => {
+    const mockOnFocusPrefsChange = vi.fn();
+    const prefs: FocusPrefs = {
+      showLeftSidebar: false, showRightSidebar: false, showBottomBar: false,
+      showTitleBar: false, showStatusBar: false, showTabBar: false,
+      showSidebarButtons: false, showScrollbars: false, showFileTreeArrows: false,
+    };
+    render(
+      <SettingsPanel
+        onClose={mockOnClose}
+        focusPrefs={prefs}
+        onFocusPrefsChange={mockOnFocusPrefsChange}
+      />
+    );
+    await waitFor(() => screen.getByRole('button', { name: /reset to defaults/i }));
+    fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }));
+    expect(mockOnFocusPrefsChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        showTitleBar: true, showStatusBar: true, showTabBar: true,
+        showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+      })
+    );
   });
 });

@@ -1129,3 +1129,26 @@
 .settings-btn-danger:hover {
   background: var(--state-danger-bg);
 }
+
+/* ── Focus Mode toggles (SKY-325) ── */
+.settings-focus-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.settings-focus-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.settings-focus-toggle:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 3px;
+}

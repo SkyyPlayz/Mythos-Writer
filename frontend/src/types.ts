@@ -71,6 +71,13 @@ export interface FocusPrefs {
   showLeftSidebar: boolean;
   showRightSidebar: boolean;
   showBottomBar: boolean;
+  // SKY-325: customizable Focus Mode toggles — all default to true (keep UI visible)
+  showTitleBar: boolean;
+  showStatusBar: boolean;
+  showTabBar: boolean;
+  showSidebarButtons: boolean;
+  showScrollbars: boolean;
+  showFileTreeArrows: boolean;
 }
 
 export interface LayoutPrefs {

@@ -855,3 +855,26 @@
 .focus-save-ok {
   color: var(--success, #16a34a);
 }
+
+/* ─── Focus Mode element toggles (SKY-325) ─── */
+
+/* Hide the focus-prefs gear button when sidebar buttons are toggled off */
+.desktop-shell.focus-hide-sidebar-btns .writing-mode-prefs-btn {
+  display: none;
+}
+
+/* Hide all scrollbars while keeping content scrollable */
+.desktop-shell.focus-hide-scrollbars ::-webkit-scrollbar {
+  display: none;
+}
+.desktop-shell.focus-hide-scrollbars * {
+  scrollbar-width: none;
+}
+
+/* Hide file tree expand/collapse arrows */
+.desktop-shell.focus-hide-tree-arrows .vb-chevron,
+.desktop-shell.focus-hide-tree-arrows .vs-chevron,
+.desktop-shell.focus-hide-tree-arrows .vs-section-chevron,
+.desktop-shell.focus-hide-tree-arrows .nav-chevron {
+  visibility: hidden;
+}
