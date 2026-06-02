@@ -70,6 +70,12 @@ the merge queue button). GitHub will rebase, run CI, and merge automatically.
 If the merge queue is not available on the current plan, use the manual rebase
 workflow above.
 
+## Testing
+
+Read [`docs/testing-strategy.md`](docs/testing-strategy.md) before writing or reviewing any test.
+It covers the pyramid shape, Arrange-Act-Assert, boundary-value analysis, regression discipline,
+and all other techniques required by the Code Quality Standard.
+
 ## Running CI locally
 
 Run the same commands CI runs before pushing:
