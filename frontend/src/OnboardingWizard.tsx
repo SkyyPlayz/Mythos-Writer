@@ -61,6 +61,19 @@ type Api = {
   writeNotesVault?: (path: string, content: string) => Promise<unknown>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string } | { error: string }>;
+  // SKY-320: one-click default Mythos Vault create (~/Mythos/Vaults/<name>/).
+  vaultCreateDefaultMythos: (opts?: {
+    parentPath?: string;
+    vaultName?: string;
+    seedMode?: SeedMode;
+  }) => Promise<{
+    mythosVaultRoot: string;
+    vaultRoot: string;
+    notesVaultRoot: string;
+    name: string;
+    created: boolean;
+    error?: string;
+  }>;
 };
 
 interface TemplateItem {
@@ -472,6 +485,24 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     }
   }, [defaultPath, projectName, genre, writingGoal, finishOnboarding]);
 
+  // SKY-320: one-click default setup. Skips the folder-picker step entirely
+  // — main creates `~/Mythos/Vaults/Mythos Vault/{Story Vault, Notes Vault}`
+  // and scaffolds the standard layout. Users who want a custom location still
+  // have the "Use the default layout" picker card below.
+  const handleOneClickDefault = useCallback(async () => {
+    setError('');
+    setBusy(true);
+    try {
+      const res = await api().vaultCreateDefaultMythos({ seedMode: 'default' });
+      if (res.error) throw new Error(res.error);
+      finishOnboarding();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create default vault');
+    } finally {
+      setBusy(false);
+    }
+  }, [finishOnboarding]);
+
   // ─── Default-layout flow ───────────────────────────────────────────────────
 
   const handleDefaultBrowse = useCallback(async () => {
@@ -774,6 +805,21 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
             >
               Create your first project →
             </button>
+            {/* SKY-320: secondary one-click default lands a fully-scaffolded
+                Mythos Vault at ~/Mythos/Vaults/Mythos Vault/ with no folder
+                picker — for users who want zero ceremony. */}
+            <button
+              className="btn-secondary onboarding-default-quickstart__btn"
+              type="button"
+              onClick={handleOneClickDefault}
+              disabled={busy}
+              data-testid="quickstart-default-vault"
+            >
+              {busy ? 'Creating…' : '✨ Or use one-click default setup'}
+            </button>
+            <p className="onboarding-default-quickstart__hint">
+              Creates <code>~/Mythos/Vaults/Mythos Vault/</code> with Story Vault and Notes Vault — ready to go.
+            </p>
           </div>
 
           <details className="onboarding-other-options">
