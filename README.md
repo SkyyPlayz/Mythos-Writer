@@ -32,12 +32,20 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 - **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
 - **Brainstorm AI** — conversational story development; automatically extracts facts into your vault entities
 - **Writing Assistant** — proactive inline suggestions as you write (Edit mode)
-- **Entity browser** — characters, locations, and items extracted from brainstorm sessions
+- **Entity browser** — characters, locations, factions, items, events, and concepts; wiki-link any entity from your scenes
 - **Kanban board** — scene cards in a drag-and-drop board view
 - **Graph view** — visual map of WikiLink connections across your vault
 - **Export** — one-click EPUB and DOCX export (File → Export…)
 - **Snapshot history** — automatic per-scene version snapshots; right-click the editor to restore
 - **Auto-updater** — Stable and Beta release channels; updates install in the background
+
+## Documentation
+
+| Guide | Contents |
+|-------|----------|
+| [User Guide](docs/user-guide.md) | Vault management, scene editor, Brainstorm AI, settings |
+| [Entity System](docs/user-guide/entities.md) | Characters, locations, factions, items, events, concepts — wiki-links, connections, search |
+| [Keyboard Shortcuts](docs/keyboard-shortcuts.md) | Full shortcut reference |
 
 ## Contributing
 
