@@ -87,6 +87,20 @@ export function checkSetPathsGate(
   return { ok: true, storyVaultPath: input.storyVaultPath, notesVaultPath: input.notesVaultPath };
 }
 
+/**
+ * Returns true when `child` is exactly one directory level beneath `parent`.
+ * One level only — no traversal. Guards the onboarding create flow where the
+ * user picks a parent folder D and we create D/Story Vault and D/Notes Vault.
+ */
+function isDirectChildDir(parent: string, child: string): boolean {
+  const p = parent.replace(/[/\\]+$/, '');
+  const c = child.replace(/[/\\]+$/, '');
+  const sep = c[p.length];
+  if (!c.startsWith(p) || (sep !== '/' && sep !== '\\')) return false;
+  const rest = c.slice(p.length + 1);
+  return rest.length > 0 && !rest.includes('/') && !rest.includes('\\');
+}
+
 function pathPasses(
   requestedPath: string,
   token: string | null,
@@ -95,7 +109,7 @@ function pathPasses(
 ): boolean {
   if (token) {
     const validated = validateRegistrationToken(token, { consume: false, now });
-    if (validated && validated.vaultRoot === requestedPath) return true;
+    if (validated && (validated.vaultRoot === requestedPath || isDirectChildDir(validated.vaultRoot, requestedPath))) return true;
   }
   return allowlist.includes(requestedPath);
 }

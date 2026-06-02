@@ -24,8 +24,9 @@ contextBridge.exposeInMainWorld('api', {
   vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
   // SKY-12.2: opts.seedMode = 'default' | 'blank' controls scaffold behavior.
   // Defaults to 'default' (full SKY-15 layout) when absent — backwards-compatible.
-  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) =>
-    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode }),
+  // SKY-270 / MYT-789: storyVaultToken / notesVaultToken come from vault:pick-folder.
+  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) =>
+    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode, storyVaultToken: opts?.storyVaultToken, notesVaultToken: opts?.notesVaultToken }),
   // SKY-12.2: pure filesystem check for the onboarding wizard path-picker.
   validatePath: (p: string) => ipcRenderer.invoke('vault:validate-path', { path: p }),
   // SKY-12.3: copy the bundled sample project into a two-vault layout.
