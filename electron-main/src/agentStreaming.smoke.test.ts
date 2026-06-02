@@ -249,9 +249,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   // ── 1. Streaming token render ─────────────────────────────────────────────
 
   it('sends stream-start with a requestId before the first chunk', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['hello']) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     const result = await runAgentHandler(cfg, makeEvent(sender), cfg.makePayload(), controllers);
@@ -263,9 +263,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
 
   it('delivers one chunk event per text token via the correct IPC channel', async () => {
     const tokens = ['The', ' dragon', ' soared', '.'];
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(tokens) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     await runAgentHandler(cfg, makeEvent(sender), cfg.makePayload(), controllers);
@@ -277,9 +277,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
 
   it('assembles full response text from all tokens', async () => {
     const tokens = ['Once', ' upon', ' a', ' time', '.'];
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(tokens) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const result = await runAgentHandler(
       cfg,
@@ -292,9 +292,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('ignores non-text-delta chunk types without error or extra events', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['word']) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     await runAgentHandler(cfg, makeEvent(sender), cfg.makePayload(), controllers);
@@ -306,9 +306,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('returns a unique requestId for each invocation', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream([]) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const r1 = await runAgentHandler(cfg, makeEvent(makeSender()), cfg.makePayload(), controllers);
     const r2 = await runAgentHandler(cfg, makeEvent(makeSender()), cfg.makePayload(), controllers);
@@ -320,14 +320,14 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
     if (cfg.agentLabel !== 'brainstorm') return; // only brainstorm carries history
 
     let capturedMessages: unknown[] | undefined;
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: {
         stream: (args: { messages: unknown[] }) => {
           capturedMessages = args.messages;
           return fullStream(['ok']);
         },
       },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const payload = {
       prompt: 'Expand on that.',
@@ -349,12 +349,12 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   // ── 2. Mid-stream cancel via STREAM_CANCEL ────────────────────────────────
 
   it('cancel stops chunk delivery — only tokens before cancel arrive', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: {
         stream: (_args: unknown, opts: { signal: AbortSignal }) =>
           abortableStream(opts.signal),
       },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     const handlerPromise = runAgentHandler(
@@ -384,12 +384,12 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('cancel resolves the handler cleanly (no rejection)', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: {
         stream: (_: unknown, opts: { signal: AbortSignal }) =>
           abortableStream(opts.signal),
       },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     const handlerPromise = runAgentHandler(
@@ -408,12 +408,12 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('partial text accumulated before cancel is returned', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: {
         stream: (_: unknown, opts: { signal: AbortSignal }) =>
           abortableStream(opts.signal),
       },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     const handlerPromise = runAgentHandler(
@@ -433,12 +433,12 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('controller is removed from the registry after cancel', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: {
         stream: (_: unknown, opts: { signal: AbortSignal }) =>
           abortableStream(opts.signal),
       },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     const handlerPromise = runAgentHandler(
@@ -478,9 +478,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   // ── 3. Prompt-history capture ─────────────────────────────────────────────
 
   it('writes one generation_log row with correct agent name and model', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['A', 'B', 'C']) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     await runAgentHandler(cfg, makeEvent(makeSender()), cfg.makePayload(), controllers);
 
@@ -492,9 +492,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('generation_log captures input and output token counts', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['hello'], 42, 7) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     await runAgentHandler(cfg, makeEvent(makeSender()), cfg.makePayload(), controllers);
 
@@ -504,9 +504,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('generation_log records a non-negative latency_ms', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['x']) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     await runAgentHandler(cfg, makeEvent(makeSender()), cfg.makePayload(), controllers);
 
@@ -515,9 +515,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('generation_log row has null error on successful stream', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['ok']) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     await runAgentHandler(cfg, makeEvent(makeSender()), cfg.makePayload(), controllers);
 
@@ -526,12 +526,12 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('generation_log row is persisted even when stream is cancelled mid-flight', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: {
         stream: (_: unknown, opts: { signal: AbortSignal }) =>
           abortableStream(opts.signal),
       },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const sender = makeSender();
     const handlerPromise = runAgentHandler(
@@ -556,9 +556,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('generation_log request_id matches the requestId returned to the caller', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['token']) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const result = await runAgentHandler(
       cfg,
@@ -572,9 +572,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
   });
 
   it('controller is removed from registry after successful stream', async () => {
-    vi.mocked(Anthropic).mockReturnValue({
+    vi.mocked(Anthropic).mockImplementation(function() { return ({
       messages: { stream: () => fullStream(['done']) },
-    } as unknown as Anthropic);
+    } as unknown as Anthropic); })
 
     const result = await runAgentHandler(
       cfg,
@@ -622,9 +622,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
 
   describe.each(providerRejections)('provider rejection: $label', ({ error, expectedCategory, expectedMessage }) => {
     it('sends a categorized error IPC event on the error channel', async () => {
-      vi.mocked(Anthropic).mockReturnValue({
+      vi.mocked(Anthropic).mockImplementation(function() { return ({
         messages: { stream: () => rejectingStream(error) },
-      } as unknown as Anthropic);
+      } as unknown as Anthropic); })
 
       const sender = makeSender();
       await expect(
@@ -640,9 +640,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
     });
 
     it('sends no chunk events when the provider rejects before streaming', async () => {
-      vi.mocked(Anthropic).mockReturnValue({
+      vi.mocked(Anthropic).mockImplementation(function() { return ({
         messages: { stream: () => rejectingStream(error) },
-      } as unknown as Anthropic);
+      } as unknown as Anthropic); })
 
       const sender = makeSender();
       await expect(
@@ -654,9 +654,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
     });
 
     it('removes the controller from the registry after provider rejection', async () => {
-      vi.mocked(Anthropic).mockReturnValue({
+      vi.mocked(Anthropic).mockImplementation(function() { return ({
         messages: { stream: () => rejectingStream(error) },
-      } as unknown as Anthropic);
+      } as unknown as Anthropic); })
 
       const sender = makeSender();
       const startCall = new Promise<string>((resolve) => {
@@ -674,9 +674,9 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
     });
 
     it('writes a generation_log row with the error field populated', async () => {
-      vi.mocked(Anthropic).mockReturnValue({
+      vi.mocked(Anthropic).mockImplementation(function() { return ({
         messages: { stream: () => rejectingStream(error) },
-      } as unknown as Anthropic);
+      } as unknown as Anthropic); })
 
       await expect(
         runAgentHandler(cfg, makeEvent(makeSender()), cfg.makePayload(), controllers),

@@ -28,6 +28,6 @@
     "electron-vite": "^5.0.0",
     "fast-check": "^4.8.0",
     "typescript": "^5.3.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.8"
   }
 }
