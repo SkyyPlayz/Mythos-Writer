@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   ci:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -133,10 +133,10 @@ jobs:
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
-    # Running on self-hosted (Linux) so the required check CI/build-macos resolves green.
+    # Running on ubuntu-latest (Linux) so the required check CI/build-macos resolves green.
     # Replace with macos-latest and restore the packaging steps once billing is active
     # (est. June 2026) or a self-hosted macOS runner is added (MYT-749).
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: macOS build placeholder
@@ -145,7 +145,7 @@ jobs:
           echo "This stub keeps the CI / build-macos required check green until then."
 
   build-linux:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
