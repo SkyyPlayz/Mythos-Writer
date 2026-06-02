@@ -294,7 +294,10 @@ export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) return { frontmatter: {}, prose: raw };
 
-  const fm: Frontmatter = {};
+  // Object.create(null) prevents prototype-pollution: keys like '__proto__' or
+  // 'constructor' become plain own properties instead of intercepting prototype
+  // chain operations.  Callers spread into {} literals, so downstream code is safe.
+  const fm: Frontmatter = Object.create(null) as Frontmatter;
   for (const line of match[1].split('\n')) {
     const colon = line.indexOf(':');
     if (colon === -1) continue;
