@@ -122,6 +122,9 @@ jobs:
       - name: E2E — Entity system regression create/alias/browse (SKY-220)
         run: xvfb-run --auto-servernum npm run test:e2e:entity
 
+      - name: E2E — Vault Graph View Liquid Neon styling (SKY-217)
+        run: xvfb-run --auto-servernum npm run test:e2e:vault-graph
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true

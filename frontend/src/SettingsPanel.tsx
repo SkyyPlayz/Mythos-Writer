@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
+import { resolveAxisTokens } from './themeAxis';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -387,6 +388,14 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     return () => document.removeEventListener('keydown', handler);
   }, [lgAdvancedOpen]);
 
+  // Keep --lg-neon in sync with the softness slider (SKY-261)
+  useEffect(() => {
+    const s = lg.softnessContrast;
+    if (s != null && !isNaN(s)) {
+      document.documentElement.style.setProperty('--lg-neon', resolveAxisTokens(s * 100).neon.toFixed(2));
+    }
+  }, [lg.softnessContrast]);
+
   // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) onClose(); };
@@ -628,6 +637,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, [bgPreviewUrl]);
 
   const handleSoftnessChange = useCallback((s: number) => {
+    document.documentElement.style.setProperty('--lg-neon', resolveAxisTokens(s * 100).neon.toFixed(2));
     setLg((prev) => {
       if (prev.advancedDecoupled) {
         // When decoupled only update the master; individual sliders stay

@@ -34,7 +34,8 @@
     "test:e2e:vault-routing": "playwright test e2e/tests/vault-routing-regression.spec.ts --reporter=list",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main",
     "test:e2e:a11y": "playwright test e2e/a11y-focus.spec.ts --reporter=list",
-    "test:e2e:entity": "playwright test e2e/entity-system.spec.ts --reporter=list"
+    "test:e2e:entity": "playwright test e2e/entity-system.spec.ts --reporter=list",
+    "test:e2e:vault-graph": "playwright test e2e/vault-graph.spec.ts --reporter=list"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0",
