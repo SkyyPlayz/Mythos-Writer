@@ -535,10 +535,26 @@ interface Window {
     // Telemetry (MYT-344) — opt-in, off by default
     telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) => Promise<unknown>;
 
-    // Multi-project switcher (MYT-374)
+    // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
     projectList: () => Promise<unknown>;
-    projectSwitch: (vaultRoot: string) => Promise<unknown>;
-    onProjectSwitched: (cb: (data: { vaultRoot: string }) => void) => () => void;
+    projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<unknown>;
+    onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
+
+    // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
+    // new bundle under ~/Mythos/Vaults/<auto-name>/; the renderer can supply
+    // a custom parent (e.g. a OneDrive folder) for Obsidian-style placement.
+    vaultCreateDefaultMythos: (opts?: {
+      parentPath?: string;
+      vaultName?: string;
+      seedMode?: 'default' | 'blank';
+    }) => Promise<{
+      mythosVaultRoot: string;
+      vaultRoot: string;
+      notesVaultRoot: string;
+      name: string;
+      created: boolean;
+      error?: string;
+    }>;
 
     // Archive confirmation dialog (MYT-376)
     archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') => Promise<unknown>;

@@ -98,6 +98,8 @@ import {
   type VaultPickFolderByPathPayload,
   type ProjectEntry,
   type ProjectSwitchPayload,
+  type CreateDefaultMythosVaultPayload,
+  type CreateDefaultMythosVaultResponse,
   type ArchiveConfirmPayload,
   type BgLoadPayload,
   type VaultSetPathsPayload,
@@ -304,6 +306,12 @@ import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
 import type { SmartFolderEntry, CustomFieldDef } from './ipc.js';
 import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
+import {
+  DEFAULT_MYTHOS_VAULT_NAME,
+  deriveProjectName,
+  isSafeVaultName,
+  pickUniqueMythosVaultName,
+} from './mythosVault.js';
 
 const require = createRequire(import.meta.url);
 
@@ -343,12 +351,19 @@ interface VaultSettings {
   recentProjects?: ProjectEntry[];
 }
 
-const MAX_RECENT_PROJECTS = 5;
+// SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
+// Mythos Vault a user has opened without quietly trimming older ones.
+const MAX_RECENT_PROJECTS = 16;
 
-function addToRecentProjects(vaultRoot: string): void {
+function addToRecentProjects(vaultRoot: string, notesVaultRoot?: string): void {
   const current = loadVaultSettings();
-  const name = path.basename(vaultRoot);
-  const entry: ProjectEntry = { name, vaultRoot, openedAt: new Date().toISOString() };
+  const name = deriveProjectName(vaultRoot, notesVaultRoot);
+  const entry: ProjectEntry = {
+    name,
+    vaultRoot,
+    notesVaultRoot,
+    openedAt: new Date().toISOString(),
+  };
   const existing = (current.recentProjects ?? []).filter((p) => p.vaultRoot !== vaultRoot);
   const updated = [entry, ...existing].slice(0, MAX_RECENT_PROJECTS);
   saveVaultSettings({ recentProjects: updated });
@@ -356,6 +371,14 @@ function addToRecentProjects(vaultRoot: string): void {
 
 function getRecentProjects(): ProjectEntry[] {
   return loadVaultSettings().recentProjects ?? [];
+}
+
+// SKY-320: return the Notes Vault paired with `vaultRoot` from the recents
+// allowlist, or `undefined` when the entry predates SKY-320 pairing. Callers
+// can then fall back to the legacy default Notes Vault.
+function getPairedNotesVaultRoot(vaultRoot: string): string | undefined {
+  const entry = getRecentProjects().find((p) => p.vaultRoot === vaultRoot);
+  return entry?.notesVaultRoot;
 }
 
 function getVaultSettingsPath(): string {
@@ -373,6 +396,13 @@ function defaultVaultRoot(): string {
 
 function defaultNotesVaultRoot(): string {
   return path.join(app.getPath('home'), 'Mythos', 'Notes Vault');
+}
+
+// SKY-320: Obsidian-style multi-vault root. New Mythos Vaults default into
+// `~/Mythos/Vaults/<vault-name>/` so a user can have many self-contained
+// bundles side by side, each with its own Story + Notes pair.
+function defaultMythosVaultsParent(): string {
+  return path.join(app.getPath('home'), 'Mythos', 'Vaults');
 }
 
 // SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
@@ -808,7 +838,10 @@ const handlers: IpcHandlers = {
     }
     const newRoot = result.filePaths[0];
     saveVaultSettings({ vaultRoot: newRoot });
-    addToRecentProjects(newRoot);
+    // SKY-320: legacy "open folder" only switches the Story Vault; pair it
+    // with the currently-configured Notes Vault so the recents allowlist
+    // entry still has both halves.
+    addToRecentProjects(newRoot, getNotesVaultRoot());
     ensureVaultDir();
     await stopVaultWatcher();
     await startVaultWatcher(newRoot, notifyVaultChanged);
@@ -2913,6 +2946,7 @@ const handlers: IpcHandlers = {
     return {
       projects: getRecentProjects(),
       activeVaultRoot: getVaultRoot(),
+      activeNotesVaultRoot: getNotesVaultRoot(),
     };
   },
 
@@ -2932,15 +2966,42 @@ const handlers: IpcHandlers = {
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
+    // SKY-320: when the caller supplies a Notes Vault, it must match the
+    // paired entry in recent-projects. Cross-pairing (story from entry A,
+    // notes from entry B) is rejected so a compromised renderer cannot
+    // assemble a never-seen pair from the allowlist. When the caller omits
+    // notesVaultRoot, fall back to the paired entry or the legacy default.
+    const pairedNotes = getPairedNotesVaultRoot(newRoot);
+    let newNotesRoot: string;
+    if (payload?.notesVaultRoot != null) {
+      if (typeof payload.notesVaultRoot !== 'string' || payload.notesVaultRoot.length === 0) {
+        return { vaultRoot: getVaultRoot(), switched: false, error: 'notesVaultRoot: must be a non-empty string' };
+      }
+      if (pairedNotes && pairedNotes !== payload.notesVaultRoot) {
+        return {
+          vaultRoot: getVaultRoot(),
+          switched: false,
+          error: 'notesVaultRoot: does not match the paired entry in recent-projects',
+        };
+      }
+      newNotesRoot = payload.notesVaultRoot;
+    } else {
+      newNotesRoot = pairedNotes ?? getNotesVaultRoot();
+    }
+    if (!fs.existsSync(newNotesRoot)) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: `Notes Vault path does not exist: ${newNotesRoot}` };
+    }
     // Stop watchers, scheduler, and close current DB before switching
     stopWritingScanScheduler();
     await stopVaultWatcher();
     await stopNotesVaultWatcher();
     closeDb();
-    // Switch vault
-    saveVaultSettings({ vaultRoot: newRoot });
-    addToRecentProjects(newRoot);
+    // Switch vault — persist BOTH halves atomically so a crash between
+    // saves cannot leave a stale Notes Vault paired with a fresh Story Vault.
+    saveVaultSettings({ vaultRoot: newRoot, notesVaultRoot: newNotesRoot });
+    addToRecentProjects(newRoot, newNotesRoot);
     ensureVaultDir();
+    ensureNotesVaultDir();
     // Rebuild FTS index for new vault
     try {
       const manifest = readManifest(getManifestPath());
@@ -2950,13 +3011,117 @@ const handlers: IpcHandlers = {
     } catch { /* non-fatal */ }
     // Restart file watchers and scheduler
     await startVaultWatcher(newRoot, notifyVaultChanged);
-    await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
+    await startNotesVaultWatcher(newNotesRoot, notifyNotesVaultChanged);
     startWritingScanScheduler();
     // Notify renderer to reload
     if (mainWindow) {
-      mainWindow.webContents.send('project:switched', { vaultRoot: newRoot });
+      mainWindow.webContents.send('project:switched', { vaultRoot: newRoot, notesVaultRoot: newNotesRoot });
     }
-    return { vaultRoot: newRoot, switched: true };
+    return { vaultRoot: newRoot, notesVaultRoot: newNotesRoot, switched: true };
+  },
+
+  // ─── One-click Mythos Vault (SKY-320) ───
+  [IPC_CHANNELS.VAULT_CREATE_DEFAULT_MYTHOS]: async (
+    payload: CreateDefaultMythosVaultPayload,
+  ): Promise<CreateDefaultMythosVaultResponse> => {
+    // Determine parent: caller-supplied (any pre-validated absolute path) or
+    // the default ~/Mythos/Vaults convention. Anything not absolute is
+    // rejected so the renderer cannot escape via a relative-path trick.
+    const parentPath = (payload?.parentPath && typeof payload.parentPath === 'string')
+      ? payload.parentPath
+      : defaultMythosVaultsParent();
+    if (!path.isAbsolute(parentPath)) {
+      return {
+        mythosVaultRoot: '',
+        vaultRoot: '',
+        notesVaultRoot: '',
+        name: '',
+        created: false,
+        error: 'parentPath: must be an absolute path',
+      };
+    }
+    const rawName = (payload?.vaultName && typeof payload.vaultName === 'string')
+      ? payload.vaultName.trim()
+      : '';
+    // SECURITY: refuse path separators / parent-traversal in the vault name
+    // so a malicious renderer cannot scaffold outside `parentPath`.
+    if (rawName && !isSafeVaultName(rawName)) {
+      return {
+        mythosVaultRoot: '',
+        vaultRoot: '',
+        notesVaultRoot: '',
+        name: '',
+        created: false,
+        error: 'vaultName: must not contain path separators or parent references',
+      };
+    }
+    const seedMode: 'default' | 'blank' = payload?.seedMode === 'blank' ? 'blank' : 'default';
+    try {
+      fs.mkdirSync(parentPath, { recursive: true });
+    } catch (e) {
+      return {
+        mythosVaultRoot: '',
+        vaultRoot: '',
+        notesVaultRoot: '',
+        name: '',
+        created: false,
+        error: `Could not create parent directory: ${(e as Error).message}`,
+      };
+    }
+    const baseName = rawName || DEFAULT_MYTHOS_VAULT_NAME;
+    const finalName = pickUniqueMythosVaultName(parentPath, baseName);
+    const mythosVaultRoot = path.join(parentPath, finalName);
+    const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
+    const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
+    let created = true;
+    try {
+      if (fs.existsSync(mythosVaultRoot)) {
+        // Reuse only when fully empty — otherwise refuse so we never overwrite.
+        if (!isEmptyOrMissing(mythosVaultRoot)) {
+          return {
+            mythosVaultRoot,
+            vaultRoot: storyVaultPath,
+            notesVaultRoot: notesVaultPath,
+            name: finalName,
+            created: false,
+            error: 'Mythos Vault folder is not empty',
+          };
+        }
+        created = false;
+      } else {
+        fs.mkdirSync(mythosVaultRoot, { recursive: true });
+      }
+      fs.mkdirSync(storyVaultPath, { recursive: true });
+      fs.mkdirSync(notesVaultPath, { recursive: true });
+    } catch (e) {
+      return {
+        mythosVaultRoot,
+        vaultRoot: storyVaultPath,
+        notesVaultRoot: notesVaultPath,
+        name: finalName,
+        created: false,
+        error: `Could not create vault bundle: ${(e as Error).message}`,
+      };
+    }
+    // Persist settings + add to recents BEFORE the scaffold so the new pair
+    // is in the allowlist if the renderer follows up with a project:switch.
+    saveVaultSettings({
+      vaultRoot: storyVaultPath,
+      notesVaultRoot: notesVaultPath,
+      layoutMode: seedMode,
+    });
+    addToRecentProjects(storyVaultPath, notesVaultPath);
+    // ensureVaultDir / ensureNotesVaultDir read the persisted settings, so
+    // they scaffold against the new roots above.
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    return {
+      mythosVaultRoot,
+      vaultRoot: storyVaultPath,
+      notesVaultRoot: notesVaultPath,
+      name: finalName,
+      created,
+    };
   },
 
   // ─── Two-vault paths (MYT-608) ───

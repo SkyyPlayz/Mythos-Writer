@@ -427,14 +427,20 @@ contextBridge.exposeInMainWorld('api', {
   telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) =>
     ipcRenderer.invoke('telemetry:report', { type, meta }),
 
-  // Multi-project switcher (MYT-374)
+  // Multi-project switcher (MYT-374, extended SKY-320)
   projectList: () => ipcRenderer.invoke('project:list', undefined),
-  projectSwitch: (vaultRoot: string) => ipcRenderer.invoke('project:switch', { vaultRoot }),
-  onProjectSwitched: (cb: (data: { vaultRoot: string }) => void) => {
-    const handler = (_: unknown, data: { vaultRoot: string }) => cb(data);
+  projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
+    ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
+  onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
+    const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);
     return () => ipcRenderer.removeListener('project:switched', handler);
   },
+
+  // One-click Mythos Vault create (SKY-320). The default flow passes no
+  // parentPath — main creates the bundle under ~/Mythos/Vaults/.
+  vaultCreateDefaultMythos: (opts?: { parentPath?: string; vaultName?: string; seedMode?: 'default' | 'blank' }) =>
+    ipcRenderer.invoke('vault:createDefaultMythos', opts ?? {}),
 
   // Archive confirmation dialog (MYT-376)
   archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>

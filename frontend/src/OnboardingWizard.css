@@ -57,6 +57,37 @@
   margin-block-start: var(--space-3);
 }
 
+/* ─── One-click default quickstart (SKY-320) ──────────────────────────────── */
+
+.onboarding-default-quickstart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 540px;
+  text-align: center;
+}
+
+.onboarding-default-quickstart__btn {
+  font-size: 1.05rem;
+  padding: 0.85rem 1.6rem;
+  min-width: 280px;
+}
+
+.onboarding-default-quickstart__hint {
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin: 0;
+}
+
+.onboarding-default-quickstart__hint code {
+  font-size: 0.85rem;
+  padding: 0.1rem 0.35rem;
+  background: var(--color-surface, #1e1e2e);
+  border-radius: 4px;
+}
+
 /* ─── Picker card grid ─────────────────────────────────────────────────────── */
 
 .picker-grid {

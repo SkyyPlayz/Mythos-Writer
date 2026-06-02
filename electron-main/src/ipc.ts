@@ -339,6 +339,11 @@ export const IPC_CHANNELS = {
   CUSTOM_FIELDS_SET: 'customFields:set',
   SCENE_PROPS_GET: 'scene:propsGet',
   SCENE_PROPS_SET: 'scene:propsSet',
+
+  // SKY-320: one-click Mythos Vault create (Vaults/<name>/{Story Vault, Notes Vault}).
+  // Skips the folder picker; renderer either accepts the default parent
+  // (~/Mythos/Vaults) or supplies one it already validated.
+  VAULT_CREATE_DEFAULT_MYTHOS: 'vault:createDefaultMythos',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -584,6 +589,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }) => { fields: CustomFieldDef[] };
   [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }) => { customFields: Record<string, unknown> };
   [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }) => { ok: boolean };
+
+  // SKY-320: one-click Mythos Vault create
+  [IPC_CHANNELS.VAULT_CREATE_DEFAULT_MYTHOS]: (payload: CreateDefaultMythosVaultPayload) => Promise<CreateDefaultMythosVaultResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -1460,21 +1468,56 @@ export interface SettingsTestConnectionResponse {
 export interface ProjectEntry {
   name: string;
   vaultRoot: string;
+  // SKY-320: paired Notes Vault path so switching a Mythos Vault swaps both
+  // halves atomically. Optional for back-compat with entries written before
+  // pairing landed; resolved to the legacy default at switch time.
+  notesVaultRoot?: string;
   openedAt: string;
 }
 
 export interface ProjectListResponse {
   projects: ProjectEntry[];
   activeVaultRoot: string;
+  /** SKY-320: paired Notes Vault for the currently-active project. */
+  activeNotesVaultRoot?: string;
 }
 
 export interface ProjectSwitchPayload {
   vaultRoot: string;
+  /** SKY-320: optional Notes Vault to switch to atomically with the Story Vault. */
+  notesVaultRoot?: string;
 }
 
 export interface ProjectSwitchResponse {
   vaultRoot: string;
+  /** SKY-320: present when the switch also moved the Notes Vault. */
+  notesVaultRoot?: string;
   switched: boolean;
+  error?: string;
+}
+
+// ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
+
+export interface CreateDefaultMythosVaultPayload {
+  /**
+   * Optional parent folder for the Mythos Vault. When absent, the bundle is
+   * created under `~/Mythos/Vaults/`. Allowed to point anywhere the user
+   * already trusts (e.g. a OneDrive directory).
+   */
+  parentPath?: string;
+  /** Optional display name for the new Mythos Vault. */
+  vaultName?: string;
+  /** Default 'default' (full scaffold); 'blank' suppresses seed content. */
+  seedMode?: 'default' | 'blank';
+}
+
+export interface CreateDefaultMythosVaultResponse {
+  mythosVaultRoot: string;
+  vaultRoot: string;
+  notesVaultRoot: string;
+  name: string;
+  /** False when the bundle already existed; we still re-persisted settings. */
+  created: boolean;
   error?: string;
 }
 
