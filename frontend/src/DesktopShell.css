@@ -399,6 +399,22 @@
   color: var(--border-strong) !important;
 }
 
+.shell-editor-empty-cta {
+  margin-top: 8px;
+  background: var(--accent, #7c5cff);
+  color: var(--bg-canvas, #0b0e13);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 28px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.shell-editor-empty-cta:hover {
+  opacity: 0.88;
+}
+
 /* Loading / error states */
 .shell-loading {
   display: flex;

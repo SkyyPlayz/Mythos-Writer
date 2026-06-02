@@ -1571,16 +1571,28 @@ export default function DesktopShell() {
             <div className="shell-editor-empty">
               <div className="shell-editor-empty-icon">✍️</div>
               <h2>Welcome to Mythos Writer</h2>
-              <p>Select a scene from the left panel to start writing.</p>
-              <p className="shell-editor-empty-sub">
-                No stories yet? Click the <strong>+</strong> button in the Stories panel to create your first story.
-              </p>
-              <PaneTip
-                tipKey="editor"
-                text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
-                seen={seenTips['editor'] ?? false}
-                onDismiss={handleDismissTip}
-              />
+              {stories.length === 0 ? (
+                <>
+                  <p>Create your first story to begin writing.</p>
+                  <button
+                    className="shell-editor-empty-cta"
+                    onClick={createStory}
+                    data-testid="shell-empty-new-story"
+                  >
+                    New Story
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Select a scene from the left panel to start writing.</p>
+                  <PaneTip
+                    tipKey="editor"
+                    text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                    seen={seenTips['editor'] ?? false}
+                    onDismiss={handleDismissTip}
+                  />
+                </>
+              )}
             </div>
           )}
         </div>
