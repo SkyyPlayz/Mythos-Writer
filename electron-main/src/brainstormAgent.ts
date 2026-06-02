@@ -45,6 +45,68 @@ export function parseFacts(text: string): ParsedFact[] {
   return results;
 }
 
+// ─── Alias hint extraction (SKY-191) ───
+
+export interface AliasHint {
+  entityName: string;
+  alias: string;
+}
+
+/**
+ * Scans free-form text (user messages or agent output) for common English
+ * alias-introduction patterns and returns (entityName, alias) pairs.
+ *
+ * Recognised patterns:
+ *   "Name, also known as Alias"
+ *   "Name (aka Alias)"
+ *   "Name, called Alias"
+ *   "Name, named Alias"
+ *
+ * Entity names must begin with a capital letter (proper nouns).
+ * Results are deduplicated case-insensitively.
+ */
+export function parseAliasHints(text: string): AliasHint[] {
+  const results: AliasHint[] = [];
+  const seen = new Set<string>();
+
+  function add(rawEntity: string, rawAlias: string): void {
+    const e = rawEntity.trim().replace(/^["']|["']$/g, '');
+    const a = rawAlias.trim()
+      .replace(/^["']|["']$/g, '')
+      .replace(/[.,;!?]+$/, '');
+    if (!e || !a) return;
+    if (e.toLowerCase() === a.toLowerCase()) return;
+    const key = `${e.toLowerCase()}|${a.toLowerCase()}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push({ entityName: e, alias: a });
+    }
+  }
+
+  // Each pattern captures (entityName, alias).
+  // Entity name: capitalized word + up to 3 additional words (lazy so the
+  // engine prefers shorter names and doesn't swallow keywords like "also").
+  // Alias: up to 7 words after the keyword.
+  const NAME = String.raw`([A-Z][a-zA-Z]+(?:\s+[A-Za-z]+){0,3}?)`;
+  const ALIAS = String.raw`((?:[A-Za-z]+\s+){0,6}[A-Za-z]+)`;
+
+  const patterns = [
+    new RegExp(`\\b${NAME},?\\s+(?:also\\s+)?known\\s+as\\s+${ALIAS}`, 'g'),
+    new RegExp(`\\b${NAME},?\\s+\\(?aka\\.?\\s+${ALIAS}\\)?`, 'gi'),
+    new RegExp(`\\b${NAME},?\\s+(?:also\\s+)?called\\s+${ALIAS}`, 'g'),
+    new RegExp(`\\b${NAME},?\\s+(?:also\\s+)?named\\s+${ALIAS}`, 'g'),
+  ];
+
+  for (const pattern of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(text)) !== null) {
+      add(m[1], m[2]);
+    }
+  }
+
+  return results;
+}
+
 // ─── vaultPath validator (MYT-185 / F10) ───
 
 const VAULT_PATH_REGEX = /^[a-z0-9][a-z0-9_-]{0,63}$/i;

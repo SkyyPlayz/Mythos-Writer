@@ -205,4 +205,72 @@ describe('checkSetPathsGate', () => {
     );
     expect(result.ok).toBe(false);
   });
+
+  // SKY-270 / MYT-789: parent-bound token authorises direct-child vault dirs
+  // so a single pickFolder() on the parent suffices for both Story Vault and
+  // Notes Vault sub-directories.
+
+  it('accepts vault sub-dirs when the token is bound to their parent (onboarding create flow)', () => {
+    const parentToken = generateRegistrationToken('/home/alice/Mythos');
+    // Same token passed for both — gate peeks both with consume:false, then
+    // consumes once; second consume is a harmless no-op.
+    const result = checkSetPathsGate(
+      {
+        storyVaultPath: '/home/alice/Mythos/Story Vault',
+        notesVaultPath: '/home/alice/Mythos/Notes Vault',
+        storyVaultToken: parentToken,
+        notesVaultToken: parentToken,
+      },
+      [],
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.storyVaultPath).toBe('/home/alice/Mythos/Story Vault');
+      expect(result.notesVaultPath).toBe('/home/alice/Mythos/Notes Vault');
+    }
+  });
+
+  it('rejects when the token is bound to the grandparent (two levels up — no traversal)', () => {
+    const grandparentToken = generateRegistrationToken('/home/alice');
+    const result = checkSetPathsGate(
+      {
+        storyVaultPath: '/home/alice/Mythos/Story Vault',
+        notesVaultPath: '/home/alice/Mythos/Notes Vault',
+        storyVaultToken: grandparentToken,
+        notesVaultToken: grandparentToken,
+      },
+      [],
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects path-traversal attempt using a parent token (../escape)', () => {
+    const parentToken = generateRegistrationToken('/home/alice/Mythos');
+    const result = checkSetPathsGate(
+      {
+        storyVaultPath: '/home/alice/Mythos/../../../etc',
+        notesVaultPath: '/home/alice/Mythos/Notes Vault',
+        storyVaultToken: parentToken,
+        notesVaultToken: parentToken,
+      },
+      [],
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a sibling dir (not a direct child of the picked parent)', () => {
+    // Token for /home/alice/Mythos must NOT authorise /home/alice/OtherProject
+    // even though both share the /home/alice parent.
+    const parentToken = generateRegistrationToken('/home/alice/Mythos');
+    const result = checkSetPathsGate(
+      {
+        storyVaultPath: '/home/alice/OtherProject/Story Vault',
+        notesVaultPath: '/home/alice/OtherProject/Notes Vault',
+        storyVaultToken: parentToken,
+        notesVaultToken: parentToken,
+      },
+      [],
+    );
+    expect(result.ok).toBe(false);
+  });
 });

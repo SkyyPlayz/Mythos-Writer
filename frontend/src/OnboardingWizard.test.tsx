@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
 
 const BASE_SETTINGS: AppSettings = {
@@ -296,6 +296,8 @@ describe('OnboardingWizard — S2b Dry-run report', () => {
     await goToDryRun();
     fireEvent.click(screen.getByTestId('confirm-import'));
     await waitFor(() => expect(screen.getByTestId('screen-import-progress')).toBeInTheDocument());
+    // Drain the pending obsidianRegister microtask so it doesn't fire after JSDOM teardown.
+    await act(async () => {});
   });
 
   it('forwards registrationToken from pickFolder to obsidianDryRun', async () => {
@@ -317,7 +319,7 @@ describe('OnboardingWizard — S2b Dry-run report', () => {
 describe('OnboardingWizard — S2c Import progress', () => {
   it('shows cancel button during import (spec: always reachable)', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 100)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -329,7 +331,7 @@ describe('OnboardingWizard — S2c Import progress', () => {
 
   it('cancel button shows confirm dialog', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 500)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -342,7 +344,7 @@ describe('OnboardingWizard — S2c Import progress', () => {
 
   it('"Keep going" on confirm dialog dismisses it', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 500)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -470,6 +472,40 @@ describe('OnboardingWizard — S4 Done', () => {
   });
 });
 
+describe('OnboardingWizard — keyboard focus trap', () => {
+  const FOCUSABLE_SELECTOR =
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+  it('Tab at the last focusable element wraps to the first', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    const overlay = document.querySelector('.onboarding-overlay') as HTMLElement;
+    const focusable = Array.from(overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    expect(focusable.length).toBeGreaterThan(0);
+    const last = focusable[focusable.length - 1];
+    last.focus();
+    fireEvent.keyDown(last, { key: 'Tab', bubbles: true });
+    expect(document.activeElement).toBe(focusable[0]);
+  });
+
+  it('Shift+Tab at the first focusable element wraps to the last', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    const overlay = document.querySelector('.onboarding-overlay') as HTMLElement;
+    const focusable = Array.from(overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    expect(focusable.length).toBeGreaterThan(0);
+    const first = focusable[0];
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true, bubbles: true });
+    expect(document.activeElement).toBe(focusable[focusable.length - 1]);
+  });
+
+  it('focus moves to the screen heading on screen transition', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-default'));
+    const heading = await screen.findByText('Where should we put your vaults?');
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+});
+
 describe('OnboardingWizard — error states from spec §6', () => {
   it('E-perm: shows macOS-specific copy including System Settings link text', async () => {
     (window as unknown as { api: { pickFolder: ReturnType<typeof vi.fn> } }).api.pickFolder =
@@ -493,6 +529,8 @@ describe('OnboardingWizard — error states from spec §6', () => {
     await waitFor(() => expect(screen.getByTestId('screen-import-dryrun')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByTestId('dry-run-banner')).toBeInTheDocument());
     expect(screen.getByTestId('dry-run-banner').textContent).toMatch(/failed/i);
+    // Drain any pending React state updates so they don't fire after JSDOM teardown.
+    await act(async () => {});
   });
 
   it('E-disk-full: ENOSPC during import shows disk-full specific copy in banner', async () => {
@@ -505,5 +543,136 @@ describe('OnboardingWizard — error states from spec §6', () => {
     fireEvent.click(screen.getByTestId('confirm-import'));
     await waitFor(() => expect(screen.getByTestId('dry-run-banner')).toBeInTheDocument());
     expect(screen.getByTestId('dry-run-banner').textContent).toMatch(/disk space/);
+    // Drain any pending React state updates so they don't fire after JSDOM teardown.
+    await act(async () => {});
+  });
+});
+
+// ─── SKY-152: Project wizard screens ─────────────────────────────────────────
+
+describe('OnboardingWizard — SKY-152 Project wizard', () => {
+  beforeEach(() => {
+    (window as unknown as { api: unknown }).api = {
+      pickFolder: vi.fn().mockResolvedValue({ vaultRoot: '/home/user/my-vault', cancelled: false, registrationToken: 'token-abc' }),
+      obsidianDryRun: vi.fn(),
+      obsidianRegister: vi.fn(),
+      vaultSetPaths: vi.fn().mockResolvedValue({ ok: true }),
+      loadSampleTwoVault: vi.fn(),
+      validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
+      obsidianPickFolderByPath: vi.fn(),
+      onboardingComplete: vi.fn().mockResolvedValue({ ok: true }),
+      writeVault: vi.fn().mockResolvedValue({ path: 'p', bytes: 1 }),
+      writeNotesVault: vi.fn().mockResolvedValue({ path: 'p', bytes: 1 }),
+    };
+  });
+
+  it('shows "Create your first project" CTA on welcome screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('cta-create-project')).toBeInTheDocument();
+  });
+
+  it('clicking CTA navigates to project-name screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    expect(screen.getByTestId('screen-project-name')).toBeInTheDocument();
+  });
+
+  it('shows Step 1 of 3 on project-name screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+  });
+
+  it('skip on project-name advances to genre', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    expect(screen.getByTestId('screen-genre')).toBeInTheDocument();
+  });
+
+  it('next on project-name advances to genre', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('next-to-genre'));
+    expect(screen.getByTestId('screen-genre')).toBeInTheDocument();
+  });
+
+  it('shows Step 2 of 3 on genre screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('next-to-genre'));
+    expect(screen.getByText('Step 2 of 3')).toBeInTheDocument();
+  });
+
+  it('skip genre advances to writing-goal', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    expect(screen.getByTestId('screen-writing-goal')).toBeInTheDocument();
+  });
+
+  it('shows Step 3 of 3 on writing-goal screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    expect(screen.getByText('Step 3 of 3')).toBeInTheDocument();
+  });
+
+  it('next-to-path navigates to default-path screen', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('next-to-path'));
+    expect(screen.getByTestId('screen-default-path')).toBeInTheDocument();
+  });
+
+  it('skip-goal navigates to default-path', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('skip-goal'));
+    expect(screen.getByTestId('screen-default-path')).toBeInTheDocument();
+  });
+
+  it('shows create-project-vault button in project flow', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('next-to-path'));
+    await waitFor(() => expect(screen.getByTestId('create-project-vault')).toBeInTheDocument());
+  });
+
+  it('create-project-vault calls vaultSetPaths blank and writes starter files', async () => {
+    const onComplete = vi.fn();
+    const apiMock = (window as unknown as { api: { vaultSetPaths: ReturnType<typeof vi.fn>; validatePath: ReturnType<typeof vi.fn>; writeVault: ReturnType<typeof vi.fn>; writeNotesVault: ReturnType<typeof vi.fn> } }).api;
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    fireEvent.click(screen.getByTestId('cta-create-project'));
+    fireEvent.click(screen.getByTestId('skip-project-name'));
+    fireEvent.click(screen.getByTestId('skip-genre'));
+    fireEvent.click(screen.getByTestId('next-to-path'));
+    await waitFor(() => expect(apiMock.validatePath).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('create-project-vault'));
+    await waitFor(() => expect(apiMock.vaultSetPaths).toHaveBeenCalledWith(
+      expect.stringMatching(/Story Vault$/),
+      expect.stringMatching(/Notes Vault$/),
+      { seedMode: 'blank' }
+    ));
+    await waitFor(() => expect(apiMock.writeVault).toHaveBeenCalled());
+    await waitFor(() => expect(apiMock.writeNotesVault).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('screen-done')).toBeInTheDocument());
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
+  });
+
+  it('existing picker cards remain accessible via other-options', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('card-default')).toBeInTheDocument();
+    expect(screen.getByTestId('card-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('card-import')).toBeInTheDocument();
+    expect(screen.getByTestId('card-sample')).toBeInTheDocument();
   });
 });

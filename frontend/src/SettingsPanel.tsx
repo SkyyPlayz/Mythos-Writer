@@ -1,10 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { FocusPrefs } from './types';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
+import { resolveAxisTokens } from './themeAxis';
 import './SettingsPanel.css';
 
 interface MicDevice {
   deviceId: string;
   label: string;
+}
+
+// ─── SKY-207: Custom frontmatter field schema (mirrors electron-main/src/ipc.ts) ──
+
+type FieldType = 'text' | 'number' | 'select';
+
+interface CustomFieldDef {
+  id: string;
+  name: string;
+  type: FieldType;
+  options?: string[];
 }
 
 // ─── Persona viewer (MYT-816) ─────────────────────────────────────────────────
@@ -276,9 +289,16 @@ function ColorPicker({
 interface Props {
   onClose: () => void;
   onSaved?: (settings: AppSettings) => void;
+  focusPrefs?: FocusPrefs;
+  onFocusPrefsChange?: (prefs: FocusPrefs) => void;
 }
 
-export default function SettingsPanel({ onClose, onSaved }: Props) {
+const FOCUS_PREFS_DEFAULTS: Pick<FocusPrefs, 'showTitleBar' | 'showStatusBar' | 'showTabBar' | 'showSidebarButtons' | 'showScrollbars' | 'showFileTreeArrows'> = {
+  showTitleBar: true, showStatusBar: true, showTabBar: true,
+  showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+};
+
+export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -314,6 +334,16 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [vaultsDirty, setVaultsDirty] = useState(false);
   const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
+
+  // SKY-207: Custom field definitions
+  const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
+  const [customFieldsDirty, setCustomFieldsDirty] = useState(false);
+  const [customFieldsSavedOk, setCustomFieldsSavedOk] = useState(false);
+  const [customFieldsError, setCustomFieldsError] = useState<string | null>(null);
+  const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldType, setNewFieldType] = useState<FieldType>('text');
+  const [newFieldOptions, setNewFieldOptions] = useState('');
+  const [addingField, setAddingField] = useState(false);
 
   // Provider state (MYT-779)
   const [providerKind, setProviderKind] = useState<ProviderKind>('anthropic');
@@ -366,6 +396,14 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     return () => document.removeEventListener('keydown', handler);
   }, [lgAdvancedOpen]);
 
+  // Keep --lg-neon in sync with the softness slider (SKY-261)
+  useEffect(() => {
+    const s = lg.softnessContrast;
+    if (s != null && !isNaN(s)) {
+      document.documentElement.style.setProperty('--lg-neon', resolveAxisTokens(s * 100).neon.toFixed(2));
+    }
+  }, [lg.softnessContrast]);
+
   // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) onClose(); };
@@ -401,6 +439,15 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
       setMicDevices(mics);
     }).catch(() => {});
+  }, []);
+
+  // SKY-207: load custom field definitions
+  useEffect(() => {
+    (window.api as any).customFieldsList?.()
+      .then((res: { fields: CustomFieldDef[] }) => {
+        if (res?.fields) setCustomFields(res.fields);
+      })
+      .catch(() => {});
   }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
@@ -477,6 +524,53 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     }
   }, [vaults.storyVaultPath, vaults.notesVaultPath]);
 
+  // SKY-207: custom fields handlers
+  const handleSaveCustomFields = useCallback(async () => {
+    setCustomFieldsError(null);
+    setCustomFieldsSavedOk(false);
+    try {
+      const res = await (window.api as any).customFieldsSet?.(customFields) as { fields: CustomFieldDef[] };
+      if (res?.fields) {
+        setCustomFields(res.fields);
+        setCustomFieldsDirty(false);
+        setCustomFieldsSavedOk(true);
+      }
+    } catch (e) {
+      setCustomFieldsError(e instanceof Error ? e.message : 'Failed to save field definitions.');
+    }
+  }, [customFields]);
+
+  const handleAddField = useCallback(() => {
+    const name = newFieldName.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!name) return;
+    if (customFields.some((f) => f.name === name)) {
+      setCustomFieldsError(`A field named "${name}" already exists.`);
+      return;
+    }
+    const options = newFieldType === 'select'
+      ? newFieldOptions.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined;
+    const newDef: CustomFieldDef = {
+      id: crypto.randomUUID(),
+      name,
+      type: newFieldType,
+      ...(options ? { options } : {}),
+    };
+    setCustomFields((prev) => [...prev, newDef]);
+    setCustomFieldsDirty(true);
+    setCustomFieldsSavedOk(false);
+    setCustomFieldsError(null);
+    setNewFieldName('');
+    setNewFieldOptions('');
+    setAddingField(false);
+  }, [customFields, newFieldName, newFieldType, newFieldOptions]);
+
+  const handleRemoveField = useCallback((id: string) => {
+    setCustomFields((prev) => prev.filter((f) => f.id !== id));
+    setCustomFieldsDirty(true);
+    setCustomFieldsSavedOk(false);
+  }, []);
+
   const handlePickVaultFolder = useCallback(
     async (which: 'storyVaultPath' | 'notesVaultPath') => {
       const title = which === 'storyVaultPath' ? 'Choose Story Vault folder' : 'Choose Notes Vault folder';
@@ -551,6 +645,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, [bgPreviewUrl]);
 
   const handleSoftnessChange = useCallback((s: number) => {
+    document.documentElement.style.setProperty('--lg-neon', resolveAxisTokens(s * 100).neon.toFixed(2));
     setLg((prev) => {
       if (prev.advancedDecoupled) {
         // When decoupled only update the master; individual sliders stay
@@ -1216,6 +1311,202 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
           </section>
 
+          {/* ── Auto Linker (SKY-192) ── */}
+          <section className="settings-section" aria-labelledby="section-autolinker">
+            <h3 className="settings-section-title" id="section-autolinker">Auto Linker</h3>
+            <div className="settings-field">
+              <label className="settings-label">Entity mention mode</label>
+              <div className="settings-radio-group" role="radiogroup" aria-label="Auto Linker mode">
+                {([
+                  { value: 'off', label: 'Off' },
+                  { value: 'suggest', label: 'Suggest (default)' },
+                  { value: 'auto', label: 'Auto on save' },
+                ] as const).map(({ value, label }) => (
+                  <label key={value} className="settings-radio-label">
+                    <input
+                      type="radio"
+                      name="autoLinkerMode"
+                      value={value}
+                      checked={(settings.autoLinker?.mode ?? 'suggest') === value}
+                      onChange={() => {
+                        setSettings((p) => ({ ...p, autoLinker: { mode: value } }));
+                        setSavedOk(false);
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="settings-hint">
+                <strong>Suggest</strong> — underlines unlinked entity names; click to wrap in{' '}
+                <code>[[wikilink]]</code>.{' '}
+                <strong>Auto on save</strong> — applies all suggestions automatically when the scene is saved
+                (one Undo to revert).
+              </p>
+            </div>
+          </section>
+
+          {/* ── Journal Mode (SKY-204) ── */}
+          <section className="settings-section" aria-labelledby="section-journal">
+            <h3 className="settings-section-title" id="section-journal">Journal Mode</h3>
+            <div className="settings-field">
+              <label className="settings-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={settings.journalMode?.enabled ?? false}
+                  onChange={(e) => {
+                    setSettings((p) => ({
+                      ...p,
+                      journalMode: { ...(p.journalMode ?? {}), enabled: e.target.checked },
+                    }));
+                    setSavedOk(false);
+                  }}
+                />
+                Enable daily notes (auto-create a dated note each day you open the app)
+              </label>
+              <p className="settings-hint">
+                Creates a note like <code>Daily Notes/2025-01-15.md</code> on first launch of each new
+                calendar day. The writing streak counter in the Notes sidebar tracks consecutive days
+                with a note.
+              </p>
+            </div>
+            {(settings.journalMode?.enabled) && (
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="journal-folder">Daily notes folder</label>
+                <input
+                  id="journal-folder"
+                  className="settings-input"
+                  type="text"
+                  placeholder="Daily Notes"
+                  value={settings.journalMode?.noteFolder ?? ''}
+                  onChange={(e) => {
+                    setSettings((p) => ({
+                      ...p,
+                      journalMode: { ...(p.journalMode ?? { enabled: true }), noteFolder: e.target.value || undefined },
+                    }));
+                    setSavedOk(false);
+                  }}
+                />
+              </div>
+            )}
+          </section>
+
+          {/* ── Scene Fields (SKY-207) ── */}
+          <section className="settings-section" aria-labelledby="section-scene-fields">
+            <h3 className="settings-section-title" id="section-scene-fields">Scene Fields</h3>
+            <p className="settings-hint">
+              Define custom frontmatter fields — mood, tension, weather, POV, etc. — that appear in the scene
+              properties panel and are queryable in Saved Searches (e.g. <code>mood: tense AND tension: 8</code>).
+              Removing a field definition does not delete existing values from scene files.
+            </p>
+            {customFields.length > 0 && (
+              <ul className="cf-field-list" aria-label="Custom field definitions">
+                {customFields.map((f) => (
+                  <li key={f.id} className="cf-field-item">
+                    <span className="cf-field-name">{f.name}</span>
+                    <span className="cf-field-type">{f.type}</span>
+                    {f.type === 'select' && f.options && (
+                      <span className="cf-field-options">{f.options.join(', ')}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="cf-field-remove"
+                      aria-label={`Remove field ${f.name}`}
+                      onClick={() => handleRemoveField(f.id)}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!addingField ? (
+              <button
+                type="button"
+                className="settings-btn settings-btn-secondary"
+                onClick={() => { setAddingField(true); setCustomFieldsError(null); }}
+              >
+                + Add field
+              </button>
+            ) : (
+              <div className="cf-add-form" role="group" aria-label="Add custom field">
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="cf-name">Name</label>
+                  <input
+                    id="cf-name"
+                    className="settings-input"
+                    type="text"
+                    placeholder="mood"
+                    value={newFieldName}
+                    autoFocus
+                    onChange={(e) => setNewFieldName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddField(); if (e.key === 'Escape') setAddingField(false); }}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="cf-type">Type</label>
+                  <select
+                    id="cf-type"
+                    className="settings-input settings-select"
+                    value={newFieldType}
+                    onChange={(e) => setNewFieldType(e.target.value as FieldType)}
+                  >
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="select">Select</option>
+                  </select>
+                </div>
+                {newFieldType === 'select' && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="cf-options">Options</label>
+                    <input
+                      id="cf-options"
+                      className="settings-input"
+                      type="text"
+                      placeholder="calm, tense, urgent"
+                      value={newFieldOptions}
+                      onChange={(e) => setNewFieldOptions(e.target.value)}
+                    />
+                    <span className="settings-hint" style={{ marginLeft: 8 }}>comma-separated</span>
+                  </div>
+                )}
+                <div className="settings-input-row" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-save"
+                    onClick={handleAddField}
+                    disabled={!newFieldName.trim()}
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-cancel"
+                    onClick={() => setAddingField(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {customFieldsDirty && (
+              <div className="settings-input-row" style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="settings-save"
+                  onClick={handleSaveCustomFields}
+                >
+                  Save field definitions
+                </button>
+                {customFieldsSavedOk && <span className="settings-saved-ok" role="status">Saved.</span>}
+                {customFieldsError && <span className="settings-error-msg" role="alert">{customFieldsError}</span>}
+              </div>
+            )}
+            {!customFieldsDirty && customFieldsSavedOk && (
+              <span className="settings-saved-ok" role="status">Saved.</span>
+            )}
+          </section>
+
           {/* ── Snapshots ── */}
           <section className="settings-section" aria-labelledby="section-snapshots">
             <h3 className="settings-section-title" id="section-snapshots">Snapshots</h3>
@@ -1254,6 +1545,19 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               </div>
             </div>
             <p className="settings-hint">Snapshots are taken automatically while you write. Older ones are pruned by count and age.</p>
+            <div className="settings-field settings-field-inline" style={{ marginTop: 8 }}>
+              <span className="settings-label">Danger zone</span>
+              <button
+                className="settings-btn-danger"
+                onClick={async () => {
+                  if (!window.confirm('Delete ALL snapshots across every scene? This cannot be undone.')) return;
+                  await window.api.snapshotDeleteAll();
+                  setSavedOk(false);
+                }}
+              >
+                Delete all snapshots
+              </button>
+            </div>
           </section>
 
           {/* ── Updates ── */}
@@ -1376,6 +1680,52 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
 
           </section>
+
+          {/* ── Focus Mode (SKY-325) ── */}
+          {onFocusPrefsChange && (
+            <section className="settings-section" aria-labelledby="section-focus-mode">
+              <h3 className="settings-section-title" id="section-focus-mode">Focus Mode</h3>
+              <p className="settings-hint">Choose which UI elements stay visible in Focus Mode and Distraction-Free mode. Changes apply immediately.</p>
+              {(
+                [
+                  { key: 'showTitleBar',       label: 'Show title bar' },
+                  { key: 'showStatusBar',       label: 'Show status bar' },
+                  { key: 'showTabBar',          label: 'Show tabs' },
+                  { key: 'showSidebarButtons',  label: 'Show sidebar collapse buttons' },
+                  { key: 'showScrollbars',      label: 'Show scrollbars' },
+                  { key: 'showFileTreeArrows',  label: 'Show file tree toggle arrows' },
+                ] as const
+              ).map(({ key, label }) => {
+                const checked = focusPrefs ? focusPrefs[key] : FOCUS_PREFS_DEFAULTS[key];
+                return (
+                  <label key={key} className="settings-focus-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={label}
+                      onChange={() => {
+                        if (!focusPrefs || !onFocusPrefsChange) return;
+                        onFocusPrefsChange({ ...focusPrefs, [key]: !checked });
+                      }}
+                    />
+                    <span className="settings-label">{label}</span>
+                  </label>
+                );
+              })}
+              <div className="settings-input-row" style={{ marginTop: 8 }}>
+                <button
+                  className="settings-btn settings-btn-secondary"
+                  type="button"
+                  onClick={() => {
+                    if (!focusPrefs || !onFocusPrefsChange) return;
+                    onFocusPrefsChange({ ...focusPrefs, ...FOCUS_PREFS_DEFAULTS });
+                  }}
+                >
+                  Reset to defaults
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* ── Voice ── */}
           <section className="settings-section" aria-labelledby="section-voice">

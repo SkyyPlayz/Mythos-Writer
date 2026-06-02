@@ -2,7 +2,12 @@
 
 export type BlockType = 'prose' | 'heading' | 'dialogue' | 'action' | 'description' | 'note';
 
-export type EntityType = 'character' | 'location' | 'item' | 'concept' | 'other';
+export type EntityType = 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
+
+export interface EntityRelation {
+  type: string;
+  target: string; // entity id
+}
 
 export interface EntityEntry {
   id: string;
@@ -11,6 +16,7 @@ export interface EntityEntry {
   path: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -65,14 +71,21 @@ export interface FocusPrefs {
   showLeftSidebar: boolean;
   showRightSidebar: boolean;
   showBottomBar: boolean;
+  // SKY-325: customizable Focus Mode toggles — all default to true (keep UI visible)
+  showTitleBar: boolean;
+  showStatusBar: boolean;
+  showTabBar: boolean;
+  showSidebarButtons: boolean;
+  showScrollbars: boolean;
+  showFileTreeArrows: boolean;
 }
 
 export interface LayoutPrefs {
   leftWidth: number;
   rightWidth: number;
   bottomHeight: number;
-  rightTab: 'notes' | 'properties' | 'ai';
-  leftTab: 'stories' | 'vault' | 'entities' | 'review';
+  rightTab: 'notes' | 'properties' | 'ai' | 'outline';
+  leftTab: 'stories' | 'vault' | 'entities' | 'review' | 'progress';
   writingMode?: WritingMode;
   focusPrefs?: FocusPrefs;
 }

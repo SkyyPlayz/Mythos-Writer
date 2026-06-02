@@ -1,0 +1,276 @@
+/* Writing Goals & Progress Dashboard (SKY-154) */
+
+.progress-dashboard {
+  --hm-0: #1c1c1f;
+  --hm-1: #1a3a2e;
+  --hm-2: #266b4e;
+  --hm-3: #3aa870;
+  --hm-4: #4ade80;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 24px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.pd-loading {
+  padding: 24px 16px;
+  color: #52525b;
+  font-size: 0.85rem;
+}
+
+.pd-section {
+  padding: 12px 0;
+  border-bottom: 1px solid #27272a;
+}
+
+.pd-section--last {
+  border-bottom: none;
+}
+
+.pd-heading {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #52525b;
+  margin: 0 0 8px;
+}
+
+.pd-today-count {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.pd-big {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #e4e4e7;
+  line-height: 1;
+}
+
+.pd-sep {
+  color: #52525b;
+  font-size: 0.85rem;
+}
+
+.pd-sub-num {
+  font-size: 0.88rem;
+  color: #71717a;
+}
+
+.pd-unit {
+  font-size: 0.72rem;
+  color: #52525b;
+}
+
+.pd-check {
+  color: #4ade80;
+  font-size: 0.85rem;
+  margin-left: 2px;
+}
+
+.pd-bar-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #27272a;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.pd-bar-fill {
+  height: 100%;
+  background: #7c3aed;
+  border-radius: 3px;
+  transition: width 0.35s ease, background 0.25s ease;
+  min-width: 2px;
+}
+
+.pd-bar-fill--done {
+  background: #4ade80;
+}
+
+.pd-pct {
+  font-size: 0.7rem;
+  color: #52525b;
+  text-align: right;
+}
+
+.pd-streak-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.pd-flame {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.pd-streak-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pd-reset-btn {
+  font-size: 0.7rem;
+  color: #71717a;
+  background: none;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pd-reset-btn:hover {
+  color: #fca5a5;
+  border-color: #fca5a5;
+}
+
+.pd-reset-btn--warn {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.pd-reset-btn:focus-visible,
+.pd-cancel-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}
+
+.pd-cancel-btn {
+  font-size: 0.7rem;
+  color: #52525b;
+  background: none;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.pd-cancel-btn:hover {
+  color: #a1a1aa;
+}
+
+.pd-stat-list {
+  margin: 0;
+  padding: 0;
+}
+
+.pd-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.pd-stat-label {
+  font-size: 0.78rem;
+  color: #71717a;
+}
+
+.pd-stat-val {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.pd-heatmap {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.pd-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+}
+
+.pd-legend {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pd-legend-cell {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pd-legend-text {
+  font-size: 0.62rem;
+  color: #52525b;
+  margin-left: 3px;
+}
+
+.pd-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pd-goal-input {
+  width: 68px;
+  padding: 4px 6px;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  color: #e4e4e7;
+  font-size: 0.82rem;
+  -moz-appearance: textfield;
+}
+
+.pd-goal-input::-webkit-inner-spin-button,
+.pd-goal-input::-webkit-outer-spin-button {
+  opacity: 0.4;
+}
+
+.pd-goal-input:focus {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.pd-goal-label {
+  font-size: 0.72rem;
+  color: #71717a;
+  white-space: nowrap;
+}
+
+.pd-save-btn {
+  padding: 4px 10px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  color: #a1a1aa;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  margin-left: auto;
+}
+
+.pd-save-btn:hover:not(:disabled) {
+  background: #3f3f46;
+  color: #e4e4e7;
+}
+
+.pd-save-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pd-save-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}

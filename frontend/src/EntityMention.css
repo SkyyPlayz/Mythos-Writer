@@ -1,0 +1,107 @@
+/* ─── Inline @mention pill ─────────────────────────────────────────────────── */
+
+.entity-mention {
+  display: inline;
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-weight: 500;
+  font-size: 0.92em;
+  cursor: pointer;
+  white-space: nowrap;
+  background: var(--accent-bg, rgba(139, 92, 246, 0.12));
+  color: var(--accent-light, #a78bfa);
+  border: 1px solid transparent;
+  transition: background 0.1s;
+}
+
+.entity-mention:hover {
+  background: var(--accent-bg-hover, rgba(139, 92, 246, 0.22));
+}
+
+/* Per-type colour overrides */
+.entity-mention--character {
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.entity-mention--location {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.entity-mention--faction {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.12);
+}
+
+.entity-mention--item {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.entity-mention--event {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.entity-mention--concept {
+  color: #f472b6;
+  background: rgba(244, 114, 182, 0.12);
+}
+
+.entity-mention--other {
+  color: var(--text-muted, #888);
+  background: rgba(128, 128, 128, 0.1);
+}
+
+/* ─── Typeahead picker dropdown ────────────────────────────────────────────── */
+
+.entity-mention-picker {
+  position: absolute;
+  z-index: 200;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  min-width: 200px;
+  max-width: 320px;
+  background: var(--surface, #1e1e2e);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.entity-mention-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--text, #cdd6f4);
+  transition: background 0.08s;
+}
+
+.entity-mention-picker-item:hover,
+.entity-mention-picker-item.selected {
+  background: var(--accent-bg, rgba(139, 92, 246, 0.14));
+}
+
+.entity-mention-picker-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-mention-picker-type {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}

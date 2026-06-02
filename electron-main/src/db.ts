@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 
 // ─── Domain types ───
 
@@ -288,6 +289,97 @@ function runMigrations(db: DatabaseSync): void {
       );
     `);
     db.exec('PRAGMA user_version = 11');
+  }
+
+  if (currentVersion < 12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notes (
+        id         INTEGER PRIMARY KEY,
+        scene_id   TEXT UNIQUE NOT NULL,
+        content    TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.exec('PRAGMA user_version = 12');
+  }
+
+  if (currentVersion < 13) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tags (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        color      TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name_nocase ON tags (lower(name));
+      CREATE TABLE IF NOT EXISTS item_tags (
+        item_id   TEXT NOT NULL,
+        item_kind TEXT NOT NULL,
+        tag_id    TEXT NOT NULL,
+        PRIMARY KEY (item_id, item_kind, tag_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags (tag_id);
+      CREATE INDEX IF NOT EXISTS idx_item_tags_item ON item_tags (item_id);
+    `);
+    db.exec('PRAGMA user_version = 13');
+  }
+
+  if (currentVersion < 14) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS entity_index (
+        id            TEXT PRIMARY KEY,
+        type          TEXT NOT NULL,
+        name          TEXT NOT NULL,
+        aliases       TEXT,
+        tags          TEXT,
+        status        TEXT NOT NULL DEFAULT 'active',
+        core_fields   TEXT,
+        custom_fields TEXT,
+        notes_text    TEXT,
+        file_path     TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS entity_index_type   ON entity_index(type);
+      CREATE INDEX IF NOT EXISTS entity_index_status ON entity_index(status);
+
+      CREATE TABLE IF NOT EXISTS entity_relationships (
+        id             TEXT PRIMARY KEY,
+        from_entity_id TEXT NOT NULL REFERENCES entity_index(id) ON DELETE CASCADE,
+        to_entity_id   TEXT NOT NULL REFERENCES entity_index(id) ON DELETE CASCADE,
+        label          TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        UNIQUE(from_entity_id, to_entity_id, label)
+      );
+
+      CREATE TABLE IF NOT EXISTS scene_entity_links (
+        id         TEXT PRIMARY KEY,
+        scene_id   TEXT NOT NULL,
+        entity_id  TEXT NOT NULL REFERENCES entity_index(id) ON DELETE CASCADE,
+        link_kind  TEXT NOT NULL DEFAULT 'mention',
+        created_at TEXT NOT NULL,
+        UNIQUE(scene_id, entity_id, link_kind)
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS entity_fts USING fts5(
+        entity_id UNINDEXED,
+        name,
+        aliases,
+        notes_text,
+        custom_fields_text
+      );
+    `);
+    db.exec('PRAGMA user_version = 14');
+  }
+
+  if (currentVersion < 15) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS writing_log (
+        log_date     TEXT NOT NULL PRIMARY KEY,
+        words_added  INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.exec('PRAGMA user_version = 15');
   }
 }
 
@@ -658,4 +750,301 @@ export function countTokensInWindow(agent: string, windowMs: number): number {
     )
     .get(agent, windowStart) as { total: number };
   return row.total;
+}
+
+// ─── Scene notes (SKY-55) ───
+
+export function getNoteBySceneId(sceneId: string): string {
+  const row = getDb()
+    .prepare('SELECT content FROM notes WHERE scene_id = ?')
+    .get(sceneId) as { content: string } | undefined;
+  return row?.content ?? '';
+}
+
+export function upsertNote(sceneId: string, content: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO notes (scene_id, content, updated_at)
+       VALUES (?, ?, strftime('%s', 'now'))
+       ON CONFLICT(scene_id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`
+    )
+    .run(sceneId, content);
+}
+
+// ─── Tags (SKY-158) ───
+
+export interface DbTag {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
+/** Returns existing tag (case-insensitive) or creates a new one. */
+export function upsertTag(name: string, color?: string | null): DbTag {
+  const db = getDb();
+  const trimmed = name.trim();
+  const existing = db.prepare('SELECT * FROM tags WHERE lower(name) = lower(?)').get(trimmed) as DbTag | undefined;
+  if (existing) return existing;
+  const tag: DbTag = { id: randomUUID(), name: trimmed, color: color ?? null, created_at: new Date().toISOString() };
+  db.prepare('INSERT OR IGNORE INTO tags (id, name, color, created_at) VALUES (@id, @name, @color, @created_at)').run(tag as unknown as Record<string, SQLInputValue>);
+  return (db.prepare('SELECT * FROM tags WHERE lower(name) = lower(?)').get(trimmed) as unknown as DbTag) ?? tag;
+}
+
+export function getTagByName(name: string): DbTag | null {
+  return (getDb().prepare('SELECT * FROM tags WHERE lower(name) = lower(?)').get(name.trim()) as DbTag | undefined) ?? null;
+}
+
+export function listTags(): DbTag[] {
+  return getDb().prepare('SELECT * FROM tags ORDER BY name COLLATE NOCASE ASC').all() as unknown as DbTag[];
+}
+
+export function deleteTag(id: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM item_tags WHERE tag_id = ?').run(id);
+  db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+}
+
+export function renameTag(id: string, newName: string): DbTag {
+  const db = getDb();
+  db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(newName.trim(), id);
+  return db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as unknown as DbTag;
+}
+
+/** Replaces the full tag set for an item in SQLite junction table. */
+export function setItemTags(itemId: string, itemKind: string, tagNames: string[]): void {
+  const db = getDb();
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM item_tags WHERE item_id = ? AND item_kind = ?').run(itemId, itemKind);
+    for (const name of tagNames) {
+      const tag = upsertTag(name);
+      db.prepare('INSERT OR IGNORE INTO item_tags (item_id, item_kind, tag_id) VALUES (?, ?, ?)').run(itemId, itemKind, tag.id);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export function getItemTags(itemId: string): string[] {
+  const rows = getDb().prepare(
+    'SELECT t.name FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE it.item_id = ? ORDER BY t.name COLLATE NOCASE'
+  ).all(itemId) as { name: string }[];
+  return rows.map((r) => r.name);
+}
+
+export function getItemsForTag(tagName: string): Array<{ itemId: string; itemKind: string }> {
+  const rows = getDb().prepare(
+    'SELECT it.item_id, it.item_kind FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE lower(t.name) = lower(?)'
+  ).all(tagName.trim()) as Array<{ item_id: string; item_kind: string }>;
+  return rows.map((r) => ({ itemId: r.item_id, itemKind: r.item_kind }));
+}
+
+/** Apply/remove tags for multiple items atomically. Returns count of updated items. */
+export function bulkApplyTags(
+  itemIds: string[],
+  itemKind: string,
+  addTags: string[],
+  removeTags: string[],
+): number {
+  const db = getDb();
+  db.exec('BEGIN');
+  try {
+    for (const itemId of itemIds) {
+      for (const name of removeTags) {
+        const tag = getTagByName(name);
+        if (tag) {
+          db.prepare('DELETE FROM item_tags WHERE item_id = ? AND item_kind = ? AND tag_id = ?').run(itemId, itemKind, tag.id);
+        }
+      }
+      for (const name of addTags) {
+        const t = upsertTag(name);
+        db.prepare('INSERT OR IGNORE INTO item_tags (item_id, item_kind, tag_id) VALUES (?, ?, ?)').run(itemId, itemKind, t.id);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return itemIds.length;
+}
+
+// ─── Entity index (SKY-164) ───
+
+export type EntityStatus = 'active' | 'archived' | 'deleted';
+
+export interface DbEntityIndex {
+  id: string;
+  type: string;
+  name: string;
+  aliases: string | null;
+  tags: string | null;
+  status: EntityStatus;
+  core_fields: string | null;
+  custom_fields: string | null;
+  notes_text: string | null;
+  file_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function upsertEntityIndex(e: DbEntityIndex): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO entity_index
+         (id, type, name, aliases, tags, status, core_fields, custom_fields,
+          notes_text, file_path, created_at, updated_at)
+       VALUES
+         (@id, @type, @name, @aliases, @tags, @status, @core_fields, @custom_fields,
+          @notes_text, @file_path, @created_at, @updated_at)`
+    )
+    .run(e as unknown as Record<string, SQLInputValue>);
+}
+
+export function getEntityIndex(id: string): DbEntityIndex | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM entity_index WHERE id = ?')
+      .get(id) as DbEntityIndex | undefined) ?? null
+  );
+}
+
+export function listEntityIndex(type?: string): DbEntityIndex[] {
+  const db = getDb();
+  if (type) {
+    return db
+      .prepare('SELECT * FROM entity_index WHERE type = ? ORDER BY name ASC')
+      .all(type) as unknown as DbEntityIndex[];
+  }
+  return db.prepare('SELECT * FROM entity_index ORDER BY name ASC').all() as unknown as DbEntityIndex[];
+}
+
+export function deleteEntityIndex(id: string): void {
+  getDb().prepare('DELETE FROM entity_index WHERE id = ?').run(id);
+}
+
+// ─── Entity relationships ───
+
+export interface DbEntityRelationship {
+  id: string;
+  from_entity_id: string;
+  to_entity_id: string;
+  label: string;
+  created_at: string;
+}
+
+export function insertEntityRelationship(r: DbEntityRelationship): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO entity_relationships
+         (id, from_entity_id, to_entity_id, label, created_at)
+       VALUES (@id, @from_entity_id, @to_entity_id, @label, @created_at)`
+    )
+    .run(r as unknown as Record<string, SQLInputValue>);
+}
+
+export function listEntityRelationships(fromEntityId: string): DbEntityRelationship[] {
+  return getDb()
+    .prepare('SELECT * FROM entity_relationships WHERE from_entity_id = ? ORDER BY created_at ASC')
+    .all(fromEntityId) as unknown as DbEntityRelationship[];
+}
+
+export function deleteEntityRelationship(id: string): void {
+  getDb().prepare('DELETE FROM entity_relationships WHERE id = ?').run(id);
+}
+
+// ─── Scene entity links (SKY-170) ───
+
+export interface DbSceneEntityLink {
+  id: string;
+  scene_id: string;
+  entity_id: string;
+  link_kind: 'mention' | 'tag';
+  created_at: string;
+}
+
+/** Upsert a scene→entity link. Generates a UUID for `id` when not supplied. */
+export function upsertSceneEntityLink(link: Omit<DbSceneEntityLink, 'id'> & { id?: string }): void {
+  const id = link.id ?? randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO scene_entity_links (id, scene_id, entity_id, link_kind, created_at)
+       VALUES (@id, @scene_id, @entity_id, @link_kind, @created_at)
+       ON CONFLICT(scene_id, entity_id, link_kind) DO UPDATE SET created_at = excluded.created_at`
+    )
+    .run({ id, scene_id: link.scene_id, entity_id: link.entity_id, link_kind: link.link_kind, created_at: link.created_at });
+}
+
+export function deleteSceneEntityLink(sceneId: string, entityId: string, linkKind: 'mention' | 'tag'): void {
+  getDb()
+    .prepare(`DELETE FROM scene_entity_links WHERE scene_id = ? AND entity_id = ? AND link_kind = ?`)
+    .run(sceneId, entityId, linkKind);
+}
+
+export function listSceneEntityLinks(sceneId: string): DbSceneEntityLink[] {
+  return getDb()
+    .prepare(`SELECT * FROM scene_entity_links WHERE scene_id = ? ORDER BY entity_id ASC`)
+    .all(sceneId) as unknown as DbSceneEntityLink[];
+}
+
+export function listLinkedSceneIds(entityId: string): DbSceneEntityLink[] {
+  return getDb()
+    .prepare(`SELECT * FROM scene_entity_links WHERE entity_id = ? ORDER BY scene_id ASC`)
+    .all(entityId) as unknown as DbSceneEntityLink[];
+}
+
+/** Alias for upsertSceneEntityLink — backward compat for callers using the original name. */
+export const insertSceneEntityLink = upsertSceneEntityLink;
+
+/** Delete all scene_entity_links rows for a scene — backward compat with original bulk-delete signature. */
+export function deleteSceneEntityLinks(sceneId: string): void {
+  getDb().prepare('DELETE FROM scene_entity_links WHERE scene_id = ?').run(sceneId);
+}
+
+/** Remove mention rows for a scene whose entityIds are NOT in keepIds. */
+export function deleteStaleSceneMentionLinks(sceneId: string, keepIds: string[]): void {
+  if (keepIds.length === 0) {
+    getDb()
+      .prepare(`DELETE FROM scene_entity_links WHERE scene_id = ? AND link_kind = 'mention'`)
+      .run(sceneId);
+    return;
+  }
+  const placeholders = keepIds.map(() => '?').join(',');
+  getDb()
+    .prepare(
+      `DELETE FROM scene_entity_links WHERE scene_id = ? AND link_kind = 'mention' AND entity_id NOT IN (${placeholders})`
+    )
+    .run(sceneId, ...keepIds);
+}
+
+// ─── Entity FTS ───
+
+export function upsertEntityFts(
+  entityId: string,
+  name: string,
+  aliases: string | null,
+  notesText: string | null,
+  customFieldsText: string | null
+): void {
+  const db = getDb();
+  db.prepare('DELETE FROM entity_fts WHERE entity_id = ?').run(entityId);
+  db
+    .prepare(
+      `INSERT INTO entity_fts (entity_id, name, aliases, notes_text, custom_fields_text)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(entityId, name, aliases ?? '', notesText ?? '', customFieldsText ?? '');
+}
+
+export function deleteEntityFts(entityId: string): void {
+  getDb().prepare('DELETE FROM entity_fts WHERE entity_id = ?').run(entityId);
+}
+
+export function searchEntityFts(query: string): Array<{ entity_id: string }> {
+  return getDb()
+    .prepare('SELECT entity_id FROM entity_fts WHERE entity_fts MATCH ? ORDER BY rank')
+    .all(query) as unknown as Array<{ entity_id: string }>;
 }

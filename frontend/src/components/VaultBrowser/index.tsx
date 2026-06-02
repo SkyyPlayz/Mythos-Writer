@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Story, Scene, Chapter } from '../../types';
+import type { ExportScope } from '../../ExportDialog';
+import StoryContextMenu from './StoryContextMenu';
 import { useVaultFiles } from './useVaultFiles';
 import { useTreeState } from './useTreeState';
 import { buildTree, flattenTree } from './treeUtils';
@@ -7,6 +9,8 @@ import type { FlatRow } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
+import NoteTemplateDialog from '../NoteTemplateDialog';
+import TagPane from '../TagPane';
 import './VaultBrowser.css';
 
 // ─── Filters ───
@@ -63,6 +67,7 @@ function SceneRenameInput({
 
 // ─── Story Vault (manifest-based) ───
 
+interface CT{x:number;y:number;kind:'story'|'chapter'|'scene';storyId:string;chapterId?:string;sceneId?:string;}
 interface StoryVaultProps {
   stories: Story[];
   selectedSceneId: string | null;
@@ -71,6 +76,7 @@ interface StoryVaultProps {
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onRenameScene: (sceneId: string, title: string) => Promise<void>;
+  onExport?: (scope: ExportScope) => void;
 }
 
 function StoryVault({
@@ -81,6 +87,7 @@ function StoryVault({
   onCreateChapter,
   onCreateScene,
   onRenameScene,
+  onExport,
 }: StoryVaultProps) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(() => {
     try {
@@ -100,6 +107,7 @@ function StoryVault({
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  const [ct, setCt] = useState<CT | null>(null);
 
   useEffect(() => {
     if (stories.length === 1 && expandedStories.size === 0) {
@@ -186,7 +194,7 @@ function StoryVault({
             const storyExp = expandedStories.has(story.id);
             return (
               <div key={story.id}>
-                <div className="vb-item-row">
+                <div className="vb-item-row" onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'story',storyId:story.id});}}>
                   <button
                     className="vb-tree-toggle"
                     onClick={() => toggleStory(story.id)}
@@ -212,7 +220,7 @@ function StoryVault({
                       const chapterExp = expandedChapters.has(chapter.id);
                       return (
                         <div key={chapter.id}>
-                          <div className="vb-item-row">
+                          <div className="vb-item-row" onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'chapter',storyId:story.id,chapterId:chapter.id});}}>
                             <button
                               className="vb-tree-toggle"
                               style={{ paddingLeft: 20 }}
@@ -245,6 +253,7 @@ function StoryVault({
                                     role="button"
                                     tabIndex={0}
                                     data-testid={`vb-scene-${scene.id}`}
+                                    onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'scene',storyId:story.id,chapterId:chapter.id,sceneId:scene.id});}}
                                     onClick={() => { if (!isEditing) onSelectScene(scene, chapter, story); }}
                                     onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
                                     onKeyDown={(e) => {
@@ -280,6 +289,7 @@ function StoryVault({
           })
         )}
       </div>
+      {ct && <StoryContextMenu x={ct.x} y={ct.y} kind={ct.kind} storyId={ct.storyId} chapterId={ct.chapterId} sceneId={ct.sceneId} onClose={()=>setCt(null)} onExport={(scope:ExportScope)=>{onExport?.(scope);}} />}
     </div>
   );
 }
@@ -339,6 +349,92 @@ function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
   );
 }
 
+// ─── Backlinks Pane (SKY-203) ───
+
+const BACKLINKS_OPEN_KEY = 'vb-backlinks-open';
+
+function readBacklinksOpen(): boolean {
+  try { return localStorage.getItem(BACKLINKS_OPEN_KEY) !== 'false'; } catch { return true; }
+}
+function saveBacklinksOpen(v: boolean) {
+  try { localStorage.setItem(BACKLINKS_OPEN_KEY, v ? 'true' : 'false'); } catch { /* */ }
+}
+
+interface BacklinkEntry { path: string; name: string; snippet: string; }
+
+interface BacklinksPaneProps {
+  notePath: string;
+  onOpen: (path: string) => void;
+}
+
+function BacklinksPane({ notePath, onOpen }: BacklinksPaneProps) {
+  const [open, setOpen] = useState(readBacklinksOpen);
+  const [loading, setLoading] = useState(false);
+  const [backlinks, setBacklinks] = useState<BacklinkEntry[]>([]);
+  const prevPath = useRef<string>('');
+
+  useEffect(() => {
+    if (!open) return;
+    if (prevPath.current === notePath) return;
+    prevPath.current = notePath;
+    setLoading(true);
+    window.api.noteBacklinks(notePath)
+      .then((res) => { setBacklinks(res.backlinks ?? []); })
+      .catch(() => { setBacklinks([]); })
+      .finally(() => { setLoading(false); });
+  }, [notePath, open]);
+
+  const handleToggle = useCallback(() => {
+    setOpen((o) => {
+      const next = !o;
+      saveBacklinksOpen(next);
+      return next;
+    });
+  }, []);
+
+  return (
+    <div className="vb-backlinks" data-testid="vb-backlinks">
+      <button
+        className="vb-backlinks-toggle"
+        onClick={handleToggle}
+        aria-expanded={open}
+        aria-label={`${open ? 'Collapse' : 'Expand'} backlinks`}
+      >
+        <span className="vb-backlinks-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <span className="vb-backlinks-label">Backlinks</span>
+      </button>
+      {open && (
+        <div className="vb-backlinks-body">
+          {loading ? (
+            <div className="vb-backlinks-status" aria-live="polite">Scanning…</div>
+          ) : backlinks.length === 0 ? (
+            <div className="vb-backlinks-empty" data-testid="vb-backlinks-empty">
+              No notes link to this note.
+            </div>
+          ) : (
+            <ul className="vb-backlinks-list" role="list" aria-label="Notes linking to this note">
+              {backlinks.map((bl) => (
+                <li key={bl.path} className="vb-backlinks-item">
+                  <button
+                    className="vb-backlinks-btn"
+                    onClick={() => onOpen(bl.path)}
+                    title={bl.path}
+                  >
+                    <span className="vb-backlinks-name">{bl.name}</span>
+                    {bl.snippet && (
+                      <span className="vb-backlinks-snippet">{bl.snippet}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Notes Vault (file-based, virtualized) ───
 
 interface NotesVaultProps {
@@ -346,10 +442,35 @@ interface NotesVaultProps {
   onOpenFile?: (path: string) => void;
   onReload: () => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  activeTag: string | null;
+  onTagFilter: (tag: string | null) => void;
+  iconMap?: Record<string, string>;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVaultProps) {
-  const notesItems = items.filter(isNotesItem);
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap }: NotesVaultProps) {
+  const allNotesItems = items.filter(isNotesItem);
+  const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!activeTag) { setTagPaths(null); return; }
+    window.api.notesTagList().then((result) => {
+      if (!result || 'error' in result) return;
+      const { tags } = result as { tags: NotesTagEntry[] };
+      const paths = new Set<string>();
+      function gather(entries: NotesTagEntry[]) {
+        for (const e of entries) {
+          if (e.fullName === activeTag) e.paths.forEach((p) => paths.add(p));
+          gather(e.children);
+        }
+      }
+      gather(tags);
+      setTagPaths(paths);
+    }).catch(() => setTagPaths(null));
+  }, [activeTag]);
+
+  const notesItems = tagPaths
+    ? allNotesItems.filter((item) => !item.isDirectory && tagPaths.has(item.path))
+    : allNotesItems;
   const tree = buildTree(notesItems);
 
   const { expanded, selected, toggle, initExpand, select } = useTreeState('notes');
@@ -365,6 +486,10 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
 
   const [ctxRow, setCtxRow] = useState<FlatRow | null>(null);
   const [ctxPos, setCtxPos] = useState({ x: 0, y: 0 });
+
+  // ─── Template dialog state ───
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogDirPath, setDialogDirPath] = useState('');
 
   // ─── Rename state ───
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -429,22 +554,18 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
   }, []);
 
   const handleNewNote = useCallback(
-    async (dirPath: string) => {
-      const name = prompt('Note name (without .md):');
-      if (!name?.trim()) return;
-      const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
-      const rel = dirPath ? `${dirPath}/${slug || 'note'}.md` : `${slug || 'note'}.md`;
-      try {
-        await window.api.writeNotesVault(
-          rel,
-          `---\ntitle: "${name.trim()}"\ncreatedAt: ${new Date().toISOString()}\n---\n\n`,
-        );
-        await onReload();
-        select(rel);
-        onOpenFile?.(rel);
-      } catch (e) {
-        console.error('Failed to create note:', e);
-      }
+    (dirPath: string) => {
+      setDialogDirPath(dirPath);
+      setDialogOpen(true);
+    },
+    [],
+  );
+
+  const handleNoteCreated = useCallback(
+    async (path: string) => {
+      await onReload();
+      select(path);
+      onOpenFile?.(path);
     },
     [onReload, select, onOpenFile],
   );
@@ -480,8 +601,13 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
           +
         </button>
       </div>
-      {notesItems.length === 0 ? (
+      <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
+      {allNotesItems.length === 0 ? (
         <NotesVaultEmptyState onCreate={() => handleNewNote('')} />
+      ) : notesItems.length === 0 && activeTag ? (
+        <div className="vb-notes-no-match" data-testid="vb-notes-no-match">
+          No notes with tag <strong>{activeTag}</strong>
+        </div>
       ) : (
         <VirtualTree
           data-testid="vb-notes-tree"
@@ -496,6 +622,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
           onRenameChange={setEditValue}
           onRenameCommit={handleRenameCommit}
           onRenameCancel={handleRenameCancel}
+          iconMap={iconMap}
         />
       )}
       <ContextMenu
@@ -507,6 +634,15 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange }: NotesVault
         onNewFolder={handleNewFolder}
         onRename={handleStartRename}
       />
+      <NoteTemplateDialog
+        open={dialogOpen}
+        dirPath={dialogDirPath}
+        onClose={() => setDialogOpen(false)}
+        onCreated={handleNoteCreated}
+      />
+      {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
+        <BacklinksPane notePath={selected} onOpen={handleOpen} />
+      )}
     </div>
   );
 }
@@ -524,6 +660,66 @@ export interface VaultBrowserProps {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenFile?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  onExport?: (scope: ExportScope) => void;
+  /** SKY-204: whether journal mode is enabled (shows Daily Notes widget). */
+  journalModeEnabled?: boolean;
+}
+
+// SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
+function DailyNotesBanner({ onOpenFile }: { onOpenFile?: (path: string) => void }) {
+  const [streak, setStreak] = useState(0);
+  const [todayExists, setTodayExists] = useState(false);
+  const [opening, setOpening] = useState(false);
+
+  const loadStreak = useCallback(async () => {
+    try {
+      const r = await window.api.dailyNoteGetStreak();
+      setStreak(r.streakDays);
+      setTodayExists(r.todayExists);
+    } catch {
+      // vault not ready yet
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStreak();
+    const unsub = window.api.onVaultFileChanged?.(() => loadStreak());
+    return () => unsub?.();
+  }, [loadStreak]);
+
+  const handleOpen = useCallback(async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      const r = await window.api.dailyNoteOpenToday();
+      await loadStreak();
+      onOpenFile?.(r.path);
+    } catch {
+      // non-fatal
+    } finally {
+      setOpening(false);
+    }
+  }, [opening, loadStreak, onOpenFile]);
+
+  return (
+    <div className="vb-daily-banner">
+      <div className="vb-daily-streak">
+        {streak > 0 && (
+          <span title={`Journal streak: ${streak} consecutive day${streak === 1 ? '' : 's'}`}>
+            🔥 {streak} day{streak === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+      <button
+        className={`vb-daily-today-btn${todayExists ? ' vb-daily-today-btn--exists' : ''}`}
+        onClick={handleOpen}
+        disabled={opening}
+        aria-label="Open or create today's daily note"
+      >
+        {opening ? '…' : todayExists ? "Open Today's Note" : "Create Today's Note"}
+      </button>
+    </div>
+  );
 }
 
 export default function VaultBrowser({
@@ -535,9 +731,19 @@ export default function VaultBrowser({
   onCreateScene,
   onOpenFile,
   onContextChange,
+  onExport,
+  journalModeEnabled,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>('both');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
+  const [notesIconMap, setNotesIconMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    window.api.notesVaultReadIcons().then((m) => {
+      if (m && typeof m === 'object') setNotesIconMap(m as Record<string, string>);
+    }).catch(() => {});
+  }, [notesItems.length]);
 
   const showStory = scope === 'story' || scope === 'both';
   const showNotes = scope === 'notes' || scope === 'both';
@@ -549,6 +755,9 @@ export default function VaultBrowser({
 
   return (
     <div className="vault-browser" data-testid="vault-browser">
+      {journalModeEnabled && (
+        <DailyNotesBanner onOpenFile={onOpenFile} />
+      )}
       <div className="vb-scope-bar" role="group" aria-label="Vault scope">
         <button
           className={`vb-scope-btn${scope === 'story' ? ' vb-scope-active' : ''}`}
@@ -587,6 +796,7 @@ export default function VaultBrowser({
               onCreateChapter={onCreateChapter}
               onCreateScene={onCreateScene}
               onRenameScene={handleRenameScene}
+            onExport={onExport}
             />
           </div>
         )}
@@ -603,6 +813,9 @@ export default function VaultBrowser({
                 onOpenFile={onOpenFile}
                 onReload={notesReload}
                 onContextChange={onContextChange}
+                activeTag={activeTag}
+                onTagFilter={setActiveTag}
+                iconMap={notesIconMap}
               />
             )}
           </div>

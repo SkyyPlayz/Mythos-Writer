@@ -1,30 +1,40 @@
+/* =============================================================================
+ * VaultGraphView — Liquid Neon styling (SKY-217)
+ * All glow effects read --lg-neon / --lg-blur / --lg-glass from tokens.css
+ * so the Softness↔Contrast slider drives them automatically.
+ * ========================================================================== */
+
+/* ─── Shell ──────────────────────────────────────────────────────────────── */
+
 .vgv-root {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #11111b;
-  color: #cdd6f4;
+  background: var(--bg-base, #0e1116);
+  color: var(--text-body, #bfd6e8);
 }
+
+/* ─── Toolbar ────────────────────────────────────────────────────────────── */
 
 .vgv-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  background: #1e1e2e;
-  border-bottom: 1px solid #313244;
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border-bottom: 1px solid var(--border-default, rgba(255, 255, 255, 0.10));
   flex-shrink: 0;
 }
 
 .vgv-title {
   font-weight: 600;
   font-size: 14px;
-  color: #cba6f7;
+  color: var(--text-header, #edecf6);
 }
 
 .vgv-count {
   font-size: 12px;
-  color: #6c7086;
+  color: var(--text-muted, #8a9bb0);
   flex: 1;
 }
 
@@ -34,19 +44,45 @@
 }
 
 .vgv-filters select {
-  background: #313244;
-  color: #cdd6f4;
-  border: 1px solid #585b70;
-  border-radius: 4px;
+  background: var(--bg-inset, #15191f);
+  color: var(--text-body, #bfd6e8);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.10));
+  border-radius: var(--radius-xs, 8px);
   padding: 2px 8px;
   font-size: 12px;
   cursor: pointer;
+  transition: border-color 140ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.vgv-filters select:hover {
+  border-color: var(--neon-cyan, #00f0ff);
+}
+
+.vgv-filters select:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* ─── Canvas ─────────────────────────────────────────────────────────────── */
 
 .vgv-canvas {
   flex: 1;
   min-height: 0;
+  position: relative;
+  background: var(--bg-base, #0e1116);
 }
+
+/* Radial vignette — spec §4, pointer-events:none so graph stays fully interactive */
+.vgv-canvas::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0, 0, 0, 0.28) 100%);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ─── State screens ──────────────────────────────────────────────────────── */
 
 .vgv-state {
   display: flex;
@@ -54,18 +90,240 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #6c7086;
+  color: var(--text-muted, #8a9bb0);
   gap: 8px;
   font-size: 14px;
   text-align: center;
   padding: 24px;
+  background: var(--bg-base, #0e1116);
 }
 
 .vgv-error {
-  color: #f38ba8;
+  color: var(--state-danger, #f87171);
 }
 
 .vgv-error-sub {
   font-size: 12px;
-  color: #6c7086;
+  color: var(--text-muted, #8a9bb0);
+}
+
+/* ─── ReactFlow overrides — background + controls ────────────────────────── */
+
+.vgv-canvas .react-flow {
+  background: var(--bg-base, #0e1116);
+}
+
+.vgv-canvas .react-flow__background {
+  background: var(--bg-base, #0e1116);
+}
+
+/* ─── Handle (invisible — only needed for edge routing) ──────────────────── */
+
+.vgv-handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+/* ─── Node base (spec §1, §3, §6) ───────────────────────────────────────── */
+
+.vgv-node-base {
+  width: 100px;
+  height: 48px;
+  border-radius: var(--radius-sm, 12px);
+  border: 2px solid transparent;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-body, #bfd6e8);
+  cursor: pointer;
+  box-sizing: border-box;
+  opacity: var(--vgv-node-opacity, 1);
+  transition:
+    transform 140ms cubic-bezier(0.4, 0, 0.2, 1),
+    filter 240ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 240ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-width 140ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 100ms;
+}
+
+/* ─── Per-type node colors (spec §1 table) ───────────────────────────────── */
+
+/* Note / Location / History → --neon-cyan */
+.vgv-node--note {
+  --_nc: var(--neon-cyan, #00f0ff);
+  --_nb: rgba(0, 240, 255, 0.06);
+}
+
+.vgv-node--location {
+  --_nc: var(--neon-cyan, #00f0ff);
+  --_nb: rgba(0, 240, 255, 0.06);
+}
+
+.vgv-node--history {
+  --_nc: var(--neon-cyan, #00f0ff);
+  --_nb: rgba(0, 240, 255, 0.06);
+}
+
+/* Character / Item → --neon-violet */
+.vgv-node--character {
+  --_nc: var(--neon-violet, #9b5fff);
+  --_nb: rgba(155, 95, 255, 0.06);
+}
+
+.vgv-node--item {
+  --_nc: var(--neon-violet, #9b5fff);
+  --_nb: rgba(155, 95, 255, 0.06);
+}
+
+/* Faction / System → --neon-magenta */
+.vgv-node--faction {
+  --_nc: var(--neon-magenta, #ff4dff);
+  --_nb: rgba(255, 77, 255, 0.06);
+}
+
+.vgv-node--system {
+  --_nc: var(--neon-magenta, #ff4dff);
+  --_nb: rgba(255, 77, 255, 0.06);
+}
+
+/* Apply color to every typed node */
+.vgv-node--note,
+.vgv-node--location,
+.vgv-node--history,
+.vgv-node--character,
+.vgv-node--item,
+.vgv-node--faction,
+.vgv-node--system {
+  background: var(--_nb, rgba(0, 240, 255, 0.06));
+  border-color: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 70%, transparent);
+  filter:
+    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.5) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 40%, transparent))
+    drop-shadow(0 0 var(--lg-blur, 16px) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 25%, transparent));
+}
+
+/* ─── Hover state (spec §5) ──────────────────────────────────────────────── */
+
+.vgv-node--note:hover,
+.vgv-node--location:hover,
+.vgv-node--history:hover,
+.vgv-node--character:hover,
+.vgv-node--item:hover,
+.vgv-node--faction:hover,
+.vgv-node--system:hover {
+  transform: scale(1.08);
+  border-width: 2.5px;
+  border-color: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 85%, transparent);
+  filter:
+    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.75) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 60%, transparent))
+    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 1.5) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 40%, transparent));
+}
+
+/* ─── Selected state (spec §5) ───────────────────────────────────────────── */
+
+.vgv-node--selected {
+  border-width: 3px !important;
+  border-color: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 100%, transparent) !important;
+  background: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 12%, var(--_nb, rgba(0, 240, 255, 0.06))) !important;
+  filter:
+    drop-shadow(0 0 var(--lg-blur, 16px) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 75%, transparent))
+    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 2) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 20%, transparent)) !important;
+}
+
+/* ─── Label (spec §6) ────────────────────────────────────────────────────── */
+
+.vgv-node-label {
+  display: block;
+  max-width: 84px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-body, #bfd6e8);
+  opacity: var(--vgv-label-opacity, 1);
+  transition: opacity 100ms;
+}
+
+/* ─── ReactFlow default node override — ensure our custom node fills the node wrapper */
+
+.react-flow__node-neonNode {
+  width: 100px;
+  height: 48px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: var(--radius-sm, 12px) !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.react-flow__node-neonNode:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* ─── Edges (spec §2, §3) ────────────────────────────────────────────────── */
+
+.vgv-edge {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* Glow scales with --lg-blur — crisper at sharp, softer at soft */
+  filter: drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.375) color-mix(in srgb, var(--neon-cyan, #00f0ff) 40%, transparent));
+  transition:
+    stroke-width 140ms cubic-bezier(0.4, 0, 0.2, 1),
+    filter 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vgv-edge--selected,
+.vgv-edge:hover {
+  filter: drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.75) color-mix(in srgb, var(--neon-cyan, #00f0ff) 60%, transparent));
+}
+
+/* ─── Reduced-motion (spec §9) ───────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .vgv-node-base {
+    transition: none;
+  }
+
+  .vgv-node--note:hover,
+  .vgv-node--location:hover,
+  .vgv-node--history:hover,
+  .vgv-node--character:hover,
+  .vgv-node--item:hover,
+  .vgv-node--faction:hover,
+  .vgv-node--system:hover {
+    transform: none;
+  }
+
+  .vgv-node-label {
+    transition: none;
+  }
+
+  .vgv-edge {
+    transition: none;
+  }
+
+  .vgv-filters select {
+    transition: none;
+  }
+
+  /* Static focus indicator in place of animated focus ring */
+  .react-flow__node-neonNode:focus-visible {
+    outline: 2px solid var(--neon-cyan, #00f0ff);
+    outline-offset: 2px;
+  }
 }

@@ -15,3 +15,6 @@ const localStorageMock = (() => {
 })();
 
 Object.defineProperty(window, 'localStorage', { value: localStorageMock, writable: true });
+
+// jsdom does not implement scrollIntoView; stub it so components that call it don't throw.
+Element.prototype.scrollIntoView = () => {};
