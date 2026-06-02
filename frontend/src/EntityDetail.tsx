@@ -6,7 +6,9 @@ import './EntityDetail.css';
 const TYPE_LABELS: Record<EntityType, string> = {
   character: 'Character',
   location: 'Location',
+  faction: 'Faction',
   item: 'Item',
+  event: 'Event',
   concept: 'Concept',
   other: 'Other',
 };
@@ -14,7 +16,9 @@ const TYPE_LABELS: Record<EntityType, string> = {
 const TYPE_ICONS: Record<EntityType, string> = {
   character: '👤',
   location: '📍',
+  faction: '⚔️',
   item: '💎',
+  event: '📅',
   concept: '💡',
   other: '📄',
 };
