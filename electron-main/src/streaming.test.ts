@@ -556,8 +556,8 @@ describe('STREAM_START payload validation (F19)', () => {
   it('does not invoke SDK for invalid payloads', async () => {
     const streamSpy = vi.fn();
     vi.mocked(Anthropic).mockImplementation(function() { return (
-      { messages: { stream: streamSpy } } as unknown as Anthropic,
-    );
+      { messages: { stream: streamSpy } } as unknown as Anthropic
+    ); })
 
     const { startHandler } = getHandlers(reg);
     await startHandler(makeEvent(makeSender()), { messages: [] });
@@ -1203,8 +1203,8 @@ describe('concurrent stream cap', () => {
       })(),
     );
     vi.mocked(Anthropic).mockImplementation(function() { return (
-      { messages: { stream: streamSpy } } as unknown as Anthropic,
-    );
+      { messages: { stream: streamSpy } } as unknown as Anthropic
+    ); })
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender(42);
@@ -1231,8 +1231,8 @@ describe('concurrent stream cap', () => {
       })(),
     );
     vi.mocked(Anthropic).mockImplementation(function() { return (
-      { messages: { stream: streamSpy } } as unknown as Anthropic,
-    );
+      { messages: { stream: streamSpy } } as unknown as Anthropic
+    ); })
 
     const { startHandler } = getHandlers(reg);
     const senderA = makeSender(1);
