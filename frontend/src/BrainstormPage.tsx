@@ -45,6 +45,12 @@ export const HARD_TIMEOUT_MS = 90_000;
 const DRAFT_KEY = 'brainstorm:draft';
 const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
 
+// Sentinel value used when the user explicitly picks "Vault root" in the
+// routing-prompt select. Empty string is reserved for "nothing selected yet"
+// (the disabled placeholder), so vault-root needs its own distinct token.
+// resolveRoutingPrompt translates this back to '' before calling the API.
+export const VAULT_ROOT_SENTINEL = '__vault_root__';
+
 interface BrainstormDraft {
   v: 2;
   savedAt: string;
@@ -601,12 +607,15 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     async (factId: string, remember: boolean) => {
       const prompt = routingPrompts.find((p) => p.factId === factId);
       if (!prompt) return;
-      const chosen = (prompt.customFolder.trim() || prompt.destination || '').trim();
-      // Empty string is a legitimate choice — it pins the note at the vault root.
-      // We just need an explicit selection (any of the two inputs touched).
-      if (prompt.destination === '' && prompt.customFolder.trim() === '' && prompt.destination !== '') {
+      // Block when neither the select nor the custom-folder input has been touched.
+      // VAULT_ROOT_SENTINEL in destination means the user explicitly chose vault root;
+      // translate that sentinel to '' (empty path) before passing it to the API.
+      if (prompt.destination === '' && prompt.customFolder.trim() === '') {
         return;
       }
+      const chosen = prompt.customFolder.trim()
+        ? prompt.customFolder.trim()
+        : prompt.destination === VAULT_ROOT_SENTINEL ? '' : prompt.destination;
       setFacts((prev) =>
         prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saving' } : f)),
       );
@@ -844,11 +853,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                       <option value="" disabled>
                         Choose a folder…
                       </option>
-                      {notesFolders.map((f) => (
-                        <option key={f.path} value={f.path}>
-                          {f.label}
-                        </option>
-                      ))}
+                      <option value={VAULT_ROOT_SENTINEL}>/ (vault root)</option>
+                      {notesFolders
+                        .filter((f) => f.path !== '')
+                        .map((f) => (
+                          <option key={f.path} value={f.path}>
+                            {f.label}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <label className="bs-routing-row">
