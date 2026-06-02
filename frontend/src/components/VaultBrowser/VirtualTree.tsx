@@ -53,6 +53,10 @@ function Row({
 
   useEffect(() => {
     if (isFocused && row && rowRef.current && document.activeElement !== rowRef.current) {
+      // Don't steal focus from the editor or any other text-entry surface.
+      // ProseMirror is contenteditable; inputs and textareas are self-explanatory.
+      const a = document.activeElement as HTMLElement | null;
+      if (a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
       rowRef.current.focus({ preventScroll: true });
     }
   // row changes when expand/collapse changes the visible set; refocus if still the focused slot
