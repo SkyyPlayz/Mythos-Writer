@@ -648,7 +648,7 @@ describe('importObsidianVault', () => {
   it('uses atomic writes — a renameSync crash leaves no torn file at the destination', () => {
     fs.writeFileSync(path.join(srcDir, 'crash.md'), 'imported body', 'utf-8');
 
-    const dstFull = path.join(dstDir, 'crash.md');
+    const dstFull = path.join(fs.realpathSync.native(dstDir), 'crash.md');
     const realRenameSync = fs.renameSync.bind(fs);
     const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
       if (to === dstFull) throw new Error('simulated crash before rename');
