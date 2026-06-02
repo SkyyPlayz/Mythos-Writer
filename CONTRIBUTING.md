@@ -1,5 +1,17 @@
 # Contributing to Mythos Writer
 
+## Code Quality Standard
+
+Every change on this repo must meet the **Code Quality Standard — Correct, Clear, Simple, Tested, Bulletproof**.
+
+- **Reviewers:** run the [Code Review Rubric](docs/code-review-rubric.md) on every PR.
+- **Authors:** verify the Definition of Done checklist in the PR template before requesting review.
+- **Priority order when qualities conflict:** correctness > readability > simplicity > maintainability > performance.
+
+Full details: [`docs/code-review-rubric.md`](docs/code-review-rubric.md) · Source report: [`plans/ProjectGoalOverView/13-Code-Quality.md`](plans/ProjectGoalOverView/13-Code-Quality.md)
+
+---
+
 ## Merge Policy
 
 All changes to `main` must go through a pull request that passes every required
