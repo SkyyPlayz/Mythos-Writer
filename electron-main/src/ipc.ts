@@ -2255,17 +2255,14 @@ export interface TemplateScaffoldPayload {
   notesVaultPath: string;
 }
 
-export interface TemplateScaffoldResponse {
-  ok: true;
-  storyVaultPath: string;
-  notesVaultPath: string;
-}
+export type TemplateScaffoldResponse =
+  | { ok: true; storyVaultPath: string; notesVaultPath: string }
+  | { error: string };
 
 export interface TemplateSaveAsPayload {
   name: string;
 }
 
-export interface TemplateSaveAsResponse {
-  ok: true;
-  id: string;
-}
+export type TemplateSaveAsResponse =
+  | { ok: true; id: string }
+  | { error: string };
