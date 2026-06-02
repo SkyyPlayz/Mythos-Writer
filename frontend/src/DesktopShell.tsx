@@ -984,8 +984,11 @@ export default function DesktopShell() {
         ),
       }
     ));
+    // Auto-navigate to the newly created scene so the editor opens immediately.
+    handleSelectScene(scene, chapter, story);
+    setViewDepth('scene');
     (window as any).api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, updateManifest, requestText]);
+  }, [stories, updateManifest, requestText, handleSelectScene]);
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
     const updatedStories = stories.map((s) =>
@@ -1437,7 +1440,7 @@ export default function DesktopShell() {
             stories={stories}
             selectedSceneId={selectedScene?.id ?? null}
             selectedEntityId={selectedEntity?.id ?? null}
-            onSelectScene={handleSelectScene}
+            onSelectScene={(sc, ch, story) => { handleSelectScene(sc, ch, story); setViewDepth('scene'); }}
             onSelectEntity={handleSelectEntity}
             onCreateStory={createStory}
             onCreateChapter={createChapter}
