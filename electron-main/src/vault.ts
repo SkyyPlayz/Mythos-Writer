@@ -291,8 +291,13 @@ interface Frontmatter {
 }
 
 export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose: string } {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { frontmatter: {}, prose: raw };
+  // Null bytes (\x00) are not valid in YAML and cause ambiguous behaviour in
+  // downstream key comparisons (e.g. join('\0') used in the fuzz roundtrip
+  // check). Strip them before any further processing.
+  const sanitized = raw.replace(/\x00/g, '');
+
+  const match = sanitized.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, prose: sanitized };
 
   // Object.create(null) prevents prototype-pollution: keys like '__proto__' or
   // 'constructor' become plain own properties instead of intercepting prototype
@@ -302,6 +307,7 @@ export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose
     const colon = line.indexOf(':');
     if (colon === -1) continue;
     const key = line.slice(0, colon).trim();
+    if (!key) continue;
     const val = line.slice(colon + 1).trim();
     // Parse arrays like `tags: [a, b]`
     if (val.startsWith('[') && val.endsWith(']')) {

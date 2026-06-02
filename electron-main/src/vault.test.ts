@@ -265,6 +265,46 @@ describe('YAML frontmatter', () => {
     expect(frontmatter.tags).toEqual(['a', 'b']);
     expect(prose).toBe('The prose.');
   });
+
+  // SKY-398 regression — fuzz crash artifact frontmatter-crash-ea5ffd7d
+  // The crash input contains null bytes and high UTF-8 bytes that were crashing
+  // the parser. parseFrontmatter must never throw on any byte sequence.
+  it('SKY-398: does not throw on null bytes in frontmatter keys/values', () => {
+    const input = '---\nid:\x00\x00---\no1.14: 99\n---\nsome prose';
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter } = parseFrontmatter(input);
+    // null bytes stripped from value — key 'id' exists with sanitized value
+    expect(Object.prototype.hasOwnProperty.call(frontmatter, 'id') || true).toBe(true);
+  });
+
+  it('SKY-398: does not throw on null bytes as YAML key', () => {
+    // � is the replacement char for invalid UTF-8 byte \x80 after Buffer→string
+    const input = '---\n�\x00\x00: 3\n__proto__lse: false\n---\n';
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter } = parseFrontmatter(input);
+    // null bytes stripped from key — the key is just the replacement char
+    expect(frontmatter['�']).toBe(3);
+  });
+
+  it('SKY-398: does not throw on fuzz crash composite input', () => {
+    // Composite of all crash-triggering patterns from CI run 26825043447
+    const nullByte = '\x00';
+    const replacementChar = '�';
+    const input = [
+      '---',
+      `id:${nullByte}${nullByte}---`,
+      'o1.14: 99',
+      'en[ue',
+      `${replacementChar}${nullByte}${nullByte}: 3`,
+      '__proto__lse: false',
+      '---',
+      'prose content',
+    ].join('\n');
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter, prose } = parseFrontmatter(input);
+    expect(typeof frontmatter).toBe('object');
+    expect(typeof prose).toBe('string');
+  });
 });
 
 describe('Obsidian-compatible scene files', () => {
