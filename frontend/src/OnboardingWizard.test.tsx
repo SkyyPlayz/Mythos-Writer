@@ -296,6 +296,8 @@ describe('OnboardingWizard — S2b Dry-run report', () => {
     await goToDryRun();
     fireEvent.click(screen.getByTestId('confirm-import'));
     await waitFor(() => expect(screen.getByTestId('screen-import-progress')).toBeInTheDocument());
+    // Drain the pending obsidianRegister microtask so it doesn't fire after JSDOM teardown.
+    await act(async () => {});
   });
 
   it('forwards registrationToken from pickFolder to obsidianDryRun', async () => {
@@ -317,7 +319,7 @@ describe('OnboardingWizard — S2b Dry-run report', () => {
 describe('OnboardingWizard — S2c Import progress', () => {
   it('shows cancel button during import (spec: always reachable)', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 100)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -329,7 +331,7 @@ describe('OnboardingWizard — S2c Import progress', () => {
 
   it('cancel button shows confirm dialog', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 500)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -342,7 +344,7 @@ describe('OnboardingWizard — S2c Import progress', () => {
 
   it('"Keep going" on confirm dialog dismisses it', async () => {
     (window as unknown as { api: { obsidianRegister: ReturnType<typeof vi.fn> } }).api.obsidianRegister =
-      vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ vaultRoot: '/v', notesIndexed: 42 }), 500)));
+      vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves — keeps import in-flight
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     fireEvent.click(screen.getByTestId('import-drop-zone-btn'));
@@ -467,6 +469,40 @@ describe('OnboardingWizard — S4 Done', () => {
     expect(screen.queryByTestId('api-key-input')).not.toBeInTheDocument();
     expect(screen.queryByTestId('save-api-key')).not.toBeInTheDocument();
     expect(screen.queryByTestId('skip-api-key')).not.toBeInTheDocument();
+  });
+});
+
+describe('OnboardingWizard — keyboard focus trap', () => {
+  const FOCUSABLE_SELECTOR =
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+  it('Tab at the last focusable element wraps to the first', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    const overlay = document.querySelector('.onboarding-overlay') as HTMLElement;
+    const focusable = Array.from(overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    expect(focusable.length).toBeGreaterThan(0);
+    const last = focusable[focusable.length - 1];
+    last.focus();
+    fireEvent.keyDown(last, { key: 'Tab', bubbles: true });
+    expect(document.activeElement).toBe(focusable[0]);
+  });
+
+  it('Shift+Tab at the first focusable element wraps to the last', () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    const overlay = document.querySelector('.onboarding-overlay') as HTMLElement;
+    const focusable = Array.from(overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    expect(focusable.length).toBeGreaterThan(0);
+    const first = focusable[0];
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true, bubbles: true });
+    expect(document.activeElement).toBe(focusable[focusable.length - 1]);
+  });
+
+  it('focus moves to the screen heading on screen transition', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-default'));
+    const heading = await screen.findByText('Where should we put your vaults?');
+    await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 });
 

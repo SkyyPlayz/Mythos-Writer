@@ -6,7 +6,9 @@ import './EntityDetail.css';
 const TYPE_LABELS: Record<EntityType, string> = {
   character: 'Character',
   location: 'Location',
+  faction: 'Faction',
   item: 'Item',
+  event: 'Event',
   concept: 'Concept',
   other: 'Other',
 };
@@ -14,7 +16,9 @@ const TYPE_LABELS: Record<EntityType, string> = {
 const TYPE_ICONS: Record<EntityType, string> = {
   character: '👤',
   location: '📍',
+  faction: '⚔️',
   item: '💎',
+  event: '📅',
   concept: '💡',
   other: '📄',
 };
@@ -56,6 +60,9 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [backlinks, setBacklinks] = useState<EntityBacklinkScene[]>([]);
   const [backlinksOpen, setBacklinksOpen] = useState(true);
   const [backlinksLoading, setBacklinksLoading] = useState(false);
+  const [linkedScenes, setLinkedScenes] = useState<LinkedScene[]>([]);
+  const [linkedScenesOpen, setLinkedScenesOpen] = useState(true);
+  const [linkedScenesLoading, setLinkedScenesLoading] = useState(false);
 
   // Relations state
   const [relationsOpen, setRelationsOpen] = useState(true);
@@ -113,13 +120,31 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     loadBacklinks();
   }, [loadBacklinks]);
 
-  // Refresh backlinks when any vault file changes (e.g. a scene is saved)
+  // Load linked scenes whenever entity changes
+  const loadLinkedScenes = useCallback(async () => {
+    setLinkedScenesLoading(true);
+    try {
+      const result = await window.api.entityLinkedScenes(entity.id);
+      setLinkedScenes(result.scenes ?? []);
+    } catch {
+      setLinkedScenes([]);
+    } finally {
+      setLinkedScenesLoading(false);
+    }
+  }, [entity.id]);
+
+  useEffect(() => {
+    loadLinkedScenes();
+  }, [loadLinkedScenes]);
+
+  // Refresh backlinks + linked scenes when any vault file changes (e.g. a scene is saved)
   useEffect(() => {
     const off = window.api.onVaultFileChanged(() => {
       loadBacklinks();
+      loadLinkedScenes();
     });
     return off;
-  }, [loadBacklinks]);
+  }, [loadBacklinks, loadLinkedScenes]);
 
   // Build entity id to name map for rendering relation targets
   useEffect(() => {
@@ -461,6 +486,57 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
                         {bl.sceneTitle || bl.scenePath.split('/').pop()?.replace(/\.md$/, '')}
                       </button>
                       <span className="entity-det-backlink-snippet">{bl.snippet}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Linked Scenes panel */}
+        <div className="entity-det-linked-scenes">
+          <button
+            className="entity-det-linked-scenes-header"
+            onClick={() => setLinkedScenesOpen((o) => !o)}
+            aria-expanded={linkedScenesOpen}
+          >
+            <span className="entity-det-linked-scenes-chevron">{linkedScenesOpen ? '▾' : '▸'}</span>
+            <span className="entity-det-linked-scenes-title">Linked Scenes</span>
+            <span className="entity-det-linked-scenes-count">
+              {linkedScenesLoading ? '…' : linkedScenes.length}
+            </span>
+          </button>
+          {linkedScenesOpen && (
+            <div className="entity-det-linked-scenes-body">
+              {linkedScenesLoading ? (
+                <div className="entity-det-linked-scenes-empty">Loading…</div>
+              ) : linkedScenes.length === 0 ? (
+                <div
+                  className="entity-det-linked-scenes-empty"
+                  title={`Mention this entity in a scene using @${entity.name}`}
+                >
+                  No scenes link to this entity yet.
+                </div>
+              ) : (
+                <ul className="entity-det-linked-scenes-list">
+                  {linkedScenes.map((ls) => (
+                    <li key={ls.sceneId} className="entity-det-linked-scene-item">
+                      <span className="entity-det-linked-scene-breadcrumb">
+                        Ch. {ls.chapterOrder + 1}
+                      </span>
+                      <span className="entity-det-linked-scene-sep"> / </span>
+                      <span className="entity-det-linked-scene-name">
+                        &ldquo;{ls.sceneTitle || ls.scenePath.split('/').pop()?.replace(/\.md$/, '')}&rdquo;
+                      </span>
+                      <button
+                        className="entity-det-linked-scene-open"
+                        onClick={() => onOpenScene?.(ls.scenePath)}
+                        disabled={!onOpenScene}
+                        title={`Open scene: ${ls.sceneTitle}`}
+                      >
+                        Open →
+                      </button>
                     </li>
                   ))}
                 </ul>

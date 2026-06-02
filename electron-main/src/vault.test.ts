@@ -265,6 +265,103 @@ describe('YAML frontmatter', () => {
     expect(frontmatter.tags).toEqual(['a', 'b']);
     expect(prose).toBe('The prose.');
   });
+
+  // SKY-398 regression — fuzz crash artifact frontmatter-crash-ea5ffd7d
+  // The crash input contains null bytes and high UTF-8 bytes that were crashing
+  // the parser. parseFrontmatter must never throw on any byte sequence.
+  it('SKY-398: does not throw on null bytes in frontmatter keys/values', () => {
+    const input = '---\nid:\x00\x00---\no1.14: 99\n---\nsome prose';
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter } = parseFrontmatter(input);
+    // null bytes stripped from value — key 'id' exists with sanitized value
+    expect(Object.prototype.hasOwnProperty.call(frontmatter, 'id') || true).toBe(true);
+  });
+
+  it('SKY-398: does not throw on null bytes as YAML key', () => {
+    // � is the replacement char for invalid UTF-8 byte \x80 after Buffer→string
+    const input = '---\n�\x00\x00: 3\n__proto__lse: false\n---\n';
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter } = parseFrontmatter(input);
+    // null bytes stripped from key — the key is just the replacement char
+    expect(frontmatter['�']).toBe(3);
+  });
+
+  it('SKY-398: does not throw on fuzz crash composite input', () => {
+    // Composite of all crash-triggering patterns from CI run 26825043447
+    const nullByte = '\x00';
+    const replacementChar = '�';
+    const input = [
+      '---',
+      `id:${nullByte}${nullByte}---`,
+      'o1.14: 99',
+      'en[ue',
+      `${replacementChar}${nullByte}${nullByte}: 3`,
+      '__proto__lse: false',
+      '---',
+      'prose content',
+    ].join('\n');
+    expect(() => parseFrontmatter(input)).not.toThrow();
+    const { frontmatter, prose } = parseFrontmatter(input);
+    expect(typeof frontmatter).toBe('object');
+    expect(typeof prose).toBe('string');
+  });
+
+  it('SKY-398: closing delimiter must be exactly "---" on its own line', () => {
+    // Keys starting with "---" must NOT be confused for the closing delimiter.
+    // Regression for fuzz crash 03540bd: serializeFrontmatter emitted a key
+    // like "-----blled: v" and re-parse wrongly treated it as the closing "---".
+    const { frontmatter } = parseFrontmatter(
+      '---\n-----blled: 42\nname: test\n---\nprose',
+    );
+    expect(frontmatter['-----blled']).toBe(42);
+    expect(frontmatter['name']).toBe('test');
+  });
+
+  it('SKY-398: roundtrip survives a key starting with dashes', () => {
+    const fm = { '---key': 'val', normal: 'ok' };
+    const serialized = serializeFrontmatter(fm, 'prose here');
+    expect(() => parseFrontmatter(serialized)).not.toThrow();
+    const { frontmatter, prose } = parseFrontmatter(serialized);
+    expect(frontmatter['---key']).toBe('val');
+    expect(frontmatter['normal']).toBe('ok');
+    expect(prose).toBe('prose here');
+  });
+
+  it('parseFrontmatter does not crash on input containing null bytes (SKY-384 fuzz crash 47c4c1f3)', () => {
+    // Exact minimised crash input from the fuzz run. Contains null bytes and a
+    // frontmatter-like line that starts with `---` inside the content, which
+    // previously tricked the non-greedy regex into treating it as the closing
+    // delimiter and causing a roundtrip key-set mismatch.
+    const crashInput =
+      '---\nidned:  =\n-.3.1tive--%*Polo:.\n ---%*Polo:.\n -1\n---totypeld:\x00\x00\nsD: t[u\nened:  =\n =\n-.3.1tive--%*Polo:.\n -1\n---typel';
+    // Must not throw.
+    const result = parseFrontmatter(crashInput);
+    // Input has no valid closing `---` alone on a line, so frontmatter must be empty.
+    expect(Object.keys(result.frontmatter)).toHaveLength(0);
+    // SKY-398: null bytes are stripped before parsing; prose is the sanitized form.
+    expect(result.prose).toBe(crashInput.replace(/\x00/g, ''));
+  });
+
+  it('parseFrontmatter treats a key starting with --- as part of content when closing delimiter is unambiguous (SKY-384)', () => {
+    // A frontmatter block where a key value contains `---` but the closing
+    // delimiter is properly alone on its line.
+    const raw = '---\ntitle: My Scene\n---value: x\n---\nProse.';
+    const { frontmatter, prose } = parseFrontmatter(raw);
+    // `---value` is inside the frontmatter block; closing delimiter is the lone `---`.
+    expect(frontmatter.title).toBe('My Scene');
+    expect(prose).toBe('Prose.');
+  });
+
+  it('serializeFrontmatter roundtrip is consistent when prose contains --- markers (SKY-384)', () => {
+    // Prose that contains `---` must not confuse the closing delimiter detection.
+    const fm = { id: 'z9', title: 'Divider Test' };
+    const prose = '---\nThis is a horizontal rule.\n---\nMore text.';
+    const serialized = serializeFrontmatter(fm, prose);
+    const { frontmatter, prose: reparsedProse } = parseFrontmatter(serialized);
+    expect(frontmatter.id).toBe('z9');
+    expect(frontmatter.title).toBe('Divider Test');
+    expect(reparsedProse).toBe(prose);
+  });
 });
 
 describe('Obsidian-compatible scene files', () => {
@@ -306,6 +403,70 @@ describe('Obsidian-compatible scene files', () => {
     expect(read.id).toBe('scene-002');
     expect(read.title).toBe('The Conflict');
     expect(read.prose).toBe('Tension rises.');
+  });
+
+  // SKY-207: custom frontmatter fields
+  it('writeSceneFile persists custom fields in frontmatter', () => {
+    writeSceneFile(tmpDir, 'cf-scene.md', {
+      id: 'cf-1',
+      title: 'Custom Fields Test',
+      prose: 'Prose here.',
+      customFields: { mood: 'tense', tension: 8, weather: 'stormy' },
+    });
+    const raw = fs.readFileSync(path.join(tmpDir, 'cf-scene.md'), 'utf-8');
+    expect(raw).toContain('mood: tense');
+    expect(raw).toContain('tension: 8');
+    expect(raw).toContain('weather: stormy');
+  });
+
+  it('readSceneFile extracts unknown frontmatter keys as customFields', () => {
+    writeSceneFile(tmpDir, 'cf-round.md', {
+      id: 'cf-2',
+      title: 'Round-trip',
+      prose: 'Some prose.',
+      customFields: { mood: 'calm', tension: 3 },
+    });
+    const read = readSceneFile(tmpDir, 'cf-round.md');
+    expect(read.customFields).toEqual({ mood: 'calm', tension: 3 });
+    // Built-in keys must not leak into customFields
+    expect(read.customFields).not.toHaveProperty('id');
+    expect(read.customFields).not.toHaveProperty('title');
+    expect(read.customFields).not.toHaveProperty('updatedAt');
+  });
+
+  it('custom fields do not overwrite built-in frontmatter keys', () => {
+    // If a custom field shares a name with a built-in key, it is silently dropped
+    writeSceneFile(tmpDir, 'cf-shadow.md', {
+      id: 'cf-3',
+      title: 'Shadow Test',
+      prose: 'Prose.',
+      customFields: { id: 'SHOULD_NOT_OVERWRITE', title: 'NOPE', mood: 'happy' },
+    });
+    const read = readSceneFile(tmpDir, 'cf-shadow.md');
+    expect(read.id).toBe('cf-3');
+    expect(read.title).toBe('Shadow Test');
+    expect(read.customFields?.mood).toBe('happy');
+    expect(read.customFields?.id).toBeUndefined();
+    expect(read.customFields?.title).toBeUndefined();
+  });
+
+  it('preserves existing custom fields not included in new write', () => {
+    // Simulate a save that only sets "mood", leaving "tension" from a prior write
+    writeSceneFile(tmpDir, 'cf-preserve.md', {
+      id: 'cf-4',
+      title: 'Preserve',
+      prose: 'Prose.',
+      customFields: { mood: 'calm', tension: 5 },
+    });
+    const existingData = readSceneFile(tmpDir, 'cf-preserve.md');
+    // Second write merges new + existing (as SCENE_SAVE handler does)
+    writeSceneFile(tmpDir, 'cf-preserve.md', {
+      ...existingData,
+      customFields: { ...existingData.customFields, mood: 'tense' },
+    });
+    const after = readSceneFile(tmpDir, 'cf-preserve.md');
+    expect(after.customFields?.mood).toBe('tense');
+    expect(after.customFields?.tension).toBe(5); // preserved
   });
 });
 

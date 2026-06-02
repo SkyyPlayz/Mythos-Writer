@@ -316,6 +316,9 @@ export const IPC_CHANNELS = {
   SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
   ENTITY_LINKED_SCENES: 'entity:linkedScenes',
 
+  // SKY-203: Note-level backlinks — which notes link to a given note
+  NOTE_BACKLINKS: 'notesVault:backlinks',
+
   // SKY-194: Iconize — per-node icons with bundled + user icon packs
   NOTES_VAULT_READ_ICONS: 'notesVault:readIcons',
   VAULT_READ_ICONS: 'vault:readIcons',
@@ -331,6 +334,11 @@ export const IPC_CHANNELS = {
   // SKY-204: Daily Notes — opt-in journal mode
   DAILY_NOTE_OPEN_TODAY: 'dailyNote:openToday',
   DAILY_NOTE_GET_STREAK: 'dailyNote:getStreak',
+  // SKY-207: Per-scene custom frontmatter fields
+  CUSTOM_FIELDS_LIST: 'customFields:list',
+  CUSTOM_FIELDS_SET: 'customFields:set',
+  SCENE_PROPS_GET: 'scene:propsGet',
+  SCENE_PROPS_SET: 'scene:propsSet',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -555,6 +563,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
   [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
 
+  // SKY-203: Note-level backlinks
+  [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => NoteBacklinksResponse;
+
   // SKY-194: Iconize — per-node icon IPC
   [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
   [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
@@ -567,6 +578,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }) => { smartFolder: SmartFolderEntry };
   [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }) => { success: boolean };
   [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }) => { results: SmartFolderResult[] };
+
+  // SKY-207: Per-scene custom frontmatter fields
+  [IPC_CHANNELS.CUSTOM_FIELDS_LIST]: (payload: never) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }) => { customFields: Record<string, unknown> };
+  [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }) => { ok: boolean };
 }
 
 // ─── Payload / Response types ───
@@ -653,6 +670,18 @@ export interface SmartFolderEntry {
   query: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// SKY-207: Per-scene custom frontmatter field schema
+export type FieldType = 'text' | 'number' | 'select';
+
+export interface CustomFieldDef {
+  id: string;
+  /** The frontmatter key (e.g. "mood", "tension"). Lowercase, no spaces. */
+  name: string;
+  type: FieldType;
+  /** Only for type "select". */
+  options?: string[];
 }
 
 export interface SmartFolderResult {
@@ -1110,6 +1139,27 @@ export interface EntityBacklinkScene {
 export interface EntityBacklinksResponse {
   entityId: string;
   scenes: EntityBacklinkScene[];
+}
+
+// ─── Note backlinks (SKY-203) ───
+
+export interface NoteBacklinksPayload {
+  /** Vault-relative path of the note to find backlinks for (e.g. "my-note.md"). */
+  notePath: string;
+}
+
+export interface NoteBacklinkEntry {
+  /** Vault-relative path of the linking note. */
+  path: string;
+  /** Display name (filename without .md extension). */
+  name: string;
+  /** Short excerpt around the [[wikilink]] hit. */
+  snippet: string;
+}
+
+export interface NoteBacklinksResponse {
+  notePath: string;
+  backlinks: NoteBacklinkEntry[];
 }
 
 // ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───
@@ -1767,6 +1817,8 @@ export interface SceneSavePayload {
   order?: number;
   /** SKY-10: classifies the save so snapshots can dedupe autosaves. Defaults to 'save'. */
   intent?: VersionIntent;
+  /** SKY-207: custom frontmatter field values to persist alongside prose. */
+  customFields?: Record<string, unknown>;
 }
 
 export interface SceneSaveResponse {
@@ -2594,9 +2646,11 @@ export interface SceneEntityLink {
 }
 export interface LinkedScene {
   sceneId: string;
+  scenePath: string;
   sceneTitle: string;
   chapterId: string;
   chapterTitle: string;
+  chapterOrder: number;
   storyId: string;
   linkKind: 'mention' | 'tag';
 }

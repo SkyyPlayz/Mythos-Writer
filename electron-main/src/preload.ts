@@ -158,6 +158,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:list', { type }),
   entityBacklinks: (entityId: string) =>
     ipcRenderer.invoke('entity:backlinks', { entityId }),
+  entityLinkedScenes: (entityId: string) =>
+    ipcRenderer.invoke('entity:linkedScenes', { entityId }),
 
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
@@ -530,6 +532,10 @@ contextBridge.exposeInMainWorld('api', {
   tagsBulkApply: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) =>
     ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
   sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
+  // SKY-203: Note-level backlinks
+  noteBacklinks: (notePath: string) =>
+    ipcRenderer.invoke('notesVault:backlinks', { notePath }),
+
   // SKY-194: Iconize — per-node icon IPC
   notesVaultReadIcons: () =>
     ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
@@ -551,6 +557,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('smartFolder:delete', { id }),
   smartFolderQuery: (query: string) =>
     ipcRenderer.invoke('smartFolder:query', { query }),
+
+  // SKY-207: Per-scene custom frontmatter fields
+  customFieldsList: () =>
+    ipcRenderer.invoke('customFields:list', undefined),
+  customFieldsSet: (fields: unknown[]) =>
+    ipcRenderer.invoke('customFields:set', { fields }),
+  scenePropsGet: (sceneId: string) =>
+    ipcRenderer.invoke('scene:propsGet', { sceneId }),
+  scenePropsSet: (sceneId: string, customFields: Record<string, unknown>) =>
+    ipcRenderer.invoke('scene:propsSet', { sceneId, customFields }),
 
 });
 

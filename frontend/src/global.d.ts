@@ -56,7 +56,7 @@ interface EntityRelation {
 interface EntityEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   path: string;
   aliases?: string[];
   tags?: string[];
@@ -69,7 +69,7 @@ interface EntityEntry {
 interface VaultIndexEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   aliases?: string[];
   tags?: string[];
   keyFacts: string;
@@ -80,6 +80,17 @@ interface EntityBacklinkScene {
   sceneTitle: string;
   scenePath: string;
   snippet: string;
+}
+
+interface LinkedScene {
+  sceneId: string;
+  scenePath: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterOrder: number;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
 }
 
 interface VaultCheckInconsistency {
@@ -394,6 +405,7 @@ interface Window {
     entityDelete: (id: string) => Promise<{ id: string; deleted: boolean }>;
     entityList: (type?: string) => Promise<{ entities: EntityEntry[] }>;
     entityBacklinks: (entityId: string) => Promise<{ entityId: string; scenes: EntityBacklinkScene[] }>;
+    entityLinkedScenes: (entityId: string) => Promise<{ scenes: LinkedScene[] }>;
 
     // Suggestion lifecycle
     suggestionsList: (status?: string, sourceAgent?: string) => Promise<{ suggestions: Suggestion[] }>;
@@ -675,6 +687,12 @@ interface Window {
     goalsLogWords: (date: string, wordsAdded: number) => Promise<{ ok: boolean }>;
     goalsSetGoal: (dailyGoal: number) => Promise<{ ok: boolean }>;
     goalsResetStreak: () => Promise<{ ok: boolean }>;
+
+    // SKY-203: Note-level backlinks
+    noteBacklinks: (notePath: string) => Promise<{
+      notePath: string;
+      backlinks: Array<{ path: string; name: string; snippet: string }>;
+    }>;
 
     // SKY-194: Iconize — per-node icon IPC
     notesVaultReadIcons: () => Promise<Record<string, string>>;

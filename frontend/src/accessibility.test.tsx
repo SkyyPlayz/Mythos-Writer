@@ -178,13 +178,13 @@ describe('Accessibility — EntityBrowser (Vault browser / Entities)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('CreateDialog open state has no axe violations', async () => {
+  it('TypePickerPopover open state has no axe violations', async () => {
     const { container, getByRole } = render(
       <EntityBrowser onSelectEntity={() => {}} selectedEntityId={null} />,
     );
     await waitFor(() => expect(container.querySelector('.entity-browser')).not.toBeNull());
     fireEvent.click(getByRole('button', { name: /new entity/i }));
-    await waitFor(() => expect(container.querySelector('[role="dialog"]')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('[role="menu"]')).not.toBeNull());
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
