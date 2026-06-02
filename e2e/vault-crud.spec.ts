@@ -88,13 +88,19 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  // Pass --headless when no display is available (CI / WSL without X server).
-  // --no-sandbox is required for Electron to spawn its renderer under Xvfb in CI
-  // (matches the packaged-app smoke test in ci.yml).
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  // On macOS, Electron uses Quartz natively — headless is not needed and
+  // prevents Playwright from detecting the Chrome DevTools endpoint (Electron 42 /
+  // Chrome 130+ new headless mode suppresses "DevTools listening on ws://…").
+  // On Linux CI, xvfb-run provides DISPLAY so the condition is false.
+  // On Linux without a display (local dev), fall through to --headless as a
+  // fallback, but prefer running via xvfb-run to match CI behaviour.
+  // --no-sandbox is required for Electron to spawn its renderer under Xvfb in CI.
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   const app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
   // Surface main-process stdout/stderr so a startup crash (which otherwise just
   // manifests as a firstWindow timeout) is visible in CI logs.
@@ -159,7 +165,7 @@ async function waitUntil(
 let userData: string;
 let vaultDir: string;
 let notesVaultDir: string;
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
@@ -172,7 +178,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => {});
+  await app?.close().catch(() => {});
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
@@ -311,7 +317,7 @@ test('TC-V-04: type prose in scene editor, file content updated in Story Vault',
 
 test('TC-V-05: prose persists after full app restart (same userData)', async () => {
   // Close the current instance
-  await app.close().catch(() => {});
+  await app?.close().catch(() => {});
 
   // Relaunch with the same userData (vault-settings.json points at the same vaultDir)
   app = await launchApp(userData);

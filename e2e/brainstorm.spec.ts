@@ -104,12 +104,17 @@ function seedUserData(userData: string, vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  // --headless when no X display; --no-sandbox so Electron can spawn its renderer
-  // under Xvfb in CI (matches the packaged-app smoke test in ci.yml).
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  // On macOS, Electron uses Quartz natively — headless is not needed and
+  // prevents Playwright from detecting the Chrome DevTools endpoint (Electron 42 /
+  // Chrome 130+ new headless mode suppresses "DevTools listening on ws://…").
+  // On Linux CI, xvfb-run provides DISPLAY so the condition is false.
+  // --no-sandbox is required for Electron to spawn its renderer under Xvfb in CI.
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -142,7 +147,7 @@ async function waitUntil(
 
 let userData: string;
 let vaultDir: string;
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
@@ -163,7 +168,7 @@ test.beforeAll(async () => {
    *
    * Electron's ipcMain.removeHandler(channel) is available since Electron 9.
    */
-  await app.evaluate(
+  await app!.evaluate(
     async ({ ipcMain }, tokens: string[]) => {
       ipcMain.removeHandler('stream:start');
       ipcMain.handle('stream:start', async (event) => {
@@ -191,11 +196,12 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  // Bound the graceful close — a beforeunload prompt can otherwise block it — and
-  // force-kill the Electron process if it does not exit in time.
-  const proc = app.process();
+  // Guard against app being undefined when beforeAll threw before electron.launch
+  // resolved (e.g. the 60 s launch timeout fired). Without this guard, accessing
+  // app.process() throws TypeError and masks the original launch failure.
+  const proc = app?.process();
   await Promise.race([
-    app.close().catch(() => undefined),
+    app?.close().catch(() => undefined) ?? Promise.resolve(),
     new Promise<void>((r) => setTimeout(r, 5_000)),
   ]);
   try {
