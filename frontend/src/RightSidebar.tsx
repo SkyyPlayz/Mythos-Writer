@@ -89,6 +89,7 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
         onChange={handleChange}
         onBlur={handleBlur}
         placeholder="Scene notes, reminders, loose ideas…"
+        aria-label="Scene notes"
       />
     </div>
   );
