@@ -1,6 +1,11 @@
 {
   "name": "mythos-writer",
   "version": "0.1.0",
+  "description": "AI-powered desktop notes and writing app",
+  "author": {
+    "name": "SkyyPlayz",
+    "email": "skylordplayz@gmail.com"
+  },
   "private": true,
   "main": "out/main/main.js",
   "workspaces": [
