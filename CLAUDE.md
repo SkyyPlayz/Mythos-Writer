@@ -66,10 +66,10 @@ gh pr checks <num>   # all three required checks must show `pass`
 - **`ci`** (ubuntu): frontend lint, frontend + electron-main type-checks,
   electron-main + frontend unit tests, `electron-vite` build, and headless
   Playwright E2E (vault CRUD + brainstorm).
-- **`build-macos`** (stub, self-hosted): currently a no-op placeholder that keeps the
-  required check green. Real macOS packaging (`npm run dist:mac`) will be restored once
-  paid GitHub Actions minutes are provisioned or a self-hosted macOS runner is added
-  (tracked in MYT-749, est. June 2026).
+- **`build-macos`** (macos-latest): runs `npm run dist:mac` to produce an unsigned DMG
+  (Phase 1). Notarization is skipped automatically when `APPLE_CERT_P12_BASE64` is
+  absent. Phase 2 (signing + notarization) tracked separately once Apple Developer
+  Program certs are provisioned.
 - **`build-linux`** (ubuntu): lint, type-checks, unit tests, then packages the
   Linux AppImage (`npm run dist:linux`) and smoke-tests that it launches.
 
