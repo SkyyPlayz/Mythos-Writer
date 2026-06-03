@@ -183,6 +183,20 @@ jobs:
       - name: Test (frontend)
         run: npm run test -w frontend
 
+      - name: Guard — PERSIST_PROMPTS must not be set for release builds
+        run: |
+          if [ "${PERSIST_PROMPTS:-}" = "1" ]; then
+            echo "ERROR: PERSIST_PROMPTS=1 is set in the environment. This flag stores full prompt text in cleartext and must never be enabled in a release build. Unset it before packaging." >&2
+            exit 1
+          fi
+          for env_file in .env .env.production .env.local; do
+            if [ -f "$env_file" ] && grep -qE '^PERSIST_PROMPTS=1' "$env_file"; then
+              echo "ERROR: PERSIST_PROMPTS=1 found in $env_file. This flag stores full prompt text in cleartext and must never be included in a release build. Remove or comment it out before packaging." >&2
+              exit 1
+            fi
+          done
+          echo "Guard passed: PERSIST_PROMPTS is not set."
+
       - name: Build and package (Linux)
         run: npm run dist:linux
 
