@@ -14,6 +14,8 @@ import type {
   VaultObsidianDryRunReport,
   ObsidianBrokenLink,
   ObsidianNameCollision,
+  TimelineSettings,
+  ArcEntry,
 } from './ipc.js';
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 import { safeVaultJoin } from './vault/safeVaultJoin.js';
@@ -347,7 +349,33 @@ export interface SceneFileData {
   outcome?: string;
   pov?: string;
   storyTime?: string;
+  // SKY-791: chronological timeline metadata (stored in frontmatter)
+  chronologicalDate?: string;
+  chronologicalIsEstimated?: boolean;
+  chronologicalConfidence?: number;
+  chronologicalSource?: string;
+  entityCharacterIds?: string[];
+  entityLocationId?: string;
+  entityArcs?: string[];
+  metaWordCount?: number;
+  metaMood?: string;
+  metaPov?: string;
   prose: string;
+}
+
+function sceneTimelineFrontmatter(data: SceneFileData): Frontmatter {
+  return {
+    ...(data.chronologicalDate ? { chronologicalDate: data.chronologicalDate } : {}),
+    ...(data.chronologicalIsEstimated !== undefined ? { chronologicalIsEstimated: data.chronologicalIsEstimated } : {}),
+    ...(data.chronologicalConfidence !== undefined ? { chronologicalConfidence: data.chronologicalConfidence } : {}),
+    ...(data.chronologicalSource ? { chronologicalSource: data.chronologicalSource } : {}),
+    ...(data.entityCharacterIds?.length ? { entityCharacterIds: data.entityCharacterIds } : {}),
+    ...(data.entityLocationId ? { entityLocationId: data.entityLocationId } : {}),
+    ...(data.entityArcs?.length ? { entityArcs: data.entityArcs } : {}),
+    ...(data.metaWordCount !== undefined ? { metaWordCount: data.metaWordCount } : {}),
+    ...(data.metaMood ? { metaMood: data.metaMood } : {}),
+    ...(data.metaPov ? { metaPov: data.metaPov } : {}),
+  };
 }
 
 export function writeSceneFile(vaultRoot: string, relativePath: string, data: SceneFileData): void {
@@ -363,6 +391,7 @@ export function writeSceneFile(vaultRoot: string, relativePath: string, data: Sc
     ...(data.outcome ? { outcome: data.outcome } : {}),
     ...(data.pov ? { pov: data.pov } : {}),
     ...(data.storyTime ? { storyTime: data.storyTime } : {}),
+    ...sceneTimelineFrontmatter(data),
     updatedAt: new Date().toISOString(),
   };
   const content = serializeFrontmatter(fm, data.prose);
@@ -383,6 +412,7 @@ export function writeSceneFileAtomic(vaultRoot: string, relativePath: string, da
     ...(data.outcome ? { outcome: data.outcome } : {}),
     ...(data.pov ? { pov: data.pov } : {}),
     ...(data.storyTime ? { storyTime: data.storyTime } : {}),
+    ...sceneTimelineFrontmatter(data),
     updatedAt: new Date().toISOString(),
   };
   const content = serializeFrontmatter(fm, data.prose);
@@ -405,6 +435,16 @@ export function readSceneFile(vaultRoot: string, relativePath: string): SceneFil
     outcome: frontmatter.outcome ? String(frontmatter.outcome) : undefined,
     pov: frontmatter.pov ? String(frontmatter.pov) : undefined,
     storyTime: frontmatter.storyTime ? String(frontmatter.storyTime) : undefined,
+    chronologicalDate: frontmatter.chronologicalDate ? String(frontmatter.chronologicalDate) : undefined,
+    chronologicalIsEstimated: frontmatter.chronologicalIsEstimated !== undefined ? Boolean(frontmatter.chronologicalIsEstimated) : undefined,
+    chronologicalConfidence: frontmatter.chronologicalConfidence !== undefined ? Number(frontmatter.chronologicalConfidence) : undefined,
+    chronologicalSource: frontmatter.chronologicalSource ? String(frontmatter.chronologicalSource) : undefined,
+    entityCharacterIds: Array.isArray(frontmatter.entityCharacterIds) ? frontmatter.entityCharacterIds.map(String) : undefined,
+    entityLocationId: frontmatter.entityLocationId ? String(frontmatter.entityLocationId) : undefined,
+    entityArcs: Array.isArray(frontmatter.entityArcs) ? frontmatter.entityArcs.map(String) : undefined,
+    metaWordCount: frontmatter.metaWordCount !== undefined ? Number(frontmatter.metaWordCount) : undefined,
+    metaMood: frontmatter.metaMood ? String(frontmatter.metaMood) : undefined,
+    metaPov: frontmatter.metaPov ? String(frontmatter.metaPov) : undefined,
     prose,
   };
 }
@@ -1073,4 +1113,49 @@ export function mergeProvenanceFrontmatter(
 
   const content = serializeFrontmatter(merged, newProse);
   writeVaultFileAtomic(vaultRoot, filePath, content);
+}
+
+// ─── Timeline settings persistence (SKY-791) ───
+
+const TIMELINE_SETTINGS_FILENAME = 'timeline-settings.json';
+const ARCS_FILENAME = 'arcs.json';
+
+export const DEFAULT_TIMELINE_SETTINGS: TimelineSettings = {
+  primaryGrouping: 'arc',
+  spacingMode: 'uniform',
+  showUndatedScenes: true,
+  autoLayoutTracks: true,
+  defaultColorScheme: 'liquid-neon',
+  visibleTrackFilters: [],
+};
+
+export function readTimelineSettings(vaultRoot: string): TimelineSettings {
+  const settingsPath = path.join(vaultRoot, TIMELINE_SETTINGS_FILENAME);
+  if (!fs.existsSync(settingsPath)) return { ...DEFAULT_TIMELINE_SETTINGS };
+  try {
+    const raw = fs.readFileSync(settingsPath, 'utf-8');
+    return { ...DEFAULT_TIMELINE_SETTINGS, ...(JSON.parse(raw) as Partial<TimelineSettings>) };
+  } catch {
+    return { ...DEFAULT_TIMELINE_SETTINGS };
+  }
+}
+
+export function writeTimelineSettings(vaultRoot: string, settings: TimelineSettings): void {
+  const settingsPath = path.join(vaultRoot, TIMELINE_SETTINGS_FILENAME);
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+export function readArcManifest(vaultRoot: string): ArcEntry[] {
+  const arcsPath = path.join(vaultRoot, ARCS_FILENAME);
+  if (!fs.existsSync(arcsPath)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(arcsPath, 'utf-8')) as ArcEntry[];
+  } catch {
+    return [];
+  }
+}
+
+export function writeArcManifest(vaultRoot: string, arcs: ArcEntry[]): void {
+  const arcsPath = path.join(vaultRoot, ARCS_FILENAME);
+  fs.writeFileSync(arcsPath, JSON.stringify(arcs, null, 2), 'utf-8');
 }
