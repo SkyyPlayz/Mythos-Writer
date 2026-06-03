@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   checkSetPathsGate,
   checkProjectSwitchGate,
+  looksLikeObsidianVault,
 } from './vaultGate.js';
 import {
   generateRegistrationToken,
@@ -272,5 +273,41 @@ describe('checkSetPathsGate', () => {
       [],
     );
     expect(result.ok).toBe(false);
+  });
+});
+
+// ─── looksLikeObsidianVault (SEC-12) ──────────────────────────────────────────
+
+describe('looksLikeObsidianVault', () => {
+  it('returns true when .obsidian subdirectory exists (real Obsidian vault)', () => {
+    // Simulate an Obsidian vault directory structure.
+    const existsSync = (p: string) => p === '/home/alice/MyVault/.obsidian';
+    expect(looksLikeObsidianVault('/home/alice/MyVault', existsSync)).toBe(true);
+  });
+
+  it('returns false when .obsidian subdirectory is absent (arbitrary directory)', () => {
+    // /home/alice has no .obsidian — the SEC-12 attack path.
+    const existsSync = (_p: string) => false;
+    expect(looksLikeObsidianVault('/home/alice', existsSync)).toBe(false);
+  });
+
+  it('returns false for /home/user (SEC-12 canonical attack path)', () => {
+    const existsSync = (p: string) => !p.includes('.obsidian');
+    expect(looksLikeObsidianVault('/home/alice', existsSync)).toBe(false);
+  });
+
+  it('returns false for /etc (sensitive system directory)', () => {
+    const existsSync = (_p: string) => false;
+    expect(looksLikeObsidianVault('/etc', existsSync)).toBe(false);
+  });
+
+  it('checks exactly <path>/.obsidian, not the root path itself', () => {
+    // Verify the function checks the .obsidian child, not the root dir.
+    const checked: string[] = [];
+    const existsSync = (p: string) => { checked.push(p); return false; };
+    looksLikeObsidianVault('/some/dir', existsSync);
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toMatch(/\.obsidian$/);
+    expect(checked[0]).not.toBe('/some/dir');
   });
 });

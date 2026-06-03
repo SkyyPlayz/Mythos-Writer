@@ -14,6 +14,8 @@
 //
 // Pure Node — no Electron deps — so unit tests can exercise the gate.
 
+import path from 'path';
+import fs from 'fs';
 import { validateRegistrationToken } from './registrationToken.js';
 
 export interface SetPathsGateInput {
@@ -135,4 +137,20 @@ export function checkProjectSwitchGate(
     };
   }
   return { ok: true, vaultRoot };
+}
+
+/**
+ * Guard for `vault:pick-folder-by-path` (SEC-12). Returns true only when `p`
+ * contains a `.obsidian` subdirectory, i.e. is a real Obsidian vault. This
+ * prevents a compromised renderer from obtaining a registration token for
+ * arbitrary paths such as `/home/user` or `/etc`.
+ *
+ * The `existsSync` parameter is injectable so tests can exercise both paths
+ * without touching the filesystem.
+ */
+export function looksLikeObsidianVault(
+  p: string,
+  existsSync: (fsPath: string) => boolean = fs.existsSync,
+): boolean {
+  return existsSync(path.join(p, '.obsidian'));
 }

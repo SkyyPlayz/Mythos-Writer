@@ -201,7 +201,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
+import { checkSetPathsGate, checkProjectSwitchGate, looksLikeObsidianVault } from './vaultGate.js';
 import {
   checkVoiceSettingsUpdate,
   seedTrustedBinariesFromSettings,
@@ -2967,6 +2967,14 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: async (payload: VaultPickFolderByPathPayload): Promise<import('./ipc.js').VaultPickFolderResponse> => {
     const { sourcePath } = payload;
     if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return { vaultRoot: null, cancelled: false, registrationToken: null };
+    }
+    // SEC-12: only issue a token when the path looks like an actual Obsidian
+    // vault (contains a .obsidian subdirectory). Without this guard a
+    // compromised renderer can obtain a registration token for any existing
+    // directory — e.g. /home/user — and then use vault:set-paths to re-root
+    // the vault sandbox there.
+    if (!looksLikeObsidianVault(sourcePath)) {
       return { vaultRoot: null, cancelled: false, registrationToken: null };
     }
     const token = generateRegistrationToken(sourcePath);
