@@ -621,6 +621,11 @@ interface Window {
     // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
     // SKY-270 / MYT-789: storyVaultToken / notesVaultToken from vault:pick-folder satisfy the gate.
     vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
+    // SKY-156: Project Templates — list, scaffold from template, save-as
+    templateList: () => Promise<{ templates: Array<{ id: string; name: string; description: string; isUserTemplate?: boolean }> }>;
+    // SKY-780: parentToken must come from vault:pick-folder; handler derives story/notes paths from it
+    templateScaffold: (templateId: string, parentToken: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string; storyVaultToken: string; notesVaultToken: string } | { error: string }>;
+    templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
     validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath

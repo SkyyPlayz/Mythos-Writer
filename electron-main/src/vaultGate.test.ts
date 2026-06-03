@@ -13,6 +13,7 @@ import {
   checkLoadSampleGate,
   checkSinglePathGate,
   looksLikeObsidianVault,
+  checkScaffoldGate,
 } from './vaultGate.js';
 import {
   generateRegistrationToken,
@@ -428,5 +429,56 @@ describe('checkSinglePathGate', () => {
 
   it('rejects empty allowlist with no token', () => {
     expect(checkSinglePathGate({ targetPath: '/home/alice/Vault' }, []).ok).toBe(false);
+  });
+});
+
+// ─── §3 checkScaffoldGate (SKY-780) ───────────────────────────────────────────
+
+describe('checkScaffoldGate', () => {
+  it('rejects missing or empty templateId', () => {
+    const token = generateRegistrationToken('/home/alice/projects');
+    expect(checkScaffoldGate({ templateId: '', parentToken: token }).ok).toBe(false);
+    expect(checkScaffoldGate({ templateId: undefined, parentToken: token }).ok).toBe(false);
+    expect(checkScaffoldGate({ templateId: 123 as unknown, parentToken: token }).ok).toBe(false);
+  });
+
+  it('rejects missing or empty parentToken', () => {
+    const r1 = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: '' });
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.error).toMatch(/parentToken/);
+
+    const r2 = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: undefined });
+    expect(r2.ok).toBe(false);
+  });
+
+  it('rejects an invalid parentToken (SKY-780 attack: arbitrary path without dialog)', () => {
+    // Core attack: renderer sends an attacker-controlled path string instead of
+    // a real token. The gate must reject it.
+    const r = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: '/home/alice/arbitrary-dir' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/invalid or expired/);
+  });
+
+  it('rejects an expired parentToken', () => {
+    const now = Date.now();
+    const token = generateRegistrationToken('/home/alice/projects', now);
+    const r = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token }, now + TOKEN_TTL_MS + 1);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/invalid or expired/);
+  });
+
+  it('accepts a valid parentToken and returns the parent path', () => {
+    const token = generateRegistrationToken('/home/alice/projects');
+    const r = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.parentPath).toBe('/home/alice/projects');
+  });
+
+  it('consumes the token on success — replay is rejected', () => {
+    const token = generateRegistrationToken('/home/alice/projects');
+    const first = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token });
+    expect(first.ok).toBe(true);
+    const replay = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token });
+    expect(replay.ok).toBe(false);
   });
 });

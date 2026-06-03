@@ -116,7 +116,6 @@ function pathPasses(
   return allowlist.includes(requestedPath);
 }
 
-/**
  * Gate vault:load-sample (SEC-11). The sample always materialises at the
  * hardcoded default path; a renderer-supplied targetPath is not accepted.
  * A compromised renderer could otherwise mkdir at an arbitrary path and
@@ -173,6 +172,30 @@ export function checkSinglePathGate(
   // Path is authorised. Consume the token so it cannot be replayed.
   if (token) validateRegistrationToken(token, { now });
   return { ok: true, targetPath: input.targetPath };
+}
+
+/**
+ * Gate `template:scaffold` (SKY-780). The renderer must supply a registration
+ * token from a prior `vault:pick-folder` dialog call, proving the parent
+ * directory was user-selected. The handler derives story/notes sub-paths from
+ * the validated parent — the renderer never supplies arbitrary FS paths.
+ * The token is consumed on success (one-shot).
+ */
+export function checkScaffoldGate(
+  input: { templateId: unknown; parentToken: unknown },
+  now: number = Date.now(),
+): { ok: true; parentPath: string } | { ok: false; error: string } {
+  if (!isNonEmptyString(input.templateId)) {
+    return { ok: false, error: 'templateId: must be a non-empty string' };
+  }
+  if (!isNonEmptyString(input.parentToken)) {
+    return { ok: false, error: 'parentToken: must be a non-empty string — use vault:pick-folder first' };
+  }
+  const validated = validateRegistrationToken(input.parentToken, { consume: true, now });
+  if (!validated) {
+    return { ok: false, error: 'parentToken is invalid or expired — use vault:pick-folder first' };
+  }
+  return { ok: true, parentPath: validated.vaultRoot };
 }
 
 /**

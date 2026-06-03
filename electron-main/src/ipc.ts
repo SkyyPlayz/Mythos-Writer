@@ -2693,13 +2693,21 @@ export interface TemplateListResponse {
 
 export interface TemplateScaffoldPayload {
   templateId: string;
-  storyVaultPath: string;
-  notesVaultPath: string;
+  // SKY-780: proof of user intent — registration token from a prior
+  // vault:pick-folder dialog call. The handler derives story/notes vault
+  // paths from the token; the renderer cannot supply arbitrary FS paths.
+  parentToken: string;
 }
 
-export type TemplateScaffoldResponse =
-  | { ok: true; storyVaultPath: string; notesVaultPath: string }
-  | { error: string };
+export interface TemplateScaffoldResponse {
+  ok: true;
+  storyVaultPath: string;
+  notesVaultPath: string;
+  // One-shot tokens for the derived paths — pass to vault:setPaths as
+  // storyVaultToken / notesVaultToken to authorize that call too.
+  storyVaultToken: string;
+  notesVaultToken: string;
+}
 
 export interface TemplateSaveAsPayload {
   name: string;
