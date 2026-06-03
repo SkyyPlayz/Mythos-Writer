@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene } from './types';
+import { countWords } from './wordStats';
 import './StoryNavigator.css';
 
 interface Props {
@@ -26,6 +27,32 @@ export default function StoryNavigator({
     new Set(stories.flatMap((s) => s.chapters.map((c) => c.id)))
   );
   const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
+
+  // Per-scene word count cache: only recomputes scenes whose block content changed
+  const wordCountCacheRef = useRef<Map<string, { contentKey: string; count: number }>>(new Map());
+
+  // sceneWordCounts recomputes when stories changes; the cache ensures only
+  // the touched scene's words are recounted on each edit.
+  const sceneWordCounts = useMemo<Map<string, number>>(() => {
+    const result = new Map<string, number>();
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        for (const scene of chapter.scenes) {
+          const contentKey = scene.blocks.map((b) => b.content).join('\x00');
+          const cached = wordCountCacheRef.current.get(scene.id);
+          let count: number;
+          if (cached?.contentKey === contentKey) {
+            count = cached.count;
+          } else {
+            count = scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0);
+            wordCountCacheRef.current.set(scene.id, { contentKey, count });
+          }
+          result.set(scene.id, count);
+        }
+      }
+    }
+    return result;
+  }, [stories]);
 
   // Auto-expand newly created stories/chapters so their children are visible
   // immediately (otherwise a just-created chapter/scene stays hidden under a
@@ -122,7 +149,12 @@ export default function StoryNavigator({
           </div>
         )}
 
-        {stories.map((story) => (
+        {stories.map((story) => {
+          const storyWordCount = story.chapters.reduce(
+            (sum, ch) => sum + ch.scenes.reduce((s, sc) => s + (sceneWordCounts.get(sc.id) ?? 0), 0),
+            0,
+          );
+          return (
           <div key={story.id} className="nav-story">
             <div className="nav-story-row">
               <button
@@ -133,6 +165,11 @@ export default function StoryNavigator({
                 <span className="nav-chevron">{expandedStories.has(story.id) ? '▾' : '▸'}</span>
                 <span className="nav-story-title">{story.title}</span>
               </button>
+              {storyWordCount > 0 && (
+                <span className="nav-wordcount" aria-label={`${storyWordCount.toLocaleString()} words`}>
+                  {storyWordCount.toLocaleString()}
+                </span>
+              )}
               <button
                 className="nav-inline-add"
                 onClick={(e) => { e.stopPropagation(); onCreateChapter(story.id); }}
@@ -142,7 +179,12 @@ export default function StoryNavigator({
             </div>
 
             {expandedStories.has(story.id) &&
-              story.chapters.sort((a, b) => a.order - b.order).map((chapter) => (
+              story.chapters.sort((a, b) => a.order - b.order).map((chapter) => {
+                const chapterWordCount = chapter.scenes.reduce(
+                  (sum, sc) => sum + (sceneWordCounts.get(sc.id) ?? 0),
+                  0,
+                );
+                return (
                 <div key={chapter.id} className="nav-chapter">
                   <div className="nav-chapter-row">
                     <button
@@ -153,6 +195,11 @@ export default function StoryNavigator({
                       <span className="nav-chevron">{expandedChapters.has(chapter.id) ? '▾' : '▸'}</span>
                       <span className="nav-chapter-title">{chapter.title}</span>
                     </button>
+                    {chapterWordCount > 0 && (
+                      <span className="nav-wordcount" aria-label={`${chapterWordCount.toLocaleString()} words`}>
+                        {chapterWordCount.toLocaleString()}
+                      </span>
+                    )}
                     <button
                       className="nav-inline-add"
                       onClick={(e) => { e.stopPropagation(); onCreateScene(story.id, chapter.id); }}
@@ -163,7 +210,9 @@ export default function StoryNavigator({
 
                   {expandedChapters.has(chapter.id) && (() => {
                     const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
-                    return sortedScenes.map((scene) => (
+                    return sortedScenes.map((scene) => {
+                      const sceneWC = sceneWordCounts.get(scene.id) ?? 0;
+                      return (
                       <div
                         key={scene.id}
                         className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
@@ -199,13 +248,18 @@ export default function StoryNavigator({
                             {scene.draftState}
                           </span>
                         )}
+                        {sceneWC > 0 && (
+                          <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
+                            {sceneWC.toLocaleString()}
+                          </span>
+                        )}
                       </div>
-                    ));
+                    )});
                   })()}
                 </div>
-              ))}
+              )})}
           </div>
-        ))}
+        )})}
       </div>
     </nav>
   );

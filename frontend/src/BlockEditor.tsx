@@ -16,6 +16,7 @@ import { EntityMentionExtension } from './EntityMentionExtension';
 import { EntityMentionPickerExtension, mentionPickerKey } from './EntityMentionPickerExtension';
 import { EntityMentionPicker, matchesEntityQuery } from './EntityMentionPicker';
 import type { EntityEntry } from './types';
+import { countWords } from './wordStats';
 import './BlockEditor.css';
 import './EntityMention.css';
 
@@ -83,8 +84,14 @@ interface ActivePickerState {
 
 const PICKER_INACTIVE: ActivePickerState = { active: false, query: '', from: 0, to: 0, top: 0, left: 0 };
 
+const WC_DEBOUNCE_MS = 250;
+
 export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
+  const [wordCount, setWordCount] = useState<number>(() =>
+    scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
+  );
+  const wcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectionText, setSelectionText] = useState<string>('');
   const [betaReadBubble, setBetaReadBubble] = useState<{ top: number; left: number } | null>(null);
   const [hintTooltip, setHintTooltip] = useState<{
@@ -129,6 +136,18 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     extensions: [StarterKit, WikiLink, WikiLinkHintExtension, AutoLinkerExtension, EntityMentionExtension, EntityMentionPickerExtension, Markdown],
     content: blocksToMarkdownBody(scene.blocks),
     onUpdate({ editor }) {
+      // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = (editor.storage as any).markdown.getMarkdown() as string;
+      // tiptap-markdown v0.9 omits a trailing newline; add it for tooling compatibility.
+      const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
+
+      // Word count: debounced at 250ms so typing stays smooth
+      if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
+      wcDebounceRef.current = setTimeout(() => {
+        setWordCount(countWords(markdown));
+      }, WC_DEBOUNCE_MS);
+
       if (changeRef.current) clearTimeout(changeRef.current);
       changeRef.current = setTimeout(() => {
         // Auto on save: apply all auto-linker suggestions as a single transaction,
@@ -298,6 +317,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     return () => {
       if (changeRef.current) clearTimeout(changeRef.current);
       if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
+      if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
     };
   }, []);
 
@@ -427,6 +447,11 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     <div className="block-editor">
       <div className="block-editor-toolbar">
         <span className="scene-name">{scene.title}</span>
+        {wordCount > 0 && (
+          <span className="be-wordcount" aria-label={`${wordCount.toLocaleString()} words`}>
+            {wordCount.toLocaleString()} words
+          </span>
+        )}
         <div className="draft-state-group">
           {(Object.keys(DRAFT_STATE_LABELS) as DraftState[]).map((s) => (
             <button
