@@ -33,7 +33,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #1f1f23;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -56,7 +56,7 @@
 }
 
 .settings-close:hover {
-  background: #27272a;
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
@@ -119,8 +119,8 @@
 }
 
 .settings-input {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-header);
   font-size: 0.85rem;
@@ -136,11 +136,11 @@
 }
 
 .settings-input-error {
-  border-color: #ef4444;
+  border-color: var(--state-danger);
 }
 
 .settings-input-error:focus {
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 0 2px rgba(from var(--state-danger) r g b / 0.25);
 }
 
 .settings-input-sm {
@@ -187,8 +187,8 @@
 }
 
 .settings-reveal-btn {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-body);
   font-size: 0.78rem;
@@ -199,19 +199,19 @@
 }
 
 .settings-reveal-btn:hover {
-  background: #27272a;
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
 .settings-error-msg {
   font-size: 0.78rem;
-  color: #f87171;
+  color: var(--state-danger);
   margin: 0;
 }
 
 .settings-saved-msg {
   font-size: 0.78rem;
-  color: #4ade80;
+  color: var(--state-success);
   margin: 0;
 }
 
@@ -224,8 +224,8 @@
 /* Agent cards */
 
 .settings-agent-card {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 7px;
   padding: 12px 14px;
   display: flex;
@@ -271,7 +271,7 @@
   display: block;
   width: 34px;
   height: 18px;
-  background: #27272a;
+  background: var(--bg-elevated);
   border-radius: 9px;
   position: relative;
   transition: background 0.15s;
@@ -284,7 +284,7 @@
   left: 2px;
   width: 14px;
   height: 14px;
-  background: #71717a;
+  background: var(--text-muted);
   border-radius: 50%;
   transition: transform 0.15s, background 0.15s;
 }
@@ -330,7 +330,7 @@
 
 .settings-footer {
   padding: 12px 20px 16px;
-  border-top: 1px solid #1f1f23;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -363,12 +363,12 @@
 }
 
 .settings-btn-cancel {
-  background: #27272a;
+  background: var(--bg-elevated);
   color: var(--text-body);
 }
 
 .settings-btn-cancel:hover:not(:disabled) {
-  background: #3f3f46;
+  background: color-mix(in srgb, var(--bg-elevated) 75%, white);
   color: var(--text-header);
 }
 
@@ -385,8 +385,8 @@
 /* Provider section */
 
 .settings-provider-card {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 7px;
   padding: 12px 14px;
   display: flex;
@@ -395,8 +395,8 @@
 }
 
 .settings-test-btn {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-body);
   font-size: 0.78rem;
@@ -408,7 +408,7 @@
 }
 
 .settings-test-btn:hover:not(:disabled) {
-  background: #27272a;
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
@@ -419,13 +419,13 @@
 
 .settings-connection-ok {
   font-size: 0.78rem;
-  color: #4ade80;
+  color: var(--state-success);
   margin: 0;
 }
 
 .settings-connection-fail {
   font-size: 0.78rem;
-  color: #f87171;
+  color: var(--state-danger);
   margin: 0;
 }
 
