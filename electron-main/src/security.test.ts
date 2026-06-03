@@ -165,3 +165,71 @@ describe('frontend/index.html — CSP meta tag', () => {
     expect(scriptSrcMatch?.[1]).not.toMatch(/'unsafe-inline'/);
   });
 });
+
+// SKY-700 / RISK-3 — app:restoreAppData must always require a dialog (CWE-73)
+describe('app:restoreAppData — headless archivePath path is permanently removed', () => {
+  const ipcSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/ipc.ts'), 'utf-8');
+  const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+  const preloadSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/preload.ts'), 'utf-8');
+
+  it('RestoreAppDataPayload does not expose archivePath (ipc.ts)', () => {
+    // The interface must not include archivePath — dropping it ensures no
+    // renderer-supplied path can bypass the dialog gate.
+    const ifaceMatch = ipcSrc.match(/interface RestoreAppDataPayload\s*\{[^}]*\}/s);
+    expect(ifaceMatch).not.toBeNull();
+    expect(ifaceMatch![0]).not.toMatch(/archivePath/);
+  });
+
+  it('app:restoreAppData handler always calls showOpenDialog before reading (main.ts)', () => {
+    // The handler must invoke dialog.showOpenDialog unconditionally — no early
+    // branch that skips the dialog when payload.archivePath is present.
+    const handlerMatch = mainSrc.match(
+      /APP_RESTORE_APP_DATA[\s\S]*?showOpenDialog[\s\S]*?(?=\[IPC_CHANNELS\.)/,
+    );
+    expect(handlerMatch).not.toBeNull();
+    // The handler must not reference payload.archivePath as an escape hatch.
+    expect(handlerMatch![0]).not.toMatch(/payload\??\.archivePath/);
+  });
+
+  it('preload restoreAppData does not forward archivePath to main process', () => {
+    // The preload bridge must not include archivePath in the IPC payload so a
+    // compromised renderer cannot supply an attacker-controlled path.
+    const restoreCall = preloadSrc.match(/restoreAppData[\s\S]*?ipcRenderer\.invoke[\s\S]*?\)/);
+    expect(restoreCall).not.toBeNull();
+    expect(restoreCall![0]).not.toMatch(/archivePath/);
+  });
+});
+
+// SKY-699 / RISK-2 — app:backupAppData must always require a dialog (CWE-73)
+describe('app:backupAppData — headless outputPath path is permanently removed', () => {
+  const ipcSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/ipc.ts'), 'utf-8');
+  const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+  const preloadSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/preload.ts'), 'utf-8');
+
+  it('BackupAppDataPayload does not expose outputPath (ipc.ts)', () => {
+    // The interface must not include outputPath — dropping it ensures no
+    // renderer-supplied path can bypass the dialog gate.
+    const ifaceMatch = ipcSrc.match(/interface BackupAppDataPayload\s*\{[^}]*\}/s);
+    expect(ifaceMatch).not.toBeNull();
+    expect(ifaceMatch![0]).not.toMatch(/outputPath/);
+  });
+
+  it('app:backupAppData handler always calls showSaveDialog before writing (main.ts)', () => {
+    // The handler must invoke dialog.showSaveDialog unconditionally — no early
+    // branch that skips the dialog when payload.outputPath is present.
+    const handlerMatch = mainSrc.match(
+      /APP_BACKUP_APP_DATA[\s\S]*?showSaveDialog[\s\S]*?(?=\[IPC_CHANNELS\.)/,
+    );
+    expect(handlerMatch).not.toBeNull();
+    // The handler must not reference payload.outputPath as an escape hatch.
+    expect(handlerMatch![0]).not.toMatch(/payload\??\.outputPath/);
+  });
+
+  it('preload backupAppData does not forward outputPath to main process', () => {
+    // The preload bridge must not include outputPath in the IPC payload so a
+    // compromised renderer cannot supply an attacker-controlled write path.
+    const backupCall = preloadSrc.match(/backupAppData[\s\S]*?ipcRenderer\.invoke[\s\S]*?\)/);
+    expect(backupCall).not.toBeNull();
+    expect(backupCall![0]).not.toMatch(/outputPath/);
+  });
+});

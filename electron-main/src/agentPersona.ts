@@ -18,27 +18,34 @@ export type AgentPersonaName = 'writingAssistant' | 'brainstorm';
 export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
 
 export const PERSONA_KEYS: PersonaKey[] = ['AGENTS', 'HEARTBEAT', 'SOUL', 'TOOLS'];
-export const VALID_AGENT_NAMES: AgentPersonaName[] = ['writingAssistant', 'brainstorm'];
+export const VALID_AGENT_NAMES: readonly AgentPersonaName[] = ['writingAssistant', 'brainstorm'];
+
+function isValidAgentName(v: unknown): v is AgentPersonaName {
+  return typeof v === 'string' && (VALID_AGENT_NAMES as readonly string[]).includes(v);
+}
+
+function isValidPersonaKey(v: unknown): v is PersonaKey {
+  return typeof v === 'string' && (PERSONA_KEYS as readonly string[]).includes(v);
+}
 
 /**
  * Runtime allowlist guard for IPC-supplied persona arguments (SEC-5).
- * Accepts unknown so callers don't need to trust renderer-supplied types before
- * calling. Throws with a generic message — never echoes the invalid value so
+ * Throws with a generic message — never echoes the invalid value so
  * attacker-supplied strings cannot appear in logs.
  */
 export function validatePersonaArgs(agentName: unknown, key: unknown): void {
-  if (
-    typeof agentName !== 'string' ||
-    !(VALID_AGENT_NAMES as string[]).includes(agentName)
-  ) {
-    throw new Error('invalid_agent_name');
-  }
-  if (
-    typeof key !== 'string' ||
-    !(PERSONA_KEYS as string[]).includes(key)
-  ) {
-    throw new Error('invalid_key');
-  }
+  if (!isValidAgentName(agentName)) throw new Error('invalid_agent_name');
+  if (!isValidPersonaKey(key)) throw new Error('invalid_key');
+}
+
+/** Pure input validation returning a discriminated union (SKY-698). */
+export function validatePersonaPayload(
+  agentName: unknown,
+  key: unknown,
+): { ok: true; agentName: AgentPersonaName; key: PersonaKey } | { ok: false; error: string } {
+  if (!isValidAgentName(agentName)) return { ok: false, error: 'invalid agentName' };
+  if (!isValidPersonaKey(key)) return { ok: false, error: 'invalid key' };
+  return { ok: true, agentName, key };
 }
 
 /**

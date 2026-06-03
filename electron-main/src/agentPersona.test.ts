@@ -1,9 +1,16 @@
 // agentPersona.test.ts — Unit tests for MYT-816 persona loader/composer
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+
+// Hoist electron mock so ipc.ts can be imported for §6 frame-guard tests.
+vi.mock('electron', () => ({
+  ipcMain: { handle: vi.fn(), on: vi.fn(), off: vi.fn() },
+  ipcRenderer: { invoke: vi.fn(), on: vi.fn() },
+}));
+
 import {
   loadPersonaFile,
   loadAgentPersona,
@@ -14,8 +21,11 @@ import {
   validatePersonaArgs,
   resolvedInsideRoot,
   PERSONA_KEYS,
+  validatePersonaPayload,
 } from './agentPersona.js';
 import type { AgentPersonaName } from './agentPersona.js';
+import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
+import type { IpcMainInvokeEvent } from 'electron';
 
 let tmpDir: string;
 
@@ -325,5 +335,82 @@ describe('writingAssistant AGENTS anti-injection instruction (§6 / SEC-6)', () 
 
     const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
     expect(prompt).not.toContain('scene_context');
+  });
+});
+
+// ─── §6c  validatePersonaPayload — return-style validation (SKY-698) ──────────
+
+describe('validatePersonaPayload — traversal rejection (§6c)', () => {
+  it('rejects path-traversal agentName, returns { error: "invalid agentName" }', () => {
+    expect(validatePersonaPayload('../../..', 'SOUL')).toEqual({ ok: false, error: 'invalid agentName' });
+  });
+
+  it('rejects path-traversal key', () => {
+    expect(validatePersonaPayload('writingAssistant', '../../../foo')).toEqual({
+      ok: false,
+      error: 'invalid key',
+    });
+  });
+
+  it('rejects traversal in both fields — agentName checked first', () => {
+    expect(validatePersonaPayload('../../..', '../../../foo')).toEqual({
+      ok: false,
+      error: 'invalid agentName',
+    });
+  });
+
+  it('rejects null agentName', () => {
+    expect(validatePersonaPayload(null, 'SOUL')).toEqual({ ok: false, error: 'invalid agentName' });
+  });
+
+  it('rejects undefined key', () => {
+    expect(validatePersonaPayload('writingAssistant', undefined)).toEqual({
+      ok: false,
+      error: 'invalid key',
+    });
+  });
+
+  it('accepts every valid agentName + key combination', () => {
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        const result = validatePersonaPayload(agent, key);
+        expect(result).toMatchObject({ ok: true, agentName: agent, key });
+      }
+    }
+  });
+});
+
+// ─── §6d  isFromTopFrame frame guard (SKY-698) ───────────────────────────────
+
+describe('isFromTopFrame frame guard (§6d — used by persona handlers)', () => {
+  function makeTopFrame(): Record<string, unknown> {
+    const frame: Record<string, unknown> = {};
+    frame.top = frame; // self-reference: top === itself
+    return frame;
+  }
+
+  function makeNestedFrame(): { frame: Record<string, unknown>; top: Record<string, unknown> } {
+    const top = makeTopFrame();
+    const frame: Record<string, unknown> = { top };
+    return { frame, top };
+  }
+
+  it('handler returns UNTRUSTED_FRAME_REJECTION when senderFrame is a nested frame', () => {
+    const { frame } = makeNestedFrame();
+    const event = { senderFrame: frame } as unknown as IpcMainInvokeEvent;
+    const result = !isFromTopFrame(event) ? UNTRUSTED_FRAME_REJECTION : null;
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('handler proceeds past the frame guard when senderFrame is the top frame', () => {
+    const top = makeTopFrame();
+    const event = { senderFrame: top } as unknown as IpcMainInvokeEvent;
+    expect(isFromTopFrame(event)).toBe(true);
+  });
+
+  it('handler returns UNTRUSTED_FRAME_REJECTION when senderFrame is null (frame destroyed)', () => {
+    const event = { senderFrame: null } as unknown as IpcMainInvokeEvent;
+    const result = !isFromTopFrame(event) ? UNTRUSTED_FRAME_REJECTION : null;
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
   });
 });

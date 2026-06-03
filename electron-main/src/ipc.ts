@@ -2519,10 +2519,9 @@ export interface WritingModeSetPayload {
 
 // ─── App data backup / restore (MYT-346) ───
 
-export interface BackupAppDataPayload {
-  /** If provided, write the archive here instead of showing a save dialog. */
-  outputPath?: string;
-}
+// SKY-699: outputPath removed — renderer must not supply a write destination;
+// the handler always calls dialog.showSaveDialog to obtain it (CWE-73 fix).
+export interface BackupAppDataPayload {}
 
 export interface BackupAppDataResponse {
   /** Absolute path to the created archive; null when cancelled. */
@@ -2532,8 +2531,6 @@ export interface BackupAppDataResponse {
 }
 
 export interface RestoreAppDataPayload {
-  /** If provided, read from this path instead of showing an open dialog. */
-  archivePath?: string;
   /** Must be true when app data already exists; absent/false → reject with requiresConfirmation. */
   confirmed?: boolean;
 }
