@@ -41,7 +41,8 @@
     "test:e2e:a11y": "playwright test e2e/a11y-focus.spec.ts --reporter=list",
     "test:e2e:entity": "playwright test e2e/entity-system.spec.ts --reporter=list",
     "test:e2e:vault-graph": "playwright test e2e/vault-graph.spec.ts --reporter=list",
-    "test:e2e:entity-mention": "playwright test e2e/tests/entity-mention.spec.ts --reporter=list"
+    "test:e2e:entity-mention": "playwright test e2e/tests/entity-mention.spec.ts --reporter=list",
+    "test:e2e:entity-creation": "playwright test e2e/entity-creation-edge-cases.spec.ts --reporter=list"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0",
