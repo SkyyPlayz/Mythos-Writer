@@ -47,6 +47,70 @@ export interface StreamResult {
   usage?: { inputTokens: number; outputTokens: number } | null;
 }
 
+// ─── Capability types ─────────────────────────────────────────────────────────
+
+/** Voice capabilities a provider adapter may declare. */
+export type ProviderCapability = 'stt' | 'tts';
+
+/** Options for audio-to-text transcription. */
+export interface TranscribeOptions {
+  /** BCP-47 language tag (e.g. 'en'). Omit to let the provider auto-detect. */
+  language?: string;
+  /** Context hint to guide transcription style or spelling. */
+  prompt?: string;
+}
+
+/** Options for text-to-audio synthesis. */
+export interface SpeakOptions {
+  /** Voice identifier understood by the provider (e.g. 'alloy', 'echo', 'shimmer'). */
+  voice?: string;
+  /** Playback speed multiplier (0.25–4.0); provider default if omitted. */
+  speed?: number;
+}
+
+/** Raw audio data chunk emitted by a speak stream. */
+export interface AudioChunk {
+  /** Raw audio bytes (format determined by provider/negotiation). */
+  data: Buffer;
+  /** MIME type for the bytes, e.g. 'audio/opus', 'audio/mp3'. */
+  mimeType: string;
+}
+
+// ─── Provider object interface ────────────────────────────────────────────────
+
+/**
+ * A Provider wraps a ProviderConfig and exposes the adapter's capabilities
+ * alongside the streaming and (for OpenAI-compatible adapters) voice methods.
+ */
+export interface Provider {
+  readonly config: ProviderConfig;
+  /** Capabilities declared by this adapter. */
+  readonly capabilities: ReadonlyArray<ProviderCapability>;
+  /** Stream text tokens from the LLM. */
+  stream(req: StreamRequest): AsyncIterable<string>;
+  /** Returns true if this adapter declares support for the given capability. */
+  supportsCapability(cap: ProviderCapability): boolean;
+  /** Transcribe audio to text. Present only when capabilities includes 'stt'. */
+  transcribe?(audio: Buffer | Blob, opts?: TranscribeOptions): Promise<string>;
+  /** Synthesise speech from text. Present only when capabilities includes 'tts'. */
+  speak?(text: string, opts?: SpeakOptions): AsyncIterable<AudioChunk>;
+}
+
+// ─── Capability declarations ──────────────────────────────────────────────────
+
+/**
+ * Declared capabilities for each provider kind.
+ * OpenAI-compatible endpoints expose /audio/transcriptions and /audio/speech;
+ * implementation is wired in a follow-up child issue.
+ */
+export const PROVIDER_CAPABILITIES: Record<ProviderKind, ReadonlyArray<ProviderCapability>> = {
+  anthropic: [],
+  openai: ['stt', 'tts'],
+  ollama: ['stt', 'tts'],
+  lmstudio: ['stt', 'tts'],
+  custom: ['stt', 'tts'],
+};
+
 // ─── Anthropic implementation ─────────────────────────────────────────────────
 
 async function* runAnthropicStream(
@@ -160,6 +224,53 @@ async function* runOpenAICompatibleStream(
   } finally {
     reader.releaseLock();
   }
+}
+
+// ─── Provider factory ─────────────────────────────────────────────────────────
+
+function makeAnthropicProvider(config: ProviderConfig): Provider {
+  return {
+    config,
+    capabilities: PROVIDER_CAPABILITIES.anthropic,
+    stream(req: StreamRequest): AsyncIterable<string> {
+      return runAnthropicStream(config, req);
+    },
+    supportsCapability(_cap: ProviderCapability): boolean {
+      return false;
+    },
+  };
+}
+
+function makeOpenAICompatibleProvider(config: ProviderConfig): Provider {
+  const caps = PROVIDER_CAPABILITIES[config.kind];
+  return {
+    config,
+    capabilities: caps,
+    stream(req: StreamRequest): AsyncIterable<string> {
+      return runOpenAICompatibleStream(config, req);
+    },
+    supportsCapability(cap: ProviderCapability): boolean {
+      return caps.includes(cap);
+    },
+    async transcribe(_audio: Buffer | Blob, _opts?: TranscribeOptions): Promise<string> {
+      throw new Error('transcribe: not yet implemented — wired in a follow-up child issue.');
+    },
+    async *speak(_text: string, _opts?: SpeakOptions): AsyncGenerator<AudioChunk> {
+      throw new Error('speak: not yet implemented — wired in a follow-up child issue.');
+    },
+  };
+}
+
+/**
+ * Create a Provider adapter from a ProviderConfig.
+ * The returned Provider declares capabilities and exposes stub voice methods on
+ * OpenAI-compatible adapters (implementation in a follow-up child issue).
+ */
+export function createProvider(config: ProviderConfig): Provider {
+  if (config.kind === 'anthropic') {
+    return makeAnthropicProvider(config);
+  }
+  return makeOpenAICompatibleProvider(config);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
