@@ -417,6 +417,20 @@ contextBridge.exposeInMainWorld('api', {
   timelineInfer: (storyId: string) =>
     ipcRenderer.invoke('timeline:infer', { storyId }),
 
+  // SKY-791/SKY-794: Timeline data model + spreadsheet view
+  timelineGetSettings: (storyId?: string) =>
+    ipcRenderer.invoke('timeline:getSettings', { storyId }),
+  timelineSaveSettings: (settings: unknown, storyId?: string) =>
+    ipcRenderer.invoke('timeline:saveSettings', { settings, storyId }),
+  timelineGetScenes: (storyId: string) =>
+    ipcRenderer.invoke('timeline:getScenes', { storyId }),
+  timelineUpdateScene: (payload: unknown) =>
+    ipcRenderer.invoke('timeline:updateScene', payload),
+  timelineUpdateArcColor: (arcId: string, color: string, colorIsCustom: boolean) =>
+    ipcRenderer.invoke('timeline:updateArcColor', { arcId, color, colorIsCustom }),
+  timelineListArcs: () =>
+    ipcRenderer.invoke('timeline:listArcs', {}),
+
   // Telemetry (MYT-344) — opt-in, off by default
   telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) =>
     ipcRenderer.invoke('telemetry:report', { type, meta }),

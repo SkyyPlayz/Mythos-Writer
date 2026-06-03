@@ -307,6 +307,13 @@
   flex-direction: column;
 }
 
+.shell-timeline {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .shell-left {
   flex-shrink: 0;
   height: 100%;

@@ -471,6 +471,19 @@ interface Window {
     timelineUpsert: (entry: unknown) => Promise<unknown>;
     timelineInfer: (storyId: string) => Promise<unknown>;
 
+    // SKY-791/SKY-794: Timeline data model + spreadsheet view
+    timelineGetSettings: (storyId?: string) => Promise<{ settings: TimelineSettings }>;
+    timelineSaveSettings: (settings: TimelineSettings, storyId?: string) => Promise<{ saved: boolean }>;
+    timelineGetScenes: (storyId: string) => Promise<{ scenes: SceneEntry[] }>;
+    timelineUpdateScene: (payload: {
+      sceneId: string;
+      chronologicalTime?: ChronologicalTime;
+      entityLinks?: SceneEntityLinks;
+      timelineMetadata?: SceneTimelineMetadata;
+    }) => Promise<{ scene: SceneEntry }>;
+    timelineUpdateArcColor: (arcId: string, color: string, colorIsCustom: boolean) => Promise<{ arc: ArcEntry }>;
+    timelineListArcs: () => Promise<{ arcs: ArcEntry[] }>;
+
     // Telemetry (MYT-344) — opt-in, off by default
     telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) => Promise<unknown>;
 

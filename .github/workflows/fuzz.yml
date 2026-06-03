@@ -1,0 +1,49 @@
+name: Fuzz (60s)
+# Dedicated job for property-based tests + coverage-guided fuzzing (SKY-372).
+# This runs on every PR in addition to the fuzz steps in ci.yml so the
+# property/fuzz results are visible as a named check separate from the main CI.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  property-tests-and-fuzz:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run property tests (parseFrontmatter + safeVaultJoin)
+        run: npx vitest run --reporter verbose property.test
+        working-directory: electron-main
+
+      - name: Build fuzz harnesses
+        run: npm run fuzz:build
+        working-directory: electron-main
+
+      - name: Fuzz frontmatter parser (60s)
+        run: npm run fuzz:frontmatter
+        working-directory: electron-main
+
+      - name: Fuzz DOCX/EPUB inline parsers (60s)
+        run: npm run fuzz:docxInline
+        working-directory: electron-main
+
+      - name: Upload fuzz crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-standalone
+          path: electron-main/fuzz/crashes/
+          retention-days: 30
