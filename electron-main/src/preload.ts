@@ -470,10 +470,11 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // App data backup / restore (MYT-346)
-  backupAppData: (outputPath?: string) =>
-    ipcRenderer.invoke('app:backupAppData', outputPath ? { outputPath } : {}),
-  restoreAppData: (archivePath?: string, confirmed?: boolean) =>
-    ipcRenderer.invoke('app:restoreAppData', { archivePath, confirmed }),
+  // SKY-699: outputPath removed — dialog is always required in main process.
+  backupAppData: () =>
+    ipcRenderer.invoke('app:backupAppData', {}),
+  restoreAppData: (confirmed?: boolean) =>
+    ipcRenderer.invoke('app:restoreAppData', { confirmed }),
 
   // Agent persona files (MYT-816) — view/reset per-agent AGENTS/HEARTBEAT/SOUL/TOOLS files
   agentPersonaRead: (agentName: string, key: string) =>
