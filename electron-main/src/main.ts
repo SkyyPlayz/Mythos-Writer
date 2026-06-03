@@ -3920,7 +3920,15 @@ function createWindow() {
     }
   });
 
-  // Load the Vite-built renderer
+  // SKY-322: grant media (microphone) access for Web Speech API voice input.
+  // All other permission requests are denied to maintain the hardened renderer security posture.
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (_webContents, permission, callback) => {
+      callback(permission === 'media');
+    },
+  );
+
+    // Load the Vite-built renderer
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {

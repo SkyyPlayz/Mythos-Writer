@@ -541,6 +541,62 @@ describe('SettingsPanel', () => {
     expect(saved.voice?.enabled).toBe(true);
   });
 
+  // ── SKY-322: voice device selector + capture mode ──
+
+  it('shows capture mode and mic selector when voice is enabled', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+
+    // Before enabling: capture mode UI should not be visible
+    expect(screen.queryByRole('radiogroup', { name: /voice capture mode/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
+
+    // After enabling: radio group and mic selector appear
+    await waitFor(() =>
+      expect(screen.getByRole('radiogroup', { name: /voice capture mode/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('radio', { name: /toggle/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /push-to-talk/i })).toBeInTheDocument();
+    // Mic combobox always visible once voice enabled (even with no devices)
+    expect(screen.getByRole('combobox', { name: /microphone selection/i })).toBeInTheDocument();
+  });
+
+  it('enabling voice saves default voiceMode and shortcuts', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.voiceMode).toBe('toggle');
+    expect(saved.voice?.toggleShortcut).toBe('ctrl+shift+v');
+    expect(saved.voice?.pttKey).toBe('alt+v');
+  });
+
+  it('switching to push-to-talk mode is saved', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
+    await waitFor(() => screen.getByRole('radio', { name: /push-to-talk/i }));
+
+    fireEvent.click(screen.getByRole('radio', { name: /push-to-talk/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.voiceMode).toBe('push-to-talk');
+  });
+
+  it('shows privacy statement in voice section', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    expect(screen.getByText(/voice is processed locally on your device/i)).toBeInTheDocument();
+  });
+
   // ── MYT-779: AI providers section ──
 
   it('renders AI Provider section with provider selector', async () => {

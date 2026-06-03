@@ -112,3 +112,30 @@
   color: #4ade80;
   border: 1px solid #166534;
 }
+
+.bottom-voice {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: #f87171;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.bottom-voice-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f87171;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+.bottom-voice-label {
+  letter-spacing: 0.02em;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}

@@ -1,34 +1,83 @@
-export interface ExportableScene { title: string; prose: string; }
-export interface ExportableChapter { title: string; scenes: ExportableScene[]; }
-export interface ExportableStory { title: string; chapters: ExportableChapter[]; }
+// Plain-text and Markdown export formatters for scene/chapter/story/vault scopes.
+// No Electron dependency; purely functional transforms over prose strings.
 
-export function sceneToMarkdown(s: ExportableScene): string {
-  const l = [`# ${s.title}`, ''];
-  if (s.prose.trim()) l.push(s.prose.trim(), '');
-  return l.join('\n');
+export interface ExportableScene {
+  title: string;
+  prose: string;
 }
-export function chapterToMarkdown(title: string, scenes: ExportableScene[]): string {
-  const p = [`# ${title}`, ''];
-  for (const s of scenes) { p.push(`## ${s.title}`, ''); if (s.prose.trim()) p.push(s.prose.trim(), ''); }
-  return p.join('\n');
+
+export interface ExportableChapter {
+  title: string;
+  scenes: ExportableScene[];
 }
-export function storyToMarkdown(story: ExportableStory): string {
-  const p = [`# ${story.title}`, ''];
-  for (const ch of story.chapters) {
-    p.push(`## ${ch.title}`, '');
-    for (const sc of ch.scenes) { p.push(`### ${sc.title}`, ''); if (sc.prose.trim()) p.push(sc.prose.trim(), ''); }
+
+export interface ExportableStory {
+  title: string;
+  chapters: ExportableChapter[];
+}
+
+// ─── Markdown ────────────────────────────────────────────────────────────────────────────────
+
+export function sceneToMarkdown(scene: ExportableScene): string {
+  const lines = [`# ${scene.title}`, ''];
+  if (scene.prose.trim()) lines.push(scene.prose.trim(), '');
+  return lines.join('\n');
+}
+
+export function chapterToMarkdown(chapterTitle: string, scenes: ExportableScene[]): string {
+  const lines = [`# ${chapterTitle}`, ''];
+  for (const s of scenes) {
+    lines.push(`## ${s.title}`, '');
+    if (s.prose.trim()) lines.push(s.prose.trim(), '');
   }
-  return p.join('\n');
+  return lines.join('\n');
 }
+
+export function storyToMarkdown(story: ExportableStory): string {
+  const lines = [`# ${story.title}`, ''];
+  for (const ch of story.chapters) {
+    lines.push(`## ${ch.title}`, '');
+    for (const sc of ch.scenes) {
+      lines.push(`### ${sc.title}`, '');
+      if (sc.prose.trim()) lines.push(sc.prose.trim(), '');
+    }
+  }
+  return lines.join('\n');
+}
+
 export function vaultToMarkdown(stories: ExportableStory[]): string {
   return stories.length === 0 ? '' : stories.map(storyToMarkdown).join('\n\n---\n\n');
 }
-function strip(md: string): string { return md.replace(/^#+\s*/gm, '').trimEnd(); }
-export function sceneToPlaintext(s: ExportableScene): string {
-  const l = [s.title, '']; if (s.prose.trim()) l.push(s.prose.trim(), ''); return l.join('\n');
+
+// ─── Plaintext ────────────────────────────────────────────────────────────────────────────
+
+export function sceneToPlaintext(scene: ExportableScene): string {
+  const lines = [scene.title, ''];
+  if (scene.prose.trim()) lines.push(scene.prose.trim(), '');
+  return lines.join('\n');
 }
-export function chapterToPlaintext(title: string, scenes: ExportableScene[]): string { return strip(chapterToMarkdown(title, scenes)); }
-export function storyToPlaintext(story: ExportableStory): string { return strip(storyToMarkdown(story)); }
+
+export function chapterToPlaintext(chapterTitle: string, scenes: ExportableScene[]): string {
+  const lines = [chapterTitle, ''];
+  for (const s of scenes) {
+    lines.push(s.title, '');
+    if (s.prose.trim()) lines.push(s.prose.trim(), '');
+  }
+  return lines.join('\n');
+}
+
+export function storyToPlaintext(story: ExportableStory): string {
+  const lines = [story.title, ''];
+  for (const ch of story.chapters) {
+    lines.push(ch.title, '');
+    for (const sc of ch.scenes) {
+      lines.push(sc.title, '');
+      if (sc.prose.trim()) lines.push(sc.prose.trim(), '');
+    }
+  }
+  return lines.join('\n');
+}
+
 export function vaultToPlaintext(stories: ExportableStory[]): string {
   return stories.length === 0 ? '' : stories.map(storyToPlaintext).join('\n\n---\n\n');
 }

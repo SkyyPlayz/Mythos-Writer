@@ -1392,6 +1392,12 @@ export interface VoiceSettings {
   cloudFallback: boolean;
   micDeviceId?: string;
   openaiApiKey?: string;
+  /** 'toggle' = shortcut key toggles capture on/off; 'push-to-talk' = hold key while speaking. Default: 'toggle'. */
+  voiceMode?: 'toggle' | 'push-to-talk';
+  /** Keyboard shortcut for toggle mode. Format: modifier+modifier+key (e.g. 'ctrl+shift+v'). Default: 'ctrl+shift+v'. */
+  toggleShortcut?: string;
+  /** Hold key for push-to-talk mode (e.g. 'alt+v'). Default: 'alt+v'. */
+  pttKey?: string;
 }
 
 // ─── STT adapter settings (MYT-338) ───
