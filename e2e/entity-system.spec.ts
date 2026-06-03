@@ -182,9 +182,14 @@ test('TC-E-02: add alias to entity via EntityDetail panel', async () => {
   const detailPanel = page.locator('.entity-detail');
   await expect(detailPanel).toBeVisible({ timeout: 8_000 });
 
+  // Ensure inputs are rendered before accessing by index
+  const inputs = detailPanel.locator('.entity-det-input');
+  await expect(inputs.nth(1)).toBeVisible({ timeout: 4_000 });
+
   // Fill alias input (second input field after name)
-  const aliasInput = detailPanel.locator('.entity-det-input').nth(1);
+  const aliasInput = inputs.nth(1);
   await aliasInput.fill(ENTITY_ALIAS);
+  await aliasInput.blur(); // Trigger onChange handlers if present
 
   // Click Save
   const saveBtn = detailPanel.locator('.entity-det-btn.entity-det-btn-primary');
@@ -266,6 +271,10 @@ test('TC-E-04: entity with alias persists after full app restart', async () => {
   const detailPanel = page.locator('.entity-detail');
   await expect(detailPanel).toBeVisible({ timeout: 8_000 });
 
-  const aliasInput = detailPanel.locator('.entity-det-input').nth(1);
+  // Ensure inputs are rendered before accessing by index
+  const inputs = detailPanel.locator('.entity-det-input');
+  await expect(inputs.nth(1)).toBeVisible({ timeout: 4_000 });
+
+  const aliasInput = inputs.nth(1);
   await expect(aliasInput).toHaveValue(ENTITY_ALIAS, { timeout: 4_000 });
 });
