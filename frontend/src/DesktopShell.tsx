@@ -1319,6 +1319,18 @@ export default function DesktopShell() {
     setSelectedStory(null);
   }, []);
 
+  // SKY-616: navigate to entity page when user clicks an @-mention chip
+  const handleEntityMentionClick = useCallback((entityId: string) => {
+    window.api.entityRead(entityId).then((entity) => {
+      if (entity) {
+        setSelectedEntity(entity);
+        setSelectedScene(null);
+        setSelectedChapter(null);
+        setSelectedStory(null);
+      }
+    }).catch(() => {});
+  }, []);
+
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
       // Navigate to scene by docId
@@ -1781,6 +1793,7 @@ export default function DesktopShell() {
                   autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   initialCursorPos={pendingCursorPosRef.current ?? undefined}
                   onCursorPosChange={handleCursorPosChange}
+                  onEntityClick={handleEntityMentionClick}
                 />
                 {(betaReadComments.length > 0 || betaReadLoading) && (
                   <div className="shell-beta-margin">
