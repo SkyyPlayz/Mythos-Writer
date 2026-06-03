@@ -822,6 +822,14 @@ describe('categorizeStreamError', () => {
     const err = new TypeError('invalid type');
     expect(categorizeStreamError(err)).toBe(STREAM_ERROR_CATEGORIES.INVALID_REQUEST);
   });
+  it('maps TypeError("fetch failed") to network — local server not running (SKY-684)', () => {
+    const err = new TypeError('fetch failed');
+    expect(categorizeStreamError(err)).toBe(STREAM_ERROR_CATEGORIES.NETWORK);
+  });
+  it('maps TypeError with ECONNREFUSED message to network (SKY-684)', () => {
+    const err = new TypeError('connect ECONNREFUSED 127.0.0.1:11434');
+    expect(categorizeStreamError(err)).toBe(STREAM_ERROR_CATEGORIES.NETWORK);
+  });
   it('maps SyntaxError to invalid_request', () => {
     const err = new SyntaxError('bad syntax');
     expect(categorizeStreamError(err)).toBe(STREAM_ERROR_CATEGORIES.INVALID_REQUEST);

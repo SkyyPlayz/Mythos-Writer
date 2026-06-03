@@ -303,6 +303,31 @@ describe('providerConfigForAgent (§4)', () => {
     expect(result.model).toBe('llama3');
     expect(result.kind).toBe('ollama');
   });
+
+  it('falls back to global apiKey when agent override has same kind but no apiKey (SKY-684 §PM3)', () => {
+    const globalWithKey = makeAnthropicConfig({ apiKey: 'global-key', model: 'claude-sonnet-4-6' });
+    const agentOverride: ProviderConfig = { kind: 'anthropic', model: 'claude-opus-4-7' };
+    const result = providerConfigForAgent(globalWithKey, undefined, agentOverride);
+    expect(result.apiKey).toBe('global-key');
+    expect(result.model).toBe('claude-opus-4-7');
+    expect(result.kind).toBe('anthropic');
+  });
+
+  it('does not inherit global apiKey when agent override has different kind (Ollama local, SKY-684)', () => {
+    const globalWithKey = makeAnthropicConfig({ apiKey: 'global-key', model: 'claude-sonnet-4-6' });
+    const agentOverride: ProviderConfig = { kind: 'ollama', model: 'llama3' };
+    const result = providerConfigForAgent(globalWithKey, undefined, agentOverride);
+    expect(result.apiKey).toBeUndefined();
+    expect(result.kind).toBe('ollama');
+  });
+
+  it('does not inherit global apiKey when agent override has different kind (LM Studio, SKY-684)', () => {
+    const globalWithKey = makeAnthropicConfig({ apiKey: 'global-key', model: 'claude-sonnet-4-6' });
+    const agentOverride: ProviderConfig = { kind: 'lmstudio', model: 'local-model' };
+    const result = providerConfigForAgent(globalWithKey, undefined, agentOverride);
+    expect(result.apiKey).toBeUndefined();
+    expect(result.kind).toBe('lmstudio');
+  });
 });
 
 // ─── isModelValid (§5) ────────────────────────────────────────────────────────

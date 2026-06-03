@@ -223,7 +223,14 @@ export function providerConfigForAgent(
   agentModelOverride?: string,
   agentProviderOverride?: ProviderConfig,
 ): ProviderConfig {
-  if (agentProviderOverride) return agentProviderOverride;
+  if (agentProviderOverride) {
+    // PM spec §3: same kind + no agent-level API key → fall back to global key.
+    // Lets users pick a different model for an agent without re-entering the global API key.
+    if (!agentProviderOverride.apiKey && agentProviderOverride.kind === globalProvider.kind) {
+      return { ...agentProviderOverride, apiKey: globalProvider.apiKey };
+    }
+    return agentProviderOverride;
+  }
   if (!agentModelOverride) return globalProvider;
   return { ...globalProvider, model: agentModelOverride };
 }
