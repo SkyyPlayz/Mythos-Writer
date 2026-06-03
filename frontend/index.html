@@ -10,14 +10,20 @@
       img/media-src … file: blob: data: — vault assets render from file:// URLs and blob/data URIs.
       connect-src 'self' api.{anthropic,openai}.com ws/http://localhost:* — model endpoints
                                                                             + Vite HMR websocket in dev.
-      object-src 'none', base-uri 'self', frame-ancestors 'none' — Electron renderer is never embedded
-                                                                   and never loads plugins or relocates.
+      object-src 'none', base-uri 'self' — Electron renderer never loads plugins or relocates.
 
-      Keep in sync with docs/security/electron-baseline.md.
+      NOTE: frame-ancestors is intentionally absent here. Chromium ignores
+      frame-ancestors when delivered via a <meta> element — it only works as
+      an HTTP response header. frame-ancestors 'none' is enforced via
+      session.webRequest.onHeadersReceived in electron-main/src/security.ts
+      (installCspHeaders). See SKY-743.
+
+      Keep in sync with HEADER_CSP in electron-main/src/security.ts and
+      docs/security/electron-baseline.md.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com ws://localhost:* http://localhost:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; worker-src 'self' blob:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com ws://localhost:* http://localhost:*; object-src 'none'; base-uri 'self'; worker-src 'self' blob:;"
     />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

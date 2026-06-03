@@ -5,7 +5,7 @@
 // the exact options applied at boot. Aligned with
 // https://www.electronjs.org/docs/latest/tutorial/security.
 
-import type { WebPreferences } from 'electron';
+import type { Session, WebPreferences } from 'electron';
 
 export interface SecureWebPreferencesInput {
   /** Absolute path to the compiled preload bundle. */
@@ -39,6 +39,46 @@ export function secureWebPreferences(
     // dictionarySuggestions / misspelledWord from context-menu params.
     spellcheck: true,
   };
+}
+
+/**
+ * Content-Security-Policy string delivered as an HTTP response header.
+ *
+ * frame-ancestors MUST be here, not in the HTML meta tag: Chromium silently
+ * ignores frame-ancestors when it arrives via <meta http-equiv="Content-
+ * Security-Policy">. Delivering it as a header is the only way to enforce
+ * the framing restriction (SKY-743).
+ *
+ * Keep in sync with the meta-tag directives in frontend/index.html — the
+ * meta tag omits frame-ancestors (it would be ignored) and this constant
+ * carries it.
+ */
+export const HEADER_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; " +
+  "font-src 'self' data:; " +
+  "connect-src 'self' https://api.anthropic.com https://api.openai.com " +
+  "ws://localhost:* http://localhost:*; " +
+  "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; worker-src 'self' blob:;";
+
+/**
+ * Install Content-Security-Policy as a response header on every request
+ * served by the given session.
+ *
+ * This is required for frame-ancestors enforcement — Chromium ignores
+ * frame-ancestors when delivered via a <meta> element (SKY-743). Wiring
+ * it here means the header is present whether the renderer loads from
+ * file:// (production) or http://localhost (dev).
+ */
+export function installCspHeaders(session: Session): void {
+  session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'content-security-policy': [HEADER_CSP],
+      },
+    });
+  });
 }
 
 /**

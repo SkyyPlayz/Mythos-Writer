@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { secureWebPreferences, createWindowOpenHandler } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, HEADER_CSP } from './security.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ELECTRON_MAIN_DIR = path.resolve(HERE, '..');
@@ -107,6 +107,12 @@ describe('main.ts wiring — secureWebPreferences is the source of truth for the
     expect(mainSrc).toMatch(/replaceMisspelling/);
     expect(mainSrc).toMatch(/addWordToSpellCheckerDictionary/);
   });
+
+  it('main.ts calls installCspHeaders on the window session (SKY-743)', () => {
+    const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+    expect(mainSrc).toMatch(/installCspHeaders\s*\(/);
+    expect(mainSrc).toMatch(/installCspHeaders\s*\(\s*mainWindow\.webContents\.session/);
+  });
 });
 
 describe('preload.ts — contextBridge.exposeInMainWorld is the only export path', () => {
@@ -152,8 +158,13 @@ describe('frontend/index.html — CSP meta tag', () => {
     expect(csp).toMatch(/object-src\s+'none'/);
   });
 
-  it('frame-ancestors is none (renderer is never iframed)', () => {
-    expect(csp).toMatch(/frame-ancestors\s+'none'/);
+  it('does not include frame-ancestors (ignored in meta — SKY-743; enforced via session header instead)', () => {
+    // Chromium silently ignores frame-ancestors when delivered via <meta>.
+    // The directive must be delivered as an HTTP response header
+    // (see installCspHeaders in security.ts).  Keeping it in the meta tag
+    // creates false confidence and emits a "directive is not supported"
+    // console warning in E2E tests.
+    expect(csp).not.toMatch(/frame-ancestors/);
   });
 
   it('does not allow unsafe-eval in script-src', () => {
@@ -231,5 +242,66 @@ describe('app:backupAppData — headless outputPath path is permanently removed'
     const backupCall = preloadSrc.match(/backupAppData[\s\S]*?ipcRenderer\.invoke[\s\S]*?\)/);
     expect(backupCall).not.toBeNull();
     expect(backupCall![0]).not.toMatch(/outputPath/);
+  });
+});
+
+describe('installCspHeaders — frame-ancestors enforcement via session header (SKY-743)', () => {
+  // Minimal duck-typed mock that matches the Electron Session.webRequest shape
+  // used by installCspHeaders without importing the Electron runtime.
+  function makeMockSession(capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null }) {
+    return {
+      webRequest: {
+        onHeadersReceived: (fn: typeof capture.listener) => { capture.listener = fn; },
+      },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+  }
+
+  it('HEADER_CSP includes frame-ancestors none', () => {
+    expect(HEADER_CSP).toMatch(/frame-ancestors\s+'none'/);
+  });
+
+  it('calls onHeadersReceived on the provided session', () => {
+    const onHeadersReceived = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    installCspHeaders({ webRequest: { onHeadersReceived } } as any);
+    expect(onHeadersReceived).toHaveBeenCalledOnce();
+  });
+
+  it('injects Content-Security-Policy header with frame-ancestors none', () => {
+    const capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null } = { listener: null };
+    installCspHeaders(makeMockSession(capture));
+    expect(capture.listener).not.toBeNull();
+
+    const cbSpy = vi.fn();
+    capture.listener!({ responseHeaders: {} }, cbSpy);
+    expect(cbSpy).toHaveBeenCalledOnce();
+
+    const [resp] = cbSpy.mock.calls[0] as [{ responseHeaders: Record<string, string[]> }];
+    const cspValues = resp.responseHeaders['content-security-policy'];
+    expect(cspValues).toBeDefined();
+    expect(cspValues[0]).toMatch(/frame-ancestors\s+'none'/);
+  });
+
+  it('preserves existing response headers when injecting CSP', () => {
+    const capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null } = { listener: null };
+    installCspHeaders(makeMockSession(capture));
+    const cbSpy = vi.fn();
+    capture.listener!({ responseHeaders: { 'x-custom': ['kept'] } }, cbSpy);
+
+    const [resp] = cbSpy.mock.calls[0] as [{ responseHeaders: Record<string, string[]> }];
+    expect(resp.responseHeaders['x-custom']).toEqual(['kept']);
+    expect(resp.responseHeaders['content-security-policy']).toBeDefined();
+  });
+
+  it('handles missing responseHeaders in details (e.g. file:// responses)', () => {
+    const capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null } = { listener: null };
+    installCspHeaders(makeMockSession(capture));
+    const cbSpy = vi.fn();
+    // Pass details with no responseHeaders (undefined)
+    capture.listener!({}, cbSpy);
+
+    const [resp] = cbSpy.mock.calls[0] as [{ responseHeaders: Record<string, string[]> }];
+    expect(resp.responseHeaders['content-security-policy'][0]).toMatch(/frame-ancestors\s+'none'/);
   });
 });

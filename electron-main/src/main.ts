@@ -1,6 +1,6 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
-import { secureWebPreferences, createWindowOpenHandler } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
 import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
 import { readBgImageAsDataUrl } from './bgLoad.js';
 import { createRequire } from 'node:module';
@@ -4020,6 +4020,11 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(
     createWindowOpenHandler((url) => { shell.openExternal(url).catch(() => {}); }),
   );
+
+  // SKY-743: enforce frame-ancestors via HTTP response header — Chromium ignores
+  // frame-ancestors when it arrives via a <meta> element (meta tag is kept for
+  // other directives only).
+  installCspHeaders(mainWindow.webContents.session);
 
   // Block in-place navigations to anything other than the loaded renderer —
   // protects against a compromised renderer redirecting to a remote origin

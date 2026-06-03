@@ -31,16 +31,28 @@ through `secureWebPreferences()`.
 | 9 | `script-src 'self'` (no inline / no eval) | PASS | `frontend/index.html` | `restricts script-src to self`, `does not allow unsafe-eval in script-src` |
 | 10 | `connect-src` restricted (model endpoints + self) | PASS | `frontend/index.html` | `connect-src includes file: vault asset scheme or self, plus model endpoints` |
 | 11 | `object-src 'none'` | PASS | `frontend/index.html` | same |
-| 12 | `frame-ancestors 'none'` | PASS | `frontend/index.html` | same |
+| 12 | `frame-ancestors 'none'` via **HTTP response header** | PASS | `installCspHeaders()` wired in `main.ts` via `session.webRequest.onHeadersReceived` | `installCspHeaders — frame-ancestors via session response header` |
 | 13 | `setWindowOpenHandler` denies external popups | PASS | `createWindowOpenHandler()` wired in `main.ts` | `createWindowOpenHandler — deny by default`, `main.ts installs the window-open deny handler` |
 | 14 | `will-navigate` blocks unexpected navigations | PASS | `main.ts createWindow()` | `main.ts blocks unexpected in-place navigations via will-navigate` |
 | 15 | Preload uses `contextBridge.exposeInMainWorld` only | PASS | `electron-main/src/preload.ts` | `preload.ts — contextBridge.exposeInMainWorld is the only export path` |
 
+> **SKY-743 — why `frame-ancestors` is not in the meta tag:** Chromium (and all
+> standards-compliant browsers) ignore `frame-ancestors` when it appears in a
+> `<meta http-equiv="Content-Security-Policy">` element. The directive is only
+> honoured when delivered as an HTTP response header. Listing it in the meta tag
+> creates false confidence and emits an "unsupported directive" console warning.
+> As of SKY-743 it is delivered exclusively via `installCspHeaders()` in
+> `electron-main/src/security.ts`.
+
 ## Content-Security-Policy in detail
 
+CSP is delivered in two complementary layers:
+
+### Layer 1 — meta tag (`frontend/index.html`)
+
 The renderer is loaded as `file://` in production and from
-`http://localhost:5173` in development.  A single meta tag in
-`frontend/index.html` covers both modes:
+`http://localhost:5173` in development.  A meta tag covers both modes for
+directives that browsers honour in meta elements:
 
 ```text
 default-src 'self';
@@ -53,9 +65,24 @@ connect-src 'self' https://api.anthropic.com https://api.openai.com
             ws://localhost:* http://localhost:*;
 object-src 'none';
 base-uri 'self';
-frame-ancestors 'none';
 worker-src 'self' blob:;
 ```
+
+`frame-ancestors` is intentionally absent — see Layer 2.
+
+### Layer 2 — HTTP response header (`installCspHeaders` in `security.ts`)
+
+`installCspHeaders()` installs `session.webRequest.onHeadersReceived` in
+`createWindow()` and injects a `Content-Security-Policy` response header
+covering all directives, including `frame-ancestors 'none'`.  The canonical
+string is exported as `HEADER_CSP` from `security.ts`.
+
+**Why the split?** The W3C CSP spec (and Chromium's implementation) explicitly
+disallows `frame-ancestors` in meta elements — the directive is silently dropped
+and Chromium emits a console warning.  The only compliant delivery path is the
+HTTP response header.  Meta and header together provide defence in depth: the
+meta tag constrains script, style, and resource loading in all environments; the
+session header enforces framing protection.
 
 Notes on each directive:
 
@@ -75,8 +102,9 @@ Notes on each directive:
   needed by Vite HMR; their presence in production is benign because no
   attacker can reach the user's localhost services through the renderer.
 - **`object-src 'none'`** — blocks `<object>`, `<embed>`, and `<applet>`.
-- **`frame-ancestors 'none'`** — the renderer is never embedded in another
-  context; this is belt-and-braces against framing attacks.
+- **`frame-ancestors 'none'`** — delivered via HTTP response header only
+  (`installCspHeaders`).  The renderer is never embedded in another context;
+  this is the enforced protection against framing/clickjacking attacks.
 - **`worker-src 'self' blob:`** — bundled Web Workers are typically shipped as
   blob URLs by Vite.
 
