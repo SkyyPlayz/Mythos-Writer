@@ -13,6 +13,8 @@ import {
   streamFromProvider,
   validateProviderConfig,
   providerConfigForAgent,
+  isModelValid,
+  ANTHROPIC_MODEL_ALLOWLIST,
   DEFAULT_BASE_URLS,
   type ProviderConfig,
   type StreamRequest,
@@ -114,7 +116,7 @@ describe('Anthropic routing (§1)', () => {
   it('passes system prompt to the SDK when present', async () => {
     let capturedParams: unknown;
     const mockMessages = {
-      stream: vi.fn().mockImplementation((params: unknown) => {
+      stream: vi.fn().mockImplementation(function(params: unknown) {
         capturedParams = params;
         return (async function* () {})();
       }),
@@ -128,7 +130,7 @@ describe('Anthropic routing (§1)', () => {
   it('omits system field when no system prompt given', async () => {
     let capturedParams: unknown;
     const mockMessages = {
-      stream: vi.fn().mockImplementation((params: unknown) => {
+      stream: vi.fn().mockImplementation(function(params: unknown) {
         capturedParams = params;
         return (async function* () {})();
       }),
@@ -288,5 +290,54 @@ describe('providerConfigForAgent (§4)', () => {
   it('does not mutate the global config', () => {
     providerConfigForAgent(global, 'other-model');
     expect(global.model).toBe('claude-sonnet-4-6');
+  });
+
+  it('returns agentProviderOverride unchanged when provided (SKY-683)', () => {
+    const override: ProviderConfig = { kind: 'ollama', model: 'llama3', baseUrl: 'http://127.0.0.1:11434/v1' };
+    expect(providerConfigForAgent(global, undefined, override)).toStrictEqual(override);
+  });
+
+  it('agentProviderOverride takes precedence over agentModelOverride (SKY-683)', () => {
+    const override: ProviderConfig = { kind: 'ollama', model: 'llama3' };
+    const result = providerConfigForAgent(global, 'ignored-model', override);
+    expect(result.model).toBe('llama3');
+    expect(result.kind).toBe('ollama');
+  });
+});
+
+// ─── isModelValid (§5) ────────────────────────────────────────────────────────
+
+describe('isModelValid (§5)', () => {
+  it('accepts Claude models for anthropic kind', () => {
+    for (const m of ANTHROPIC_MODEL_ALLOWLIST) {
+      expect(isModelValid(m, 'anthropic')).toBe(true);
+    }
+  });
+
+  it('rejects unknown model for anthropic kind', () => {
+    expect(isModelValid('gpt-4o', 'anthropic')).toBe(false);
+    expect(isModelValid('llama3', 'anthropic')).toBe(false);
+    expect(isModelValid('', 'anthropic')).toBe(false);
+  });
+
+  it('accepts any non-empty string up to 128 chars for ollama kind', () => {
+    expect(isModelValid('llama3', 'ollama')).toBe(true);
+    expect(isModelValid('mistral:7b', 'ollama')).toBe(true);
+    expect(isModelValid('x'.repeat(128), 'ollama')).toBe(true);
+  });
+
+  it('rejects empty string for ollama kind', () => {
+    expect(isModelValid('', 'ollama')).toBe(false);
+    expect(isModelValid('  ', 'ollama')).toBe(false);
+  });
+
+  it('rejects model over 128 chars for non-anthropic kind', () => {
+    expect(isModelValid('x'.repeat(129), 'openai')).toBe(false);
+  });
+
+  it('accepts any non-empty model for openai, lmstudio, custom kinds', () => {
+    expect(isModelValid('gpt-4o-mini', 'openai')).toBe(true);
+    expect(isModelValid('local-model', 'lmstudio')).toBe(true);
+    expect(isModelValid('my-model', 'custom')).toBe(true);
   });
 });

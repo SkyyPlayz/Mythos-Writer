@@ -69,7 +69,7 @@ export function migrateSecretsFromSettingsFile(
  * Hydrates secrets back onto an AppSettings object loaded from disk.
  * Called from `loadAppSettings()` so the rest of main-process code keeps
  * reading `settings.apiKey` / `settings.provider.apiKey` / `settings.voice.openaiApiKey`
- * unchanged.
+ * unchanged. Per-agent provider API keys (SKY-683) are also hydrated here.
  */
 export function hydrateSecretsIntoSettings(
   settings: AppSettings,
@@ -85,6 +85,27 @@ export function hydrateSecretsIntoSettings(
   const voiceKey = store.get('voice.openaiApiKey');
   if (voiceKey && out.voice) {
     out.voice = { ...out.voice, openaiApiKey: voiceKey };
+  }
+  // Per-agent provider keys (SKY-683)
+  const brainstormKey = store.get('provider.brainstorm.apiKey');
+  if (brainstormKey && out.agents.brainstorm.provider) {
+    out.agents = {
+      ...out.agents,
+      brainstorm: {
+        ...out.agents.brainstorm,
+        provider: { ...out.agents.brainstorm.provider, apiKey: brainstormKey },
+      },
+    };
+  }
+  const writingAssistantKey = store.get('provider.writingAssistant.apiKey');
+  if (writingAssistantKey && out.agents.writingAssistant.provider) {
+    out.agents = {
+      ...out.agents,
+      writingAssistant: {
+        ...out.agents.writingAssistant,
+        provider: { ...out.agents.writingAssistant.provider, apiKey: writingAssistantKey },
+      },
+    };
   }
   return out;
 }
@@ -115,6 +136,29 @@ export function persistSecretsAndStripSettings(
   if (stripped.voice && typeof stripped.voice.openaiApiKey === 'string') {
     store.set('voice.openaiApiKey', stripped.voice.openaiApiKey);
     stripped.voice = { ...stripped.voice, openaiApiKey: '' };
+  }
+  // Per-agent provider keys (SKY-683).
+  if (stripped.agents.brainstorm.provider) {
+    const key = stripped.agents.brainstorm.provider.apiKey ?? '';
+    store.set('provider.brainstorm.apiKey', key);
+    stripped.agents = {
+      ...stripped.agents,
+      brainstorm: {
+        ...stripped.agents.brainstorm,
+        provider: { ...stripped.agents.brainstorm.provider, apiKey: '' },
+      },
+    };
+  }
+  if (stripped.agents.writingAssistant.provider) {
+    const key = stripped.agents.writingAssistant.provider.apiKey ?? '';
+    store.set('provider.writingAssistant.apiKey', key);
+    stripped.agents = {
+      ...stripped.agents,
+      writingAssistant: {
+        ...stripped.agents.writingAssistant,
+        provider: { ...stripped.agents.writingAssistant.provider, apiKey: '' },
+      },
+    };
   }
 
   return stripped;

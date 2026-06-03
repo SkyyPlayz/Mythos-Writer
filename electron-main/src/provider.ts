@@ -158,6 +158,24 @@ async function* runOpenAICompatibleStream(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** Allowlist of valid model IDs for the Anthropic provider. */
+export const ANTHROPIC_MODEL_ALLOWLIST = new Set([
+  'claude-haiku-4-5-20251001',
+  'claude-sonnet-4-6',
+  'claude-opus-4-7',
+]);
+
+/**
+ * Validates a model name for a given provider kind.
+ * Anthropic: must be in ANTHROPIC_MODEL_ALLOWLIST (security control).
+ * All other providers: any non-empty string up to 128 chars (no canonical registry).
+ */
+export function isModelValid(model: string, kind: ProviderKind): boolean {
+  if (!model || model.trim() === '') return false;
+  if (kind === 'anthropic') return ANTHROPIC_MODEL_ALLOWLIST.has(model);
+  return model.length <= 128;
+}
+
 /**
  * Stream tokens from any configured provider.
  * Returns an AsyncIterable<string> that emits text tokens until the response ends or is aborted.
@@ -196,12 +214,16 @@ export function validateProviderConfig(cfg: ProviderConfig): string | null {
 
 /**
  * Build a ProviderConfig from AppSettings for a named agent slot.
- * Falls back to the global provider if agent-level override is absent.
+ * When agentProviderOverride is supplied, it is returned as-is (full per-agent config).
+ * When only agentModelOverride is supplied, it overrides the model on the global config.
+ * Falls back to the global provider when neither override is present.
  */
 export function providerConfigForAgent(
   globalProvider: ProviderConfig,
   agentModelOverride?: string,
+  agentProviderOverride?: ProviderConfig,
 ): ProviderConfig {
+  if (agentProviderOverride) return agentProviderOverride;
   if (!agentModelOverride) return globalProvider;
   return { ...globalProvider, model: agentModelOverride };
 }

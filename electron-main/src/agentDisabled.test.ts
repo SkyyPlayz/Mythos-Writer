@@ -112,7 +112,7 @@ describe('Brainstorm — disabled path', () => {
   });
 
   it('enabled=true calls Anthropic constructor (normal path)', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({} as unknown as Anthropic); })
+    vi.mocked(Anthropic).mockImplementation(function() { return {} as Anthropic; });
     const settings = makeSettings({ brainstormEnabled: true });
     const result = await brainstormHandlerWithSettings(settings, { prompt: 'test' });
     expect(result.text).toBe('response');
@@ -150,7 +150,7 @@ describe('Writing Assistant — disabled path', () => {
   });
 
   it('enabled=true calls Anthropic constructor (normal path)', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({} as unknown as Anthropic); })
+    vi.mocked(Anthropic).mockImplementation(function() { return {} as Anthropic; });
     const settings = makeSettings({ writingAssistantEnabled: true });
     const result = await writingAssistantHandlerWithSettings(settings, { prompt: 'test' });
     expect(result.text).toBe('response');
