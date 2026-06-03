@@ -262,6 +262,9 @@ test('TC-V-03: create scene, scene .md file written to Story Vault on disk', asy
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
   await expect(sceneRow).toContainText(SCENE_TITLE);
 
+  // SKY-316: creating a scene must auto-open the editor (no manual click needed).
+  await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 6_000 });
+
   // The scene file is written with path: stories/<storyId>/chapters/<chapterId>/scenes/<sceneId>.md
   // Use findMdFiles across the entire vaultDir and look for any .md file under a
   // chapters/.../scenes/ hierarchy to confirm the per-scene file layout is in place.
