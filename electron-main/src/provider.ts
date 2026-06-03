@@ -84,6 +84,12 @@ async function* runOpenAICompatibleStream(
     throw new Error(`Provider "${config.kind}" requires a baseUrl.`);
   }
 
+  // SSRF guard: validate before any outbound fetch (SKY-739).
+  const urlError = validateBaseUrl(baseUrl);
+  if (urlError) {
+    throw new Error(urlError);
+  }
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (config.apiKey) {
     headers['Authorization'] = `Bearer ${config.apiKey}`;
@@ -164,6 +170,72 @@ export const ANTHROPIC_MODEL_ALLOWLIST = new Set([
   'claude-sonnet-4-6',
   'claude-opus-4-7',
 ]);
+
+/**
+ * Validates that a base URL is safe for outbound HTTP fetch calls (SSRF prevention, SKY-739).
+ * Returns null if the URL is acceptable, or an error string if it should be rejected.
+ *
+ * Allow: http/https schemes; loopback (127.0.0.0/8, ::1, localhost).
+ * Block: non-http(s) schemes; link-local/APIPA (169.254.x.x, fe80::); 0.0.0.0;
+ *        RFC-1918 private ranges (10.x, 172.16-31.x, 192.168.x).
+ */
+export function validateBaseUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'Invalid URL: cannot parse.';
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return `URL scheme "${parsed.protocol.replace(':', '')}" is not allowed — only http and https are permitted.`;
+  }
+
+  // WHATWG URL API includes brackets for IPv6 hosts (e.g. "[::1]") — strip them before matching.
+  const raw = parsed.hostname.toLowerCase();
+  const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
+
+  // IPv4-mapped IPv6: WHATWG URL normalizes e.g. ::ffff:192.168.1.1 → ::ffff:c0a8:101.
+  // Decode the embedded IPv4 and re-run all guards (SKY-752).
+  const v4mapped = host.match(/^::ffff:([0-9a-f]+):([0-9a-f]+)$/i);
+  if (v4mapped) {
+    const hi = parseInt(v4mapped[1], 16);
+    const lo = parseInt(v4mapped[2], 16);
+    const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return validateBaseUrl(`http://${ipv4}`);
+  }
+
+  // Allow loopback — Ollama (127.0.0.1:11434) and LM Studio (127.0.0.1:1234) live here.
+  if (host === 'localhost' || host === '::1') return null;
+  if (/^127\./.test(host)) return null;
+
+  // Block link-local / APIPA (AWS/GCP/Azure IMDS lives at 169.254.169.254).
+  if (/^169\.254\./.test(host) || /^fe80:/i.test(host)) {
+    return 'URL targets a link-local address — not allowed.';
+  }
+
+  // Block unspecified address.
+  if (host === '0.0.0.0') {
+    return 'URL targets 0.0.0.0 — not allowed.';
+  }
+
+  // Block RFC-1918 private ranges.
+  if (/^10\./.test(host)) {
+    return 'URL targets an RFC-1918 private address (10.0.0.0/8) — not allowed.';
+  }
+  if (/^192\.168\./.test(host)) {
+    return 'URL targets an RFC-1918 private address (192.168.0.0/16) — not allowed.';
+  }
+  const m172 = host.match(/^172\.(\d+)\./);
+  if (m172) {
+    const second = parseInt(m172[1], 10);
+    if (second >= 16 && second <= 31) {
+      return 'URL targets an RFC-1918 private address (172.16.0.0/12) — not allowed.';
+    }
+  }
+
+  return null;
+}
 
 /**
  * Validates a model name for a given provider kind.

@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   streamFromProvider,
   validateProviderConfig,
+  validateBaseUrl,
   providerConfigForAgent,
   isModelValid,
   ANTHROPIC_MODEL_ALLOWLIST,
@@ -364,5 +365,113 @@ describe('isModelValid (§5)', () => {
     expect(isModelValid('gpt-4o-mini', 'openai')).toBe(true);
     expect(isModelValid('local-model', 'lmstudio')).toBe(true);
     expect(isModelValid('my-model', 'custom')).toBe(true);
+  });
+});
+
+// ─── validateBaseUrl (§6) — SSRF prevention (SKY-739) ─────────────────────────
+
+describe('validateBaseUrl (§6)', () => {
+  // Allowed: loopback / localhost (Ollama, LM Studio defaults)
+  it('allows http://localhost', () => {
+    expect(validateBaseUrl('http://localhost:11434/v1')).toBeNull();
+  });
+
+  it('allows http://127.0.0.1 (Ollama default)', () => {
+    expect(validateBaseUrl('http://127.0.0.1:1234/v1')).toBeNull();
+  });
+
+  it('allows any 127.x.x.x address (full loopback block)', () => {
+    expect(validateBaseUrl('http://127.255.255.255/v1')).toBeNull();
+  });
+
+  it('allows https://api.openai.com (public cloud endpoint)', () => {
+    expect(validateBaseUrl('https://api.openai.com/v1')).toBeNull();
+  });
+
+  it('allows https://api.anthropic.com', () => {
+    expect(validateBaseUrl('https://api.anthropic.com/v1')).toBeNull();
+  });
+
+  // Blocked: APIPA / link-local
+  it('blocks APIPA 169.254.169.254 (cloud IMDS — AWS/GCP/Azure)', () => {
+    const result = validateBaseUrl('http://169.254.169.254/latest/meta-data/');
+    expect(result).toMatch(/link-local/i);
+  });
+
+  it('blocks 169.254.x.x range generally', () => {
+    expect(validateBaseUrl('http://169.254.1.1/')).toMatch(/link-local/i);
+  });
+
+  it('blocks link-local IPv6 fe80::1', () => {
+    expect(validateBaseUrl('http://[fe80::1]/')).toMatch(/link-local/i);
+  });
+
+  // Blocked: RFC-1918
+  it('blocks RFC-1918 10.0.0.1', () => {
+    expect(validateBaseUrl('http://10.0.0.1/')).toMatch(/rfc-1918/i);
+  });
+
+  it('blocks RFC-1918 10.255.255.255', () => {
+    expect(validateBaseUrl('http://10.255.255.255/')).toMatch(/rfc-1918/i);
+  });
+
+  it('blocks RFC-1918 192.168.1.100', () => {
+    expect(validateBaseUrl('http://192.168.1.100/')).toMatch(/rfc-1918/i);
+  });
+
+  it('blocks RFC-1918 172.16.0.1 (start of range)', () => {
+    expect(validateBaseUrl('http://172.16.0.1/')).toMatch(/rfc-1918/i);
+  });
+
+  it('blocks RFC-1918 172.31.255.255 (end of range)', () => {
+    expect(validateBaseUrl('http://172.31.255.255/')).toMatch(/rfc-1918/i);
+  });
+
+  it('allows 172.15.0.1 (just below RFC-1918 172.x range)', () => {
+    expect(validateBaseUrl('http://172.15.0.1/')).toBeNull();
+  });
+
+  it('allows 172.32.0.1 (just above RFC-1918 172.x range)', () => {
+    expect(validateBaseUrl('http://172.32.0.1/')).toBeNull();
+  });
+
+  // Blocked: non-http(s) schemes
+  it('blocks file:// scheme', () => {
+    expect(validateBaseUrl('file:///etc/passwd')).toMatch(/scheme/i);
+  });
+
+  it('blocks ftp:// scheme', () => {
+    expect(validateBaseUrl('ftp://example.com/')).toMatch(/scheme/i);
+  });
+
+  // Blocked: 0.0.0.0
+  it('blocks 0.0.0.0 (unspecified address)', () => {
+    expect(validateBaseUrl('http://0.0.0.0/')).toMatch(/0\.0\.0\.0/);
+  });
+
+  // Blocked: unparseable
+  it('rejects unparseable string', () => {
+    expect(validateBaseUrl('not-a-url')).toMatch(/invalid/i);
+  });
+
+  it('rejects empty string', () => {
+    expect(validateBaseUrl('')).toMatch(/invalid/i);
+  });
+
+  // IPv4-mapped IPv6 bypass (SKY-752) — WHATWG URL normalises ::ffff:a.b.c.d to hex form.
+  it('blocks IPv4-mapped IPv6 APIPA (::ffff:169.254.169.254)', () => {
+    expect(validateBaseUrl('http://[::ffff:169.254.169.254]/')).toMatch(/link-local/i);
+  });
+  it('blocks IPv4-mapped IPv6 RFC-1918 10.x', () => {
+    expect(validateBaseUrl('http://[::ffff:10.0.0.1]/')).toMatch(/rfc-1918/i);
+  });
+  it('blocks IPv4-mapped IPv6 RFC-1918 192.168.x', () => {
+    expect(validateBaseUrl('http://[::ffff:192.168.1.1]/')).toMatch(/rfc-1918/i);
+  });
+  it('blocks IPv4-mapped IPv6 RFC-1918 172.16.x', () => {
+    expect(validateBaseUrl('http://[::ffff:172.16.0.1]/')).toMatch(/rfc-1918/i);
+  });
+  it('allows IPv4-mapped IPv6 loopback (::ffff:127.0.0.1)', () => {
+    expect(validateBaseUrl('http://[::ffff:127.0.0.1]/')).toBeNull();
   });
 });

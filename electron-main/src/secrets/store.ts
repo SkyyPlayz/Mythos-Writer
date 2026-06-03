@@ -21,6 +21,7 @@ export type SecretId =
   | 'provider.apiKey' // MYT-324 multi-provider AppSettings.provider.apiKey
   | 'provider.brainstorm.apiKey' // SKY-683 per-agent provider key for Brainstorm
   | 'provider.writingAssistant.apiKey' // SKY-683 per-agent provider key for Writing Assistant
+  | 'provider.archive.apiKey' // SKY-740 per-agent provider key for Archive
   | 'voice.openaiApiKey'; // MYT-424 Whisper cloud fallback
 
 export const KNOWN_SECRET_IDS: readonly SecretId[] = [
@@ -28,6 +29,7 @@ export const KNOWN_SECRET_IDS: readonly SecretId[] = [
   'provider.apiKey',
   'provider.brainstorm.apiKey',
   'provider.writingAssistant.apiKey',
+  'provider.archive.apiKey',
   'voice.openaiApiKey',
 ];
 

@@ -16,6 +16,7 @@ import type { AppSettings } from '../ipc.js';
 const FAKE_ANTHROPIC = 'sk-ant-test-MigrationFixture00000000000000000000000000000000';
 const FAKE_OPENAI = 'sk-proj-MigrationFixture000000000000000000000000000000000beef';
 const FAKE_PROVIDER = 'sk-ant-test-MigrationProvider00000000000000000000000000000000';
+const FAKE_ARCHIVE_KEY = 'sk-ant-test-MigrationArchive000000000000000000000000000000';
 
 function makeSafeStorage(): SafeStorageLike {
   return {
@@ -114,6 +115,39 @@ describe('migrateSecretsFromSettingsFile', () => {
     const result = migrateSecretsFromSettingsFile(settingsPath, store);
     expect(result.migrated).toBe(false);
   });
+
+  // Regression: SKY-740 — archive key was never stripped before; ensure migration moves it.
+  it('migrates a plaintext archive agent provider.apiKey out of app-settings.json (SKY-740)', () => {
+    const { settingsPath, store } = mkStore();
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        baseSettings({
+          agents: {
+            writingAssistant: { enabled: false, model: 'claude', scanIntervalSeconds: 0, ...agentBudgets },
+            brainstorm: { enabled: false, model: 'claude', ...agentBudgets },
+            archive: {
+              enabled: false,
+              model: 'claude',
+              continuityCheckIntervalSeconds: 0,
+              ...agentBudgets,
+              provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_ARCHIVE_KEY },
+            },
+          },
+        }),
+      ),
+      'utf-8',
+    );
+
+    const result = migrateSecretsFromSettingsFile(settingsPath, store);
+
+    expect(result.migrated).toBe(true);
+    expect(result.movedIds).toContain('provider.archive.apiKey');
+
+    const rewritten = fs.readFileSync(settingsPath, 'utf-8');
+    expect(rewritten).not.toContain(FAKE_ARCHIVE_KEY);
+    expect(store.get('provider.archive.apiKey')).toBe(FAKE_ARCHIVE_KEY);
+  });
 });
 
 describe('persistSecretsAndStripSettings', () => {
@@ -148,6 +182,29 @@ describe('persistSecretsAndStripSettings', () => {
     expect(stripped.apiKey).toBe('');
     expect(store.get('anthropic.apiKey')).toBeNull();
   });
+
+  // Regression: SKY-740 — archive key must be stripped and stored, not written to disk.
+  it('strips and encrypts archive agent provider.apiKey (SKY-740)', () => {
+    const { store } = mkStore();
+    const incoming = baseSettings({
+      agents: {
+        writingAssistant: { enabled: false, model: 'claude', scanIntervalSeconds: 0, ...agentBudgets },
+        brainstorm: { enabled: false, model: 'claude', ...agentBudgets },
+        archive: {
+          enabled: false,
+          model: 'claude',
+          continuityCheckIntervalSeconds: 0,
+          ...agentBudgets,
+          provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_ARCHIVE_KEY },
+        },
+      },
+    });
+    const stripped = persistSecretsAndStripSettings(incoming, store);
+
+    expect(stripped.agents.archive.provider?.apiKey).toBe('');
+    expect(store.get('provider.archive.apiKey')).toBe(FAKE_ARCHIVE_KEY);
+    expect(JSON.stringify(stripped)).not.toContain(FAKE_ARCHIVE_KEY);
+  });
 });
 
 describe('hydrateSecretsIntoSettings', () => {
@@ -172,5 +229,32 @@ describe('hydrateSecretsIntoSettings', () => {
     store.set('voice.openaiApiKey', FAKE_OPENAI);
     const hydrated = hydrateSecretsIntoSettings(baseSettings(), store);
     expect(hydrated.voice).toBeUndefined();
+  });
+
+  // Regression: SKY-740 — archive key must be hydrated from the store.
+  it('hydrates archive agent provider.apiKey from the secrets store (SKY-740)', () => {
+    const { store } = mkStore();
+    store.set('provider.archive.apiKey', FAKE_ARCHIVE_KEY);
+    const onDisk = baseSettings({
+      agents: {
+        writingAssistant: { enabled: false, model: 'claude', scanIntervalSeconds: 0, ...agentBudgets },
+        brainstorm: { enabled: false, model: 'claude', ...agentBudgets },
+        archive: {
+          enabled: false,
+          model: 'claude',
+          continuityCheckIntervalSeconds: 0,
+          ...agentBudgets,
+          provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: '' },
+        },
+      },
+    });
+    const hydrated = hydrateSecretsIntoSettings(onDisk, store);
+    expect(hydrated.agents.archive.provider?.apiKey).toBe(FAKE_ARCHIVE_KEY);
+  });
+
+  it('leaves archive provider alone when no archive key is in the store', () => {
+    const { store } = mkStore();
+    const hydrated = hydrateSecretsIntoSettings(baseSettings(), store);
+    expect(hydrated.agents.archive.provider).toBeUndefined();
   });
 });
