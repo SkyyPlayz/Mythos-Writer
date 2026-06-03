@@ -11,8 +11,10 @@ import {
   resetPersonaFile,
   getBundledPersona,
   getPersonaOverridePath,
+  validatePersonaArgs,
   PERSONA_KEYS,
 } from './agentPersona.js';
+import type { AgentPersonaName } from './agentPersona.js';
 
 let tmpDir: string;
 
@@ -182,5 +184,58 @@ describe('getBundledPersona (§5)', () => {
   it('brainstorm AGENTS bundled default contains FACT tag syntax', () => {
     const content = getBundledPersona('brainstorm', 'AGENTS');
     expect(content).toContain('[FACT:');
+  });
+});
+
+// ─── §6  Security: validatePersonaArgs + resetPersonaFile containment ─────────
+
+describe('validatePersonaArgs (§6)', () => {
+  it('throws on out-of-enum agentName', () => {
+    expect(() => validatePersonaArgs('../../databases', 'AGENTS')).toThrow(/Invalid agentName/);
+  });
+
+  it('throws on out-of-enum key', () => {
+    expect(() => validatePersonaArgs('writingAssistant', '../../etc/passwd')).toThrow(/Invalid key/);
+  });
+
+  it('throws when both agentName and key are invalid', () => {
+    expect(() => validatePersonaArgs('badAgent', 'badKey')).toThrow(/Invalid agentName/);
+  });
+
+  it('does not throw for all valid agentName + key combinations', () => {
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => validatePersonaArgs(agent, key)).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('resetPersonaFile containment guard (§6)', () => {
+  it('throws and does not delete when agentName traverses outside agent-personas', () => {
+    const userData = path.join(tmpDir, 'userData');
+    fs.mkdirSync(userData, { recursive: true });
+
+    // path.join(userData, 'agent-personas', '../secret', 'AGENTS.md')
+    // normalises to path.join(userData, 'secret', 'AGENTS.md') — outside agent-personas/
+    const victimFile = path.join(userData, 'secret', 'AGENTS.md');
+    fs.mkdirSync(path.dirname(victimFile), { recursive: true });
+    fs.writeFileSync(victimFile, 'precious data', 'utf-8');
+
+    expect(() => {
+      resetPersonaFile(userData, '../secret' as AgentPersonaName, 'AGENTS');
+    }).toThrow(/escapes agent-personas/);
+
+    expect(fs.existsSync(victimFile)).toBe(true);
+  });
+
+  it('valid reset still deletes the correct override file', () => {
+    const overridePath = getPersonaOverridePath(tmpDir, 'writingAssistant', 'AGENTS');
+    fs.mkdirSync(path.dirname(overridePath), { recursive: true });
+    fs.writeFileSync(overridePath, '# custom', 'utf-8');
+
+    resetPersonaFile(tmpDir, 'writingAssistant', 'AGENTS');
+
+    expect(fs.existsSync(overridePath)).toBe(false);
   });
 });
