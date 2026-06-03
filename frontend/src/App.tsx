@@ -1,3 +1,6 @@
+// SKY-358 lint-gate demo: deliberate unused variable — will fail @typescript-eslint/no-unused-vars
+const __LINT_BREAK_SKY358 = 'deliberate-lint-violation-do-not-merge';
+
 import { useState, useEffect } from 'react';
 import DesktopShell from './DesktopShell';
 import OnboardingWizard from './OnboardingWizard';
