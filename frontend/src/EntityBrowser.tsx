@@ -16,16 +16,6 @@ const TYPE_LABELS: Record<EntityType, string> = {
   other: 'Other',
 };
 
-const TYPE_SINGULAR: Record<EntityType, string> = {
-  character: 'Character',
-  location: 'Location',
-  faction: 'Faction',
-  item: 'Item',
-  event: 'Event',
-  concept: 'Concept',
-  other: 'Other',
-};
-
 const TYPE_ICONS: Record<EntityType, string> = {
   character: '👤',
   location: '📍',
@@ -320,4 +310,3 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
   );
 }
 
-export { TYPE_SINGULAR };
