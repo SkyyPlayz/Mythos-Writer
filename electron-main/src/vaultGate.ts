@@ -117,6 +117,65 @@ function pathPasses(
 }
 
 /**
+ * Gate vault:load-sample (SEC-11). The sample always materialises at the
+ * hardcoded default path; a renderer-supplied targetPath is not accepted.
+ * A compromised renderer could otherwise mkdir at an arbitrary path and
+ * re-root the vault sandbox there.
+ */
+export function checkLoadSampleGate(
+  targetPath: unknown,
+): { ok: true } | { ok: false; error: string } {
+  if (targetPath != null && targetPath !== '') {
+    return { ok: false, error: 'UNAUTHORIZED_PATH' };
+  }
+  return { ok: true };
+}
+
+export interface SinglePathGateInput {
+  targetPath: unknown;
+  registrationToken?: unknown;
+}
+
+export interface SinglePathGateOk {
+  ok: true;
+  targetPath: string;
+}
+
+export interface SinglePathGateErr {
+  ok: false;
+  error: string;
+}
+
+export type SinglePathGateResult = SinglePathGateOk | SinglePathGateErr;
+
+/**
+ * Gate vault:create-blank (SEC-11). The renderer-supplied targetPath must be
+ * either (a) present in the recent-projects allowlist, or (b) accompanied by
+ * a registration token issued by a main-process file-picker dialog and bound
+ * to the exact same path. Rejects anything else so a compromised renderer
+ * cannot mkdir at an arbitrary writable path and re-root the vault sandbox.
+ *
+ * Note: the caller must expand `~` before passing `targetPath` so the
+ * comparison against absolute-path tokens and allowlist entries is correct.
+ */
+export function checkSinglePathGate(
+  input: SinglePathGateInput,
+  allowlist: ReadonlyArray<string>,
+  now: number = Date.now(),
+): SinglePathGateResult {
+  if (!isNonEmptyString(input.targetPath)) {
+    return { ok: false, error: 'UNAUTHORIZED_PATH' };
+  }
+  const token = isNonEmptyString(input.registrationToken) ? input.registrationToken : null;
+  if (!pathPasses(input.targetPath, token, allowlist, now)) {
+    return { ok: false, error: 'UNAUTHORIZED_PATH' };
+  }
+  // Path is authorised. Consume the token so it cannot be replayed.
+  if (token) validateRegistrationToken(token, { now });
+  return { ok: true, targetPath: input.targetPath };
+}
+
+/**
  * Gate `project:switch`. The vault root must already be in the recent-projects
  * allowlist — anything else is rejected. The renderer can only legitimately
  * switch to a project the user previously opened, and the recent-projects list
