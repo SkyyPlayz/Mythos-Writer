@@ -1,0 +1,37 @@
+.msv-view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.msv-view-toggle__btn {
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-base);
+  padding: 3px 10px;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1.4;
+}
+
+.msv-view-toggle__btn:hover {
+  color: var(--text-body);
+  background: var(--bg-elevated);
+}
+
+.msv-view-toggle__btn--active {
+  background: var(--accent-soft, rgba(0, 240, 255, 0.12));
+  color: var(--accent, var(--neon-cyan));
+  font-weight: var(--weight-heading);
+}
+
+.msv-view-toggle__btn:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 1px;
+}
