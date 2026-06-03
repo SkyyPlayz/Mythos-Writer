@@ -116,6 +116,7 @@ function pathPasses(
   return allowlist.includes(requestedPath);
 }
 
+/**
  * Gate vault:load-sample (SEC-11). The sample always materialises at the
  * hardcoded default path; a renderer-supplied targetPath is not accepted.
  * A compromised renderer could otherwise mkdir at an arbitrary path and
