@@ -15,6 +15,7 @@ import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
+import TimelineSpreadsheet from './TimelineSpreadsheet';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
@@ -81,7 +82,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure';
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline';
 
 interface SearchResultItem {
   docId: string;
@@ -250,6 +251,13 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           aria-pressed={view === 'structure'}
         >
           Structure
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'timeline' ? ' active' : ''}`}
+          onClick={() => onSetView('timeline')}
+          aria-pressed={view === 'timeline'}
+        >
+          Timeline
         </button>
       </div>
       <div className="writing-mode-selector" aria-label="Writing mode">
@@ -1658,6 +1666,11 @@ export default function DesktopShell() {
       {view === 'graph' && (
         <div className="shell-graph">
           <VaultGraphView onOpenNote={handleOpenSceneByPath} />
+        </div>
+      )}
+      {view === 'timeline' && (
+        <div className="shell-timeline">
+          <TimelineSpreadsheet story={selectedStory} />
         </div>
       )}
       {view === 'structure' && (

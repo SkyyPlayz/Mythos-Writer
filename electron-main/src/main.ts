@@ -4133,6 +4133,13 @@ const handlers: IpcHandlers = {
     return { arc: updated };
   },
 
+  // SKY-794: Spreadsheet view — list arc manifest for column display and grouping
+  [IPC_CHANNELS.TIMELINE_LIST_ARCS]: (): import('./ipc.js').TimelineListArcsResponse => {
+    ensureVaultDir();
+    const arcs = readArcManifest(getVaultRoot());
+    return { arcs };
+  },
+
 };
 
 // ─── Create BrowserWindow ───

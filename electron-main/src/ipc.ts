@@ -362,6 +362,7 @@ export const IPC_CHANNELS = {
   TIMELINE_GET_SCENES: 'timeline:getScenes',
   TIMELINE_UPDATE_SCENE: 'timeline:updateScene',
   TIMELINE_UPDATE_ARC_COLOR: 'timeline:updateArcColor',
+  TIMELINE_LIST_ARCS: 'timeline:listArcs',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -624,6 +625,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_GET_SCENES]: (payload: TimelineGetScenesPayload) => TimelineGetScenesResponse;
   [IPC_CHANNELS.TIMELINE_UPDATE_SCENE]: (payload: TimelineUpdateScenePayload) => TimelineUpdateSceneResponse;
   [IPC_CHANNELS.TIMELINE_UPDATE_ARC_COLOR]: (payload: TimelineUpdateArcColorPayload) => TimelineUpdateArcColorResponse;
+  // SKY-794: Spreadsheet view — arc manifest listing
+  [IPC_CHANNELS.TIMELINE_LIST_ARCS]: (payload: TimelineListArcsPayload) => TimelineListArcsResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2994,4 +2997,11 @@ export interface TimelineUpdateArcColorPayload {
 
 export interface TimelineUpdateArcColorResponse {
   arc: ArcEntry;
+}
+
+// SKY-794: arc manifest listing for spreadsheet view
+export type TimelineListArcsPayload = Record<string, never>;
+
+export interface TimelineListArcsResponse {
+  arcs: ArcEntry[];
 }

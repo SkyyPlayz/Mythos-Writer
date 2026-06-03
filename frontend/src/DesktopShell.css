@@ -311,6 +311,13 @@
   flex-direction: column;
 }
 
+.shell-timeline {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .shell-structure {
   flex: 1;
   overflow: hidden;
