@@ -214,6 +214,14 @@
   color: #c4b5fd;
 }
 
+.nav-wordcount {
+  font-size: 0.65rem;
+  color: #3f3f46;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0 0.15rem;
+}
+
 .nav-draft-badge {
   font-size: 0.65rem;
   padding: 0.1rem 0.35rem;
