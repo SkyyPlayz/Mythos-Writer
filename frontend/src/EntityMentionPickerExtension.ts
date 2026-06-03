@@ -1,70 +1,61 @@
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
 
 export interface MentionPickerState {
   active: boolean;
   query: string;
-  from: number; // doc position of the @ character
-  to: number;   // doc position of cursor (end of query text)
+  /** Absolute doc position of the '@' character. */
+  from: number;
+  /** Absolute doc position of the cursor (end of query). */
+  to: number;
 }
 
 const INACTIVE: MentionPickerState = { active: false, query: '', from: 0, to: 0 };
+const MAX_QUERY_LENGTH = 60;
 
 export const mentionPickerKey = new PluginKey<MentionPickerState>('entityMentionPicker');
 
-/**
- * Detect an active @query pattern before the cursor.
- *
- * Rules:
- *   - Cursor must be a collapsed selection (no range)
- *   - Search backward in the current block for @
- *   - @ must not be preceded by a word character (word-boundary-style)
- *   - Characters between @ and cursor must match [\w ]* (word chars + spaces)
- *   - Query length capped at 50 characters
- *
- * Position arithmetic: textBetween uses '\0' for atom-node leaf text.
- * Each atom occupies one doc position and one '\0' char, so the bijection
- * between string index and parent-relative doc position holds and
- * `$from.pos - queryPart.length - 1` gives the correct absolute doc position.
- */
-function detectQuery(state: EditorState): MentionPickerState {
+function detectMention(state: EditorState): MentionPickerState {
   const { selection } = state;
-  if (selection.from !== selection.to) return INACTIVE; // range selection
+  // Only activate on collapsed cursor
+  if (selection.from !== selection.to) return INACTIVE;
 
-  const { $from } = selection;
+  const $from = selection.$from;
+  if (!$from.parent.isTextblock) return INACTIVE;
 
-  // Text from block start to cursor; atom nodes become '\0' (1 char = 1 doc pos)
-  const text = $from.parent.textBetween(0, $from.parentOffset, '\0', '\0');
+  // Text inside current block from block-start to cursor
+  const textBefore = $from.parent.textBetween(0, $from.parentOffset, '');
+  if (!textBefore) return INACTIVE;
 
-  // Walk backward to find a valid @ trigger
-  for (let i = text.length - 1; i >= 0; i--) {
-    const ch = text[i];
+  // Scan backward for a valid '@' trigger.
+  // Limit scan to MAX_QUERY_LENGTH + 1 chars so we don't walk the entire line.
+  const limit = Math.max(0, textBefore.length - MAX_QUERY_LENGTH - 1);
 
-    if (ch === '@') {
-      // @ must not be immediately preceded by a word character
-      const prev = i > 0 ? text[i - 1] : ' ';
-      if (/\w/.test(prev)) return INACTIVE;
-
-      const queryPart = text.slice(i + 1);
-      if (queryPart.length > 50) return INACTIVE;
-      // Query may only contain word chars and spaces (no '\0' from atom nodes)
-      if (!/^[\w ]*$/.test(queryPart)) return INACTIVE;
-
-      return {
-        active: true,
-        query: queryPart,
-        from: $from.pos - queryPart.length - 1,
-        to: $from.pos,
-      };
+  let atPos = -1;
+  for (let i = textBefore.length - 1; i >= limit; i--) {
+    if (textBefore[i] === '@') {
+      // Valid trigger: '@' at block start or preceded by whitespace
+      if (i === 0 || /\s/.test(textBefore[i - 1])) {
+        atPos = i;
+      }
+      // Stop at first '@' found regardless (working backward)
+      break;
     }
-
-    // Stop scanning backward at any character that isn't a word char or space.
-    // This ensures we don't match an @ that's preceded by unrelated text
-    // without an intervening word boundary.
-    if (!/[\w ]/.test(ch)) return INACTIVE;
   }
 
-  return INACTIVE;
+  if (atPos < 0) return INACTIVE;
+
+  const query = textBefore.slice(atPos + 1);
+  // Block start in absolute document coordinates
+  const blockStart = $from.start($from.depth);
+
+  return {
+    active: true,
+    query,
+    from: blockStart + atPos,
+    to: selection.from,
+  };
 }
 
 export const EntityMentionPickerExtension = Extension.create({
@@ -75,15 +66,17 @@ export const EntityMentionPickerExtension = Extension.create({
       new Plugin({
         key: mentionPickerKey,
         state: {
-          init(_config, editorState) {
-            return detectQuery(editorState);
+          init() {
+            return INACTIVE;
           },
-          apply(tr, prev, _oldState, newState) {
-            if (!tr.selectionSet && !tr.docChanged) return prev;
-            return detectQuery(newState);
+          apply(_tr, _prev, _oldState, newState) {
+            return detectMention(newState);
           },
         },
       }),
     ];
   },
 });
+
+/** Exported for unit-testing the detection logic without a full editor. */
+export { detectMention, INACTIVE };
