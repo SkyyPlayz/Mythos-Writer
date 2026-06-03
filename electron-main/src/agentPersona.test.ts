@@ -12,6 +12,7 @@ import {
   getBundledPersona,
   getPersonaOverridePath,
   validatePersonaArgs,
+  resolvedInsideRoot,
   PERSONA_KEYS,
 } from './agentPersona.js';
 import type { AgentPersonaName } from './agentPersona.js';
@@ -191,15 +192,23 @@ describe('getBundledPersona (§5)', () => {
 
 describe('validatePersonaArgs (§6)', () => {
   it('throws on out-of-enum agentName', () => {
-    expect(() => validatePersonaArgs('../../databases', 'AGENTS')).toThrow(/Invalid agentName/);
+    expect(() => validatePersonaArgs('../../databases', 'AGENTS')).toThrow('invalid_agent_name');
   });
 
   it('throws on out-of-enum key', () => {
-    expect(() => validatePersonaArgs('writingAssistant', '../../etc/passwd')).toThrow(/Invalid key/);
+    expect(() => validatePersonaArgs('writingAssistant', '../../etc/passwd')).toThrow('invalid_key');
   });
 
   it('throws when both agentName and key are invalid', () => {
-    expect(() => validatePersonaArgs('badAgent', 'badKey')).toThrow(/Invalid agentName/);
+    expect(() => validatePersonaArgs('badAgent', 'badKey')).toThrow('invalid_agent_name');
+  });
+
+  it('throws on non-string agentName (null)', () => {
+    expect(() => validatePersonaArgs(null, 'AGENTS')).toThrow('invalid_agent_name');
+  });
+
+  it('throws on non-string key (object)', () => {
+    expect(() => validatePersonaArgs('writingAssistant', {})).toThrow('invalid_key');
   });
 
   it('does not throw for all valid agentName + key combinations', () => {
@@ -224,7 +233,7 @@ describe('resetPersonaFile containment guard (§6)', () => {
 
     expect(() => {
       resetPersonaFile(userData, '../secret' as AgentPersonaName, 'AGENTS');
-    }).toThrow(/escapes agent-personas/);
+    }).toThrow('Path escape detected');
 
     expect(fs.existsSync(victimFile)).toBe(true);
   });
@@ -237,5 +246,84 @@ describe('resetPersonaFile containment guard (§6)', () => {
     resetPersonaFile(tmpDir, 'writingAssistant', 'AGENTS');
 
     expect(fs.existsSync(overridePath)).toBe(false);
+  });
+});
+
+// ─── §6b  resolvedInsideRoot + getPersonaOverridePath containment ─────────────
+// Regression for SEC-5: path traversal via agentName or key supplied over IPC.
+
+describe('resolvedInsideRoot (§6b)', () => {
+  it('returns the resolved absolute path for valid inputs', () => {
+    const result = resolvedInsideRoot(tmpDir, 'writingAssistant', 'SOUL.md');
+    expect(result).toBe(path.resolve(tmpDir, 'writingAssistant', 'SOUL.md'));
+  });
+
+  it('throws when ../.. in first segment escapes root', () => {
+    expect(() => resolvedInsideRoot(tmpDir, '../../etc', 'AGENTS.md')).toThrow('Path escape detected');
+  });
+
+  it('throws when traversal is in a later segment', () => {
+    expect(() => resolvedInsideRoot(tmpDir, 'writingAssistant', '../../../etc/passwd')).toThrow(
+      'Path escape detected',
+    );
+  });
+
+  it('does not throw for all real persona combos', () => {
+    const personasRoot = path.join(tmpDir, 'agent-personas');
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => resolvedInsideRoot(personasRoot, agent, `${key}.md`)).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('getPersonaOverridePath containment (§6b)', () => {
+  it('throws when agentName contains path traversal', () => {
+    expect(() =>
+      getPersonaOverridePath(tmpDir, '../../etc' as AgentPersonaName, 'AGENTS'),
+    ).toThrow('Path escape detected');
+  });
+
+  it('does not throw for valid agentName and key', () => {
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => getPersonaOverridePath(tmpDir, agent, key)).not.toThrow();
+      }
+    }
+  });
+});
+
+// ─── §6 SEC-6 anti-injection instruction regression ───────────────────────────
+// The bundled writingAssistant AGENTS must include the content-security instruction
+// so the LLM knows to treat <scene_context> content as data, not instructions.
+
+describe('writingAssistant AGENTS anti-injection instruction (§6 / SEC-6)', () => {
+  it('bundled AGENTS default includes the scene_context tag name', () => {
+    const content = getBundledPersona('writingAssistant', 'AGENTS');
+    expect(content).toContain('scene_context');
+  });
+
+  it('bundled AGENTS default instructs LLM to treat context as data not instructions', () => {
+    const content = getBundledPersona('writingAssistant', 'AGENTS');
+    // The instruction must communicate that the tagged block is source material / data.
+    expect(content.toLowerCase()).toMatch(/data|source material/);
+    expect(content.toLowerCase()).toMatch(/not.*instructions?|instructions?.*not/);
+  });
+
+  it('system prompt includes the anti-injection instruction', () => {
+    const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
+    expect(prompt).toContain('scene_context');
+    expect(prompt.toLowerCase()).toMatch(/data|source material/);
+  });
+
+  it('system prompt does not include the instruction when AGENTS override removes it', () => {
+    // Verify the guard lives in bundled AGENTS, not hardcoded elsewhere.
+    const overridePath = getPersonaOverridePath(tmpDir, 'writingAssistant', 'AGENTS');
+    fs.mkdirSync(path.dirname(overridePath), { recursive: true });
+    fs.writeFileSync(overridePath, '# Custom agents — no security section', 'utf-8');
+
+    const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
+    expect(prompt).not.toContain('scene_context');
   });
 });

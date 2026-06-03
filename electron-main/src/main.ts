@@ -304,6 +304,7 @@ import {
   buildScanSuggestions,
   parseBetaReadLines,
   buildBetaReadComments,
+  buildWritingAssistantUserContent,
 } from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
@@ -4617,9 +4618,9 @@ function registerWritingAssistantHandler() {
       waTruncated = truncated;
     }
 
-    const userContent = cappedContext
-      ? `Scene context:\n${cappedContext}\n\nWriter's prompt: ${payload.prompt}`
-      : payload.prompt;
+    // cappedContext is vault content — attacker-controlled. buildWritingAssistantUserContent
+    // wraps it in <scene_context> tags so the LLM treats it as data, not instructions (SEC-6).
+    const userContent = buildWritingAssistantUserContent(cappedContext, payload.prompt);
 
     const waContextChars = userContent.length;
 
