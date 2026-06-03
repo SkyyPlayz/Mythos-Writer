@@ -1,0 +1,203 @@
+/* ─── ManuscriptStructureView — full-screen overlay ─── */
+
+.msv {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: absolute;
+  inset: 0;
+  background: var(--bg-base);
+}
+
+/* ─── Header ─── */
+
+.msv__header {
+  align-items: center;
+  background: var(--bg-panel, rgba(14, 14, 18, 0.85));
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-shrink: 0;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 10px 24px;
+  z-index: 10;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .msv__header {
+    backdrop-filter: blur(16px) saturate(180%);
+  }
+}
+
+.msv__header-left {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.msv__story-title {
+  color: var(--text-header);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-heading);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msv__story-meta {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+}
+
+.msv__header-right {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.msv__add-chapter-btn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  padding: 4px 12px;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+
+.msv__add-chapter-btn:hover {
+  border-color: var(--accent, var(--neon-cyan));
+  color: var(--accent, var(--neon-cyan));
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 8%, transparent);
+}
+
+.msv__add-chapter-btn:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+/* ─── Body (content + sidebar) ─── */
+
+.msv__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Content area (card grid or list) with fade transition ─── */
+
+.msv__content {
+  animation: msv-fade-in 0.1s ease-out;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@keyframes msv-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msv__content {
+    animation: none;
+  }
+}
+
+/* ─── Empty / no-story states ─── */
+
+.msv--no-story {
+  align-items: center;
+  justify-content: center;
+}
+
+.msv__empty-state {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 12px;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.msv__empty-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.msv__empty-title {
+  color: var(--text-header);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-heading);
+  margin: 0;
+}
+
+.msv__empty-body {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  margin: 0;
+  max-width: 360px;
+}
+
+.msv__create-chapter-btn {
+  background: var(--accent-soft, rgba(0, 240, 255, 0.12));
+  border: 1px solid var(--accent, var(--neon-cyan));
+  border-radius: var(--radius-md);
+  color: var(--accent, var(--neon-cyan));
+  cursor: pointer;
+  font-size: var(--text-sm);
+  margin-top: 8px;
+  padding: 8px 24px;
+  transition: background 0.1s;
+}
+
+.msv__create-chapter-btn:hover {
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 20%, transparent);
+}
+
+.msv__create-chapter-btn:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+.msv__beats-placeholder {
+  /* Sidebar in empty state — shown as inline block below the empty state */
+  display: none;
+}
+
+/* ─── Responsive ─── */
+
+@media (max-width: 767px) {
+  .msv__body {
+    flex-direction: column;
+  }
+
+  .msv__header {
+    padding: 8px 16px;
+  }
+}
+
+/* ─── Screen reader only utility ─── */
+
+.sr-only {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  white-space: nowrap;
+}

@@ -14,6 +14,7 @@ import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
+import ManuscriptStructureView from './ManuscriptStructureView';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
@@ -80,7 +81,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure';
 
 interface SearchResultItem {
   docId: string;
@@ -242,6 +243,13 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           aria-pressed={view === 'graph'}
         >
           Graph
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'structure' ? ' active' : ''}`}
+          onClick={() => onSetView('structure')}
+          aria-pressed={view === 'structure'}
+        >
+          Structure
         </button>
       </div>
       <div className="writing-mode-selector" aria-label="Writing mode">
@@ -1197,6 +1205,47 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
 
+  const handleMoveScene = useCallback((
+    storyId: string,
+    sceneId: string,
+    fromChapterId: string,
+    toChapterId: string,
+    insertBeforeSceneId: string | null,
+  ) => {
+    const updatedStories = stories.map((s) => {
+      if (s.id !== storyId) return s;
+      const fromChapter = s.chapters.find((c) => c.id === fromChapterId);
+      if (!fromChapter) return s;
+      const scene = fromChapter.scenes.find((sc) => sc.id === sceneId);
+      if (!scene) return s;
+      const updatedChapters = s.chapters.map((ch) => {
+        if (ch.id === fromChapterId) {
+          const remaining = ch.scenes
+            .filter((sc) => sc.id !== sceneId)
+            .map((sc, idx) => ({ ...sc, order: idx }));
+          return { ...ch, scenes: remaining };
+        }
+        if (ch.id === toChapterId) {
+          const withoutScene = ch.scenes.filter((sc) => sc.id !== sceneId);
+          const insertIdx = insertBeforeSceneId
+            ? withoutScene.findIndex((sc) => sc.id === insertBeforeSceneId)
+            : withoutScene.length;
+          const idx = insertIdx === -1 ? withoutScene.length : insertIdx;
+          const updatedScene = { ...scene, chapterId: toChapterId, order: idx };
+          const newScenes = [
+            ...withoutScene.slice(0, idx),
+            updatedScene,
+            ...withoutScene.slice(idx),
+          ].map((sc, i) => ({ ...sc, order: i }));
+          return { ...ch, scenes: newScenes };
+        }
+        return ch;
+      });
+      return { ...s, chapters: updatedChapters };
+    });
+    updateManifest(updatedStories);
+  }, [stories, updateManifest]);
+
   // SKY-127: Update window chrome neon border context based on selected vault item
   useEffect(() => {
     if (vaultContext) {
@@ -1597,6 +1646,22 @@ export default function DesktopShell() {
       {view === 'graph' && (
         <div className="shell-graph">
           <VaultGraphView onOpenNote={handleOpenSceneByPath} />
+        </div>
+      )}
+      {view === 'structure' && (
+        <div className="shell-structure">
+          <ManuscriptStructureView
+            story={selectedStory ?? null}
+            onSelectScene={(scene, chapter, story) => {
+              handleSelectScene(scene, chapter, story);
+              setView('editor');
+            }}
+            onReorderScenes={handleReorderScenes}
+            onMoveScene={handleMoveScene}
+            onCreateScene={createScene}
+            onCreateChapter={createChapter}
+            vaultRoot={activeVaultRoot}
+          />
         </div>
       )}
       {view === 'editor' && <div className="shell-panels">

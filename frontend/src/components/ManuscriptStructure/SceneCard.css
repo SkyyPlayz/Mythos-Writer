@@ -1,0 +1,201 @@
+/* ─── Status badge (shared across list + card views) ─── */
+
+.status-badge {
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.status-badge--draft {
+  border: 2px solid color-mix(in srgb, var(--neon-cyan, #00f0ff) 50%, transparent);
+  background: transparent;
+}
+
+.status-badge--review {
+  border: 2px solid color-mix(in srgb, var(--state-warning, #e8a030) 70%, transparent);
+  background: color-mix(in srgb, var(--state-warning, #e8a030) 25%, transparent);
+}
+
+.status-badge--final {
+  background: var(--state-success, #39d353);
+  border: 2px solid var(--state-success, #39d353);
+}
+
+.status-badge--cut {
+  background: color-mix(in srgb, var(--state-danger, #ff4d4f) 30%, transparent);
+  border: 2px solid color-mix(in srgb, var(--state-danger, #ff4d4f) 40%, transparent);
+  position: relative;
+}
+
+.status-badge--cut::after {
+  content: '×';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 8px;
+  line-height: 1;
+  color: var(--state-danger, #ff4d4f);
+}
+
+/* ─── Scene card ─── */
+
+.scene-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 120px;
+  overflow: hidden;
+  padding: 8px;
+  position: relative;
+  transition:
+    border-color 0.1s ease-out,
+    box-shadow 0.1s ease-out,
+    opacity 0.15s ease-out;
+  user-select: none;
+  width: 120px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1023px) {
+  .scene-card {
+    height: 100px;
+    width: 100px;
+  }
+}
+
+@media (max-width: 767px) {
+  .scene-card {
+    height: auto;
+    min-height: 80px;
+    width: 100%;
+    max-width: 120px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.scene-card:hover {
+  border-color: var(--border-default);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  cursor: grab;
+}
+
+.scene-card:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 2px var(--bg-base),
+    0 0 0 4px var(--accent, var(--neon-cyan));
+}
+
+.scene-card--dragging {
+  opacity: 0.6;
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.5);
+  cursor: grabbing !important;
+  z-index: 10;
+}
+
+.scene-card--drag-over {
+  border-color: var(--accent, var(--neon-cyan)) !important;
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 8%, var(--bg-elevated));
+}
+
+.scene-card--reordering {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+.scene-card--cut {
+  opacity: 0.55;
+}
+
+.scene-card--cut .scene-card__title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* Beat tint: subtle background overlay per act */
+.scene-card--beat-setup {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan, #00f0ff) 30%, transparent);
+}
+
+.scene-card--beat-confrontation {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning, #e8a030) 30%, transparent);
+}
+
+.scene-card--beat-resolution {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-success, #39d353) 30%, transparent);
+}
+
+/* ─── Card internals ─── */
+
+.scene-card__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.scene-card__drag-handle {
+  color: var(--text-muted);
+  cursor: grab;
+  font-size: 14px;
+  line-height: 1;
+  min-width: 24px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 4px;
+  margin: -4px;
+  border-radius: 4px;
+  transition: color 0.1s;
+}
+
+.scene-card__drag-handle:hover {
+  color: var(--text-body);
+}
+
+.scene-card__title {
+  color: var(--text-header);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  margin: 0;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+@media (max-width: 1023px) {
+  .scene-card__title {
+    font-size: 10px;
+  }
+}
+
+.scene-card__wordcount {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 400;
+  margin-top: auto;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  .scene-card,
+  .scene-card__drag-handle {
+    transition: none;
+  }
+}

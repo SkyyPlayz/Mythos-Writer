@@ -311,6 +311,14 @@
   flex-direction: column;
 }
 
+.shell-structure {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
 .shell-left {
   flex-shrink: 0;
   height: 100%;

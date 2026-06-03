@@ -1,0 +1,228 @@
+.list-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.list-view--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.list-view__empty-msg {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ─── Chapter row ─── */
+
+.list-chapter {
+  display: flex;
+  flex-direction: column;
+}
+
+.list-chapter__header {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  transition: background 0.1s;
+}
+
+.list-chapter__header:hover {
+  background: var(--bg-inset);
+}
+
+.list-chapter__toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 9px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  min-width: 20px;
+  text-align: center;
+  transition: color 0.1s;
+}
+
+.list-chapter__toggle:hover {
+  color: var(--text-body);
+}
+
+.list-chapter__toggle:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+.list-chapter__icon {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.list-chapter__name {
+  color: var(--text-header);
+  flex: 1;
+  font-size: 13px;
+  font-weight: var(--weight-heading);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-chapter__meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.list-chapter__add {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+
+.list-chapter__add:hover {
+  border-color: var(--accent, var(--neon-cyan));
+  color: var(--accent, var(--neon-cyan));
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 8%, transparent);
+}
+
+.list-chapter__add:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+/* ─── Scene list ─── */
+
+.list-chapter__scenes {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px 24px;
+}
+
+.list-scene {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  transition: background 0.1s;
+}
+
+.list-scene:hover {
+  background: var(--bg-inset);
+}
+
+.list-scene:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+.list-scene--reordering {
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 8%, transparent) !important;
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+.list-scene--dimmed {
+  opacity: 0.35;
+}
+
+.list-scene--beat-highlighted {
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 10%, transparent);
+}
+
+.list-scene__drag-handle {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 12px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.list-scene:hover .list-scene__drag-handle {
+  opacity: 1;
+}
+
+.list-scene__title {
+  color: var(--text-body);
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-scene__wordcount {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.list-scene--empty {
+  cursor: default;
+  height: auto;
+  padding: 8px;
+  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.list-scene--empty:hover {
+  background: none;
+}
+
+.list-scene__empty-text {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.list-scene__create-first {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--accent, var(--neon-cyan));
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.list-scene__create-first:hover {
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 8%, transparent);
+  border-color: var(--accent, var(--neon-cyan));
+}
+
+.list-scene__create-first:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  .list-chapter__header,
+  .list-scene,
+  .list-chapter__add,
+  .list-scene__drag-handle {
+    transition: none;
+  }
+}
