@@ -147,17 +147,28 @@ jobs:
           retention-days: 7
 
   build-macos:
-    # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
-    # Running on ubuntu-latest (Linux) so the required check CI/build-macos resolves green.
-    # Replace with macos-latest and restore the packaging steps once billing is active
-    # (est. June 2026) or a self-hosted macOS runner is added (MYT-749).
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
-      - name: macOS build placeholder
-        run: |
-          echo "macOS packaging requires paid GitHub Actions minutes or a self-hosted macOS runner."
-          echo "This stub keeps the CI / build-macos required check green until then."
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package (macOS DMG)
+        run: npm run dist:mac
+
+      - name: Upload macOS DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist-electron/*.dmg
 
   build-linux:
     runs-on: ubuntu-latest
