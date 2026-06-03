@@ -29,7 +29,7 @@ jobs:
         run: npm ci
 
       - name: Run property tests (parseFrontmatter + safeVaultJoin)
-        run: npx vitest run --reporter verbose 'src/**/*.property.test.ts'
+        run: npx vitest run --reporter verbose property.test
         working-directory: electron-main
 
       - name: Build fuzz harnesses
