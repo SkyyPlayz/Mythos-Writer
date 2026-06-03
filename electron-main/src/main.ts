@@ -111,8 +111,6 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
-  type AgentPersonaReadPayload,
-  type AgentPersonaResetPayload,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
   type SettingsTestConnectionPayload,
@@ -139,14 +137,12 @@ import {
   type OnboardingCompletePayload,
   type OnboardingCompleteResponse,
 } from './ipc.js';
-import { wrapIpcHandler } from './ipcErrors.js';
+import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import {
   buildAgentSystemPrompt,
   loadPersonaFile,
   resetPersonaFile,
-  validatePersonaArgs,
-  type AgentPersonaName,
-  type PersonaKey,
+  validatePersonaPayload,
 } from './agentPersona.js';
 import {
   buildVaultSummary,
@@ -5425,20 +5421,28 @@ function registerContinuityHandler(): void {
 
 // ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
 function registerAgentPersonaHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (event, payload: AgentPersonaReadPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (event, payload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
-    const { agentName, key } = payload;
-    validatePersonaArgs(agentName, key);
-    const file = loadPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
-    return { content: file.content, isCustom: file.isCustom };
+    const validation = validatePersonaPayload(payload?.agentName, payload?.key);
+    if (!validation.ok) return { error: validation.error };
+    try {
+      const file = loadPersonaFile(app.getPath('userData'), validation.agentName, validation.key);
+      return { content: file.content, isCustom: file.isCustom };
+    } catch (err) {
+      return sanitizeIpcError(IPC_CHANNELS.AGENT_PERSONA_READ, err);
+    }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (event, payload: AgentPersonaResetPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (event, payload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
-    const { agentName, key } = payload;
-    validatePersonaArgs(agentName, key);
-    resetPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
-    return { success: true };
+    const validation = validatePersonaPayload(payload?.agentName, payload?.key);
+    if (!validation.ok) return { error: validation.error };
+    try {
+      resetPersonaFile(app.getPath('userData'), validation.agentName, validation.key);
+      return { success: true };
+    } catch (err) {
+      return sanitizeIpcError(IPC_CHANNELS.AGENT_PERSONA_RESET, err);
+    }
   });
 }
 
