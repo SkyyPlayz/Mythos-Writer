@@ -242,6 +242,10 @@ import {
   sceneVaultPath,
   mergeProvenanceFrontmatter,
   toSlug,
+  readTimelineSettings,
+  writeTimelineSettings,
+  readArcManifest,
+  writeArcManifest,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
@@ -1074,7 +1078,7 @@ const handlers: IpcHandlers = {
   // MYT-319 — Archive Agent infers scene chronology without LLM calls
   [IPC_CHANNELS.TIMELINE_INFER]: (payload: { storyId: string }): import('./ipc.js').TimelineInferResponse => {
     ensureVaultDir();
-    const manifest = readManifest(getVaultRoot());
+    const manifest = readManifest(getManifestPath());
     const story = manifest.stories.find(s => s.id === payload.storyId);
     if (!story) return { placements: [] };
 
@@ -4011,6 +4015,122 @@ const handlers: IpcHandlers = {
   // The real handler is registered via registerContinuityHandler() after app.whenReady, not here.
   [IPC_CHANNELS.CONTINUITY_CHECK]: (_payload: import('./ipc.js').ContinuityCheckPayload): import('./ipc.js').ContinuityCheckResponse => {
     return { chapters: [], totalCheckedCount: 0, totalMismatchCount: 0, driftScore: 0, sessionId: '' };
+  },
+
+  // ─── SKY-791: Timeline data model + settings IPC ───
+
+  [IPC_CHANNELS.TIMELINE_GET_SETTINGS]: (): import('./ipc.js').TimelineGetSettingsResponse => {
+    ensureVaultDir();
+    const settings = readTimelineSettings(getVaultRoot());
+    return { settings };
+  },
+
+  [IPC_CHANNELS.TIMELINE_SAVE_SETTINGS]: (payload: import('./ipc.js').TimelineSaveSettingsPayload): import('./ipc.js').TimelineSaveSettingsResponse => {
+    ensureVaultDir();
+    writeTimelineSettings(getVaultRoot(), payload.settings);
+    return { saved: true };
+  },
+
+  [IPC_CHANNELS.TIMELINE_GET_SCENES]: (payload: import('./ipc.js').TimelineGetScenesPayload): import('./ipc.js').TimelineGetScenesResponse => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find(s => s.id === payload.storyId);
+    if (!story) return { scenes: [] };
+    const scenes: import('./ipc.js').SceneEntry[] = [];
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) {
+        let chronologicalTime: import('./ipc.js').ChronologicalTime | undefined;
+        let entityLinks: import('./ipc.js').SceneEntityLinks | undefined;
+        let timelineMetadata: import('./ipc.js').SceneTimelineMetadata | undefined;
+        try {
+          const fileData = readSceneFile(getVaultRoot(), scene.path);
+          if (fileData.chronologicalDate) {
+            chronologicalTime = {
+              date: fileData.chronologicalDate,
+              isEstimated: fileData.chronologicalIsEstimated ?? false,
+              confidence: fileData.chronologicalConfidence ?? 1,
+              source: fileData.chronologicalSource ?? 'explicit_marker',
+            };
+          }
+          if (fileData.entityCharacterIds?.length || fileData.entityLocationId || fileData.entityArcs?.length) {
+            entityLinks = {
+              characterIds: fileData.entityCharacterIds ?? [],
+              locationId: fileData.entityLocationId,
+              arcs: fileData.entityArcs ?? [],
+            };
+          }
+          if (fileData.metaWordCount !== undefined || fileData.metaMood || fileData.metaPov) {
+            timelineMetadata = {
+              wordCount: fileData.metaWordCount,
+              mood: fileData.metaMood,
+              pov: fileData.metaPov,
+            };
+          }
+        } catch {
+          // unreadable scene file — skip timeline metadata
+        }
+        scenes.push({ ...scene, chronologicalTime, entityLinks, timelineMetadata });
+      }
+    }
+    return { scenes };
+  },
+
+  [IPC_CHANNELS.TIMELINE_UPDATE_SCENE]: (payload: import('./ipc.js').TimelineUpdateScenePayload): import('./ipc.js').TimelineUpdateSceneResponse => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    let found: import('./ipc.js').SceneEntry | undefined;
+    for (const story of manifest.stories) {
+      for (const chapter of story.chapters ?? []) {
+        const s = chapter.scenes?.find(sc => sc.id === payload.sceneId);
+        if (s) { found = s; break; }
+      }
+      if (found) break;
+    }
+    if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
+
+    const existing = readSceneFile(getVaultRoot(), found.path);
+    const ct = payload.chronologicalTime;
+    const el = payload.entityLinks;
+    const tm = payload.timelineMetadata;
+    writeSceneFileAtomic(getVaultRoot(), found.path, {
+      ...existing,
+      ...(ct ? {
+        chronologicalDate: ct.date,
+        chronologicalIsEstimated: ct.isEstimated,
+        chronologicalConfidence: ct.confidence,
+        chronologicalSource: ct.source,
+      } : {}),
+      ...(el ? {
+        entityCharacterIds: el.characterIds,
+        entityLocationId: el.locationId,
+        entityArcs: el.arcs,
+      } : {}),
+      ...(tm ? {
+        metaWordCount: tm.wordCount,
+        metaMood: tm.mood,
+        metaPov: tm.pov,
+      } : {}),
+    });
+
+    const updated: import('./ipc.js').SceneEntry = {
+      ...found,
+      chronologicalTime: ct ?? found.chronologicalTime,
+      entityLinks: el ?? found.entityLinks,
+      timelineMetadata: tm ?? found.timelineMetadata,
+      updatedAt: new Date().toISOString(),
+    };
+    return { scene: updated };
+  },
+
+  [IPC_CHANNELS.TIMELINE_UPDATE_ARC_COLOR]: (payload: import('./ipc.js').TimelineUpdateArcColorPayload): import('./ipc.js').TimelineUpdateArcColorResponse => {
+    ensureVaultDir();
+    const arcs = readArcManifest(getVaultRoot());
+    const idx = arcs.findIndex(a => a.id === payload.arcId);
+    if (idx === -1) throw new Error(`Arc not found: ${payload.arcId}`);
+    const updated = { ...arcs[idx], color: payload.color, colorIsCustom: payload.colorIsCustom, updatedAt: new Date().toISOString() };
+    arcs[idx] = updated;
+    writeArcManifest(getVaultRoot(), arcs);
+    return { arc: updated };
   },
 
 };

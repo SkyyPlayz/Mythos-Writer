@@ -355,6 +355,13 @@ export const IPC_CHANNELS = {
 
   // SKY-445/SKY-458: Continuity drift detection — cross-chapter lore consistency check
   CONTINUITY_CHECK: 'continuity:check',
+
+  // SKY-791: Timeline data model + settings IPC
+  TIMELINE_GET_SETTINGS: 'timeline:getSettings',
+  TIMELINE_SAVE_SETTINGS: 'timeline:saveSettings',
+  TIMELINE_GET_SCENES: 'timeline:getScenes',
+  TIMELINE_UPDATE_SCENE: 'timeline:updateScene',
+  TIMELINE_UPDATE_ARC_COLOR: 'timeline:updateArcColor',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -610,6 +617,13 @@ export interface IpcHandlers {
 
   // SKY-445/SKY-458: Continuity drift check
   [IPC_CHANNELS.CONTINUITY_CHECK]: (payload: ContinuityCheckPayload) => ContinuityCheckResponse;
+
+  // SKY-791: Timeline data model + settings
+  [IPC_CHANNELS.TIMELINE_GET_SETTINGS]: (payload: TimelineGetSettingsPayload) => TimelineGetSettingsResponse;
+  [IPC_CHANNELS.TIMELINE_SAVE_SETTINGS]: (payload: TimelineSaveSettingsPayload) => TimelineSaveSettingsResponse;
+  [IPC_CHANNELS.TIMELINE_GET_SCENES]: (payload: TimelineGetScenesPayload) => TimelineGetScenesResponse;
+  [IPC_CHANNELS.TIMELINE_UPDATE_SCENE]: (payload: TimelineUpdateScenePayload) => TimelineUpdateSceneResponse;
+  [IPC_CHANNELS.TIMELINE_UPDATE_ARC_COLOR]: (payload: TimelineUpdateArcColorPayload) => TimelineUpdateArcColorResponse;
 }
 
 // ─── Payload / Response types ───
@@ -772,6 +786,10 @@ export interface SceneEntry {
   createdAt: string;
   updatedAt: string;
   provenance?: AgentProvenance;
+  // SKY-791: timeline metadata
+  chronologicalTime?: ChronologicalTime;
+  entityLinks?: SceneEntityLinks;
+  timelineMetadata?: SceneTimelineMetadata;
 }
 
 export interface BlockEntry {
@@ -2876,4 +2894,104 @@ export interface EntityLinkedScenesPayload {
 }
 export interface EntityLinkedScenesResponse {
   scenes: LinkedScene[];
+}
+
+// ─── Timeline data model types (SKY-791) ───
+
+export interface ChronologicalTime {
+  date: string;
+  isEstimated: boolean;
+  confidence: number;
+  source: string;
+}
+
+export interface SceneEntityLinks {
+  characterIds: string[];
+  locationId?: string;
+  arcs: string[];
+}
+
+export interface SceneTimelineMetadata {
+  wordCount?: number;
+  mood?: string;
+  pov?: string;
+  locationId?: string;
+}
+
+export interface ArcEntry {
+  id: string;
+  title: string;
+  color: string;
+  colorIsCustom: boolean;
+  scenes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TimelinePrimaryGrouping = 'arc' | 'chapter' | 'character' | 'location';
+export type TimelineSpacingMode = 'uniform' | 'proportional';
+export type TimelineDefaultColorScheme = 'liquid-neon' | 'monochrome' | 'custom';
+
+export interface TimelineViewportPreference {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export interface TimelineSettings {
+  primaryGrouping: TimelinePrimaryGrouping;
+  spacingMode: TimelineSpacingMode;
+  showUndatedScenes: boolean;
+  autoLayoutTracks: boolean;
+  defaultColorScheme: TimelineDefaultColorScheme;
+  visibleTrackFilters: string[];
+  viewportPreference?: TimelineViewportPreference;
+}
+
+// ─── Timeline IPC payload / response types (SKY-791) ───
+
+export interface TimelineGetSettingsPayload {
+  storyId?: string;
+}
+
+export interface TimelineGetSettingsResponse {
+  settings: TimelineSettings;
+}
+
+export interface TimelineSaveSettingsPayload {
+  settings: TimelineSettings;
+  storyId?: string;
+}
+
+export interface TimelineSaveSettingsResponse {
+  saved: boolean;
+}
+
+export interface TimelineGetScenesPayload {
+  storyId: string;
+}
+
+export interface TimelineGetScenesResponse {
+  scenes: SceneEntry[];
+}
+
+export interface TimelineUpdateScenePayload {
+  sceneId: string;
+  chronologicalTime?: ChronologicalTime;
+  entityLinks?: SceneEntityLinks;
+  timelineMetadata?: SceneTimelineMetadata;
+}
+
+export interface TimelineUpdateSceneResponse {
+  scene: SceneEntry;
+}
+
+export interface TimelineUpdateArcColorPayload {
+  arcId: string;
+  color: string;
+  colorIsCustom: boolean;
+}
+
+export interface TimelineUpdateArcColorResponse {
+  arc: ArcEntry;
 }
