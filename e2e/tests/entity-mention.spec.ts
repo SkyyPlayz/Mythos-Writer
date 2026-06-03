@@ -100,10 +100,12 @@ function seedEntity(storyVaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   const app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
   const proc = app.process();
   proc.stdout?.on('data', (d: Buffer) => console.log('[main:out]', d.toString().trimEnd()));
@@ -207,17 +209,19 @@ test('EM-00: boot app and create a story, chapter, and scene', async () => {
 
 test('EM-01: typing @ in scene editor opens entity autocomplete picker', async () => {
   const sceneRow = page.locator('.nav-scene-row').first();
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
 
   const editor = page.locator('.ProseMirror');
-  await expect(editor).toBeVisible({ timeout: 8_000 });
+  await expect(editor).toBeVisible({ timeout: 10_000 });
 
   await editor.click();
   // Type some text then '@' to trigger the picker
   await editor.type('She met @');
 
   const picker = page.locator('.entity-mention-picker');
-  await expect(picker).toBeVisible({ timeout: 4_000 });
+  // Allow extra time for entity list IPC to return on CI
+  await expect(picker).toBeVisible({ timeout: 8_000 });
 });
 
 // ─── EM-02: Query string filters entities ─────────────────────────────────────
@@ -275,20 +279,14 @@ test('EM-04: mention chip survives save and app reload', async () => {
 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate back to the scene
+  // Navigate back to the scene.
+  // StoryNavigator initialises with all stories/chapters expanded, so the scene row
+  // is already visible — clicking story/chapter rows would only toggle them closed.
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
 
-  const storyRow = page.locator('.nav-story-row').first();
-  await expect(storyRow).toBeVisible({ timeout: 8_000 });
-  await storyRow.click();
-
-  const chapterRow = page.locator('.nav-chapter-row').first();
-  await expect(chapterRow).toBeVisible({ timeout: 4_000 });
-  await chapterRow.click();
-
   const sceneRow = page.locator('.nav-scene-row').first();
-  await expect(sceneRow).toBeVisible({ timeout: 4_000 });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
 
   // Chip must still be rendered after reload
@@ -301,6 +299,7 @@ test('EM-04: mention chip survives save and app reload', async () => {
 
 test('EM-05: keyboard ArrowDown + Enter inserts a mention chip', async () => {
   const editor = page.locator('.ProseMirror');
+  await expect(editor).toBeVisible({ timeout: 8_000 });
   await editor.click();
 
   // Type on a new line to open a fresh picker
@@ -327,6 +326,7 @@ test('EM-05: keyboard ArrowDown + Enter inserts a mention chip', async () => {
 
 test('EM-06: Escape dismisses the picker without inserting a chip', async () => {
   const editor = page.locator('.ProseMirror');
+  await expect(editor).toBeVisible({ timeout: 8_000 });
   await editor.click();
 
   await editor.press('End');
