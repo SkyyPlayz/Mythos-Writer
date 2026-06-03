@@ -107,6 +107,40 @@ export function parseAliasHints(text: string): AliasHint[] {
   return results;
 }
 
+// ─── Entity type → FactType mapping ───
+
+/**
+ * Maps EntityType values (including 'concept' and 'other') to the brainstorm
+ * FactType set, which only has character/location/item/note.
+ * Used by the quick-enrich entry flow so that concept/other entries route to
+ * the 'note' category in the Notes Vault.
+ */
+export function entityTypeToFactType(entityType: string): FactType {
+  if (entityType === 'character' || entityType === 'location' || entityType === 'item') {
+    return entityType;
+  }
+  return 'note';
+}
+
+/**
+ * Builds the system prompt for the one-shot entry enrichment call.
+ * The prompt instructs Claude to emit exactly one [FACT:...] tag so
+ * parseFacts can extract the generated description reliably.
+ */
+export function buildEnrichmentSystemPrompt(name: string, factType: FactType): string {
+  const typeLabel =
+    factType === 'note' ? 'concept or worldbuilding element' : factType;
+  return [
+    `You are a creative writing assistant helping an author develop their story world.`,
+    `The author has just added a new ${typeLabel} named "${name}".`,
+    `Write a brief 2-3 sentence description that would help them develop this entry.`,
+    `Focus on concrete, story-relevant details.`,
+    ``,
+    `End your response with exactly one structured fact tag:`,
+    `[FACT:${factType}|${name}|your description here]`,
+  ].join('\n');
+}
+
 // ─── vaultPath validator (MYT-185 / F10) ───
 
 const VAULT_PATH_REGEX = /^[a-z0-9][a-z0-9_-]{0,63}$/i;

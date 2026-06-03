@@ -107,14 +107,19 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
     setCreating(type);
     setShowPicker(false);
     try {
+      const name = `New ${TYPE_SINGULAR[type]}`;
       const created = await window.api.entityCreate({
-        name: `New ${TYPE_SINGULAR[type]}`,
+        name,
         type,
         aliases: [],
         tags: [],
       });
       await loadEntities();
       onSelectEntity(created);
+      // SKY-324: fire-and-forget — brainstorm agent generates a description for
+      // this entry and writes it to the Notes Vault in the background.
+      // Non-blocking; failures are silently swallowed here (the agent itself logs).
+      void window.api.brainstormEnrichEntry({ name, type }).catch(() => undefined);
     } catch {
       // creation failed; leave browser as-is
     } finally {

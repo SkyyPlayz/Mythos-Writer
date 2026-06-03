@@ -494,6 +494,10 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-196: token-budgeted vault context selection for Brainstorm AI requests
   brainstormSelectContext: (payload: { userMessage: string; conversationText: string; tokenBudget?: number }) =>
     ipcRenderer.invoke('brainstorm:selectContext', payload),
+  // SKY-324: one-shot entry enrichment — generate + write a description for a
+  // newly created entity without requiring the user to open the Brainstorm panel.
+  brainstormEnrichEntry: (payload: { name: string; type: string }) =>
+    ipcRenderer.invoke('brainstorm:enrichEntry', payload),
 
   // SKY-130: persist last-opened scene + cursor position for cross-restart restore.
   sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) =>
