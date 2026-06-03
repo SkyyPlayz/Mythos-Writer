@@ -677,12 +677,10 @@ export default function TimelineSpreadsheet({ story }: Props) {
               <th className="tls-th tls-th-location">Location</th>
             </tr>
           </thead>
-          <tbody>
             {groups.map(group => (
-              <>
+              <tbody key={`group-${group.key}`}>
                 {groupBy !== 'none' && (
                   <tr
-                    key={`group-${group.key}`}
                     className="tls-group-row"
                     onClick={() => toggleGroup(group.key)}
                     aria-expanded={!collapsedGroups.has(group.key)}
@@ -704,9 +702,8 @@ export default function TimelineSpreadsheet({ story }: Props) {
                   </tr>
                 )}
                 {!collapsedGroups.has(group.key) && group.scenes.map(s => renderRow(s))}
-              </>
+              </tbody>
             ))}
-          </tbody>
         </table>
       </div>
     </div>
