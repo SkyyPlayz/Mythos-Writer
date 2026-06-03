@@ -75,10 +75,15 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
   );
 }
 
-/** Pre-seed an entity file in the notes vault so it shows in the picker. */
-function seedEntity(notesVaultDir: string): void {
+/** Pre-seed an entity file in the story vault so it shows in the picker.
+ *
+ * Entities live in the story vault (vaultRoot), not the notes vault.
+ * reindexEntities() scans vaultRoot/entities/<type>s/ on every entity:list
+ * call and picks up any .md files not yet tracked in the manifest.
+ */
+function seedEntity(storyVaultDir: string): void {
   const now = new Date().toISOString();
-  const dir = path.join(notesVaultDir, 'entities', `${ENTITY_TYPE}s`);
+  const dir = path.join(storyVaultDir, 'entities', `${ENTITY_TYPE}s`);
   fs.mkdirSync(dir, { recursive: true });
   const content = [
     '---',
@@ -156,7 +161,7 @@ test.beforeAll(async () => {
   notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-mention-notes-'));
 
   seedUserData(userData, vaultDir, notesVaultDir);
-  seedEntity(notesVaultDir);
+  seedEntity(vaultDir);
 
   app = await launchApp(userData);
   page = await firstWindow(app);
