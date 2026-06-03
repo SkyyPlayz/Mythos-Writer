@@ -39,14 +39,15 @@ describe('App — onboarding gate (SKY-152)', () => {
       validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
       obsidianPickFolderByPath: vi.fn(),
       onboardingComplete: vi.fn().mockResolvedValue({ ok: true }),
+      templateList: vi.fn().mockResolvedValue({ templates: [] }),
       writeVault: vi.fn(),
       writeNotesVault: vi.fn(),
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('gs-overlay')).toBeInTheDocument());
   });
 
-  it('shows "Create your first project" CTA on first launch', async () => {
+  it('shows Getting Started cards on first launch', async () => {
     (window as any).api = makeMockApi({
       settingsGet: () => Promise.resolve({ onboardingComplete: false }),
       pickFolder: vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null }),
@@ -57,11 +58,12 @@ describe('App — onboarding gate (SKY-152)', () => {
       validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
       obsidianPickFolderByPath: vi.fn(),
       onboardingComplete: vi.fn().mockResolvedValue({ ok: true }),
+      templateList: vi.fn().mockResolvedValue({ templates: [] }),
       writeVault: vi.fn(),
       writeNotesVault: vi.fn(),
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId('cta-create-project')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
   });
 
   it('bypasses wizard when onboardingComplete is true (existing vault)', async () => {

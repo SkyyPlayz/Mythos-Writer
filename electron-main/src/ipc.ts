@@ -537,7 +537,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (payload: BrainstormSelectContextPayload) => BrainstormSelectContextResponse;
   // SKY-12 onboarding channels
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
-  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
+  // SKY-627: extended payload — orchestrates vault creation + first-scene setup
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
@@ -1508,6 +1509,8 @@ export interface AppSettings {
   lastOpenedScene?: LastOpenedScene;
   /** SKY-204: opt-in daily notes / journal mode. */
   journalMode?: JournalModeSettings;
+  /** SKY-627: author name entered during onboarding (optional). */
+  authorName?: string;
 }
 
 /** SKY-204: daily notes journal mode configuration. */
@@ -1526,6 +1529,30 @@ export interface LastOpenedScene {
   scenePath: string;
   scrollTop: number;
   cursorLine: number;
+}
+
+/** SKY-627: 3-step onboarding orchestration payload. */
+export interface OnboardingCompletePayload {
+  /** 'blank' | 'sample' | 'template' | 'skip' (skip = bypass without creating a story). */
+  startMode: 'blank' | 'sample' | 'template' | 'skip';
+  /** Required for blank / sample / template modes. */
+  storyTitle?: string;
+  /** Optional; persisted to AppSettings.authorName. */
+  authorName?: string;
+  /** Parent directory for the new vault. Tilde-expanded server-side. Required for blank/sample/template. */
+  vaultParentPath?: string;
+  /** Required for template mode. */
+  templateId?: string;
+}
+
+/** SKY-627: response from the extended onboarding:complete handler. */
+export interface OnboardingCompleteResponse {
+  ok: boolean;
+  /** Scene ID of the first scene (blank/template/sample starts). */
+  firstSceneId?: string;
+  /** Relative path of the first scene within the story vault. */
+  firstScenePath?: string;
+  error?: string;
 }
 
 export interface SessionSaveScenePayload {

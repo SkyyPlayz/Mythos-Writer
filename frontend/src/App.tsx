@@ -6,6 +6,7 @@ import './App.css';
 function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [wizardDismissed, setWizardDismissed] = useState(false);
 
   useEffect(() => {
     performance.mark('renderer:settings-ipc-start');
@@ -29,12 +30,13 @@ function App() {
     return <div className="root-layout" />;
   }
 
-  if (!settings.onboardingComplete) {
+  if (!settings.onboardingComplete && !wizardDismissed) {
     return (
       <div className="root-layout">
         <OnboardingWizard
           initialSettings={settings}
           onComplete={(updated) => setSettings(updated)}
+          onCancel={() => setWizardDismissed(true)}
         />
       </div>
     );

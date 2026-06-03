@@ -136,6 +136,8 @@ import {
   type EntityLinkedScenesPayload,
   type NoteBacklinksPayload,
   type ContinuityCheckPayload,
+  type OnboardingCompletePayload,
+  type OnboardingCompleteResponse,
 } from './ipc.js';
 import { wrapIpcHandler } from './ipcErrors.js';
 import {
@@ -243,6 +245,7 @@ import {
   chapterVaultPath,
   sceneVaultPath,
   mergeProvenanceFrontmatter,
+  toSlug,
 } from './vault.js';
 import { openManifest, ManifestMigrationError } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
@@ -1601,11 +1604,153 @@ const handlers: IpcHandlers = {
     return { saved: true };
   },
 
-  // SKY-12.4: mark onboarding as complete without sending back the full settings object.
-  [IPC_CHANNELS.ONBOARDING_COMPLETE]: () => {
-    const current = loadAppSettings();
-    saveAppSettings({ ...current, onboardingComplete: true });
-    return { ok: true as const };
+  // SKY-627: extended onboarding handler — orchestrates vault creation, first-scene setup,
+  // and settings persistence for all three start modes (blank / sample / template / skip).
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId } = payload ?? {};
+
+    const persistSettings = (firstSceneId?: string, firstScenePath?: string) => {
+      const current = loadAppSettings();
+      const patch: typeof current = { ...current, onboardingComplete: true };
+      if (authorName?.trim()) patch.authorName = authorName.trim();
+      if (firstSceneId && firstScenePath) {
+        patch.lastOpenedScene = { sceneId: firstSceneId, scenePath: firstScenePath, scrollTop: 0, cursorLine: 0 };
+      }
+      saveAppSettings(patch);
+    };
+
+    // Skip — mark complete without creating a story; DesktopShell shows no-vault state.
+    if (!startMode || startMode === 'skip') {
+      persistSettings();
+      return { ok: true };
+    }
+
+    if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
+    if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
+
+    const resolvedParent = vaultParentPath.trim().replace(/^~/, app.getPath('home'));
+    const storyDir = path.join(resolvedParent, storyTitle.trim());
+    const storyVaultPath = path.join(storyDir, 'Story Vault');
+    const notesVaultPath = path.join(storyDir, 'Notes Vault');
+
+    if (startMode === 'blank') {
+      const storySlugForDir = toSlug(storyTitle.trim());
+      fs.mkdirSync(path.join(storyVaultPath, 'Manuscript', storySlugForDir, 'chapter-1'), { recursive: true });
+      fs.mkdirSync(notesVaultPath, { recursive: true });
+
+      saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath, layoutMode: 'blank' });
+      ensureVaultDir();
+      ensureNotesVaultDir();
+
+      const nowStr = new Date().toISOString();
+      const storyId = crypto.randomUUID();
+      const chapterId = crypto.randomUUID();
+      const sceneId = crypto.randomUUID();
+      const titleSlug = toSlug(storyTitle.trim());
+      const storyDirPath = `Manuscript/${titleSlug}`;
+      const chapterDirPath = `Manuscript/${titleSlug}/chapter-1`;
+      const sceneRelPath = `Manuscript/${titleSlug}/chapter-1/chapter-1-scene-1.md`;
+
+      writeSceneFile(storyVaultPath, sceneRelPath, {
+        id: sceneId,
+        title: 'Chapter 1, Scene 1',
+        chapterId,
+        storyId,
+        order: 0,
+        prose: '',
+      });
+
+      const scene = {
+        id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath,
+        order: 0, chapterId, storyId, blocks: [],
+        draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr,
+      };
+      const chapter = {
+        id: chapterId, title: 'Chapter 1', path: chapterDirPath,
+        order: 0, scenes: [scene], createdAt: nowStr, updatedAt: nowStr,
+      };
+      const story = {
+        id: storyId, title: storyTitle.trim(), path: storyDirPath,
+        chapters: [chapter], createdAt: nowStr, updatedAt: nowStr,
+      };
+
+      const manifest = readManifest(getManifestPath());
+      manifest.stories.push(story);
+      writeManifest(getManifestPath(), manifest);
+
+      await stopVaultWatcher();
+      await startVaultWatcher(storyVaultPath, notifyVaultChanged);
+
+      persistSettings(sceneId, sceneRelPath);
+      return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
+
+    } else if (startMode === 'sample') {
+      const sampleProjectDir = app.isPackaged
+        ? path.join(process.resourcesPath, 'sample-project')
+        : path.join(app.getAppPath(), '..', 'sample-project');
+
+      if (!fs.existsSync(sampleProjectDir)) {
+        return { ok: false, error: `Sample project bundle not found at: ${sampleProjectDir}` };
+      }
+
+      for (const [label, target] of [['Story Vault', storyVaultPath], ['Notes Vault', notesVaultPath]] as const) {
+        if (fs.existsSync(target) && !isEmptyOrMissing(target)) {
+          return { ok: false, error: `Target for ${label} already exists and is not empty: ${target}` };
+        }
+      }
+
+      try {
+        fs.cpSync(path.join(sampleProjectDir, 'story-vault'), storyVaultPath, { recursive: true, force: false });
+        fs.cpSync(path.join(sampleProjectDir, 'notes-vault'), notesVaultPath, { recursive: true, force: false });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: `Failed to copy sample project: ${msg}` };
+      }
+
+      saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath, layoutMode: 'default' });
+      ensureVaultDir();
+      ensureNotesVaultDir();
+
+      const rawManifest = readManifest(getManifestPath());
+      const { manifest: synced } = reindexVault(storyVaultPath, rawManifest);
+      writeManifest(getManifestPath(), synced);
+      try { buildFullIndex(getDb(), storyVaultPath, synced); } catch { /* non-fatal */ }
+
+      await stopVaultWatcher();
+      await startVaultWatcher(storyVaultPath, notifyVaultChanged);
+
+      const firstScene = synced.stories[0]?.chapters[0]?.scenes[0] ?? synced.scenes[0];
+      persistSettings(firstScene?.id, firstScene?.path);
+      return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
+
+    } else if (startMode === 'template') {
+      if (!templateId) return { ok: false, error: 'templateId required for template start' };
+
+      const templates = listTemplates(app.getPath('userData'));
+      const template = templates.find((t) => t.id === templateId);
+      if (!template) return { ok: false, error: `Template not found: ${templateId}` };
+
+      for (const [label, target] of [['Story Vault', storyVaultPath], ['Notes Vault', notesVaultPath]] as const) {
+        if (fs.existsSync(target) && !isEmptyOrMissing(target)) {
+          return { ok: false, error: `Target for ${label} already exists and is not empty: ${target}` };
+        }
+      }
+
+      scaffoldFromTemplate(storyVaultPath, notesVaultPath, template);
+      saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath, layoutMode: 'blank' });
+      ensureVaultDir();
+      ensureNotesVaultDir();
+
+      await stopVaultWatcher();
+      await startVaultWatcher(storyVaultPath, notifyVaultChanged);
+
+      const manifest = readManifest(getManifestPath());
+      const firstScene = manifest.stories[0]?.chapters[0]?.scenes[0] ?? manifest.scenes[0];
+      persistSettings(firstScene?.id, firstScene?.path);
+      return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
+    }
+
+    return { ok: false, error: `Unknown startMode: ${startMode}` };
   },
 
   // SKY-12.4: debug reset — clears vault paths and onboardingComplete so the
