@@ -4442,7 +4442,7 @@ function loadAppSettings(): AppSettings {
   } catch {
     // Store not yet initialized (very early boot path). Caller will see the
     // post-migration empty key strings; the env-var fallback in
-    // getValidatedApiKey still serves as a last resort for CLI/CI scenarios.
+    // buildGlobalProviderConfig still serves as a last resort for CLI/CI scenarios.
     return base;
   }
 }
@@ -4672,34 +4672,24 @@ function registerBrainstormEnrichHandler() {
       const budgetCheck = checkCallBudget('brainstorm', agentSettings, getDb());
       if (!budgetCheck.allowed) return { status: 'skipped' as const, reason: budgetCheck.reason };
 
-      const apiKey = getValidatedApiKey();
-      const client = new Anthropic({ apiKey });
+      const providerConfig = getProviderConfigForAgent('brainstorm');
 
       const factType = entityTypeToFactType(payload.type);
       const systemPrompt = buildEnrichmentSystemPrompt(payload.name, factType);
 
-      const model = 'claude-haiku-4-5-20251001';
       const startedAt = Date.now();
-      let tokensIn: number | null = null;
-      let tokensOut: number | null = null;
       let genError: string | null = null;
       const now = new Date().toISOString();
 
       try {
-        const response = await client.messages.create({
-          model,
-          max_tokens: 256,
+        let text = '';
+        for await (const token of streamFromProvider(providerConfig, {
           system: systemPrompt,
           messages: [{ role: 'user', content: `Describe the ${factType} "${payload.name}".` }],
-        });
-
-        tokensIn = response.usage.input_tokens;
-        tokensOut = response.usage.output_tokens;
-
-        const text = response.content
-          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-          .map((b) => b.text)
-          .join('');
+          maxTokens: 256,
+        })) {
+          text += token;
+        }
 
         const facts = parseFacts(text);
         if (facts.length === 0) return { status: 'skipped' as const, reason: 'no_fact_emitted' };
@@ -4755,11 +4745,11 @@ function registerBrainstormEnrichHandler() {
           insertGenerationLog({
             id: crypto.randomUUID(),
             agent: 'brainstorm',
-            model,
+            model: providerConfig.model,
             endpoint: 'messages.create',
             request_id: crypto.randomUUID(),
-            tokens_in: tokensIn,
-            tokens_out: tokensOut,
+            tokens_in: null,
+            tokens_out: null,
             latency_ms: Date.now() - startedAt,
             error: genError,
             created_at: now,
