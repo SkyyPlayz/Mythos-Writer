@@ -111,6 +111,21 @@ export function parseBetaReadLines(text: string): Array<{ anchor: string; commen
 }
 
 /**
+ * Build the user-content string for a Writing Assistant invocation.
+ *
+ * Scene context is attacker-controlled (imported vault content). Wrap it in
+ * explicit XML delimiters so the LLM treats it as data, not instructions
+ * (defense-in-depth against indirect prompt injection — SEC-6).
+ */
+export function buildWritingAssistantUserContent(
+  context: string | null | undefined,
+  prompt: string,
+): string {
+  if (!context) return prompt;
+  return `<scene_context>\n${context}\n</scene_context>\n\nWriter's prompt: ${prompt}`;
+}
+
+/**
  * Convert parsed beta-read lines into BetaReadComment rows.
  */
 export function buildBetaReadComments(
