@@ -28,9 +28,14 @@ export interface BrainstormAgentDeps {
 
 // ─── Tag parser ───
 
+const FACT_NAME_MAX_LEN = 200;
+
 /**
  * Extracts [FACT:type|name|description] tags from Claude brainstorm output.
  * The system prompt instructs the model to emit one tag per named story fact.
+ *
+ * Names are validated: max 200 chars, no control characters (incl. newlines/null
+ * bytes that could break YAML frontmatter or filesystem paths).
  */
 export function parseFacts(text: string): ParsedFact[] {
   const pattern = /\[FACT:(character|location|item|note)\|([^|\]]+)\|([^\]]+)\]/g;
@@ -40,7 +45,8 @@ export function parseFacts(text: string): ParsedFact[] {
     const type = m[1] as FactType;
     const name = m[2].trim();
     const description = m[3].trim();
-    if (name) results.push({ type, name, description });
+    if (!name || name.length > FACT_NAME_MAX_LEN || /[\x00-\x1f\x7f]/.test(name)) continue;
+    results.push({ type, name, description });
   }
   return results;
 }
