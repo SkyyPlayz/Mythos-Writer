@@ -19,6 +19,13 @@ export interface ProviderConfig {
   baseUrl?: string;
   /** Model identifier, e.g. 'claude-haiku-4-5-20251001', 'gpt-4o-mini', 'llama3', etc. */
   model: string;
+  /**
+   * Optional STT/TTS capability hints.
+   * When absent, defaults are inferred from provider kind:
+   * - openai and custom (with baseUrl set): treated as { transcribe: true, speak: true }
+   * - all other kinds: no voice capability
+   */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 // ─── Default base URLs ────────────────────────────────────────────────────────
@@ -392,6 +399,25 @@ export function validateProviderConfig(cfg: ProviderConfig): string | null {
   if ((cfg.kind === 'custom') && !cfg.baseUrl) {
     return 'Custom provider requires a baseUrl.';
   }
+  return null;
+}
+
+/**
+ * Return the active provider if it claims STT/TTS capability, otherwise null.
+ *
+ * Explicit capabilities take precedence. When absent, kind-based defaults apply:
+ * - openai: always voice-capable (OpenAI /v1/audio/* endpoints)
+ * - custom with a baseUrl: assumed voice-capable (OpenAI-compatible audio path)
+ * - all other kinds: not voice-capable unless explicitly opted in
+ *
+ * The parameter is structurally compatible with AppSettings from ipc.ts.
+ */
+export function getVoiceProvider(settings: { provider?: ProviderConfig }): ProviderConfig | null {
+  const p = settings.provider;
+  if (!p) return null;
+  if (p.capabilities?.transcribe || p.capabilities?.speak) return p;
+  if (p.kind === 'openai') return p;
+  if (p.kind === 'custom' && p.baseUrl) return p;
   return null;
 }
 

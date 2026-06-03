@@ -1475,6 +1475,8 @@ export interface ProviderSettings {
   baseUrl?: string;
   /** Default model used for all agents unless the agent overrides it */
   model: string;
+  /** Optional STT/TTS capability hints — mirrors ProviderConfig.capabilities in provider.ts */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 /** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;

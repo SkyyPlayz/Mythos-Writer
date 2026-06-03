@@ -18,6 +18,7 @@ import {
   ANTHROPIC_MODEL_ALLOWLIST,
   createProvider,
   PROVIDER_CAPABILITIES,
+  getVoiceProvider,
   DEFAULT_BASE_URLS,
   type ProviderConfig,
   type StreamRequest,
@@ -562,5 +563,81 @@ describe('validateBaseUrl (§6)', () => {
   });
   it('allows IPv4-mapped IPv6 loopback (::ffff:127.0.0.1)', () => {
     expect(validateBaseUrl('http://[::ffff:127.0.0.1]/')).toBeNull();
+  });
+});
+
+// ─── capabilities field round-trips (§5) ─────────────────────────────────────
+
+describe('capabilities field round-trips (§5)', () => {
+  it('validateProviderConfig accepts config with full capabilities', () => {
+    expect(validateProviderConfig(makeOpenAIConfig({ capabilities: { transcribe: true, speak: true } }))).toBeNull();
+  });
+
+  it('validateProviderConfig accepts config with partial capabilities', () => {
+    expect(validateProviderConfig(makeOpenAIConfig({ capabilities: { transcribe: true } }))).toBeNull();
+  });
+
+  it('validateProviderConfig accepts config without capabilities (backward compat)', () => {
+    expect(validateProviderConfig(makeOpenAIConfig())).toBeNull();
+  });
+
+  it('validateProviderConfig accepts anthropic config with explicit capabilities', () => {
+    expect(validateProviderConfig(makeAnthropicConfig({ capabilities: { transcribe: true, speak: true } }))).toBeNull();
+  });
+
+  it('capabilities are preserved through providerConfigForAgent', () => {
+    const base = makeOpenAIConfig({ capabilities: { transcribe: true, speak: false } });
+    const result = providerConfigForAgent(base, 'gpt-4o');
+    expect(result.capabilities).toEqual({ transcribe: true, speak: false });
+    expect(result.model).toBe('gpt-4o');
+  });
+});
+
+// ─── getVoiceProvider (§6) ───────────────────────────────────────────────────
+
+describe('getVoiceProvider (§6)', () => {
+  it('returns null when settings has no provider', () => {
+    expect(getVoiceProvider({})).toBeNull();
+  });
+
+  it('returns null when provider is anthropic (no default voice caps)', () => {
+    expect(getVoiceProvider({ provider: makeAnthropicConfig() })).toBeNull();
+  });
+
+  it('returns null when provider is ollama (no default voice caps)', () => {
+    expect(getVoiceProvider({ provider: makeOllamaConfig() })).toBeNull();
+  });
+
+  it('returns null when provider is lmstudio (no default voice caps)', () => {
+    expect(getVoiceProvider({ provider: makeLmStudioConfig() })).toBeNull();
+  });
+
+  it('returns null for custom kind without baseUrl', () => {
+    expect(getVoiceProvider({ provider: { kind: 'custom', model: 'x' } })).toBeNull();
+  });
+
+  it('returns provider for openai kind (auto voice-capable)', () => {
+    const p = makeOpenAIConfig();
+    expect(getVoiceProvider({ provider: p })).toBe(p);
+  });
+
+  it('returns provider for custom kind with baseUrl (auto voice-capable)', () => {
+    const p = makeCustomConfig();
+    expect(getVoiceProvider({ provider: p })).toBe(p);
+  });
+
+  it('returns provider when explicit transcribe=true overrides kind default', () => {
+    const p = makeAnthropicConfig({ capabilities: { transcribe: true } });
+    expect(getVoiceProvider({ provider: p })).toBe(p);
+  });
+
+  it('returns provider when explicit speak=true overrides kind default', () => {
+    const p = makeOllamaConfig({ capabilities: { speak: true } });
+    expect(getVoiceProvider({ provider: p })).toBe(p);
+  });
+
+  it('returns provider when both transcribe and speak are explicitly true', () => {
+    const p = makeOpenAIConfig({ capabilities: { transcribe: true, speak: true } });
+    expect(getVoiceProvider({ provider: p })).toBe(p);
   });
 });
