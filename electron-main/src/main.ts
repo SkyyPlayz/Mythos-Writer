@@ -201,7 +201,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, checkProjectSwitchGate } from './vaultGate.js';
+import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault } from './vaultGate.js';
 import {
   checkVoiceSettingsUpdate,
   seedTrustedBinariesFromSettings,
@@ -2512,10 +2512,12 @@ const handlers: IpcHandlers = {
     return { vaultRoot: validated.vaultRoot, notesIndexed: scanned };
   },
 
-  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (payload: VaultLoadSamplePayload): Promise<VaultLoadSampleResponse> => {
-    const defaultRoot = path.join(app.getPath('documents'), 'Mythos Sample');
-    const rawPath = payload?.targetPath ?? defaultRoot;
-    const sampleRoot = rawPath.replace(/^~/, app.getPath('home'));
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: async (payload: VaultLoadSamplePayload): Promise<VaultLoadSampleResponse | { error: string }> => {
+    // SEC-11: reject any renderer-supplied targetPath; the sample vault always
+    // materialises at the safe hardcoded default (Documents/Mythos Sample).
+    const sampleGate = checkLoadSampleGate(payload?.targetPath);
+    if (!sampleGate.ok) return { error: sampleGate.error };
+    const sampleRoot = path.join(app.getPath('documents'), 'Mythos Sample');
     if (!fs.existsSync(sampleRoot)) {
       fs.mkdirSync(sampleRoot, { recursive: true });
 
@@ -2953,9 +2955,18 @@ const handlers: IpcHandlers = {
     }
   },
 
-  [IPC_CHANNELS.VAULT_CREATE_BLANK]: async (payload: VaultCreateBlankPayload): Promise<VaultCreateBlankResponse> => {
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: async (payload: VaultCreateBlankPayload): Promise<VaultCreateBlankResponse | { error: string }> => {
+    // SEC-11: gate renderer-supplied path behind main-process dialog token or
+    // recent-projects allowlist. Expand ~ first so the comparison against
+    // absolute-path tokens and allowlist entries is correct.
     const raw = payload?.targetPath ?? '';
-    const resolved = raw.replace(/^~/, app.getPath('home'));
+    const expanded = raw.replace(/^~/, app.getPath('home'));
+    const gate = checkSinglePathGate(
+      { targetPath: expanded, registrationToken: payload?.registrationToken },
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) return { error: gate.error };
+    const resolved = gate.targetPath;
     fs.mkdirSync(resolved, { recursive: true });
     saveVaultSettings({ vaultRoot: resolved });
     ensureVaultDir();
@@ -2967,6 +2978,14 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: async (payload: VaultPickFolderByPathPayload): Promise<import('./ipc.js').VaultPickFolderResponse> => {
     const { sourcePath } = payload;
     if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return { vaultRoot: null, cancelled: false, registrationToken: null };
+    }
+    // SEC-12: only issue a token when the path looks like an actual Obsidian
+    // vault (contains a .obsidian subdirectory). Without this guard a
+    // compromised renderer can obtain a registration token for any existing
+    // directory — e.g. /home/user — and then use vault:set-paths to re-root
+    // the vault sandbox there.
+    if (!looksLikeObsidianVault(sourcePath)) {
       return { vaultRoot: null, cancelled: false, registrationToken: null };
     }
     const token = generateRegistrationToken(sourcePath);
