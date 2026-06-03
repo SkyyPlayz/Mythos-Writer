@@ -1,9 +1,10 @@
 // Snapshot storage tests — real temp directory, no mocks.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
+import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault, snapshotEvents } from './snapshots.js';
+import type { SceneSnapshot } from './snapshots.js';
 
 const INVALID_SCENE_IDS = [
   '../outside',
@@ -350,5 +351,64 @@ describe('deleteAllSnapshotsVault', () => {
     } finally {
       fs.rmSync(emptyDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// snapshotEvents — persistence-layer event emission (SKY-614)
+// ---------------------------------------------------------------------------
+
+describe('snapshotEvents', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snap-evt-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('emits snapshot-saved with the saved snapshot object', () => {
+    const listener = vi.fn();
+    snapshotEvents.once('snapshot-saved', listener);
+
+    const snap = saveSnapshot(tmpDir, 'scene-evt', 'Event content');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(snap);
+  });
+
+  it('snapshot-saved payload contains sceneId and a valid createdAt ISO string', () => {
+    const received: SceneSnapshot[] = [];
+    snapshotEvents.once('snapshot-saved', (s: SceneSnapshot) => received.push(s));
+
+    saveSnapshot(tmpDir, 'scene-payload', 'Payload test');
+
+    expect(received).toHaveLength(1);
+    expect(received[0].sceneId).toBe('scene-payload');
+    expect(new Date(received[0].createdAt).toISOString()).toBe(received[0].createdAt);
+  });
+
+  it('emits once per saveSnapshot call', () => {
+    const listener = vi.fn();
+    snapshotEvents.on('snapshot-saved', listener);
+
+    saveSnapshot(tmpDir, 'scene-count', 'First');
+    saveSnapshot(tmpDir, 'scene-count', 'Second');
+    saveSnapshot(tmpDir, 'scene-count', 'Third');
+
+    expect(listener).toHaveBeenCalledTimes(3);
+    snapshotEvents.off('snapshot-saved', listener);
+  });
+
+  it('snapshot-saved payload has a matching contentHash', () => {
+    const received: SceneSnapshot[] = [];
+    snapshotEvents.once('snapshot-saved', (s: SceneSnapshot) => received.push(s));
+
+    const snap = saveSnapshot(tmpDir, 'scene-hash-check', 'Hash check');
+
+    expect(received[0].contentHash).toBe(snap.contentHash);
+    expect(received[0].contentHash).toMatch(/^[0-9a-f]{64}$/);
   });
 });

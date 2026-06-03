@@ -28,6 +28,10 @@
 .scene-autosave {
   font-size: 0.75rem;
   transition: color 240ms ease;
+  /* Fixed width prevents layout shift when state changes between Saving/Saved/Unsaved. */
+  min-width: 9em;
+  white-space: nowrap;
+  display: inline-block;
 }
 
 .scene-autosave--saved {
@@ -41,6 +45,27 @@
 
 .scene-autosave--unsaved {
   color: var(--text-muted);
+}
+
+.scene-autosave--error {
+  color: var(--text-error, #e05c5c);
+}
+
+.btn-retry {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.btn-retry:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .scene-wordcount {

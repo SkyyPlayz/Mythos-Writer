@@ -21,14 +21,58 @@ function initialWordStats(text: string) {
   return words > 0 ? { words, mins: readingTimeMinutes(words) } : null;
 }
 
-function SaveStatusIndicator({ status }: { status: SaveStatus }) {
+function getRelativeTime(date: Date): string {
+  const secs = Math.round((Date.now() - date.getTime()) / 1000);
+  if (secs < 5) return 'just now';
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  return `${mins}m ago`;
+}
+
+function SaveStatusIndicator({
+  status,
+  savedAt,
+  onRetry,
+}: {
+  status: SaveStatus;
+  savedAt: Date | null;
+  onRetry?: () => void;
+}) {
+  // Tick every 10 s so relative time stays fresh while in saved state.
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (status !== 'saved') return;
+    const id = setInterval(() => forceUpdate(n => n + 1), 10_000);
+    return () => clearInterval(id);
+  }, [status]);
+
+  let label: React.ReactNode;
   if (status === 'saving') {
-    return <span className="scene-autosave scene-autosave--saving">Saving…</span>;
+    label = 'Saving…';
+  } else if (status === 'error') {
+    label = (
+      <>
+        Save failed —{' '}
+        <button className="btn-retry" onClick={onRetry} type="button">
+          retry
+        </button>
+      </>
+    );
+  } else if (status === 'unsaved') {
+    label = '• Unsaved changes';
+  } else {
+    label = savedAt ? `Saved ${getRelativeTime(savedAt)}` : 'Saved';
   }
-  if (status === 'unsaved') {
-    return <span className="scene-autosave scene-autosave--unsaved">• Unsaved changes</span>;
-  }
-  return <span className="scene-autosave scene-autosave--saved">✓ Saved</span>;
+
+  return (
+    <span
+      className={`scene-autosave scene-autosave--${status}`}
+      role="status"
+      aria-live="polite"
+    >
+      {label}
+    </span>
+  );
 }
 
 export default function SceneEditor({ sceneId, scenePath, initialContent = '' }: Props) {
@@ -45,7 +89,7 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
   const [showNameDialog, setShowNameDialog] = useState(false);
   const [snapshotName, setSnapshotName] = useState('');
 
-  const { saveStatus, markDirty, markSaving, markSaved, markError } = useSaveStatus();
+  const { saveStatus, savedAt, markDirty, markSaving, markSaved, markError } = useSaveStatus();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSnapshotRef = useRef<string>(initialContent);
@@ -199,7 +243,11 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
 
       <div className="scene-editor-toolbar">
         <span className="scene-title">{scenePath}</span>
-        <SaveStatusIndicator status={saveStatus} />
+        <SaveStatusIndicator
+          status={saveStatus}
+          savedAt={savedAt}
+          onRetry={() => takeSnapshot(contentRef.current)}
+        />
         {wordStats && (
           <span className="scene-wordcount">
             {wordStats.words} words · {wordStats.mins} min read

@@ -1,30 +1,63 @@
 import { useState, useCallback } from 'react';
 
-export type SaveStatus = 'saved' | 'saving' | 'unsaved';
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
+
+interface UseSaveStatusState {
+  status: SaveStatus;
+  savedAt: Date | null;
+}
 
 interface UseSaveStatusReturn {
   saveStatus: SaveStatus;
+  savedAt: Date | null;
   markDirty: () => void;
   markSaving: () => void;
-  /** Only transitions saved if currently 'saving' — guards against typing mid-save. */
+  /** Only transitions to saved if currently 'saving' — guards against typing mid-save. */
   markSaved: () => void;
-  /** Only transitions to 'unsaved' if currently 'saving'. */
+  /** Only transitions to 'error' if currently 'saving'. */
   markError: () => void;
 }
 
 export function useSaveStatus(initial: SaveStatus = 'saved'): UseSaveStatusReturn {
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>(initial);
+  const [state, setState] = useState<UseSaveStatusState>({
+    status: initial,
+    savedAt: initial === 'saved' ? new Date() : null,
+  });
 
-  const markDirty = useCallback(() => setSaveStatus('unsaved'), []);
-  const markSaving = useCallback(() => setSaveStatus('saving'), []);
+  const markDirty = useCallback(
+    () => setState(prev => ({ ...prev, status: 'unsaved' })),
+    [],
+  );
+
+  const markSaving = useCallback(
+    () => setState(prev => ({ ...prev, status: 'saving' })),
+    [],
+  );
+
   const markSaved = useCallback(
-    () => setSaveStatus(prev => (prev === 'saving' ? 'saved' : prev)),
-    [],
-  );
-  const markError = useCallback(
-    () => setSaveStatus(prev => (prev === 'saving' ? 'unsaved' : prev)),
+    () =>
+      setState(prev =>
+        prev.status === 'saving'
+          ? { status: 'saved', savedAt: new Date() }
+          : prev,
+      ),
     [],
   );
 
-  return { saveStatus, markDirty, markSaving, markSaved, markError };
+  const markError = useCallback(
+    () =>
+      setState(prev =>
+        prev.status === 'saving' ? { ...prev, status: 'error' } : prev,
+      ),
+    [],
+  );
+
+  return {
+    saveStatus: state.status,
+    savedAt: state.savedAt,
+    markDirty,
+    markSaving,
+    markSaved,
+    markError,
+  };
 }

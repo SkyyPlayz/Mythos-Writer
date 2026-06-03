@@ -14,6 +14,16 @@ describe('useSaveStatus state machine', () => {
     expect(result.current.saveStatus).toBe('saved');
   });
 
+  it('starts with a savedAt timestamp when initial state is saved', () => {
+    const { result } = renderHook(() => useSaveStatus('saved'));
+    expect(result.current.savedAt).toBeInstanceOf(Date);
+  });
+
+  it('starts with null savedAt when initial state is unsaved', () => {
+    const { result } = renderHook(() => useSaveStatus('unsaved'));
+    expect(result.current.savedAt).toBeNull();
+  });
+
   it('markDirty transitions to unsaved', () => {
     const { result } = renderHook(() => useSaveStatus());
     act(() => result.current.markDirty());
@@ -33,6 +43,13 @@ describe('useSaveStatus state machine', () => {
     expect(result.current.saveStatus).toBe('saved');
   });
 
+  it('markSaved records savedAt timestamp', () => {
+    const { result } = renderHook(() => useSaveStatus('unsaved'));
+    act(() => result.current.markSaving());
+    act(() => result.current.markSaved());
+    expect(result.current.savedAt).toBeInstanceOf(Date);
+  });
+
   it('markSaved does not overwrite unsaved (typing mid-save guard)', () => {
     const { result } = renderHook(() => useSaveStatus());
     act(() => result.current.markSaving());
@@ -41,11 +58,11 @@ describe('useSaveStatus state machine', () => {
     expect(result.current.saveStatus).toBe('unsaved');
   });
 
-  it('markError from saving → unsaved', () => {
+  it('markError from saving → error', () => {
     const { result } = renderHook(() => useSaveStatus());
     act(() => result.current.markSaving());
     act(() => result.current.markError());
-    expect(result.current.saveStatus).toBe('unsaved');
+    expect(result.current.saveStatus).toBe('error');
   });
 
   it('markError does not change saved state', () => {
@@ -213,7 +230,13 @@ describe('SceneEditor beforeunload flush', () => {
 describe('SceneEditor save status indicator', () => {
   it('shows Saved on initial render (no unsaved changes)', () => {
     render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" initialContent="" />);
-    expect(screen.getByText('✓ Saved')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/Saved/);
+  });
+
+  it('indicator has aria-live polite region', () => {
+    render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
+    const indicator = screen.getByRole('status');
+    expect(indicator).toHaveAttribute('aria-live', 'polite');
   });
 
   it('shows Unsaved changes immediately after typing', () => {
@@ -247,7 +270,7 @@ describe('SceneEditor save status indicator', () => {
 
     await act(async () => { vi.advanceTimersByTime(5000); });
     await act(async () => {});
-    expect(screen.getByText('✓ Saved')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/Saved/);
   });
 
   it('stays Unsaved if user types during an in-flight save', async () => {
@@ -265,5 +288,61 @@ describe('SceneEditor save status indicator', () => {
     await act(async () => { resolveSave?.(); });
 
     expect(screen.getByText('• Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('shows Save failed with retry button when snapshotSave rejects', async () => {
+    mockSnapshotSave.mockRejectedValueOnce(new Error('disk full'));
+
+    render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
+    fireEvent.change(screen.getByPlaceholderText('Start writing your scene…'), {
+      target: { value: 'Hello' },
+    });
+
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    await act(async () => {});
+
+    expect(screen.getByRole('status')).toHaveTextContent(/Save failed/);
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('retry button triggers another snapshotSave call', async () => {
+    mockSnapshotSave
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({
+        id: 's2', sceneId: 'scene-1', content: 'Hello', contentHash: 'xyz',
+        wordCount: 1, createdAt: new Date().toISOString(),
+      });
+
+    render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
+    fireEvent.change(screen.getByPlaceholderText('Start writing your scene…'), {
+      target: { value: 'Hello' },
+    });
+
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    await act(async () => {});
+
+    // Error state — click retry
+    const retryBtn = screen.getByRole('button', { name: /retry/i });
+    await act(async () => { fireEvent.click(retryBtn); });
+    await act(async () => {});
+
+    expect(mockSnapshotSave).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('status')).toHaveTextContent(/Saved/);
+  });
+
+  it('relative time updates after 10 s in saved state', async () => {
+    render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
+    fireEvent.change(screen.getByPlaceholderText('Start writing your scene…'), {
+      target: { value: 'Hello' },
+    });
+
+    // Let debounce fire and save complete
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    await act(async () => {});
+    expect(screen.getByRole('status')).toHaveTextContent(/Saved/);
+
+    // Advance 10 s — the 10 s ticker should fire and update relative time
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(screen.getByRole('status')).toHaveTextContent(/Saved \d+s ago/);
   });
 });
