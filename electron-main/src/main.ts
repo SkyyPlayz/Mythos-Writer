@@ -290,7 +290,7 @@ import {
 } from './exportFormatters.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage, MAX_PAYLOAD_BYTES } from './streaming.js';
 import { buildLoreFixture, checkMultiChapterContinuity } from './continuityEngine.js';
-import { streamFromProvider, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -1557,6 +1557,19 @@ const handlers: IpcHandlers = {
     // renderer echoes back the masked preview unchanged, preserve the stored
     // raw key. See settings-masking.ts (MYT-424).
     const reconciled = reconcileSettingsFromRenderer(payload.settings, current);
+    // SSRF guard: validate all provider baseUrls before persisting (SKY-739).
+    const urlChecks: Array<[string, string | undefined]> = [
+      ['provider.baseUrl', reconciled.provider?.baseUrl],
+      ['agents.writingAssistant.provider.baseUrl', reconciled.agents.writingAssistant.provider?.baseUrl],
+      ['agents.brainstorm.provider.baseUrl', reconciled.agents.brainstorm.provider?.baseUrl],
+      ['agents.archive.provider.baseUrl', reconciled.agents.archive.provider?.baseUrl],
+    ];
+    for (const [field, url] of urlChecks) {
+      if (url) {
+        const urlError = validateBaseUrl(url);
+        if (urlError) return { saved: false, error: `${field}: ${urlError}` };
+      }
+    }
     // MYT-788: shape-validate stt/tts and gate any renderer-driven change to
     // the local binary / model paths. A failed gate aborts the whole write —
     // we deliberately do not persist a "mostly-OK" settings object, because
@@ -1783,6 +1796,11 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.GOALS_RESET_STREAK]: () => { const today = new Date().toISOString().slice(0, 10); resetStreak(today); return { ok: true as const }; },
 
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
+    // SSRF guard: validate before any network call (SKY-739).
+    if (payload.provider.baseUrl) {
+      const urlError = validateBaseUrl(payload.provider.baseUrl);
+      if (urlError) return { ok: false, latencyMs: 0, error: 'Invalid provider URL.' };
+    }
     const t0 = Date.now();
     try {
       const ac = new AbortController();
@@ -1798,7 +1816,8 @@ const handlers: IpcHandlers = {
       if (e instanceof Error && e.name === 'AbortError') {
         return { ok: true, latencyMs: Date.now() - t0 };
       }
-      return { ok: false, latencyMs: Date.now() - t0, error: e instanceof Error ? e.message : 'Unknown error' };
+      const category = categorizeStreamError(e);
+      return { ok: false, latencyMs: Date.now() - t0, error: streamErrorUserMessage(category) };
     }
   },
 
