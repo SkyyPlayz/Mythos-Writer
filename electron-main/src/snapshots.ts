@@ -3,6 +3,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { EventEmitter } from 'events';
+
+/** Emits 'snapshot-saved' (payload: SceneSnapshot) after each successful write. */
+export const snapshotEvents = new EventEmitter();
 
 export interface SceneSnapshot {
   id: string;
@@ -74,6 +78,7 @@ export function saveSnapshot(
   fs.writeFileSync(path.join(dir, filename), JSON.stringify(snapshot), 'utf-8');
 
   pruneOldSnapshots(dir, { ...DEFAULT_RETENTION, ...retention });
+  snapshotEvents.emit('snapshot-saved', snapshot);
   return snapshot;
 }
 
