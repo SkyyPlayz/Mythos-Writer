@@ -390,6 +390,10 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     URL.revokeObjectURL(url);
   }, [messages]);
 
+  // Ref holds the latest persistFactWithRouting to avoid a forward-reference
+  // circular dep between _runStream and persistFactWithRouting.
+  const persistFactWithRoutingRef = useRef<((fact: DetectedFact) => Promise<void>) | null>(null);
+
   const _runStream = useCallback(async (apiMessages: Array<{ role: 'user' | 'assistant'; content: string }>) => {
     lastApiMessagesRef.current = apiMessages;
     streamingTextRef.current = '';
@@ -441,7 +445,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
         }));
         setFacts((prev) => [...prev, ...newFacts]);
         for (const fact of newFacts) {
-          void persistFactWithRouting(fact);
+          void persistFactWithRoutingRef.current?.(fact);
         }
       }
 
@@ -652,6 +656,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     },
     [announce, ensureNotesFolders],
   );
+  persistFactWithRoutingRef.current = persistFactWithRouting;
 
   // SKY-20: commit the user's pick — main moves the staged file and (when
   // `remember` is true) persists the choice as the new default for this

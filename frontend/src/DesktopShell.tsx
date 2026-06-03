@@ -631,7 +631,7 @@ export default function DesktopShell() {
     } else {
       setBetaReadComments([]);
     }
-  }, [selectedScene?.id, loadBetaReadComments]);
+  }, [selectedScene, loadBetaReadComments]);
 
   useEffect(() => {
     setSnapshotSavedAt(null);

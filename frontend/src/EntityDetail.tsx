@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EntityEntry, EntityType } from './types';
 import TagInput from './TagInput';
 import './EntityDetail.css';
@@ -81,8 +81,16 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [addTargetId, setAddTargetId] = useState('');
   const [addSubmitting, setAddSubmitting] = useState(false);
 
-  // Reset form when entity changes
+  // Guards the form-reset effect so it only fires on entity id changes (see useEffect below).
+  const prevEntityIdRef = useRef<string | null>(null);
+
+  // Reset form when a different entity is selected. The dep array is [entity] to satisfy
+  // exhaustive-deps, but we guard on entity.id so the reset only runs when the selected
+  // entity switches — not when the parent passes a new object reference for the same entity
+  // (e.g. after onUpdated returns the saved copy, or EntityBrowser passes back a stale object).
   useEffect(() => {
+    if (prevEntityIdRef.current === entity.id) return;
+    prevEntityIdRef.current = entity.id;
     setName(entity.name);
     setAliases((entity.aliases ?? []).join(', '));
     setNoAutoLink(!!entity.properties?.noAutoLink);
@@ -93,7 +101,7 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setShowAddForm(false);
     setAddLabel('');
     setAddTargetId('');
-  }, [entity.id]);
+  }, [entity]);
 
   // Load all tags for autocomplete
   useEffect(() => {
