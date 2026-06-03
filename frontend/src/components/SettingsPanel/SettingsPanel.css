@@ -40,14 +40,14 @@
 .settings-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-header);
   margin: 0;
 }
 
 .settings-close {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 4px 6px;
@@ -57,7 +57,7 @@
 
 .settings-close:hover {
   background: #27272a;
-  color: #e4e4e7;
+  color: var(--text-header);
 }
 
 .settings-body {
@@ -72,7 +72,7 @@
 .settings-loading {
   padding: 32px 20px;
   text-align: center;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
@@ -85,7 +85,7 @@
 .settings-section-title {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0;
@@ -110,7 +110,7 @@
 
 .settings-label {
   font-size: 0.82rem;
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 .settings-input-row {
@@ -122,7 +122,7 @@
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 5px;
-  color: #e4e4e7;
+  color: var(--text-header);
   font-size: 0.85rem;
   padding: 6px 10px;
   outline: none;
@@ -181,7 +181,7 @@
 
 .settings-slider-value {
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   min-width: 32px;
   text-align: right;
 }
@@ -190,7 +190,7 @@
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 5px;
-  color: #a1a1aa;
+  color: var(--text-body);
   font-size: 0.78rem;
   padding: 6px 10px;
   cursor: pointer;
@@ -200,7 +200,7 @@
 
 .settings-reveal-btn:hover {
   background: #27272a;
-  color: #e4e4e7;
+  color: var(--text-header);
 }
 
 .settings-error-msg {
@@ -217,7 +217,7 @@
 
 .settings-hint {
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -241,7 +241,7 @@
 
 .settings-agent-name {
   font-size: 0.85rem;
-  color: #d4d4d8;
+  color: var(--text-body);
   font-weight: 500;
 }
 
@@ -315,7 +315,7 @@
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
-  color: #d4d4d8;
+  color: var(--text-body);
   cursor: pointer;
 }
 
@@ -364,12 +364,12 @@
 
 .settings-btn-cancel {
   background: #27272a;
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 .settings-btn-cancel:hover:not(:disabled) {
   background: #3f3f46;
-  color: #e4e4e7;
+  color: var(--text-header);
 }
 
 .settings-btn-save {
@@ -398,7 +398,7 @@
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 5px;
-  color: #a1a1aa;
+  color: var(--text-body);
   font-size: 0.78rem;
   padding: 5px 12px;
   cursor: pointer;
@@ -409,7 +409,7 @@
 
 .settings-test-btn:hover:not(:disabled) {
   background: #27272a;
-  color: #e4e4e7;
+  color: var(--text-header);
 }
 
 .settings-test-btn:disabled {
@@ -435,6 +435,6 @@
   margin: 4px 0 0 0;
   padding-left: 18px;
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   line-height: 1.6;
 }
