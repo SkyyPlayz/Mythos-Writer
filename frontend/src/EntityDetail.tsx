@@ -93,7 +93,7 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
     setShowAddForm(false);
     setAddLabel('');
     setAddTargetId('');
-  }, [entity.id]);
+  }, [entity]);
 
   // Load all tags for autocomplete
   useEffect(() => {

@@ -58,7 +58,7 @@ export default function VaultAgentPanel({ scene, enabled = true }: Props) {
       unsubRef.current = null;
       setChecking(false);
     }
-  }, [scene, checking]);
+  }, [scene, checking, announce]);
 
   const dismiss = (id: string) => {
     setInconsistencies((prev) =>
