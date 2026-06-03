@@ -535,7 +535,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
   [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (payload: BrainstormSelectContextPayload) => BrainstormSelectContextResponse;
-  [IPC_CHANNELS.BRAINSTORM_ENRICH_ENTRY]: (payload: BrainstormEnrichEntryPayload) => Promise<BrainstormEnrichEntryResponse>;
   // SKY-12 onboarding channels
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
