@@ -33,7 +33,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -56,13 +56,8 @@
 }
 
 .settings-close:hover {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
-}
-
-.settings-close:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
 }
 
 .settings-body {
@@ -125,7 +120,7 @@
 
 .settings-input {
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-header);
   font-size: 0.85rem;
@@ -136,13 +131,8 @@
 }
 
 .settings-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.settings-input:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.25);
 }
 
 .settings-input-error {
@@ -150,7 +140,7 @@
 }
 
 .settings-input-error:focus {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--state-danger) 25%, transparent);
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.25);
 }
 
 .settings-input-sm {
@@ -206,7 +196,7 @@
 
 .settings-reveal-btn {
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-muted);
   font-size: 0.78rem;
@@ -217,13 +207,8 @@
 }
 
 .settings-reveal-btn:hover {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
-}
-
-.settings-reveal-btn:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
 }
 
 .settings-error-msg {
@@ -248,7 +233,7 @@
 
 .settings-agent-card {
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 7px;
   padding: 12px 14px;
   display: flex;
@@ -355,7 +340,7 @@
 
 .settings-footer {
   padding: 12px 20px 16px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -393,7 +378,7 @@
 }
 
 .settings-btn-cancel:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: var(--surface-3);
   color: var(--text-header);
 }
 
@@ -402,7 +387,7 @@
    Pairs with the switch-knob flip above — same contrast invariant. */
 .settings-btn-save {
   background: var(--accent);
-  color: var(--bg-canvas);
+  color: #fff;
   font-weight: 500;
 }
 
@@ -427,7 +412,7 @@
   width: 128px;
   height: 64px;
   border-radius: 6px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   flex-shrink: 0;
   background-color: var(--bg-canvas);
 }
@@ -451,7 +436,7 @@
 }
 
 .lg-btn-secondary:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
@@ -475,9 +460,7 @@
 
 .lg-slider-main {
   flex: 1;
-  /* Brand-axis slider always reads as cyan — even in [data-contrast="high"],
-     because the SOFTNESS↔CONTRAST axis is itself the brand identity, not a
-     semantic accent. Use the raw neon anchor, not --accent. */
+>>>>>>> 56421ad (fix(SKY-769): settings panel a11y + Liquid Neon token cleanup)
   accent-color: var(--neon-cyan);
 }
 
@@ -514,7 +497,10 @@
 }
 
 .lg-advanced-toggle:hover {
+<<<<<<< HEAD
   color: var(--text-body);
+=======
+  color: var(--text-muted);
 }
 
 .lg-chevron {
@@ -533,7 +519,7 @@
   flex-direction: column;
   gap: 10px;
   padding: 10px 0 4px 12px;
-  border-left: 2px solid var(--border-subtle);
+  border-left: 2px solid var(--border-default);
   margin-left: 4px;
 }
 
@@ -574,13 +560,10 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid var(--border-subtle);
+  border: 2px solid var(--border-default);
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
-/* Swatches are the brand-axis anchors themselves — neon tokens, not --accent.
-   Each must keep its hue so the user can pick between cyan / violet / magenta
-   regardless of which one --accent is currently aliased to. */
 .lg-swatch-cyan    { background: var(--neon-cyan); }
 .lg-swatch-violet  { background: var(--neon-violet); }
 .lg-swatch-magenta { background: var(--neon-magenta); }
@@ -650,13 +633,8 @@
 
 .lg-btn-reset:hover {
   background: var(--bg-inset);
-  color: var(--text-body);
-  border-color: var(--border-strong);
-}
-
-.lg-btn-reset:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  color: var(--text-muted);
+  border-color: var(--text-muted);
 }
 
 /* ── Slider band with Advanced pill (MYT-716) ─────────────────────────────── */
@@ -711,13 +689,7 @@
 }
 
 .lg-relink-btn:hover {
-  color: var(--text-body);
-}
-
-.lg-relink-btn:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  border-radius: 2px;
+  color: var(--text-muted);
 }
 
 /* ── Advanced popover overlay (MYT-716) ──────────────────────────────────── */
@@ -751,7 +723,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -807,7 +779,7 @@
   align-items: center;
   gap: 8px;
   padding-top: 4px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-default);
 }
 
 /* ── Background section ───────────────────────────────────────────────────── */
@@ -819,7 +791,7 @@
   padding: 8px;
   background: var(--bg-inset);
   border-radius: 6px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
 }
 
 /* Mode toggle */
@@ -828,7 +800,7 @@
   gap: 0;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   width: fit-content;
 }
 
@@ -851,11 +823,11 @@
 }
 
 .lg-mode-btn + .lg-mode-btn {
-  border-left: 1px solid var(--border-subtle);
+  border-left: 1px solid var(--border-default);
 }
 
 .lg-mode-btn-active {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
@@ -876,7 +848,7 @@
   height: 28px;
   border-radius: 4px;
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   font-size: 0.75rem;
   color: var(--text-muted);
   cursor: pointer;
@@ -891,14 +863,14 @@
 }
 
 .lg-position-cell-active {
-  background: var(--bg-active);
+  background: var(--bg-elevated);
   color: var(--text-header);
-  border-color: var(--border-default);
+  border-color: var(--border-strong);
 }
 
 .lg-position-cell:hover:not(.lg-position-cell-active) {
-  background: var(--bg-hover);
-  color: var(--text-body);
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 /* ── Color picker control (MYT-716) ──────────────────────────────────────── */
@@ -919,7 +891,7 @@
 .lg-color-input {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   padding: 2px;
   background: var(--bg-inset);
@@ -947,17 +919,17 @@
 }
 
 .tcs-badge-pass {
-  background: var(--state-success-bg);
+  background: rgba(74, 222, 128, 0.15);
   color: var(--state-success);
 }
 
 .tcs-badge-warn {
-  background: var(--state-warning-bg);
+  background: rgba(251, 191, 36, 0.15);
   color: var(--state-warning);
 }
 
 .tcs-badge-fail {
-  background: var(--state-danger-bg);
+  background: rgba(248, 113, 113, 0.15);
   color: var(--state-danger);
 }
 
@@ -1187,6 +1159,9 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.8rem;
+  font-family: inherit;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .settings-btn-secondary:hover:not(:disabled) {
@@ -1203,98 +1178,17 @@
   outline-offset: 2px;
 }
 
-.settings-btn-danger {
-  padding: 5px 14px;
-  background: none;
-  border: 1px solid var(--state-danger);
-  border-radius: 5px;
-  color: var(--state-danger);
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-
-.settings-btn-danger:hover {
-  background: var(--state-danger-bg);
-}
-
-/* ── Focus Mode toggles (SKY-325) ── */
-.settings-focus-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 4px 0;
-  user-select: none;
-}
-
-.settings-focus-toggle input[type="checkbox"] {
-  accent-color: var(--accent);
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-}
-
-.settings-focus-toggle:focus-within {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  border-radius: 3px;
-}
-
-/* ─── SKY-321: per-category auto-apply toggles ─────────────────────────────── */
-.settings-category-toggles {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: 4px;
-}
-
-.settings-category-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted, rgba(255,255,255,0.5));
-  margin-bottom: 2px;
-}
-
-.settings-category-row {
-  margin: 0;
-  padding: 0;
-}
-
-/* Vault-paths save button (matches settings-btn-save token scheme) */
-.settings-save {
-  background: var(--accent);
-  color: var(--bg-canvas);
-  border: none;
-  border-radius: 5px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  padding: 7px 16px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.settings-save:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.settings-save:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.settings-save:focus-visible {
+.settings-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
-/* Vault-paths saved confirmation (matches settings-saved-msg) */
-.settings-saved-ok {
-  font-size: 0.78rem;
-  color: var(--state-success);
-  margin: 0;
+.settings-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-persona-tab:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}

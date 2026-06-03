@@ -36,6 +36,7 @@ interface PersonaFileState {
 function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainstorm' }) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PersonaKey>('AGENTS');
+  const tablistRef = useRef<HTMLDivElement>(null);
   const [files, setFiles] = useState<Record<PersonaKey, PersonaFileState>>({
     AGENTS:    { content: '', isCustom: false, loading: false, error: null },
     HEARTBEAT: { content: '', isCustom: false, loading: false, error: null },
@@ -71,6 +72,20 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
 
   const file = files[activeTab];
 
+  const handleTabKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const idx = PERSONA_KEYS.indexOf(activeTab);
+    const next = e.key === 'ArrowRight'
+      ? PERSONA_KEYS[(idx + 1) % PERSONA_KEYS.length]
+      : PERSONA_KEYS[(idx + PERSONA_KEYS.length - 1) % PERSONA_KEYS.length];
+    setActiveTab(next);
+    e.preventDefault();
+    const btn = tablistRef.current?.querySelector<HTMLElement>(`[data-tabkey="${next}"]`);
+    btn?.focus();
+  };
+
+  const panelId = `persona-panel-${agentName}`;
+
   return (
     <div className="settings-persona-viewer">
       <button
@@ -84,13 +99,17 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
       </button>
       {open && (
         <div className="settings-persona-panel">
-          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs">
+          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs" ref={tablistRef} onKeyDown={handleTabKeyDown}>
             {PERSONA_KEYS.map((key) => (
               <button
                 key={key}
                 type="button"
                 role="tab"
+                id={`persona-tab-${agentName}-${key}`}
+                data-tabkey={key}
                 aria-selected={activeTab === key}
+                aria-controls={panelId}
+                tabIndex={activeTab === key ? 0 : -1}
                 className={`settings-persona-tab${activeTab === key ? ' settings-persona-tab--active' : ''}`}
                 onClick={() => setActiveTab(key)}
               >
@@ -101,7 +120,7 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
               </button>
             ))}
           </div>
-          <div className="settings-persona-content" role="tabpanel">
+          <div id={panelId} className="settings-persona-content" role="tabpanel" aria-labelledby={`persona-tab-${agentName}-${activeTab}`}>
             {file.loading && <p className="settings-persona-loading">Loading…</p>}
             {file.error && <p className="settings-persona-error">{file.error}</p>}
             {!file.loading && !file.error && (
@@ -1074,7 +1093,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   if (loading) {
     return (
-      <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog">
+      <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
         <div className="settings-panel">
           <div className="settings-loading">Loading settings…</div>
         </div>
@@ -1090,7 +1109,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
           <h2 className="settings-title">Settings</h2>
-          <button className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
+          <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
         <div className="settings-body">
@@ -1292,14 +1311,14 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </div>
             <div className="settings-input-row">
               <button
-                className="settings-save"
+                className="settings-btn settings-btn-secondary"
                 type="button"
                 onClick={handleSaveVaults}
                 disabled={!vaultsDirty || !vaults.storyVaultPath.trim() || !vaults.notesVaultPath.trim()}
               >
                 Save vault paths
               </button>
-              {vaultsSavedOk && <span className="settings-saved-ok" role="status">Saved. Restart to fully apply.</span>}
+              {vaultsSavedOk && <span className="settings-saved-msg" role="status">Saved. Restart to fully apply.</span>}
               {vaultsError && <span className="settings-error-msg" role="alert">{vaultsError}</span>}
             </div>
             <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
@@ -2361,8 +2380,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </div>
           )}
           <div className="settings-footer-actions">
-            <button className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
+            <button type="button" className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
             <button
+              type="button"
               className="settings-btn settings-btn-save"
               onClick={handleSave}
               disabled={saving || !!apiKeyError}
