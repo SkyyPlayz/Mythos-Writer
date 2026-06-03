@@ -582,6 +582,31 @@ contextBridge.exposeInMainWorld('api', {
   scenePropsSet: (sceneId: string, customFields: Record<string, unknown>) =>
     ipcRenderer.invoke('scene:propsSet', { sceneId, customFields }),
 
+  // SKY-456: Creative quality controls — spec §5.2 IPC additions
+  getPresets: () => ipcRenderer.invoke('preset:getAll', undefined),
+  getQualityRubric: () => ipcRenderer.invoke('preset:getRubric', undefined),
+  // getRefinementSuggestions wraps stream:start so callers can subscribe to
+  // the same onStreamToken / onStreamEnd channels as regular chat streams.
+  getRefinementSuggestions: (options: {
+    original_text: string;
+    refinement_action: string;
+    active_preset_id: string;
+    additional_instruction?: string;
+  }) => {
+    const system =
+      'You are a creative writing refinement assistant. Apply the requested refinement to the suggestion below, maintaining prose quality. Return only the refined suggestion text — no preamble.';
+    const content = [
+      `Action: ${options.refinement_action}`,
+      options.additional_instruction ? `Additional instruction: ${options.additional_instruction}` : null,
+      `Active preset: ${options.active_preset_id}`,
+      '',
+      `Original suggestion:\n${options.original_text}`,
+    ].filter(Boolean).join('\n');
+    return ipcRenderer.invoke('stream:start', {
+      messages: [{ role: 'user', content }],
+      system,
+    });
+  },
 
 });
 

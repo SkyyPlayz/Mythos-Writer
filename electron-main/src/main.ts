@@ -5134,6 +5134,24 @@ app.whenReady().then(async () => {
   registerWritingScanHandler();
   registerBetaReadScanHandler();
   registerStreamingHandlers(getValidatedApiKey);
+
+  // SKY-456: Creative quality controls — static preset and rubric data (spec §5.2).
+  // The preset list is defined in frontend/src/presets.ts. Since main and renderer
+  // are separate bundles, we return static data inline here. The renderer also
+  // reads BUNDLED_PRESETS directly from presets.ts — these handlers exist so
+  // future eval harnesses or server-side tooling can query them via IPC.
+  ipcMain.handle('preset:getAll', (_event) => ({ count: 12, note: 'presets are served client-side from presets.ts' }));
+  ipcMain.handle('preset:getRubric', (_event) => ({
+    criteria: [
+      { id: 'specificity', name: 'Specificity' },
+      { id: 'coherence', name: 'Coherence' },
+      { id: 'genre-fit', name: 'Genre Fit' },
+      { id: 'constraint-respect', name: 'Constraint Respect' },
+      { id: 'usefulness', name: 'Usefulness as a Starter' },
+      { id: 'actionability', name: 'Actionability' },
+    ],
+  }));
+
   startWritingScanScheduler();
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
