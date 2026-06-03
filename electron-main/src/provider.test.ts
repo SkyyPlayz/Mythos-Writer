@@ -457,4 +457,21 @@ describe('validateBaseUrl (§6)', () => {
   it('rejects empty string', () => {
     expect(validateBaseUrl('')).toMatch(/invalid/i);
   });
+
+  // IPv4-mapped IPv6 bypass (SKY-752) — WHATWG URL normalises ::ffff:a.b.c.d to hex form.
+  it('blocks IPv4-mapped IPv6 APIPA (::ffff:169.254.169.254)', () => {
+    expect(validateBaseUrl('http://[::ffff:169.254.169.254]/')).toMatch(/link-local/i);
+  });
+  it('blocks IPv4-mapped IPv6 RFC-1918 10.x', () => {
+    expect(validateBaseUrl('http://[::ffff:10.0.0.1]/')).toMatch(/rfc-1918/i);
+  });
+  it('blocks IPv4-mapped IPv6 RFC-1918 192.168.x', () => {
+    expect(validateBaseUrl('http://[::ffff:192.168.1.1]/')).toMatch(/rfc-1918/i);
+  });
+  it('blocks IPv4-mapped IPv6 RFC-1918 172.16.x', () => {
+    expect(validateBaseUrl('http://[::ffff:172.16.0.1]/')).toMatch(/rfc-1918/i);
+  });
+  it('allows IPv4-mapped IPv6 loopback (::ffff:127.0.0.1)', () => {
+    expect(validateBaseUrl('http://[::ffff:127.0.0.1]/')).toBeNull();
+  });
 });

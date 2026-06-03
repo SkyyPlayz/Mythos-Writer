@@ -195,6 +195,16 @@ export function validateBaseUrl(url: string): string | null {
   const raw = parsed.hostname.toLowerCase();
   const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
 
+  // IPv4-mapped IPv6: WHATWG URL normalizes e.g. ::ffff:192.168.1.1 → ::ffff:c0a8:101.
+  // Decode the embedded IPv4 and re-run all guards (SKY-752).
+  const v4mapped = host.match(/^::ffff:([0-9a-f]+):([0-9a-f]+)$/i);
+  if (v4mapped) {
+    const hi = parseInt(v4mapped[1], 16);
+    const lo = parseInt(v4mapped[2], 16);
+    const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return validateBaseUrl(`http://${ipv4}`);
+  }
+
   // Allow loopback — Ollama (127.0.0.1:11434) and LM Studio (127.0.0.1:1234) live here.
   if (host === 'localhost' || host === '::1') return null;
   if (/^127\./.test(host)) return null;
