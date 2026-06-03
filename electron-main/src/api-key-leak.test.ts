@@ -249,6 +249,40 @@ describe('app-settings.json on-disk payload — no plaintext keys (MYT-777)', ()
     expect(onDisk).not.toContain(FAKE_OPENAI_KEY);
     expect(onDisk).not.toContain('sk-proj-TestOnly');
   });
+
+  // Regression test for SKY-740: archive agent API key must not be written plaintext.
+  it('archive agent provider.apiKey is not written plaintext to app-settings.json (SKY-740)', () => {
+    const { store, settingsPath } = mkStore();
+    const incoming = settingsFixture({
+      agents: {
+        writingAssistant: {
+          enabled: false, model: 'claude', scanIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+        brainstorm: {
+          enabled: false, model: 'claude',
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+        archive: {
+          enabled: false, model: 'claude', continuityCheckIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+          provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_ARCHIVE_KEY },
+        },
+      },
+    });
+    const stripped = persistSecretsAndStripSettings(incoming, store);
+    fs.writeFileSync(settingsPath, JSON.stringify(stripped, null, 2), 'utf-8');
+
+    const onDisk = fs.readFileSync(settingsPath, 'utf-8');
+    expect(onDisk).not.toContain(FAKE_ARCHIVE_KEY);
+    expect(onDisk).not.toContain('ArchiveKey');
+    // The secret must be in the store, not on disk.
+    expect(store.get('provider.archive.apiKey')).toBe(FAKE_ARCHIVE_KEY);
+    expect(stripped.agents.archive.provider?.apiKey).toBe('');
+  });
 });
 
 // ── Per-agent provider.apiKey masking (SKY-738) ───────────────────────────

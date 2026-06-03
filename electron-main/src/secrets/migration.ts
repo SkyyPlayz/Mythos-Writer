@@ -56,6 +56,19 @@ export function migrateSecretsFromSettingsFile(
     parsed.voice = { ...parsed.voice, openaiApiKey: '' };
     movedIds.push('voice.openaiApiKey');
   }
+  // Archive per-agent key (SKY-740) — was never stripped before this fix, so may be plaintext on disk.
+  const archiveProvider = parsed.agents?.archive?.provider;
+  if (archiveProvider && typeof archiveProvider.apiKey === 'string' && archiveProvider.apiKey.length > 0) {
+    store.set('provider.archive.apiKey', archiveProvider.apiKey);
+    parsed.agents = {
+      ...parsed.agents!,
+      archive: {
+        ...parsed.agents!.archive,
+        provider: { ...archiveProvider, apiKey: '' },
+      },
+    };
+    movedIds.push('provider.archive.apiKey');
+  }
 
   if (movedIds.length === 0) {
     return { migrated: false, movedIds: [] };
@@ -104,6 +117,17 @@ export function hydrateSecretsIntoSettings(
       writingAssistant: {
         ...out.agents.writingAssistant,
         provider: { ...out.agents.writingAssistant.provider, apiKey: writingAssistantKey },
+      },
+    };
+  }
+  // Archive per-agent key (SKY-740).
+  const archiveKey = store.get('provider.archive.apiKey');
+  if (archiveKey && out.agents.archive.provider) {
+    out.agents = {
+      ...out.agents,
+      archive: {
+        ...out.agents.archive,
+        provider: { ...out.agents.archive.provider, apiKey: archiveKey },
       },
     };
   }
@@ -157,6 +181,18 @@ export function persistSecretsAndStripSettings(
       writingAssistant: {
         ...stripped.agents.writingAssistant,
         provider: { ...stripped.agents.writingAssistant.provider, apiKey: '' },
+      },
+    };
+  }
+  // Archive per-agent key (SKY-740).
+  if (stripped.agents.archive.provider) {
+    const key = stripped.agents.archive.provider.apiKey ?? '';
+    store.set('provider.archive.apiKey', key);
+    stripped.agents = {
+      ...stripped.agents,
+      archive: {
+        ...stripped.agents.archive,
+        provider: { ...stripped.agents.archive.provider, apiKey: '' },
       },
     };
   }
