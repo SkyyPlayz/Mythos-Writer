@@ -4,7 +4,7 @@
  * Entity system E2E happy path: create entity, add alias, reference in prose, browse.
  *
  * Acceptance criteria:
- *   TC-E-01  Create entity           — character created via Entity Browser TypePickerPopover (SKY-172)
+ *   TC-E-01  Create entity           — character created via Entity Browser CreateDialog (SKY-619)
  *   TC-E-02  Add alias via detail     — alias field updated and saved in entity detail
  *   TC-E-03  Reference in prose       — entity can be referenced via [[name]] in prose editor
  *   TC-E-04  Persistence              — entity + alias survives app restart
@@ -28,8 +28,8 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
-// SKY-172 replaced CreateDialog with TypePickerPopover; entity names default to
-// "New {Type}" on quickCreate. TC-E-01 now uses this default name.
+// SKY-619 replaced TypePickerPopover with CreateDialog; TC-E-01 enters this name
+// in the dialog. Kept short to avoid collisions with other test entities.
 const ENTITY_NAME = 'New Character';
 const ENTITY_ALIAS = 'The Silver Lady';
 const SCENE_TITLE = 'First Meeting';
@@ -155,17 +155,18 @@ test('TC-E-01: create entity (character) via Entity Browser', async () => {
   await entitiesTab.click();
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
-  // Click "+ New Entity" — SKY-172 replaced CreateDialog with TypePickerPopover;
-  // a role="menu" popover opens instead of a role="dialog" input form.
+  // Click "+ New Entity" — SKY-619: opens CreateDialog (role="dialog")
   await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').click();
 
-  // Select "Character" from the type picker popover
-  const picker = page.locator('.entity-type-picker');
-  await expect(picker).toBeVisible({ timeout: 5_000 });
-  await picker.locator('.entity-type-picker-item', { hasText: 'Character' }).click();
+  const dialog = page.locator('[role="dialog"]');
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-  // Picker closes and entity appears with the quickCreate default name
-  await expect(picker).not.toBeVisible({ timeout: 6_000 });
+  // Enter name and submit (type defaults to "character")
+  await dialog.locator('.entity-dialog-input').first().fill(ENTITY_NAME);
+  await dialog.locator('.entity-btn.entity-btn-primary').click();
+
+  // Dialog closes and entity appears in the list
+  await expect(dialog).not.toBeVisible({ timeout: 6_000 });
   const entityItem = page.locator('.entity-item-name', { hasText: ENTITY_NAME });
   await expect(entityItem).toBeVisible({ timeout: 8_000 });
 });
