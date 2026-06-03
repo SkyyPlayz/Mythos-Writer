@@ -268,6 +268,9 @@ export const IPC_CHANNELS = {
   BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
   // SKY-196: token-budgeted context selection for Brainstorm AI requests
   BRAINSTORM_SELECT_CONTEXT: 'brainstorm:selectContext',
+  // SKY-324: one-shot entry enrichment — generate a description for a newly
+  // created entity and write it to the Notes Vault via the existing routing logic.
+  BRAINSTORM_ENRICH_ENTRY: 'brainstorm:enrichEntry',
 
   // SKY-12.3: two-vault sample project loader. Copies the bundled sample
   // from resources/sample-project/ into <parentPath>/Story Vault/ and
@@ -2613,6 +2616,19 @@ export interface BrainstormSelectContextResponse {
   budgetTokens: number;
 }
 
+// ─── SKY-324: Entry quick-enrich ─────────────────────────────────────────────
+
+export interface BrainstormEnrichEntryPayload {
+  /** The entity name as entered by the user. */
+  name: string;
+  /** EntityType value ('character' | 'location' | 'item' | 'concept' | 'other').
+   *  Mapped to FactType in the handler: concept/other → 'note'. */
+  type: string;
+}
+
+export type BrainstormEnrichEntryResponse =
+  | { status: 'ok'; path: string; content: string }
+  | { status: 'skipped'; reason: string };
 
 // ─── SKY-156: Project Templates ───────────────────────────────────────────────
 

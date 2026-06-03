@@ -52,6 +52,22 @@ export function serializeBoard(columns: KanbanColumn[]): string {
 
 const DEFAULT_COLUMN_NAMES = ['Idea', 'Drafted', 'Written', 'Cut'];
 
+interface EntryPoolItem {
+  path: string;
+  title: string;
+}
+
+function titleFromEntryPath(filePath: string): string {
+  const name = filePath.split('/').pop() ?? filePath;
+  const withoutExt = name.replace(/\.md$/, '');
+  // Strip leading timestamp prefix like "20240601-123456-" if present
+  const withoutTs = withoutExt.replace(/^\d{8}-\d{6}-/, '');
+  return withoutTs
+    .replace(/-+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim() || withoutExt;
+}
+
 interface Props {
   boardPath: string;
   storyTitle: string;
@@ -72,6 +88,11 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
   const [customBoardPath, setCustomBoardPath] = useState(boardPath);
   const [editingPath, setEditingPath] = useState(false);
   const [pendingPath, setPendingPath] = useState(boardPath);
+
+  // SKY-324: Entries quick-grab pool — files from Entries/ in the Notes Vault
+  const [entriesPool, setEntriesPool] = useState<EntryPoolItem[]>([]);
+  const [entriesPoolOpen, setEntriesPoolOpen] = useState(false);
+  const [entriesPoolLoading, setEntriesPoolLoading] = useState(false);
 
   const saveBoard = useCallback(
     async (cols: KanbanColumn[], path = customBoardPath) => {
@@ -195,6 +216,51 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
     onBoardPathChange?.(trimmed);
     saveBoard(columns, trimmed);
   }, [pendingPath, columns, saveBoard, onBoardPathChange]);
+
+  // SKY-324: Load entries from Notes Vault Entries/ folder when pool is opened
+  const loadEntriesPool = useCallback(async () => {
+    setEntriesPoolLoading(true);
+    try {
+      const { items } = await (window as any).api.listNotesVault('Entries');
+      const entries: EntryPoolItem[] = items
+        .filter((item: { isDirectory: boolean; path: string }) => !item.isDirectory && item.path.endsWith('.md'))
+        .map((item: { path: string }) => ({
+          path: item.path,
+          title: titleFromEntryPath(item.path),
+        }))
+        .sort((a: EntryPoolItem, b: EntryPoolItem) => b.path.localeCompare(a.path));
+      setEntriesPool(entries);
+    } catch {
+      setEntriesPool([]);
+    } finally {
+      setEntriesPoolLoading(false);
+    }
+  }, []);
+
+  const toggleEntriesPool = useCallback(() => {
+    setEntriesPoolOpen((prev) => {
+      const next = !prev;
+      if (next) void loadEntriesPool();
+      return next;
+    });
+  }, [loadEntriesPool]);
+
+  // SKY-324: Add an entry from the pool to the first "Idea" lane (or first lane)
+  const addEntryToIdeaLane = useCallback(
+    async (entryPath: string) => {
+      const ideaIdx = columns.findIndex((c) => c.name.toLowerCase() === 'idea');
+      const targetIdx = ideaIdx >= 0 ? ideaIdx : 0;
+      if (columns.length === 0) return;
+      const alreadyInBoard = columns.some((c) => c.cards.some((card) => card.notePath === entryPath));
+      if (alreadyInBoard) return;
+      const updated = columns.map((c, i) =>
+        i === targetIdx ? { ...c, cards: [...c.cards, { notePath: entryPath, checked: false }] } : c,
+      );
+      setColumns(updated);
+      await saveBoard(updated);
+    },
+    [columns, saveBoard],
+  );
 
   if (loading) return <div className="kanban-loading" role="status">Loading board…</div>;
 
@@ -331,6 +397,55 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
         >
           + Add Column
         </button>
+      </div>
+
+      {/* SKY-324: Entries quick-grab pool */}
+      <div className="kanban-entries-pool">
+        <button
+          className="kanban-entries-pool-toggle"
+          onClick={toggleEntriesPool}
+          aria-expanded={entriesPoolOpen}
+          type="button"
+        >
+          <span className="kanban-entries-pool-arrow">{entriesPoolOpen ? '▾' : '▸'}</span>
+          Entries Pool
+        </button>
+        {entriesPoolOpen && (
+          <div className="kanban-entries-pool-body" data-testid="kanban-entries-pool-body">
+            {entriesPoolLoading && (
+              <div className="kanban-entries-pool-empty" role="status">Loading…</div>
+            )}
+            {!entriesPoolLoading && entriesPool.length === 0 && (
+              <div className="kanban-entries-pool-empty">
+                No entries yet. Add quick notes in the Brainstorm panel.
+              </div>
+            )}
+            {!entriesPoolLoading && entriesPool.map((entry) => (
+              <div
+                key={entry.path}
+                className="kanban-entry-item"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', entry.path);
+                }}
+                data-testid={`kanban-entry-item-${entry.path}`}
+              >
+                <span className="kanban-entry-title" title={entry.path}>
+                  {entry.title}
+                </span>
+                <button
+                  className="kanban-entry-add-btn"
+                  onClick={() => void addEntryToIdeaLane(entry.path)}
+                  type="button"
+                  title="Add to Idea lane"
+                  aria-label={`Add "${entry.title}" to Idea lane`}
+                >
+                  + Idea
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

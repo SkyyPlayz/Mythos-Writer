@@ -10,6 +10,7 @@ import {
   buildPresetContext,
 } from './presets';
 import type { PresetAxes, RefinementChip } from './presets';
+import EntriesQuickAdd from './EntriesQuickAdd';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -1224,6 +1225,8 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
               })
             )}
           </div>
+
+          <EntriesQuickAdd />
         </div>
       </div>
 

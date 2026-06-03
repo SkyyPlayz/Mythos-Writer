@@ -687,6 +687,12 @@ interface Window {
       usedTokens: number;
       budgetTokens: number;
     }>;
+    // SKY-324: one-shot entry enrichment — routes a new entity to the brainstorm
+    // agent which generates a description and writes it to the Notes Vault.
+    brainstormEnrichEntry: (payload: { name: string; type: string }) => Promise<
+      | { status: 'ok'; path: string; content: string }
+      | { status: 'skipped'; reason: string }
+    >;
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;

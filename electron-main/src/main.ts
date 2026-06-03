@@ -315,6 +315,11 @@ import {
   selectContext,
   type ContextCandidate,
 } from './brainstormRouting.js';
+import {
+  parseFacts,
+  entityTypeToFactType,
+  buildEnrichmentSystemPrompt,
+} from './brainstormAgent.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
@@ -4439,6 +4444,123 @@ function registerBrainstormHandler() {
   }));
 }
 
+// ─── Entry quick-enrich handler (SKY-324) ───
+// One-shot (non-streaming) Claude call: generate a description for a newly
+// created entity and write it to the Notes Vault using the standard routing logic.
+function registerBrainstormEnrichHandler() {
+  ipcMain.handle(
+    IPC_CHANNELS.BRAINSTORM_ENRICH_ENTRY,
+    wrapIpcHandler(IPC_CHANNELS.BRAINSTORM_ENRICH_ENTRY, async (event, payload: { name: string; type: string }) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+
+      const agentSettings = loadAppSettings().agents.brainstorm;
+      if (!agentSettings.enabled) return { status: 'skipped' as const, reason: 'agent_disabled' };
+
+      const budgetCheck = checkCallBudget('brainstorm', agentSettings, getDb());
+      if (!budgetCheck.allowed) return { status: 'skipped' as const, reason: budgetCheck.reason };
+
+      const apiKey = getValidatedApiKey();
+      const client = new Anthropic({ apiKey });
+
+      const factType = entityTypeToFactType(payload.type);
+      const systemPrompt = buildEnrichmentSystemPrompt(payload.name, factType);
+
+      const model = 'claude-haiku-4-5-20251001';
+      const startedAt = Date.now();
+      let tokensIn: number | null = null;
+      let tokensOut: number | null = null;
+      let genError: string | null = null;
+      const now = new Date().toISOString();
+
+      try {
+        const response = await client.messages.create({
+          model,
+          max_tokens: 256,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: `Describe the ${factType} "${payload.name}".` }],
+        });
+
+        tokensIn = response.usage.input_tokens;
+        tokensOut = response.usage.output_tokens;
+
+        const text = response.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map((b) => b.text)
+          .join('');
+
+        const facts = parseFacts(text);
+        if (facts.length === 0) return { status: 'skipped' as const, reason: 'no_fact_emitted' };
+
+        const fact = facts[0];
+
+        // Write to Notes Vault using the same routing logic as BRAINSTORM_WRITE_NOTE.
+        ensureNotesVaultDir();
+        const userData = app.getPath('userData');
+        const layoutMode = loadVaultSettings().layoutMode ?? 'default';
+        const { notesRouting } = loadBrainstormSettings(userData);
+        const resolution = resolveDestination(fact.type, layoutMode, notesRouting);
+
+        const suggestionId = crypto.randomUUID();
+        const safeName = fact.name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
+        const fileName = `${safeName}.md`;
+        const body = renderBrainstormNote({
+          category: fact.type,
+          name: fact.name,
+          content: fact.description,
+          suggestionId,
+          now,
+        });
+
+        const root = getNotesVaultRoot();
+        let writtenPath: string;
+
+        if (resolution.kind === 'resolved') {
+          const relPath = joinNotesPath(resolution.relativeDir, fileName);
+          safeVaultIpcJoin(root, relPath, true);
+          writeVaultFileAtomic(root, relPath, body);
+          persistBrainstormSuggestion(suggestionId, relPath, {
+            category: fact.type,
+            name: fact.name,
+            content: fact.description,
+          }, now);
+          writtenPath = relPath;
+        } else {
+          // Blank-mode vault: stage the file under the staging dir.
+          // The user can route it from the Brainstorm panel (same as regular facts).
+          const stagedRel = joinNotesPath(BLANK_MODE_STAGING_DIR, `${suggestionId}__${fileName}`);
+          safeVaultIpcJoin(root, stagedRel, true);
+          writeVaultFileAtomic(root, stagedRel, body);
+          writtenPath = stagedRel;
+        }
+
+        return { status: 'ok' as const, path: writtenPath, content: fact.description };
+      } catch (err: unknown) {
+        genError = (err as Error).message ?? 'unknown';
+        throw err;
+      } finally {
+        try {
+          insertGenerationLog({
+            id: crypto.randomUUID(),
+            agent: 'brainstorm',
+            model,
+            endpoint: 'messages.create',
+            request_id: crypto.randomUUID(),
+            tokens_in: tokensIn,
+            tokens_out: tokensOut,
+            latency_ms: Date.now() - startedAt,
+            error: genError,
+            created_at: now,
+            payload_digest: crypto
+              .createHash('sha256')
+              .update(payload.name)
+              .digest('hex'),
+          });
+        } catch { /* non-fatal — generation log must not block the enrich response */ }
+      }
+    }),
+  );
+}
+
 // ─── Writing Assistant streaming handler ───
 // Registered separately so we can push chunk events to the renderer mid-response.
 function registerWritingAssistantHandler() {
@@ -5127,6 +5249,7 @@ app.whenReady().then(async () => {
   });
   registerAgentCancelHandlers();
   registerBrainstormHandler();
+  registerBrainstormEnrichHandler();
   registerWritingAssistantHandler();
   registerAgentPersonaHandlers();
   registerVaultAgentHandlers();
