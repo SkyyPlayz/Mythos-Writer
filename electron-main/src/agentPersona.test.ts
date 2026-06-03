@@ -233,7 +233,7 @@ describe('resetPersonaFile containment guard (§6)', () => {
 
     expect(() => {
       resetPersonaFile(userData, '../secret' as AgentPersonaName, 'AGENTS');
-    }).toThrow(/escapes agent-personas/);
+    }).toThrow('Path escape detected');
 
     expect(fs.existsSync(victimFile)).toBe(true);
   });
@@ -246,6 +246,51 @@ describe('resetPersonaFile containment guard (§6)', () => {
     resetPersonaFile(tmpDir, 'writingAssistant', 'AGENTS');
 
     expect(fs.existsSync(overridePath)).toBe(false);
+  });
+});
+
+// ─── §6b  resolvedInsideRoot + getPersonaOverridePath containment ─────────────
+// Regression for SEC-5: path traversal via agentName or key supplied over IPC.
+
+describe('resolvedInsideRoot (§6b)', () => {
+  it('returns the resolved absolute path for valid inputs', () => {
+    const result = resolvedInsideRoot(tmpDir, 'writingAssistant', 'SOUL.md');
+    expect(result).toBe(path.resolve(tmpDir, 'writingAssistant', 'SOUL.md'));
+  });
+
+  it('throws when ../.. in first segment escapes root', () => {
+    expect(() => resolvedInsideRoot(tmpDir, '../../etc', 'AGENTS.md')).toThrow('Path escape detected');
+  });
+
+  it('throws when traversal is in a later segment', () => {
+    expect(() => resolvedInsideRoot(tmpDir, 'writingAssistant', '../../../etc/passwd')).toThrow(
+      'Path escape detected',
+    );
+  });
+
+  it('does not throw for all real persona combos', () => {
+    const personasRoot = path.join(tmpDir, 'agent-personas');
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => resolvedInsideRoot(personasRoot, agent, `${key}.md`)).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('getPersonaOverridePath containment (§6b)', () => {
+  it('throws when agentName contains path traversal', () => {
+    expect(() =>
+      getPersonaOverridePath(tmpDir, '../../etc' as AgentPersonaName, 'AGENTS'),
+    ).toThrow('Path escape detected');
+  });
+
+  it('does not throw for valid agentName and key', () => {
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => getPersonaOverridePath(tmpDir, agent, key)).not.toThrow();
+      }
+    }
   });
 });
 
