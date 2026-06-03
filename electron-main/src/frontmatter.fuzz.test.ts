@@ -14,7 +14,7 @@
 //   • Null/undefined values are silently omitted during serialization.
 //   • Leading/trailing whitespace is trimmed on both keys and values.
 import { describe, it, expect } from 'vitest';
-import { parseFrontmatter, serializeFrontmatter } from './vault';
+import { parseFrontmatter, serializeFrontmatter } from './vault.js';
 
 // Build a raw frontmatter string from a key-value body (one or more "key: value" lines).
 function raw(body: string, prose = ''): string {
@@ -326,7 +326,7 @@ describe('property order preservation — SKY-414 regression', () => {
   it('serialized key order matches Object.entries insertion order', () => {
     const fm = { id: '1', title: 'Scene', chapterId: 'ch-1', order: 0, tags: ['a'] };
     const out = serializeFrontmatter(fm, '');
-    const lines = out.split('\n').filter((l) => l !== '---' && l !== '');
+    const lines = out.split('\n').filter((l: string) => l !== '---' && l !== '');
     expect(lines[0]).toMatch(/^id:/);
     expect(lines[1]).toMatch(/^title:/);
     expect(lines[2]).toMatch(/^chapterId:/);
