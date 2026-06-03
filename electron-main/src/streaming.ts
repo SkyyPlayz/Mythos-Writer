@@ -60,9 +60,14 @@ export function categorizeStreamError(err: unknown): StreamErrorCategory {
   }
   // Non-HTTP errors: classify by name / message patterns
   const name = (err as Error)?.name;
-  if (name === 'AbortError') return STREAM_ERROR_CATEGORIES.NETWORK;
-  if (name === 'TypeError' || name === 'SyntaxError') return STREAM_ERROR_CATEGORIES.INVALID_REQUEST;
   const msg = (err as Error)?.message?.toLowerCase() ?? '';
+  if (name === 'AbortError') return STREAM_ERROR_CATEGORIES.NETWORK;
+  // fetch() connection failure (local server not running) throws TypeError('fetch failed') —
+  // must check message before the generic TypeError → INVALID_REQUEST branch.
+  if (name === 'TypeError' && (msg.includes('fetch failed') || msg.includes('econnrefused'))) {
+    return STREAM_ERROR_CATEGORIES.NETWORK;
+  }
+  if (name === 'TypeError' || name === 'SyntaxError') return STREAM_ERROR_CATEGORIES.INVALID_REQUEST;
   if (msg.includes('rate') || msg.includes('limit') || msg.includes('429')) return STREAM_ERROR_CATEGORIES.RATE_LIMITED;
   if (msg.includes('auth') || msg.includes('key') || msg.includes('permission')) return STREAM_ERROR_CATEGORIES.AUTH;
   if (msg.includes('network') || msg.includes('connect') || msg.includes('timeout') || msg.includes('dns')) return STREAM_ERROR_CATEGORIES.NETWORK;
