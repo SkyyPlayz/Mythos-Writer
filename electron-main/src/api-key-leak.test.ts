@@ -251,6 +251,151 @@ describe('app-settings.json on-disk payload — no plaintext keys (MYT-777)', ()
   });
 });
 
+// ── Per-agent provider.apiKey masking (SKY-738) ───────────────────────────
+
+const FAKE_BRAINSTORM_KEY = 'sk-ant-test-BrainstormKeyForTestingOnly0000000000000000';
+const FAKE_WRITING_KEY = 'sk-ant-test-WritingKeyForTestingOnly00000000000000000';
+const FAKE_ARCHIVE_KEY = 'sk-ant-test-ArchiveKeyForTestingOnly000000000000000000';
+
+function agentKeysFixture(): AppSettings {
+  return settingsFixture({
+    agents: {
+      writingAssistant: {
+        enabled: false,
+        model: 'claude',
+        scanIntervalSeconds: 0,
+        autoApply: false,
+        confidenceThreshold: 0.8,
+        maxTokensPerHour: 0,
+        maxSuggestionsPerHour: 0,
+        heartbeatIntervalMinutes: 0,
+        maxTokensPerDay: 0,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_WRITING_KEY },
+      },
+      brainstorm: {
+        enabled: false,
+        model: 'claude',
+        autoApply: false,
+        confidenceThreshold: 0.8,
+        maxTokensPerHour: 0,
+        maxSuggestionsPerHour: 0,
+        heartbeatIntervalMinutes: 0,
+        maxTokensPerDay: 0,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_BRAINSTORM_KEY },
+      },
+      archive: {
+        enabled: false,
+        model: 'claude',
+        continuityCheckIntervalSeconds: 0,
+        autoApply: false,
+        confidenceThreshold: 0.8,
+        maxTokensPerHour: 0,
+        maxSuggestionsPerHour: 0,
+        heartbeatIntervalMinutes: 0,
+        maxTokensPerDay: 0,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_ARCHIVE_KEY },
+      },
+    },
+  });
+}
+
+describe('maskSettingsForRenderer — per-agent provider.apiKey fields (SKY-738)', () => {
+  it('masks brainstorm provider.apiKey before returning to the renderer', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    expect(masked.agents.brainstorm.provider?.apiKey).not.toBe(FAKE_BRAINSTORM_KEY);
+    expect(masked.agents.brainstorm.provider?.apiKey).toMatch(MASKED_PATTERN);
+  });
+
+  it('masks writingAssistant provider.apiKey before returning to the renderer', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    expect(masked.agents.writingAssistant.provider?.apiKey).not.toBe(FAKE_WRITING_KEY);
+    expect(masked.agents.writingAssistant.provider?.apiKey).toMatch(MASKED_PATTERN);
+  });
+
+  it('masks archive provider.apiKey before returning to the renderer', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    expect(masked.agents.archive.provider?.apiKey).not.toBe(FAKE_ARCHIVE_KEY);
+    expect(masked.agents.archive.provider?.apiKey).toMatch(MASKED_PATTERN);
+  });
+
+  it('full JSON serialization contains no raw per-agent key material', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    const json = JSON.stringify(masked);
+    expect(json).not.toContain(FAKE_BRAINSTORM_KEY);
+    expect(json).not.toContain(FAKE_WRITING_KEY);
+    expect(json).not.toContain(FAKE_ARCHIVE_KEY);
+  });
+
+  it('does not mutate the source agents object', () => {
+    const original = agentKeysFixture();
+    maskSettingsForRenderer(original);
+    expect(original.agents.brainstorm.provider?.apiKey).toBe(FAKE_BRAINSTORM_KEY);
+    expect(original.agents.writingAssistant.provider?.apiKey).toBe(FAKE_WRITING_KEY);
+    expect(original.agents.archive.provider?.apiKey).toBe(FAKE_ARCHIVE_KEY);
+  });
+
+  it('leaves agent provider unchanged when no apiKey is configured', () => {
+    const base = settingsFixture({
+      agents: {
+        writingAssistant: {
+          enabled: false, model: 'claude', scanIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+          provider: { kind: 'ollama', model: 'llama3.2' },
+        },
+        brainstorm: {
+          enabled: false, model: 'claude',
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+        archive: {
+          enabled: false, model: 'claude', continuityCheckIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+      },
+    });
+    const masked = maskSettingsForRenderer(base);
+    expect(masked.agents.writingAssistant.provider?.apiKey).toBeUndefined();
+    expect(masked.agents.brainstorm.provider).toBeUndefined();
+    expect(masked.agents.archive.provider).toBeUndefined();
+  });
+});
+
+describe('reconcileSettingsFromRenderer — per-agent provider keys (SKY-738)', () => {
+  it('restores all three stored per-agent keys when the renderer echoes the masked previews back', () => {
+    const stored = agentKeysFixture();
+    const incoming: AppSettings = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      agents: {
+        writingAssistant: { ...stored.agents.writingAssistant, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: maskApiKey(FAKE_WRITING_KEY) } },
+        brainstorm: { ...stored.agents.brainstorm, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: maskApiKey(FAKE_BRAINSTORM_KEY) } },
+        archive: { ...stored.agents.archive, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: maskApiKey(FAKE_ARCHIVE_KEY) } },
+      },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.agents.writingAssistant.provider?.apiKey).toBe(FAKE_WRITING_KEY);
+    expect(reconciled.agents.brainstorm.provider?.apiKey).toBe(FAKE_BRAINSTORM_KEY);
+    expect(reconciled.agents.archive.provider?.apiKey).toBe(FAKE_ARCHIVE_KEY);
+  });
+
+  it('saves a freshly entered per-agent key verbatim without restoring the stored key', () => {
+    const stored = agentKeysFixture();
+    const newKey = 'sk-ant-test-NewBrainstormKeyEntered0000000000000000000';
+    const incoming: AppSettings = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      agents: {
+        ...stored.agents,
+        brainstorm: { ...stored.agents.brainstorm, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: newKey } },
+      },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.agents.brainstorm.provider?.apiKey).toBe(newKey);
+  });
+});
+
 // ── Streaming error — Anthropic SDK error must not echo the key ───────────
 
 describe('streaming handler error path — Anthropic error body', () => {
