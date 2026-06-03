@@ -786,39 +786,49 @@ describe('SettingsPanel', () => {
     expect(archiveSelect.disabled).toBe(false);
   });
 
-  it('per-agent model selectors are disabled when a non-Anthropic provider is selected', async () => {
+  // SKY-686: All providers now supported. Non-Anthropic providers use text inputs
+  // instead of disabled dropdowns so users can enter model names freely (e.g. "llama3-70b").
+  it('shows text inputs for per-agent model when a non-Anthropic provider is selected', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
 
-    const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
-    const brainstormSelect = screen.getByLabelText(/brainstorm agent model/i) as HTMLSelectElement;
-    const archiveSelect = screen.getByLabelText(/archive agent model/i) as HTMLSelectElement;
-    expect(waSelect.disabled).toBe(true);
-    expect(brainstormSelect.disabled).toBe(true);
-    expect(archiveSelect.disabled).toBe(true);
+    const waModel = screen.getByLabelText(/writing assistant model/i);
+    const brainstormModel = screen.getByLabelText(/brainstorm agent model/i);
+    const archiveModel = screen.getByLabelText(/archive agent model/i);
+    expect(waModel.tagName).toBe('INPUT');
+    expect((waModel as HTMLInputElement).type).toBe('text');
+    expect(brainstormModel.tagName).toBe('INPUT');
+    expect(archiveModel.tagName).toBe('INPUT');
+    // All inputs are editable, not disabled
+    expect((waModel as HTMLInputElement).disabled).toBe(false);
+    expect((brainstormModel as HTMLInputElement).disabled).toBe(false);
+    expect((archiveModel as HTMLInputElement).disabled).toBe(false);
   });
 
-  it('per-agent model selectors are disabled for ollama provider', async () => {
+  it('shows text input for per-agent model with ollama provider', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
 
-    const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
-    expect(waSelect.disabled).toBe(true);
+    const waModel = screen.getByLabelText(/writing assistant model/i);
+    expect(waModel.tagName).toBe('INPUT');
+    expect((waModel as HTMLInputElement).type).toBe('text');
+    expect((waModel as HTMLInputElement).disabled).toBe(false);
   });
 
-  it('shows adapter hint text when a non-Anthropic provider is selected', async () => {
+  it('does not show adapter hint text for any provider (all providers now supported)', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
 
-    expect(screen.getByTestId('wa-model-adapter-hint')).toBeInTheDocument();
-    expect(screen.getByTestId('brainstorm-model-adapter-hint')).toBeInTheDocument();
-    expect(screen.getByTestId('archive-model-adapter-hint')).toBeInTheDocument();
+    // SKY-686: adapter hints removed — all providers support per-agent model config
+    expect(screen.queryByTestId('wa-model-adapter-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brainstorm-model-adapter-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-model-adapter-hint')).not.toBeInTheDocument();
   });
 
   it('does not show adapter hint when Anthropic provider is active', async () => {
@@ -830,14 +840,16 @@ describe('SettingsPanel', () => {
     expect(screen.queryByTestId('archive-model-adapter-hint')).not.toBeInTheDocument();
   });
 
-  it('re-enables per-agent model selectors after switching back to Anthropic', async () => {
+  it('switches back to model dropdowns when Anthropic provider is re-selected', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
+    // Switch to non-Anthropic: text input
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
-    expect((screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByLabelText(/writing assistant model/i).tagName).toBe('INPUT');
 
+    // Switch back to Anthropic: dropdown
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'anthropic' } });
-    expect((screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement).disabled).toBe(false);
+    expect(screen.getByLabelText(/writing assistant model/i).tagName).toBe('SELECT');
   });
 });

@@ -252,20 +252,24 @@ interface LiquidNeonPrefs {
 }
 
 
+/** Provider configuration shared by global and per-agent overrides (SKY-683). */
+interface ProviderConfig {
+  kind: 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+  apiKey?: string;
+  baseUrl?: string;
+  model: string;
+}
+
 interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
-  provider?: {
-    kind: 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
-    apiKey?: string;
-    baseUrl?: string;
-    model: string;
-  };
+  provider?: ProviderConfig;
   agents: {
-    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings;
-    brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
+    /** Per-agent `provider` overrides the global provider for that agent (SKY-683). */
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
+    brainstorm: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
   };
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */

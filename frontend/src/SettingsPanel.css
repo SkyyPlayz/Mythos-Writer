@@ -1097,6 +1097,47 @@
   margin-left: 8px;
 }
 
+/* ── SKY-686: per-agent provider override UI ── */
+
+.settings-agent-provider-toggle {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-agent-provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.settings-hint-warn {
+  color: var(--state-warning, #f0a040);
+  font-size: 0.75rem;
+  margin: 2px 0 0;
+}
+
+/* Security warning dialog */
+.settings-security-warning {
+  border-color: var(--state-warning, #f0a040) !important;
+}
+
+.settings-security-hostname {
+  display: block;
+  font-size: 0.82rem;
+  font-family: monospace;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  color: var(--text-header);
+  word-break: break-all;
+}
+
 .settings-btn-secondary {
   background: var(--bg-hover);
   border: 1px solid var(--border-strong);

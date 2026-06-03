@@ -169,12 +169,44 @@ const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-opus-4-7', label: 'claude-opus' },
 ];
 
-/**
- * Provider kinds that have a registered adapter — mirrors electron-main/src/adapters/registry.ts.
- * Per-agent model selectors are disabled when the active provider is not in this set,
- * because MODEL_OPTIONS lists Anthropic (Claude) models that would be misleading otherwise.
- */
-const ADAPTER_REGISTERED_PROVIDERS: ReadonlySet<ProviderKind> = new Set<ProviderKind>(['anthropic']);
+type AgentName = 'writingAssistant' | 'brainstorm' | 'archive';
+
+/** Per-agent provider override state; null means "use global provider". */
+interface AgentOverrideState {
+  enabled: boolean;
+  kind: ProviderKind;
+  apiKey: string;
+  apiKeyDirty: boolean;
+  baseUrl: string;
+  model: string;
+}
+
+const DEFAULT_AGENT_OVERRIDE: AgentOverrideState = {
+  enabled: false,
+  kind: 'anthropic',
+  apiKey: '',
+  apiKeyDirty: false,
+  baseUrl: '',
+  model: '',
+};
+
+const DEFAULT_BASE_URLS: Record<ProviderKind, string> = {
+  anthropic: '',
+  openai: 'https://api.openai.com/v1',
+  ollama: 'http://127.0.0.1:11434/v1',
+  lmstudio: 'http://127.0.0.1:1234/v1',
+  custom: '',
+};
+
+/** Returns true when a base URL points to localhost / 127.x.x.x / [::1]. */
+function isLocalhostUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+  } catch {
+    return false;
+  }
+}
 
 const ALL_CATEGORIES_ENABLED: Record<SuggestionCategory, boolean> = {
   punctuation: true,
@@ -303,6 +335,209 @@ function ColorPicker({
   );
 }
 
+/** Security warning dialog shown once when user configures a non-localhost custom endpoint. */
+function SecurityWarningDialog({
+  url,
+  onConfirm,
+  onCancel,
+}: {
+  url: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  let hostname = url;
+  try { hostname = new URL(url).hostname; } catch { /* use full url */ }
+  return (
+    <div className="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="security-warn-title">
+      <div className="settings-panel settings-security-warning" style={{ maxWidth: 420 }}>
+        <h3 id="security-warn-title" className="settings-section-title">⚠ Remote Endpoint Warning</h3>
+        <p className="settings-hint" style={{ marginBottom: 8 }}>
+          This endpoint is not on your local network.
+        </p>
+        <p className="settings-hint" style={{ marginBottom: 8 }}>
+          When you use it, Mythos Writer will send your text to:
+        </p>
+        <code className="settings-security-hostname">{hostname}</code>
+        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 12 }}>
+          We cannot inspect or encrypt this traffic before it leaves your device.
+          Proceed only if you own or fully trust this endpoint.
+        </p>
+        <div className="settings-action-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="settings-btn" onClick={onCancel}>Cancel</button>
+          <button type="button" className="settings-btn settings-btn-danger" onClick={onConfirm}>
+            I understand, continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Per-agent provider override section, shown inside each agent card. */
+function AgentProviderSection({
+  agentName,
+  idPrefix,
+  globalProviderKind,
+  override,
+  savedApiKey,
+  testStatus,
+  testMsg,
+  onChange,
+  onTest,
+}: {
+  agentName: AgentName;
+  idPrefix: string;
+  globalProviderKind: ProviderKind;
+  override: AgentOverrideState;
+  savedApiKey?: string;
+  testStatus: TestConnectionStatus;
+  testMsg: string;
+  onChange: <K extends keyof AgentOverrideState>(field: K, value: AgentOverrideState[K]) => void;
+  onTest: () => void;
+}) {
+  const activeKind = override.enabled ? override.kind : globalProviderKind;
+  const activeDef = PROVIDER_OPTIONS.find((p) => p.value === activeKind)!;
+  const overrideDef = PROVIDER_OPTIONS.find((p) => p.value === override.kind)!;
+
+  return (
+    <>
+      {/* Per-agent model selector (uses global provider when override is off) */}
+      {!override.enabled && (
+        <p className="settings-hint" style={{ marginTop: 2, marginBottom: 2 }}>
+          Using global provider ({activeDef.label}). Defaults from provider settings above.
+        </p>
+      )}
+
+      {/* "Use different provider" toggle */}
+      <div className="settings-field settings-field-inline settings-agent-provider-toggle">
+        <label className="settings-toggle" htmlFor={`${idPrefix}-provider-toggle`}>
+          <input
+            id={`${idPrefix}-provider-toggle`}
+            type="checkbox"
+            aria-label={`Use a different provider for ${agentName}`}
+            checked={override.enabled}
+            onChange={(e) => onChange('enabled', e.target.checked)}
+          />
+          <span className="settings-toggle-track" />
+        </label>
+        <span className="settings-label">Use a different provider for this agent</span>
+      </div>
+
+      {override.enabled && (
+        <div className="settings-agent-provider-form">
+          {/* Provider kind selector */}
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor={`${idPrefix}-provider-kind`}>Provider</label>
+            <select
+              id={`${idPrefix}-provider-kind`}
+              className="settings-input settings-select settings-input-sm"
+              value={override.kind}
+              aria-label={`Provider for ${agentName}`}
+              onChange={(e) => {
+                const newKind = e.target.value as ProviderKind;
+                onChange('kind', newKind);
+                if (DEFAULT_BASE_URLS[newKind]) onChange('baseUrl', DEFAULT_BASE_URLS[newKind]);
+              }}
+            >
+              {PROVIDER_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* API Key (anthropic / openai / custom) */}
+          {overrideDef.needsKey && (
+            <div className="settings-field settings-field-inline">
+              <label className="settings-label" htmlFor={`${idPrefix}-api-key`}>API Key</label>
+              <input
+                id={`${idPrefix}-api-key`}
+                className="settings-input settings-input-sm"
+                type="password"
+                value={override.apiKey}
+                placeholder={savedApiKey ? 'Key configured — enter new key to replace' : 'Paste API key…'}
+                aria-label={`API key for ${agentName}`}
+                onChange={(e) => { onChange('apiKey', e.target.value); onChange('apiKeyDirty', true); }}
+              />
+              {!override.apiKeyDirty && savedApiKey && (
+                <p className="settings-hint">Key is already configured.</p>
+              )}
+            </div>
+          )}
+
+          {/* Base URL (ollama / lmstudio / custom) */}
+          {overrideDef.needsUrl && (
+            <div className="settings-field settings-field-inline">
+              <label className="settings-label" htmlFor={`${idPrefix}-base-url`}>Base URL</label>
+              <input
+                id={`${idPrefix}-base-url`}
+                className="settings-input settings-input-sm"
+                type="url"
+                value={override.baseUrl}
+                placeholder={DEFAULT_BASE_URLS[override.kind] || 'https://…/v1'}
+                aria-label={`Base URL for ${agentName}`}
+                onChange={(e) => onChange('baseUrl', e.target.value)}
+              />
+              {override.baseUrl && !isLocalhostUrl(override.baseUrl) && (
+                <p className="settings-hint settings-hint-warn" role="alert">
+                  ⚠ This endpoint is not on localhost — your text will be sent to a remote server. Only use endpoints you own or fully trust.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Model */}
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor={`${idPrefix}-model`}>Model</label>
+            {override.kind === 'anthropic' ? (
+              <select
+                id={`${idPrefix}-model`}
+                className="settings-input settings-select settings-input-sm"
+                value={MODEL_OPTIONS.some((o) => o.value === override.model) ? override.model : ''}
+                aria-label={`Model for ${agentName}`}
+                onChange={(e) => onChange('model', e.target.value)}
+              >
+                {MODEL_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id={`${idPrefix}-model`}
+                className="settings-input settings-input-sm"
+                type="text"
+                value={override.model}
+                placeholder="e.g. llama3-70b, gpt-4o-mini"
+                aria-label={`Model for ${agentName}`}
+                maxLength={128}
+                onChange={(e) => onChange('model', e.target.value)}
+              />
+            )}
+          </div>
+
+          {/* Test connection */}
+          <div className="settings-field settings-field-inline">
+            <button
+              type="button"
+              className="settings-btn"
+              disabled={testStatus === 'testing'}
+              aria-label={`Test provider connection for ${agentName}`}
+              onClick={onTest}
+            >
+              {testStatus === 'testing' ? 'Testing…' : 'Test connection'}
+            </button>
+            {testStatus === 'ok' && (
+              <span className="settings-test-ok" role="status">{testMsg}</span>
+            )}
+            {testStatus === 'error' && (
+              <span className="settings-test-error" role="alert">{testMsg}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 interface Props {
   onClose: () => void;
   onSaved?: (settings: AppSettings) => void;
@@ -371,6 +606,21 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [testConnectionStatus, setTestConnectionStatus] = useState<TestConnectionStatus>('idle');
   const [testConnectionMsg, setTestConnectionMsg] = useState('');
 
+  // Per-agent provider overrides (SKY-686)
+  const [agentOverrides, setAgentOverrides] = useState<Record<AgentName, AgentOverrideState>>({
+    writingAssistant: { ...DEFAULT_AGENT_OVERRIDE },
+    brainstorm: { ...DEFAULT_AGENT_OVERRIDE },
+    archive: { ...DEFAULT_AGENT_OVERRIDE },
+  });
+  const [agentTestStatus, setAgentTestStatus] = useState<Record<AgentName, TestConnectionStatus>>({
+    writingAssistant: 'idle', brainstorm: 'idle', archive: 'idle',
+  });
+  const [agentTestMsg, setAgentTestMsg] = useState<Record<AgentName, string>>({
+    writingAssistant: '', brainstorm: '', archive: '',
+  });
+  // Security warning: non-localhost endpoint confirmation
+  const [remoteWarning, setRemoteWarning] = useState<{ agent: AgentName | 'global' | null; url: string; onConfirm: () => void } | null>(null);
+
   // Telemetry state (MYT-344 / MYT-779)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
 
@@ -398,6 +648,24 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         setProviderBaseUrl(s.provider.baseUrl ?? '');
         setProviderModel(s.provider.model ?? '');
       }
+      // Load per-agent provider overrides
+      const loadAgentOverride = (agentCfg: { provider?: ProviderConfig }): AgentOverrideState => {
+        const p = agentCfg.provider;
+        if (!p) return { ...DEFAULT_AGENT_OVERRIDE };
+        return {
+          enabled: true,
+          kind: p.kind as ProviderKind,
+          apiKey: '',
+          apiKeyDirty: false,
+          baseUrl: p.baseUrl ?? '',
+          model: p.model,
+        };
+      };
+      setAgentOverrides({
+        writingAssistant: loadAgentOverride(s.agents.writingAssistant),
+        brainstorm: loadAgentOverride(s.agents.brainstorm),
+        archive: loadAgentOverride(s.agents.archive),
+      });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
       setLoading(false);
     }).catch(() => {
@@ -472,10 +740,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
 
-  // True when the active provider has a registered adapter that supports Anthropic model IDs.
-  // When false, per-agent model selectors are disabled to prevent misleading Claude-model choices.
-  const agentModelSelectorsEnabled = ADAPTER_REGISTERED_PROVIDERS.has(providerKind);
-
   const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(
     agent: A,
     field: K,
@@ -508,6 +772,18 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setSavedOk(false);
   }, []);
 
+  const buildAgentProviderConfig = useCallback((agentName: AgentName): ProviderConfig | undefined => {
+    const ov = agentOverrides[agentName];
+    if (!ov.enabled) return undefined;
+    const def = PROVIDER_OPTIONS.find((p) => p.value === ov.kind)!;
+    return {
+      kind: ov.kind,
+      model: ov.model,
+      ...(def.needsKey ? { apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName].provider?.apiKey ?? '') } : {}),
+      ...(def.needsUrl && ov.baseUrl ? { baseUrl: ov.baseUrl } : {}),
+    };
+  }, [agentOverrides, settings.agents]);
+
   const handleSave = useCallback(async () => {
     if (apiKeyError) return;
     setSaving(true);
@@ -527,6 +803,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         provider,
         liquidNeon: lg,
         telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
+        agents: {
+          ...settings.agents,
+          writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
+          brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
+          archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
+        },
       };
       await window.api.settingsSet(payload);
       setSavedOk(true);
@@ -537,7 +819,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved, buildAgentProviderConfig]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -654,7 +936,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setTestConnectionStatus('testing');
     setTestConnectionMsg('');
     try {
-      const result = await (window.api as unknown as Record<string, (a: unknown) => Promise<{ ok: boolean; error?: string }>>).testProviderConnection?.({
+      const result = await window.api.settingsTestConnection({
         kind: providerKind,
         apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? ''),
         baseUrl: providerBaseUrl || undefined,
@@ -672,6 +954,42 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       setTestConnectionMsg(e instanceof Error ? e.message : 'Connection failed');
     }
   }, [providerKind, providerApiKey, providerApiKeyDirty, providerBaseUrl, providerModel, settings.provider?.apiKey]);
+
+  const handleAgentTestConnection = useCallback(async (agentName: AgentName) => {
+    setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'testing' }));
+    setAgentTestMsg((prev) => ({ ...prev, [agentName]: '' }));
+    const ov = agentOverrides[agentName];
+    try {
+      const result = await window.api.settingsTestConnection({
+        kind: ov.kind,
+        apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName].provider?.apiKey ?? ''),
+        baseUrl: ov.baseUrl || undefined,
+        model: ov.model,
+      });
+      if (result?.ok) {
+        setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'ok' }));
+        setAgentTestMsg((prev) => ({ ...prev, [agentName]: 'Connection successful' }));
+      } else {
+        setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'error' }));
+        setAgentTestMsg((prev) => ({ ...prev, [agentName]: result?.error ?? 'Connection failed' }));
+      }
+    } catch (e) {
+      setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'error' }));
+      setAgentTestMsg((prev) => ({ ...prev, [agentName]: e instanceof Error ? e.message : 'Connection failed' }));
+    }
+  }, [agentOverrides, settings.agents]);
+
+  const setAgentOverride = useCallback(<K extends keyof AgentOverrideState>(
+    agentName: AgentName,
+    field: K,
+    value: AgentOverrideState[K],
+  ) => {
+    setAgentOverrides((prev) => ({
+      ...prev,
+      [agentName]: { ...prev[agentName], [field]: value },
+    }));
+    setSavedOk(false);
+  }, []);
 
   // ── Liquid Neon helpers ──────────────────────────────────────────────────
 
@@ -767,6 +1085,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const effectiveBg = lg.bgBaseColor ?? LG_DEFAULTS.bgBaseColor!;
 
   return (
+    <>
     <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
       <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
@@ -1004,23 +1323,45 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </label>
               </div>
               <div className="settings-agent-fields">
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="wa-model">Model</label>
-                  <select
-                    id="wa-model"
-                    className="settings-input settings-select settings-input-sm"
-                    value={settings.agents.writingAssistant.model}
-                    aria-label="Writing Assistant model"
-                    disabled={!agentModelSelectorsEnabled}
-                    title={!agentModelSelectorsEnabled ? 'Per-agent model overrides require the Anthropic provider.' : undefined}
-                    onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
-                  >
-                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  {!agentModelSelectorsEnabled && (
-                    <p className="settings-hint" data-testid="wa-model-adapter-hint">Per-agent model overrides require the Anthropic provider.</p>
-                  )}
-                </div>
+                {/* Model selector for global provider override */}
+                {!agentOverrides.writingAssistant.enabled && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="wa-model">Model</label>
+                    {providerKind === 'anthropic' ? (
+                      <select
+                        id="wa-model"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.writingAssistant.model}
+                        aria-label="Writing Assistant model"
+                        onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
+                      >
+                        {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id="wa-model"
+                        className="settings-input settings-input-sm"
+                        type="text"
+                        value={settings.agents.writingAssistant.model}
+                        placeholder="model name (e.g. llama3-70b)"
+                        aria-label="Writing Assistant model"
+                        maxLength={128}
+                        onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+                <AgentProviderSection
+                  agentName="writingAssistant"
+                  idPrefix="wa"
+                  globalProviderKind={providerKind}
+                  override={agentOverrides.writingAssistant}
+                  savedApiKey={settings.agents.writingAssistant.provider?.apiKey}
+                  testStatus={agentTestStatus.writingAssistant}
+                  testMsg={agentTestMsg.writingAssistant}
+                  onChange={(field, value) => setAgentOverride('writingAssistant', field, value)}
+                  onTest={() => handleAgentTestConnection('writingAssistant')}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-interval">Scan interval (s)</label>
                   <input
@@ -1156,23 +1497,44 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </label>
               </div>
               <div className="settings-agent-fields">
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="brainstorm-model">Model</label>
-                  <select
-                    id="brainstorm-model"
-                    className="settings-input settings-select settings-input-sm"
-                    value={settings.agents.brainstorm.model}
-                    aria-label="Brainstorm Agent model"
-                    disabled={!agentModelSelectorsEnabled}
-                    title={!agentModelSelectorsEnabled ? 'Per-agent model overrides require the Anthropic provider.' : undefined}
-                    onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
-                  >
-                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  {!agentModelSelectorsEnabled && (
-                    <p className="settings-hint" data-testid="brainstorm-model-adapter-hint">Per-agent model overrides require the Anthropic provider.</p>
-                  )}
-                </div>
+                {!agentOverrides.brainstorm.enabled && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="brainstorm-model">Model</label>
+                    {providerKind === 'anthropic' ? (
+                      <select
+                        id="brainstorm-model"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.brainstorm.model}
+                        aria-label="Brainstorm Agent model"
+                        onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
+                      >
+                        {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id="brainstorm-model"
+                        className="settings-input settings-input-sm"
+                        type="text"
+                        value={settings.agents.brainstorm.model}
+                        placeholder="model name (e.g. llama3-70b)"
+                        aria-label="Brainstorm Agent model"
+                        maxLength={128}
+                        onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+                <AgentProviderSection
+                  agentName="brainstorm"
+                  idPrefix="brainstorm"
+                  globalProviderKind={providerKind}
+                  override={agentOverrides.brainstorm}
+                  savedApiKey={settings.agents.brainstorm.provider?.apiKey}
+                  testStatus={agentTestStatus.brainstorm}
+                  testMsg={agentTestMsg.brainstorm}
+                  onChange={(field, value) => setAgentOverride('brainstorm', field, value)}
+                  onTest={() => handleAgentTestConnection('brainstorm')}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-heartbeat">Heartbeat interval (min)</label>
                   <input
@@ -1276,23 +1638,44 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </label>
               </div>
               <div className="settings-agent-fields">
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="archive-model">Model</label>
-                  <select
-                    id="archive-model"
-                    className="settings-input settings-select settings-input-sm"
-                    value={settings.agents.archive.model}
-                    aria-label="Archive Agent model"
-                    disabled={!agentModelSelectorsEnabled}
-                    title={!agentModelSelectorsEnabled ? 'Per-agent model overrides require the Anthropic provider.' : undefined}
-                    onChange={(e) => setAgentField('archive', 'model', e.target.value)}
-                  >
-                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  {!agentModelSelectorsEnabled && (
-                    <p className="settings-hint" data-testid="archive-model-adapter-hint">Per-agent model overrides require the Anthropic provider.</p>
-                  )}
-                </div>
+                {!agentOverrides.archive.enabled && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="archive-model">Model</label>
+                    {providerKind === 'anthropic' ? (
+                      <select
+                        id="archive-model"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.archive.model}
+                        aria-label="Archive Agent model"
+                        onChange={(e) => setAgentField('archive', 'model', e.target.value)}
+                      >
+                        {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id="archive-model"
+                        className="settings-input settings-input-sm"
+                        type="text"
+                        value={settings.agents.archive.model}
+                        placeholder="model name (e.g. llama3-70b)"
+                        aria-label="Archive Agent model"
+                        maxLength={128}
+                        onChange={(e) => setAgentField('archive', 'model', e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+                <AgentProviderSection
+                  agentName="archive"
+                  idPrefix="archive"
+                  globalProviderKind={providerKind}
+                  override={agentOverrides.archive}
+                  savedApiKey={settings.agents.archive.provider?.apiKey}
+                  testStatus={agentTestStatus.archive}
+                  testMsg={agentTestMsg.archive}
+                  onChange={(field, value) => setAgentOverride('archive', field, value)}
+                  onTest={() => handleAgentTestConnection('archive')}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-interval">Continuity check interval (s)</label>
                   <input
@@ -2444,6 +2827,14 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         </div>
       )}
     </div>
+    {remoteWarning && (
+      <SecurityWarningDialog
+        url={remoteWarning.url}
+        onConfirm={() => { remoteWarning.onConfirm(); setRemoteWarning(null); }}
+        onCancel={() => setRemoteWarning(null)}
+      />
+    )}
+    </>
   );
 }
 

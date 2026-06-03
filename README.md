@@ -46,6 +46,67 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 | [User Guide](docs/user-guide.md) | Vault management, scene editor, Brainstorm AI, settings |
 | [Entity System](docs/user-guide/entities.md) | Characters, locations, factions, items, events, concepts — wiki-links, connections, search |
 | [Keyboard Shortcuts](docs/keyboard-shortcuts.md) | Full shortcut reference |
+| [AI Providers Guide](#ai-providers) | Local models (Ollama, LM Studio), BYO provider, per-agent config |
+
+## AI Providers
+
+Mythos Writer ships with Anthropic Claude as the default AI provider. You can also run local models or use any OpenAI-compatible endpoint.
+
+### Quick reference
+
+| Provider | API key | Base URL required | Notes |
+|----------|---------|-------------------|-------|
+| **Anthropic** (default) | ✅ Required | — | Use your Anthropic API key at console.anthropic.com |
+| **OpenAI / compatible** | ✅ Required | ✅ Required | `https://api.openai.com/v1` or your own endpoint |
+| **Ollama** (local) | — | ✅ (auto-filled) | Default `http://127.0.0.1:11434/v1` |
+| **LM Studio** (local) | — | ✅ (auto-filled) | Default `http://127.0.0.1:1234/v1` |
+| **Custom** | Optional | ✅ Required | Any OpenAI-compatible endpoint |
+
+### Using a local model (Ollama)
+
+1. [Install Ollama](https://ollama.com) and pull a model: `ollama pull llama3`
+2. Verify Ollama is running: `curl http://127.0.0.1:11434/v1/models`
+3. In Mythos Writer: **Settings → AI Provider → Provider → Ollama (local)**
+4. The Base URL is pre-filled as `http://127.0.0.1:11434/v1`
+5. Enter the model name you pulled (e.g. `llama3`, `mistral`, `llama3-70b`)
+6. Click **Test connection** — you should see ✓ Connection successful
+7. Click **Save**
+
+All three agents (Writing Assistant, Brainstorm, Archive) will use this model by default. Each agent can also be configured with a different provider — see [Per-agent configuration](#per-agent-configuration) below.
+
+### Using LM Studio (local)
+
+1. [Install LM Studio](https://lmstudio.ai) and start the local server (default port 1234)
+2. Load a model in LM Studio's chat or server view
+3. In Mythos Writer: **Settings → AI Provider → Provider → LM Studio (local)**
+4. The Base URL is pre-filled as `http://127.0.0.1:1234/v1`
+5. Enter the model name shown in LM Studio
+6. Click **Test connection**, then **Save**
+
+### BYO provider (OpenAI-compatible endpoint)
+
+Any OpenAI Chat Completions-compatible API works, including:
+- OpenAI (`https://api.openai.com/v1`)
+- Groq (`https://api.groq.com/openai/v1`)
+- Together AI, Perplexity, Mistral AI, and others
+
+1. In Mythos Writer: **Settings → AI Provider → Provider → OpenAI** (or **Custom endpoint**)
+2. Paste your API key
+3. For custom/non-OpenAI endpoints, enter the Base URL
+4. Enter the model name (e.g. `gpt-4o-mini`, `mixtral-8x7b-32768`)
+5. Click **Test connection**, then **Save**
+
+> **Security note:** When using a remote endpoint (non-localhost), your text is sent to that server. Only use endpoints you own or fully trust. Localhost endpoints (Ollama, LM Studio) never send data over the network.
+
+### Per-agent configuration
+
+Each agent (Writing Assistant, Brainstorm, Archive) can use a different model or provider:
+
+1. In **Settings → Agents**, expand any agent card
+2. For the **global model** (same provider, different model): change the Model field — use the dropdown for Anthropic, or type a model name for other providers (e.g. `llama3-70b`)
+3. For a **completely different provider**: toggle **Use a different provider for this agent**, then configure the provider, model, and credentials
+4. Click **Test connection** to verify the per-agent configuration
+5. **Save** — that agent will now use its own provider for all AI requests
 
 ## Contributing
 
