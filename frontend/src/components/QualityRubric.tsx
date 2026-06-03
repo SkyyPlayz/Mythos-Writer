@@ -103,8 +103,9 @@ export default function QualityRubric({ onClose }: Props) {
   const setRating = (criterionId: string, star: Rating) => {
     setRatings((prev) => {
       if (prev[criterionId] === star) {
-        const { [criterionId]: _removed, ...rest } = prev;
-        return rest as Ratings;
+        const next = { ...prev };
+        delete next[criterionId];
+        return next;
       }
       return { ...prev, [criterionId]: star };
     });

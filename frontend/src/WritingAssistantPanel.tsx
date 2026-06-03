@@ -12,6 +12,7 @@ import {
   buildPresetContext,
   loadSessionPreset,
   saveSessionPreset,
+  DEFAULT_PRESET_ID,
 } from './presets';
 import type { PresetAxes, RefinementChip } from './presets';
 
@@ -388,7 +389,23 @@ export default function WritingAssistantPanel({
           </div>
         ))}
 
-        {messages.length === 0 && !error && (
+        {messages.length === 0 && !error && presetId === DEFAULT_PRESET_ID && (
+          <div className="writing-assistant-empty wa-first-visit-tip" role="note" aria-label="Genre preset tip">
+            <span className="wa-tip-icon" aria-hidden="true">💡</span>
+            <span className="wa-tip-body">
+              <strong>Tip:</strong> Choose a genre preset to shape how suggestions sound.{' '}
+              E.g., &ldquo;Epic Fantasy&rdquo; favors morally complex scenarios.{' '}
+            </span>
+            <button
+              className="wa-tip-browse-btn"
+              onClick={() => setShowBrowser(true)}
+              type="button"
+            >
+              Show Presets
+            </button>
+          </div>
+        )}
+        {messages.length === 0 && !error && presetId !== DEFAULT_PRESET_ID && (
           <div className="writing-assistant-empty">
             Ask for writing advice — pacing, voice, clarity, what to try next.
           </div>
