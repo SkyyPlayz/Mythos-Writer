@@ -142,6 +142,7 @@ import {
   buildAgentSystemPrompt,
   loadPersonaFile,
   resetPersonaFile,
+  validatePersonaArgs,
   type AgentPersonaName,
   type PersonaKey,
 } from './agentPersona.js';
@@ -5213,14 +5214,18 @@ function registerContinuityHandler(): void {
 
 // ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
 function registerAgentPersonaHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (_event, payload: AgentPersonaReadPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (event, payload: AgentPersonaReadPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const { agentName, key } = payload;
+    validatePersonaArgs(agentName, key);
     const file = loadPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
     return { content: file.content, isCustom: file.isCustom };
   });
 
-  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (_event, payload: AgentPersonaResetPayload) => {
+  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (event, payload: AgentPersonaResetPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const { agentName, key } = payload;
+    validatePersonaArgs(agentName, key);
     resetPersonaFile(app.getPath('userData'), agentName as AgentPersonaName, key as PersonaKey);
     return { success: true };
   });

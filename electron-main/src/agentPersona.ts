@@ -18,6 +18,14 @@ export type AgentPersonaName = 'writingAssistant' | 'brainstorm';
 export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
 
 export const PERSONA_KEYS: PersonaKey[] = ['AGENTS', 'HEARTBEAT', 'SOUL', 'TOOLS'];
+export const VALID_AGENT_NAMES: AgentPersonaName[] = ['writingAssistant', 'brainstorm'];
+
+export function validatePersonaArgs(agentName: string, key: string): void {
+  const validNames: string[] = VALID_AGENT_NAMES;
+  const validKeys: string[] = PERSONA_KEYS;
+  if (!validNames.includes(agentName)) throw new Error(`Invalid agentName: ${agentName}`);
+  if (!validKeys.includes(key)) throw new Error(`Invalid key: ${key}`);
+}
 
 export interface PersonaFile {
   content: string;
@@ -257,6 +265,10 @@ export function resetPersonaFile(
   key: PersonaKey,
 ): void {
   const overridePath = getPersonaOverridePath(userDataPath, agentName, key);
+  const personasRoot = path.join(userDataPath, 'agent-personas');
+  if (!overridePath.startsWith(personasRoot + path.sep)) {
+    throw new Error(`Path escapes agent-personas: ${overridePath}`);
+  }
   if (fs.existsSync(overridePath)) {
     fs.unlinkSync(overridePath);
   }
