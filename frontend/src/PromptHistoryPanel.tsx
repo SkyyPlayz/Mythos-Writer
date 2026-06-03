@@ -197,6 +197,15 @@ export default function PromptHistoryPanel({ onClose }: Props) {
                             <span>{entry.tokens_in} in / {entry.tokens_out ?? 0} out tokens</span>
                           )}
                           <span>{entry.latency_ms} ms</span>
+                          {entry.entity_count != null && (
+                            <span>{entry.entity_count} entities</span>
+                          )}
+                          {entry.context_chars != null && (
+                            <span>{entry.context_chars.toLocaleString()} ctx chars</span>
+                          )}
+                          {entry.truncated === 1 && (
+                            <span className="phistory-truncated-badge">truncated</span>
+                          )}
                           {entry.error && <span className="phistory-detail-error">Error: {entry.error}</span>}
                         </div>
                         <section className="phistory-detail-section">

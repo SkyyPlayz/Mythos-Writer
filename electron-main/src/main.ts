@@ -146,6 +146,14 @@ import {
   type PersonaKey,
 } from './agentPersona.js';
 import {
+  buildVaultSummary,
+  truncateContext,
+  VAULT_MAX_ENTITIES,
+  WRITING_ASSISTANT_MAX_CONTEXT_CHARS,
+  BRAINSTORM_MAX_PROMPT_CHARS,
+  type VaultSummaryInputEntity,
+} from './contextGuards.js';
+import {
   openDb,
   closeDb,
   getDb,
@@ -790,7 +798,6 @@ function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js'
     case 'vault': return { content: md ? vaultToMarkdown(manifest.stories.map(toSt)) : vaultToPlaintext(manifest.stories.map(toSt)), defaultFilename: 'vault-export' };
   }
 }
-
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
@@ -4341,13 +4348,21 @@ function registerBrainstormHandler() {
 
     const systemPrompt = buildAgentSystemPrompt(app.getPath('userData'), 'brainstorm');
 
+    const { text: cappedPrompt, truncated: brainstormTruncated } = truncateContext(
+      payload.prompt,
+      BRAINSTORM_MAX_PROMPT_CHARS,
+    );
+
     const messages = [
       ...(payload.history ?? []).map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
-      { role: 'user' as const, content: payload.prompt },
+      { role: 'user' as const, content: cappedPrompt },
     ];
+
+    const brainstormContextChars =
+      messages.reduce((acc, m) => acc + m.content.length, 0) + systemPrompt.length;
 
     const requestId = crypto.randomUUID();
     const model = 'claude-haiku-4-5-20251001';
@@ -4397,7 +4412,7 @@ function registerBrainstormHandler() {
     } finally {
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
-      const promptText = payload.prompt;
+      const promptText = cappedPrompt;
       const payloadDigest = process.env.PERSIST_PROMPTS === '1'
         ? promptText
         : crypto.createHash('sha256').update(promptText).digest('hex');
@@ -4414,6 +4429,8 @@ function registerBrainstormHandler() {
           error: genError,
           created_at: new Date().toISOString(),
           payload_digest: payloadDigest,
+          context_chars: brainstormContextChars,
+          truncated: brainstormTruncated,
         });
       } catch { /* non-fatal — logging must not break agent response */ }
     }
@@ -4445,9 +4462,25 @@ function registerWritingAssistantHandler() {
     }
     const apiKey = getValidatedApiKey();
     const client = new Anthropic({ apiKey });
-    const userContent = payload.context
-      ? `Scene context:\n${payload.context}\n\nWriter's prompt: ${payload.prompt}`
+
+    // Cap scene context to prevent large manuscripts from blowing the context window.
+    // The user's typed prompt is always preserved; only the auto-injected context is trimmed.
+    let waTruncated = false;
+    let cappedContext = payload.context;
+    if (payload.context) {
+      const { text, truncated } = truncateContext(
+        payload.context,
+        WRITING_ASSISTANT_MAX_CONTEXT_CHARS,
+      );
+      cappedContext = text;
+      waTruncated = truncated;
+    }
+
+    const userContent = cappedContext
+      ? `Scene context:\n${cappedContext}\n\nWriter's prompt: ${payload.prompt}`
       : payload.prompt;
+
+    const waContextChars = userContent.length;
 
     const requestId = crypto.randomUUID();
     const model = 'claude-haiku-4-5-20251001';
@@ -4518,6 +4551,8 @@ function registerWritingAssistantHandler() {
           error: genError,
           created_at: new Date().toISOString(),
           payload_digest: payloadDigest,
+          context_chars: waContextChars,
+          truncated: waTruncated,
         });
       } catch { /* non-fatal */ }
     }
@@ -4573,21 +4608,30 @@ function registerVaultAgentHandlers() {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     reindexEntities(getVaultRoot(), manifest);
-    const entities = listEntities(getVaultRoot(), manifest, undefined);
+    const allEntities = listEntities(getVaultRoot(), manifest, undefined);
 
-    const vaultSummary = entities.length === 0
-      ? 'No vault entities found.'
-      : entities.map((e) => {
-          let prose = '';
-          try {
-            const { content } = readVaultFile(getVaultRoot(), e.path);
-            const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
-            prose = match ? match[1].trim() : content.trim();
-          } catch { /* ignore */ }
-          const facts = prose ? prose.slice(0, 400) : '';
-          const aliases = e.aliases?.length ? ` (aliases: ${e.aliases.join(', ')})` : '';
-          return `## ${e.name}${aliases}\nType: ${e.type}\n${facts}`.trim();
-        }).join('\n\n');
+    // Cap entity count before loading prose from disk (avoids unnecessary I/O for dropped entities).
+    const entityCapExceeded = allEntities.length > VAULT_MAX_ENTITIES;
+    const entitiesToInclude = entityCapExceeded ? allEntities.slice(0, VAULT_MAX_ENTITIES) : allEntities;
+
+    const summaryInputs: VaultSummaryInputEntity[] = entitiesToInclude.map((e) => {
+      let prose = '';
+      try {
+        const { content } = readVaultFile(getVaultRoot(), e.path);
+        const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+        prose = match ? match[1].trim() : content.trim();
+      } catch { /* ignore */ }
+      return { name: e.name, type: e.type, aliases: e.aliases, prose };
+    });
+
+    const {
+      summary: vaultSummary,
+      entityCount: vaultEntityCount,
+      contextChars: vaultContextChars,
+      truncated: charCapExceeded,
+    } = buildVaultSummary(summaryInputs);
+
+    const vaultTruncated = entityCapExceeded || charCapExceeded;
 
     const systemPrompt = `You are a Vault Agent for a fiction author. Your job is to check the current scene for continuity errors against stored vault facts.
 
@@ -4672,6 +4716,9 @@ Then write a short summary paragraph. If no issues are found, say so and output 
           error: vaultGenError,
           created_at: new Date().toISOString(),
           payload_digest: vaultPayloadDigest,
+          entity_count: vaultEntityCount,
+          context_chars: vaultContextChars,
+          truncated: vaultTruncated,
         });
       } catch { /* non-fatal */ }
     }

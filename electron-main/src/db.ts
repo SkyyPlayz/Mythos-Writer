@@ -75,6 +75,9 @@ export interface DbGenerationLog {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+  entity_count: number | null;
+  context_chars: number | null;
+  truncated: number | null;
 }
 
 export interface DbContinuityDriftLog {
@@ -410,6 +413,41 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 16');
   }
+
+  if (currentVersion < 17) {
+    const hasGenLog = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='generation_log'"
+    ).get();
+    if (hasGenLog) {
+      db.exec(`
+        ALTER TABLE generation_log ADD COLUMN entity_count  INTEGER;
+        ALTER TABLE generation_log ADD COLUMN context_chars INTEGER;
+        ALTER TABLE generation_log ADD COLUMN truncated     INTEGER;
+      `);
+    } else {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS generation_log (
+          id             TEXT PRIMARY KEY,
+          agent          TEXT NOT NULL,
+          model          TEXT NOT NULL,
+          endpoint       TEXT NOT NULL,
+          request_id     TEXT,
+          tokens_in      INTEGER,
+          tokens_out     INTEGER,
+          latency_ms     INTEGER NOT NULL,
+          error          TEXT,
+          created_at     TEXT NOT NULL,
+          payload_digest TEXT,
+          prompt_text    TEXT,
+          response_text  TEXT,
+          entity_count   INTEGER,
+          context_chars  INTEGER,
+          truncated      INTEGER
+        );
+      `);
+    }
+    db.exec('PRAGMA user_version = 17');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -537,17 +575,35 @@ export function listTimelineEntries(scenePath?: string): DbTimelineEntry[] {
 
 // ─── Generation log ───
 
-export function insertGenerationLog(entry: Omit<DbGenerationLog, 'prompt_text' | 'response_text'> & { prompt_text?: string | null; response_text?: string | null }): void {
+export function insertGenerationLog(
+  entry: Omit<DbGenerationLog, 'prompt_text' | 'response_text' | 'entity_count' | 'context_chars' | 'truncated'> & {
+    prompt_text?: string | null;
+    response_text?: string | null;
+    entity_count?: number | null;
+    context_chars?: number | null;
+    truncated?: boolean | null;
+  }
+): void {
+  const { truncated, ...rest } = entry;
   getDb()
     .prepare(
       `INSERT INTO generation_log
          (id, agent, model, endpoint, request_id, tokens_in, tokens_out,
-          latency_ms, error, created_at, payload_digest, prompt_text, response_text)
+          latency_ms, error, created_at, payload_digest, prompt_text, response_text,
+          entity_count, context_chars, truncated)
        VALUES
          (@id, @agent, @model, @endpoint, @request_id, @tokens_in, @tokens_out,
-          @latency_ms, @error, @created_at, @payload_digest, @prompt_text, @response_text)`
+          @latency_ms, @error, @created_at, @payload_digest, @prompt_text, @response_text,
+          @entity_count, @context_chars, @truncated)`
     )
-    .run({ prompt_text: null, response_text: null, ...entry });
+    .run({
+      prompt_text: null,
+      response_text: null,
+      entity_count: null,
+      context_chars: null,
+      truncated: truncated == null ? null : truncated ? 1 : 0,
+      ...rest,
+    });
 }
 
 interface GenerationLogOpts {

@@ -312,6 +312,9 @@ interface GenerationLogRow {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+  entity_count: number | null;
+  context_chars: number | null;
+  truncated: number | null;
 }
 
 interface BetaReadComment {
