@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest';
+import type { ProviderConfig } from './provider.js';
 
 // Hoist mocks before any imports so module resolution picks them up.
 vi.mock('electron', () => ({
@@ -9,12 +10,23 @@ vi.mock('electron', () => ({
   },
 }));
 
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn(),
-}));
+// Mock provider.js to avoid the @anthropic-ai/sdk dependency in tests.
+// isModelValid uses real logic so model-validation tests remain meaningful.
+vi.mock('./provider.js', () => {
+  const allowlist = new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7']);
+  return {
+    streamFromProvider: vi.fn(),
+    isModelValid: (model: string, kind: string) => {
+      if (!model || model.trim() === '') return false;
+      if (kind === 'anthropic') return allowlist.has(model);
+      return model.length <= 128;
+    },
+    ANTHROPIC_MODEL_ALLOWLIST: allowlist,
+  };
+});
 
 import { ipcMain } from 'electron';
-import Anthropic from '@anthropic-ai/sdk';
+import { streamFromProvider } from './provider.js';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 import {
   StreamRegistry,
@@ -32,6 +44,8 @@ import {
   STREAM_ERRORS,
   type StreamStartPayload,
 } from './streaming.js';
+
+const mockStreamFromProvider = streamFromProvider as MockedFunction<typeof streamFromProvider>;
 
 // ─── Test helpers ───
 
@@ -180,13 +194,11 @@ describe('STREAM_START', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
   it('returns a unique streamId immediately', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream([]) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {});
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -198,9 +210,9 @@ describe('STREAM_START', () => {
 
   it('delivers STREAM_TOKEN events for each text chunk', async () => {
     const tokens = ['Hello', ', ', 'world', '!'];
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream(tokens) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      for (const t of tokens) yield t;
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -218,9 +230,9 @@ describe('STREAM_START', () => {
   });
 
   it('sends STREAM_END after all tokens', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream(['a', 'b']) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      for (const t of ['a', 'b']) yield t;
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -236,9 +248,7 @@ describe('STREAM_START', () => {
   });
 
   it('ignores non-text-delta chunk types without error', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeFullStream(['x']) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() { yield 'x'; });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -252,15 +262,9 @@ describe('STREAM_START', () => {
   });
 
   it('sends STREAM_ERROR on SDK failure', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: {
-        stream: () => {
-          return (async function* () {
-            throw new Error('API failure');
-          })();
-        },
-      },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      throw new Error('API failure');
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -283,17 +287,11 @@ describe('STREAM_START', () => {
   });
 
   it('sends STREAM_END (not STREAM_ERROR) when stream throws AbortError', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: {
-        stream: () => {
-          return (async function* () {
-            const e = new Error('The operation was aborted');
-            e.name = 'AbortError';
-            throw e;
-          })();
-        },
-      },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      const e = new Error('The operation was aborted');
+      e.name = 'AbortError';
+      throw e;
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -306,9 +304,7 @@ describe('STREAM_START', () => {
   });
 
   it('cleans up registry entry after stream ends', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream([]) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {});
 
     const { startHandler } = getHandlers(reg);
     const { streamId } = await startHandler(makeEvent(makeSender()), {
@@ -324,9 +320,9 @@ describe('STREAM_START', () => {
   it('backpressure: pauses at MAX_PENDING_TOKENS (does not drop tokens)', async () => {
     const overflow = 5;
     const total = MAX_PENDING_TOKENS + overflow;
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream(Array.from({ length: total }, (_, i) => `t${i}`)) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      for (let i = 0; i < total; i++) yield `t${i}`;
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -355,9 +351,9 @@ describe('STREAM_START', () => {
 
   it('backpressure: cancel during drain wait sends STREAM_END (no data loss confusion)', async () => {
     const total = MAX_PENDING_TOKENS + 5;
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream(Array.from({ length: total }, (_, i) => `t${i}`)) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      for (let i = 0; i < total; i++) yield `t${i}`;
+    });
 
     const { startHandler, cancelHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -389,7 +385,7 @@ describe('STREAM_START payload validation (F19)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
   it('rejects null payload with INVALID_PAYLOAD', async () => {
@@ -443,9 +439,7 @@ describe('STREAM_START payload validation (F19)', () => {
 
   it('accepts a model from the allowlist', async () => {
     const allowedModel = [...MODEL_ALLOWLIST][0];
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream([]) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {});
     const { startHandler } = getHandlers(reg);
     const result = await startHandler(makeEvent(makeSender()), {
       messages: [{ role: 'user', content: 'Hi' }],
@@ -464,9 +458,7 @@ describe('STREAM_START payload validation (F19)', () => {
   });
 
   it('accepts maxTokens equal to cap', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => makeTokenStream([]) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {});
     const { startHandler } = getHandlers(reg);
     const result = await startHandler(makeEvent(makeSender()), {
       messages: [{ role: 'user', content: 'Hi' }],
@@ -554,14 +546,11 @@ describe('STREAM_START payload validation (F19)', () => {
   });
 
   it('does not invoke SDK for invalid payloads', async () => {
-    const streamSpy = vi.fn();
-    vi.mocked(Anthropic).mockImplementation(function() { return (
-      { messages: { stream: streamSpy } } as unknown as Anthropic
-    ); })
+    mockStreamFromProvider.mockImplementation(async function*() {});
 
     const { startHandler } = getHandlers(reg);
     await startHandler(makeEvent(makeSender()), { messages: [] });
-    expect(streamSpy).not.toHaveBeenCalled();
+    expect(mockStreamFromProvider).not.toHaveBeenCalled();
   });
 });
 
@@ -573,7 +562,7 @@ describe('STREAM_ACK validation (F20)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
   it('ignores ack with non-string streamId (no throw)', () => {
@@ -614,7 +603,7 @@ describe('STREAM_CANCEL', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
   it('returns { cancelled: true } for a known stream', async () => {
@@ -634,27 +623,21 @@ describe('STREAM_CANCEL', () => {
     const sender = makeSender();
     let capturedSignal: AbortSignal | undefined;
 
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: {
-        stream: (_args: unknown, opts: { signal: AbortSignal }) => {
-          capturedSignal = opts.signal;
-          return (async function* () {
-            // Yield the first token synchronously (before any awaits).
-            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'token1' } };
-            // Pause until abort fires (or forever if never cancelled).
-            await new Promise<void>((_, reject) => {
-              capturedSignal!.addEventListener('abort', () => {
-                const e = new Error('The operation was aborted');
-                e.name = 'AbortError';
-                reject(e);
-              });
-            });
-            // Never reached after cancel.
-            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'token2' } };
-          })();
-        },
-      },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*(_config, req) {
+      capturedSignal = req.signal;
+      // Yield the first token immediately.
+      yield 'token1';
+      // Pause until abort fires (or forever if never cancelled).
+      await new Promise<void>((_, reject) => {
+        capturedSignal!.addEventListener('abort', () => {
+          const e = new Error('The operation was aborted');
+          e.name = 'AbortError';
+          reject(e);
+        });
+      });
+      // Never reached after cancel.
+      yield 'token2';
+    });
 
     const { startHandler, cancelHandler } = getHandlers(reg);
 
@@ -703,7 +686,7 @@ describe('STREAM_ACK', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
   it('decrements pendingTokens by count', () => {
@@ -743,18 +726,16 @@ describe('integration: mock Anthropic response', () => {
     const reg = new StreamRegistry();
 
     const tokens = ['The', ' dragon', ' flew', '.'];
-    let capturedArgs: Record<string, unknown> | undefined;
+    let capturedConfig: ProviderConfig | undefined;
+    let capturedReq: import('./provider.js').StreamRequest | undefined;
 
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: {
-        stream: (args: Record<string, unknown>) => {
-          capturedArgs = args;
-          return makeTokenStream(tokens);
-        },
-      },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*(config, req) {
+      capturedConfig = config;
+      capturedReq = req;
+      for (const t of tokens) yield t;
+    });
 
-    registerStreamingHandlers(() => 'sk-ant-api-key', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-api-key', model: 'claude-haiku-4-5-20251001' }), reg);
     const { startHandler } = getHandlers(reg);
 
     const sender = makeSender();
@@ -768,11 +749,11 @@ describe('integration: mock Anthropic response', () => {
     const { streamId } = await startHandler(makeEvent(sender), payload);
     await new Promise((r) => setTimeout(r, 0));
 
-    // Verify SDK was called with correct parameters.
-    expect(capturedArgs).toMatchObject({
-      model: 'claude-opus-4-7',
-      max_tokens: 256,
+    // Verify provider was called with correct parameters.
+    expect(capturedConfig).toMatchObject({ model: 'claude-opus-4-7' });
+    expect(capturedReq).toMatchObject({
       system: 'You are a fantasy author.',
+      maxTokens: 256,
     });
 
     // Verify token events carry the right content and streamId.
@@ -949,7 +930,7 @@ describe('Provider rejection before first content chunk', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
   function makeStatusError(status: number, message: string): Error & { status: number } {
@@ -965,9 +946,9 @@ describe('Provider rejection before first content chunk', () => {
   }
 
   it('sends categorized auth error on 401 rejection before first token', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => rejectingStream(makeStatusError(401, 'Unauthorized')) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      throw makeStatusError(401, 'Unauthorized');
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -988,9 +969,9 @@ describe('Provider rejection before first content chunk', () => {
   });
 
   it('sends categorized rate-limit error on 429 rejection before first token', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => rejectingStream(makeStatusError(429, 'Rate limit exceeded')) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      throw makeStatusError(429, 'Rate limit exceeded');
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -1011,9 +992,9 @@ describe('Provider rejection before first content chunk', () => {
   });
 
   it('sends user-friendly model-unavailable error on 404 rejection before first token', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => rejectingStream(makeStatusError(404, 'Model not found')) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      throw makeStatusError(404, 'Model not found');
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -1033,9 +1014,9 @@ describe('Provider rejection before first content chunk', () => {
   });
 
   it('sends permission-denied message on 403 rejection before first token', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => rejectingStream(makeStatusError(403, 'Permission denied')) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      throw makeStatusError(403, 'Permission denied');
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -1055,9 +1036,9 @@ describe('Provider rejection before first content chunk', () => {
   });
 
   it('cleans up registry entry after pre-stream rejection', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => rejectingStream(makeStatusError(401, 'Unauthorized')) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      throw makeStatusError(401, 'Unauthorized');
+    });
 
     const { startHandler } = getHandlers(reg);
     const { streamId } = await startHandler(makeEvent(makeSender()), {
@@ -1070,9 +1051,9 @@ describe('Provider rejection before first content chunk', () => {
   });
 
   it('sends no STREAM_TOKEN events when rejection fires before any content', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: { stream: () => rejectingStream(makeStatusError(429, 'Rate limited')) },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      throw makeStatusError(429, 'Rate limited');
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -1096,7 +1077,7 @@ describe('Mid-stream Anthropic errors (MYT-22 regression guard)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
   function makeMidStreamError(status: number, message: string): Error & { status: number } {
@@ -1106,16 +1087,11 @@ describe('Mid-stream Anthropic errors (MYT-22 regression guard)', () => {
   }
 
   it('sends STREAM_ERROR and no STREAM_END when SDK throws after partial tokens', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: {
-        stream: () =>
-          (async function* () {
-            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hello' } };
-            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: ' world' } };
-            throw makeMidStreamError(500, 'Internal Server Error');
-          })(),
-      },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      yield 'hello';
+      yield ' world';
+      throw makeMidStreamError(500, 'Internal Server Error');
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -1140,17 +1116,12 @@ describe('Mid-stream Anthropic errors (MYT-22 regression guard)', () => {
   });
 
   it('sends no STREAM_TOKEN after the error point', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: {
-        stream: () =>
-          (async function* () {
-            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'before-error' } };
-            throw makeMidStreamError(429, 'Rate limited');
-            // unreachable — documents that these would not be sent:
-            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'after-error' } };
-          })(),
-      },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      yield 'before-error';
+      throw makeMidStreamError(429, 'Rate limited');
+      // unreachable — documents that these would not be sent:
+      yield 'after-error';
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender();
@@ -1164,15 +1135,10 @@ describe('Mid-stream Anthropic errors (MYT-22 regression guard)', () => {
   });
 
   it('cleans up registry after mid-stream error', async () => {
-    vi.mocked(Anthropic).mockImplementation(function() { return ({
-      messages: {
-        stream: () =>
-          (async function* () {
-            yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } };
-            throw makeMidStreamError(503, 'Service unavailable');
-          })(),
-      },
-    } as unknown as Anthropic); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      yield 'x';
+      throw makeMidStreamError(503, 'Service unavailable');
+    });
 
     const { startHandler } = getHandlers(reg);
     const { streamId } = await startHandler(makeEvent(makeSender()), {
@@ -1193,18 +1159,13 @@ describe('concurrent stream cap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reg = new StreamRegistry();
-    registerStreamingHandlers(() => 'sk-ant-test', reg);
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }), reg);
   });
 
-  it('rejects the (N+1)th concurrent STREAM_START from the same sender without invoking the SDK', async () => {
-    const streamSpy = vi.fn(() =>
-      (async function* () {
-        await new Promise<never>(() => {}); // never resolves — keeps stream open
-      })(),
-    );
-    vi.mocked(Anthropic).mockImplementation(function() { return (
-      { messages: { stream: streamSpy } } as unknown as Anthropic
-    ); })
+  it('rejects the (N+1)th concurrent STREAM_START from the same sender without invoking the provider', async () => {
+    mockStreamFromProvider.mockImplementation(async function*() {
+      await new Promise<never>(() => {}); // never resolves — keeps stream open
+    });
 
     const { startHandler } = getHandlers(reg);
     const sender = makeSender(42);
@@ -1215,24 +1176,19 @@ describe('concurrent stream cap', () => {
       expect((result as { streamId: string }).streamId).toBeDefined();
     }
 
-    expect(streamSpy).toHaveBeenCalledTimes(MAX_CONCURRENT_PER_SENDER);
+    expect(mockStreamFromProvider).toHaveBeenCalledTimes(MAX_CONCURRENT_PER_SENDER);
 
     const overCapResult = await startHandler(event, { messages: [{ role: 'user', content: 'Hi' }] });
     expect(overCapResult).toEqual({ error: STREAM_ERRORS.TOO_MANY_STREAMS });
 
-    // SDK must not have been invoked for the rejected request.
-    expect(streamSpy).toHaveBeenCalledTimes(MAX_CONCURRENT_PER_SENDER);
+    // Provider must not have been invoked for the rejected request.
+    expect(mockStreamFromProvider).toHaveBeenCalledTimes(MAX_CONCURRENT_PER_SENDER);
   });
 
   it('a stream from a different sender is not affected by another sender reaching the cap', async () => {
-    const streamSpy = vi.fn(() =>
-      (async function* () {
-        await new Promise<never>(() => {});
-      })(),
-    );
-    vi.mocked(Anthropic).mockImplementation(function() { return (
-      { messages: { stream: streamSpy } } as unknown as Anthropic
-    ); })
+    mockStreamFromProvider.mockImplementation(async function*() {
+      await new Promise<never>(() => {});
+    });
 
     const { startHandler } = getHandlers(reg);
     const senderA = makeSender(1);

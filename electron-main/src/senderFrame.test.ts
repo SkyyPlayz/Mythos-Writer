@@ -240,7 +240,7 @@ describe('streaming handlers reject nested-frame invocations', () => {
   beforeEach(() => { handleMap.clear(); onMap.clear(); });
 
   it('stream:start rejects nested-frame invocation without consuming a slot', async () => {
-    registerStreamingHandlers(() => 'sk-ant-test');
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }));
     const fn = handleMap.get(STREAM_CHANNELS.STREAM_START)!;
 
     const result = await fn(nestedEvent({ sender: { id: 9, once: vi.fn(), off: vi.fn(), isDestroyed: () => false } }), {
@@ -251,7 +251,7 @@ describe('streaming handlers reject nested-frame invocations', () => {
   });
 
   it('stream:cancel rejects nested-frame invocation', async () => {
-    registerStreamingHandlers(() => 'sk-ant-test');
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }));
     const fn = handleMap.get(STREAM_CHANNELS.STREAM_CANCEL)!;
 
     const result = await fn(nestedEvent({ sender: { id: 9 } }), { streamId: 'whatever' });
@@ -260,7 +260,7 @@ describe('streaming handlers reject nested-frame invocations', () => {
   });
 
   it('stream:ack (ipcMain.on) drops nested-frame acks without applying them', () => {
-    registerStreamingHandlers(() => 'sk-ant-test');
+    registerStreamingHandlers(() => ({ kind: 'anthropic' as const, apiKey: 'sk-ant-test', model: 'claude-haiku-4-5-20251001' }));
     const fn = onMap.get(STREAM_CHANNELS.STREAM_ACK)!;
 
     expect(() =>
