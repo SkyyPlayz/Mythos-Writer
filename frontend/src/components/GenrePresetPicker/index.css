@@ -1,0 +1,157 @@
+.genre-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.genre-picker-tip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 6px);
+  padding: var(--space-2, 6px) var(--space-3, 10px);
+  border-radius: var(--radius-md, 6px);
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 10%, transparent);
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, rgba(255 255 255 / 0.65));
+}
+
+.genre-picker-tip-text {
+  font-weight: 500;
+  color: var(--text-body, rgba(255 255 255 / 0.85));
+}
+
+.genre-picker-tip-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 4px);
+}
+
+.genre-picker-tip-btn {
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-soft, #00f0ff) 25%, transparent);
+  border-radius: var(--radius-full, 999px);
+  color: var(--accent-soft, #00f0ff);
+  font-size: var(--text-xs, 11px);
+  padding: 2px var(--space-2, 8px);
+  cursor: pointer;
+}
+.genre-picker-tip-btn:hover {
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 22%, transparent);
+}
+
+.genre-picker-tip-more {
+  color: var(--text-muted, rgba(255 255 255 / 0.6));
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border-color: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.genre-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 6px);
+  flex-wrap: wrap;
+}
+
+.genre-picker-label {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, rgba(255 255 255 / 0.6));
+  white-space: nowrap;
+}
+
+.genre-picker-select-wrap {
+  flex: 1;
+  min-width: 120px;
+}
+
+.genre-picker-select {
+  width: 100%;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  padding: 3px var(--space-2, 6px);
+  font-size: var(--text-xs, 11px);
+  cursor: pointer;
+}
+.genre-picker-select:focus {
+  outline: 2px solid var(--accent-soft, #00f0ff);
+  outline-offset: 1px;
+}
+
+.genre-picker-customize-btn {
+  background: none;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: var(--radius-full, 999px);
+  color: var(--text-muted, rgba(255 255 255 / 0.6));
+  font-size: var(--text-xs, 11px);
+  padding: 2px var(--space-2, 8px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+.genre-picker-customize-btn:hover,
+.genre-picker-customize-active {
+  color: var(--accent-soft, #00f0ff);
+  border-color: color-mix(in srgb, var(--accent-soft, #00f0ff) 35%, transparent);
+}
+.genre-picker-customize-btn:focus-visible {
+  outline: 2px solid var(--accent-soft, #00f0ff);
+  outline-offset: 1px;
+}
+
+.genre-picker-badge {
+  flex-shrink: 0;
+  font-size: var(--text-xs, 11px);
+  padding: 2px var(--space-2, 6px);
+  border-radius: var(--radius-full, 999px);
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 18%, transparent);
+  color: var(--accent-soft, #00f0ff);
+  border: 1px solid color-mix(in srgb, var(--accent-soft, #00f0ff) 30%, transparent);
+  text-transform: capitalize;
+}
+
+.genre-picker-axes {
+  padding: var(--space-2, 6px) var(--space-3, 10px);
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: var(--radius-md, 6px);
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 6px);
+}
+
+.genre-picker-axes-hint {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, rgba(255 255 255 / 0.5));
+  margin: 0;
+  font-style: italic;
+}
+
+.genre-picker-axes-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3, 10px);
+}
+
+.genre-picker-axis-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, rgba(255 255 255 / 0.6));
+}
+
+.genre-picker-axis-select {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  padding: 3px var(--space-2, 6px);
+  font-size: var(--text-xs, 11px);
+  cursor: pointer;
+}
+.genre-picker-axis-select:focus {
+  outline: 2px solid var(--accent-soft, #00f0ff);
+  outline-offset: 1px;
+}

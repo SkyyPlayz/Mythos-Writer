@@ -1,0 +1,107 @@
+.rubric-panel {
+  margin-top: var(--space-2, 6px);
+  padding: var(--space-3, 10px);
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: var(--radius-md, 6px);
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  font-size: var(--text-xs, 11px);
+}
+
+.rubric-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 6px);
+  margin-bottom: var(--space-2, 6px);
+}
+
+.rubric-title {
+  font-weight: 600;
+  color: var(--text-body, rgba(255 255 255 / 0.85));
+  flex: 1;
+}
+
+.rubric-avg {
+  color: var(--accent-soft, #00f0ff);
+  font-weight: 600;
+}
+
+.rubric-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255 255 255 / 0.55));
+  font-size: var(--text-xs, 11px);
+  padding: 0 var(--space-1, 2px);
+  line-height: 1;
+}
+.rubric-close:hover {
+  color: var(--text-body, rgba(255 255 255 / 0.9));
+}
+
+.rubric-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 6px);
+}
+
+.rubric-criterion {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 2px var(--space-2, 6px);
+  align-items: center;
+}
+
+.rubric-criterion-name {
+  grid-column: 1;
+  color: var(--text-body, rgba(255 255 255 / 0.8));
+  font-weight: 500;
+}
+
+.rubric-stars {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  gap: 2px;
+}
+
+.rubric-anchor {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  color: var(--text-muted, rgba(255 255 255 / 0.5));
+  font-style: italic;
+  font-size: 10px;
+}
+
+.rubric-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: color-mix(in srgb, currentColor 25%, transparent);
+  padding: 0;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.rubric-star:hover,
+.rubric-star-active {
+  color: #ffd700;
+}
+.rubric-star:focus-visible {
+  outline: 2px solid var(--accent-soft, #00f0ff);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.rubric-flag {
+  margin-top: var(--space-2, 6px);
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  background: color-mix(in srgb, #ff9900 12%, transparent);
+  border: 1px solid color-mix(in srgb, #ff9900 25%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  color: #ffaa44;
+  font-size: 10px;
+}

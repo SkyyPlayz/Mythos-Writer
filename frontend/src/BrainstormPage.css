@@ -921,3 +921,13 @@
   background: var(--bg-surface);
   color: var(--text-primary);
 }
+
+
+/* ─── Preset Row in Brainstorm (SKY-507) ───────────────────────── */
+
+.brainstorm-header-preset {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px 0;
+  flex-shrink: 0;
+}
