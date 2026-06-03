@@ -2,6 +2,25 @@
 
 export type BlockType = 'prose' | 'heading' | 'dialogue' | 'action' | 'description' | 'note';
 
+/** Human-readable labels for suggestion categories. Used in both Settings and Review panels
+ *  to guarantee AC 5 (labels must match). */
+export const SUGGESTION_CATEGORY_LABELS: Record<SuggestionCategory, string> = {
+  punctuation: 'Punctuation',
+  spelling: 'Spelling',
+  grammar: 'Grammar',
+  'sentence-structure': 'Sentence Structure',
+  style: 'Style / Word Choice',
+};
+
+/** Ordered list of all five suggestion categories. */
+export const SUGGESTION_CATEGORIES: SuggestionCategory[] = [
+  'punctuation',
+  'spelling',
+  'grammar',
+  'sentence-structure',
+  'style',
+];
+
 export type EntityType = 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
 
 export interface EntityRelation {

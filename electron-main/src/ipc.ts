@@ -1355,6 +1355,8 @@ export interface AgentBudgetSettings {
   maxSuggestionsPerHour: number;
   heartbeatIntervalMinutes: number;
   maxTokensPerDay: number;
+  /** Per-category auto-apply toggles (writing-assistant only). All default to true. */
+  autoApplyCategories?: Record<SuggestionCategory, boolean>;
 }
 
 // ─── Per-agent config (MYT-343) ───
@@ -1633,6 +1635,7 @@ export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' 
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
 export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
 export type TimelineSource = 'explicit_marker' | 'prose';
+export type SuggestionCategory = 'punctuation' | 'spelling' | 'grammar' | 'sentence-structure' | 'style';
 
 export interface SuggestionRow {
   id: string;
@@ -1649,6 +1652,8 @@ export interface SuggestionRow {
   applied_run_id: string | null;
   /** 1 if this suggestion was blocked by a budget cap, 0 otherwise */
   budget_exceeded: number;
+  /** Writing-assistant suggestion category; null/absent for other agents or legacy rows */
+  category?: SuggestionCategory | null;
 }
 
 export interface AuditLogRow {

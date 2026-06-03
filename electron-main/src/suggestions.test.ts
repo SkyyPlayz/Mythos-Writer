@@ -60,6 +60,7 @@ function makeSuggestion(overrides: Partial<DbSuggestion> = {}): DbSuggestion {
     applied_at: null,
     applied_run_id: null,
     budget_exceeded: 0,
+    category: null,
     ...overrides,
   };
 }

@@ -36,6 +36,7 @@ function makeSuggestion(overrides: Partial<{
     applied_at: null,
     applied_run_id: null,
     budget_exceeded: 0,
+    category: null,
   };
 }
 
@@ -135,6 +136,62 @@ describe('evaluateAutoApply', () => {
 
     // These old suggestions should not count — budget should be clear
     const result = evaluateAutoApply(0.95, 'writing-assistant', BASE_SETTINGS, db);
+    expect(result.shouldAutoApply).toBe(true);
+    expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('blocks auto-apply when the suggestion category is disabled', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        punctuation: true,
+        spelling: true,
+        grammar: false,
+        'sentence-structure': true,
+        style: true,
+      },
+    };
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'grammar');
+    expect(result.shouldAutoApply).toBe(false);
+    expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('allows auto-apply when the suggestion category is enabled', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        punctuation: true,
+        spelling: true,
+        grammar: false,
+        'sentence-structure': true,
+        style: true,
+      },
+    };
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'spelling');
+    expect(result.shouldAutoApply).toBe(true);
+    expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('allows auto-apply when category is null (no category filtering)', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        punctuation: false,
+        spelling: false,
+        grammar: false,
+        'sentence-structure': false,
+        style: false,
+      },
+    };
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, null);
+    expect(result.shouldAutoApply).toBe(true);
+    expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('allows auto-apply when autoApplyCategories is absent (backward compat)', () => {
+    const settings: AgentBudgetSettings = { ...BASE_SETTINGS };
+    delete (settings as Partial<AgentBudgetSettings>).autoApplyCategories;
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'grammar');
     expect(result.shouldAutoApply).toBe(true);
     expect(result.budgetExceeded).toBe(false);
   });

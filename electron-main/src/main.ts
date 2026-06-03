@@ -299,6 +299,7 @@ import {
 } from './telemetry.js';
 import {
   parseScanTips,
+  parseScanTipsStructured,
   buildScanSuggestions,
   parseBetaReadLines,
   buildBetaReadComments,
@@ -926,6 +927,7 @@ const handlers: IpcHandlers = {
         payload.suggestion.source_agent,
         agentSettings,
         getDb(),
+        payload.suggestion.category ?? null,
       );
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
@@ -4092,6 +4094,14 @@ const AGENT_BUDGET_DEFAULTS = {
   // MYT-343: per-agent config additions
   autoApplyThreshold: 0.85,
   requestsPerMinute: 60,
+  // SKY-321: per-category auto-apply toggles (writing-assistant only; all ON by default)
+  autoApplyCategories: {
+    punctuation: true,
+    spelling: true,
+    grammar: true,
+    'sentence-structure': true,
+    style: true,
+  } as Record<import('./ipc.js').SuggestionCategory, boolean>,
 };
 
 const SETTINGS_DEFAULTS: AppSettings = {
@@ -4885,7 +4895,7 @@ async function runWritingScan(
     const response = await client.messages.create({
       model,
       max_tokens: 512,
-      system: 'You are a Writing Assistant doing a quick scene scan. Read the prose and identify 2–3 specific, actionable writing tips about craft, pacing, voice, or clarity. Return ONLY a JSON array of tip strings, for example: ["Tip one.", "Tip two."]. No other text.',
+      system: 'You are a Writing Assistant doing a quick scene scan. Read the prose and identify 2–3 specific, actionable writing tips. Return ONLY a JSON array of objects, each with "category" (one of: "punctuation", "spelling", "grammar", "sentence-structure", "style") and "tip" (a specific, actionable suggestion string). Example: [{"category":"grammar","tip":"Fragment in second paragraph — add a subject."},{"category":"style","tip":"Overuse of passive voice in the opening paragraph."}]. No other text.',
       messages: [{
         role: 'user',
         content: `Scene (${scenePath}):\n\n${prose.slice(0, 4000)}`,
@@ -4896,8 +4906,16 @@ async function runWritingScan(
     tokensOut = response.usage.output_tokens;
 
     const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
-    const tips = parseScanTips(text);
-    const rows = buildScanSuggestions(tips, sceneId, scenePath, scannedAt, crypto.randomUUID.bind(crypto));
+    const structured = parseScanTipsStructured(text);
+    const tips = structured.map((s) => s.tip);
+    const rows = buildScanSuggestions(
+      tips,
+      sceneId,
+      scenePath,
+      scannedAt,
+      crypto.randomUUID.bind(crypto),
+      structured.map((s) => s.category),
+    );
 
     let suggestionsUpserted = 0;
     for (const row of rows) {

@@ -24,10 +24,12 @@ import {
   getSuggestion,
   upsertSuggestion,
   insertGenerationLog,
+  type SuggestionCategory,
 } from './db.js';
 import { checkCallBudget } from './budget.js';
 import {
   parseScanTips,
+  parseScanTipsStructured,
   buildScanSuggestions,
   parseBetaReadLines,
   buildBetaReadComments,
@@ -111,6 +113,48 @@ describe('parseScanTips (§1)', () => {
   });
 });
 
+// ─── §1b parseScanTipsStructured ─────────────────────────────────────────────
+
+describe('parseScanTipsStructured (§1b)', () => {
+  it('parses well-formed structured JSON array', () => {
+    const text = '[{"category":"grammar","tip":"Fix the fragment."},{"category":"style","tip":"Vary sentence length."}]';
+    const result = parseScanTipsStructured(text);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ category: 'grammar', tip: 'Fix the fragment.' });
+    expect(result[1]).toEqual({ category: 'style', tip: 'Vary sentence length.' });
+  });
+
+  it('maps unknown categories to null', () => {
+    const text = '[{"category":"unknown-thing","tip":"Some tip."}]';
+    const result = parseScanTipsStructured(text);
+    expect(result[0].category).toBeNull();
+    expect(result[0].tip).toBe('Some tip.');
+  });
+
+  it('falls back to parseScanTips with null categories on plain string array', () => {
+    const text = '["Tip A.","Tip B."]';
+    const result = parseScanTipsStructured(text);
+    expect(result).toHaveLength(2);
+    expect(result.every((r) => r.category === null)).toBe(true);
+  });
+
+  it('respects limit parameter', () => {
+    const text = '[{"category":"grammar","tip":"A"},{"category":"spelling","tip":"B"},{"category":"style","tip":"C"}]';
+    expect(parseScanTipsStructured(text, 2)).toHaveLength(2);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(parseScanTipsStructured('')).toEqual([]);
+  });
+
+  it('accepts all five valid categories', () => {
+    const cats: SuggestionCategory[] = ['punctuation', 'spelling', 'grammar', 'sentence-structure', 'style'];
+    const text = JSON.stringify(cats.map((c) => ({ category: c, tip: `${c} tip` })));
+    const result = parseScanTipsStructured(text);
+    expect(result.map((r) => r.category)).toEqual(cats);
+  });
+});
+
 // ─── §2 buildScanSuggestions ──────────────────────────────────────────────────
 
 describe('buildScanSuggestions (§2)', () => {
@@ -177,6 +221,24 @@ describe('buildScanSuggestions (§2)', () => {
 
   it('returns empty array for empty tips list', () => {
     expect(buildScanSuggestions([], SCENE_ID, SCENE_PATH, SCANNED_AT, nextId)).toEqual([]);
+  });
+
+  it('sets category to null when no categories array provided', () => {
+    const rows = buildScanSuggestions(['Tip.'], SCENE_ID, SCENE_PATH, SCANNED_AT, nextId);
+    expect(rows[0].category).toBeNull();
+  });
+
+  it('sets category from provided categories array', () => {
+    const rows = buildScanSuggestions(
+      ['Fix comma.', 'Fix run-on.'],
+      SCENE_ID,
+      SCENE_PATH,
+      SCANNED_AT,
+      nextId,
+      ['punctuation', 'grammar'],
+    );
+    expect(rows[0].category).toBe('punctuation');
+    expect(rows[1].category).toBe('grammar');
   });
 });
 
