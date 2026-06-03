@@ -218,15 +218,19 @@ const baseProps = {
 };
 
 describe('VaultBrowser', () => {
-  it('renders scope toggle buttons', () => {
+  it('renders scope toggle buttons', async () => {
     render(<VaultBrowser {...baseProps} />);
+    // Wait for async listVault/listNotesVault mount effects to settle
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
     expect(screen.getByTestId('vb-scope-story')).toBeInTheDocument();
     expect(screen.getByTestId('vb-scope-notes')).toBeInTheDocument();
     expect(screen.getByTestId('vb-scope-both')).toBeInTheDocument();
   });
 
-  it('"Both" scope is active by default', () => {
+  it('"Both" scope is active by default', async () => {
     render(<VaultBrowser {...baseProps} />);
+    // Wait for async listVault/listNotesVault mount effects to settle
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
     expect(screen.getByTestId('vb-scope-both')).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -256,18 +260,22 @@ describe('VaultBrowser', () => {
     });
   });
 
-  it('shows empty state when no stories', () => {
+  it('shows empty state when no stories', async () => {
     render(<VaultBrowser {...baseProps} />);
+    // Wait for async listVault/listNotesVault mount effects to settle
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
     expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
   });
 
-  it('calls onCreateStory when New Story button is clicked', () => {
+  it('calls onCreateStory when New Story button is clicked', async () => {
     render(<VaultBrowser {...baseProps} />);
+    // Wait for async listVault/listNotesVault mount effects to settle
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
     fireEvent.click(screen.getByLabelText('New Story'));
     expect(baseProps.onCreateStory).toHaveBeenCalledOnce();
   });
 
-  it('renders story titles when stories provided', () => {
+  it('renders story titles when stories provided', async () => {
     const stories: Story[] = [
       {
         id: 's1',
@@ -279,6 +287,8 @@ describe('VaultBrowser', () => {
       },
     ];
     render(<VaultBrowser {...baseProps} stories={stories} />);
+    // Wait for async listVault/listNotesVault mount effects to settle
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
     expect(screen.getByText('My Great Novel')).toBeInTheDocument();
   });
 

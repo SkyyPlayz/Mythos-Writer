@@ -61,7 +61,10 @@ function buildApi(overrides: Record<string, unknown> = {}) {
 
 async function simulateStream(tokens: string[], errorMessage?: string) {
   await waitFor(() => expect(tokenCb).not.toBeNull());
-  act(() => {
+  // Use async act so the act() boundary stays open while microtasks from
+  // persistFactWithRouting (which awaits brainstormWriteNote) drain, ensuring
+  // the resulting setFacts() state update is wrapped in act().
+  await act(async () => {
     for (const t of tokens) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
@@ -74,6 +77,12 @@ async function simulateStream(tokens: string[], errorMessage?: string) {
 }
 
 beforeEach(() => {
+  // useLiveAnnounce calls requestAnimationFrame to avoid re-announcing the same string.
+  // In jsdom rAF is a macrotask (setTimeout 0) which fires outside act() and causes
+  // act() warnings. Make it synchronous so the setLiveText call lands inside act().
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+
   vi.resetAllMocks();
   tokenCb = null;
   endCb = null;
@@ -105,6 +114,10 @@ beforeEach(() => {
   });
   (window as unknown as { api: unknown }).api = buildApi();
   localStorage.clear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('BrainstormPage', () => {
@@ -148,11 +161,15 @@ describe('BrainstormPage', () => {
       'Great character! [FACT:character|Lyra Ashveil|A young mage with silver hair and a troubled past]',
     ]);
 
-    await waitFor(() =>
-      expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument(),
-    );
-    expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
+    // Wait for brainstormWriteNote to resolve and final 'Saved ✓' state to settle.
+    // A single waitFor ensures all state updates from persistFactWithRouting land
+    // inside the same act() boundary (avoiding the race where 'Lyra Ashveil' becomes
+    // visible from the initial 'saving' state before brainstormWriteNote resolves).
+    await waitFor(() => {
+      expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument();
+      expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
+      expect(screen.getByText(/saved ✓/i)).toBeInTheDocument();
+    });
     expect(mockBrainstormWriteNote).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Lyra Ashveil', category: 'character' }),
     );
@@ -333,9 +350,12 @@ describe('BrainstormPage', () => {
       '[FACT:character|Aria|Hero 1][FACT:character|Kael|Hero 2]',
     ]);
 
-    // Only the first fact's prompt is shown — main routed the second silently.
-    await screen.findByTestId('brainstorm-routing-prompt-character');
+    // Wait for both the routing prompt (Aria) AND the silent save (Kael) to settle in
+    // a single waitFor so all state updates from persistFactWithRouting land inside
+    // the same act() boundary — avoiding a race where the routing prompt appears before
+    // brainstormWriteNote resolves for the second fact.
     await waitFor(() => {
+      expect(screen.getByTestId('brainstorm-routing-prompt-character')).toBeInTheDocument();
       const saved = screen.getAllByText(/saved ✓/i);
       expect(saved.length).toBeGreaterThanOrEqual(1);
     });

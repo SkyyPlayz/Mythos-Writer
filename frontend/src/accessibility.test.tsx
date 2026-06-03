@@ -4,7 +4,7 @@
  * Settings panel, Editor toolbar (BlockEditor draft-state), Vault browser (EntityBrowser).
  * Each describe block renders the component in isolation and asserts axe passes.
  */
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import { configureAxe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 import type { AxeMatchers } from 'vitest-axe/matchers';
@@ -131,7 +131,6 @@ describe('Accessibility — WritingAssistantPanel (Writing Assistant sidebar)', 
 // Surface 3 — Settings panel
 // ══════════════════════════════════════════════════════════════════════════════
 import SettingsPanel from './components/SettingsPanel';
-import { waitFor } from '@testing-library/react';
 
 describe('Accessibility — SettingsPanel (Settings)', () => {
   beforeEach(() => { stubApi(); vi.clearAllMocks(); });
@@ -275,6 +274,8 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
         onReorderScenes={() => {}}
       />,
     );
+    // Flush EntityBrowser's async entityList call so its state update lands inside act()
+    await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
@@ -295,11 +296,13 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
         onReorderScenes={() => {}}
       />,
     );
+    // Flush EntityBrowser's async entityList call so its state update lands inside act()
+    await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('tab elements carry correct ARIA roles and attributes', () => {
+  it('tab elements carry correct ARIA roles and attributes', async () => {
     const { container } = render(
       <LeftRail
         activeTab="vault"
@@ -315,6 +318,8 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
         onReorderScenes={() => {}}
       />,
     );
+    // Flush VaultBrowser's async listVault/listNotesVault calls so state updates land inside act()
+    await act(async () => {});
     const tablist = container.querySelector('[role="tablist"]');
     expect(tablist).not.toBeNull();
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import VaultGraphView, { type VaultGraphData, deriveEntityType, type GraphNode } from './VaultGraphView';
 import { readContrastFloors } from './themeAxis';
@@ -83,7 +83,10 @@ describe('VaultGraphView', () => {
     });
     // React Flow renders nodes as divs with the label text
     const nodeLabel = await screen.findByText('Scene One');
-    nodeLabel.click();
+    // Use act() to wrap the click so React Flow's internal state updates are flushed
+    await act(async () => {
+      fireEvent.click(nodeLabel);
+    });
     // onOpenNote may or may not fire depending on React Flow's click routing in jsdom
     // The important thing is the node label is rendered
     expect(nodeLabel).toBeInTheDocument();

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
 
 const BASE_SETTINGS: AppSettings = {
@@ -116,10 +116,12 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
   });
 
-  it('clicking From Template advances to Step 1b', () => {
+  it('clicking From Template advances to Step 1b', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-template'));
     expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
+    // Flush the async templateList() call that fires when step1b mounts
+    await act(async () => {});
   });
 
   it('Skip calls onboardingComplete with startMode=skip and fires onComplete', async () => {
