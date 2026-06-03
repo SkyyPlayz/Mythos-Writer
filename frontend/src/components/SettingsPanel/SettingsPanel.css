@@ -131,8 +131,8 @@
 }
 
 .settings-input:focus {
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .settings-input-error {
@@ -170,7 +170,7 @@
 
 .settings-slider {
   flex: 1;
-  accent-color: #7c3aed;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -290,7 +290,7 @@
 }
 
 .settings-toggle input:checked + .settings-toggle-track {
-  background: #7c3aed;
+  background: var(--accent);
 }
 
 .settings-toggle input:checked + .settings-toggle-track::after {
@@ -299,7 +299,7 @@
 }
 
 .settings-toggle input:focus-visible + .settings-toggle-track {
-  outline: 2px solid #7c3aed;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -320,7 +320,7 @@
 }
 
 .settings-radio-label input[type='radio'] {
-  accent-color: #7c3aed;
+  accent-color: var(--accent);
   width: 15px;
   height: 15px;
   cursor: pointer;
@@ -357,6 +357,11 @@
   cursor: not-allowed;
 }
 
+.settings-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .settings-btn-cancel {
   background: #27272a;
   color: #a1a1aa;
@@ -368,13 +373,13 @@
 }
 
 .settings-btn-save {
-  background: #7c3aed;
+  background: var(--accent);
   color: #fff;
   font-weight: 500;
 }
 
 .settings-btn-save:hover:not(:disabled) {
-  background: #6d28d9;
+  background: color-mix(in srgb, var(--accent) 80%, black);
 }
 
 /* Provider section */
