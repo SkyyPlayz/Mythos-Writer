@@ -963,6 +963,26 @@ export default function DesktopShell() {
     ));
   }, [stories, updateManifest, requestText]);
 
+  const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
+    setSelectedScene(scene);
+    setSelectedChapter(chapter);
+    setSelectedStory(story);
+    setSelectedEntity(null);
+    setOpenedNotePath(null);
+    setVaultContext('file');
+    if (!restoreInProgressRef.current) {
+      // User-initiated open: clear any pending cursor restore and reset cursor to 0
+      pendingCursorPosRef.current = null;
+      // SKY-130: persist the newly active scene (cursor will be updated as user types/scrolls)
+      window.api.sessionSaveScene({
+        sceneId: scene.id,
+        scenePath: scene.path,
+        scrollTop: 0,
+        cursorLine: 0,
+      }).catch(() => {});
+    }
+  }, []);
+
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
     if (!title?.trim()) return;
@@ -1007,26 +1027,6 @@ export default function DesktopShell() {
     );
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
-
-  const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
-    setSelectedScene(scene);
-    setSelectedChapter(chapter);
-    setSelectedStory(story);
-    setSelectedEntity(null);
-    setOpenedNotePath(null);
-    setVaultContext('file');
-    if (!restoreInProgressRef.current) {
-      // User-initiated open: clear any pending cursor restore and reset cursor to 0
-      pendingCursorPosRef.current = null;
-      // SKY-130: persist the newly active scene (cursor will be updated as user types/scrolls)
-      window.api.sessionSaveScene({
-        sceneId: scene.id,
-        scenePath: scene.path,
-        scrollTop: 0,
-        cursorLine: 0,
-      }).catch(() => {});
-    }
-  }, []);
 
   // SKY-127: Update window chrome neon border context based on selected vault item
   useEffect(() => {
