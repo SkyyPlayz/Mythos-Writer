@@ -275,6 +275,72 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
   await expect(savedLabel).toContainText('Saved');
 });
 
+// ─── TC-BST-04: Preset selection ─────────────────────────────────────────────
+//
+// The Brainstorm header contains a PresetSelector chip. Verify that:
+//   - The preset chip renders with the default preset name.
+//   - Clicking the chip opens the preset listbox dropdown.
+//   - Selecting a different preset updates the chip label.
+//
+// This test does NOT require an LLM call — it only exercises the UI.
+
+test('TC-BST-04: preset chip is visible and changes label on selection', async () => {
+  // The preset chip is rendered in the header via PresetSelector.
+  const chip = page.locator('.preset-selector-chip');
+  await expect(chip).toBeVisible({ timeout: 6_000 });
+
+  // Record the current preset name.
+  const initialName = await chip.textContent();
+
+  // Click the chip to open the dropdown.
+  await chip.click();
+  const listbox = page.locator('[role="listbox"]');
+  await expect(listbox).toBeVisible({ timeout: 4_000 });
+
+  // Pick the second preset option (different from the active one).
+  const options = listbox.locator('[role="option"]');
+  const count = await options.count();
+  expect(count).toBeGreaterThan(1);
+
+  // Click the last option to ensure it differs from the default.
+  await options.last().click();
+
+  // Dropdown closes and the chip reflects the new selection.
+  await expect(listbox).not.toBeVisible({ timeout: 3_000 });
+  const updatedName = await chip.textContent();
+  expect(updatedName).not.toBe(initialName);
+});
+
+// ─── TC-BST-05: One refinement cycle ─────────────────────────────────────────
+//
+// After the response from TC-BST-01 is complete, refinement chips appear below
+// the last assistant message. Verify that:
+//   - At least one refinement chip is visible.
+//   - Clicking a chip triggers a new generation (streaming cursor appears).
+//   - The generation completes and the cursor disappears.
+//
+// Relies on TC-BST-01 having run in the same session so messages exist.
+
+test('TC-BST-05: refinement chip triggers new generation', async () => {
+  // Refinement chips render below the last completed assistant message.
+  const firstChip = page.locator('.refinement-chips .refinement-chip').first();
+  await expect(firstChip).toBeVisible({ timeout: 8_000 });
+
+  // Click the first refinement chip.
+  await firstChip.click();
+
+  // A new streaming generation should start — the cursor (▍) must appear.
+  const cursor = page.locator('.bs-cursor');
+  await expect(cursor).toBeVisible({ timeout: 6_000 });
+
+  // The generation completes — cursor disappears.
+  await expect(cursor).not.toBeVisible({ timeout: 12_000 });
+
+  // The response area still has content.
+  const assistantBubble = page.locator('.bs-assistant-bubble').last();
+  await expect(assistantBubble).not.toBeEmpty({ timeout: 3_000 });
+});
+
 // ─── TC-BST-03: Vault note creation ──────────────────────────────────────────
 //
 // The detected fact auto-extracts to the vault. Verify:

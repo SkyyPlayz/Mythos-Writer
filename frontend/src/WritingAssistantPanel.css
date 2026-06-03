@@ -503,3 +503,47 @@
   outline: 2px solid var(--accent, #0ff);
   outline-offset: 2px;
 }
+
+/* First-visit preset tip in the empty state */
+.wa-first-visit-tip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent, #0ff) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #0ff) 18%, transparent);
+}
+
+.wa-tip-icon {
+  font-size: 1rem;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.wa-tip-body {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.wa-tip-browse-btn {
+  background: color-mix(in srgb, var(--accent, #0ff) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #0ff) 30%, transparent);
+  border-radius: 999px;
+  color: var(--accent, #0ff);
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.wa-tip-browse-btn:hover {
+  background: color-mix(in srgb, var(--accent, #0ff) 25%, transparent);
+}
+.wa-tip-browse-btn:focus-visible {
+  outline: 2px solid var(--accent, #0ff);
+  outline-offset: 2px;
+}
