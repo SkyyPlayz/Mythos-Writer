@@ -506,8 +506,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('session:saveScene', payload),
   // SKY-156: Project Templates
   templateList: () => ipcRenderer.invoke('template:list', undefined),
-  templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) =>
-    ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
+  // SKY-780: parentToken must come from a prior vault:pick-folder dialog call.
+  templateScaffold: (templateId: string, parentToken: string) =>
+    ipcRenderer.invoke('template:scaffold', { templateId, parentToken }),
   templateSaveAs: (name: string) =>
     ipcRenderer.invoke('template:saveAs', { name }),
   // SKY-190: Note Templates

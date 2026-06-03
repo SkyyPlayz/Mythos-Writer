@@ -176,6 +176,30 @@ export function checkSinglePathGate(
 }
 
 /**
+ * Gate `template:scaffold` (SKY-780). The renderer must supply a registration
+ * token from a prior `vault:pick-folder` dialog call, proving the parent
+ * directory was user-selected. The handler derives story/notes sub-paths from
+ * the validated parent — the renderer never supplies arbitrary FS paths.
+ * The token is consumed on success (one-shot).
+ */
+export function checkScaffoldGate(
+  input: { templateId: unknown; parentToken: unknown },
+  now: number = Date.now(),
+): { ok: true; parentPath: string } | { ok: false; error: string } {
+  if (!isNonEmptyString(input.templateId)) {
+    return { ok: false, error: 'templateId: must be a non-empty string' };
+  }
+  if (!isNonEmptyString(input.parentToken)) {
+    return { ok: false, error: 'parentToken: must be a non-empty string — use vault:pick-folder first' };
+  }
+  const validated = validateRegistrationToken(input.parentToken, { consume: true, now });
+  if (!validated) {
+    return { ok: false, error: 'parentToken is invalid or expired — use vault:pick-folder first' };
+  }
+  return { ok: true, parentPath: validated.vaultRoot };
+}
+
+/**
  * Gate `project:switch`. The vault root must already be in the recent-projects
  * allowlist — anything else is rejected. The renderer can only legitimately
  * switch to a project the user previously opened, and the recent-projects list

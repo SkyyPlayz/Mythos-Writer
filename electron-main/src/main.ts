@@ -199,7 +199,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault } from './vaultGate.js';
+import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault, checkScaffoldGate } from './vaultGate.js';
 import {
   checkVoiceSettingsUpdate,
   seedTrustedBinariesFromSettings,
@@ -3658,16 +3658,17 @@ const handlers: IpcHandlers = {
     return { templates: listTemplates(app.getPath('userData')) };
   },
 
-  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse> => {
-    const { templateId, storyVaultPath, notesVaultPath } = payload ?? {};
-    if (!templateId || !storyVaultPath || !notesVaultPath) {
-      throw new Error('templateId, storyVaultPath, and notesVaultPath are required');
-    }
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse | { error: string }> => {
+    // SKY-780: require a dialog-backed token so the renderer cannot supply
+    // arbitrary FS paths. The parent path is recovered from the token;
+    // story/notes sub-paths are derived here — not renderer-supplied.
+    const gate = checkScaffoldGate(payload ?? {});
+    if (!gate.ok) return { error: gate.error };
     const templates = listTemplates(app.getPath('userData'));
-    const template = templates.find((t) => t.id === templateId);
-    if (!template) throw new Error(`Template not found: ${templateId}`);
-    const resolvedStory = storyVaultPath.replace(/^~/, app.getPath('home'));
-    const resolvedNotes = notesVaultPath.replace(/^~/, app.getPath('home'));
+    const template = templates.find((t) => t.id === (payload?.templateId ?? ''));
+    if (!template) return { error: `Template not found: ${payload?.templateId}` };
+    const resolvedStory = path.join(gate.parentPath, 'Story Vault');
+    const resolvedNotes = path.join(gate.parentPath, 'Notes Vault');
     for (const [label, target] of [['Story Vault', resolvedStory], ['Notes Vault', resolvedNotes]] as const) {
       if (
         fs.existsSync(target) &&
@@ -3677,7 +3678,10 @@ const handlers: IpcHandlers = {
       }
     }
     scaffoldFromTemplate(resolvedStory, resolvedNotes, template);
-    return { ok: true as const, storyVaultPath: resolvedStory, notesVaultPath: resolvedNotes };
+    // Issue tokens so the caller can authorize the subsequent vault:setPaths call.
+    const storyVaultToken = generateRegistrationToken(resolvedStory);
+    const notesVaultToken = generateRegistrationToken(resolvedNotes);
+    return { ok: true as const, storyVaultPath: resolvedStory, notesVaultPath: resolvedNotes, storyVaultToken, notesVaultToken };
   },
 
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: import('./ipc.js').TemplateSaveAsPayload): import('./ipc.js').TemplateSaveAsResponse => {
