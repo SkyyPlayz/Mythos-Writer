@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { SUGGESTION_CATEGORY_LABELS } from './types';
 import './SuggestionReview.css';
 
 type AgentSource = 'writing-assistant' | 'brainstorm' | 'archive';
@@ -16,6 +17,7 @@ interface Suggestion {
   createdAt: string;
   status: SuggestionStatus;
   payload_json?: string | null;
+  category?: SuggestionCategory | null;
 }
 
 const AGENT_LABELS: Record<AgentSource, string> = {
@@ -150,6 +152,11 @@ function SuggestionRow({
         <span className={`sr-agent-badge sr-agent-${suggestion.source_agent}`}>
           {AGENT_LABELS[suggestion.source_agent]}
         </span>
+        {suggestion.category && (
+          <span className="sr-category-badge" aria-label={`Category: ${SUGGESTION_CATEGORY_LABELS[suggestion.category]}`}>
+            {SUGGESTION_CATEGORY_LABELS[suggestion.category]}
+          </span>
+        )}
         <button
           className="sr-target-link"
           onClick={() => onOpenTarget(suggestion.target)}
@@ -322,6 +329,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
             createdAt: (r.created_at ?? r.createdAt ?? new Date().toISOString()) as string,
             status: (r.status ?? 'proposed') as SuggestionStatus,
             payload_json: (r.payload_json ?? null) as string | null,
+            category: (r.category ?? null) as SuggestionCategory | null,
           }));
           setSuggestions(mapped);
           setIsLive(true);

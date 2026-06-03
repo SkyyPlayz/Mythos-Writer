@@ -1,11 +1,15 @@
 // Writing Assistant — pure parsing helpers (no Electron imports).
 // Testable without a running main process.
 
-import type { DbSuggestion } from './db.js';
+import type { DbSuggestion, SuggestionCategory } from './db.js';
 import type { BetaReadComment } from './ipc.js';
 
+const VALID_CATEGORIES: ReadonlySet<string> = new Set<SuggestionCategory>([
+  'punctuation', 'spelling', 'grammar', 'sentence-structure', 'style',
+]);
+
 /**
- * Parse a JSON-array LLM response for writing tips.
+ * Parse a JSON-array LLM response for writing tips (plain string format).
  * Falls back to splitting on newlines if JSON parsing fails.
  * Returns at most `limit` tips.
  */
@@ -25,8 +29,38 @@ export function parseScanTips(text: string, limit = 5): string[] {
 }
 
 /**
+ * Parse a JSON-array LLM response for categorized writing tips.
+ * Expects [{category, tip}, ...] objects; falls back to parseScanTips with null categories.
+ * Returns at most `limit` items.
+ */
+export function parseScanTipsStructured(
+  text: string,
+  limit = 5,
+): { tip: string; category: SuggestionCategory | null }[] {
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed)) {
+        const structured = parsed
+          .filter((item) => item && typeof item === 'object' && typeof item.tip === 'string' && item.tip)
+          .map((item) => ({
+            tip: String(item.tip),
+            category: VALID_CATEGORIES.has(String(item.category))
+              ? (item.category as SuggestionCategory)
+              : null,
+          }));
+        if (structured.length > 0) return structured.slice(0, limit);
+      }
+    }
+  } catch { /* fallback below */ }
+  return parseScanTips(text, limit).map((tip) => ({ tip, category: null }));
+}
+
+/**
  * Convert a list of writing tips into proposed DbSuggestion rows.
  * Each tip becomes one manuscript-targeted suggestion.
+ * Pass optional `categories` to set per-row category; defaults to null for all.
  */
 export function buildScanSuggestions(
   tips: string[],
@@ -34,8 +68,9 @@ export function buildScanSuggestions(
   scenePath: string,
   scannedAt: string,
   uuidFn: () => string,
+  categories?: (SuggestionCategory | null)[],
 ): DbSuggestion[] {
-  return tips.map((tip) => ({
+  return tips.map((tip, i) => ({
     id: uuidFn(),
     source_agent: 'writing-assistant',
     confidence: 0.7,
@@ -49,6 +84,7 @@ export function buildScanSuggestions(
     applied_at: null,
     applied_run_id: null,
     budget_exceeded: 0,
+    category: categories?.[i] ?? null,
   }));
 }
 

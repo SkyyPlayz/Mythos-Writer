@@ -14,6 +14,7 @@ export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' 
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
 export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
 export type TimelineSource = 'explicit_marker' | 'prose';
+export type SuggestionCategory = 'punctuation' | 'spelling' | 'grammar' | 'sentence-structure' | 'style';
 
 export interface DbSuggestion {
   id: string;
@@ -30,6 +31,8 @@ export interface DbSuggestion {
   applied_run_id: string | null;
   /** 1 if blocked by a budget cap; 0 otherwise */
   budget_exceeded: number;
+  /** Writing-assistant suggestion category; null/absent for other agents or legacy rows */
+  category?: SuggestionCategory | null;
 }
 
 export interface DbAuditLog {
@@ -448,6 +451,16 @@ function runMigrations(db: DatabaseSync): void {
     }
     db.exec('PRAGMA user_version = 17');
   }
+
+  if (currentVersion < 18) {
+    const hasSuggestions = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions'"
+    ).get();
+    if (hasSuggestions) {
+      db.exec(`ALTER TABLE suggestions ADD COLUMN category TEXT;`);
+    }
+    db.exec('PRAGMA user_version = 18');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -472,10 +485,10 @@ export function upsertSuggestion(s: DbSuggestion): void {
     .prepare(
       `INSERT OR REPLACE INTO suggestions
          (id, source_agent, confidence, rationale, target_kind, target_path, target_anchor,
-          payload_json, status, created_at, applied_at, applied_run_id, budget_exceeded)
+          payload_json, status, created_at, applied_at, applied_run_id, budget_exceeded, category)
        VALUES
          (@id, @source_agent, @confidence, @rationale, @target_kind, @target_path, @target_anchor,
-          @payload_json, @status, @created_at, @applied_at, @applied_run_id, @budget_exceeded)`
+          @payload_json, @status, @created_at, @applied_at, @applied_run_id, @budget_exceeded, @category)`
     )
     .run(s as unknown as Record<string, SQLInputValue>);
 }

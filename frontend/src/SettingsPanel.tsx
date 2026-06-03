@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FocusPrefs } from './types';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import { resolveAxisTokens } from './themeAxis';
+import { SUGGESTION_CATEGORY_LABELS, SUGGESTION_CATEGORIES } from './types';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -175,6 +176,14 @@ const MODEL_OPTIONS: { value: string; label: string }[] = [
  */
 const ADAPTER_REGISTERED_PROVIDERS: ReadonlySet<ProviderKind> = new Set<ProviderKind>(['anthropic']);
 
+const ALL_CATEGORIES_ENABLED: Record<SuggestionCategory, boolean> = {
+  punctuation: true,
+  spelling: true,
+  grammar: true,
+  'sentence-structure': true,
+  style: true,
+};
+
 const BUDGET_DEFAULTS: AgentBudgetSettings = {
   autoApply: false,
   confidenceThreshold: 0.85,
@@ -182,6 +191,7 @@ const BUDGET_DEFAULTS: AgentBudgetSettings = {
   maxSuggestionsPerHour: 50,
   heartbeatIntervalMinutes: 5,
   maxTokensPerDay: 500_000,
+  autoApplyCategories: ALL_CATEGORIES_ENABLED,
 };
 
 const DEFAULTS: AppSettings = {
@@ -474,6 +484,23 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       agents: {
         ...prev.agents,
         [agent]: { ...prev.agents[agent], [field]: value },
+      },
+    }));
+    setSavedOk(false);
+  }, []);
+
+  const setAutoApplyCategory = useCallback((category: SuggestionCategory, enabled: boolean) => {
+    setSettings((prev) => ({
+      ...prev,
+      agents: {
+        ...prev.agents,
+        writingAssistant: {
+          ...prev.agents.writingAssistant,
+          autoApplyCategories: {
+            ...(prev.agents.writingAssistant.autoApplyCategories ?? ALL_CATEGORIES_ENABLED),
+            [category]: enabled,
+          },
+        },
       },
     }));
     setSavedOk(false);
@@ -1029,6 +1056,30 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                {settings.agents.writingAssistant.autoApply && (
+                  <div className="settings-field settings-category-toggles" role="group" aria-label="Auto-apply categories">
+                    <span className="settings-label settings-category-label">Auto-apply categories</span>
+                    {SUGGESTION_CATEGORIES.map((cat) => {
+                      const cats = settings.agents.writingAssistant.autoApplyCategories ?? ALL_CATEGORIES_ENABLED;
+                      const enabled = cats[cat] ?? true;
+                      return (
+                        <div key={cat} className="settings-field settings-field-inline settings-category-row">
+                          <label className="settings-toggle" htmlFor={`wa-cat-${cat}`}>
+                            <input
+                              id={`wa-cat-${cat}`}
+                              type="checkbox"
+                              aria-label={`Auto-apply ${SUGGESTION_CATEGORY_LABELS[cat]} suggestions`}
+                              checked={enabled}
+                              onChange={(e) => setAutoApplyCategory(cat, e.target.checked)}
+                            />
+                            <span className="settings-toggle-track" />
+                          </label>
+                          <span className="settings-label">{SUGGESTION_CATEGORY_LABELS[cat]}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">

@@ -56,6 +56,7 @@ function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0
     applied_at: null,
     applied_run_id: null,
     budget_exceeded: 0,
+    category: null,
     ...overrides,
   };
 }
@@ -629,10 +630,10 @@ describe('world DB migration — entity tables', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('sets user_version to 17 on fresh vault', () => {
+  it('sets user_version to 18 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(17);
+    expect(row.user_version).toBe(18);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -674,15 +675,15 @@ describe('world DB migration — entity tables', () => {
     expect(row?.name).toBe('entity_fts');
   });
 
-  it('migration is idempotent — close/reopen keeps user_version at 17', () => {
+  it('migration is idempotent — close/reopen keeps user_version at 18', () => {
     openDb(tmpDir);
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(17);
+    expect(row.user_version).toBe(18);
   });
 
-  it('upgrading from v13 reaches v17 with all entity tables and writing_log', () => {
+  it('upgrading from v13 reaches v18 with all entity tables and writing_log', () => {
     const mythosDir = path.join(tmpDir, '.mythos');
     fs.mkdirSync(mythosDir, { recursive: true });
     const dbPath = path.join(mythosDir, 'state.db');
@@ -698,7 +699,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(17);
+    expect(row.user_version).toBe(18);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;

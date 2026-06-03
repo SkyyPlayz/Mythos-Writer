@@ -3,6 +3,7 @@
 
 import type { DatabaseSync } from 'node:sqlite';
 import { countSuggestionsInWindow, countTokensInWindow } from './db.js';
+import type { SuggestionCategory } from './db.js';
 
 export interface AgentBudgetSettings {
   autoApply: boolean;
@@ -10,6 +11,8 @@ export interface AgentBudgetSettings {
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
   maxTokensPerDay: number;
+  /** Per-category auto-apply toggles (writing-assistant only). All default to true. */
+  autoApplyCategories?: Record<SuggestionCategory, boolean>;
 }
 
 export interface AutoApplyResult {
@@ -25,19 +28,29 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  *
  * Rules (in evaluation order):
  * 1. autoApply must be true — otherwise stay proposed, no budget check.
- * 2. confidence must be >= confidenceThreshold — otherwise stay proposed.
- * 3. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
+ * 2. If category is provided and autoApplyCategories has an entry for it,
+ *    the category must be enabled — otherwise stay proposed, no budget check.
+ * 3. confidence must be >= confidenceThreshold — otherwise stay proposed.
+ * 4. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
  *    Checks: hourly suggestion count, hourly token count, daily token count.
- * 4. All checks pass → auto-apply.
+ * 5. All checks pass → auto-apply.
  */
 export function evaluateAutoApply(
   confidence: number,
   sourceAgent: string,
   settings: AgentBudgetSettings,
   db: DatabaseSync,
+  category: SuggestionCategory | null = null,
 ): AutoApplyResult {
   if (!settings.autoApply) {
     return { shouldAutoApply: false, budgetExceeded: false };
+  }
+
+  if (category !== null && settings.autoApplyCategories) {
+    const categoryEnabled = settings.autoApplyCategories[category] ?? true;
+    if (!categoryEnabled) {
+      return { shouldAutoApply: false, budgetExceeded: false };
+    }
   }
 
   if (confidence < settings.confidenceThreshold) {

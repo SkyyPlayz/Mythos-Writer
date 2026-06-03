@@ -113,6 +113,8 @@ interface VaultCheckInconsistency {
   status: 'proposed' | 'dismissed';
 }
 
+type SuggestionCategory = 'punctuation' | 'spelling' | 'grammar' | 'sentence-structure' | 'style';
+
 interface Suggestion {
   id: string;
   source_agent: 'writing-assistant' | 'brainstorm' | 'archive';
@@ -122,6 +124,7 @@ interface Suggestion {
   createdAt: string;
   status: 'proposed' | 'accepted' | 'rejected' | 'ignored';
   payload_json?: string | null;
+  category?: SuggestionCategory | null;
 }
 
 interface AgentBudgetSettings {
@@ -131,6 +134,8 @@ interface AgentBudgetSettings {
   maxSuggestionsPerHour: number;
   heartbeatIntervalMinutes: number;
   maxTokensPerDay: number;
+  /** Per-category auto-apply toggles (writing-assistant only). All default to true. */
+  autoApplyCategories?: Record<SuggestionCategory, boolean>;
 }
 
 interface AgentVoiceSettings {

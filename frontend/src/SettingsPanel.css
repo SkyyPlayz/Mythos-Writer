@@ -1152,3 +1152,29 @@
   outline-offset: 2px;
   border-radius: 3px;
 }
+
+/* ─── SKY-321: per-category auto-apply toggles ─────────────────────────────── */
+.settings-category-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 4px;
+}
+
+.settings-category-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  margin-bottom: 2px;
+}
+
+.settings-category-row {
+  margin: 0;
+  padding: 0;
+}

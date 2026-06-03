@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
 
+const ALL_CATS: Record<SuggestionCategory, boolean> = { punctuation: true, spelling: true, grammar: true, 'sentence-structure': true, style: true };
+
 const BASE_SETTINGS: AppSettings = {
   apiKey: '',
   agents: {
@@ -15,6 +17,7 @@ const BASE_SETTINGS: AppSettings = {
       maxSuggestionsPerHour: 20,
       heartbeatIntervalMinutes: 5,
       maxTokensPerDay: 100000,
+      autoApplyCategories: ALL_CATS,
     },
     brainstorm: {
       enabled: true,
@@ -25,6 +28,7 @@ const BASE_SETTINGS: AppSettings = {
       maxSuggestionsPerHour: 20,
       heartbeatIntervalMinutes: 5,
       maxTokensPerDay: 100000,
+      autoApplyCategories: ALL_CATS,
     },
     archive: {
       enabled: true,
@@ -36,6 +40,7 @@ const BASE_SETTINGS: AppSettings = {
       maxSuggestionsPerHour: 20,
       heartbeatIntervalMinutes: 5,
       maxTokensPerDay: 100000,
+      autoApplyCategories: ALL_CATS,
     },
   },
   theme: 'dark',
