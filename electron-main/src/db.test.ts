@@ -683,7 +683,7 @@ describe('world DB migration — entity tables', () => {
     expect(row.user_version).toBe(18);
   });
 
-  it('upgrading from v13 reaches v17 with all entity tables and writing_log', () => {
+  it('upgrading from v13 reaches v18 with all entity tables and writing_log', () => {
     const mythosDir = path.join(tmpDir, '.mythos');
     fs.mkdirSync(mythosDir, { recursive: true });
     const dbPath = path.join(mythosDir, 'state.db');

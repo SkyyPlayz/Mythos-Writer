@@ -453,7 +453,12 @@ function runMigrations(db: DatabaseSync): void {
   }
 
   if (currentVersion < 18) {
-    db.exec(`ALTER TABLE suggestions ADD COLUMN category TEXT;`);
+    const hasSuggestions = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions'"
+    ).get();
+    if (hasSuggestions) {
+      db.exec(`ALTER TABLE suggestions ADD COLUMN category TEXT;`);
+    }
     db.exec('PRAGMA user_version = 18');
   }
 }
