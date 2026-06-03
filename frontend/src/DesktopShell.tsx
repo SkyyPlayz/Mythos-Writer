@@ -13,6 +13,7 @@ import BrainstormPage from './BrainstormPage';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import TimelineSpreadsheet from './TimelineSpreadsheet';
+import SubwayCanvas from './SubwayCanvas';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
@@ -467,6 +468,7 @@ export default function DesktopShell() {
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<AppView>('editor');
+  const [timelineSubView, setTimelineSubView] = useState<'subway' | 'spreadsheet'>('subway');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -1276,7 +1278,35 @@ export default function DesktopShell() {
       )}
       {view === 'timeline' && (
         <div className="shell-timeline">
-          <TimelineSpreadsheet story={selectedStory} />
+          <div className="shell-timeline-tabs" role="tablist" aria-label="Timeline view">
+            <button
+              role="tab"
+              aria-selected={timelineSubView === 'subway'}
+              className={`shell-timeline-tab${timelineSubView === 'subway' ? ' active' : ''}`}
+              onClick={() => setTimelineSubView('subway')}
+            >
+              Subway
+            </button>
+            <button
+              role="tab"
+              aria-selected={timelineSubView === 'spreadsheet'}
+              className={`shell-timeline-tab${timelineSubView === 'spreadsheet' ? ' active' : ''}`}
+              onClick={() => setTimelineSubView('spreadsheet')}
+            >
+              Spreadsheet
+            </button>
+          </div>
+          <div className="shell-timeline-body" role="tabpanel">
+            {timelineSubView === 'subway' ? (
+              <SubwayCanvas
+                storyId={selectedStory?.id ?? null}
+                onOpenSceneEditor={() => setView('editor')}
+                onOpenBrainstorm={() => setView('brainstorm')}
+              />
+            ) : (
+              <TimelineSpreadsheet story={selectedStory} />
+            )}
+          </div>
         </div>
       )}
       {view === 'editor' && <div className="shell-panels">

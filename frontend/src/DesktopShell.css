@@ -314,6 +314,44 @@
   flex-direction: column;
 }
 
+.shell-timeline-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px 0;
+  background: var(--bg-canvas, #151821);
+  border-bottom: 1px solid var(--border-default, #383850);
+  flex-shrink: 0;
+}
+
+.shell-timeline-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted, #8a9bb0);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+  font-family: inherit;
+  margin-bottom: -1px;
+}
+
+.shell-timeline-tab:hover {
+  color: var(--text-body, #bfd6e8);
+}
+
+.shell-timeline-tab.active {
+  color: var(--neon-cyan, #00f0ff);
+  border-bottom-color: var(--neon-cyan, #00f0ff);
+}
+
+.shell-timeline-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
 .shell-left {
   flex-shrink: 0;
   height: 100%;

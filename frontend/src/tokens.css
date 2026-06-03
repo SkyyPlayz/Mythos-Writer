@@ -30,6 +30,8 @@
   --neon-cyan: #00f0ff;        /* primary accent / hover frame / focus ring   */
   --neon-violet: #9b5fff;      /* secondary accent / heading accent words      */
   --neon-magenta: #ff4dff;     /* tertiary accent / emphasis, destructive-hover */
+  --pov-gold: #fbbf24;         /* subway timeline POV track 3 (SKY-792)        */
+  --pov-teal: #10b981;         /* subway timeline POV track 4 (SKY-792)        */
 
   --text-header: #edecf6;      /* titles, active labels (warm white)  13.3:1   */
   --text-body: #bfd6e8;        /* paragraphs, UI copy (soft gray-blue) 10.4:1  */
