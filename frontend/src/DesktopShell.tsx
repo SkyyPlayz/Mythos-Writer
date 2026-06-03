@@ -468,6 +468,21 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
 
 // ─────────────────────────────────────
 
+/** Match a KeyboardEvent against a shortcut string like 'ctrl+shift+v' or 'alt+v'. */
+function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
+  const parts = shortcut.toLowerCase().split('+');
+  const key = parts[parts.length - 1];
+  const wantsCtrl = parts.includes('ctrl');
+  const wantsShift = parts.includes('shift');
+  const wantsAlt = parts.includes('alt');
+  return (
+    e.key.toLowerCase() === key &&
+    !!(e.ctrlKey || e.metaKey) === wantsCtrl &&
+    e.shiftKey === wantsShift &&
+    e.altKey === wantsAlt
+  );
+}
+
 interface DragState {
   target: 'left' | 'right';
   startX: number;
@@ -493,6 +508,14 @@ export default function DesktopShell() {
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Voice state (SKY-322) ───
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceToast, setVoiceToast] = useState<string | null>(null);
+  const voiceSessionRef = useRef<string | null>(null);
+  const speechRecogRef = useRef<SpeechRecognition | null>(null);
+  const pttDownRef = useRef(false);
+  const voiceToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [exportScope, setExportScope] = useState<ExportScope | null>(null);
@@ -647,6 +670,152 @@ export default function DesktopShell() {
       if (budgetToastTimer.current) clearTimeout(budgetToastTimer.current);
     };
   }, []);
+
+  // ─── Voice input (SKY-322) ───
+
+  const stopVoice = useCallback(async () => {
+    if (speechRecogRef.current) {
+      speechRecogRef.current.onresult = null;
+      speechRecogRef.current.onerror = null;
+      try { speechRecogRef.current.stop(); } catch { /* already stopped */ }
+      speechRecogRef.current = null;
+    }
+    const sessionId = voiceSessionRef.current;
+    voiceSessionRef.current = null;
+    pttDownRef.current = false;
+    setVoiceActive(false);
+    if (sessionId) {
+      window.api.voiceStop(sessionId).catch(() => {});
+    }
+  }, []);
+
+  const startVoice = useCallback(async () => {
+    if (voiceSessionRef.current) return;
+    const micDeviceId = appSettings?.voice?.micDeviceId;
+    let sessionId: string;
+    try {
+      const res = await window.api.voiceStart(micDeviceId) as { sessionId: string };
+      sessionId = res.sessionId;
+    } catch {
+      setVoiceToast('Failed to start voice input.');
+      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+      voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      return;
+    }
+    voiceSessionRef.current = sessionId;
+    setVoiceActive(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      setVoiceToast('Web Speech API not available.');
+      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+      voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      voiceSessionRef.current = null;
+      setVoiceActive(false);
+      window.api.voiceStop(sessionId).catch(() => {});
+      return;
+    }
+
+    const recog = new SpeechRecognitionCtor();
+    recog.continuous = true;
+    recog.interimResults = true;
+    recog.onresult = (evt) => {
+      const sid = voiceSessionRef.current;
+      if (!sid) return;
+      for (let i = evt.resultIndex; i < evt.results.length; i++) {
+        const r = evt.results[i];
+        if (r[0]) {
+          window.api.voiceLocalTranscript(sid, r[0].transcript, r.isFinal);
+        }
+      }
+    };
+    recog.onerror = (evt) => {
+      const msg = evt.error === 'not-allowed'
+        ? 'Microphone permission denied. Check your system settings.'
+        : evt.error !== 'aborted' ? 'Voice recognition error. Please try again.' : null;
+      if (msg) {
+        setVoiceToast(msg);
+        if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+        voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      }
+      const sid = voiceSessionRef.current;
+      speechRecogRef.current = null;
+      voiceSessionRef.current = null;
+      pttDownRef.current = false;
+      setVoiceActive(false);
+      if (sid) window.api.voiceStop(sid).catch(() => {});
+    };
+    speechRecogRef.current = recog;
+    recog.start();
+  }, [appSettings?.voice?.micDeviceId]);
+
+  // Subscribe to transcript push events — insert final text at cursor
+  useEffect(() => {
+    if (!window.api?.onVoiceTranscript) return;
+    const unsub = window.api.onVoiceTranscript(({ text, isFinal }) => {
+      if (!isFinal) return;
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (editorApiRef.current) {
+        editorApiRef.current.insertText(trimmed + ' ');
+      } else {
+        setVoiceToast('Voice captured — open a scene to insert text.');
+        if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+        voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      }
+    });
+    return () => {
+      unsub();
+      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+    };
+  }, []);
+
+  // Keyboard shortcuts: toggle (Ctrl+Shift+V) and push-to-talk (Alt+V hold)
+  useEffect(() => {
+    if (!appSettings?.voice?.enabled) return;
+    const voiceMode = appSettings.voice.voiceMode ?? 'toggle';
+    const toggleShortcut = appSettings.voice.toggleShortcut ?? 'ctrl+shift+v';
+    const pttKey = appSettings.voice.pttKey ?? 'alt+v';
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (voiceMode === 'toggle' && matchesShortcut(e, toggleShortcut)) {
+        e.preventDefault();
+        if (voiceSessionRef.current) {
+          stopVoice().catch(() => {});
+        } else {
+          startVoice().catch(() => {});
+        }
+      } else if (voiceMode === 'push-to-talk' && matchesShortcut(e, pttKey)) {
+        if (!pttDownRef.current) {
+          e.preventDefault();
+          pttDownRef.current = true;
+          startVoice().catch(() => {});
+        }
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (voiceMode === 'push-to-talk' && matchesShortcut(e, pttKey)) {
+        pttDownRef.current = false;
+        stopVoice().catch(() => {});
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [
+    appSettings?.voice?.enabled,
+    appSettings?.voice?.voiceMode,
+    appSettings?.voice?.toggleShortcut,
+    appSettings?.voice?.pttKey,
+    startVoice,
+    stopVoice,
+  ]);
 
   const loadVault = useCallback(async () => {
     setLoading(true);
@@ -1627,6 +1796,7 @@ export default function DesktopShell() {
             onNavigateScene={handleNavigateScene}
             activeNotePath={openedNotePath}
             activeNoteWordCount={openedNoteWordCount}
+            isVoiceActive={voiceActive}
           />
         )}
       </div>
@@ -1681,6 +1851,11 @@ export default function DesktopShell() {
       {budgetToast && (
         <div className="budget-toast" role="alert" aria-live="assertive">
           {budgetToast}
+        </div>
+      )}
+      {voiceToast && (
+        <div className="voice-toast" role="status" aria-live="polite">
+          {voiceToast}
         </div>
       )}
       <GlobalSearchPanel

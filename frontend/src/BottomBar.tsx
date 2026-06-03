@@ -10,6 +10,7 @@ interface Props {
   activeNotePath?: string | null;
   /** SKY-204: word count for the active vault note. */
   activeNoteWordCount?: number;
+  isVoiceActive?: boolean;
 }
 
 export default function BottomBar({
@@ -19,6 +20,7 @@ export default function BottomBar({
   onNavigateScene,
   activeNotePath,
   activeNoteWordCount,
+  isVoiceActive = false,
 }: Props) {
   const allScenes: { scene: Scene; chapter: Chapter; story: Story }[] = [];
   if (selectedStory) {
@@ -110,6 +112,13 @@ export default function BottomBar({
           </span>
         )}
       </div>
+
+      {isVoiceActive && (
+        <div className="bottom-voice" aria-label="Voice input active" role="status">
+          <span className="bottom-voice-dot" aria-hidden="true" />
+          <span className="bottom-voice-label">Listening</span>
+        </div>
+      )}
     </div>
   );
 }

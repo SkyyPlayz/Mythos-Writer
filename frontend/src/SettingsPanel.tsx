@@ -438,7 +438,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     });
   }, []);
 
-  useEffect(() => {
+  const refreshMicDevices = useCallback(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     navigator.mediaDevices.enumerateDevices().then((devices) => {
       const mics = devices
@@ -456,6 +456,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => { refreshMicDevices(); }, [refreshMicDevices]);
 
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
@@ -1769,7 +1771,14 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                       const enabled = e.target.checked;
                       setSettings((p) => ({
                         ...p,
-                        voice: { enabled, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: p.voice?.micDeviceId },
+                        voice: {
+                          enabled,
+                          cloudFallback: p.voice?.cloudFallback ?? false,
+                          micDeviceId: p.voice?.micDeviceId,
+                          voiceMode: p.voice?.voiceMode ?? 'toggle',
+                          toggleShortcut: p.voice?.toggleShortcut ?? 'ctrl+shift+v',
+                          pttKey: p.voice?.pttKey ?? 'alt+v',
+                        },
                       }));
                       setSavedOk(false);
                     }}
@@ -1777,32 +1786,91 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   <span className="settings-toggle-track" />
                 </label>
               </div>
-              {micDevices.length > 0 && (
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="voice-mic">Microphone</label>
-                  <select
-                    id="voice-mic"
-                    className="settings-input settings-select"
-                    value={settings.voice?.micDeviceId ?? ''}
-                    aria-label="Microphone selection"
-                    onChange={(e) => {
-                      const val = e.target.value || undefined;
-                      setSettings((p) => ({
-                        ...p,
-                        voice: { enabled: p.voice?.enabled ?? false, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: val },
-                      }));
-                      setSavedOk(false);
-                    }}
-                  >
-                    <option value="">System default</option>
-                    {micDevices.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
-                    ))}
-                  </select>
-                </div>
+
+              {(settings.voice?.enabled) && (
+                <>
+                  {/* Capture mode */}
+                  <div className="settings-field">
+                    <span className="settings-label">Capture mode</span>
+                    <div className="settings-radio-group" role="radiogroup" aria-label="Voice capture mode">
+                      <label className="settings-radio-label">
+                        <input
+                          type="radio"
+                          name="voice-mode"
+                          value="toggle"
+                          checked={(settings.voice?.voiceMode ?? 'toggle') === 'toggle'}
+                          onChange={() => {
+                            setSettings((p) => ({
+                              ...p,
+                              voice: { ...(p.voice ?? { enabled: true, cloudFallback: false }), voiceMode: 'toggle' },
+                            }));
+                            setSavedOk(false);
+                          }}
+                        />
+                        <span>Toggle — press <kbd>Ctrl+Shift+V</kbd> to start/stop</span>
+                      </label>
+                      <label className="settings-radio-label">
+                        <input
+                          type="radio"
+                          name="voice-mode"
+                          value="push-to-talk"
+                          checked={settings.voice?.voiceMode === 'push-to-talk'}
+                          onChange={() => {
+                            setSettings((p) => ({
+                              ...p,
+                              voice: { ...(p.voice ?? { enabled: true, cloudFallback: false }), voiceMode: 'push-to-talk' },
+                            }));
+                            setSavedOk(false);
+                          }}
+                        />
+                        <span>Push-to-talk — hold <kbd>Alt+V</kbd> while speaking</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Microphone device */}
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-mic">Microphone</label>
+                    <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                      <select
+                        id="voice-mic"
+                        className="settings-input settings-select"
+                        style={{ flex: 1 }}
+                        value={settings.voice?.micDeviceId ?? ''}
+                        aria-label="Microphone selection"
+                        onChange={(e) => {
+                          const val = e.target.value || undefined;
+                          setSettings((p) => ({
+                            ...p,
+                            voice: { ...(p.voice ?? { enabled: true, cloudFallback: false }), micDeviceId: val },
+                          }));
+                          setSavedOk(false);
+                        }}
+                      >
+                        <option value="">System default</option>
+                        {micDevices.map((d) => (
+                          <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="settings-btn"
+                        onClick={refreshMicDevices}
+                        aria-label="Refresh microphone list"
+                        title="Refresh device list"
+                      >
+                        ↺
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
+
+              <p className="settings-hint settings-hint-privacy">
+                Voice is processed locally on your device — no audio is sent anywhere.
+              </p>
               <p className="settings-hint">
-                Voice input lets you dictate text into the editor. Requires microphone permission.
+                Requires microphone permission. Toggle shortcut works from any panel.
               </p>
             </div>
           </section>

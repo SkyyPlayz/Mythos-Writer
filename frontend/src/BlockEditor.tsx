@@ -24,6 +24,7 @@ export interface BlockEditorApi {
   insertWikiLink: (link: string, anchorText: string) => void;
   /** Apply all current auto-linker suggestions as a single undoable transaction. */
   applyAutoLinks: () => void;
+  insertText: (text: string) => void;
 }
 
 interface Props {
@@ -246,6 +247,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           if (wikiNode) tr = tr.replaceWith(r.from, r.to, wikiNode);
         }
         editor.view.dispatch(tr);
+      },
+      insertText: (text: string) => {
+        editor.chain().focus().insertContent(text).run();
       },
     });
   // Run only when the editor instance changes (new scene key causes remount)

@@ -144,6 +144,33 @@ interface VoiceSettings {
   cloudFallback: boolean;
   micDeviceId?: string;
   openaiApiKey?: string;
+  voiceMode?: 'toggle' | 'push-to-talk';
+  toggleShortcut?: string;
+  pttKey?: string;
+}
+
+// Web Speech API — not yet in the TypeScript DOM lib bundled with this project.
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+  readonly message: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onresult: ((evt: SpeechRecognitionEvent) => void) | null;
+  onerror: ((evt: SpeechRecognitionErrorEvent) => void) | null;
+  onend: ((evt: Event) => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
 }
 
 interface TelemetrySettings {
@@ -248,12 +275,7 @@ interface AppSettings {
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
   /** Voice IO settings (MYT-205). */
-  voice?: {
-    enabled: boolean;
-    cloudFallback: boolean;
-    micDeviceId?: string;
-    openaiApiKey?: string;
-  };
+  voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
   stt?: {
     enabled: boolean;

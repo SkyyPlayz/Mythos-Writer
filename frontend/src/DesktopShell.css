@@ -535,6 +535,24 @@
   background: var(--bg-control-hover, #45475a);
 }
 
+.voice-toast {
+  position: fixed;
+  bottom: 3.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel, #2a2a2e);
+  color: var(--text-primary, #f0f0f0);
+  border: 1px solid #4b5563;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.82rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  z-index: 9998;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: budget-toast-in 0.2s ease;
+}
+
 /* Beta-Read margin panel (MYT-237) */
 .shell-editor-beta-wrap {
   display: flex;
