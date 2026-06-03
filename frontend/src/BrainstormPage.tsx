@@ -1,5 +1,15 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import PresetSelector from './components/PresetSelector';
+import PresetEditor from './components/PresetEditor';
+import RefinementChips from './components/RefinementChips';
+import {
+  loadSessionPreset,
+  saveSessionPreset,
+  getEffectiveAxes,
+  buildPresetContext,
+} from './presets';
+import type { PresetAxes, RefinementChip } from './presets';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -177,6 +187,12 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
   const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
+  const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
+  const [presetOverrides, setPresetOverrides] = useState<Partial<PresetAxes>>(
+    () => loadSessionPreset().overrides,
+  );
+  const [showPresetEditor, setShowPresetEditor] = useState(false);
+  const [activeRefinementId, setActiveRefinementId] = useState<string | null>(null);
   // SKY-20: routing state — list of pending prompts plus the folder catalog
   // pulled from the Notes Vault. Both are populated lazily on first need.
   const [routingPrompts, setRoutingPrompts] = useState<RoutingPrompt[]>([]);
@@ -196,6 +212,10 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   // Holds the system prompt augmented with vault context for the current/last request.
   const contextSystemRef = useRef<string>(BRAINSTORM_SYSTEM_PROMPT);
   const { announce, liveText } = useLiveAnnounce();
+  const effectiveAxes = useMemo(
+    () => getEffectiveAxes(presetId, presetOverrides),
+    [presetId, presetOverrides],
+  );
 
   // Restore draft from localStorage on mount
   useEffect(() => {
@@ -506,7 +526,8 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
 
     // SKY-196: fetch vault context before streaming so relevant entities are
     // visible to Claude. Non-critical — proceed without context on any error.
-    let systemPrompt = BRAINSTORM_SYSTEM_PROMPT;
+    const presetGuide = buildPresetContext(effectiveAxes);
+    let systemPrompt = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
     try {
       const convText = messages.map((m) => m.text).join('\n');
       const ctx = await window.api.brainstormSelectContext?.({
@@ -516,14 +537,45 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       if (ctx) {
         setContextResult(ctx);
         if (ctx.included.length > 0) {
-          systemPrompt = BRAINSTORM_SYSTEM_PROMPT + buildContextBlock(ctx.included);
+          // Preserve preset context alongside vault context
+          systemPrompt = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT + buildContextBlock(ctx.included);
         }
       }
     } catch { /* vault context is non-critical */ }
     contextSystemRef.current = systemPrompt;
 
     await _runStream(apiMessages);
-  }, [prompt, loading, messages, announce, _runStream]);
+  }, [prompt, loading, messages, announce, _runStream, effectiveAxes]);
+
+  const handleRefine = useCallback((chip: RefinementChip) => {
+    if (loading) return;
+    const adjusted = chip.adjustAxes(effectiveAxes);
+    const newOverrides = { ...presetOverrides, ...adjusted };
+    setPresetOverrides(newOverrides);
+    saveSessionPreset(presetId, newOverrides);
+    setActiveRefinementId(chip.id);
+
+    const refinementText = `Please rewrite your previous response with a ${chip.description} style.`;
+    const userMsg: Message = { role: 'user', text: refinementText };
+    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
+    setLoading(true);
+    setError(null);
+    announce('Refining…');
+
+    const presetGuide = buildPresetContext({ ...effectiveAxes, ...adjusted });
+    contextSystemRef.current = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
+
+    const apiMessages = [...messages, userMsg].map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.text,
+    }));
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    void _runStream(apiMessages);
+  }, [announce, effectiveAxes, loading, messages, presetId, presetOverrides, _runStream]);
+
+  useEffect(() => {
+    if (!loading) setActiveRefinementId(null);
+  }, [loading]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -760,6 +812,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
           <div className="brainstorm-title">Brainstorm Agent</div>
           <div className="brainstorm-subtitle">Talk through your story — facts auto-extract to your vault</div>
         </div>
+        <div className="brainstorm-header-preset">
+          <PresetSelector
+            activePresetId={presetId}
+            onSelect={(id) => { setPresetId(id); setPresetOverrides({}); saveSessionPreset(id, {}); }}
+            onCustomize={() => setShowPresetEditor(true)}
+            compact
+          />
+        </div>
         <div className="brainstorm-header-actions">
           {messages.length > 0 && (
             <button
@@ -819,6 +879,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                       {msg.text}
                       {msg.streaming && <span className="bs-cursor" aria-hidden="true">▍</span>}
                     </div>
+                    {!msg.streaming && i === messages.length - 1 && (
+                      <RefinementChips
+                        effectiveAxes={effectiveAxes}
+                        onRefine={handleRefine}
+                        disabled={loading}
+                        activeChipId={activeRefinementId}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1158,6 +1226,18 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
           </div>
         </div>
       </div>
+
+      {showPresetEditor && (
+        <PresetEditor
+          activePresetId={presetId}
+          overrides={presetOverrides}
+          onApply={(overrides) => {
+            setPresetOverrides(overrides);
+            saveSessionPreset(presetId, overrides);
+          }}
+          onClose={() => setShowPresetEditor(false)}
+        />
+      )}
     </div>
   );
 }
