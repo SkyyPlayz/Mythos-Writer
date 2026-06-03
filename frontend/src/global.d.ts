@@ -323,6 +323,8 @@ interface AppSettings {
     noteFolder?: string;
     noteFormat?: string;
   };
+  /** SKY-627: author name entered during onboarding (optional). */
+  authorName?: string;
 }
 
 interface GenerationLogRow {
@@ -619,8 +621,14 @@ interface Window {
     validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
-    // SKY-12.4: mark onboarding complete (persisted to main-process settings)
-    onboardingComplete: () => Promise<{ ok: boolean }>;
+    // SKY-627: orchestrates vault creation + first-scene setup during onboarding
+    onboardingComplete: (payload?: {
+      startMode: 'blank' | 'sample' | 'template' | 'skip';
+      storyTitle?: string;
+      authorName?: string;
+      vaultParentPath?: string;
+      templateId?: string;
+    }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
