@@ -651,3 +651,5 @@ export function getNoteTemplate(id: string): NoteTemplate | undefined {
   return BUNDLED_NOTE_TEMPLATES.find((t) => t.id === id);
 }
 
+=======
+>>>>>>> 9979f20 (feat(SKY-156): project templates — bundled + user-saved vault structures)

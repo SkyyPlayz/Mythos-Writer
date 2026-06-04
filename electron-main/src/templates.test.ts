@@ -454,3 +454,5 @@ describe('getNoteTemplate', () => {
   });
 });
 
+=======
+>>>>>>> 9979f20 (feat(SKY-156): project templates — bundled + user-saved vault structures)
