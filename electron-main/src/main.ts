@@ -818,9 +818,33 @@ function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js'
   }
 }
 
+// ─── IPC Handlers ───
+const handlers: IpcHandlers = {
+  // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
+  // at the IPC boundary. The low-level helpers also re-check traversal, so a
+  // bad path is rejected twice independently.
+  [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload): VaultReadResponse => {
+    ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, false);
+    return readVaultFile(getVaultRoot(), payload.path);
+  },
 
-    writeFileAtomic(result.filePath, buffer);
-    return { path: result.filePath, cancelled: false };
+  [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
+    ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
+    return writeVaultFile(getVaultRoot(), payload.path, payload.content);
+  },
+
+  [IPC_CHANNELS.VAULT_LIST]: (): VaultListResponse => {
+    ensureVaultDir();
+    return { paths: listVaultFiles(getVaultRoot()) };
+  },
+
+  [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
+    ensureVaultDir();
+    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
+    deleteVaultFile(getVaultRoot(), payload.path);
+    return { deleted: true };
   },
 
   // ─── Markdown + plain-text export (SKY-153) ───

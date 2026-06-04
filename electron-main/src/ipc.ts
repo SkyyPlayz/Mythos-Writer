@@ -2430,9 +2430,6 @@ export type BrainstormEnrichEntryResponse =
   | { status: 'ok'; path: string; content: string }
   | { status: 'skipped'; reason: string };
 
-
-}
-
 export interface TemplateScaffoldResponse {
   ok: true;
   storyVaultPath: string;
