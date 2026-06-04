@@ -111,8 +111,8 @@ test.afterAll(async () => {
 });
 
 test.beforeEach(async () => {
-  // Open Settings dialog (Ctrl+, on most platforms)
-  await page.keyboard.press('Control+Comma');
+  // Open Settings dialog via the toolbar gear button (no Ctrl+Comma handler is wired).
+  await page.getByRole('button', { name: 'Open settings' }).click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5000 });
 });
 
