@@ -269,6 +269,15 @@ import {
   readEntityProse,
   syncAllEntitiesToIndex,
 } from './entitySync.js';
+// SKY-796: timeline AI auto-population proposals
+import {
+  buildProposalsForScene,
+  readProposalStore,
+  writeProposalStore,
+  mergeProposals,
+  pendingForScenes,
+  resolveProposalInStore,
+} from './timelineProposals.js';
 import {
   buildArchiveIndex,
   getArchiveIndex,
@@ -4138,6 +4147,194 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const arcs = readArcManifest(getVaultRoot());
     return { arcs };
+  },
+
+  // ─── SKY-796: Timeline AI auto-population proposals ───
+
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_GENERATE]: (payload: import('./ipc.js').TimelineProposalsGeneratePayload): import('./ipc.js').TimelineProposalsGenerateResponse => {
+    ensureVaultDir();
+    const vaultRoot = getVaultRoot();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find(s => s.id === payload.storyId);
+    if (!story) return { proposals: [] };
+
+    const characters = listEntities(vaultRoot, manifest, 'character')
+      .map(e => ({ id: e.id, name: e.name, aliases: e.aliases }));
+
+    const sceneIds = new Set<string>();
+    const fresh: import('./ipc.js').TimelineAIProposal[] = [];
+    const now = new Date().toISOString();
+
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) {
+        sceneIds.add(scene.id);
+        try {
+          const fileData = readSceneFile(vaultRoot, scene.path);
+          // Strip frontmatter — scan prose only.
+          const prose = (fileData.prose ?? '')
+            .replace(/^---[\s\S]*?---\n?/, '');
+          if (!prose.trim()) continue;
+          // A date is "user-set" when its source is anything other than 'ai'.
+          const dateIsUserSet =
+            !!fileData.chronologicalDate &&
+            (fileData.chronologicalSource ?? 'explicit_marker') !== 'ai';
+          const sceneProposals = buildProposalsForScene(
+            {
+              scene: {
+                sceneId: scene.id,
+                text: prose,
+                current: {
+                  dateIsUserSet,
+                  pov: fileData.metaPov,
+                  mood: fileData.metaMood,
+                  characterIds: fileData.entityCharacterIds ?? [],
+                },
+              },
+              characters,
+            },
+            now,
+          );
+          fresh.push(...sceneProposals);
+        } catch {
+          // unreadable scene file — skip
+        }
+      }
+    }
+
+    const store = readProposalStore(vaultRoot);
+    store.proposals = mergeProposals(store.proposals, fresh);
+    writeProposalStore(vaultRoot, store);
+
+    return { proposals: pendingForScenes(store.proposals, sceneIds) };
+  },
+
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: import('./ipc.js').TimelineProposalsListPayload): import('./ipc.js').TimelineProposalsListResponse => {
+    ensureVaultDir();
+    const vaultRoot = getVaultRoot();
+    const manifest = readManifest(getManifestPath());
+    const story = manifest.stories.find(s => s.id === payload.storyId);
+    if (!story) return { proposals: [] };
+    const sceneIds = new Set<string>();
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) sceneIds.add(scene.id);
+    }
+    const store = readProposalStore(vaultRoot);
+    return { proposals: pendingForScenes(store.proposals, sceneIds) };
+  },
+
+  [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: import('./ipc.js').TimelineProposalResolvePayload): import('./ipc.js').TimelineProposalResolveResponse => {
+    ensureVaultDir();
+    const vaultRoot = getVaultRoot();
+    const store = readProposalStore(vaultRoot);
+    const target = store.proposals.find(p => p.id === payload.proposalId);
+    if (!target) throw new Error(`Proposal not found: ${payload.proposalId}`);
+    if (target.status !== 'pending') {
+      // Idempotent reject of an already-resolved record — return as-is.
+      return { proposal: target };
+    }
+
+    const now = new Date().toISOString();
+
+    if (payload.decision === 'reject') {
+      const updated = resolveProposalInStore(store, target.id, 'rejected', now)!;
+      writeProposalStore(vaultRoot, store);
+      return { proposal: updated };
+    }
+
+    // Accept — apply the value to the scene only when the field is not
+    // already user-set. AI proposals never silently overwrite a user's date.
+    const manifest = readManifest(getManifestPath());
+    let sceneEntry: import('./ipc.js').SceneEntry | undefined;
+    for (const story of manifest.stories) {
+      for (const chapter of story.chapters ?? []) {
+        const s = chapter.scenes?.find(sc => sc.id === target.sceneId);
+        if (s) { sceneEntry = s; break; }
+      }
+      if (sceneEntry) break;
+    }
+    if (!sceneEntry) throw new Error(`Scene not found: ${target.sceneId}`);
+
+    const existing = readSceneFile(vaultRoot, sceneEntry.path);
+
+    if (target.kind === 'date') {
+      const userSet =
+        !!existing.chronologicalDate &&
+        (existing.chronologicalSource ?? 'explicit_marker') !== 'ai';
+      if (userSet) {
+        const updated = resolveProposalInStore(store, target.id, 'accepted', now)!;
+        writeProposalStore(vaultRoot, store);
+        return { proposal: updated, skippedBecauseUserSet: true };
+      }
+      writeSceneFileAtomic(vaultRoot, sceneEntry.path, {
+        ...existing,
+        chronologicalDate: target.value,
+        chronologicalIsEstimated: true,
+        chronologicalConfidence: target.confidence,
+        chronologicalSource: 'ai',
+      });
+    } else if (target.kind === 'mood') {
+      if (existing.metaMood && existing.metaMood.trim()) {
+        const updated = resolveProposalInStore(store, target.id, 'accepted', now)!;
+        writeProposalStore(vaultRoot, store);
+        return { proposal: updated, skippedBecauseUserSet: true };
+      }
+      writeSceneFileAtomic(vaultRoot, sceneEntry.path, {
+        ...existing,
+        metaMood: target.value,
+      });
+    } else if (target.kind === 'characters') {
+      // value is either "id1,id2,..." or "pov:<id>".
+      if (target.value.startsWith('pov:')) {
+        const povId = target.value.slice(4);
+        if (existing.metaPov && existing.metaPov.trim()) {
+          const updated = resolveProposalInStore(store, target.id, 'accepted', now)!;
+          writeProposalStore(vaultRoot, store);
+          return { proposal: updated, skippedBecauseUserSet: true };
+        }
+        writeSceneFileAtomic(vaultRoot, sceneEntry.path, {
+          ...existing,
+          metaPov: povId,
+        });
+      } else {
+        const proposed = target.value.split(',').filter(Boolean);
+        const known = new Set(existing.entityCharacterIds ?? []);
+        const merged = [...(existing.entityCharacterIds ?? [])];
+        for (const id of proposed) if (!known.has(id)) merged.push(id);
+        writeSceneFileAtomic(vaultRoot, sceneEntry.path, {
+          ...existing,
+          entityCharacterIds: merged,
+        });
+      }
+    }
+
+    const updated = resolveProposalInStore(store, target.id, 'accepted', now)!;
+    writeProposalStore(vaultRoot, store);
+
+    // Re-read the scene to build the response shape the renderer renders.
+    const reread = readSceneFile(vaultRoot, sceneEntry.path);
+    const responseScene: import('./ipc.js').SceneEntry = {
+      ...sceneEntry,
+      chronologicalTime: reread.chronologicalDate
+        ? {
+            date: reread.chronologicalDate,
+            isEstimated: reread.chronologicalIsEstimated ?? false,
+            confidence: reread.chronologicalConfidence ?? 1,
+            source: reread.chronologicalSource ?? 'explicit_marker',
+          }
+        : sceneEntry.chronologicalTime,
+      entityLinks: {
+        characterIds: reread.entityCharacterIds ?? [],
+        locationId: reread.entityLocationId,
+        arcs: reread.entityArcs ?? [],
+      },
+      timelineMetadata: {
+        wordCount: reread.metaWordCount,
+        mood: reread.metaMood,
+        pov: reread.metaPov,
+      },
+      updatedAt: now,
+    };
+    return { proposal: updated, scene: responseScene };
   },
 
 };

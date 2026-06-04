@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Story } from './types';
+import type { Story, TimelineAIProposal } from './types';
 import './TimelineSpreadsheet.css';
 
 // ─── Display types ───
@@ -102,6 +102,35 @@ export function groupScenes(
   });
 }
 
+// ─── SKY-796: proposal index ───
+
+/**
+ * Map (sceneId → column key → proposal[]). Date, mood, and characters/POV are
+ * the only cells the engine can suggest values for; render badges next to
+ * those columns and keep the popover anchored to the cell that owns it.
+ */
+export type ProposalsBySceneAndCol = Map<string, Partial<Record<ColKey, TimelineAIProposal[]>>>;
+
+export function indexProposals(proposals: TimelineAIProposal[]): ProposalsBySceneAndCol {
+  const out: ProposalsBySceneAndCol = new Map();
+  for (const p of proposals) {
+    if (p.status !== 'pending') continue;
+    const col: ColKey | null =
+      p.kind === 'date' ? 'date' :
+      p.kind === 'mood' ? 'mood' :
+      p.kind === 'characters'
+        ? p.value.startsWith('pov:') ? 'pov' : 'pov' // characters proposals attach to POV cell — characters value rolls up there
+        : null;
+    if (!col) continue;
+    const bySceneCol = out.get(p.sceneId) ?? {};
+    const arr = bySceneCol[col] ?? [];
+    arr.push(p);
+    bySceneCol[col] = arr;
+    out.set(p.sceneId, bySceneCol);
+  }
+  return out;
+}
+
 // ─── Cell display ───
 
 function ArcPill({ arcId, arcs }: { arcId: string; arcs: ArcMeta[] }) {
@@ -144,6 +173,15 @@ export default function TimelineSpreadsheet({ story }: Props) {
   const [bulkField, setBulkField] = useState<ColKey | ''>('');
   const [bulkValue, setBulkValue] = useState('');
 
+  // SKY-796: AI auto-population proposals — pending suggestions surfaced as
+  // badges on the date / pov / mood cells. `openProposal` tracks which badge
+  // popover is currently expanded so only one accept/reject panel is visible
+  // at a time.
+  const [proposals, setProposals] = useState<TimelineAIProposal[]>([]);
+  const [proposalsLoading, setProposalsLoading] = useState(false);
+  const [openProposal, setOpenProposal] = useState<string | null>(null);
+  const [resolvingProposal, setResolvingProposal] = useState<string | null>(null);
+
   const api = window.api;
 
   // ─── Load ───
@@ -153,6 +191,7 @@ export default function TimelineSpreadsheet({ story }: Props) {
       setScenes([]);
       setArcs([]);
       setSelectedIds(new Set());
+      setProposals([]);
       return;
     }
     setLoading(true);
@@ -163,8 +202,10 @@ export default function TimelineSpreadsheet({ story }: Props) {
       api.timelineListArcs(),
       (api as unknown as { entityList: (type: string) => Promise<{ entities: { id: string; name: string }[] }> })
         .entityList('character'),
+      api.timelineProposalsList(story.id).catch(() => ({ proposals: [] })),
     ])
-      .then(([scenesResp, arcsResp, charsResp]) => {
+      .then(([scenesResp, arcsResp, charsResp, propsResp]) => {
+        setProposals(propsResp.proposals ?? []);
         setArcs(
           (arcsResp.arcs ?? []).map(a => ({ id: a.id, title: a.title, color: a.color })),
         );
@@ -188,6 +229,57 @@ export default function TimelineSpreadsheet({ story }: Props) {
       .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
   }, [story]);
+
+  // ─── SKY-796: proposal index + actions ───
+
+  const proposalIndex = useMemo(() => indexProposals(proposals), [proposals]);
+
+  const charLookup = useMemo(() => new Map(chars.map(c => [c.id, c.name])), [chars]);
+
+  const generateProposals = useCallback(async () => {
+    if (!story) return;
+    setProposalsLoading(true);
+    setError(null);
+    try {
+      const resp = await api.timelineProposalsGenerate(story.id);
+      setProposals(resp.proposals ?? []);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setProposalsLoading(false);
+    }
+  }, [story, api]);
+
+  const resolveProposal = useCallback(async (
+    proposalId: string,
+    decision: 'accept' | 'reject',
+  ) => {
+    setResolvingProposal(proposalId);
+    setError(null);
+    try {
+      const resp = await api.timelineProposalResolve(proposalId, decision);
+      // Drop the resolved proposal from the in-memory list — pending only.
+      setProposals(prev => prev.filter(p => p.id !== proposalId));
+      setOpenProposal(prev => (prev === proposalId ? null : prev));
+      // If accept applied a value, fold the updated scene back into local state
+      // so the row re-renders without an extra round-trip.
+      if (decision === 'accept' && resp.scene && !resp.skippedBecauseUserSet) {
+        const u = resp.scene;
+        setScenes(prev => prev.map(s => s.id === u.id ? {
+          ...s,
+          date: u.chronologicalTime?.date ?? s.date,
+          pov: u.timelineMetadata?.pov ?? s.pov,
+          mood: u.timelineMetadata?.mood ?? s.mood,
+          characterIds: u.entityLinks?.characterIds ?? s.characterIds,
+          locationId: u.entityLinks?.locationId ?? s.locationId,
+        } : s));
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setResolvingProposal(null);
+    }
+  }, [api]);
 
   // ─── Sort / group ───
 
@@ -457,6 +549,80 @@ export default function TimelineSpreadsheet({ story }: Props) {
     );
   }
 
+  function renderProposalBadge(scene: SpreadsheetScene, col: ColKey) {
+    const colProps = proposalIndex.get(scene.id)?.[col];
+    if (!colProps || colProps.length === 0) return null;
+    // Surface the highest-confidence proposal first.
+    const sorted = [...colProps].sort((a, b) => b.confidence - a.confidence);
+    return (
+      <span className="tls-proposal-stack" data-testid={`proposal-stack-${scene.id}-${col}`}>
+        {sorted.map(p => {
+          const isOpen = openProposal === p.id;
+          const isResolving = resolvingProposal === p.id;
+          const displayValue = p.kind === 'characters' && p.value.startsWith('pov:')
+            ? (charLookup.get(p.value.slice(4)) ?? p.value.slice(4))
+            : p.kind === 'characters'
+              ? p.value.split(',').map(id => charLookup.get(id) ?? id).join(', ')
+              : p.value;
+          return (
+            <span key={p.id} className="tls-proposal-wrap">
+              <button
+                type="button"
+                className={`tls-proposal-badge tls-proposal-badge--${p.kind}${isOpen ? ' tls-proposal-badge--open' : ''}`}
+                title={`AI ${p.kind}: ${displayValue} — ${p.reason} (${Math.round(p.confidence * 100)}%)`}
+                onClick={e => {
+                  e.stopPropagation();
+                  setOpenProposal(prev => prev === p.id ? null : p.id);
+                }}
+                aria-expanded={isOpen}
+                aria-label={`AI proposal: ${p.kind} ${displayValue}, ${Math.round(p.confidence * 100)}% confidence`}
+                data-testid={`proposal-badge-${p.id}`}
+                disabled={isResolving}
+              >
+                <span aria-hidden="true">✨</span>
+                <span className="tls-proposal-value">{displayValue}</span>
+              </button>
+              {isOpen && (
+                <span
+                  className="tls-proposal-popover"
+                  role="dialog"
+                  aria-label={`AI ${p.kind} proposal for ${scene.title}`}
+                  data-testid={`proposal-popover-${p.id}`}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <span className="tls-proposal-reason">{p.reason}</span>
+                  <span className="tls-proposal-confidence">
+                    Confidence: {Math.round(p.confidence * 100)}%
+                  </span>
+                  <span className="tls-proposal-actions">
+                    <button
+                      type="button"
+                      className="tls-proposal-accept"
+                      onClick={() => void resolveProposal(p.id, 'accept')}
+                      disabled={isResolving}
+                      data-testid={`proposal-accept-${p.id}`}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      className="tls-proposal-reject"
+                      onClick={() => void resolveProposal(p.id, 'reject')}
+                      disabled={isResolving}
+                      data-testid={`proposal-reject-${p.id}`}
+                    >
+                      Reject
+                    </button>
+                  </span>
+                </span>
+              )}
+            </span>
+          );
+        })}
+      </span>
+    );
+  }
+
   function renderCell(scene: SpreadsheetScene, col: ColKey) {
     const isEditing = editingCell?.sceneId === scene.id && editingCell.col === col;
     return (
@@ -469,6 +635,7 @@ export default function TimelineSpreadsheet({ story }: Props) {
         data-testid={`cell-${scene.id}-${col}`}
       >
         {isEditing ? renderEditInput(scene, col) : renderCellContent(scene, col)}
+        {!isEditing && renderProposalBadge(scene, col)}
       </td>
     );
   }
@@ -594,6 +761,21 @@ export default function TimelineSpreadsheet({ story }: Props) {
             Clear Sort
           </button>
         )}
+
+        {/* SKY-796: AI proposals — non-blocking suggestions for date / characters / mood */}
+        <button
+          className="tls-toolbar-btn tls-ai-suggest-btn"
+          onClick={() => void generateProposals()}
+          disabled={proposalsLoading}
+          aria-label="Generate AI proposals for date, characters, and mood"
+          data-testid="ai-suggest-btn"
+        >
+          {proposalsLoading
+            ? 'Scanning…'
+            : proposals.length > 0
+              ? `AI Suggestions (${proposals.length})`
+              : 'Suggest with AI'}
+        </button>
       </div>
 
       {/* Bulk edit bar */}

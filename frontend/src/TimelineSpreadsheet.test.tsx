@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import TimelineSpreadsheet, { sortScenes, groupScenes } from './TimelineSpreadsheet';
+import TimelineSpreadsheet, { sortScenes, groupScenes, indexProposals } from './TimelineSpreadsheet';
 import type { SpreadsheetScene, SceneGroup } from './TimelineSpreadsheet';
+import type { TimelineAIProposal } from './types';
 
 // ─── Fixtures ───
 
@@ -176,6 +177,11 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     timelineUpdateScene: vi.fn().mockImplementation(async (payload: { sceneId: string }) => ({
       scene: { ...MOCK_SCENE_ENTRY, id: payload.sceneId },
     })),
+    // SKY-796: AI proposals — default mocks return empty so legacy tests don't
+    // see badges. Suites that exercise proposal UI override these explicitly.
+    timelineProposalsList: vi.fn().mockResolvedValue({ proposals: [] }),
+    timelineProposalsGenerate: vi.fn().mockResolvedValue({ proposals: [] }),
+    timelineProposalResolve: vi.fn().mockResolvedValue({ proposal: null }),
     ...overrides,
   };
 }
@@ -327,5 +333,130 @@ describe('TimelineSpreadsheet — groupBy', () => {
     fireEvent.click(screen.getByRole('button', { name: 'None' }));
     // Group header row should be gone; scene row still present
     expect(screen.getByTestId('row-scene-1')).toBeInTheDocument();
+  });
+});
+
+// ─── SKY-796: AI auto-population proposals ───
+
+function proposal(over: Partial<TimelineAIProposal> = {}): TimelineAIProposal {
+  return {
+    id: 'p-date-1',
+    sceneId: 'scene-1',
+    kind: 'date',
+    value: 'Year 42',
+    reason: 'in-world year: “Year 42”',
+    confidence: 0.7,
+    source: 'ai',
+    isEstimated: true,
+    status: 'pending',
+    createdAt: '2026-06-04T00:00:00.000Z',
+    ...over,
+  };
+}
+
+describe('indexProposals', () => {
+  it('routes date proposals to the date column', () => {
+    const idx = indexProposals([proposal({ kind: 'date' })]);
+    expect(idx.get('scene-1')?.date?.[0].kind).toBe('date');
+  });
+
+  it('routes mood proposals to the mood column', () => {
+    const idx = indexProposals([proposal({ id: 'p-mood', kind: 'mood', value: 'tense' })]);
+    expect(idx.get('scene-1')?.mood?.[0].value).toBe('tense');
+  });
+
+  it('routes character proposals to the pov column', () => {
+    const idx = indexProposals([proposal({ id: 'p-chars', kind: 'characters', value: 'char-1' })]);
+    expect(idx.get('scene-1')?.pov?.[0].kind).toBe('characters');
+  });
+
+  it('skips non-pending proposals', () => {
+    const idx = indexProposals([proposal({ status: 'accepted' })]);
+    expect(idx.size).toBe(0);
+  });
+});
+
+describe('TimelineSpreadsheet — AI proposals', () => {
+  it('renders a date badge when a pending date proposal exists', async () => {
+    (window as any).api.timelineProposalsList = vi
+      .fn()
+      .mockResolvedValue({ proposals: [proposal()] });
+    render(<TimelineSpreadsheet story={STORY} />);
+    await waitFor(() => expect(screen.getByTestId('proposal-badge-p-date-1')).toBeInTheDocument());
+  });
+
+  it('opens the accept/reject popover when the badge is clicked', async () => {
+    (window as any).api.timelineProposalsList = vi
+      .fn()
+      .mockResolvedValue({ proposals: [proposal()] });
+    render(<TimelineSpreadsheet story={STORY} />);
+    const badge = await screen.findByTestId('proposal-badge-p-date-1');
+    fireEvent.click(badge);
+    expect(screen.getByTestId('proposal-popover-p-date-1')).toBeInTheDocument();
+    expect(screen.getByTestId('proposal-accept-p-date-1')).toBeInTheDocument();
+    expect(screen.getByTestId('proposal-reject-p-date-1')).toBeInTheDocument();
+  });
+
+  it('calls timelineProposalResolve with accept', async () => {
+    const p = proposal();
+    (window as any).api.timelineProposalsList = vi.fn().mockResolvedValue({ proposals: [p] });
+    (window as any).api.timelineProposalResolve = vi
+      .fn()
+      .mockResolvedValue({ proposal: { ...p, status: 'accepted' }, scene: undefined });
+    render(<TimelineSpreadsheet story={STORY} />);
+    fireEvent.click(await screen.findByTestId('proposal-badge-p-date-1'));
+    fireEvent.click(screen.getByTestId('proposal-accept-p-date-1'));
+    await waitFor(() => {
+      expect((window as any).api.timelineProposalResolve).toHaveBeenCalledWith(
+        'p-date-1',
+        'accept',
+      );
+    });
+  });
+
+  it('calls timelineProposalResolve with reject and removes the badge', async () => {
+    const p = proposal({ id: 'p-mood-1', kind: 'mood', value: 'melancholic' });
+    (window as any).api.timelineProposalsList = vi.fn().mockResolvedValue({ proposals: [p] });
+    (window as any).api.timelineProposalResolve = vi
+      .fn()
+      .mockResolvedValue({ proposal: { ...p, status: 'rejected' } });
+    render(<TimelineSpreadsheet story={STORY} />);
+    fireEvent.click(await screen.findByTestId('proposal-badge-p-mood-1'));
+    fireEvent.click(screen.getByTestId('proposal-reject-p-mood-1'));
+    await waitFor(() => {
+      expect((window as any).api.timelineProposalResolve).toHaveBeenCalledWith(
+        'p-mood-1',
+        'reject',
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('proposal-badge-p-mood-1')).not.toBeInTheDocument();
+    });
+  });
+
+  it('regenerates proposals on toolbar button click', async () => {
+    (window as any).api.timelineProposalsGenerate = vi
+      .fn()
+      .mockResolvedValue({ proposals: [proposal({ id: 'p-fresh-1' })] });
+    render(<TimelineSpreadsheet story={STORY} />);
+    await waitFor(() => expect(screen.getByTestId('ai-suggest-btn')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('ai-suggest-btn'));
+    await waitFor(() => {
+      expect((window as any).api.timelineProposalsGenerate).toHaveBeenCalledWith('story-1');
+    });
+    await waitFor(() => expect(screen.getByTestId('proposal-badge-p-fresh-1')).toBeInTheDocument());
+  });
+
+  it('shows pending count in the toolbar button label', async () => {
+    (window as any).api.timelineProposalsList = vi.fn().mockResolvedValue({
+      proposals: [
+        proposal({ id: 'a' }),
+        proposal({ id: 'b', kind: 'mood', value: 'tense' }),
+      ],
+    });
+    render(<TimelineSpreadsheet story={STORY} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-suggest-btn').textContent).toContain('(2)');
+    });
   });
 });

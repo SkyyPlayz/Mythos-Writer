@@ -445,6 +445,14 @@ contextBridge.exposeInMainWorld('api', {
   timelineListArcs: () =>
     ipcRenderer.invoke('timeline:listArcs', {}),
 
+  // SKY-796: Timeline AI auto-population proposals
+  timelineProposalsGenerate: (storyId: string) =>
+    ipcRenderer.invoke('timeline:proposals:generate', { storyId }),
+  timelineProposalsList: (storyId: string) =>
+    ipcRenderer.invoke('timeline:proposals:list', { storyId }),
+  timelineProposalResolve: (proposalId: string, decision: 'accept' | 'reject') =>
+    ipcRenderer.invoke('timeline:proposal:resolve', { proposalId, decision }),
+
   // Telemetry (MYT-344) — opt-in, off by default
   telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) =>
     ipcRenderer.invoke('telemetry:report', { type, meta }),

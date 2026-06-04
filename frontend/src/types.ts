@@ -162,6 +162,24 @@ export interface LayoutPrefs {
   focusPrefs?: FocusPrefs;
 }
 
+// SKY-796: Timeline AI auto-population proposals (mirrors electron-main/ipc.ts)
+export type TimelineProposalKind = 'date' | 'characters' | 'mood';
+export type TimelineProposalStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface TimelineAIProposal {
+  id: string;
+  sceneId: string;
+  kind: TimelineProposalKind;
+  value: string;
+  reason: string;
+  confidence: number;
+  source: 'ai';
+  isEstimated: true;
+  status: TimelineProposalStatus;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export interface Manifest {
   version: string;
   vaultRoot: string;

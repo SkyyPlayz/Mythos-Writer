@@ -363,6 +363,11 @@ export const IPC_CHANNELS = {
   TIMELINE_UPDATE_SCENE: 'timeline:updateScene',
   TIMELINE_UPDATE_ARC_COLOR: 'timeline:updateArcColor',
   TIMELINE_LIST_ARCS: 'timeline:listArcs',
+
+  // SKY-796: Timeline AI auto-population proposals
+  TIMELINE_PROPOSALS_GENERATE: 'timeline:proposals:generate',
+  TIMELINE_PROPOSALS_LIST: 'timeline:proposals:list',
+  TIMELINE_PROPOSAL_RESOLVE: 'timeline:proposal:resolve',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -627,6 +632,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_UPDATE_ARC_COLOR]: (payload: TimelineUpdateArcColorPayload) => TimelineUpdateArcColorResponse;
   // SKY-794: Spreadsheet view — arc manifest listing
   [IPC_CHANNELS.TIMELINE_LIST_ARCS]: (payload: TimelineListArcsPayload) => TimelineListArcsResponse;
+  // SKY-796: Timeline AI auto-population proposals
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_GENERATE]: (payload: TimelineProposalsGeneratePayload) => TimelineProposalsGenerateResponse;
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: TimelineProposalsListPayload) => TimelineProposalsListResponse;
+  [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: TimelineProposalResolvePayload) => TimelineProposalResolveResponse;
 }
 
 // ─── Payload / Response types ───
@@ -3004,4 +3013,77 @@ export type TimelineListArcsPayload = Record<string, never>;
 
 export interface TimelineListArcsResponse {
   arcs: ArcEntry[];
+}
+
+// ─── SKY-796: Timeline AI auto-population proposals ───
+//
+// AI-derived suggestions (date estimation, character mention, mood inference)
+// surfaced as transparent, revokable badges on the spreadsheet. A proposal
+// never silently overwrites a user-set field; the renderer renders a badge
+// + accept/reject control and the main process only applies the value when
+// the user clicks accept. Stored under <storyVault>/timeline-proposals.json
+// keyed by scene id.
+
+export type TimelineProposalKind = 'date' | 'characters' | 'mood';
+export type TimelineProposalStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface TimelineAIProposal {
+  /** Stable id (sceneId + kind + payloadHash) so re-runs are idempotent. */
+  id: string;
+  sceneId: string;
+  kind: TimelineProposalKind;
+  /**
+   * For `date` proposals: ISO-ish date string ("Year 42", "2340-06-15", etc.).
+   * For `characters`: comma-separated entity ids (POV/secondary).
+   * For `mood`: short mood label (e.g. 'tense', 'revelatory').
+   */
+  value: string;
+  /** Human-readable cue text shown in tooltip — e.g. the matched phrase. */
+  reason: string;
+  /** 0..1 confidence; the engine never proposes below 0.4. */
+  confidence: number;
+  /** Provenance — always `'ai'` for engine-derived proposals. */
+  source: 'ai';
+  /** Always true for proposals; cleared on accept. */
+  isEstimated: true;
+  status: TimelineProposalStatus;
+  createdAt: string;
+  /** Filled in when the user resolves the proposal. */
+  resolvedAt?: string;
+}
+
+export interface TimelineProposalsGeneratePayload {
+  storyId: string;
+}
+
+export interface TimelineProposalsGenerateResponse {
+  /** All pending proposals for the story (post-merge with previously-resolved ones). */
+  proposals: TimelineAIProposal[];
+}
+
+export interface TimelineProposalsListPayload {
+  storyId: string;
+}
+
+export interface TimelineProposalsListResponse {
+  proposals: TimelineAIProposal[];
+}
+
+export interface TimelineProposalResolvePayload {
+  proposalId: string;
+  decision: 'accept' | 'reject';
+}
+
+export interface TimelineProposalResolveResponse {
+  proposal: TimelineAIProposal;
+  /**
+   * Populated when `decision === 'accept'` and the value was applied to the
+   * scene — the renderer can refresh the row in-place.
+   */
+  scene?: SceneEntry;
+  /**
+   * True when accept was a no-op because the field already held a user-set
+   * value (AI proposals never overwrite user-set dates / metadata).
+   */
+  skippedBecauseUserSet?: boolean;
 }
