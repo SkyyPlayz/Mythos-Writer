@@ -7,6 +7,19 @@
   flex-direction: column;
   background: var(--color-bg, #0e1116);
   overflow: hidden;
+  /* Positioning context for the SKY-793 detail-card overlay. */
+  position: relative;
+}
+
+/* SKY-793 — detail card mount point. Absolutely positioned so the table layout
+ * is unaffected; sits above the scroll area in the top-right corner. */
+.tls-detail-card-mount {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 5;
+  pointer-events: auto;
+  max-width: calc(100% - var(--space-6));
 }
 
 /* ─── Toolbar ─── */
