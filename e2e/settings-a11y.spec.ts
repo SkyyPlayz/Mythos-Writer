@@ -169,9 +169,10 @@ test('TC-SKY-814-03: Form controls have aria-label or <label> association', asyn
     if (!ariaLabel && !ariaLabelledBy && id) {
       const label = page.locator(`label[for="${id}"]`);
       const labelExists = await label.count() > 0;
-      expect(labelExists || ariaLabel || ariaLabelledBy).toBeTruthy(
+      expect(
+        labelExists || ariaLabel || ariaLabelledBy,
         `Input at index ${i} (id: ${id}) lacks aria-label and label association`,
-      );
+      ).toBeTruthy();
     }
   }
 });
@@ -193,7 +194,7 @@ test('TC-SKY-814-04: Toggle switches can be activated and announce state change'
 
   // Check for aria-label on the toggle
   const ariaLabel = await toggle.getAttribute('aria-label');
-  expect(ariaLabel).toBeTruthy('Toggle should have aria-label');
+  expect(ariaLabel, 'Toggle should have aria-label').toBeTruthy();
 });
 
 // ─── TC-SKY-814-05: Sliders have aria-label and value is announced ──────────────
@@ -203,7 +204,7 @@ test('TC-SKY-814-05: Slider controls have aria-label and announce value', async 
   await expect(slider).toBeVisible();
 
   const ariaLabel = await slider.getAttribute('aria-label');
-  expect(ariaLabel).toBeTruthy('Slider should have aria-label');
+  expect(ariaLabel, 'Slider should have aria-label').toBeTruthy();
 
   // Get the current value
   const initialValue = await slider.inputValue();
@@ -312,9 +313,10 @@ test('TC-SKY-814-10: Settings sections have proper heading structure', async () 
     if (labelledBy) {
       const heading = page.locator(`#${labelledBy}`);
       const headingExists = await heading.count() > 0;
-      expect(headingExists).toBeTruthy(
+      expect(
+        headingExists,
         `Section ${i} should have a heading with id "${labelledBy}"`,
-      );
+      ).toBeTruthy();
     }
   }
 });
