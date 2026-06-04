@@ -260,3 +260,34 @@ jobs:
             dist-electron/*.deb
             dist-electron/*.rpm
           retention-days: 7
+
+  report:
+    # Event-driven board ping. Runs after all three required jobs (ci /
+    # build-linux / build-macos) complete on a PR. The merge gate (GitHubManager
+    # routine f1bd9b01) keeps an hourly backstop sweep for missed pings.
+    # PR-only — plain pushes to main get no ping. Self-hosted only (no
+    # public/fork PR exposure on the public Obsidian repo per SKY-849).
+    needs: [ci, build-macos, build-linux]
+    runs-on: self-hosted
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (for scripts/notify-board.sh)
+        uses: actions/checkout@v4
+
+      - name: Notify Paperclip board of CI completion
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.head_ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_RESULT: ${{ needs.ci.result }}
+          BUILD_LINUX_RESULT: ${{ needs.build-linux.result }}
+          BUILD_MACOS_RESULT: ${{ needs.build-macos.result }}
+          PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
+          PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
+          PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
+        run: bash scripts/notify-board.sh
