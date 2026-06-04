@@ -200,7 +200,7 @@ test('TC-SKY-814-04: Toggle switches can be activated and announce state change'
 // ─── TC-SKY-814-05: Sliders have aria-label and value is announced ──────────────
 test('TC-SKY-814-05: Slider controls have aria-label and announce value', async () => {
   // Find a slider (range input)
-  const slider = page.locator('input[type="range"]').first();
+  const slider = page.locator('input[type="range"]:not([disabled])').first();
   await expect(slider).toBeVisible();
 
   const ariaLabel = await slider.getAttribute('aria-label');
