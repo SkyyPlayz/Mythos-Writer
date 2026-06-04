@@ -20,6 +20,7 @@ import { spawn } from 'child_process';
 import type { AppSettings, SttSettings, TtsSettings, VoiceTranscribePayload, VoiceTranscribeResponse } from './ipc.js';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
 import { checkSpawnPath, MAX_STT_AUDIO_BYTES, MAX_TTS_TEXT_BYTES } from './voiceGate.js';
+import { validateBaseUrl } from './provider.js';
 
 // ─── Channel names ──────────────────────────────────────────────────────────
 
@@ -458,6 +459,17 @@ export async function transcribeAudio(
     );
   }
 
+  // SSRF guard (SKY-847): renderer-supplied cloudEndpoint must not target
+  // internal services (RFC-1918, link-local/IMDS, 0.0.0.0, IPv4-mapped IPv6).
+  // Reuses the SKY-739 validator so STT/TTS share one allow/block policy with
+  // the AI provider fetch path. The raw URL stays out of the renderer reply —
+  // sanitizeVoiceError() rewrites the InvalidVoiceInputError into a fixed
+  // user-facing string before any IPC return.
+  const urlError = validateBaseUrl(endpoint);
+  if (urlError) {
+    throw new InvalidVoiceInputError(`STT cloudEndpoint rejected: ${urlError}`);
+  }
+
   return transcribeCloud(endpoint, apiKey, audio, mimeType);
 }
 
@@ -595,6 +607,11 @@ async function speakAsync(
       throw new InvalidVoiceInputError(
         'No TTS provider available. Configure tts.localBinaryPath+tts.localModelPath or tts.cloudEndpoint in settings.',
       );
+    }
+    // SSRF guard (SKY-847): see matching block in transcribeAudio().
+    const urlError = validateBaseUrl(endpoint);
+    if (urlError) {
+      throw new InvalidVoiceInputError(`TTS cloudEndpoint rejected: ${urlError}`);
     }
     await speakWithCloud(endpoint, apiKey, text, voiceId, signal, sendChunk);
     pushSpeakDone(getSender, speakId);
