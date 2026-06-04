@@ -69,6 +69,18 @@ export function migrateSecretsFromSettingsFile(
     };
     movedIds.push('provider.archive.apiKey');
   }
+  // STT cloud API key (SKY-816) — was never stripped before this fix, so may be plaintext on disk.
+  if (parsed.stt && typeof parsed.stt.cloudApiKey === 'string' && parsed.stt.cloudApiKey.length > 0) {
+    store.set('stt.cloudApiKey', parsed.stt.cloudApiKey);
+    parsed.stt = { ...parsed.stt, cloudApiKey: '' };
+    movedIds.push('stt.cloudApiKey');
+  }
+  // TTS cloud API key (SKY-817) — was never stripped before this fix, so may be plaintext on disk.
+  if (parsed.tts && typeof parsed.tts.cloudApiKey === 'string' && parsed.tts.cloudApiKey.length > 0) {
+    store.set('tts.cloudApiKey', parsed.tts.cloudApiKey);
+    parsed.tts = { ...parsed.tts, cloudApiKey: '' };
+    movedIds.push('tts.cloudApiKey');
+  }
 
   if (movedIds.length === 0) {
     return { migrated: false, movedIds: [] };
@@ -130,6 +142,16 @@ export function hydrateSecretsIntoSettings(
         provider: { ...out.agents.archive.provider, apiKey: archiveKey },
       },
     };
+  }
+  // STT cloud API key (SKY-816).
+  const sttKey = store.get('stt.cloudApiKey');
+  if (sttKey && out.stt) {
+    out.stt = { ...out.stt, cloudApiKey: sttKey };
+  }
+  // TTS cloud API key (SKY-817).
+  const ttsKey = store.get('tts.cloudApiKey');
+  if (ttsKey && out.tts) {
+    out.tts = { ...out.tts, cloudApiKey: ttsKey };
   }
   return out;
 }
@@ -195,6 +217,16 @@ export function persistSecretsAndStripSettings(
         provider: { ...stripped.agents.archive.provider, apiKey: '' },
       },
     };
+  }
+  // STT cloud API key (SKY-816).
+  if (stripped.stt && typeof stripped.stt.cloudApiKey === 'string') {
+    store.set('stt.cloudApiKey', stripped.stt.cloudApiKey);
+    stripped.stt = { ...stripped.stt, cloudApiKey: '' };
+  }
+  // TTS cloud API key (SKY-817).
+  if (stripped.tts && typeof stripped.tts.cloudApiKey === 'string') {
+    store.set('tts.cloudApiKey', stripped.tts.cloudApiKey);
+    stripped.tts = { ...stripped.tts, cloudApiKey: '' };
   }
 
   return stripped;

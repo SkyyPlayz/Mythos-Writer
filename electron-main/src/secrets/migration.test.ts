@@ -17,6 +17,8 @@ const FAKE_ANTHROPIC = 'sk-ant-test-MigrationFixture0000000000000000000000000000
 const FAKE_OPENAI = 'sk-proj-MigrationFixture000000000000000000000000000000000beef';
 const FAKE_PROVIDER = 'sk-ant-test-MigrationProvider00000000000000000000000000000000';
 const FAKE_ARCHIVE_KEY = 'sk-ant-test-MigrationArchive000000000000000000000000000000';
+const FAKE_STT_KEY = 'sk-proj-MigrationStt0000000000000000000000000000000000beef';
+const FAKE_TTS_KEY = 'sk-proj-MigrationTts0000000000000000000000000000000000beef';
 
 function makeSafeStorage(): SafeStorageLike {
   return {
@@ -148,6 +150,33 @@ describe('migrateSecretsFromSettingsFile', () => {
     expect(rewritten).not.toContain(FAKE_ARCHIVE_KEY);
     expect(store.get('provider.archive.apiKey')).toBe(FAKE_ARCHIVE_KEY);
   });
+
+  // Regression: SKY-816/817 — STT/TTS keys were never stripped before; ensure migration moves them.
+  it('migrates plaintext stt.cloudApiKey and tts.cloudApiKey out of app-settings.json (SKY-816/817)', () => {
+    const { settingsPath, store } = mkStore();
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        baseSettings({
+          stt: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://stt.example.com', cloudApiKey: FAKE_STT_KEY },
+          tts: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://tts.example.com', cloudApiKey: FAKE_TTS_KEY },
+        }),
+      ),
+      'utf-8',
+    );
+
+    const result = migrateSecretsFromSettingsFile(settingsPath, store);
+
+    expect(result.migrated).toBe(true);
+    expect(result.movedIds).toContain('stt.cloudApiKey');
+    expect(result.movedIds).toContain('tts.cloudApiKey');
+
+    const rewritten = fs.readFileSync(settingsPath, 'utf-8');
+    expect(rewritten).not.toContain(FAKE_STT_KEY);
+    expect(rewritten).not.toContain(FAKE_TTS_KEY);
+    expect(store.get('stt.cloudApiKey')).toBe(FAKE_STT_KEY);
+    expect(store.get('tts.cloudApiKey')).toBe(FAKE_TTS_KEY);
+  });
 });
 
 describe('persistSecretsAndStripSettings', () => {
@@ -205,6 +234,23 @@ describe('persistSecretsAndStripSettings', () => {
     expect(store.get('provider.archive.apiKey')).toBe(FAKE_ARCHIVE_KEY);
     expect(JSON.stringify(stripped)).not.toContain(FAKE_ARCHIVE_KEY);
   });
+
+  // Regression: SKY-816/817 — STT/TTS keys must be stripped and stored, not written to disk.
+  it('strips and encrypts stt.cloudApiKey and tts.cloudApiKey (SKY-816/817)', () => {
+    const { store } = mkStore();
+    const incoming = baseSettings({
+      stt: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://stt.example.com', cloudApiKey: FAKE_STT_KEY },
+      tts: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://tts.example.com', cloudApiKey: FAKE_TTS_KEY },
+    });
+    const stripped = persistSecretsAndStripSettings(incoming, store);
+
+    expect(stripped.stt?.cloudApiKey).toBe('');
+    expect(stripped.tts?.cloudApiKey).toBe('');
+    expect(store.get('stt.cloudApiKey')).toBe(FAKE_STT_KEY);
+    expect(store.get('tts.cloudApiKey')).toBe(FAKE_TTS_KEY);
+    expect(JSON.stringify(stripped)).not.toContain(FAKE_STT_KEY);
+    expect(JSON.stringify(stripped)).not.toContain(FAKE_TTS_KEY);
+  });
 });
 
 describe('hydrateSecretsIntoSettings', () => {
@@ -256,5 +302,32 @@ describe('hydrateSecretsIntoSettings', () => {
     const { store } = mkStore();
     const hydrated = hydrateSecretsIntoSettings(baseSettings(), store);
     expect(hydrated.agents.archive.provider).toBeUndefined();
+  });
+
+  // Regression: SKY-816/817 — STT/TTS keys must be hydrated from the store.
+  it('hydrates stt.cloudApiKey and tts.cloudApiKey from the secrets store (SKY-816/817)', () => {
+    const { store } = mkStore();
+    store.set('stt.cloudApiKey', FAKE_STT_KEY);
+    store.set('tts.cloudApiKey', FAKE_TTS_KEY);
+    const onDisk = baseSettings({
+      stt: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://stt.example.com' },
+      tts: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://tts.example.com' },
+    });
+    const hydrated = hydrateSecretsIntoSettings(onDisk, store);
+    expect(hydrated.stt?.cloudApiKey).toBe(FAKE_STT_KEY);
+    expect(hydrated.tts?.cloudApiKey).toBe(FAKE_TTS_KEY);
+  });
+
+  it('leaves stt/tts blocks alone when no keys are in the store', () => {
+    const { store } = mkStore();
+    const hydrated = hydrateSecretsIntoSettings(
+      baseSettings({
+        stt: { enabled: true, provider: 'local' },
+        tts: { enabled: true, provider: 'local' },
+      }),
+      store,
+    );
+    expect(hydrated.stt?.cloudApiKey).toBeUndefined();
+    expect(hydrated.tts?.cloudApiKey).toBeUndefined();
   });
 });

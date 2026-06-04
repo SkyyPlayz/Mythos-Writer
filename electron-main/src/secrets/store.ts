@@ -22,7 +22,9 @@ export type SecretId =
   | 'provider.brainstorm.apiKey' // SKY-683 per-agent provider key for Brainstorm
   | 'provider.writingAssistant.apiKey' // SKY-683 per-agent provider key for Writing Assistant
   | 'provider.archive.apiKey' // SKY-740 per-agent provider key for Archive
-  | 'voice.openaiApiKey'; // MYT-424 Whisper cloud fallback
+  | 'voice.openaiApiKey' // MYT-424 Whisper cloud fallback
+  | 'stt.cloudApiKey' // SKY-816 STT cloud endpoint API key
+  | 'tts.cloudApiKey'; // SKY-817 TTS cloud endpoint API key
 
 export const KNOWN_SECRET_IDS: readonly SecretId[] = [
   'anthropic.apiKey',
@@ -31,6 +33,8 @@ export const KNOWN_SECRET_IDS: readonly SecretId[] = [
   'provider.writingAssistant.apiKey',
   'provider.archive.apiKey',
   'voice.openaiApiKey',
+  'stt.cloudApiKey',
+  'tts.cloudApiKey',
 ];
 
 /** Minimal slice of Electron.safeStorage the store relies on. */
