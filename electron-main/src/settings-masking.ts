@@ -29,8 +29,8 @@ function maskAgentProvider<T extends { provider?: ProviderSettings }>(agent: T):
 
 // Mask every API-key-shaped field on AppSettings before it crosses the IPC
 // boundary to the renderer. Currently: apiKey (Anthropic legacy field),
-// provider.apiKey (active provider), voice.openaiApiKey, and all three
-// per-agent provider.apiKey overrides (SKY-738).
+// provider.apiKey (active provider), voice.openaiApiKey, stt.cloudApiKey, tts.cloudApiKey,
+// and all three per-agent provider.apiKey overrides (SKY-738).
 export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
   const masked: AppSettings = { ...settings, apiKey: maskApiKey(settings.apiKey) };
   if (settings.provider?.apiKey) {
@@ -38,6 +38,14 @@ export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
   }
   if (settings.voice && settings.voice.openaiApiKey) {
     masked.voice = { ...settings.voice, openaiApiKey: maskApiKey(settings.voice.openaiApiKey) };
+  }
+  // STT cloud API key (SKY-816).
+  if (settings.stt && settings.stt.cloudApiKey) {
+    masked.stt = { ...settings.stt, cloudApiKey: maskApiKey(settings.stt.cloudApiKey) };
+  }
+  // TTS cloud API key (SKY-817).
+  if (settings.tts && settings.tts.cloudApiKey) {
+    masked.tts = { ...settings.tts, cloudApiKey: maskApiKey(settings.tts.cloudApiKey) };
   }
   // Mask per-agent provider.apiKey overrides (SKY-738).
   masked.agents = {
@@ -92,6 +100,14 @@ export function reconcileSettingsFromRenderer(
     if (incomingProviderKey === maskApiKey(stored.provider.apiKey)) {
       reconciled.provider = { ...incoming.provider, apiKey: stored.provider.apiKey };
     }
+  }
+  // Reconcile STT cloud API key (SKY-816).
+  if (stored.stt?.cloudApiKey && incoming.stt && incoming.stt.cloudApiKey === maskApiKey(stored.stt.cloudApiKey)) {
+    reconciled.stt = { ...incoming.stt, cloudApiKey: stored.stt.cloudApiKey };
+  }
+  // Reconcile TTS cloud API key (SKY-817).
+  if (stored.tts?.cloudApiKey && incoming.tts && incoming.tts.cloudApiKey === maskApiKey(stored.tts.cloudApiKey)) {
+    reconciled.tts = { ...incoming.tts, cloudApiKey: stored.tts.cloudApiKey };
   }
   // Reconcile per-agent provider.apiKey overrides (SKY-738).
   reconciled.agents = {
