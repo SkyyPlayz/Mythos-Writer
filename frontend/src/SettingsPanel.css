@@ -60,6 +60,11 @@
   color: var(--text-header);
 }
 
+.settings-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .settings-body {
   flex: 1;
   overflow-y: auto;
@@ -133,6 +138,11 @@
 .settings-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.settings-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .settings-input-error {
@@ -209,6 +219,11 @@
 .settings-reveal-btn:hover {
   background: var(--bg-hover);
   color: var(--text-header);
+}
+
+.settings-reveal-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .settings-error-msg {
@@ -445,6 +460,11 @@
   cursor: not-allowed;
 }
 
+.lg-btn-secondary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* Main softness/contrast slider */
 .lg-slider-labeled-row {
   display: flex;
@@ -634,6 +654,11 @@
   border-color: var(--border-strong);
 }
 
+.lg-btn-reset:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* ── Slider band with Advanced pill (MYT-716) ─────────────────────────────── */
 
 .lg-slider-band {
@@ -668,6 +693,11 @@
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
+.lg-advanced-pill:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .lg-relink-btn {
   background: none;
   border: none;
@@ -682,6 +712,12 @@
 
 .lg-relink-btn:hover {
   color: var(--text-body);
+}
+
+.lg-relink-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* ── Advanced popover overlay (MYT-716) ──────────────────────────────────── */
@@ -1162,6 +1198,11 @@
   cursor: not-allowed;
 }
 
+.settings-btn-secondary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .settings-btn-danger {
   padding: 5px 14px;
   background: none;
@@ -1224,3 +1265,36 @@
   margin: 0;
   padding: 0;
 }
+
+/* Vault-paths save button (matches settings-btn-save token scheme) */
+.settings-save {
+  background: var(--accent);
+  color: var(--bg-canvas);
+  border: none;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 7px 16px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.settings-save:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.settings-save:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.settings-save:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Vault-paths saved confirmation (matches settings-saved-msg) */
+.settings-saved-ok {
+  font-size: 0.78rem;
+  color: var(--state-success);
+  margin: 0;
