@@ -278,7 +278,6 @@ describe('loadUserTemplates', () => {
     expect(loadUserTemplates(appData)).toEqual([]);
   });
 });
-<<<<<<< HEAD
 
 // ─── Note Template tests (SKY-190) ───────────────────────────────────────────
 

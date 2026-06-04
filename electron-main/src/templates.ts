@@ -335,7 +335,6 @@ export function saveAsTemplate(
   fs.writeFileSync(path.join(dir, fileName), JSON.stringify(template, null, 2), 'utf-8');
   return id;
 }
-<<<<<<< HEAD
 
 // ─── Note Templates — per-note body templates with variable grammar ───────────
 //
