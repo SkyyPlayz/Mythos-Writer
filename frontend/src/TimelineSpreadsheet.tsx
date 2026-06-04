@@ -1,6 +1,16 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Story, TimelineAIProposal } from './types';
 import './TimelineSpreadsheet.css';
+import TimelineFilterBar, { type ArcOption, type CharOption, type LocationOption } from './TimelineFilterBar';
+import './TimelineFilterBar.css';
+import {
+  DEFAULT_FILTERS,
+  type TimelineFilters,
+  chronologicalSceneIds,
+  isSceneHidden,
+  sceneOpacity,
+  stepFocusedScene,
+} from './timelineFilters';
 
 // ─── Display types ───
 
@@ -17,16 +27,8 @@ export interface SpreadsheetScene {
   locationId: string;
 }
 
-interface ArcMeta {
-  id: string;
-  title: string;
-  color: string;
-}
-
-interface CharMeta {
-  id: string;
-  name: string;
-}
+type ArcMeta = ArcOption;
+type CharMeta = CharOption;
 
 export type ColKey = 'date' | 'pov' | 'arc' | 'wordCount' | 'mood' | 'location';
 export type SortCol = 'date' | 'pov' | 'arc';
@@ -150,12 +152,15 @@ function ArcPill({ arcId, arcs }: { arcId: string; arcs: ArcMeta[] }) {
 
 interface Props {
   story: Story | null;
+  /** SKY-795 §4 — Enter key opens the editor for the keyboard-focused scene. */
+  onOpenScene?: (sceneId: string) => void;
 }
 
-export default function TimelineSpreadsheet({ story }: Props) {
+export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
   const [scenes, setScenes] = useState<SpreadsheetScene[]>([]);
   const [arcs, setArcs] = useState<ArcMeta[]>([]);
   const [chars, setChars] = useState<CharMeta[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -182,6 +187,14 @@ export default function TimelineSpreadsheet({ story }: Props) {
   const [openProposal, setOpenProposal] = useState<string | null>(null);
   const [resolvingProposal, setResolvingProposal] = useState<string | null>(null);
 
+  // SKY-795 — filter + arc-focus + keyboard nav state
+  const [filters, setFilters] = useState<TimelineFilters>(DEFAULT_FILTERS);
+  const [focusedSceneId, setFocusedSceneId] = useState<string | null>(null);
+  /** Stack of prior scene snapshots for local undo/redo of timeline edits (spec §4). */
+  const undoStackRef = useRef<SpreadsheetScene[][]>([]);
+  const redoStackRef = useRef<SpreadsheetScene[][]>([]);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+
   const api = window.api;
 
   // ─── Load ───
@@ -197,20 +210,26 @@ export default function TimelineSpreadsheet({ story }: Props) {
     setLoading(true);
     setError(null);
 
+    const entityList = (api as unknown as {
+      entityList: (type: string) => Promise<{ entities: { id: string; name: string }[] }>;
+    }).entityList;
+
     Promise.all([
       api.timelineGetScenes(story.id),
       api.timelineListArcs(),
-      (api as unknown as { entityList: (type: string) => Promise<{ entities: { id: string; name: string }[] }> })
-        .entityList('character'),
+      entityList('character'),
+      entityList('location').catch(() => ({ entities: [] })),
       api.timelineProposalsList(story.id).catch(() => ({ proposals: [] })),
     ])
-      .then(([scenesResp, arcsResp, charsResp, propsResp]) => {
+      .then(([scenesResp, arcsResp, charsResp, locsResp, propsResp]) => {
         setProposals(propsResp.proposals ?? []);
         setArcs(
           (arcsResp.arcs ?? []).map(a => ({ id: a.id, title: a.title, color: a.color })),
         );
         const charsAny = charsResp as unknown as { entities?: { id: string; name: string }[] };
         setChars((charsAny.entities ?? []).map(c => ({ id: c.id, name: c.name })));
+        const locsAny = locsResp as unknown as { entities?: { id: string; name: string }[] };
+        setLocations((locsAny.entities ?? []).map(l => ({ id: l.id, name: l.name })));
         setScenes(
           (scenesResp.scenes ?? []).map(s => ({
             id: s.id,
@@ -281,12 +300,26 @@ export default function TimelineSpreadsheet({ story }: Props) {
     }
   }, [api]);
 
-  // ─── Sort / group ───
+  // ─── Filter / sort / group ───
+
+  // Date range hides scenes outside [from, to] entirely (spec §2.4). Entity tab and arc focus
+  // fade non-matching rows (handled per-row via sceneOpacity), so they stay in the sorted set.
+  const dateOnlyFilters = useMemo<TimelineFilters>(
+    () => ({ ...DEFAULT_FILTERS, dateFrom: filters.dateFrom, dateTo: filters.dateTo }),
+    [filters.dateFrom, filters.dateTo],
+  );
+  const visibleScenes = useMemo(
+    () => scenes.filter(s => !isSceneHidden(s, dateOnlyFilters)),
+    [scenes, dateOnlyFilters],
+  );
 
   const sorted = useMemo(
-    () => (sortBy ? sortScenes(scenes, sortBy, sortDir) : scenes),
-    [scenes, sortBy, sortDir],
+    () => (sortBy ? sortScenes(visibleScenes, sortBy, sortDir) : visibleScenes),
+    [visibleScenes, sortBy, sortDir],
   );
+
+  /** Chronological scene-id order used by Tab/Shift+Tab navigation. */
+  const chronoIds = useMemo(() => chronologicalSceneIds(visibleScenes), [visibleScenes]);
 
   const groups = useMemo<SceneGroup[]>(() => {
     if (groupBy === 'none') return [{ key: '__flat__', label: '', scenes: sorted }];
@@ -317,6 +350,7 @@ export default function TimelineSpreadsheet({ story }: Props) {
 
   const handleRowClick = useCallback((sceneId: string, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey) {
+      // Ctrl/Cmd+Click multi-select (spec §2.4).
       e.preventDefault();
       setSelectedIds(prev => {
         const n = new Set(prev);
@@ -324,10 +358,26 @@ export default function TimelineSpreadsheet({ story }: Props) {
         else n.add(sceneId);
         return n;
       });
+      setFocusedSceneId(sceneId);
     } else if (!editingCell) {
-      setSelectedIds(new Set());
+      // Plain click selects only this row and updates keyboard focus.
+      setSelectedIds(new Set([sceneId]));
+      setFocusedSceneId(sceneId);
     }
   }, [editingCell]);
+
+  // scenesRef keeps the latest scenes array reachable from stable callbacks (keyboard
+  // handlers, undo/redo) without re-binding them on every state change.
+  const scenesRef = useRef<SpreadsheetScene[]>(scenes);
+  useEffect(() => { scenesRef.current = scenes; }, [scenes]);
+
+  /** Snapshot the current scenes array onto the undo stack before any mutation. */
+  const pushUndo = useCallback(() => {
+    undoStackRef.current.push(scenesRef.current);
+    if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+    // Any new edit invalidates the redo stack — matches conventional editor behaviour.
+    redoStackRef.current = [];
+  }, []);
 
   // ─── Inline edit ───
 
@@ -347,6 +397,7 @@ export default function TimelineSpreadsheet({ story }: Props) {
 
     const scene = scenes.find(s => s.id === sceneId);
     if (!scene) return;
+    pushUndo();
 
     const payload: Parameters<typeof api.timelineUpdateScene>[0] = { sceneId };
 
@@ -423,13 +474,14 @@ export default function TimelineSpreadsheet({ story }: Props) {
         return n;
       });
     }
-  }, [scenes, api]);
+  }, [scenes, api, pushUndo]);
 
   // ─── Bulk edit ───
 
   const applyBulkEdit = useCallback(async () => {
     if (selectedIds.size === 0 || !bulkField || !bulkValue) return;
     const ids = Array.from(selectedIds);
+    pushUndo();
     setSaving(new Set(ids));
     setError(null);
     try {
@@ -481,7 +533,209 @@ export default function TimelineSpreadsheet({ story }: Props) {
     } finally {
       setSaving(new Set());
     }
-  }, [selectedIds, bulkField, bulkValue, scenes, api]);
+  }, [selectedIds, bulkField, bulkValue, scenes, api, pushUndo]);
+
+  // ─── SKY-795 §4: keyboard nav, delete, duplicate, undo/redo ───
+
+  /** Clear a scene's chronological date so it stops appearing on the timeline. */
+  const removeFromTimeline = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    pushUndo();
+    setSaving(new Set(ids));
+    try {
+      await Promise.all(
+        ids.map(async sceneId => {
+          await api.timelineUpdateScene({
+            sceneId,
+            chronologicalTime: { date: '', isEstimated: false, confidence: 1, source: 'explicit_marker' },
+          });
+        }),
+      );
+      setScenes(prev => prev.filter(s => !ids.includes(s.id)));
+      setSelectedIds(new Set());
+      setFocusedSceneId(null);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(new Set());
+    }
+  }, [api, pushUndo]);
+
+  /** Clone selected scenes into the same chapter and copy their timeline metadata. */
+  const duplicateSelected = useCallback(async (ids: string[]) => {
+    if (ids.length === 0 || !story) return;
+    pushUndo();
+    setSaving(new Set(ids));
+    try {
+      const sceneCreate = (api as unknown as {
+        sceneCreate: (p: { storyId: string; chapterId: string; title: string; order?: number }) => Promise<{ id: string }>;
+      }).sceneCreate;
+      const newRows: SpreadsheetScene[] = [];
+      for (const sourceId of ids) {
+        const src = scenesRef.current.find(s => s.id === sourceId);
+        if (!src || !src.chapterId) continue;
+        const created = await sceneCreate({
+          storyId: story.id,
+          chapterId: src.chapterId,
+          title: `${src.title} (copy)`,
+        });
+        if (src.date || src.pov || src.mood || src.arcIds.length || src.characterIds.length || src.locationId) {
+          await api.timelineUpdateScene({
+            sceneId: created.id,
+            chronologicalTime: src.date
+              ? { date: src.date, isEstimated: false, confidence: 1, source: 'explicit_marker' }
+              : undefined,
+            entityLinks: {
+              arcs: src.arcIds,
+              characterIds: src.characterIds,
+              locationId: src.locationId || undefined,
+            },
+            timelineMetadata: {
+              pov: src.pov || undefined,
+              mood: src.mood || undefined,
+              wordCount: src.wordCount ?? undefined,
+            },
+          });
+        }
+        newRows.push({ ...src, id: created.id, title: `${src.title} (copy)` });
+      }
+      setScenes(prev => [...prev, ...newRows]);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(new Set());
+    }
+  }, [api, story, pushUndo]);
+
+  /** Restore the previous scene snapshot. Edits made while undoing are persisted by re-sending
+   *  per-scene payloads so the saved files match the visible state. */
+  const persistSnapshot = useCallback(async (snapshot: SpreadsheetScene[]) => {
+    setSaving(new Set(snapshot.map(s => s.id)));
+    try {
+      await Promise.all(
+        snapshot.map(s =>
+          api.timelineUpdateScene({
+            sceneId: s.id,
+            chronologicalTime: s.date
+              ? { date: s.date, isEstimated: false, confidence: 1, source: 'explicit_marker' }
+              : { date: '', isEstimated: false, confidence: 1, source: 'explicit_marker' },
+            entityLinks: {
+              arcs: s.arcIds,
+              characterIds: s.characterIds,
+              locationId: s.locationId || undefined,
+            },
+            timelineMetadata: {
+              pov: s.pov || undefined,
+              mood: s.mood || undefined,
+              wordCount: s.wordCount ?? undefined,
+            },
+          }).catch(() => undefined),
+        ),
+      );
+    } finally {
+      setSaving(new Set());
+    }
+  }, [api]);
+
+  const undo = useCallback(async () => {
+    const prev = undoStackRef.current.pop();
+    if (!prev) return;
+    redoStackRef.current.push(scenesRef.current);
+    setScenes(prev);
+    await persistSnapshot(prev);
+  }, [persistSnapshot]);
+
+  const redo = useCallback(async () => {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    undoStackRef.current.push(scenesRef.current);
+    setScenes(next);
+    await persistSnapshot(next);
+  }, [persistSnapshot]);
+
+  // Keyboard event handler scoped to the timeline view (root container has tabIndex={0}).
+  // Skips when an editable element owns focus so cell editing keeps native key behaviour.
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
+      return;
+    }
+    const mod = e.ctrlKey || e.metaKey;
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const next = stepFocusedScene(focusedSceneId, chronoIds, e.shiftKey ? -1 : 1);
+      setFocusedSceneId(next);
+      if (next) setSelectedIds(new Set([next]));
+      return;
+    }
+    if (e.key === 'Enter' && focusedSceneId) {
+      e.preventDefault();
+      onOpenScene?.(focusedSceneId);
+      return;
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedIds.size > 0 || focusedSceneId)) {
+      e.preventDefault();
+      const ids = selectedIds.size > 0 ? Array.from(selectedIds) : focusedSceneId ? [focusedSceneId] : [];
+      void removeFromTimeline(ids);
+      return;
+    }
+    if (mod && (e.key === 'a' || e.key === 'A')) {
+      e.preventDefault();
+      setSelectedIds(new Set(visibleScenes.map(s => s.id)));
+      return;
+    }
+    if (mod && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault();
+      const ids = selectedIds.size > 0 ? Array.from(selectedIds) : focusedSceneId ? [focusedSceneId] : [];
+      void duplicateSelected(ids);
+      return;
+    }
+    if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+      e.preventDefault();
+      void undo();
+      return;
+    }
+    if (mod && ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey))) {
+      e.preventDefault();
+      void redo();
+      return;
+    }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      // Arrow keys pan the scroll container per spec §4.
+      e.preventDefault();
+      const scroller = tableScrollRef.current;
+      if (scroller) {
+        scroller.scrollBy({ top: e.key === 'ArrowDown' ? 60 : -60, behavior: 'auto' });
+      }
+      return;
+    }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const scroller = tableScrollRef.current;
+      if (scroller) {
+        scroller.scrollBy({ left: e.key === 'ArrowRight' ? 80 : -80, behavior: 'auto' });
+      }
+      return;
+    }
+  }, [
+    chronoIds,
+    focusedSceneId,
+    selectedIds,
+    visibleScenes,
+    onOpenScene,
+    removeFromTimeline,
+    duplicateSelected,
+    undo,
+    redo,
+  ]);
+
+  // Scroll the keyboard-focused row into view whenever it changes.
+  useEffect(() => {
+    if (!focusedSceneId) return;
+    const el = tableScrollRef.current?.querySelector<HTMLElement>(`[data-row-id="${focusedSceneId}"]`);
+    el?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+  }, [focusedSceneId]);
 
   // ─── Cell renderers ───
 
@@ -643,13 +897,19 @@ export default function TimelineSpreadsheet({ story }: Props) {
   function renderRow(scene: SpreadsheetScene) {
     const isSelected = selectedIds.has(scene.id);
     const isSaving = saving.has(scene.id);
+    const isKbFocused = focusedSceneId === scene.id;
+    // SKY-795 §2.4 / §3.3 — opacity expresses entity-tab fade (0.3) and arc-focus ghost (0.2).
+    const opacity = sceneOpacity(scene, filters);
     return (
       <tr
         key={scene.id}
-        className={`tls-row${isSelected ? ' tls-row--selected' : ''}${isSaving ? ' tls-row--saving' : ''}`}
+        className={`tls-row${isSelected ? ' tls-row--selected' : ''}${isSaving ? ' tls-row--saving' : ''}${isKbFocused ? ' tls-row--keyboard-focused' : ''}`}
         onClick={e => handleRowClick(scene.id, e)}
         aria-selected={isSelected}
         data-testid={`row-${scene.id}`}
+        data-row-id={scene.id}
+        data-opacity={opacity === 1 ? undefined : String(opacity)}
+        id={`tls-row-${scene.id}`}
       >
         <td className="tls-td tls-td-select">
           <input
@@ -730,10 +990,27 @@ export default function TimelineSpreadsheet({ story }: Props) {
     );
   }
 
-  const allSelected = scenes.length > 0 && selectedIds.size === scenes.length;
+  const allSelected = visibleScenes.length > 0 && selectedIds.size === visibleScenes.length;
 
   return (
-    <div className="tls-root">
+    <div
+      className="tls-root"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      role="application"
+      aria-label="Story timeline — use Tab to cycle scenes, Enter to open, Delete to remove"
+      aria-activedescendant={focusedSceneId ? `tls-row-${focusedSceneId}` : undefined}
+      data-testid="timeline-spreadsheet-root"
+    >
+      {/* SKY-795 — Filters + arc focus + date range */}
+      <TimelineFilterBar
+        filters={filters}
+        onFiltersChange={setFilters}
+        arcs={arcs}
+        characters={chars}
+        locations={locations}
+      />
+
       {/* Toolbar */}
       <div className="tls-toolbar" role="toolbar" aria-label="Spreadsheet controls">
         <span className="tls-story-title">{story.title}</span>
@@ -834,7 +1111,7 @@ export default function TimelineSpreadsheet({ story }: Props) {
       )}
 
       {/* Table */}
-      <div className="tls-scroll">
+      <div className="tls-scroll" ref={tableScrollRef}>
         <table className="tls-table" role="grid" aria-label={`${story.title} scene spreadsheet`}>
           <thead>
             <tr className="tls-header-row">
@@ -844,7 +1121,7 @@ export default function TimelineSpreadsheet({ story }: Props) {
                   className="tls-row-check"
                   checked={allSelected}
                   onChange={e => {
-                    if (e.target.checked) setSelectedIds(new Set(scenes.map(s => s.id)));
+                    if (e.target.checked) setSelectedIds(new Set(visibleScenes.map(s => s.id)));
                     else setSelectedIds(new Set());
                   }}
                   aria-label="Select all scenes"

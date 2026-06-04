@@ -1325,6 +1325,21 @@ export default function DesktopShell() {
     setOpenedNotePath(scenePath);
   }, [stories, handleSelectScene]);
 
+  // SKY-795 §4 — Enter key on the timeline jumps into the editor for the focused scene.
+  const handleOpenSceneById = useCallback((sceneId: string) => {
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+        if (scene) {
+          setOpenedNotePath(null);
+          handleSelectScene(scene, chapter, story);
+          setView('editor');
+          return;
+        }
+      }
+    }
+  }, [stories, handleSelectScene]);
+
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
     setSelectedEntity(entity);
     setSelectedScene(null);
@@ -1675,7 +1690,7 @@ export default function DesktopShell() {
       )}
       {view === 'timeline' && (
         <div className="shell-timeline">
-          <TimelineSpreadsheet story={selectedStory} />
+          <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
         </div>
       )}
       {view === 'structure' && (
