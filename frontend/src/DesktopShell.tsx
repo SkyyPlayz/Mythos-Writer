@@ -983,8 +983,13 @@ export default function DesktopShell() {
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // ? key (with or without Shift) opens the keyboard shortcuts help dialog,
-      // but not when focus is inside a text input or contenteditable.
+      // Cmd/Ctrl+/ opens the keyboard shortcuts dialog from anywhere.
+      if (e.key === '/' && (e.ctrlKey || e.metaKey) && !e.altKey) {
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+      // ? key opens the keyboard shortcuts dialog, but not from text inputs.
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const target = e.target as HTMLElement;
         const inText =

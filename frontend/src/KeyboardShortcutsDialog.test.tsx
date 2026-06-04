@@ -85,4 +85,49 @@ describe('KeyboardShortcutsDialog', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAttribute('tabIndex', '-1');
   });
+
+  it('renders a search input', () => {
+    const onClose = vi.fn();
+    render(<KeyboardShortcutsDialog onClose={onClose} />);
+    expect(screen.getByLabelText('Filter shortcuts')).toBeInTheDocument();
+  });
+
+  it('filters shortcuts by action text', () => {
+    const onClose = vi.fn();
+    render(<KeyboardShortcutsDialog onClose={onClose} />);
+    const input = screen.getByLabelText('Filter shortcuts');
+    fireEvent.change(input, { target: { value: 'bold' } });
+    expect(screen.getByText('Bold')).toBeInTheDocument();
+    expect(screen.queryByText('Undo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Global')).not.toBeInTheDocument();
+  });
+
+  it('filters shortcuts by key name', () => {
+    const onClose = vi.fn();
+    render(<KeyboardShortcutsDialog onClose={onClose} />);
+    const input = screen.getByLabelText('Filter shortcuts');
+    fireEvent.change(input, { target: { value: 'escape' } });
+    expect(screen.getByText('Close modal / dismiss overlay')).toBeInTheDocument();
+    expect(screen.getByText('Close results')).toBeInTheDocument();
+    expect(screen.queryByText('Bold')).not.toBeInTheDocument();
+  });
+
+  it('shows empty state when no shortcuts match', () => {
+    const onClose = vi.fn();
+    render(<KeyboardShortcutsDialog onClose={onClose} />);
+    const input = screen.getByLabelText('Filter shortcuts');
+    fireEvent.change(input, { target: { value: 'zzznomatch' } });
+    expect(screen.getByText(/No shortcuts match/)).toBeInTheDocument();
+    expect(screen.queryByText('Global')).not.toBeInTheDocument();
+  });
+
+  it('shows all groups when search is cleared', () => {
+    const onClose = vi.fn();
+    render(<KeyboardShortcutsDialog onClose={onClose} />);
+    const input = screen.getByLabelText('Filter shortcuts');
+    fireEvent.change(input, { target: { value: 'bold' } });
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByText('Global')).toBeInTheDocument();
+    expect(screen.getByText('Editor — Text (Tiptap)')).toBeInTheDocument();
+  });
 });
