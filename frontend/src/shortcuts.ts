@@ -87,6 +87,21 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
         { keys: ['←'], action: 'Previous sidebar tab' },
       ],
     },
+    {
+      label: 'Timeline',
+      entries: [
+        { keys: ['Tab'], action: 'Next scene (chronological order)' },
+        { keys: ['Shift+Tab'], action: 'Previous scene (chronological order)' },
+        { keys: ['Enter'], action: 'Open focused scene in editor' },
+        { keys: ['Delete', 'Backspace'], action: 'Remove selected scenes from timeline' },
+        { keys: [`${mod}+A`], action: 'Select all visible scenes' },
+        { keys: [`${mod}+D`], action: 'Duplicate selected scenes' },
+        { keys: [`${mod}+Z`], action: 'Undo timeline edit' },
+        { keys: [`${mod}+Y`, `${mod}+Shift+Z`], action: 'Redo timeline edit' },
+        { keys: ['↑', '↓', '←', '→'], action: 'Pan the timeline grid' },
+        { keys: [`${mod}+Click`], action: 'Add/remove from selection' },
+      ],
+    },
   ];
 }
 
