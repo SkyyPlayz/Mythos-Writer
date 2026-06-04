@@ -1,0 +1,288 @@
+/* SKY-793 — TimelineDetailCard styling.
+ *
+ * Liquid Neon glass panel: token-driven colors, composited transforms only,
+ * and reduced-motion respected via the global reset in index.css plus the
+ * duration tokens in tokens.css (--dur-hover-in / --dur-panel collapse to
+ * ~0ms under `prefers-reduced-motion: reduce`).
+ */
+
+.tdc-root {
+  /* Fixed-width side panel; the parent decides where to mount it. */
+  --tdc-width: 320px;
+  position: relative;
+  width: var(--tdc-width);
+  max-width: 100%;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-radius: var(--radius-lg);
+
+  /* Glassmorphism — spec calls out --glass-fill + 12px blur explicitly. */
+  background: var(--glass-fill);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--elev-2), var(--glass-inner-shadow);
+  color: var(--text-body);
+
+  /* Slide-in from the right (spec §6.4) — composited transform + opacity. */
+  transform: translateX(0);
+  opacity: 1;
+  transition:
+    transform var(--dur-hover-in) var(--ease-out),
+    opacity var(--dur-hover-in) var(--ease-out),
+    border-color var(--dur-hover-in) var(--ease-out),
+    box-shadow var(--dur-hover-in) var(--ease-out),
+    background-color var(--dur-hover-in) var(--ease-out);
+}
+
+/* Initial slide-in animation when the card appears for a hovered node.
+ * The keyframes are short and finish before --dur-panel; under
+ * prefers-reduced-motion the global reset clamps duration to 0.01ms so the
+ * card snaps in without slide. */
+@keyframes tdc-slide-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.tdc-root--hover {
+  animation: tdc-slide-in var(--dur-hover-in) var(--ease-out) both;
+}
+
+/* Selected state — tinted glass with 3px neon frame, 180ms ease-out (§2.3). */
+.tdc-root--selected {
+  /* 32% accent tint blended into the glass fill — token-only, no hex. */
+  background: color-mix(in srgb, var(--accent) 32%, var(--glass-fill));
+  border: var(--frame-width-hover) solid var(--accent);
+  /* Inner cyan ring + outward neon falloff. */
+  box-shadow:
+    var(--neon-glow-strong),
+    var(--elev-2),
+    var(--glass-inner-shadow);
+  transition:
+    background-color var(--dur-hover-in) var(--ease-out),
+    border-color var(--dur-hover-in) var(--ease-out),
+    box-shadow var(--dur-hover-in) var(--ease-out);
+}
+
+/* Header — title + Edit button. */
+.tdc-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.tdc-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: var(--weight-lg);
+  color: var(--text-header);
+  letter-spacing: var(--tracking-heading);
+  /* Two-line clamp keeps long titles from blowing the card height. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tdc-edit-btn {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--text-header);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-lg);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-hover-in) var(--ease-out),
+    box-shadow var(--dur-hover-in) var(--ease-out),
+    color var(--dur-hover-in) var(--ease-out);
+}
+
+.tdc-edit-btn:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: var(--neon-glow);
+}
+
+.tdc-edit-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Metadata rows — POV / Words / Location. */
+.tdc-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.tdc-meta-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: var(--space-3);
+  align-items: baseline;
+  font-size: var(--text-sm);
+}
+
+.tdc-meta-row dt {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-lg);
+  margin: 0;
+}
+
+.tdc-meta-row dd {
+  color: var(--text-body);
+  margin: 0;
+  word-break: break-word;
+}
+
+/* Sections — arcs + mood. */
+.tdc-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tdc-section-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-lg);
+}
+
+.tdc-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: var(--text-sm);
+}
+
+.tdc-arc-list,
+.tdc-mood-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tdc-arc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-body);
+  font-size: var(--text-xs);
+  border: 1px solid var(--border-default);
+}
+
+.tdc-arc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+
+.tdc-mood-tag {
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--text-header);
+  font-size: var(--text-xs);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* ─── Context menu ────────────────────────────────────────────────────────── */
+
+.tdc-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 220px;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+
+  background: var(--glass-fill);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-2);
+
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: tdc-slide-in var(--dur-hover-in) var(--ease-out) both;
+}
+
+.tdc-context-item {
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-hover-in) var(--ease-out),
+    color var(--dur-hover-in) var(--ease-out);
+}
+
+.tdc-context-item:hover,
+.tdc-context-item:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-header);
+  outline: none;
+}
+
+.tdc-context-item:focus-visible {
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.tdc-context-item--danger {
+  color: var(--state-danger);
+}
+
+.tdc-context-item--danger:hover,
+.tdc-context-item--danger:focus-visible {
+  background: var(--state-danger-bg);
+  color: var(--state-danger-hover);
+}
+
+/* Reduced-motion + reduced-transparency safety nets — the global reset already
+ * neutralises animations, but the spec calls for instant state changes, so we
+ * also kill the slide-in keyframe explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  .tdc-root--hover,
+  .tdc-context-menu {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .tdc-root,
+  .tdc-context-menu {
+    background: var(--glass-fill-fallback);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

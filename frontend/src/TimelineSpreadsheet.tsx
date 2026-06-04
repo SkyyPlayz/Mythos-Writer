@@ -3,6 +3,10 @@ import type { Story, TimelineAIProposal } from './types';
 import './TimelineSpreadsheet.css';
 import TimelineFilterBar, { type ArcOption, type CharOption, type LocationOption } from './TimelineFilterBar';
 import './TimelineFilterBar.css';
+import TimelineDetailCard, {
+  TimelineSceneContextMenu,
+  type TimelineSceneAction,
+} from './TimelineDetailCard';
 import {
   DEFAULT_FILTERS,
   type TimelineFilters,
@@ -190,6 +194,14 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
   // SKY-795 — filter + arc-focus + keyboard nav state
   const [filters, setFilters] = useState<TimelineFilters>(DEFAULT_FILTERS);
   const [focusedSceneId, setFocusedSceneId] = useState<string | null>(null);
+
+  // SKY-793 — hover/detail card + right-click context menu state.
+  const [hoveredSceneId, setHoveredSceneId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    sceneId: string;
+    x: number;
+    y: number;
+  } | null>(null);
   /** Stack of prior scene snapshots for local undo/redo of timeline edits (spec §4). */
   const undoStackRef = useRef<SpreadsheetScene[][]>([]);
   const redoStackRef = useRef<SpreadsheetScene[][]>([]);
@@ -737,6 +749,52 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
     el?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
   }, [focusedSceneId]);
 
+  // SKY-793 — dispatch a context-menu action to the existing per-cell or per-row
+  // handlers so the menu reuses the spreadsheet's edit/delete/duplicate plumbing.
+  const handleContextAction = useCallback(
+    (sceneId: string, action: TimelineSceneAction) => {
+      const scene = scenesRef.current.find(s => s.id === sceneId);
+      if (!scene) return;
+      switch (action) {
+        case 'edit':
+          onOpenScene?.(sceneId);
+          break;
+        case 'delete-from-timeline':
+          void removeFromTimeline([sceneId]);
+          break;
+        case 'duplicate':
+          void duplicateSelected([sceneId]);
+          break;
+        case 'change-pov':
+          setSelectedIds(new Set([sceneId]));
+          setFocusedSceneId(sceneId);
+          startEdit(sceneId, 'pov', scene.pov);
+          break;
+        case 'change-arc':
+          setSelectedIds(new Set([sceneId]));
+          setFocusedSceneId(sceneId);
+          startEdit(sceneId, 'arc', scene.arcIds[0] ?? '');
+          break;
+      }
+    },
+    [onOpenScene, removeFromTimeline, duplicateSelected, startEdit],
+  );
+
+  // The "active" detail-card scene: prefer hover, fall back to keyboard-focused
+  // row, then to a single selected row. Card state is 'selected' when the user
+  // committed to one (kb-focus or 1-up selection) and 'hover' otherwise.
+  const detailCardScene = useMemo(() => {
+    const id =
+      hoveredSceneId ??
+      focusedSceneId ??
+      (selectedIds.size === 1 ? Array.from(selectedIds)[0] : null);
+    if (!id) return null;
+    return scenes.find(s => s.id === id) ?? null;
+  }, [hoveredSceneId, focusedSceneId, selectedIds, scenes]);
+
+  const detailCardState: 'hover' | 'selected' =
+    !hoveredSceneId && (focusedSceneId || selectedIds.size === 1) ? 'selected' : 'hover';
+
   // ─── Cell renderers ───
 
   function cellValue(scene: SpreadsheetScene, col: ColKey): string {
@@ -905,6 +963,14 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
         key={scene.id}
         className={`tls-row${isSelected ? ' tls-row--selected' : ''}${isSaving ? ' tls-row--saving' : ''}${isKbFocused ? ' tls-row--keyboard-focused' : ''}`}
         onClick={e => handleRowClick(scene.id, e)}
+        onMouseEnter={() => setHoveredSceneId(scene.id)}
+        onMouseLeave={() =>
+          setHoveredSceneId(prev => (prev === scene.id ? null : prev))
+        }
+        onContextMenu={e => {
+          e.preventDefault();
+          setContextMenu({ sceneId: scene.id, x: e.clientX, y: e.clientY });
+        }}
         aria-selected={isSelected}
         data-testid={`row-${scene.id}`}
         data-row-id={scene.id}
@@ -1108,6 +1174,34 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
 
       {error && (
         <div className="tls-error" role="alert">{error}</div>
+      )}
+
+      {/* SKY-793 — detail/hover card (right-side glass panel). */}
+      {detailCardScene && (
+        <div className="tls-detail-card-mount" aria-live="polite">
+          <TimelineDetailCard
+            scene={detailCardScene}
+            state={detailCardState}
+            arcs={arcs}
+            characters={chars}
+            locations={locations}
+            onEdit={id => onOpenScene?.(id)}
+            onRequestContextMenu={(id, x, y) =>
+              setContextMenu({ sceneId: id, x, y })
+            }
+          />
+        </div>
+      )}
+
+      {/* SKY-793 — right-click scene context menu. */}
+      {contextMenu && (
+        <TimelineSceneContextMenu
+          sceneId={contextMenu.sceneId}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onAction={action => handleContextAction(contextMenu.sceneId, action)}
+          onDismiss={() => setContextMenu(null)}
+        />
       )}
 
       {/* Table */}
