@@ -1535,6 +1535,8 @@ export interface AppSettings {
   stt?: SttSettings;
   /** TTS adapter config (MYT-339). Absent or enabled=false → synthesis disabled. */
   tts?: TtsSettings;
+  /** SKY-818: Which provider to use for voice I/O (STT/TTS). 'global' = use global provider; agent name = use that agent's override provider. */
+  voiceProviderId?: 'global' | 'writingAssistant' | 'brainstorm' | 'archive';
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
   /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */

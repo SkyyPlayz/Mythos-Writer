@@ -21,6 +21,15 @@ interface CustomFieldDef {
   options?: string[];
 }
 
+/** SKY-818: Helper to check if provider has voice capabilities (transcribe/speak). */
+function hasVoiceCapability(provider: ProviderConfig | undefined): boolean {
+  if (!provider) return false;
+  if (provider.capabilities?.transcribe || provider.capabilities?.speak) return true;
+  if (provider.kind === 'openai') return true;
+  if (provider.kind === 'custom' && provider.baseUrl) return true;
+  return false;
+}
+
 // ─── Persona viewer (MYT-816) ─────────────────────────────────────────────────
 
 type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
@@ -727,6 +736,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   // Telemetry state (MYT-344 / MYT-779)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
 
+  // Voice provider selector (SKY-818)
+  const [voiceProviderId, setVoiceProviderId] = useState<'global' | 'writingAssistant' | 'brainstorm' | 'archive' | undefined>(undefined);
+
   // Liquid Neon customization state (MYT-613 / MYT-716)
   const [lg, setLg] = useState<LiquidNeonPrefs>({ ...LG_DEFAULTS });
   const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
@@ -770,6 +782,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         archive: loadAgentOverride(s.agents.archive),
       });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
+      setVoiceProviderId(s.voiceProviderId);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -928,6 +941,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
           archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
         },
+        voiceProviderId,
       };
       await window.api.settingsSet(payload);
       setSavedOk(true);
@@ -938,7 +952,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved, buildAgentProviderConfig]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, voiceProviderId, onSaved, buildAgentProviderConfig]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -1216,7 +1230,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
           {/* ── AI Providers ── */}
           <section className="settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
+              {hasVoiceCapability(settings.provider) && (
+                <span className="settings-badge" title="This provider supports voice (STT/TTS)">Voice</span>
+              )}
+            </div>
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
@@ -1312,6 +1331,51 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               );
             })()}
           </section>
+
+          {/* ── Voice Provider (SKY-818) ── */}
+          {(settings.stt?.provider !== 'local' || settings.tts?.provider !== 'local') && (
+            <section className="settings-section" aria-labelledby="section-voice-provider">
+              <h3 className="settings-section-title" id="section-voice-provider">Voice Provider</h3>
+              <div className="settings-field">
+                <label className="settings-label" htmlFor="voice-provider-select">
+                  Voice Provider
+                  <span className="settings-hint-inline"> (for STT/TTS)</span>
+                </label>
+                {(() => {
+                  const voiceCapableProviders = [
+                    settings.provider && hasVoiceCapability(settings.provider) ? { id: 'global', label: 'Global Provider', config: settings.provider } : null,
+                    settings.agents.writingAssistant.provider && hasVoiceCapability(settings.agents.writingAssistant.provider) ? { id: 'writingAssistant' as const, label: 'Writing Assistant', config: settings.agents.writingAssistant.provider } : null,
+                    settings.agents.brainstorm.provider && hasVoiceCapability(settings.agents.brainstorm.provider) ? { id: 'brainstorm' as const, label: 'Brainstorm', config: settings.agents.brainstorm.provider } : null,
+                    settings.agents.archive.provider && hasVoiceCapability(settings.agents.archive.provider) ? { id: 'archive' as const, label: 'Archive', config: settings.agents.archive.provider } : null,
+                  ].filter(Boolean);
+
+                  if (voiceCapableProviders.length === 0) {
+                    return (
+                      <p className="settings-hint">No providers support voice — configure an OpenAI-compatible provider</p>
+                    );
+                  }
+
+                  return (
+                    <select
+                      id="voice-provider-select"
+                      className="settings-input settings-select"
+                      value={voiceProviderId || 'global'}
+                      aria-label="Voice provider for transcription and text-to-speech"
+                      onChange={(e) => {
+                        setVoiceProviderId(e.target.value as 'global' | 'writingAssistant' | 'brainstorm' | 'archive');
+                        setSavedOk(false);
+                      }}
+                    >
+                      {voiceCapableProviders.map((p) => (
+                        <option key={p!.id} value={p!.id}>{p!.label}</option>
+                      ))}
+                    </select>
+                  );
+                })()}
+                <p className="settings-hint">Select which provider to use for voice transcription (STT) and text-to-speech (TTS) when cloud voice is enabled.</p>
+              </div>
+            </section>
+          )}
 
           {/* ── API Key ── */}
           <section className="settings-section" aria-labelledby="section-api-key">

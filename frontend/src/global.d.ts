@@ -264,6 +264,8 @@ interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   model: string;
+  /** SKY-816: Optional STT/TTS capability hints for voice provider selection. */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 interface AppSettings {
@@ -309,6 +311,8 @@ interface AppSettings {
     cloudEndpoint?: string;
     cloudApiKey?: string;
   };
+  /** SKY-818: Which provider to use for voice I/O (STT/TTS). 'global' = use global provider; agent name = use that agent's override provider. */
+  voiceProviderId?: 'global' | 'writingAssistant' | 'brainstorm' | 'archive';
   /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */
   telemetry?: {
     enabled: boolean;
