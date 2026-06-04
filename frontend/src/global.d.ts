@@ -594,6 +594,15 @@ interface Window {
     timelineUpdateArcColor: (arcId: string, color: string, colorIsCustom: boolean) => Promise<{ arc: ArcEntry }>;
     timelineListArcs: () => Promise<{ arcs: ArcEntry[] }>;
 
+    // SKY-796: Timeline AI auto-population proposals
+    timelineProposalsGenerate: (storyId: string) => Promise<{ proposals: TimelineAIProposal[] }>;
+    timelineProposalsList: (storyId: string) => Promise<{ proposals: TimelineAIProposal[] }>;
+    timelineProposalResolve: (proposalId: string, decision: 'accept' | 'reject') => Promise<{
+      proposal: TimelineAIProposal;
+      scene?: SceneEntry;
+      skippedBecauseUserSet?: boolean;
+    }>;
+
     // Telemetry (MYT-344) — opt-in, off by default
     telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) => Promise<unknown>;
 
