@@ -16,9 +16,12 @@ import {
   providerConfigForAgent,
   isModelValid,
   ANTHROPIC_MODEL_ALLOWLIST,
+  createProvider,
+  PROVIDER_CAPABILITIES,
   DEFAULT_BASE_URLS,
   type ProviderConfig,
   type StreamRequest,
+  type Provider,
 } from './provider.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -91,7 +94,7 @@ describe('Anthropic routing (§1)', () => {
     let capturedKey = '';
     const mockStream = async function* () { yield 'Hi'; };
     const mockMessages = { stream: vi.fn().mockReturnValue(mockStream()) };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(opts: { apiKey: string }) {
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(this: unknown, opts: { apiKey: string }) {
       capturedKey = opts.apiKey;
       return { messages: mockMessages };
     });
@@ -108,7 +111,7 @@ describe('Anthropic routing (§1)', () => {
     ];
     const mockStream = async function* () { for (const c of fakeChunks) yield c; };
     const mockMessages = { stream: vi.fn().mockReturnValue(mockStream()) };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function() { return { messages: mockMessages }; });
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(this: unknown) { return { messages: mockMessages }; });
 
     const tokens = await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq()));
     expect(tokens).toEqual(['Hello', ' World']);
@@ -122,7 +125,7 @@ describe('Anthropic routing (§1)', () => {
         return (async function* () {})();
       }),
     };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function() { return { messages: mockMessages }; });
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(this: unknown) { return { messages: mockMessages }; });
 
     await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq({ system: 'You are a writer.' })));
     expect((capturedParams as { system: string }).system).toBe('You are a writer.');
@@ -136,7 +139,7 @@ describe('Anthropic routing (§1)', () => {
         return (async function* () {})();
       }),
     };
-    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function() { return { messages: mockMessages }; });
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(this: unknown) { return { messages: mockMessages }; });
 
     await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq()));
     expect(capturedParams).not.toHaveProperty('system');
@@ -269,6 +272,92 @@ describe('validateProviderConfig (§3)', () => {
 
   it('returns error when custom kind has no baseUrl', () => {
     expect(validateProviderConfig({ kind: 'custom', model: 'x' })).toMatch(/baseUrl/i);
+  });
+});
+
+// ─── Capability discovery (§5) ────────────────────────────────────────────────
+
+describe('Capability discovery (§5)', () => {
+  describe('Anthropic adapter', () => {
+    let p: Provider;
+    beforeEach(() => { p = createProvider(makeAnthropicConfig()); });
+
+    it('reports no capabilities', () => {
+      expect(p.capabilities).toEqual([]);
+    });
+    it('supportsCapability("stt") → false', () => {
+      expect(p.supportsCapability('stt')).toBe(false);
+    });
+    it('supportsCapability("tts") → false', () => {
+      expect(p.supportsCapability('tts')).toBe(false);
+    });
+    it('transcribe method is absent', () => {
+      expect(p.transcribe).toBeUndefined();
+    });
+    it('speak method is absent', () => {
+      expect(p.speak).toBeUndefined();
+    });
+  });
+
+  describe('OpenAI adapter', () => {
+    let p: Provider;
+    beforeEach(() => { p = createProvider(makeOpenAIConfig()); });
+
+    it('reports stt capability', () => {
+      expect(p.capabilities).toContain('stt');
+    });
+    it('reports tts capability', () => {
+      expect(p.capabilities).toContain('tts');
+    });
+    it('supportsCapability("stt") → true', () => {
+      expect(p.supportsCapability('stt')).toBe(true);
+    });
+    it('supportsCapability("tts") → true', () => {
+      expect(p.supportsCapability('tts')).toBe(true);
+    });
+    it('transcribe stub rejects with not-implemented', async () => {
+      expect(p.transcribe).toBeDefined();
+      await expect(p.transcribe!(Buffer.alloc(0))).rejects.toThrow(/not yet implemented/i);
+    });
+    it('speak stub rejects with not-implemented on first next()', async () => {
+      expect(p.speak).toBeDefined();
+      const iter = p.speak!('hello')[Symbol.asyncIterator]();
+      await expect(iter.next()).rejects.toThrow(/not yet implemented/i);
+    });
+  });
+
+  describe('Ollama adapter', () => {
+    it('reports stt and tts capabilities', () => {
+      const p = createProvider(makeOllamaConfig());
+      expect(p.capabilities).toContain('stt');
+      expect(p.capabilities).toContain('tts');
+    });
+  });
+
+  describe('LM Studio adapter', () => {
+    it('reports stt and tts capabilities', () => {
+      const p = createProvider(makeLmStudioConfig());
+      expect(p.capabilities).toContain('stt');
+      expect(p.capabilities).toContain('tts');
+    });
+  });
+
+  describe('Custom adapter', () => {
+    it('reports stt and tts capabilities', () => {
+      const p = createProvider(makeCustomConfig());
+      expect(p.capabilities).toContain('stt');
+      expect(p.capabilities).toContain('tts');
+    });
+  });
+
+  describe('PROVIDER_CAPABILITIES constant', () => {
+    it('anthropic has no entries', () => {
+      expect(PROVIDER_CAPABILITIES.anthropic).toHaveLength(0);
+    });
+    it('openai has both stt and tts', () => {
+      expect(PROVIDER_CAPABILITIES.openai).toContain('stt');
+      expect(PROVIDER_CAPABILITIES.openai).toContain('tts');
+    });
   });
 });
 
