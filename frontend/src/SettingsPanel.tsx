@@ -1974,17 +1974,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <div className="settings-input-row" style={{ marginTop: 12 }}>
                 <button
                   type="button"
-                  className="settings-save"
+                  className="settings-btn settings-btn-secondary"
                   onClick={handleSaveCustomFields}
                 >
                   Save field definitions
                 </button>
-                {customFieldsSavedOk && <span className="settings-saved-ok" role="status">Saved.</span>}
+                {customFieldsSavedOk && <span className="settings-saved-msg" role="status">Saved.</span>}
                 {customFieldsError && <span className="settings-error-msg" role="alert">{customFieldsError}</span>}
               </div>
             )}
             {!customFieldsDirty && customFieldsSavedOk && (
-              <span className="settings-saved-ok" role="status">Saved.</span>
+              <span className="settings-saved-msg" role="status">Saved.</span>
             )}
           </section>
 
