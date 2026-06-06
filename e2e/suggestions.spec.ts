@@ -550,20 +550,22 @@ test.describe('Typed-relation suggestion accept (TC-S-05)', () => {
   });
 
   test('TC-S-05: accept typed-relation → forward + reciprocal written to both entity files', async () => {
-    // 1. Create two entities via IPC.
-    const { sourceId, targetId, sourcePath, targetPath } = await page.evaluate(() => {
-      const now = new Date().toISOString();
-      const sId = 'tc-s-05-src-' + Date.now();
-      const tId = 'tc-s-05-tgt-' + (Date.now() + 1);
-      const sPath = `entities/characters/${sId}.md`;
-      const tPath = `entities/characters/${tId}.md`;
+    // 1. Create two entities via IPC. entityCreate generates the id internally
+    //    (crypto.randomUUID) and returns the resolved EntityEntry, so the test
+    //    must use the returned id + path — passing a custom `id` is silently
+    //    ignored by the IPC contract (EntityCreatePayload has no id field).
+    const { sourceId, targetId, sourcePath, targetPath } = await page.evaluate(async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const api = (window as any).api;
-      // Use entityCreate which writes the frontmatter on disk and updates the manifest.
-      api.entityCreate({ id: sId, name: 'Elara', type: 'character' });
-      api.entityCreate({ id: tId, name: 'Dorian', type: 'character' });
-      return { sourceId: sId, targetId: tId, sourcePath: sPath, targetPath: tPath };
-    }) as { sourceId: string; targetId: string; sourcePath: string; targetPath: string };
+      const sEntry = await api.entityCreate({ name: 'Elara', type: 'character' });
+      const tEntry = await api.entityCreate({ name: 'Dorian', type: 'character' });
+      return {
+        sourceId: sEntry.id as string,
+        targetId: tEntry.id as string,
+        sourcePath: sEntry.path as string,
+        targetPath: tEntry.path as string,
+      };
+    });
 
     // 2. Inject a typed-relation suggestion via IPC.
     const sugId = `tc-s-05-rel-${Date.now()}`;

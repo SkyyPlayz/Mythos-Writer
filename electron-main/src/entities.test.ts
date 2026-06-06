@@ -11,6 +11,7 @@ import {
   reindexEntities,
   migrateEntityAliases,
   entityRelPath,
+  applyTypedRelation,
 } from './entities.js';
 import { defaultManifest } from './vault.js';
 import type { Manifest } from './ipc.js';
@@ -309,5 +310,153 @@ describe('Obsidian compatibility', () => {
     expect(secondDelim).toBeGreaterThan(0);
     // Prose appears after frontmatter
     expect(raw.indexOf('Body text.')).toBeGreaterThan(secondDelim);
+  });
+});
+
+// ─── applyTypedRelation (SKY-195 / SKY-901) ───
+//
+// Tight unit-level coverage of the same code path the suggestionsAccept IPC
+// handler uses for typed-relation suggestions. Catches the SKY-901 regression
+// (source-side write skipped) without paying the 8s E2E poll.
+
+describe('applyTypedRelation', () => {
+  it('writes the forward relation to the source entity file', () => {
+    const elara = createEntity(tmpDir, manifest, { name: 'Elara', type: 'character' });
+    const dorian = createEntity(tmpDir, manifest, { name: 'Dorian', type: 'character' });
+
+    const { sourceWritten, targetWritten } = applyTypedRelation(tmpDir, manifest, {
+      relationType: 'married to',
+      sourceEntityId: elara.id,
+      targetEntityId: dorian.id,
+    });
+
+    expect(sourceWritten).toBe(true);
+    expect(targetWritten).toBe(true);
+
+    const sourceRaw = fs.readFileSync(path.join(tmpDir, elara.path), 'utf-8');
+    expect(sourceRaw).toContain('relations:');
+    expect(sourceRaw).toContain('type: married to');
+    expect(sourceRaw).toContain(`target: ${dorian.id}`);
+  });
+
+  it('writes the reciprocal relation to the target entity file', () => {
+    const elara = createEntity(tmpDir, manifest, { name: 'Elara', type: 'character' });
+    const dorian = createEntity(tmpDir, manifest, { name: 'Dorian', type: 'character' });
+
+    applyTypedRelation(tmpDir, manifest, {
+      relationType: 'married to',
+      sourceEntityId: elara.id,
+      targetEntityId: dorian.id,
+    });
+
+    const targetRaw = fs.readFileSync(path.join(tmpDir, dorian.path), 'utf-8');
+    expect(targetRaw).toContain('relations:');
+    expect(targetRaw).toContain('type: married to');
+    expect(targetRaw).toContain(`target: ${elara.id}`);
+  });
+
+  it('writes asymmetric reciprocal (parent of ↔ child of)', () => {
+    const parent = createEntity(tmpDir, manifest, { name: 'Aria', type: 'character' });
+    const child = createEntity(tmpDir, manifest, { name: 'Lior', type: 'character' });
+
+    applyTypedRelation(tmpDir, manifest, {
+      relationType: 'parent of',
+      sourceEntityId: parent.id,
+      targetEntityId: child.id,
+    });
+
+    const parentRaw = fs.readFileSync(path.join(tmpDir, parent.path), 'utf-8');
+    const childRaw = fs.readFileSync(path.join(tmpDir, child.path), 'utf-8');
+    expect(parentRaw).toContain('type: parent of');
+    expect(parentRaw).toContain(`target: ${child.id}`);
+    expect(childRaw).toContain('type: child of');
+    expect(childRaw).toContain(`target: ${parent.id}`);
+  });
+
+  it('updates the manifest entries with the new relations', () => {
+    const a = createEntity(tmpDir, manifest, { name: 'A', type: 'character' });
+    const b = createEntity(tmpDir, manifest, { name: 'B', type: 'character' });
+
+    applyTypedRelation(tmpDir, manifest, {
+      relationType: 'ally of',
+      sourceEntityId: a.id,
+      targetEntityId: b.id,
+    });
+
+    const aEntry = manifest.entities.find((e) => e.id === a.id);
+    const bEntry = manifest.entities.find((e) => e.id === b.id);
+    expect(aEntry?.relations).toEqual([{ type: 'ally of', target: b.id }]);
+    expect(bEntry?.relations).toEqual([{ type: 'ally of', target: a.id }]);
+  });
+
+  it('is idempotent — re-applying the same relation does not duplicate', () => {
+    const a = createEntity(tmpDir, manifest, { name: 'A', type: 'character' });
+    const b = createEntity(tmpDir, manifest, { name: 'B', type: 'character' });
+
+    const first = applyTypedRelation(tmpDir, manifest, {
+      relationType: 'sibling of',
+      sourceEntityId: a.id,
+      targetEntityId: b.id,
+    });
+    expect(first.sourceWritten).toBe(true);
+    expect(first.targetWritten).toBe(true);
+
+    const second = applyTypedRelation(tmpDir, manifest, {
+      relationType: 'sibling of',
+      sourceEntityId: a.id,
+      targetEntityId: b.id,
+    });
+    expect(second.sourceWritten).toBe(false);
+    expect(second.targetWritten).toBe(false);
+
+    const aEntry = manifest.entities.find((e) => e.id === a.id);
+    expect(aEntry?.relations).toHaveLength(1);
+  });
+
+  it('preserves pre-existing relations and appends the new one', () => {
+    const a = createEntity(tmpDir, manifest, {
+      name: 'A',
+      type: 'character',
+      relations: [{ type: 'mentor of', target: 'pre-existing-id' }],
+    });
+    const b = createEntity(tmpDir, manifest, { name: 'B', type: 'character' });
+
+    applyTypedRelation(tmpDir, manifest, {
+      relationType: 'ally of',
+      sourceEntityId: a.id,
+      targetEntityId: b.id,
+    });
+
+    const aEntry = manifest.entities.find((e) => e.id === a.id);
+    expect(aEntry?.relations).toEqual([
+      { type: 'mentor of', target: 'pre-existing-id' },
+      { type: 'ally of', target: b.id },
+    ]);
+  });
+
+  it('reports sourceWritten=false when the source entity is missing from the manifest', () => {
+    const dorian = createEntity(tmpDir, manifest, { name: 'Dorian', type: 'character' });
+
+    const result = applyTypedRelation(tmpDir, manifest, {
+      relationType: 'married to',
+      sourceEntityId: 'missing-source-id',
+      targetEntityId: dorian.id,
+    });
+
+    // Caller (suggestionsAccept) uses this to downgrade 'applied' to 'accepted'
+    // when nothing was actually persisted, instead of silently claiming success.
+    expect(result.sourceWritten).toBe(false);
+    expect(result.targetWritten).toBe(false); // reciprocal points at a missing source id; not written
+  });
+
+  it('reports both false when both entities are missing (stale suggestion case)', () => {
+    const result = applyTypedRelation(tmpDir, manifest, {
+      relationType: 'married to',
+      sourceEntityId: 'missing-a',
+      targetEntityId: 'missing-b',
+    });
+
+    expect(result.sourceWritten).toBe(false);
+    expect(result.targetWritten).toBe(false);
   });
 });
