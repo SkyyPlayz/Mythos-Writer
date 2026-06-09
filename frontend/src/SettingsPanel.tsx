@@ -274,6 +274,18 @@ function validateApiKey(key: string): string | null {
   return null;
 }
 
+function providerSupportsVoice(provider?: AppSettings['provider']): boolean {
+  return Boolean(provider?.capabilities?.transcribe || provider?.capabilities?.speak);
+}
+
+function formatProviderLabel(provider: AppSettings['provider']): string {
+  if (!provider) return 'Provider';
+  if (provider.kind === 'openai') return 'OpenAI';
+  if (provider.kind === 'custom') return provider.baseUrl ? `Custom (${provider.baseUrl})` : 'Custom endpoint';
+  const option = PROVIDER_OPTIONS.find((p) => p.value === provider.kind);
+  return option?.label ?? provider.kind.charAt(0).toUpperCase() + provider.kind.slice(1);
+}
+
 /** Contrast ratio badge — shows ratio and colour-codes pass/fail. */
 function ContrastBadge({ ratio }: { ratio: number }) {
   const pass = ratio >= 4.5;
@@ -815,6 +827,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         model: providerModel,
         ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
         ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+        ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
       };
       const payload: AppSettings = {
         ...settings,
@@ -1102,6 +1115,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }
 
   const effectiveBg = lg.bgBaseColor ?? LG_DEFAULTS.bgBaseColor!;
+  const activeProvider = settings.provider?.kind === providerKind ? settings.provider : undefined;
+  const activeProviderSupportsVoice = providerSupportsVoice(activeProvider);
+  const shouldShowVoiceProviderSelector =
+    (settings.stt?.provider ?? 'local') !== 'local' || (settings.tts?.provider ?? 'local') !== 'local';
+  const voiceProviders = activeProviderSupportsVoice && activeProvider ? [activeProvider] : [];
 
   return (
     <>
@@ -1115,8 +1133,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         <div className="settings-body">
 
           {/* ── AI Providers ── */}
-          <section className="settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
+          <section className="settings-section provider-settings-section" aria-labelledby="section-providers">
+            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+            {activeProviderSupportsVoice && (
+              <span
+                className="provider-voice-badge"
+                aria-label="This provider supports voice input and/or output"
+                role="status"
+              >
+                Voice
+              </span>
+            )}
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
@@ -2318,7 +2345,39 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </div>
                 </>
               )}
-
+              {shouldShowVoiceProviderSelector && (
+                <>
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-provider-select">Voice Provider</label>
+                    <select
+                      id="voice-provider-select"
+                      className="settings-input settings-select"
+                      value={settings.voiceProviderId ?? ''}
+                      aria-label="Voice provider"
+                      aria-describedby="voice-provider-hint"
+                      onChange={(e) => {
+                        const val = e.target.value || undefined;
+                        setSettings((p) => ({ ...p, voiceProviderId: val }));
+                        setSavedOk(false);
+                      }}
+                    >
+                      <option value="">
+                        {voiceProviders.length === 0
+                          ? 'No providers support voice — configure an OpenAI-compatible provider'
+                          : 'Select a provider…'}
+                      </option>
+                      {voiceProviders.map((provider) => (
+                        <option key={provider.kind} value={provider.kind}>
+                          {formatProviderLabel(provider)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="settings-hint" id="voice-provider-hint">
+                    Only providers with voice capabilities (STT and/or TTS) are shown above.
+                  </p>
+                </>
+              )}
               <p className="settings-hint settings-hint-privacy">
                 Voice is processed locally on your device — no audio is sent anywhere.
               </p>

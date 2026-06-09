@@ -258,6 +258,7 @@ interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   model: string;
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 interface AppSettings {
@@ -265,6 +266,8 @@ interface AppSettings {
   apiKey: string;
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderConfig;
+  /** Voice provider selection (SKY-818). Absent = auto-select first voice-capable provider. */
+  voiceProviderId?: string;
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
