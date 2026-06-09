@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FocusPrefs } from './types';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import { resolveAxisTokens } from './themeAxis';
-import { SUGGESTION_CATEGORY_LABELS, SUGGESTION_CATEGORIES } from './types';
+import { SUGGESTION_CATEGORY_LABELS } from './types';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -232,7 +232,8 @@ const ALL_CATEGORIES_ENABLED: Record<SuggestionCategory, boolean> = {
   spelling: true,
   grammar: true,
   'sentence-structure': true,
-  style: true,
+  'style-tone': true,
+  other: true,
 };
 
 const BUDGET_DEFAULTS: AgentBudgetSettings = {
@@ -244,6 +245,34 @@ const BUDGET_DEFAULTS: AgentBudgetSettings = {
   maxTokensPerDay: 500_000,
   autoApplyCategories: ALL_CATEGORIES_ENABLED,
 };
+
+// SKY-908 — per-category auto-apply toggle group.
+// Order is the display order. 'other' is intentionally last because it covers
+// suggestions that don't fit the four named categories.
+const SUGGESTION_CATEGORY_ORDER: SuggestionCategory[] = [
+  'punctuation',
+  'spelling',
+  'grammar',
+  'sentence-structure',
+  'style-tone',
+  'other',
+];
+
+/**
+ * Read the effective per-category enable state for a settings entry.
+ * Backward compatible: when the map is absent (pre-SKY-908 settings), every
+ * category reads as enabled — the existing master `autoApply` boolean stays
+ * the kill-switch. Absent keys inside an explicit map also default to true so
+ * a forward-compat field never silently disables a new category.
+ */
+function isCategoryAutoApplyEnabled(
+  agent: AgentBudgetSettings,
+  category: SuggestionCategory,
+): boolean {
+  if (!agent.autoApplyCategories) return true;
+  const value = agent.autoApplyCategories[category];
+  return value !== false;
+}
 
 const DEFAULTS: AppSettings = {
   apiKey: '',
@@ -569,6 +598,61 @@ const FOCUS_PREFS_DEFAULTS: Pick<FocusPrefs, 'showTitleBar' | 'showStatusBar' | 
   showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
 };
 
+// SKY-908 — per-category auto-apply toggle group, rendered under the master
+// auto-apply checkbox on each agent card. Hidden when the master is off (the
+// kill-switch dominates per CEO direction).
+interface AutoApplyCategoryTogglesProps {
+  idPrefix: string;
+  agentLabel: string;
+  agent: AgentBudgetSettings;
+  agentKey: keyof AppSettings['agents'];
+  onChange: (
+    agent: keyof AppSettings['agents'],
+    category: SuggestionCategory,
+    enabled: boolean,
+  ) => void;
+}
+
+function AutoApplyCategoryToggles({
+  idPrefix,
+  agentLabel,
+  agent,
+  agentKey,
+  onChange,
+}: AutoApplyCategoryTogglesProps) {
+  if (!agent.autoApply) return null;
+  return (
+    <fieldset
+      className="settings-category-toggles"
+      data-testid={`${idPrefix}-category-toggles`}
+      aria-label={`${agentLabel} auto-apply categories`}
+    >
+      <legend className="settings-category-toggles-legend">
+        Auto-apply categories
+      </legend>
+      {SUGGESTION_CATEGORY_ORDER.map((category) => {
+        const id = `${idPrefix}-cat-${category}`;
+        const checked = isCategoryAutoApplyEnabled(agent, category);
+        return (
+          <div key={category} className="settings-field settings-field-inline">
+            <label className="settings-toggle" htmlFor={id}>
+              <input
+                id={id}
+                type="checkbox"
+                aria-label={`${agentLabel} auto-apply ${SUGGESTION_CATEGORY_LABELS[category]}`}
+                checked={checked}
+                onChange={(e) => onChange(agentKey, category, e.target.checked)}
+              />
+              <span className="settings-toggle-track" />
+            </label>
+            <span className="settings-label">{SUGGESTION_CATEGORY_LABELS[category]}</span>
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -774,20 +858,35 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setSavedOk(false);
   }, []);
 
-  const setAutoApplyCategory = useCallback((category: SuggestionCategory, enabled: boolean) => {
-    setSettings((prev) => ({
-      ...prev,
-      agents: {
-        ...prev.agents,
-        writingAssistant: {
-          ...prev.agents.writingAssistant,
-          autoApplyCategories: {
-            ...(prev.agents.writingAssistant.autoApplyCategories ?? ALL_CATEGORIES_ENABLED),
-            [category]: enabled,
-          },
+  // SKY-908 — single source of truth for per-category auto-apply edits.
+  // On first edit, materialises a full map seeded with the current enabled
+  // state so the persisted JSON is unambiguous (no implicit "all enabled"
+  // shorthand once the user has expressed an opinion).
+  const setCategoryAutoApply = useCallback((
+    agent: keyof AppSettings['agents'],
+    category: SuggestionCategory,
+    enabled: boolean,
+  ) => {
+    setSettings((prev) => {
+      const current = prev.agents[agent];
+      const existing = current.autoApplyCategories ?? {};
+      const seeded: Record<SuggestionCategory, boolean> = {
+        'punctuation': existing.punctuation ?? true,
+        'spelling': existing.spelling ?? true,
+        'grammar': existing.grammar ?? true,
+        'sentence-structure': existing['sentence-structure'] ?? true,
+        'style-tone': existing['style-tone'] ?? true,
+        'other': existing.other ?? true,
+      };
+      seeded[category] = enabled;
+      return {
+        ...prev,
+        agents: {
+          ...prev.agents,
+          [agent]: { ...current, autoApplyCategories: seeded },
         },
-      },
-    }));
+      };
+    });
     setSavedOk(false);
   }, []);
 
@@ -802,6 +901,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       ...(def.needsUrl && ov.baseUrl ? { baseUrl: ov.baseUrl } : {}),
     };
   }, [agentOverrides, settings.agents]);
+
 
   const handleSave = useCallback(async () => {
     if (apiKeyError) return;
@@ -1418,30 +1518,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
-                {settings.agents.writingAssistant.autoApply && (
-                  <div className="settings-field settings-category-toggles" role="group" aria-label="Auto-apply categories">
-                    <span className="settings-label settings-category-label">Auto-apply categories</span>
-                    {SUGGESTION_CATEGORIES.map((cat) => {
-                      const cats = settings.agents.writingAssistant.autoApplyCategories ?? ALL_CATEGORIES_ENABLED;
-                      const enabled = cats[cat] ?? true;
-                      return (
-                        <div key={cat} className="settings-field settings-field-inline settings-category-row">
-                          <label className="settings-toggle" htmlFor={`wa-cat-${cat}`}>
-                            <input
-                              id={`wa-cat-${cat}`}
-                              type="checkbox"
-                              aria-label={`Auto-apply ${SUGGESTION_CATEGORY_LABELS[cat]} suggestions`}
-                              checked={enabled}
-                              onChange={(e) => setAutoApplyCategory(cat, e.target.checked)}
-                            />
-                            <span className="settings-toggle-track" />
-                          </label>
-                          <span className="settings-label">{SUGGESTION_CATEGORY_LABELS[cat]}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                <AutoApplyCategoryToggles
+                  idPrefix="wa"
+                  agentLabel="Writing Assistant"
+                  agent={settings.agents.writingAssistant}
+                  agentKey="writingAssistant"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -1579,6 +1662,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                <AutoApplyCategoryToggles
+                  idPrefix="brainstorm"
+                  agentLabel="Brainstorm Agent"
+                  agent={settings.agents.brainstorm}
+                  agentKey="brainstorm"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -1732,6 +1822,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                <AutoApplyCategoryToggles
+                  idPrefix="archive"
+                  agentLabel="Archive Agent"
+                  agent={settings.agents.archive}
+                  agentKey="archive"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">

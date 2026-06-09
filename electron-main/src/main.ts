@@ -608,6 +608,7 @@ function persistBrainstormSuggestion(
       applied_at: null,
       applied_run_id: null,
       budget_exceeded: 0,
+      category: 'other',
     });
   } catch {
     // Logging is best-effort — a DB hiccup must not block the agent from
@@ -942,7 +943,7 @@ const handlers: IpcHandlers = {
         payload.suggestion.source_agent,
         agentSettings,
         getDb(),
-        payload.suggestion.category ?? null,
+        payload.suggestion.category,
       );
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
@@ -2422,6 +2423,7 @@ const handlers: IpcHandlers = {
         applied_at: null,
         applied_run_id: null,
         budget_exceeded: 0,
+        category: 'other' as const,
       };
       upsertSuggestion(counterSuggestion);
       updateSuggestionStatus(payload.suggestionId, 'accepted', now);
@@ -4687,7 +4689,8 @@ const AGENT_BUDGET_DEFAULTS = {
     spelling: true,
     grammar: true,
     'sentence-structure': true,
-    style: true,
+    'style-tone': true,
+    other: true,
   } as Record<import('./ipc.js').SuggestionCategory, boolean>,
 };
 

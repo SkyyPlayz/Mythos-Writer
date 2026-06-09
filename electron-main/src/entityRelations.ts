@@ -227,6 +227,7 @@ export function detectRelationSuggestions(
         applied_at: null,
         applied_run_id: null,
         budget_exceeded: 0,
+        category: null,
       });
     }
   }

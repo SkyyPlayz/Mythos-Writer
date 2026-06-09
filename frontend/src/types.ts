@@ -9,16 +9,18 @@ export const SUGGESTION_CATEGORY_LABELS: Record<SuggestionCategory, string> = {
   spelling: 'Spelling',
   grammar: 'Grammar',
   'sentence-structure': 'Sentence Structure',
-  style: 'Style / Word Choice',
+  'style-tone': 'Style / Tone',
+  other: 'Other',
 };
 
-/** Ordered list of all five suggestion categories. */
+/** Ordered list of all suggestion categories. */
 export const SUGGESTION_CATEGORIES: SuggestionCategory[] = [
   'punctuation',
   'spelling',
   'grammar',
   'sentence-structure',
-  'style',
+  'style-tone',
+  'other',
 ];
 
 export type EntityType = 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';

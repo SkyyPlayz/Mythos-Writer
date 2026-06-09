@@ -342,13 +342,21 @@
   font-style: italic;
 }
 
+/* SKY-908 — per-category badge on suggestion rows */
 .sr-category-badge {
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;
-  background: rgba(148, 163, 184, 0.15);
-  color: var(--text-muted, #94a3b8);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  color: #d4d4d8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+.sr-category-punctuation        { color: #fda4af; border-color: rgba(244, 114, 182, 0.25); }
+.sr-category-spelling           { color: #fcd34d; border-color: rgba(250, 204,  21, 0.25); }
+.sr-category-grammar            { color: #93c5fd; border-color: rgba( 96, 165, 250, 0.25); }
+.sr-category-sentence-structure { color: #a5f3fc; border-color: rgba( 34, 211, 238, 0.25); }
+.sr-category-style-tone         { color: #c4b5fd; border-color: rgba(167, 139, 250, 0.25); }
+.sr-category-other              { color: #a1a1aa; border-color: rgba(161, 161, 170, 0.25); }
