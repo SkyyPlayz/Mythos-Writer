@@ -559,6 +559,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('goals:setGoal', { dailyGoal }),
   goalsResetStreak: () => ipcRenderer.invoke('goals:resetStreak', undefined),
 
+
   // SKY-55: per-scene notes
   notesGet: (sceneId: string) => ipcRenderer.invoke('notes:get', { sceneId }),
   notesSet: (sceneId: string, content: string) => ipcRenderer.invoke('notes:set', { sceneId, content }),
@@ -635,6 +636,8 @@ contextBridge.exposeInMainWorld('api', {
       system,
     });
   },
+
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

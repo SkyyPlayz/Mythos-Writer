@@ -368,6 +368,274 @@ export const IPC_CHANNELS = {
   TIMELINE_PROPOSALS_GENERATE: 'timeline:proposals:generate',
   TIMELINE_PROPOSALS_LIST: 'timeline:proposals:list',
   TIMELINE_PROPOSAL_RESOLVE: 'timeline:proposal:resolve',
+} as const;
+
+// ─── Sender-frame guard (MYT-791) ───
+// Defense-in-depth: reject IPC messages whose origin is not the top-level
+// renderer frame. With contextIsolation on and nodeIntegration off the
+// practical exposure today is low, but this blocks future preview iframes,
+// embedded help panes, or third-party WebViews from invoking any IPC channel.
+
+export interface IpcUntrustedFrameRejection {
+  /** Generic user-facing message — never includes frame URLs or origins. */
+  error: string;
+  category: 'untrusted_frame';
+}
+
+export const UNTRUSTED_FRAME_REJECTION: IpcUntrustedFrameRejection = {
+  error: 'IPC request rejected: not from the top-level renderer frame.',
+  category: 'untrusted_frame',
+};
+
+/**
+ * Returns true when `event.senderFrame` is the top-level frame. Designed for
+ * both `ipcMain.handle` (IpcMainInvokeEvent) and `ipcMain.on` (IpcMainEvent),
+ * which both expose `senderFrame`. Returns false when senderFrame is null
+ * (frame already destroyed) or originates from a nested frame.
+ */
+export function isFromTopFrame(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
+  const frame = event.senderFrame;
+  return !!frame && frame === frame.top;
+}
+
+// ─── Main process handlers ───
+// Each handler: receive request → process → send response via IPC
+
+export function setupIpcMain(handlers: IpcHandlers) {
+  for (const [channel, handler] of Object.entries(handlers)) {
+    // `await` is required so async rejections are caught here and sanitized
+    // before they reach the renderer. Previously thrown fs errors (ENOENT,
+    // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
+    ipcMain.handle(channel, async (event, payload) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      try {
+        return await handler(payload);
+      } catch (error) {
+        return sanitizeIpcError(channel, error);
+      }
+    });
+  }
+}
+
+// ─── Renderer-side IPC helper ───
+// Call a channel and get the response
+
+export async function ipcCall<TChannel extends keyof IpcHandlers, TPayload, TResponse>(
+  channel: TChannel,
+  payload: TPayload
+): Promise<TResponse | { error: string }> {
+  return ipcRenderer.invoke(channel, payload) as Promise<TResponse | { error: string }>;
+}
+
+// ─── Type definitions ───
+
+export interface IpcHandlers {
+  [IPC_CHANNELS.VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
+  [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
+  [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
+  [IPC_CHANNELS.VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
+  [IPC_CHANNELS.VAULT_MANIFEST_READ]: (payload: never) => Manifest;
+  [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload) => ManifestWriteResponse;
+  [IPC_CHANNELS.VAULT_OPEN_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
+  [IPC_CHANNELS.VAULT_GET_ROOT]: (payload: never) => VaultGetRootResponse;
+  [IPC_CHANNELS.VAULT_IMPORT]: (payload: VaultImportPayload) => Promise<VaultImportResponse | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_REINDEX]: (payload: never) => VaultReindexResponse;
+  [IPC_CHANNELS.VAULT_WATCH_START]: (payload: never) => Promise<{ watching: boolean }>;
+  [IPC_CHANNELS.VAULT_WATCH_STOP]: (payload: never) => Promise<{ watching: boolean }>;
+  [IPC_CHANNELS.APP_READY]: (payload: never) => AppReadyResponse;
+  [IPC_CHANNELS.APP_QUIT]: (payload: never) => void;
+  [IPC_CHANNELS.AI_BRAINSTORMER]: (payload: BrainstormerPayload) => BrainstormerResponse;
+  [IPC_CHANNELS.AI_WRITING_ASSISTANT]: (payload: WritingAssistantPayload) => WritingAssistantResponse;
+  [IPC_CHANNELS.AI_ARCHIVE]: (payload: ArchivePayload) => ArchiveResponse;
+  // AGENT_WRITING_ASSISTANT is registered manually in main.ts (streaming handler — not via setupIpcMain)
+  [IPC_CHANNELS.SYSTEM_INFO]: (payload: never) => SystemInfo;
+  [IPC_CHANNELS.SNAPSHOT_SAVE]: (payload: SnapshotSavePayload) => SceneSnapshot;
+  [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
+  [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
+  [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => SnapshotDeleteResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => SnapshotDeleteAllResponse;
+  [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
+  [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
+  [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
+  [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: MigrationDryRunPayload) => MigrationDryRunResponse;
+  [IPC_CHANNELS.MIGRATION_APPLY]: (payload: MigrationApplyPayload) => MigrationApplyResponse;
+  [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => EntityEntry;
+  [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => EntityEntry | null;
+  [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
+  [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => EntityDeleteResponse;
+  [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => EntityListResponse;
+  [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_LIST]: (payload: EntityRelationshipsListPayload) => EntityRelationshipsListResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_CREATE]: (payload: EntityRelationshipsCreatePayload) => EntityRelationshipsCreateResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_DELETE]: (payload: EntityRelationshipsDeletePayload) => { deleted: boolean };
+  [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
+  [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) => Promise<SettingsTestConnectionResponse>;
+  [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
+  [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => SuggestionsGetResponse;
+  [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
+  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => SuggestionsAcceptResponse;
+  [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => SuggestionsApplyResponse;
+  [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => SuggestionsRejectResponse;
+  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => SuggestionsRollbackResponse;
+  [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => AuditListResponse;
+  [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => ProvenanceUpsertResponse;
+  [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
+  [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => TimelineUpsertResponse;
+  [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
+  [IPC_CHANNELS.GENERATION_LOG_LIST]: (payload: GenerationLogListPayload) => GenerationLogListResponse;
+  [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => GenerationLogGetResponse;
+  [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
+  [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
+  [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
+  [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => ChapterEntry;
+  [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => SceneEntry;
+  [IPC_CHANNELS.CHAPTER_LIST]: (payload: ChapterListPayload) => ChapterListResponse;
+  [IPC_CHANNELS.CHAPTER_GET]: (payload: ChapterGetPayload) => ChapterGetResponse;
+  [IPC_CHANNELS.CHAPTER_SAVE]: (payload: ChapterSavePayload) => ChapterSaveResponse;
+  [IPC_CHANNELS.SCENE_LIST]: (payload: SceneListPayload) => SceneListResponse;
+  [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
+  [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
+  [IPC_CHANNELS.SCENE_RENAME]: (payload: SceneRenamePayload) => SceneRenameResponse;
+  [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
+  [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
+  [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
+  [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
+  // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
+  [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
+  [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
+  [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
+  [IPC_CHANNELS.EXPORT_PLAINTEXT]: (payload: ExportPlaintextPayload) => Promise<ExportPlaintextResponse>;
+  [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: (payload: VoicePickBinaryPayload) => Promise<VoicePickBinaryResponse>;
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => Promise<VaultValidatePathResponse>;
+  [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: (payload: VaultPickFolderByPathPayload) => Promise<VaultPickFolderResponse>;
+  [IPC_CHANNELS.TIMELINE_INFER]: (payload: TimelineInferPayload) => TimelineInferResponse;
+  // APP_CHECK_FOR_UPDATE and APP_INSTALL_UPDATE are registered directly in initAutoUpdater()
+  // (async handlers — not routed through setupIpcMain)
+  [IPC_CHANNELS.SETTINGS_GET_AGENT_CONFIG]: (payload: never) => AgentConfigMap;
+  [IPC_CHANNELS.SETTINGS_SET_AGENT_CONFIG]: (payload: SetAgentConfigPayload) => SetAgentConfigResponse;
+  [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: TelemetryReportPayload) => TelemetryReportResponse;
+  [IPC_CHANNELS.PROJECT_LIST]: (payload: never) => ProjectListResponse;
+  [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
+  [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
+  [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
+  [IPC_CHANNELS.BG_PICK]: (payload: never) => Promise<BgPickResponse>;
+  [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
+  [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
+  [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
+  [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
+  [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
+  [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
+  [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
+  [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
+  [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
+  [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
+  [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
+  [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
+  [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
+  [IPC_CHANNELS.BRAINSTORM_GET_SETTINGS]: (payload: never) => BrainstormGetSettingsResponse;
+  [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: BrainstormWriteNotePayload) => BrainstormWriteNoteResponse;
+  [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
+  [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
+  [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
+  [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (payload: BrainstormSelectContextPayload) => BrainstormSelectContextResponse;
+  // SKY-12 onboarding channels
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
+  // SKY-627: extended payload — orchestrates vault creation + first-scene setup
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
+  // SKY-130: session persistence
+  [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
+  // SKY-156: Project Templates
+  [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse | { error: string }>;
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
+  // SKY-190: Note Templates
+  [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
+  // SKY-204: Daily Notes
+  [IPC_CHANNELS.DAILY_NOTE_OPEN_TODAY]: (payload: never) => DailyNoteOpenTodayResponse;
+  [IPC_CHANNELS.DAILY_NOTE_GET_STREAK]: (payload: never) => DailyNoteGetStreakResponse;
+  // SKY-193: Tag Wrangler
+  [IPC_CHANNELS.NOTES_TAG_LIST]: (payload: never) => NotesTagListResponse;
+  [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: NotesTagRenamePayload) => NotesTagRenameResponse;
+  [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: NotesTagMergePayload) => NotesTagMergeResponse;
+
+  // SKY-55: per-scene notes
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
+
+  // SKY-158: Tag & cross-reference system
+  [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;
+  [IPC_CHANNELS.TAGS_UPSERT]: (payload: TagsUpsertPayload) => TagsUpsertResponse;
+  [IPC_CHANNELS.TAGS_DELETE]: (payload: TagsDeletePayload) => TagsDeleteResponse;
+  [IPC_CHANNELS.TAGS_RENAME]: (payload: TagsRenamePayload) => TagsRenameResponse;
+  [IPC_CHANNELS.TAGS_FOR_ITEM]: (payload: TagsForItemPayload) => TagsForItemResponse;
+  [IPC_CHANNELS.TAGS_SET_FOR_ITEM]: (payload: TagsSetForItemPayload) => TagsSetForItemResponse;
+  [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => TagsItemsForTagResponse;
+  [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => TagsBulkApplyResponse;
+  [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => SceneSetTagsResponse;
+
+  // SKY-154: Writing Goals
+  [IPC_CHANNELS.GOALS_LOG_WORDS]: (payload: GoalsLogWordsPayload) => GoalsLogWordsResponse;
+  [IPC_CHANNELS.GOALS_GET_STATS]: (payload: never) => GoalsGetStatsResponse;
+  [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => GoalsSetGoalResponse;
+  [IPC_CHANNELS.GOALS_RESET_STREAK]: (payload: never) => GoalsResetStreakResponse;
+
+  // SKY-170: Scene-to-entity links
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload) => SceneEntityLinksListResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLinksUpsertResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
+
+  // SKY-203: Note-level backlinks
+  [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => NoteBacklinksResponse;
+
+  // SKY-194: Iconize — per-node icon IPC
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (payload: never) => { packName: string; icons: string[] }[];
+  [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }) => { svg: string | null };
+
+  // SKY-205: Smart Folders
+  [IPC_CHANNELS.SMART_FOLDER_LIST]: (payload: never) => { smartFolders: SmartFolderEntry[] };
+  [IPC_CHANNELS.SMART_FOLDER_CREATE]: (payload: { name: string; query: string }) => { smartFolder: SmartFolderEntry };
+  [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }) => { smartFolder: SmartFolderEntry };
+  [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }) => { success: boolean };
+  [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }) => { results: SmartFolderResult[] };
+
+  // SKY-207: Per-scene custom frontmatter fields
+  [IPC_CHANNELS.CUSTOM_FIELDS_LIST]: (payload: never) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }) => { customFields: Record<string, unknown> };
+  [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }) => { ok: boolean };
+
+  // SKY-320: one-click Mythos Vault create
+  [IPC_CHANNELS.VAULT_CREATE_DEFAULT_MYTHOS]: (payload: CreateDefaultMythosVaultPayload) => Promise<CreateDefaultMythosVaultResponse>;
+
+  // SKY-445/SKY-458: Continuity drift check
+  [IPC_CHANNELS.CONTINUITY_CHECK]: (payload: ContinuityCheckPayload) => ContinuityCheckResponse;
+
+  // SKY-791: Timeline data model + settings
+  [IPC_CHANNELS.TIMELINE_GET_SETTINGS]: (payload: TimelineGetSettingsPayload) => TimelineGetSettingsResponse;
+  [IPC_CHANNELS.TIMELINE_SAVE_SETTINGS]: (payload: TimelineSaveSettingsPayload) => TimelineSaveSettingsResponse;
+  [IPC_CHANNELS.TIMELINE_GET_SCENES]: (payload: TimelineGetScenesPayload) => TimelineGetScenesResponse;
+  [IPC_CHANNELS.TIMELINE_UPDATE_SCENE]: (payload: TimelineUpdateScenePayload) => TimelineUpdateSceneResponse;
+  [IPC_CHANNELS.TIMELINE_UPDATE_ARC_COLOR]: (payload: TimelineUpdateArcColorPayload) => TimelineUpdateArcColorResponse;
+  // SKY-794: Spreadsheet view — arc manifest listing
+  [IPC_CHANNELS.TIMELINE_LIST_ARCS]: (payload: TimelineListArcsPayload) => TimelineListArcsResponse;
+  // SKY-796: Timeline AI auto-population proposals
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_GENERATE]: (payload: TimelineProposalsGeneratePayload) => TimelineProposalsGenerateResponse;
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: TimelineProposalsListPayload) => TimelineProposalsListResponse;
+  [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: TimelineProposalResolvePayload) => TimelineProposalResolveResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2430,6 +2698,37 @@ export type BrainstormEnrichEntryResponse =
   | { status: 'ok'; path: string; content: string }
   | { status: 'skipped'; reason: string };
 
+
+// ─── SKY-156: Project Templates ───────────────────────────────────────────────
+
+export interface TemplateNode {
+  name: string;
+  children?: TemplateNode[];
+  starterNote?: string;
+}
+
+export interface TemplateDefinition {
+  id: string;
+  name: string;
+  description: string;
+  story: TemplateNode[];
+  notes: TemplateNode[];
+  isUserTemplate?: boolean;
+  savedAt?: string;
+}
+
+export interface TemplateListResponse {
+  templates: TemplateDefinition[];
+}
+
+export interface TemplateScaffoldPayload {
+  templateId: string;
+  // SKY-780: proof of user intent — registration token from a prior
+  // vault:pick-folder dialog call. The handler derives story/notes vault
+  // paths from the token; the renderer cannot supply arbitrary FS paths.
+  parentToken: string;
+}
+
 export interface TemplateScaffoldResponse {
   ok: true;
   storyVaultPath: string;
@@ -2438,4 +2737,353 @@ export interface TemplateScaffoldResponse {
   // storyVaultToken / notesVaultToken to authorize that call too.
   storyVaultToken: string;
   notesVaultToken: string;
+}
+
+export interface TemplateSaveAsPayload {
+  name: string;
+}
+
+export type TemplateSaveAsResponse =
+  | { ok: true; id: string }
+  | { error: string };
+
+// ─── SKY-190: Note Templates ──────────────────────────────────────────────────
+
+export interface NoteTemplateField {
+  key: string;
+  kind: 'literal' | 'prompt' | 'pick';
+  label: string;
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note' | 'daily-note';
+  body: string;
+  fields: NoteTemplateField[];
+}
+
+export interface NoteTemplateListPayload {
+  kind?: string;
+}
+
+export interface NoteTemplateListResponse {
+  templates: NoteTemplate[];
+}
+
+// ─── SKY-204: Daily Notes ─────────────────────────────────────────────────────
+
+/** Opens (or creates) today's daily note. Returns the relative path within the Notes Vault. */
+export interface DailyNoteOpenTodayResponse {
+  /** Relative path to today's note inside the Notes Vault (e.g. "Daily Notes/2025-01-15.md"). */
+  path: string;
+  /** True if the note was just created; false if it already existed. */
+  created: boolean;
+}
+
+export interface DailyNoteGetStreakResponse {
+  /** Number of consecutive calendar days with a daily note, ending today (or yesterday). */
+  streakDays: number;
+  /** True if today's note already exists on disk. */
+  todayExists: boolean;
+}
+
+// ─── SKY-193: Tag Wrangler ───
+
+export interface NotesTagEntry {
+  name: string;
+  fullName: string;
+  count: number;
+  paths: string[];
+  children: NotesTagEntry[];
+}
+
+export interface NotesTagListResponse {
+  tags: NotesTagEntry[];
+}
+
+export interface NotesTagRenamePayload {
+  oldTag: string;
+  newTag: string;
+}
+
+export interface NotesTagRenameResponse {
+  affectedFiles: number;
+}
+
+export interface NotesTagMergePayload {
+  sourceTag: string;
+  targetTag: string;
+}
+
+export interface NotesTagMergeResponse {
+  affectedFiles: number;
+}
+// ─── SKY-55: per-scene notes ───
+export interface NotesGetPayload { sceneId: string }
+export interface NotesGetResponse { content: string }
+export interface NotesSetPayload { sceneId: string; content: string }
+export interface NotesSetResponse { saved: boolean }
+// ─── Tag types (SKY-158) ───
+export interface TagEntry {
+  id: string;
+  name: string;
+  color?: string | null;
+  createdAt: string;
+}
+export interface TagsListResponse { tags: TagEntry[] }
+export interface TagsUpsertPayload { name: string; color?: string | null }
+export interface TagsUpsertResponse { tag: TagEntry }
+export interface TagsDeletePayload { id: string }
+export interface TagsDeleteResponse { deleted: boolean }
+export interface TagsRenamePayload { id: string; name: string }
+export interface TagsRenameResponse { tag: TagEntry }
+export interface TagsForItemPayload { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsForItemResponse { tags: string[] }
+export interface TagsSetForItemPayload { itemId: string; itemKind: 'scene' | 'entity'; tags: string[] }
+export interface TagsSetForItemResponse { tags: string[] }
+export interface TagsItemsForTagPayload { tagName: string }
+export interface TagsItemsForTagItem { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsItemsForTagResponse { items: TagsItemsForTagItem[] }
+export interface TagsBulkApplyPayload {
+  itemIds: string[];
+  itemKind: 'scene' | 'entity';
+  addTags?: string[];
+  removeTags?: string[];
+}
+export interface TagsBulkApplyResponse { updated: number }
+export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
+export interface SceneSetTagsResponse { scene: SceneEntry }
+// ─── SKY-154: Writing Goals types ───
+export interface GoalsLogWordsPayload { date: string; wordsAdded: number; }
+export type GoalsLogWordsResponse = { ok: true };
+export interface HeatmapEntry { date: string; words: number; }
+export interface GoalsGetStatsResponse { todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: HeatmapEntry[]; }
+export interface GoalsSetGoalPayload { dailyGoal: number; }
+export type GoalsSetGoalResponse = { ok: true };
+export type GoalsResetStreakResponse = { ok: true };
+// ─── SKY-170: Scene-to-entity links ─────────────────────────────────────────
+export interface SceneEntityLink {
+  sceneId: string;
+  entityId: string;
+  linkKind: 'mention' | 'tag';
+  createdAt: string;
+}
+export interface LinkedScene {
+  sceneId: string;
+  scenePath: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterOrder: number;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
+}
+export interface SceneEntityLinksListPayload {
+  sceneId: string;
+}
+export interface SceneEntityLinksListResponse {
+  links: SceneEntityLink[];
+}
+export interface SceneEntityLinksUpsertPayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+export interface SceneEntityLinksUpsertResponse {
+  link: SceneEntityLink;
+}
+export interface SceneEntityLinksDeletePayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+export interface EntityLinkedScenesPayload {
+  entityId: string;
+}
+export interface EntityLinkedScenesResponse {
+  scenes: LinkedScene[];
+}
+
+// ─── Timeline data model types (SKY-791) ───
+
+export interface ChronologicalTime {
+  date: string;
+  isEstimated: boolean;
+  confidence: number;
+  source: string;
+}
+
+export interface SceneEntityLinks {
+  characterIds: string[];
+  locationId?: string;
+  arcs: string[];
+}
+
+export interface SceneTimelineMetadata {
+  wordCount?: number;
+  mood?: string;
+  pov?: string;
+  locationId?: string;
+}
+
+export interface ArcEntry {
+  id: string;
+  title: string;
+  color: string;
+  colorIsCustom: boolean;
+  scenes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TimelinePrimaryGrouping = 'arc' | 'chapter' | 'character' | 'location';
+export type TimelineSpacingMode = 'uniform' | 'proportional';
+export type TimelineDefaultColorScheme = 'liquid-neon' | 'monochrome' | 'custom';
+
+export interface TimelineViewportPreference {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export interface TimelineSettings {
+  primaryGrouping: TimelinePrimaryGrouping;
+  spacingMode: TimelineSpacingMode;
+  showUndatedScenes: boolean;
+  autoLayoutTracks: boolean;
+  defaultColorScheme: TimelineDefaultColorScheme;
+  visibleTrackFilters: string[];
+  viewportPreference?: TimelineViewportPreference;
+}
+
+// ─── Timeline IPC payload / response types (SKY-791) ───
+
+export interface TimelineGetSettingsPayload {
+  storyId?: string;
+}
+
+export interface TimelineGetSettingsResponse {
+  settings: TimelineSettings;
+}
+
+export interface TimelineSaveSettingsPayload {
+  settings: TimelineSettings;
+  storyId?: string;
+}
+
+export interface TimelineSaveSettingsResponse {
+  saved: boolean;
+}
+
+export interface TimelineGetScenesPayload {
+  storyId: string;
+}
+
+export interface TimelineGetScenesResponse {
+  scenes: SceneEntry[];
+}
+
+export interface TimelineUpdateScenePayload {
+  sceneId: string;
+  chronologicalTime?: ChronologicalTime;
+  entityLinks?: SceneEntityLinks;
+  timelineMetadata?: SceneTimelineMetadata;
+}
+
+export interface TimelineUpdateSceneResponse {
+  scene: SceneEntry;
+}
+
+export interface TimelineUpdateArcColorPayload {
+  arcId: string;
+  color: string;
+  colorIsCustom: boolean;
+}
+
+export interface TimelineUpdateArcColorResponse {
+  arc: ArcEntry;
+}
+
+// SKY-794: arc manifest listing for spreadsheet view
+export type TimelineListArcsPayload = Record<string, never>;
+
+export interface TimelineListArcsResponse {
+  arcs: ArcEntry[];
+}
+
+// ─── SKY-796: Timeline AI auto-population proposals ───
+//
+// AI-derived suggestions (date estimation, character mention, mood inference)
+// surfaced as transparent, revokable badges on the spreadsheet. A proposal
+// never silently overwrites a user-set field; the renderer renders a badge
+// + accept/reject control and the main process only applies the value when
+// the user clicks accept. Stored under <storyVault>/timeline-proposals.json
+// keyed by scene id.
+
+export type TimelineProposalKind = 'date' | 'characters' | 'mood';
+export type TimelineProposalStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface TimelineAIProposal {
+  /** Stable id (sceneId + kind + payloadHash) so re-runs are idempotent. */
+  id: string;
+  sceneId: string;
+  kind: TimelineProposalKind;
+  /**
+   * For `date` proposals: ISO-ish date string ("Year 42", "2340-06-15", etc.).
+   * For `characters`: comma-separated entity ids (POV/secondary).
+   * For `mood`: short mood label (e.g. 'tense', 'revelatory').
+   */
+  value: string;
+  /** Human-readable cue text shown in tooltip — e.g. the matched phrase. */
+  reason: string;
+  /** 0..1 confidence; the engine never proposes below 0.4. */
+  confidence: number;
+  /** Provenance — always `'ai'` for engine-derived proposals. */
+  source: 'ai';
+  /** Always true for proposals; cleared on accept. */
+  isEstimated: true;
+  status: TimelineProposalStatus;
+  createdAt: string;
+  /** Filled in when the user resolves the proposal. */
+  resolvedAt?: string;
+}
+
+export interface TimelineProposalsGeneratePayload {
+  storyId: string;
+}
+
+export interface TimelineProposalsGenerateResponse {
+  /** All pending proposals for the story (post-merge with previously-resolved ones). */
+  proposals: TimelineAIProposal[];
+}
+
+export interface TimelineProposalsListPayload {
+  storyId: string;
+}
+
+export interface TimelineProposalsListResponse {
+  proposals: TimelineAIProposal[];
+}
+
+export interface TimelineProposalResolvePayload {
+  proposalId: string;
+  decision: 'accept' | 'reject';
+}
+
+export interface TimelineProposalResolveResponse {
+  proposal: TimelineAIProposal;
+  /**
+   * Populated when `decision === 'accept'` and the value was applied to the
+   * scene — the renderer can refresh the row in-place.
+   */
+  scene?: SceneEntry;
+  /**
+   * True when accept was a no-op because the field already held a user-set
+   * value (AI proposals never overwrite user-set dates / metadata).
+   */
+  skippedBecauseUserSet?: boolean;
 }
