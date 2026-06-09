@@ -543,7 +543,7 @@ describe('SettingsPanel', () => {
   it('renders AI Provider section with provider selector', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
-    expect(screen.getByRole('heading', { name: /^ai provider$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^ai providers$/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /ai provider/i })).toBeInTheDocument();
   });
 

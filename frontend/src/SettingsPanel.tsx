@@ -643,7 +643,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
 
           {/* ── AI Providers ── */}
           <section className="settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+            <h3 className="settings-section-title" id="section-providers">AI Providers</h3>
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
@@ -1004,6 +1004,32 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      aria-label="Override provider for brainstorm"
+                      checked={settings.agents.brainstorm.overrideProvider ?? false}
+                      onChange={(e) => setAgentField('brainstorm', 'overrideProvider', e.target.checked)}
+                    />
+                    <span className="settings-toggle-track" />
+                  </label>
+                  <span className="settings-label">Override provider</span>
+                </div>
+                {settings.agents.brainstorm.overrideProvider && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="brainstorm-provider">Provider</label>
+                    <select
+                      id="brainstorm-provider"
+                      className="settings-input settings-select settings-input-sm"
+                      value={settings.agents.brainstorm.perAgentProvider ?? 'anthropic'}
+                      aria-label="Brainstorm provider"
+                      onChange={(e) => setAgentField('brainstorm', 'perAgentProvider', e.target.value)}
+                    >
+                      {PROVIDER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-heartbeat">Heartbeat interval (min)</label>
                   <input

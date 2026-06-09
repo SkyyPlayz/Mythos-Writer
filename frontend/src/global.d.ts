@@ -203,7 +203,7 @@ interface AppSettings {
   };
   agents: {
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings;
-    brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
+    brainstorm: { enabled: boolean; model: string; overrideProvider?: boolean; perAgentProvider?: string } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
   };
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
