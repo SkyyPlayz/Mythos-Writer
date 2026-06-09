@@ -2546,7 +2546,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </>
               )}
               <p className="settings-hint settings-hint-privacy">
-                Voice is processed locally on your device — no audio is sent anywhere.
+                Local voice mode keeps audio on your device; cloud voice uses the selected provider.
               </p>
               <p className="settings-hint">
                 When push-to-talk is on, hold <kbd>Ctrl+Shift+M</kbd> to record and release to stop.
