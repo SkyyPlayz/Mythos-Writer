@@ -1,9 +1,9 @@
 /**
- * onboarding.spec.ts — MYT-379
+ * onboarding.spec.ts — MYT-379 / SKY-942
  *
  * E2E smoke covering the three first-run onboarding paths:
  *
- *   TC-OB-01  Start Blank           — wizard completes; default vault + manifest.json created
+ *   TC-OB-01  Start Blank           — wizard completes; Story Vault + manifest.json created
  *   TC-OB-02  Import Obsidian vault — dry-run report shown, import applied, DesktopShell loads
  *   TC-OB-03  Open sample project   — sample files scaffolded, manifest reindexed, DesktopShell loads
  *
@@ -32,7 +32,6 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 async function launchFreshApp(userData: string): Promise<ElectronApplication> {
-  // --headless when no X display is available (CI / WSL without X server).
   const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
@@ -60,19 +59,21 @@ async function waitUntil(
   return false;
 }
 
-/** Navigate from the welcome splash to the vault-choice step (common for all paths). */
-async function advanceToVaultChoice(page: Page): Promise<void> {
-  await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible({ timeout: 12_000 });
-  await page.getByRole('button', { name: /get started/i }).click();
-  await expect(page.locator('[data-testid="step-vault"]')).toBeVisible({ timeout: 8_000 });
+/**
+ * Wait for the welcome screen, then click the given picker card to navigate
+ * to that card's sub-screen.
+ */
+async function clickWelcomeCard(page: Page, cardTestId: string): Promise<void> {
+  await expect(page.locator('[data-testid="screen-welcome"]')).toBeVisible({ timeout: 12_000 });
+  await page.locator(`[data-testid="${cardTestId}"]`).click();
 }
 
 // ─── TC-OB-01: Start Blank ────────────────────────────────────────────────────
 //
 // With no app-settings.json seeded, onboardingComplete defaults to undefined (falsy)
 // and the OnboardingWizard is rendered. The test navigates:
-//   Welcome → Vault choice (blank) → API key (skip) → DesktopShell
-// Then verifies manifest.json was created at the default vault path (<userData>/vault/).
+//   Welcome (screen-welcome) → card-blank → screen-blank-path → Create vaults → DesktopShell
+// Then verifies manifest.json was created inside Story Vault.
 
 test.describe('TC-OB-01: Start Blank', () => {
   let userData: string;
@@ -81,7 +82,6 @@ test.describe('TC-OB-01: Start Blank', () => {
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob01-'));
-    // No app-settings.json → onboardingComplete is undefined → wizard shows
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
   });
@@ -91,25 +91,27 @@ test.describe('TC-OB-01: Start Blank', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('blank vault: wizard completes and manifest.json is created at default vault path', async () => {
-    await advanceToVaultChoice(page);
+  test('blank vault: wizard completes and manifest.json is created inside Story Vault', async () => {
+    await clickWelcomeCard(page, 'card-blank');
+    await expect(page.locator('[data-testid="screen-blank-path"]')).toBeVisible({ timeout: 8_000 });
 
-    // "Open sample project" is the default radio; switch to "Start blank"
-    await page.getByRole('radio', { name: /start with a blank vault/i }).click();
+    // Override validatePath so the tmp dir is accepted without waiting on async IPC.
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('vault:validate-path');
+      ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
+    });
 
-    // Click "Next" to proceed to the API key step
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.locator('[data-testid="step-apikey"]')).toBeVisible({ timeout: 8_000 });
-
-    // Skip the API key to finish onboarding
-    await page.locator('[data-testid="skip-api-key"]').click();
+    // Set the parent path to our tmp dir. vaultSetPaths will create:
+    //   <userData>/Story Vault/   — story vault root (manifest written here)
+    //   <userData>/Notes Vault/   — notes vault root
+    await page.locator('[data-testid="blank-path-input"]').fill(userData);
+    await page.locator('[data-testid="create-blank-vault"]').click();
 
     // DesktopShell must mount (onboardingComplete = true → App re-renders)
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
-    // The default vault is at <userData>/vault/. DesktopShell calls readManifest()
-    // → ensureVaultDir() creates the directory and writes manifest.json.
-    const manifestPath = path.join(userData, 'vault', 'manifest.json');
+    // manifest.json is written by vaultSetPaths → ensureVaultDir → writeManifest
+    const manifestPath = path.join(userData, 'Story Vault', 'manifest.json');
     const manifestCreated = await waitUntil(() => fs.existsSync(manifestPath));
     expect(manifestCreated, `manifest.json not found at: ${manifestPath}`).toBe(true);
 
@@ -126,14 +128,14 @@ test.describe('TC-OB-01: Start Blank', () => {
 //
 // Builds a minimal fixture Obsidian vault (two .md files with frontmatter),
 // mocks the native folder-picker IPC so no OS dialog is required, then navigates:
-//   Welcome → Vault choice (existing) → Browse (mocked) → Dry-run report →
-//   Import vault → API key (skip) → DesktopShell
+//   Welcome → card-import → screen-import-source → Browse (mocked) →
+//   screen-import-dryrun → confirm-import → screen-import-success → DesktopShell
 //
 // Mocking strategy:
-//   vault:pick-folder   — returns fixture path + a synthetic token (avoids native dialog)
-//   vault:obsidian-dry-run — returns a hardcoded report (token store is inside the
-//                             bundled binary and cannot be seeded externally)
-//   vault:obsidian-register — returns success (same reason)
+//   vault:pick-folder        — returns fixture path + synthetic token (avoids native dialog)
+//   vault:obsidian-dry-run   — returns a hardcoded report (token store is inside the
+//                              bundled binary and cannot be seeded externally)
+//   vault:obsidian-register  — returns success (same reason)
 // The token forwarding by the wizard (MYT-367 fix) is verified by the existing
 // unit tests in OnboardingWizard.test.tsx; here we confirm the full UI flow.
 
@@ -187,10 +189,8 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
   });
 
   test('obsidian path: dry-run report shown with note count, import applied, DesktopShell loads', async () => {
-    await advanceToVaultChoice(page);
-
-    // Select "Use existing Obsidian vault"
-    await page.getByRole('radio', { name: /use existing obsidian vault/i }).click();
+    await clickWelcomeCard(page, 'card-import');
+    await expect(page.locator('[data-testid="screen-import-source"]')).toBeVisible({ timeout: 8_000 });
 
     // Install IPC mocks BEFORE clicking Browse so the handler is in place
     // when the renderer invokes vault:pick-folder.
@@ -206,9 +206,6 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
         }));
 
         // Replace vault:obsidian-dry-run: return a pre-canned report.
-        // The token store is encapsulated inside the bundled binary and cannot
-        // be seeded from outside, so we bypass token validation at the handler
-        // level while preserving the full UI round-trip.
         ipcMain.removeHandler('vault:obsidian-dry-run');
         ipcMain.handle('vault:obsidian-dry-run', () => ({
           notesCount: noteCount,
@@ -228,48 +225,47 @@ test.describe('TC-OB-02: Import Obsidian vault', () => {
       { fixturePath: capturedFixtureDir, noteCount: OBS_NOTE_COUNT },
     );
 
-    // Click "Browse…" → mocked vault:pick-folder fires immediately
-    await page.getByRole('button', { name: /browse/i }).click();
+    // Click "Pick folder" inside the FolderDropZone → mocked vault:pick-folder fires
+    await page.locator('[data-testid="import-drop-zone-btn"]').click();
 
     // Dry-run report step must appear
-    const dryRunStep = page.locator('[data-testid="step-dry-run"]');
-    await expect(dryRunStep).toBeVisible({ timeout: 12_000 });
+    const dryRunCard = page.locator('[data-testid="screen-import-dryrun"]');
+    await expect(dryRunCard).toBeVisible({ timeout: 12_000 });
 
     // Notes count must reflect the fixture vault
-    await expect(dryRunStep.locator('.dry-run-stat-value')).toContainText(
+    await expect(dryRunCard.locator('.dry-run-stat-value')).toContainText(
       String(OBS_NOTE_COUNT),
       { timeout: 6_000 },
     );
 
     // No fatal scan error
-    await expect(dryRunStep.locator('[data-testid="dry-run-fatal"]')).not.toBeVisible();
+    await expect(dryRunCard.locator('[data-testid="dry-run-fatal"]')).not.toBeVisible();
 
-    // Click "Import vault" → wizard calls obsidianRegister → advances to API key step
-    await dryRunStep.locator('[data-testid="confirm-import"]').click();
-    await expect(page.locator('[data-testid="step-apikey"]')).toBeVisible({ timeout: 8_000 });
+    // Click "Import →" → wizard calls obsidianRegister → advances to import-success
+    await dryRunCard.locator('[data-testid="confirm-import"]').click();
+    await expect(page.locator('[data-testid="screen-import-success"]')).toBeVisible({ timeout: 12_000 });
 
-    // Skip API key → DesktopShell mounts
-    await page.locator('[data-testid="skip-api-key"]').click();
+    // Click "Continue →" → finishOnboarding → DesktopShell mounts
+    await page.locator('[data-testid="import-success-continue"]').click();
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
   });
 });
 
 // ─── TC-OB-03: Open sample project ───────────────────────────────────────────
 //
-// "Open sample project" is the default vault choice. The wizard calls
-// vault:load-sample which creates the sample files at:
-//   <documents>/Mythos Writer Sample/
+// "Open sample project" card navigates to screen-sample-path. The wizard calls
+// vault:load-sample-twovault which creates sample files at:
+//   <userData>/Story Vault/   (copied from sample-project/story-vault)
+//   <userData>/Notes Vault/   (copied from sample-project/notes-vault)
 // and reindexes the vault. The test then verifies:
-//   • manifest.json exists in the sample vault
-//   • Manuscript/the-lost-horizon/ directory exists (the bundled story)
-//   • Universes/The Sunken Age/Characters/ directory exists with character notes
-//   • Universes/The Sunken Age/Locations/ directory exists with location notes
-//   • Story ideas/The Lost Horizon/scene-crafter.md exists (Kanban board)
+//   • manifest.json exists in Story Vault
+//   • Story Vault/The Glass Library/Manuscript/ exists with .md scenes
+//   • Notes Vault/Universes/Argent/Characters/ exists with character notes
+//   • Notes Vault/Universes/Argent/Locations/ exists with location notes
 //   • DesktopShell renders after wizard completion
 
 test.describe('TC-OB-03: Open sample project', () => {
   let userData: string;
-  let sampleRoot = ''; // filled after app.evaluate() resolves the documents path
   let app: ElectronApplication;
   let page: Page;
 
@@ -282,74 +278,59 @@ test.describe('TC-OB-03: Open sample project', () => {
   test.afterAll(async () => {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
-    // Remove the sample vault created by vault:load-sample (lives in real documents dir)
-    if (sampleRoot && fs.existsSync(sampleRoot)) {
-      fs.rmSync(sampleRoot, { recursive: true, force: true });
-    }
   });
 
-  test('sample project: Manuscript + Universes/Story ideas scaffolded on disk, DesktopShell loads', async () => {
-    await advanceToVaultChoice(page);
+  test('sample project: Story Vault + Notes Vault scaffolded on disk, DesktopShell loads', async () => {
+    await clickWelcomeCard(page, 'card-sample');
+    await expect(page.locator('[data-testid="screen-sample-path"]')).toBeVisible({ timeout: 8_000 });
 
-    // "Open sample project" is pre-selected (default); confirm it is checked
-    await expect(page.getByRole('radio', { name: /open sample project/i })).toBeChecked();
-
-    // Click "Next" → vault:load-sample handler runs (creates files on disk)
-    await page.getByRole('button', { name: 'Next' }).click();
-
-    // Resolving documents path via main process so the path is accurate for this OS
-    sampleRoot = await app.evaluate(({ app: electronApp }) => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pathMod = require('path') as typeof import('path');
-      return pathMod.join(electronApp.getPath('documents'), 'Mythos Writer Sample');
+    // Override validatePath so the tmp dir is accepted immediately.
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('vault:validate-path');
+      ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
     });
 
-    // vault:load-sample may take a moment to create ~20 files
-    await expect(page.locator('[data-testid="step-apikey"]')).toBeVisible({ timeout: 20_000 });
+    // Set parent path to our tmp dir. loadSampleTwoVault will create:
+    //   <userData>/Story Vault/   (sample-project/story-vault)
+    //   <userData>/Notes Vault/   (sample-project/notes-vault)
+    await page.locator('[data-testid="sample-path-input"]').fill(userData);
+    await page.locator('[data-testid="open-sample"]').click();
 
-    // Skip API key → DesktopShell mounts
-    await page.locator('[data-testid="skip-api-key"]').click();
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    // vault:load-sample-twovault copies ~15 files; allow generous timeout
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 25_000 });
+
+    const storyVault = path.join(userData, 'Story Vault');
+    const notesVault = path.join(userData, 'Notes Vault');
 
     // ── On-disk assertions ────────────────────────────────────────────────────
 
-    // manifest.json must exist (created by reindexVault inside vault:load-sample)
-    const manifestPath = path.join(sampleRoot, 'manifest.json');
+    // manifest.json written by reindexVault inside vault:load-sample-twovault
+    const manifestPath = path.join(storyVault, 'manifest.json');
     const manifestFound = await waitUntil(() => fs.existsSync(manifestPath));
-    expect(manifestFound, `manifest.json not found in sample vault: ${manifestPath}`).toBe(true);
+    expect(manifestFound, `manifest.json not found in Story Vault: ${manifestPath}`).toBe(true);
 
-    // Manuscript/the-lost-horizon/ must contain the two bundled chapters
-    const storyDir = path.join(sampleRoot, 'Manuscript', 'the-lost-horizon');
-    expect(
-      fs.existsSync(storyDir),
-      `Sample story directory not found: ${storyDir}`,
-    ).toBe(true);
+    // Story Vault/The Glass Library/Manuscript/ must contain chapter directories with .md scenes
+    const manuscriptDir = path.join(storyVault, 'The Glass Library', 'Manuscript');
+    expect(fs.existsSync(manuscriptDir), `Manuscript directory not found: ${manuscriptDir}`).toBe(true);
+    const chapterDirs = fs.readdirSync(manuscriptDir).filter((f) =>
+      fs.statSync(path.join(manuscriptDir, f)).isDirectory(),
+    );
+    expect(chapterDirs.length, 'No chapter directories in Manuscript/').toBeGreaterThan(0);
+    const sceneFiles = chapterDirs.flatMap((ch) =>
+      fs.readdirSync(path.join(manuscriptDir, ch)).filter((f) => f.endsWith('.md')),
+    );
+    expect(sceneFiles.length, 'No .md scene files under Manuscript/').toBeGreaterThan(0);
 
-    const ch1 = path.join(storyDir, 'chapter-one');
-    const ch2 = path.join(storyDir, 'chapter-two');
-    expect(fs.existsSync(ch1), 'chapter-one directory missing').toBe(true);
-    expect(fs.existsSync(ch2), 'chapter-two directory missing').toBe(true);
-
-    // At least one .md scene file must exist under chapter-one
-    const ch1Files = fs.readdirSync(ch1).filter((f) => f.endsWith('.md'));
-    expect(ch1Files.length, 'No scene .md files in chapter-one').toBeGreaterThan(0);
-
-    // Universes/The Sunken Age/Characters/ must exist with character notes
-    const charsDir = path.join(sampleRoot, 'Universes', 'The Sunken Age', 'Characters');
+    // Notes Vault/Universes/Argent/Characters/ must exist with character notes
+    const charsDir = path.join(notesVault, 'Universes', 'Argent', 'Characters');
     expect(fs.existsSync(charsDir), `Characters directory not found: ${charsDir}`).toBe(true);
     const charFiles = fs.readdirSync(charsDir).filter((f) => f.endsWith('.md'));
-    expect(charFiles.length, 'No character .md files in Universes/The Sunken Age/Characters/').toBeGreaterThan(0);
+    expect(charFiles.length, 'No character .md files in Universes/Argent/Characters/').toBeGreaterThan(0);
 
-    // Universes/The Sunken Age/Locations/ must exist with location notes
-    const locsDir = path.join(sampleRoot, 'Universes', 'The Sunken Age', 'Locations');
+    // Notes Vault/Universes/Argent/Locations/ must exist with location notes
+    const locsDir = path.join(notesVault, 'Universes', 'Argent', 'Locations');
     expect(fs.existsSync(locsDir), `Locations directory not found: ${locsDir}`).toBe(true);
     const locFiles = fs.readdirSync(locsDir).filter((f) => f.endsWith('.md'));
-    expect(locFiles.length, 'No location .md files in Universes/The Sunken Age/Locations/').toBeGreaterThan(0);
-
-    // Story ideas/The Lost Horizon/ must contain scene-crafter.md (Kanban board)
-    const storyIdeasDir = path.join(sampleRoot, 'Story ideas', 'The Lost Horizon');
-    expect(fs.existsSync(storyIdeasDir), `Story ideas directory not found: ${storyIdeasDir}`).toBe(true);
-    const boardPath = path.join(storyIdeasDir, 'scene-crafter.md');
-    expect(fs.existsSync(boardPath), `scene-crafter.md not found at: ${boardPath}`).toBe(true);
+    expect(locFiles.length, 'No location .md files in Universes/Argent/Locations/').toBeGreaterThan(0);
   });
 });
