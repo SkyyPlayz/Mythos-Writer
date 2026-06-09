@@ -84,8 +84,9 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
   });
 
-  it('shows exactly three starting-point cards', () => {
+  it('shows four starting-point cards (default-mythos-vault is the first/primary)', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('card-default-mythos-vault')).toBeInTheDocument();
     expect(screen.getByTestId('card-blank')).toBeInTheDocument();
     expect(screen.getByTestId('card-sample')).toBeInTheDocument();
     expect(screen.getByTestId('card-template')).toBeInTheDocument();
@@ -93,9 +94,43 @@ describe('OnboardingWizard — Step 1', () => {
 
   it('card labels match spec copy exactly', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('card-default-mythos-vault')).toHaveTextContent('Create default Mythos Vault');
     expect(screen.getByTestId('card-blank')).toHaveTextContent('Blank Story');
     expect(screen.getByTestId('card-sample')).toHaveTextContent('Sample Novel');
     expect(screen.getByTestId('card-template')).toHaveTextContent('From Template');
+  });
+
+  // SKY-906: one-click first-run path bypasses step2 (no title, no save path picker).
+  it('clicking Create default Mythos Vault calls onboardingComplete with startMode=default-mythos-vault and bypasses Step 2', async () => {
+    const onComplete = vi.fn();
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    fireEvent.click(screen.getByTestId('card-default-mythos-vault'));
+    await waitFor(() =>
+      expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'default-mythos-vault' }),
+    );
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onboardingComplete: true,
+        lastOpenedScene: expect.objectContaining({ sceneId: 'scene-1' }),
+      }),
+    );
+    // No detour through step2/step1b — we go straight to step3 (scaffolding) and exit.
+    expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
+  });
+
+  it('shows scaffold error UI when one-click default vault creation fails', async () => {
+    mockApi = makeApi({
+      onboardingComplete: vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' }),
+    });
+    (window as unknown as { api: unknown }).api = mockApi;
+    const onComplete = vi.fn();
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    fireEvent.click(screen.getByTestId('card-default-mythos-vault'));
+    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
+    expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
+    expect(onComplete).not.toHaveBeenCalled();
+    // The retry affordances surface so the user isn't stranded on step3.
+    expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
   });
 
   it('shows Skip link on Step 1', () => {
@@ -562,9 +597,9 @@ describe('OnboardingWizard — AC coverage', () => {
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
   });
 
-  it('AC2: Step 1 shows exactly three selectable cards', () => {
+  it('AC2: Step 1 shows four selectable cards (SKY-906 added the one-click default vault as the primary)', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(3);
+    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(4);
   });
 
   it('AC3: From Template shows template sub-picker before Step 2', async () => {

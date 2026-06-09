@@ -4,7 +4,9 @@ import './OnboardingWizard.css';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type WizardStep = 'step1' | 'step1b' | 'step2' | 'step3';
-type StartMode = 'blank' | 'sample' | 'template';
+// SKY-906: 'default-mythos-vault' is the one-click first-run path that
+// bypasses the title/save-path form entirely.
+type StartMode = 'blank' | 'sample' | 'template' | 'default-mythos-vault';
 
 interface TemplateItem {
   id: string;
@@ -29,11 +31,12 @@ type Api = {
   chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
   onboardingComplete: (payload?: {
-    startMode: 'blank' | 'sample' | 'template' | 'skip';
+    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
     storyTitle?: string;
     authorName?: string;
     vaultParentPath?: string;
     templateId?: string;
+    vaultName?: string;
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
 };
@@ -228,6 +231,40 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
 
+  // SKY-906: one-click default Mythos Vault. Bypasses the title + save-path
+  // form entirely — main creates ~/Mythos/Vaults/Mythos Vault/{Story,Notes} Vault,
+  // seeds a "My First Story" scene, and persists onboardingComplete.
+  // Re-running on a populated parent auto-suffixes ("Mythos Vault 2"), so the
+  // button is safe to re-press after a kill-and-relaunch.
+  async function handleOneClickDefaultMythosVault() {
+    // Tracks the chosen start mode so the existing step3 "Try Again" button
+    // retries the same one-click flow instead of falling through to the
+    // blank/sample/template path that depends on user-entered title state.
+    setStartMode('default-mythos-vault');
+    setScaffoldError('');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const res = await api().onboardingComplete({ startMode: 'default-mythos-vault' });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
+      setScaffolding(false);
+    }
+  }
+
   function handleSelectBlank() {
     goToStep2FromMode('blank');
   }
@@ -338,14 +375,19 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setScaffolding(true);
 
     try {
-      const trimmedTitle = storyTitle.trim();
-      const res = await api().onboardingComplete({
-        startMode: startMode!,
-        storyTitle: trimmedTitle,
-        authorName: authorName.trim() || undefined,
-        vaultParentPath: savePath,
-        templateId: selectedTemplateId || undefined,
-      });
+      // SKY-906: the one-click flow never collected a title/save path, so
+      // retry must not echo those fields — re-issuing with empty strings
+      // would be rejected by the main-side validator.
+      const payload = startMode === 'default-mythos-vault'
+        ? { startMode: 'default-mythos-vault' as const }
+        : {
+            startMode: startMode!,
+            storyTitle: storyTitle.trim(),
+            authorName: authorName.trim() || undefined,
+            vaultParentPath: savePath,
+            templateId: selectedTemplateId || undefined,
+          };
+      const res = await api().onboardingComplete(payload);
 
       if (!res.ok || res.error) {
         setScaffoldError(res.error ?? 'Something went wrong creating your story.');
@@ -430,6 +472,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           <p className="gs-modal__subtitle">How would you like to begin?</p>
 
           <div className="gs-cards" role="group" aria-label="Choose how to get started">
+            <StartingPointCard
+              icon="&#x2728;"
+              title="Create default Mythos Vault"
+              description="One click — we'll create your Mythos Vault with the standard Notes + Story Vault layout under your home folder. No path picker."
+              ctaLabel="Create vault &#x2192;"
+              onActivate={handleOneClickDefaultMythosVault}
+              testId="card-default-mythos-vault"
+            />
             <StartingPointCard
               icon="&#x2726;"
               title="Blank Story"
