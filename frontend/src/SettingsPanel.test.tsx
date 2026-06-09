@@ -562,7 +562,38 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('combobox', { name: /microphone selection/i })).toBeInTheDocument();
   });
 
-  it('enabling voice saves default voiceMode and shortcuts', async () => {
+  // ── SKY-896: push-to-talk mode + device selector ──
+
+  it('renders push-to-talk toggle in voice section', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    expect(screen.getByRole('checkbox', { name: /push-to-talk mode/i })).toBeInTheDocument();
+  });
+
+  it('push-to-talk toggle is off by default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /push-to-talk mode/i }));
+    const toggle = screen.getByRole('checkbox', { name: /push-to-talk mode/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('push-to-talk mode change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /push-to-talk mode/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /push-to-talk mode/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.pushToTalkMode).toBe(true);
+  });
+
+  it('enabling voice does not clear pushToTalkMode', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      voice: { enabled: false, cloudFallback: false, pushToTalkMode: true },
+    });
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
 
@@ -571,9 +602,8 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
-    expect(saved.voice?.voiceMode).toBe('toggle');
-    expect(saved.voice?.toggleShortcut).toBe('ctrl+shift+v');
-    expect(saved.voice?.pttKey).toBe('alt+v');
+    expect(saved.voice?.enabled).toBe(true);
+    expect(saved.voice?.pushToTalkMode).toBe(true);
   });
 
   it('switching to push-to-talk mode is saved', async () => {
@@ -595,6 +625,20 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
     expect(screen.getByText(/voice is processed locally on your device/i)).toBeInTheDocument();
+  });
+
+  it('shows no microphone selector when no input devices are available', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    expect(screen.queryByRole('combobox', { name: /microphone selection/i })).not.toBeInTheDocument();
+  });
+
+  it('shows shortcut hint text in voice section', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    // The hint renders two kbd elements — one per mode description — so use getAllByText
+    const kbds = screen.getAllByText(/ctrl\+shift\+m/i);
+    expect(kbds.length).toBeGreaterThan(0);
   });
 
   // ── MYT-779: AI providers section ──

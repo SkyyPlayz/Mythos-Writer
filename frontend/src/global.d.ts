@@ -152,6 +152,8 @@ interface VoiceSettings {
   voiceMode?: 'toggle' | 'push-to-talk';
   toggleShortcut?: string;
   pttKey?: string;
+  /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
+  pushToTalkMode?: boolean;
 }
 
 // Web Speech API — not yet in the TypeScript DOM lib bundled with this project.

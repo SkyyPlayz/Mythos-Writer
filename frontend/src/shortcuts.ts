@@ -29,6 +29,7 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
         { keys: [`${mod}+Shift+P`], action: 'Toggle Project Switcher' },
         { keys: ['?', `${mod}+/`], action: 'Open Keyboard Shortcuts help' },
         { keys: ['Escape'], action: 'Close modal / dismiss overlay' },
+        { keys: [`${mod}+Shift+M`], action: 'Toggle voice input (hold for push-to-talk)' },
       ],
     },
     {

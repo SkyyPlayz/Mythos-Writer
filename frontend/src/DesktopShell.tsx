@@ -559,6 +559,12 @@ export default function DesktopShell() {
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
+
+  // ─── Voice session state (SKY-896) ───
+  const [voiceListening, setVoiceListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const voiceRecognitionRef = useRef<any>(null);
+  const voicePttActiveRef = useRef(false);
   const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -708,10 +714,16 @@ export default function DesktopShell() {
       try { speechRecogRef.current.stop(); } catch { /* already stopped */ }
       speechRecogRef.current = null;
     }
+    if (voiceRecognitionRef.current) {
+      try { voiceRecognitionRef.current.stop(); } catch { /* already stopped */ }
+      voiceRecognitionRef.current = null;
+    }
     const sessionId = voiceSessionRef.current;
     voiceSessionRef.current = null;
     pttDownRef.current = false;
+    voicePttActiveRef.current = false;
     setVoiceActive(false);
+    setVoiceListening(false);
     if (sessionId) {
       window.api.voiceStop(sessionId).catch(() => {});
     }
@@ -732,6 +744,7 @@ export default function DesktopShell() {
     }
     voiceSessionRef.current = sessionId;
     setVoiceActive(true);
+    setVoiceListening(true);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
@@ -775,6 +788,7 @@ export default function DesktopShell() {
       if (sid) window.api.voiceStop(sid).catch(() => {});
     };
     speechRecogRef.current = recog;
+    voiceRecognitionRef.current = recog;
     recog.start();
   }, [appSettings?.voice?.micDeviceId]);
 
@@ -1279,6 +1293,52 @@ export default function DesktopShell() {
       document.documentElement.removeAttribute('data-context');
     }
   }, [vaultContext]);
+
+  // Insert final voice transcripts into the active editor
+  useEffect(() => {
+    if (!window.api.onVoiceTranscript) return;
+    return window.api.onVoiceTranscript(({ text, isFinal }) => {
+      if (isFinal && text.trim()) editorApiRef.current?.insertText(text.trim() + ' ');
+    });
+  }, []);
+
+  // Voice toggle / push-to-talk keyboard shortcut: Ctrl+Shift+M
+  useEffect(() => {
+    if (!appSettings?.voice?.enabled) return;
+    const pttMode = appSettings.voice.pushToTalkMode ?? false;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || !e.shiftKey || (e.key !== 'M' && e.key !== 'm')) return;
+      e.preventDefault();
+      if (pttMode) {
+        if (!voicePttActiveRef.current) {
+          voicePttActiveRef.current = true;
+          startVoice();
+        }
+      } else {
+        if (voiceSessionRef.current) stopVoice(); else startVoice();
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!pttMode || !voicePttActiveRef.current) return;
+      // Stop on release of any key in the combo
+      if (e.key === 'M' || e.key === 'm' || e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
+        stopVoice();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [appSettings?.voice?.enabled, appSettings?.voice?.pushToTalkMode, startVoice, stopVoice]);
+
+  // Cleanup any active voice session on unmount
+  useEffect(() => () => { stopVoice(); }, [stopVoice]);
 
   // SKY-130: restore last-opened scene + cursor after vault loads
   useEffect(() => {
@@ -1984,6 +2044,11 @@ export default function DesktopShell() {
       {voiceToast && (
         <div className="voice-toast" role="status" aria-live="polite">
           {voiceToast}
+        </div>
+      )}
+      {voiceListening && (
+        <div className="voice-listening-badge" role="status" aria-live="polite" aria-label="Voice input active">
+          Listening…
         </div>
       )}
       <GlobalSearchPanel
