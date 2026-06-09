@@ -2732,29 +2732,39 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   onChange={(v) => setLgField('accentColor', v)}
                 />
 
-                {/* Neon border colour slot */}
-                <div className="settings-field">
-                  <label className="settings-label">Neon border</label>
-                  <div className="lg-swatch-row" role="radiogroup" aria-label="Neon border colour">
-                    {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
-                      <label key={accent} className="lg-swatch-label">
-                        <input
-                          type="radio"
-                          name="lg-neon-border"
-                          value={accent}
-                          checked={(lg.neonBorderColor ?? 'cyan') === accent}
-                          onChange={() => setLgField('neonBorderColor', accent)}
-                          aria-label={`Neon border ${accent}`}
-                        />
-                        <span
-                          className={`lg-swatch lg-swatch-${accent}${(lg.neonBorderColor ?? 'cyan') === accent ? ' lg-swatch-active' : ''}`}
-                          title={accent.charAt(0).toUpperCase() + accent.slice(1)}
-                        />
-                        <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                {/* Neon border colour slots A / B / C (SKY-910) — three-stop
+                    configurable gradient for the multi-color border treatment. */}
+                {([
+                  { field: 'neonBorderColor',  label: 'Neon border A', radioName: 'lg-neon-border',   fallback: 'cyan' },
+                  { field: 'neonBorderColor2', label: 'Neon border B', radioName: 'lg-neon-border-2', fallback: 'violet' },
+                  { field: 'neonBorderColor3', label: 'Neon border C', radioName: 'lg-neon-border-3', fallback: 'magenta' },
+                ] as const).map(({ field, label, radioName, fallback }) => {
+                  const current = (lg[field] ?? fallback) as 'cyan' | 'violet' | 'magenta';
+                  return (
+                    <div key={field} className="settings-field">
+                      <label className="settings-label">{label}</label>
+                      <div className="lg-swatch-row" role="radiogroup" aria-label={`${label} colour`}>
+                        {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
+                          <label key={accent} className="lg-swatch-label">
+                            <input
+                              type="radio"
+                              name={radioName}
+                              value={accent}
+                              checked={current === accent}
+                              onChange={() => setLgField(field, accent)}
+                              aria-label={`${label} ${accent}`}
+                            />
+                            <span
+                              className={`lg-swatch lg-swatch-${accent}${current === accent ? ' lg-swatch-active' : ''}`}
+                              title={accent.charAt(0).toUpperCase() + accent.slice(1)}
+                            />
+                            <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
 
                 {/* Legacy neon accent slot (kept for compatibility) */}
                 <div className="settings-field">
