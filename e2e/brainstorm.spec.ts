@@ -193,18 +193,20 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   // Bound the graceful close — a beforeunload prompt can otherwise block it — and
   // force-kill the Electron process if it does not exit in time.
-  const proc = app.process();
-  await Promise.race([
-    app.close().catch(() => undefined),
-    new Promise<void>((r) => setTimeout(r, 5_000)),
-  ]);
-  try {
-    if (proc && !proc.killed) proc.kill('SIGKILL');
-  } catch {
-    /* already exited */
+  if (app) {
+    const proc = app.process();
+    await Promise.race([
+      app.close().catch(() => undefined),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try {
+      if (proc && !proc.killed) proc.kill('SIGKILL');
+    } catch {
+      /* already exited */
+    }
   }
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
+  if (userData) fs.rmSync(userData, { recursive: true, force: true });
+  if (vaultDir) fs.rmSync(vaultDir, { recursive: true, force: true });
 });
 
 // ─── TC-BST-01: Streaming tokens ─────────────────────────────────────────────

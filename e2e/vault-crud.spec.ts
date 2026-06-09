@@ -170,10 +170,10 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  if (app) await app.close().catch(() => {});
+  if (userData) fs.rmSync(userData, { recursive: true, force: true });
+  if (vaultDir) fs.rmSync(vaultDir, { recursive: true, force: true });
+  if (notesVaultDir) fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
 // ─── TC-V-01: Two vaults initialized on first boot ───────────────────────────
