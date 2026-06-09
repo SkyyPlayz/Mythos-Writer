@@ -460,7 +460,6 @@
 
 .lg-slider-main {
   flex: 1;
->>>>>>> 56421ad (fix(SKY-769): settings panel a11y + Liquid Neon token cleanup)
   accent-color: var(--neon-cyan);
 }
 
@@ -497,10 +496,7 @@
 }
 
 .lg-advanced-toggle:hover {
-<<<<<<< HEAD
   color: var(--text-body);
-=======
-  color: var(--text-muted);
 }
 
 .lg-chevron {

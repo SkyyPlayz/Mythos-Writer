@@ -453,6 +453,3 @@ describe('getNoteTemplate', () => {
     expect(getNoteTemplate('note:does-not-exist')).toBeUndefined();
   });
 });
-
-=======
->>>>>>> 9979f20 (feat(SKY-156): project templates — bundled + user-saved vault structures)
