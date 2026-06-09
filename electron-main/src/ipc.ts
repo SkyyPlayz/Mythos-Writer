@@ -1518,6 +1518,8 @@ export interface AppSettings {
   apiKey: string;
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderSettings;
+  /** Voice provider selection (SKY-818). Absent = auto-select first voice-capable provider. */
+  voiceProviderId?: string;
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). API key stored in SecretsStore under `provider.<agentName>.apiKey`. */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
