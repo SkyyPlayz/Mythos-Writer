@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
 
 const BASE_SETTINGS: AppSettings = {
@@ -94,16 +94,18 @@ describe('OnboardingWizard — S0 Welcome screen', () => {
     expect(defaultCard.textContent).toContain('Recommended');
   });
 
-  it('clicking Default card goes to S1a (default-path screen)', () => {
+  it('clicking Default card goes to S1a (default-path screen)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-default'));
+    await act(async () => { fireEvent.click(screen.getByTestId('card-default')); });
     expect(screen.getByTestId('screen-default-path')).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
-  it('clicking Blank card goes to S1b (blank-path screen)', () => {
+  it('clicking Blank card goes to S1b (blank-path screen)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-blank'));
+    await act(async () => { fireEvent.click(screen.getByTestId('card-blank')); });
     expect(screen.getByTestId('screen-blank-path')).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
   it('clicking Import card goes to S2a (import-source screen)', () => {
@@ -112,10 +114,11 @@ describe('OnboardingWizard — S0 Welcome screen', () => {
     expect(screen.getByTestId('screen-import-source')).toBeInTheDocument();
   });
 
-  it('clicking Sample card goes to S3a (sample-path screen)', () => {
+  it('clicking Sample card goes to S3a (sample-path screen)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-sample'));
+    await act(async () => { fireEvent.click(screen.getByTestId('card-sample')); });
     expect(screen.getByTestId('screen-sample-path')).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
   it('shows step label "Step 1 of 3" on import-source screen', () => {
@@ -133,11 +136,12 @@ describe('OnboardingWizard — S1a Default layout', () => {
     await waitFor(() => expect(screen.getByTestId('default-path-input-hint')).toBeInTheDocument());
   });
 
-  it('back button returns to welcome screen', () => {
+  it('back button returns to welcome screen', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-default'));
+    await act(async () => { fireEvent.click(screen.getByTestId('card-default')); });
     fireEvent.click(screen.getByRole('button', { name: /← Back/i }));
     expect(screen.getByTestId('screen-welcome')).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
   it('Create vaults calls vaultSetPaths with seedMode=default and advances to done', async () => {
@@ -176,11 +180,12 @@ describe('OnboardingWizard — S1b Start blank', () => {
     await waitFor(() => expect(screen.getByTestId('blank-path-input-hint')).toBeInTheDocument());
   });
 
-  it('back button returns to welcome screen', () => {
+  it('back button returns to welcome screen', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-blank'));
+    await act(async () => { fireEvent.click(screen.getByTestId('card-blank')); });
     fireEvent.click(screen.getByRole('button', { name: /← Back/i }));
     expect(screen.getByTestId('screen-welcome')).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
   it('Create blank vaults calls vaultSetPaths with seedMode=blank and advances to done', async () => {
@@ -212,10 +217,11 @@ describe('OnboardingWizard — S1b Start blank', () => {
 });
 
 describe('OnboardingWizard — S2a Import source', () => {
-  it('shows the import-source screen with drop zone', () => {
+  it('shows the import-source screen with drop zone', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     expect(screen.getByTestId('import-drop-zone')).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
   it('Pick folder button opens folder picker and advances to dry-run screen', async () => {
@@ -394,19 +400,21 @@ describe('OnboardingWizard — S2d Import success', () => {
 });
 
 describe('OnboardingWizard — S3a Sample project', () => {
-  it('shows sample-path screen with default path and contents list', () => {
+  it('shows sample-path screen with default path and contents list', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-sample'));
+    await act(async () => { fireEvent.click(screen.getByTestId('card-sample')); });
     expect(screen.getByTestId('screen-sample-path')).toBeInTheDocument();
     expect(screen.getByText(/Argent/)).toBeInTheDocument();
     expect(screen.getByText(/The Glass Library/)).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
-  it('back button returns to welcome', () => {
+  it('back button returns to welcome', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-sample'));
+    await act(async () => { fireEvent.click(screen.getByTestId('card-sample')); });
     fireEvent.click(screen.getByRole('button', { name: /← Back/i }));
     expect(screen.getByTestId('screen-welcome')).toBeInTheDocument();
+    await waitFor(() => {});
   });
 
   it('Open sample calls loadSampleTwoVault with parentPath and advances to done', async () => {

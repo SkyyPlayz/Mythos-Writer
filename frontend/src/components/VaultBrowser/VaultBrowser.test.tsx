@@ -212,16 +212,18 @@ const baseProps = {
 };
 
 describe('VaultBrowser', () => {
-  it('renders scope toggle buttons', () => {
+  it('renders scope toggle buttons', async () => {
     render(<VaultBrowser {...baseProps} />);
     expect(screen.getByTestId('vb-scope-story')).toBeInTheDocument();
     expect(screen.getByTestId('vb-scope-notes')).toBeInTheDocument();
     expect(screen.getByTestId('vb-scope-both')).toBeInTheDocument();
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
-  it('"Both" scope is active by default', () => {
+  it('"Both" scope is active by default', async () => {
     render(<VaultBrowser {...baseProps} />);
     expect(screen.getByTestId('vb-scope-both')).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
   it('shows both vault sections in Both scope', async () => {
@@ -250,18 +252,20 @@ describe('VaultBrowser', () => {
     });
   });
 
-  it('shows empty state when no stories', () => {
+  it('shows empty state when no stories', async () => {
     render(<VaultBrowser {...baseProps} />);
     expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
-  it('calls onCreateStory when New Story button is clicked', () => {
+  it('calls onCreateStory when New Story button is clicked', async () => {
     render(<VaultBrowser {...baseProps} />);
-    fireEvent.click(screen.getByLabelText('New Story'));
+    await act(async () => { fireEvent.click(screen.getByLabelText('New Story')); });
     expect(baseProps.onCreateStory).toHaveBeenCalledOnce();
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
-  it('renders story titles when stories provided', () => {
+  it('renders story titles when stories provided', async () => {
     const stories: Story[] = [
       {
         id: 's1',
@@ -274,6 +278,7 @@ describe('VaultBrowser', () => {
     ];
     render(<VaultBrowser {...baseProps} stories={stories} />);
     expect(screen.getByText('My Great Novel')).toBeInTheDocument();
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
   it('filters out hidden items from notes vault', async () => {

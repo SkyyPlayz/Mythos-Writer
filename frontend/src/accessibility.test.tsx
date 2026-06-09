@@ -88,12 +88,14 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
 
   it('idle state has no axe violations', async () => {
     const { container } = render(<BrainstormPage onClose={() => {}} />);
+    await waitFor(() => expect(container.querySelector('.brainstorm-page')).not.toBeNull());
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
   it('disabled state has no axe violations', async () => {
     const { container } = render(<BrainstormPage onClose={() => {}} enabled={false} />);
+    await waitFor(() => expect(container.querySelector('.brainstorm-page')).not.toBeNull());
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
@@ -288,11 +290,12 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
         onReorderScenes={() => {}}
       />,
     );
+    await waitFor(() => expect(container.querySelector('.entity-browser')).not.toBeNull());
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('tab elements carry correct ARIA roles and attributes', () => {
+  it('tab elements carry correct ARIA roles and attributes', async () => {
     const { container } = render(
       <LeftRail
         activeTab="vault"
@@ -320,6 +323,7 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
     const panel = container.querySelector('[role="tabpanel"]');
     expect(panel).not.toBeNull();
     expect(panel?.getAttribute('aria-labelledby')).toBe('leftrail-tab-vault');
+    await waitFor(() => {});
   });
 });
 

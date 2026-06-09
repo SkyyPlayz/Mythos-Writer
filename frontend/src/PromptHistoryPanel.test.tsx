@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import PromptHistoryPanel from './PromptHistoryPanel';
 
 const mockGenerationLogRecent = vi.fn();
@@ -38,6 +38,7 @@ describe('PromptHistoryPanel', () => {
     expect(screen.getByRole('tab', { name: /writing assistant/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /brainstorm/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /archive/i })).toBeInTheDocument();
+    await waitFor(() => expect(mockGenerationLogRecent).toHaveBeenCalled());
   });
 
   it('renders search input and date range filters', async () => {
@@ -46,6 +47,7 @@ describe('PromptHistoryPanel', () => {
     expect(screen.getByRole('searchbox', { name: /search prompt history/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/filter from date/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/filter to date/i)).toBeInTheDocument();
+    await waitFor(() => expect(mockGenerationLogRecent).toHaveBeenCalled());
   });
 
   it('shows loading state while fetching', () => {
@@ -88,8 +90,9 @@ describe('PromptHistoryPanel', () => {
   it('calls onClose when close button is clicked', async () => {
     mockGenerationLogRecent.mockResolvedValue({ entries: [], total: 0 });
     render(<PromptHistoryPanel onClose={mockOnClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /close prompt history/i }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /close prompt history/i })); });
     expect(mockOnClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockGenerationLogRecent).toHaveBeenCalled());
   });
 
   it('filters by agent when a tab is clicked', async () => {
