@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import {
+  parseEntryFrontmatter,
+  buildSceneCrafterPayload,
+  type EntrySourcePayload,
+} from './EntriesPanel';
 import './KanbanBoard.css';
+
+export { buildSceneCrafterPayload, type EntrySourcePayload };
 
 export interface KanbanCard {
   notePath: string;
@@ -68,6 +75,137 @@ function titleFromEntryPath(filePath: string): string {
     .trim() || withoutExt;
 }
 
+// ─── Entry source picker ───
+
+interface EntryItem {
+  id: string;
+  body: string;
+  tags: string[];
+}
+
+interface EntrySourcePickerProps {
+  selectedIds: string[];
+  onSelectionChange: (ids: string[]) => void;
+}
+
+function EntrySourcePicker({ selectedIds, onSelectionChange }: EntrySourcePickerProps) {
+  const [entries, setEntries] = useState<EntryItem[]>([]);
+  const [tagFilter, setTagFilter] = useState('');
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    void (async () => {
+      try {
+        const listResult = await window.api.listNotesVault('Entries');
+        const mdFiles = listResult.items.filter(
+          (item) => !item.isDirectory && item.name.endsWith('.md'),
+        );
+        const items: EntryItem[] = [];
+        await Promise.all(
+          mdFiles.map(async (item) => {
+            try {
+              const readResult = await window.api.readNotesVault(item.path);
+              const parsed = parseEntryFrontmatter(readResult.content);
+              if (!parsed) return;
+              items.push({ id: item.path, body: parsed.body, tags: parsed.tags });
+            } catch {
+              // skip unreadable files
+            }
+          }),
+        );
+        items.sort((a, b) => a.id.localeCompare(b.id));
+        setEntries(items);
+      } catch {
+        setEntries([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [open]);
+
+  const filteredEntries = tagFilter.trim()
+    ? entries.filter((e) =>
+        e.tags.some((t) => t.toLowerCase().includes(tagFilter.toLowerCase())),
+      )
+    : entries;
+
+  const toggle = (id: string) => {
+    if (selectedIds.includes(id)) {
+      onSelectionChange(selectedIds.filter((s) => s !== id));
+    } else {
+      onSelectionChange([...selectedIds, id]);
+    }
+  };
+
+  const payload = buildSceneCrafterPayload(
+    entries.filter((e) => selectedIds.includes(e.id)),
+  );
+
+  return (
+    <div className="kanban-entry-picker" data-testid="kanban-entry-picker">
+      <button
+        className="kanban-entry-picker-toggle"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label="Toggle Entry Sources picker"
+        data-testid="kanban-entry-picker-toggle"
+      >
+        Entry Sources{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+      </button>
+      {open && (
+        <div className="kanban-entry-picker-panel" data-testid="kanban-entry-picker-panel">
+          <input
+            className="kanban-entry-tag-filter"
+            placeholder="Filter by tag…"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            aria-label="Filter entries by tag"
+            data-testid="kanban-entry-tag-filter"
+          />
+          {loading && <div className="kanban-entry-loading">Loading entries…</div>}
+          {!loading && filteredEntries.length === 0 && (
+            <div className="kanban-entry-empty">No entries found.</div>
+          )}
+          <ul className="kanban-entry-list" role="listbox" aria-multiselectable="true">
+            {filteredEntries.map((e) => {
+              const checked = selectedIds.includes(e.id);
+              return (
+                <li
+                  key={e.id}
+                  role="option"
+                  aria-selected={checked}
+                  className={`kanban-entry-option${checked ? ' selected' : ''}`}
+                  onClick={() => toggle(e.id)}
+                  data-testid={`kanban-entry-option-${e.id}`}
+                >
+                  <span className="kanban-entry-option-check">{checked ? '✓' : '○'}</span>
+                  <span className="kanban-entry-option-body">
+                    {e.body.slice(0, 80)}{e.body.length > 80 ? '…' : ''}
+                  </span>
+                  {e.tags.length > 0 && (
+                    <span className="kanban-entry-option-tags">
+                      {e.tags.join(', ')}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {selectedIds.length > 0 && (
+            <div className="kanban-entry-payload-hint" data-testid="kanban-entry-payload">
+              {payload.length} entr{payload.length === 1 ? 'y' : 'ies'} selected as scene context
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+}
+
 interface Props {
   boardPath: string;
   storyTitle: string;
@@ -81,6 +219,7 @@ interface Props {
 export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, onOpenNote }: Props) {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [dragCard, setDragCard] = useState<{ colIdx: number; cardIdx: number } | null>(null);
   const [dragOverCol, setDragOverCol] = useState<number | null>(null);
   const [editingColIdx, setEditingColIdx] = useState<number | null>(null);
@@ -268,6 +407,10 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
     <div className="kanban-board" data-testid="kanban-board">
       <div className="kanban-header">
         <h2 className="kanban-title">{storyTitle} — Scene Board</h2>
+        <EntrySourcePicker
+          selectedIds={selectedEntryIds}
+          onSelectionChange={setSelectedEntryIds}
+        />
         <div className="kanban-path-row">
           {editingPath ? (
             <>
