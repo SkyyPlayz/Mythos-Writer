@@ -108,6 +108,14 @@ function StoryVault({
   const [editValue, setEditValue] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [ct, setCt] = useState<CT | null>(null);
+  const selectClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelPendingSceneSelect = useCallback(() => {
+    if (selectClickTimerRef.current) {
+      clearTimeout(selectClickTimerRef.current);
+      selectClickTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (stories.length === 1 && expandedStories.size === 0) {
@@ -134,10 +142,21 @@ function StoryVault({
   };
 
   const startRenameScene = useCallback((scene: Scene) => {
+    cancelPendingSceneSelect();
     setEditingSceneId(scene.id);
     setEditValue(scene.title);
     setEditError(null);
-  }, []);
+  }, [cancelPendingSceneSelect]);
+
+  const selectSceneFromClick = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
+    cancelPendingSceneSelect();
+    selectClickTimerRef.current = setTimeout(() => {
+      selectClickTimerRef.current = null;
+      onSelectScene(scene, chapter, story);
+    }, 350);
+  }, [cancelPendingSceneSelect, onSelectScene]);
+
+  useEffect(() => cancelPendingSceneSelect, [cancelPendingSceneSelect]);
 
   const commitRenameScene = useCallback(async () => {
     if (!editingSceneId) return;
@@ -265,10 +284,13 @@ function StoryVault({
                                         onMouseDown={(e) => {
                                           if (!isEditing && e.detail >= 2) {
                                             e.preventDefault();
+                                            cancelPendingSceneSelect();
                                             startRenameScene(scene);
                                           }
                                         }}
-                                        onClick={() => { if (!isEditing) onSelectScene(scene, chapter, story); }}
+                                        onClick={(e) => {
+                                          if (!isEditing && e.detail < 2) selectSceneFromClick(scene, chapter, story);
+                                        }}
                                         onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
                                         onKeyDown={(e) => {
                                           if (isEditing) return;

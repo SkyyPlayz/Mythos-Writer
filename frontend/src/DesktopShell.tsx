@@ -518,7 +518,6 @@ export default function DesktopShell() {
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
-  const layoutLeftTabRef = useRef<LayoutPrefs['leftTab']>(DEFAULT_LAYOUT.leftTab);
   const [view, setView] = useState<AppView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -564,10 +563,6 @@ export default function DesktopShell() {
   const sceneRestoreAttemptedRef = useRef(false);
   const restoreInProgressRef = useRef(false);
   const saveCursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    layoutLeftTabRef.current = layout.leftTab;
-  }, [layout.leftTab]);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -1165,14 +1160,11 @@ export default function DesktopShell() {
     setSelectedEntity(null);
     setOpenedNotePath(null);
     setVaultContext('file');
-    const shouldFocusEditor = layoutLeftTabRef.current !== 'vault';
-    if (shouldFocusEditor) {
+    editorApiRef.current?.focus();
+    setTimeout(() => {
+      if (document.activeElement?.classList.contains('vb-rename-input')) return;
       editorApiRef.current?.focus();
-      setTimeout(() => {
-        if (document.activeElement?.classList.contains('vb-rename-input')) return;
-        editorApiRef.current?.focus();
-      }, 0);
-    }
+    }, 0);
     if (!restoreInProgressRef.current) {
       // User-initiated open: clear any pending cursor restore and reset cursor to 0
       pendingCursorPosRef.current = null;
