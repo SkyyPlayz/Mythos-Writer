@@ -1,9 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { render, screen, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
+import BlockEditor from './BlockEditor';
+import type { Scene } from './types';
 import { WikiLink } from './WikiLinkExtension';
 
 // ---------------------------------------------------------------------------
@@ -334,6 +337,49 @@ describe('BlockEditor markdown round-trip — extended regression (MYT-131)', ()
     it('output ends with a trailing newline', () => {
       const raw = roundTripRaw('Hello world');
       expect(raw).toMatch(/\n$/);
+    });
+  });
+});
+
+function makeBlankScene(): Scene {
+  const timestamp = '2026-06-09T00:00:00.000Z';
+  return {
+    id: 'scene-blank',
+    title: 'Blank Scene',
+    path: 'stories/story-1/chapters/chapter-1/scenes/blank.md',
+    order: 0,
+    chapterId: 'chapter-1',
+    storyId: 'story-1',
+    blocks: [],
+    draftState: 'in-progress',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+describe('BlockEditor empty-scene entry', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'api', {
+      value: {
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+      },
+      configurable: true,
+    });
+  });
+
+  it('focuses the editable surface and shows a clear start-typing affordance for a blank scene', async () => {
+    render(
+      <BlockEditor
+        scene={makeBlankScene()}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/start typing to begin/i)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(document.activeElement).toHaveClass('ProseMirror');
     });
   });
 });

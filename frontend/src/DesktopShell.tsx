@@ -1160,6 +1160,11 @@ export default function DesktopShell() {
     setSelectedEntity(null);
     setOpenedNotePath(null);
     setVaultContext('file');
+    editorApiRef.current?.focus();
+    setTimeout(() => {
+      if (document.activeElement?.classList.contains('vb-rename-input')) return;
+      editorApiRef.current?.focus();
+    }, 0);
     if (!restoreInProgressRef.current) {
       // User-initiated open: clear any pending cursor restore and reset cursor to 0
       pendingCursorPosRef.current = null;

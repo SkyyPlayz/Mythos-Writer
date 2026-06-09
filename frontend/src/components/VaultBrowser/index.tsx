@@ -262,6 +262,12 @@ function StoryVault({
                                         tabIndex={0}
                                         data-testid={`vb-scene-${scene.id}`}
                                         onContextMenu={(e)=>{e.preventDefault();setCt({x:e.clientX,y:e.clientY,kind:'scene',storyId:story.id,chapterId:chapter.id,sceneId:scene.id});}}
+                                        onMouseDown={(e) => {
+                                          if (!isEditing && e.detail >= 2) {
+                                            e.preventDefault();
+                                            startRenameScene(scene);
+                                          }
+                                        }}
                                         onClick={() => { if (!isEditing) onSelectScene(scene, chapter, story); }}
                                         onDoubleClick={(e) => { e.preventDefault(); startRenameScene(scene); }}
                                         onKeyDown={(e) => {
