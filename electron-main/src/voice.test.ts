@@ -901,7 +901,7 @@ describe('voice:speak handler', () => {
 describe('voice:speak SSRF guard (SKY-847)', () => {
   beforeEach(() => { handleMap.clear(); onMap.clear(); });
 
-  async function runBlocked(endpoint: string) {
+  const runBlocked = async (endpoint: string) => {
     const errors: Array<{ category: VoiceErrorCategory; error: string }> = [];
     const mockSender = {
       send: (ch: string, data: unknown) => {
@@ -922,7 +922,7 @@ describe('voice:speak SSRF guard (SKY-847)', () => {
     await invokeHandle('voice:speak', { text: 'hi' });
     await new Promise(resolve => setTimeout(resolve, 20));
     return { errors, fetchSpy };
-  }
+  };
 
   it('blocks 192.168.x.x (RFC-1918 /16)', async () => {
     const { errors, fetchSpy } = await runBlocked('http://192.168.1.1/speak');
