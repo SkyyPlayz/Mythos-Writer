@@ -19,6 +19,8 @@ const mockSettingsSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockVaultSetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
+const mockAgentPersonaRead = vi.fn();
+const mockAgentPersonaReset = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
 
@@ -36,12 +38,18 @@ beforeEach(() => {
     Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
   );
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+  mockAgentPersonaRead.mockImplementation((agentName: string, key: string) =>
+    Promise.resolve({ content: `${agentName} ${key} content`, isCustom: false }),
+  );
+  mockAgentPersonaReset.mockResolvedValue({ reset: true });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
     vaultGetPaths: mockVaultGetPaths,
     vaultSetPaths: mockVaultSetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
+    agentPersonaRead: mockAgentPersonaRead,
+    agentPersonaReset: mockAgentPersonaReset,
   };
 });
 
@@ -53,6 +61,74 @@ describe('SettingsPanel', () => {
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
     expect(screen.getByText(/archive agent/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
+  });
+
+  it('exposes PersonaViewer tabpanel links with roving tabIndex', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /persona files/i })[0]);
+
+    const agentsTab = await screen.findByRole('tab', { name: /agents\.md/i });
+    const heartbeatTab = screen.getByRole('tab', { name: /heartbeat\.md/i });
+    const soulTab = screen.getByRole('tab', { name: /soul\.md/i });
+    const toolsTab = screen.getByRole('tab', { name: /tools\.md/i });
+    const panel = screen.getByRole('tabpanel');
+
+    expect(agentsTab).toHaveAttribute('id', 'persona-tab-writingAssistant-AGENTS');
+    expect(agentsTab).toHaveAttribute('aria-controls', 'persona-panel-writingAssistant');
+    expect(agentsTab).toHaveAttribute('aria-selected', 'true');
+    expect(agentsTab).toHaveAttribute('tabIndex', '0');
+    for (const inactiveTab of [heartbeatTab, soulTab, toolsTab]) {
+      expect(inactiveTab).toHaveAttribute('tabIndex', '-1');
+      expect(inactiveTab).toHaveAttribute('aria-controls', 'persona-panel-writingAssistant');
+    }
+    expect(panel).toHaveAttribute('id', 'persona-panel-writingAssistant');
+    expect(panel).toHaveAttribute('aria-labelledby', 'persona-tab-writingAssistant-AGENTS');
+  });
+
+  it('moves PersonaViewer tab focus to the next tab with ArrowRight', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /persona files/i })[0]);
+
+    const agentsTab = await screen.findByRole('tab', { name: /agents\.md/i });
+    const heartbeatTab = screen.getByRole('tab', { name: /heartbeat\.md/i });
+    agentsTab.focus();
+
+    fireEvent.keyDown(agentsTab, { key: 'ArrowRight' });
+
+    await waitFor(() => expect(heartbeatTab).toHaveAttribute('aria-selected', 'true'));
+    expect(heartbeatTab).toHaveFocus();
+    expect(heartbeatTab).toHaveAttribute('tabIndex', '0');
+    expect(agentsTab).toHaveAttribute('tabIndex', '-1');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute(
+      'aria-labelledby',
+      'persona-tab-writingAssistant-HEARTBEAT',
+    );
+  });
+
+  it('wraps PersonaViewer tab focus to the previous tab with ArrowLeft', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /persona files/i })[0]);
+
+    const agentsTab = await screen.findByRole('tab', { name: /agents\.md/i });
+    const toolsTab = screen.getByRole('tab', { name: /tools\.md/i });
+    agentsTab.focus();
+
+    fireEvent.keyDown(agentsTab, { key: 'ArrowLeft' });
+
+    await waitFor(() => expect(toolsTab).toHaveAttribute('aria-selected', 'true'));
+    expect(toolsTab).toHaveFocus();
+    expect(toolsTab).toHaveAttribute('tabIndex', '0');
+    expect(agentsTab).toHaveAttribute('tabIndex', '-1');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute(
+      'aria-labelledby',
+      'persona-tab-writingAssistant-TOOLS',
+    );
   });
 
   it('offers dark and high-contrast appearance choices and applies on change', async () => {
