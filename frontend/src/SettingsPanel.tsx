@@ -171,6 +171,12 @@ const MODEL_OPTIONS: { value: string; label: string }[] = [
 
 type AgentName = 'writingAssistant' | 'brainstorm' | 'archive';
 
+const AGENT_DISPLAY_NAMES: Record<AgentName, string> = {
+  writingAssistant: 'Writing Assistant',
+  brainstorm: 'Brainstorm Agent',
+  archive: 'Archive Agent',
+};
+
 /** Per-agent provider override state; null means "use global provider". */
 interface AgentOverrideState {
   enabled: boolean;
@@ -414,13 +420,13 @@ function AgentProviderSection({
           <input
             id={`${idPrefix}-provider-toggle`}
             type="checkbox"
-            aria-label={`Use a different provider for ${agentName}`}
+            aria-label={`Override provider for ${agentName}`}
             checked={override.enabled}
             onChange={(e) => onChange('enabled', e.target.checked)}
           />
           <span className="settings-toggle-track" />
         </label>
-        <span className="settings-label">Use a different provider for this agent</span>
+        <span className="settings-label">Override provider for this agent</span>
       </div>
 
       {override.enabled && (
@@ -432,7 +438,7 @@ function AgentProviderSection({
               id={`${idPrefix}-provider-kind`}
               className="settings-input settings-select settings-input-sm"
               value={override.kind}
-              aria-label={`Provider for ${agentName}`}
+              aria-label={`${AGENT_DISPLAY_NAMES[agentName]} provider`}
               onChange={(e) => {
                 const newKind = e.target.value as ProviderKind;
                 onChange('kind', newKind);
@@ -1095,9 +1101,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
         <div className="settings-body">
 
-          {/* ── AI Providers ── */}
+          {/* ── Provider Configuration ── */}
           <section className="settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select

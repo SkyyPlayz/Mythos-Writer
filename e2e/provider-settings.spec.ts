@@ -5,7 +5,7 @@
  *
  * TC-PROV-01  Ollama provider saved in app-settings seeds correct UI (text model input, base URL)
  * TC-PROV-02  Test connection with mocked local provider returns success
- * TC-PROV-03  Per-agent "Use different provider" toggle enables inline provider form
+ * TC-PROV-03  Per-agent "Override provider" toggle enables inline provider form
  * TC-PROV-04  Non-Anthropic global provider shows text input for per-agent model
  *
  * The real `settings:testConnection` IPC handler is replaced with a mock that
@@ -189,13 +189,13 @@ test('TC-PROV-02: Test connection with mocked local provider shows success', asy
   await page.click('.settings-close');
 });
 
-test('TC-PROV-03: "Use different provider for this agent" toggle shows inline provider form', async () => {
+test('TC-PROV-03: "Override provider for this agent" toggle shows inline provider form', async () => {
   // Open settings
   await page.click('[aria-label="Open settings"]');
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
-  // Find the Brainstorm agent's "Use different provider" toggle
-  const toggleInput = page.getByLabel(/use a different provider for brainstorm/i);
+  // Find the Brainstorm agent's "Override provider" toggle
+  const toggleInput = page.getByLabel(/override provider for brainstorm/i);
   await expect(toggleInput).not.toBeChecked();
 
   // Toggle it on
@@ -203,13 +203,13 @@ test('TC-PROV-03: "Use different provider for this agent" toggle shows inline pr
   await expect(toggleInput).toBeChecked();
 
   // Inline provider form should now be visible
-  await expect(page.getByLabel('Provider for brainstorm')).toBeVisible();
+  await expect(page.getByLabel('Brainstorm Agent provider')).toBeVisible();
   await expect(page.getByLabel('Model for brainstorm')).toBeVisible();
 
   // Toggle off
   await toggleInput.click();
   await expect(toggleInput).not.toBeChecked();
-  await expect(page.getByLabel('Provider for brainstorm')).not.toBeVisible();
+  await expect(page.getByLabel('Brainstorm Agent provider')).not.toBeVisible();
 
   // Close settings
   await page.click('.settings-close');
