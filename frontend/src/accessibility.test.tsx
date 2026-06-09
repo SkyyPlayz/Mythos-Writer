@@ -622,3 +622,33 @@ describe('Accessibility — SyncConflictModal', () => {
     expect(results).toHaveNoViolations();
   });
 });
+
+
+// Surface 8 — WritingApp (vault loading / error states)
+// ══════════════════════════════════════════════════════════════════════════════
+import WritingApp from './WritingApp';
+
+describe('Accessibility — WritingApp loading/error states (SKY-938)', () => {
+  it('loading state has role="status"', () => {
+    (window as unknown as { api: unknown }).api = {
+      readManifest: () => new Promise(() => {}), // never resolves — stays in loading
+    };
+    const { container } = render(<WritingApp />);
+    const loadingEl = container.querySelector('.writing-loading');
+    expect(loadingEl).not.toBeNull();
+    expect(loadingEl?.getAttribute('role')).toBe('status');
+  });
+
+  it('error state has role="alert"', async () => {
+    (window as unknown as { api: unknown }).api = {
+      readManifest: () => Promise.reject(new Error('disk read error')),
+    };
+    const { container } = render(<WritingApp />);
+    const errorEl = await waitFor(() => {
+      const el = container.querySelector('.writing-error');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(errorEl.getAttribute('role')).toBe('alert');
+  });
+});
