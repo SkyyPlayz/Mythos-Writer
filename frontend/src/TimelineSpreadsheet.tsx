@@ -259,7 +259,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
       })
       .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [story]);
+  }, [story, api]);
 
   // ─── SKY-796: proposal index + actions ───
 
