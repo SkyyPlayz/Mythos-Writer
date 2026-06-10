@@ -2,6 +2,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
 import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
+import { acquireLockfile, checkLockfile, releaseLockfile } from './lockfile.js';
 import { readBgImageAsDataUrl } from './bgLoad.js';
 import { createRequire } from 'node:module';
 import path from 'path';
@@ -398,8 +399,8 @@ interface VaultSettings {
   // imported content.
   layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
-  // SKY-863: per-vault "don't show again" for the sync-conflict warning modal.
-  syncWarningDismissed?: boolean;
+  // SKY-1129: keyed by vaultRoot so dismissal is scoped to each vault.
+  syncWarningDismissed?: Record<string, boolean>;
 }
 
 // SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
@@ -4505,12 +4506,14 @@ const handlers: IpcHandlers = {
       }
     }
 
-    const dismissed = loadVaultSettings().syncWarningDismissed ?? false;
+    const dismissed = (loadVaultSettings().syncWarningDismissed ?? {})[vaultRoot] ?? false;
     return { resolved, lockfileConflict, dismissed };
   },
 
   [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (): { ok: true } => {
-    saveVaultSettings({ syncWarningDismissed: true });
+    const vaultRoot = getVaultRoot();
+    const current = loadVaultSettings().syncWarningDismissed ?? {};
+    saveVaultSettings({ syncWarningDismissed: { ...current, [vaultRoot]: true } });
     return { ok: true };
   },
 
