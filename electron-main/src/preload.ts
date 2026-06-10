@@ -63,6 +63,9 @@ contextBridge.exposeInMainWorld('api', {
   importVault: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:import', { sourcePath, registrationToken }),
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
   pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
+  // SKY-862: guided vault relocation to a cloud-synced folder.
+  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
+    ipcRenderer.invoke('vault:guidedFolderMove', payload),
   obsidianDryRun: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath, registrationToken }),
   obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
   loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', {}),

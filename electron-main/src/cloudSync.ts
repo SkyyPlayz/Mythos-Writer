@@ -214,18 +214,27 @@ export function checkLockfile(vaultRoot: string): LockfileData | null {
 }
 
 /**
- * Returns true when `lock` describes a different, still-running process.
- * Cross-host locks are considered stale (we cannot check PIDs remotely).
+ * Returns true when `lock` describes a different, still-running process on
+ * the current host. Cross-host locks are not "live" here (PID cannot be
+ * checked remotely); use `isForeignHostLock` to detect those separately.
  */
 export function isLockfileLive(lock: LockfileData): boolean {
   if (lock.pid === process.pid) return false; // our own lock
-  if (lock.hostname !== os.hostname()) return false; // different host → stale
+  if (lock.hostname !== os.hostname()) return false; // different host → not checkable here
   try {
     process.kill(lock.pid, 0); // signal 0 = existence probe; throws ESRCH when gone
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Returns true when `lock` was written by a different machine.
+ * These require the user to be warned before overriding (SKY-1143).
+ */
+export function isForeignHostLock(lock: LockfileData): boolean {
+  return lock.hostname !== os.hostname();
 }
 
 // ─── Sync event log ───────────────────────────────────────────────────────────
