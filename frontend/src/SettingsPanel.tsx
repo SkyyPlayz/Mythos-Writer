@@ -2385,14 +2385,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                       const enabled = e.target.checked;
                       setSettings((p) => ({
                         ...p,
-                        voice: {
-                          enabled,
-                          cloudFallback: p.voice?.cloudFallback ?? false,
-                          micDeviceId: p.voice?.micDeviceId,
-                          voiceMode: p.voice?.voiceMode ?? 'toggle',
-                          toggleShortcut: p.voice?.toggleShortcut ?? 'ctrl+shift+v',
-                          pttKey: p.voice?.pttKey ?? 'alt+v',
-                        },
+                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), enabled },
                       }));
                       setSavedOk(false);
                     }}
@@ -2480,11 +2473,34 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </>
               )}
 
+              <div className="settings-agent-header" style={{ marginTop: '8px' }}>
+                <span className="settings-label">Push-to-talk mode</span>
+                <label className="settings-toggle" htmlFor="voice-ptt">
+                  <input
+                    id="voice-ptt"
+                    type="checkbox"
+                    aria-label="Push-to-talk mode"
+                    checked={settings.voice?.pushToTalkMode ?? false}
+                    onChange={(e) => {
+                      const pushToTalkMode = e.target.checked;
+                      setSettings((p) => ({
+                        ...p,
+                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), pushToTalkMode },
+                      }));
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+
               <p className="settings-hint settings-hint-privacy">
                 Voice is processed locally on your device — no audio is sent anywhere.
               </p>
               <p className="settings-hint">
-                Requires microphone permission. Toggle shortcut works from any panel.
+                When push-to-talk is on, hold <kbd>Ctrl+Shift+M</kbd> to record and release to stop.
+                When off, <kbd>Ctrl+Shift+M</kbd> toggles recording on/off.
+                Requires microphone permission.
               </p>
             </div>
           </section>

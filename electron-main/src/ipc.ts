@@ -1437,6 +1437,8 @@ export interface VoiceSettings {
   toggleShortcut?: string;
   /** Hold key for push-to-talk mode (e.g. 'alt+v'). Default: 'alt+v'. */
   pttKey?: string;
+  /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
+  pushToTalkMode?: boolean;
 }
 
 // ─── STT adapter settings (MYT-338) ───

@@ -24,6 +24,7 @@ export interface BlockEditorApi {
   insertWikiLink: (link: string, anchorText: string) => void;
   /** Apply all current auto-linker suggestions as a single undoable transaction. */
   applyAutoLinks: () => void;
+  /** Insert plain text at the current cursor position (used by voice transcript). */
   insertText: (text: string) => void;
   focus: () => void;
 }
