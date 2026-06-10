@@ -40,7 +40,7 @@ function buildApi(overrides: Record<string, unknown> = {}) {
 
 async function simulateStream(tokens: string[], errorMessage?: string) {
   await waitFor(() => expect(tokenCb).not.toBeNull());
-  act(() => {
+  await act(async () => {
     for (const t of tokens) {
       tokenCb?.({ streamId: 'test-sid', token: t });
     }

@@ -114,7 +114,7 @@ afterEach(() => {
 });
 
 describe('SceneEditor debounce', () => {
-  it('does not save immediately on each keystroke', () => {
+  it('does not save immediately on each keystroke', async () => {
     const { getByPlaceholderText } = render(
       <SceneEditor sceneId="s1" scenePath="/ch1/scene1.md" />
     );
@@ -125,6 +125,8 @@ describe('SceneEditor debounce', () => {
     fireEvent.change(textarea, { target: { value: 'Hel' } });
 
     expect(mockSnapshotSave).not.toHaveBeenCalled();
+    // Flush async mount effects (snapshotList) so state updates land inside act()
+    await act(async () => {});
   });
 
   it('saves once after the debounce interval fires', async () => {
@@ -181,7 +183,7 @@ describe('SceneEditor debounce', () => {
 });
 
 describe('SceneEditor beforeunload flush', () => {
-  it('calls snapshotSaveSync on beforeunload when content is dirty', () => {
+  it('calls snapshotSaveSync on beforeunload when content is dirty', async () => {
     const { getByPlaceholderText } = render(
       <SceneEditor sceneId="s1" scenePath="/ch1/scene1.md" />
     );
@@ -192,6 +194,8 @@ describe('SceneEditor beforeunload flush', () => {
     fireEvent(window, new Event('beforeunload'));
 
     expect(mockSnapshotSaveSync).toHaveBeenCalledWith('s1', 'Unsaved content');
+    // Flush async mount effects (snapshotList) so state updates land inside act()
+    await act(async () => {});
   });
 
   it('does not call snapshotSaveSync when content matches last snapshot', async () => {
@@ -212,7 +216,7 @@ describe('SceneEditor beforeunload flush', () => {
     expect(mockSnapshotSaveSync).not.toHaveBeenCalled();
   });
 
-  it('calls snapshotSaveSync with content typed mid-debounce', () => {
+  it('calls snapshotSaveSync with content typed mid-debounce', async () => {
     const { getByPlaceholderText } = render(
       <SceneEditor sceneId="s1" scenePath="/ch1/scene1.md" initialContent="start" />
     );
@@ -224,27 +228,35 @@ describe('SceneEditor beforeunload flush', () => {
     fireEvent(window, new Event('beforeunload'));
 
     expect(mockSnapshotSaveSync).toHaveBeenCalledWith('s1', 'start typing fast enough');
+    // Flush async mount effects (snapshotList) so state updates land inside act()
+    await act(async () => {});
   });
 });
 
 describe('SceneEditor save status indicator', () => {
-  it('shows Saved on initial render (no unsaved changes)', () => {
+  it('shows Saved on initial render (no unsaved changes)', async () => {
     render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" initialContent="" />);
     expect(screen.getByRole('status')).toHaveTextContent(/Saved/);
+    // Flush async mount effects (snapshotList) so state updates land inside act()
+    await act(async () => {});
   });
 
-  it('indicator has aria-live polite region', () => {
+  it('indicator has aria-live polite region', async () => {
     render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
     const indicator = screen.getByRole('status');
     expect(indicator).toHaveAttribute('aria-live', 'polite');
+    // Flush async mount effects (snapshotList) so state updates land inside act()
+    await act(async () => {});
   });
 
-  it('shows Unsaved changes immediately after typing', () => {
+  it('shows Unsaved changes immediately after typing', async () => {
     render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
     fireEvent.change(screen.getByPlaceholderText('Start writing your scene…'), {
       target: { value: 'Hello' },
     });
     expect(screen.getByText('• Unsaved changes')).toBeInTheDocument();
+    // Flush async mount effects (snapshotList) so state updates land inside act()
+    await act(async () => {});
   });
 
   it('shows Saving… when debounce fires', async () => {

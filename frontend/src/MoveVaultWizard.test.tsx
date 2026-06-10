@@ -30,10 +30,14 @@ beforeEach(() => {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function renderWizard() {
-  return render(
-    <MoveVaultWizard onClose={mockOnClose} onSuccess={mockOnSuccess} />,
-  );
+async function renderWizard() {
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(
+      <MoveVaultWizard onClose={mockOnClose} onSuccess={mockOnSuccess} />,
+    );
+  });
+  return view;
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -41,7 +45,7 @@ function renderWizard() {
 describe('MoveVaultWizard', () => {
   // Step 0 — provider
   it('renders provider step with all four options', async () => {
-    renderWizard();
+    await renderWizard();
     expect(screen.getByRole('dialog', { name: /move vault to cloud sync/i })).toBeInTheDocument();
     expect(screen.getByTestId('provider-option-dropbox')).toBeInTheDocument();
     expect(screen.getByTestId('provider-option-icloud')).toBeInTheDocument();
@@ -49,8 +53,8 @@ describe('MoveVaultWizard', () => {
     expect(screen.getByTestId('provider-option-google-drive')).toBeInTheDocument();
   });
 
-  it('Next button is disabled until a provider is chosen', () => {
-    renderWizard();
+  it('Next button is disabled until a provider is chosen', async () => {
+    await renderWizard();
     expect(screen.getByTestId('mv-next-provider')).toBeDisabled();
 
     const dropboxLabel = screen.getByTestId('provider-option-dropbox');
@@ -60,15 +64,15 @@ describe('MoveVaultWizard', () => {
     expect(screen.getByTestId('mv-next-provider')).not.toBeDisabled();
   });
 
-  it('Stay local button calls onClose', () => {
-    renderWizard();
+  it('Stay local button calls onClose', async () => {
+    await renderWizard();
     fireEvent.click(screen.getByTestId('mv-skip'));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
   // Step 0 → 1 — folder
-  it('advances to folder step after selecting provider', () => {
-    renderWizard();
+  it('advances to folder step after selecting provider', async () => {
+    await renderWizard();
 
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
@@ -78,8 +82,8 @@ describe('MoveVaultWizard', () => {
     expect(screen.getByTestId('mv-default-hint')).toHaveTextContent('~/Dropbox');
   });
 
-  it('shows provider-specific default path hint', () => {
-    renderWizard();
+  it('shows provider-specific default path hint', async () => {
+    await renderWizard();
 
     const radio = screen.getByTestId('provider-option-google-drive').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
@@ -91,7 +95,7 @@ describe('MoveVaultWizard', () => {
   it('opens folder picker and updates display when folder is chosen', async () => {
     mockPickFolder.mockResolvedValue({ vaultRoot: '/home/user/Dropbox', cancelled: false, registrationToken: 'tok-abc' });
 
-    renderWizard();
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -107,8 +111,8 @@ describe('MoveVaultWizard', () => {
     });
   });
 
-  it('Next in folder step is disabled until folder is selected', () => {
-    renderWizard();
+  it('Next in folder step is disabled until folder is selected', async () => {
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -120,7 +124,7 @@ describe('MoveVaultWizard', () => {
   it('shows from/to paths in confirm step', async () => {
     mockPickFolder.mockResolvedValue({ vaultRoot: '/home/user/Dropbox', cancelled: false, registrationToken: 'tok-abc' });
 
-    renderWizard();
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -138,7 +142,7 @@ describe('MoveVaultWizard', () => {
   it('Proceed button is disabled until sync checkbox is ticked', async () => {
     mockPickFolder.mockResolvedValue({ vaultRoot: '/home/user/Dropbox', cancelled: false, registrationToken: 'tok-abc' });
 
-    renderWizard();
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -158,7 +162,7 @@ describe('MoveVaultWizard', () => {
   it('auto-runs write test on entering test step', async () => {
     mockPickFolder.mockResolvedValue({ vaultRoot: '/home/user/Dropbox', cancelled: false, registrationToken: 'tok-abc' });
 
-    renderWizard();
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -178,7 +182,7 @@ describe('MoveVaultWizard', () => {
     mockPickFolder.mockResolvedValue({ vaultRoot: '/home/user/Dropbox', cancelled: false, registrationToken: 'tok-abc' });
     mockValidatePath.mockResolvedValueOnce({ exists: true, isEmpty: false, writable: false });
 
-    renderWizard();
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -203,7 +207,7 @@ describe('MoveVaultWizard', () => {
   it('shows success message and calls onSuccess after migration', async () => {
     mockPickFolder.mockResolvedValue({ vaultRoot: '/home/user/Dropbox', cancelled: false, registrationToken: 'tok-abc' });
 
-    renderWizard();
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -230,7 +234,7 @@ describe('MoveVaultWizard', () => {
     mockPickFolder.mockResolvedValue({ vaultRoot: '/home/user/Dropbox', cancelled: false, registrationToken: 'tok-abc' });
     mockVaultGuidedFolderMove.mockResolvedValue({ error: 'Move operation failed: disk full' });
 
-    renderWizard();
+    await renderWizard();
     const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
     fireEvent.click(radio);
     fireEvent.click(screen.getByTestId('mv-next-provider'));
@@ -251,20 +255,20 @@ describe('MoveVaultWizard', () => {
   });
 
   // Accessibility
-  it('has WCAG-level aria-label on dialog', () => {
-    renderWizard();
+  it('has WCAG-level aria-label on dialog', async () => {
+    await renderWizard();
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Move vault to cloud sync');
   });
 
-  it('has aria-label on all provider radio inputs', () => {
-    renderWizard();
+  it('has aria-label on all provider radio inputs', async () => {
+    await renderWizard();
     const radios = screen.getAllByRole('radio');
     radios.forEach((r) => expect(r).toHaveAttribute('aria-label'));
   });
 
-  it('close button calls onClose', () => {
-    renderWizard();
+  it('close button calls onClose', async () => {
+    await renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /close wizard/i }));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });

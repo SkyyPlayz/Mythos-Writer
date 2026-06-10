@@ -510,6 +510,8 @@ async function renderNotesTree() {
   fireEvent.click(screen.getByTestId('vb-scope-notes'));
   // Wait for the virtualized tree rows to appear (concepts dir auto-expands)
   await waitFor(() => expect(screen.getByTestId('vb-row-concepts')).toBeInTheDocument());
+  // Flush any remaining async state updates from the initial render
+  await act(async () => {});
 }
 
 describe('VirtualTree ARIA attributes', () => {
@@ -791,21 +793,17 @@ describe('VirtualTree keyboard navigation', () => {
   it('Enter on a file calls onOpenFile', async () => {
     await renderNotesTree();
     const fileRow = screen.getByTestId('vb-row-worldbuilding.md');
-    fileRow.focus();
-    fireEvent.keyDown(fileRow, { key: 'Enter' });
-    await waitFor(() => {
-      expect(baseProps.onOpenFile).toHaveBeenCalledWith('worldbuilding.md');
-    });
+    await act(async () => { fileRow.focus(); });
+    await act(async () => { fireEvent.keyDown(fileRow, { key: 'Enter' }); });
+    expect(baseProps.onOpenFile).toHaveBeenCalledWith('worldbuilding.md');
   });
 
   it('Space on a file calls onOpenFile', async () => {
     await renderNotesTree();
     const fileRow = screen.getByTestId('vb-row-worldbuilding.md');
-    fileRow.focus();
-    fireEvent.keyDown(fileRow, { key: ' ' });
-    await waitFor(() => {
-      expect(baseProps.onOpenFile).toHaveBeenCalledWith('worldbuilding.md');
-    });
+    await act(async () => { fileRow.focus(); });
+    await act(async () => { fireEvent.keyDown(fileRow, { key: ' ' }); });
+    expect(baseProps.onOpenFile).toHaveBeenCalledWith('worldbuilding.md');
   });
 
   it('clicking a row updates roving tabindex to that row', async () => {
@@ -875,18 +873,21 @@ describe('StoryVault ARIA tree roles', () => {
     render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
     const tree = screen.getByRole('tree', { name: 'Story Vault' });
     expect(tree).toBeInTheDocument();
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
   it('story toggle button has role="treeitem"', async () => {
     render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
     const storyBtn = screen.getByText('Test Story').closest('button');
     expect(storyBtn).toHaveAttribute('role', 'treeitem');
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
   it('story toggle button has aria-level=1', async () => {
     render(<VaultBrowser {...baseProps} stories={storyWithScene} />);
     const storyBtn = screen.getByText('Test Story').closest('button');
     expect(storyBtn).toHaveAttribute('aria-level', '1');
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
   it('story toggle has aria-expanded reflecting expansion state', async () => {
@@ -894,6 +895,7 @@ describe('StoryVault ARIA tree roles', () => {
     // Single story auto-expands
     const storyBtn = screen.getByText('Test Story').closest('button');
     expect(storyBtn).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
   it('chapter toggle button has role="treeitem"', async () => {
@@ -923,6 +925,7 @@ describe('StoryVault ARIA tree roles', () => {
     // story is auto-expanded, so a group should be present
     const groups = screen.getAllByRole('group');
     expect(groups.length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
   });
 
   it('scene row has role="treeitem"', async () => {

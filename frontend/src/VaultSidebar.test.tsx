@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import VaultSidebar from './VaultSidebar';
 import type { Story, Chapter, Scene } from './types';
@@ -90,16 +90,20 @@ async function openToSceneRow(selectedSceneId: string | null = null) {
 describe('VaultSidebar — Smart Folders (SKY-205)', () => {
   beforeEach(() => { stubWindowApi(); vi.clearAllMocks(); });
 
-  it('renders a "Smart Folders" section header', () => {
+  it('renders a "Smart Folders" section header', async () => {
     renderSidebar();
     expect(screen.getByRole('button', { name: /expand smart folders/i })).toBeInTheDocument();
+    // Flush VaultSidebar's async NotesVault mount effect so state updates land inside act()
+    await act(async () => {});
   });
 
-  it('section starts collapsed', () => {
+  it('section starts collapsed', async () => {
     renderSidebar();
     const toggle = screen.getByRole('button', { name: /expand smart folders/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText(/no smart folders yet/i)).not.toBeInTheDocument();
+    // Flush VaultSidebar's async NotesVault mount effect so state updates land inside act()
+    await act(async () => {});
   });
 
   it('expands on click and shows empty state when no folders', async () => {
