@@ -2439,6 +2439,27 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </>
               )}
 
+              <div className="settings-agent-header" style={{ marginTop: '8px' }}>
+                <span className="settings-label">Push-to-talk mode</span>
+                <label className="settings-toggle" htmlFor="voice-ptt">
+                  <input
+                    id="voice-ptt"
+                    type="checkbox"
+                    aria-label="Push-to-talk mode"
+                    checked={settings.voice?.pushToTalkMode ?? false}
+                    onChange={(e) => {
+                      const pushToTalkMode = e.target.checked;
+                      setSettings((p) => ({
+                        ...p,
+                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), pushToTalkMode },
+                      }));
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+
               {shouldShowVoiceProviderSelector && (
                 <>
                   <div className="settings-field settings-field-inline">
