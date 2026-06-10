@@ -232,6 +232,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   useEffect(() => {
     if (!editor) return;
     const focusEditor = () => {
+      if (!editor) return;
       editor.chain().focus(initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end').run();
     };
     const focusTimer = setTimeout(focusEditor, 0);
