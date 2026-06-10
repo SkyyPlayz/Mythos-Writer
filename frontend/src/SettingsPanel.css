@@ -258,6 +258,32 @@
   margin: 0;
 }
 
+.settings-help-card {
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--bg-inset);
+  color: var(--text-body);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 10px 12px;
+}
+
+.settings-help-card strong {
+  display: block;
+  color: var(--text-header);
+  margin-bottom: 4px;
+}
+
+.settings-help-card ol,
+.settings-help-card ul {
+  margin: 0 0 8px 18px;
+  padding: 0;
+}
+
+.settings-help-card ul {
+  margin-bottom: 0;
+}
+
 /* Agent cards */
 
 .settings-agent-card {
