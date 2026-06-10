@@ -214,18 +214,28 @@ export function checkLockfile(vaultRoot: string): LockfileData | null {
 }
 
 /**
- * Returns true when `lock` describes a different, still-running process.
- * Cross-host locks are considered stale (we cannot check PIDs remotely).
+ * Returns true when `lock` describes a different, still-running process on
+ * the same host. Cross-host locks cannot have their PIDs probed — use
+ * `isForeignHostLock` for those.
  */
 export function isLockfileLive(lock: LockfileData): boolean {
   if (lock.pid === process.pid) return false; // our own lock
-  if (lock.hostname !== os.hostname()) return false; // different host → stale
+  if (lock.hostname !== os.hostname()) return false; // cannot probe remote PID
   try {
     process.kill(lock.pid, 0); // signal 0 = existence probe; throws ESRCH when gone
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Returns true when `lock` was written by a different hostname.
+ * We cannot verify whether the remote process is still running, so these
+ * locks are always surfaced to the user as a potential concurrent session.
+ */
+export function isForeignHostLock(lock: LockfileData): boolean {
+  return lock.hostname !== os.hostname();
 }
 
 // ─── Sync event log ───────────────────────────────────────────────────────────
