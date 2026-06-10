@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
   moveVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),
+  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
+    ipcRenderer.invoke('vault:guidedFolderMove', payload),
   // SKY-9: generic folder picker for the Settings panel (decoupled from the
   // Obsidian-import token flow). Returns { path, cancelled }.
   chooseVaultFolder: (title?: string, defaultPath?: string) =>

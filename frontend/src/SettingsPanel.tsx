@@ -1495,6 +1495,20 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 Move your vault to Dropbox, iCloud, OneDrive, or Google Drive so it
                 syncs to all your devices automatically.
               </p>
+              <div className="settings-help-card" data-testid="cloud-sync-help">
+                <strong>Setup guide</strong>
+                <ol>
+                  <li>Choose your provider in the Move Vault wizard.</li>
+                  <li>Pick the provider folder already managed by your sync client.</li>
+                  <li>Confirm the sync client is running, then let Mythos move the vault.</li>
+                </ol>
+                <strong>Troubleshooting</strong>
+                <ul>
+                  <li><b>Vault not found:</b> reopen Settings and confirm the Story Vault path points at the synced folder.</li>
+                  <li><b>Permission denied:</b> grant file access to the folder, then retry the wizard permission check.</li>
+                  <li><b>Sync client not detected:</b> start Dropbox, iCloud Drive, OneDrive, or Google Drive before moving the vault.</li>
+                </ul>
+              </div>
             </div>
           </section>
 
