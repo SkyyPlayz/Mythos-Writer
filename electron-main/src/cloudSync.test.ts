@@ -12,6 +12,7 @@ import {
   releaseLockfile,
   checkLockfile,
   isLockfileLive,
+  isForeignHostLock,
   appendSyncEvent,
   type LockfileData,
 } from './cloudSync.js';
@@ -249,6 +250,30 @@ describe('isLockfileLive', () => {
       vaultPath: '/tmp/test',
     };
     expect(isLockfileLive(data)).toBe(false);
+  });
+});
+
+// ─── isForeignHostLock ────────────────────────────────────────────────────────
+
+describe('isForeignHostLock', () => {
+  it('returns true for a lock written by a different hostname', () => {
+    const data: LockfileData = {
+      hostname: 'some-other-machine.local',
+      pid: 12345,
+      timestamp: new Date().toISOString(),
+      vaultPath: '/tmp/test',
+    };
+    expect(isForeignHostLock(data)).toBe(true);
+  });
+
+  it('returns false for a lock written by the current hostname', () => {
+    const data: LockfileData = {
+      hostname: os.hostname(),
+      pid: 12345,
+      timestamp: new Date().toISOString(),
+      vaultPath: '/tmp/test',
+    };
+    expect(isForeignHostLock(data)).toBe(false);
   });
 });
 

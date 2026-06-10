@@ -358,6 +358,7 @@ import {
   releaseLockfile,
   checkLockfile,
   isLockfileLive,
+  isForeignHostLock,
   appendSyncEvent,
 } from './cloudSync.js';
 
@@ -4459,10 +4460,12 @@ const handlers: IpcHandlers = {
     const vaultRoot = getVaultRoot();
     const ts = () => new Date().toISOString();
 
-    // 1. Check for a concurrent live session.
+    // 1. Check for a concurrent live session OR a cross-host lock (SKY-1143).
+    // isLockfileLive: same-host PID still running.
+    // isForeignHostLock: lock written by a different machine — always warn.
     let lockfileConflict: import('./ipc.js').LockfileConflictInfo | null = null;
     const existing = checkLockfile(vaultRoot);
-    if (existing && isLockfileLive(existing)) {
+    if (existing && (isLockfileLive(existing) || isForeignHostLock(existing))) {
       lockfileConflict = { hostname: existing.hostname, pid: existing.pid, timestamp: existing.timestamp };
       appendSyncEvent(vaultRoot, {
         type: 'concurrent_session_detected',
