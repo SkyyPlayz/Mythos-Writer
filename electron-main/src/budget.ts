@@ -3,7 +3,10 @@
 
 import type { DatabaseSync } from 'node:sqlite';
 import { countSuggestionsInWindow, countTokensInWindow } from './db.js';
-import type { SuggestionCategory } from './db.js';
+import {
+  coerceSuggestionCategory,
+  type SuggestionCategory,
+} from './suggestionCategory.js';
 
 export interface AgentBudgetSettings {
   autoApply: boolean;
@@ -11,8 +14,16 @@ export interface AgentBudgetSettings {
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
   maxTokensPerDay: number;
-  /** Per-category auto-apply toggles (writing-assistant only). All default to true. */
-  autoApplyCategories?: Record<SuggestionCategory, boolean>;
+  /**
+   * SKY-908 — Per-category auto-apply allow-list. Undefined means
+   * "honour the master autoApply boolean for every category" (the pre-SKY-908
+   * default, and what users see after upgrading from a single-checkbox
+   * setting). When defined, a category whose value is `false` short-circuits
+   * to no-auto-apply regardless of confidence/budget; categories that are
+   * absent from the map fall back to `true` so a forward-compat schema does
+   * not silently disable a newly-added category.
+   */
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
 }
 
 export interface AutoApplyResult {
@@ -28,8 +39,9 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  *
  * Rules (in evaluation order):
  * 1. autoApply must be true — otherwise stay proposed, no budget check.
- * 2. If category is provided and autoApplyCategories has an entry for it,
- *    the category must be enabled — otherwise stay proposed, no budget check.
+ * 2. SKY-908 — if autoApplyCategories is defined, the suggestion's category
+ *    must be enabled. Missing keys default to enabled so forward-compat
+ *    schemas do not silently disable new categories.
  * 3. confidence must be >= confidenceThreshold — otherwise stay proposed.
  * 4. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
  *    Checks: hourly suggestion count, hourly token count, daily token count.
@@ -40,15 +52,18 @@ export function evaluateAutoApply(
   sourceAgent: string,
   settings: AgentBudgetSettings,
   db: DatabaseSync,
-  category: SuggestionCategory | null = null,
+  category?: SuggestionCategory | null,
 ): AutoApplyResult {
   if (!settings.autoApply) {
     return { shouldAutoApply: false, budgetExceeded: false };
   }
 
-  if (category !== null && settings.autoApplyCategories) {
-    const categoryEnabled = settings.autoApplyCategories[category] ?? true;
-    if (!categoryEnabled) {
+  if (settings.autoApplyCategories) {
+    const effectiveCategory = coerceSuggestionCategory(category);
+    const enabled = settings.autoApplyCategories[effectiveCategory];
+    // Absent keys default to enabled (forward-compat); only an explicit
+    // `false` disables auto-apply for that category.
+    if (enabled === false) {
       return { shouldAutoApply: false, budgetExceeded: false };
     }
   }

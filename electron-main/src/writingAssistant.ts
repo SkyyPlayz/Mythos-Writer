@@ -3,9 +3,10 @@
 
 import type { DbSuggestion, SuggestionCategory } from './db.js';
 import type { BetaReadComment } from './ipc.js';
+import { categorizeSuggestion } from './suggestionCategory.js';
 
 const VALID_CATEGORIES: ReadonlySet<string> = new Set<SuggestionCategory>([
-  'punctuation', 'spelling', 'grammar', 'sentence-structure', 'style',
+  'punctuation', 'spelling', 'grammar', 'sentence-structure', 'style-tone', 'other',
 ]);
 
 /**
@@ -68,7 +69,6 @@ export function buildScanSuggestions(
   scenePath: string,
   scannedAt: string,
   uuidFn: () => string,
-  categories?: (SuggestionCategory | null)[],
 ): DbSuggestion[] {
   return tips.map((tip, i) => ({
     id: uuidFn(),
@@ -84,7 +84,7 @@ export function buildScanSuggestions(
     applied_at: null,
     applied_run_id: null,
     budget_exceeded: 0,
-    category: categories?.[i] ?? null,
+    category: categorizeSuggestion(tip),
   }));
 }
 

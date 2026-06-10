@@ -119,11 +119,11 @@ describe('parseScanTips (§1)', () => {
 
 describe('parseScanTipsStructured (§1b)', () => {
   it('parses well-formed structured JSON array', () => {
-    const text = '[{"category":"grammar","tip":"Fix the fragment."},{"category":"style","tip":"Vary sentence length."}]';
+    const text = '[{"category":"grammar","tip":"Fix the fragment."},{"category":"style-tone","tip":"Vary sentence length."}]';
     const result = parseScanTipsStructured(text);
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ category: 'grammar', tip: 'Fix the fragment.' });
-    expect(result[1]).toEqual({ category: 'style', tip: 'Vary sentence length.' });
+    expect(result[1]).toEqual({ category: 'style-tone', tip: 'Vary sentence length.' });
   });
 
   it('maps unknown categories to null', () => {
@@ -141,7 +141,7 @@ describe('parseScanTipsStructured (§1b)', () => {
   });
 
   it('respects limit parameter', () => {
-    const text = '[{"category":"grammar","tip":"A"},{"category":"spelling","tip":"B"},{"category":"style","tip":"C"}]';
+    const text = '[{"category":"grammar","tip":"A"},{"category":"spelling","tip":"B"},{"category":"style-tone","tip":"C"}]';
     expect(parseScanTipsStructured(text, 2)).toHaveLength(2);
   });
 
@@ -149,10 +149,10 @@ describe('parseScanTipsStructured (§1b)', () => {
     expect(parseScanTipsStructured('')).toEqual([]);
   });
 
-  it('accepts all five valid categories', () => {
-    const cats: SuggestionCategory[] = ['punctuation', 'spelling', 'grammar', 'sentence-structure', 'style'];
+  it('accepts all six valid categories', () => {
+    const cats: SuggestionCategory[] = ['punctuation', 'spelling', 'grammar', 'sentence-structure', 'style-tone', 'other'];
     const text = JSON.stringify(cats.map((c) => ({ category: c, tip: `${c} tip` })));
-    const result = parseScanTipsStructured(text);
+    const result = parseScanTipsStructured(text, cats.length);
     expect(result.map((r) => r.category)).toEqual(cats);
   });
 });
@@ -213,6 +213,24 @@ describe('buildScanSuggestions (§2)', () => {
     }
   });
 
+  // SKY-908 — built-in categorization
+  it('categorizes tips into the matching suggestion category', () => {
+    const rows = buildScanSuggestions([
+      'Add a comma after the introductory phrase',
+      'Typo: "recieved" should be "received"',
+      'Verb tense shift between paragraphs',
+      'Run-on sentence — consider splitting',
+      'Passive voice — try active voice instead',
+      'Move this scene before the next chapter',
+    ], SCENE_ID, SCENE_PATH, SCANNED_AT, nextId);
+    expect(rows[0].category).toBe('punctuation');
+    expect(rows[1].category).toBe('spelling');
+    expect(rows[2].category).toBe('grammar');
+    expect(rows[3].category).toBe('sentence-structure');
+    expect(rows[4].category).toBe('style-tone');
+    expect(rows[5].category).toBe('other');
+  });
+
   it('assigns a unique id to each row via the provided uuidFn', () => {
     let counter = 0;
     const deterministicId = () => `uuid-${++counter}`;
@@ -225,22 +243,21 @@ describe('buildScanSuggestions (§2)', () => {
     expect(buildScanSuggestions([], SCENE_ID, SCENE_PATH, SCANNED_AT, nextId)).toEqual([]);
   });
 
-  it('sets category to null when no categories array provided', () => {
-    const rows = buildScanSuggestions(['Tip.'], SCENE_ID, SCENE_PATH, SCANNED_AT, nextId);
-    expect(rows[0].category).toBeNull();
+  it('auto-categorizes tips via keyword matcher; falls back to "other"', () => {
+    const rows = buildScanSuggestions(['Unrecognized suggestion text.'], SCENE_ID, SCENE_PATH, SCANNED_AT, nextId);
+    expect(rows[0].category).toBe('other');
   });
 
-  it('sets category from provided categories array', () => {
+  it('assigns correct category per tip from keyword patterns', () => {
     const rows = buildScanSuggestions(
-      ['Fix comma.', 'Fix run-on.'],
+      ['Fix the comma placement here.', 'Fix run-on sentence here.'],
       SCENE_ID,
       SCENE_PATH,
       SCANNED_AT,
       nextId,
-      ['punctuation', 'grammar'],
     );
     expect(rows[0].category).toBe('punctuation');
-    expect(rows[1].category).toBe('grammar');
+    expect(rows[1].category).toBe('sentence-structure');
   });
 });
 

@@ -237,6 +237,7 @@ export function detectInconsistencies(
             applied_at: null,
             applied_run_id: null,
             budget_exceeded: 0,
+            category: 'other',
           });
         }
       }
@@ -285,6 +286,7 @@ export function detectWikiLinkOpportunities(
       applied_at: null,
       applied_run_id: null,
       budget_exceeded: 0,
+      category: 'other',
     });
   }
 

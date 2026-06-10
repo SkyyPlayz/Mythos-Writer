@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SettingsPanel from './SettingsPanel';
 import type { FocusPrefs } from './types';
 
-const ALL_CATS: Record<SuggestionCategory, boolean> = { punctuation: true, spelling: true, grammar: true, 'sentence-structure': true, style: true };
+const ALL_CATS: Record<SuggestionCategory, boolean> = { punctuation: true, spelling: true, grammar: true, 'sentence-structure': true, 'style-tone': true, other: true };
 
 const defaultSettings: AppSettings = {
   apiKey: '',
@@ -927,5 +927,115 @@ describe('SettingsPanel', () => {
     // Switch back to Anthropic: dropdown
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'anthropic' } });
     expect(screen.getByLabelText(/writing assistant model/i).tagName).toBe('SELECT');
+  });
+
+  // ── SKY-908 — per-category auto-apply toggles ──
+
+  it('per-category toggle group is hidden when master autoApply is off', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/auto-apply writing assistant suggestions/i));
+
+    expect(screen.queryByTestId('wa-category-toggles')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brainstorm-category-toggles')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-category-toggles')).not.toBeInTheDocument();
+  });
+
+  it('per-category toggle group appears when master autoApply is toggled on', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/auto-apply writing assistant suggestions/i));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /auto-apply writing assistant suggestions/i }));
+
+    expect(screen.getByTestId('wa-category-toggles')).toBeInTheDocument();
+    // Five named categories + 'other' = 6 toggles
+    const punctuation = screen.getByRole('checkbox', { name: /writing assistant auto-apply punctuation/i });
+    const spelling = screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i });
+    const grammar = screen.getByRole('checkbox', { name: /writing assistant auto-apply grammar/i });
+    const structure = screen.getByRole('checkbox', { name: /writing assistant auto-apply sentence structure/i });
+    const style = screen.getByRole('checkbox', { name: /writing assistant auto-apply style \/ tone/i });
+    const other = screen.getByRole('checkbox', { name: /writing assistant auto-apply other/i });
+
+    // All six default to enabled (back-compat: undefined map ⇒ all-on).
+    for (const cb of [punctuation, spelling, grammar, structure, style, other]) {
+      expect((cb as HTMLInputElement).checked).toBe(true);
+    }
+  });
+
+  it('disabling a single category persists a full map via IPC', async () => {
+    const settingsWithAutoApply = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    const map = saved.agents.writingAssistant.autoApplyCategories;
+    expect(map).toBeDefined();
+    expect(map?.['spelling']).toBe(false);
+    // The other five materialise as enabled so the on-disk shape is unambiguous.
+    expect(map?.['punctuation']).toBe(true);
+    expect(map?.['grammar']).toBe(true);
+    expect(map?.['sentence-structure']).toBe(true);
+    expect(map?.['style-tone']).toBe(true);
+    expect(map?.['other']).toBe(true);
+  });
+
+  it('restores per-category state from loaded settings', async () => {
+    const loaded = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          autoApply: true,
+          autoApplyCategories: {
+            'punctuation': true,
+            'spelling': false,
+            'grammar': true,
+            'sentence-structure': false,
+            'style-tone': true,
+            'other': true,
+          },
+        },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(loaded);
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    const spelling = screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i }) as HTMLInputElement;
+    const structure = screen.getByRole('checkbox', { name: /writing assistant auto-apply sentence structure/i }) as HTMLInputElement;
+    const grammar = screen.getByRole('checkbox', { name: /writing assistant auto-apply grammar/i }) as HTMLInputElement;
+    expect(spelling.checked).toBe(false);
+    expect(structure.checked).toBe(false);
+    expect(grammar.checked).toBe(true);
+  });
+
+  it('per-category toggles render for all three agents when their master is on', async () => {
+    const allOn = {
+      ...defaultSettings,
+      agents: {
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true },
+        brainstorm: { ...defaultSettings.agents.brainstorm, autoApply: true },
+        archive: { ...defaultSettings.agents.archive, autoApply: true },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(allOn);
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    expect(screen.getByTestId('wa-category-toggles')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-category-toggles')).toBeInTheDocument();
+    expect(screen.getByTestId('archive-category-toggles')).toBeInTheDocument();
   });
 });
