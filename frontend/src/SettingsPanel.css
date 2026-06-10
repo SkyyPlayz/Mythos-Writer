@@ -1096,3 +1096,71 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Vault save confirmation */
+.settings-saved-ok {
+  font-size: 0.78rem;
+  color: var(--state-success, #4ade80);
+  margin-left: 8px;
+}
+
+/* Help text in BrainstormRoutingPanel */
+.settings-help-text {
+  font-size: 0.78rem;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  margin: 0 0 10px;
+}
+
+/* Brainstorm routing memory list */
+.bs-routing-memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bs-routing-memory-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  font-size: 0.8rem;
+}
+
+.bs-routing-memory-cat {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-body, rgba(255,255,255,0.85));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bs-routing-memory-dest {
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.bs-routing-memory-reset {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.bs-routing-memory-reset:hover {
+  color: var(--text-body, rgba(255,255,255,0.85));
+  background: rgba(255,255,255,0.08);
+}
