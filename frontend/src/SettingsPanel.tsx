@@ -408,19 +408,19 @@ function AgentProviderSection({
         </p>
       )}
 
-      {/* "Use different provider" toggle */}
+      {/* Per-agent provider override toggle */}
       <div className="settings-field settings-field-inline settings-agent-provider-toggle">
         <label className="settings-toggle" htmlFor={`${idPrefix}-provider-toggle`}>
           <input
             id={`${idPrefix}-provider-toggle`}
             type="checkbox"
-            aria-label={`Use a different provider for ${agentName}`}
+            aria-label={`Enable ${agentName} provider override`}
             checked={override.enabled}
             onChange={(e) => onChange('enabled', e.target.checked)}
           />
           <span className="settings-toggle-track" />
         </label>
-        <span className="settings-label">Use a different provider for this agent</span>
+        <span className="settings-label">Override provider for this agent</span>
       </div>
 
       {override.enabled && (
@@ -1097,7 +1097,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
           {/* ── AI Providers ── */}
           <section className="settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
