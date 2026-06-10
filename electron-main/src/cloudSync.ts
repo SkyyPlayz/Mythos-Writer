@@ -180,8 +180,18 @@ function lockfilePath(vaultRoot: string): string {
   return path.join(vaultRoot, MYTHOS_DIR, LOCK_FILE);
 }
 
-/** Write a fresh lockfile for the current process. Creates `.mythos/` if needed. */
-export function acquireLockfile(vaultRoot: string): LockfileData {
+/**
+ * Atomically acquire the vault lockfile.
+ *
+ * Uses O_CREAT|O_EXCL ('ax') so the create-or-fail is a single syscall with
+ * no TOCTOU window. If EEXIST, the existing lock is checked for liveness:
+ * - live same-host process  → returns null (caller sees contention)
+ * - foreign-host lock       → returns null (caller warns user)
+ * - stale / dead PID        → removes the stale file and re-acquires
+ *
+ * Returns the acquired LockfileData, or null when contention is detected.
+ */
+export function acquireLockfile(vaultRoot: string): LockfileData | null {
   fs.mkdirSync(path.join(vaultRoot, MYTHOS_DIR), { recursive: true });
   const data: LockfileData = {
     hostname: os.hostname(),
@@ -189,8 +199,31 @@ export function acquireLockfile(vaultRoot: string): LockfileData {
     timestamp: new Date().toISOString(),
     vaultPath: vaultRoot,
   };
-  fs.writeFileSync(lockfilePath(vaultRoot), JSON.stringify(data, null, 2), 'utf-8');
-  return data;
+  const lp = lockfilePath(vaultRoot);
+  const content = JSON.stringify(data, null, 2);
+
+  try {
+    // Atomic exclusive create — throws EEXIST if already present.
+    const fd = fs.openSync(lp, 'ax');
+    fs.writeSync(fd, content);
+    fs.closeSync(fd);
+    return data;
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+
+  // EEXIST: read the existing lock and decide.
+  const existing = checkLockfile(vaultRoot);
+  if (existing === null) {
+    // Lockfile vanished between our open and read — try once more recursively.
+    return acquireLockfile(vaultRoot);
+  }
+  if (isLockfileLive(existing) || isForeignHostLock(existing)) {
+    return null; // live contention
+  }
+  // Stale lock from a crashed process — remove and re-acquire.
+  try { fs.unlinkSync(lp); } catch { /* already gone */ }
+  return acquireLockfile(vaultRoot);
 }
 
 /** Remove the lockfile. Safe to call when no lockfile exists. */
