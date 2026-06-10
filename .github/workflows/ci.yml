@@ -206,15 +206,6 @@ jobs:
           done
           echo "Guard passed: PERSIST_PROMPTS is not set."
 
-      - name: Install rpmbuild
-        run: |
-          if command -v rpmbuild >/dev/null 2>&1; then
-            echo "rpmbuild already installed — skipping"
-          else
-            sudo apt-get update -q
-            sudo apt-get install -y rpm
-          fi
-
       - name: Build and package (Linux)
         run: npm run dist:linux
 
@@ -223,13 +214,6 @@ jobs:
           DEB=$(ls dist-electron/*.deb | head -1)
           echo "Verifying .deb: $DEB"
           dpkg-deb --info "$DEB"
-
-      - name: Verify .rpm artifact
-        run: |
-          RPM=$(ls dist-electron/*.rpm | head -1)
-          echo "Verifying .rpm: $RPM"
-          file "$RPM"
-          file "$RPM" | grep -qi 'rpm' || { echo "ERROR: file(1) did not identify $RPM as an RPM package"; exit 1; }
 
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
@@ -256,7 +240,6 @@ jobs:
           path: |
             dist-electron/*.AppImage
             dist-electron/*.deb
-            dist-electron/*.rpm
           retention-days: 7
 
   report:
