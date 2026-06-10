@@ -187,12 +187,6 @@ const BG_POSITIONS = [
   { value: 'bottom right', label: '↘' },
 ];
 
-function validateApiKey(key: string): string | null {
-  if (!key) return null;
-  if (!key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
-  return null;
-}
-
 /** Contrast ratio badge — shows ratio and colour-codes pass/fail. */
 function ContrastBadge({ ratio }: { ratio: number }) {
   const pass = ratio >= 4.5;
@@ -295,13 +289,10 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, []);
 
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [showApiKey, setShowApiKey] = useState(false);
   const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
 
   // SKY-9: Vault paths state. `vaults` mirrors the persisted Story Vault +
@@ -403,9 +394,6 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     }).catch(() => {});
   }, []);
 
-  const keyIsConfigured = Boolean(settings.apiKey);
-  const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
-
   const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(
     agent: A,
     field: K,
@@ -422,7 +410,6 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (apiKeyError) return;
     setSaving(true);
     setSaveError(null);
     setSavedOk(false);
@@ -436,7 +423,6 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
       };
       const payload: AppSettings = {
         ...settings,
-        apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
         provider,
         liquidNeon: lg,
         telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
@@ -450,7 +436,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved]);
+  }, [settings, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -1450,7 +1436,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             <button
               className="settings-btn settings-btn-save"
               onClick={handleSave}
-              disabled={saving || !!apiKeyError}
+              disabled={saving}
               aria-label="Save settings"
             >
               {saving ? 'Saving…' : 'Save'}
