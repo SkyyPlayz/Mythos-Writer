@@ -233,7 +233,11 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     if (!editor) return;
     const focusEditor = () => {
       if (!editor) return;
-      editor.chain().focus(initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end').run();
+      // TipTap nulls commandManager during destroy() before React can re-render
+      // the ref to null; guard against the destroyed-but-non-null editor case.
+      try {
+        editor.chain().focus(initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end').run();
+      } catch (_) { /* editor destroyed between render and effect */ }
     };
     const focusTimer = setTimeout(focusEditor, 0);
     const cb = onEditorReadyRef.current;
