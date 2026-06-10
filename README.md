@@ -99,6 +99,48 @@ Any OpenAI Chat Completions-compatible API works, including:
 
 > **Security note:** When using a remote endpoint (non-localhost), your text is sent to that server. Only use endpoints you own or fully trust. Localhost endpoints (Ollama, LM Studio) never send data over the network.
 
+### Voice
+
+Mythos Writer supports local-first voice input, with optional cloud speech-to-text (STT) and text-to-speech (TTS) through the same provider settings used for AI text.
+
+#### Enable voice
+
+1. Open **Settings → Voice**.
+2. Turn on **Enable voice input**.
+3. Choose **Toggle** or **Push-to-talk** capture mode.
+4. Pick a microphone, or leave **System default** selected.
+5. For cloud STT or TTS, set the STT/TTS provider mode to cloud/auto and choose a **Voice Provider**.
+6. Click **Save**.
+
+Local STT/TTS paths keep using the configured local binaries and never require a cloud provider. When local mode is active, voice stays on your device.
+
+#### Providers that support voice
+
+| Provider | Voice support | Notes |
+|----------|---------------|-------|
+| **OpenAI** | ✅ STT + TTS | Uses OpenAI-compatible `/audio/transcriptions` and `/audio/speech` endpoints |
+| **Custom OpenAI-compatible endpoint** | ✅ STT + TTS when a Base URL is set | Use for providers that implement OpenAI-compatible audio endpoints |
+| **Anthropic** | — | Text AI only; does not provide STT/TTS endpoints |
+| **Ollama / LM Studio** | Local text provider only by default | Local voice still works through the separate local STT/TTS settings |
+
+#### What `capabilities` means
+
+Provider configs can declare `capabilities` to tell Mythos Writer which non-text features are available:
+
+```json
+{
+  "kind": "openai",
+  "model": "gpt-4o-mini",
+  "capabilities": { "transcribe": true, "speak": true }
+}
+```
+
+`transcribe` means the provider can turn audio into text. `speak` means it can synthesize speech. The Voice Provider selector only lists providers that declare one of those capabilities, or known OpenAI-compatible voice providers.
+
+### Backward compatibility
+
+Older installs may still have `stt.cloudApiKey` or `tts.cloudApiKey` saved. Those keys continue to work as a fallback when no voice-capable provider is configured. New setups should prefer the unified provider configuration so text AI, STT, and TTS are managed from one place.
+
 ### Per-agent configuration
 
 Each agent (Writing Assistant, Brainstorm, Archive) can use a different model or provider:
@@ -108,46 +150,6 @@ Each agent (Writing Assistant, Brainstorm, Archive) can use a different model or
 3. For a **completely different provider**: toggle **Use a different provider for this agent**, then configure the provider, model, and credentials
 4. Click **Test connection** to verify the per-agent configuration
 5. **Save** — that agent will now use its own provider for all AI requests
-
-## Voice (STT / TTS)
-
-Mythos Writer supports voice input (speech-to-text) and voice output (text-to-speech). Both can use a local binary or route through any voice-capable AI provider.
-
-### Which providers support voice?
-
-| Provider | STT | TTS | Notes |
-|----------|-----|-----|-------|
-| **OpenAI** | ✅ | ✅ | `/v1/audio/transcriptions` and `/v1/audio/speech` |
-| **Custom endpoint** (with Base URL set) | ✅ | ✅ | OpenAI-compatible audio API assumed |
-| **Anthropic** | — | — | No audio API; use OpenAI or a local binary |
-| **Ollama / LM Studio** | — | — | No audio API; use a local binary |
-| **Local whisper.cpp** | ✅ | — | Set `stt.localBinaryPath` in Settings |
-| **Local TTS binary** | — | ✅ | Set `tts.localBinaryPath` in Settings |
-
-A provider shows a **voice badge** (🎙) in Settings when it declares STT or TTS capability.
-
-### Enabling voice with OpenAI
-
-1. In **Settings → AI Provider**, configure an OpenAI (or compatible) provider.
-2. In **Settings → Voice**, the provider appears automatically in the **Voice provider** selector.
-3. Select it and click **Save**.
-4. Toggle the microphone button in the toolbar (or use `Ctrl+Shift+M`) to start recording.
-
-### Capabilities field
-
-When adding a custom provider you can explicitly declare its voice capabilities:
-
-```json
-{
-  "capabilities": { "transcribe": true, "speak": true }
-}
-```
-
-When absent, defaults are inferred: OpenAI-kind providers and custom providers with a `baseUrl` are treated as voice-capable; all other kinds are not.
-
-### Backward compatibility
-
-If you previously set `stt.cloudApiKey` in Settings, that key is still used as a fallback when no voice provider is configured. It is deprecated — migrate to a named provider in **Settings → AI Provider** and select it in the **Voice provider** dropdown.
 
 ## Contributing
 

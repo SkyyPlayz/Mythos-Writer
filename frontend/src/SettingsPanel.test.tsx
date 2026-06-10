@@ -864,6 +864,20 @@ describe('SettingsPanel', () => {
     expect(selector.options[0].textContent).toMatch(/no providers support voice/i);
   });
 
+  it('lists a custom OpenAI-compatible provider with baseUrl as voice-capable', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'custom', apiKey: 'sk-test', baseUrl: 'https://voice.example/v1', model: 'custom-voice' },
+      stt: { enabled: true, provider: 'cloud' },
+      tts: { enabled: true, provider: 'cloud' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const selector = await screen.findByRole('combobox', { name: /voice provider/i }) as HTMLSelectElement;
+    expect(Array.from(selector.options).map((o) => o.textContent)).toContain('Custom (https://voice.example/v1)');
+  });
+
   // ── MYT-779: Telemetry section ──
 
   it('renders Telemetry section with opt-in toggle', async () => {

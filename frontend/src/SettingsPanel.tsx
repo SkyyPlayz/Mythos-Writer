@@ -313,7 +313,10 @@ function validateApiKey(key: string): string | null {
 }
 
 function providerSupportsVoice(provider?: AppSettings['provider']): boolean {
-  return Boolean(provider?.capabilities?.transcribe || provider?.capabilities?.speak);
+  if (!provider) return false;
+  if (provider.capabilities?.transcribe || provider.capabilities?.speak) return true;
+  if (provider.kind === 'openai') return true;
+  return provider.kind === 'custom' && Boolean(provider.baseUrl);
 }
 
 function formatProviderLabel(provider: AppSettings['provider']): string {
@@ -2524,7 +2527,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     </select>
                   </div>
                   <p className="settings-hint" id="voice-provider-hint">
-                    Only providers with voice capabilities (STT and/or TTS) are shown above.
+                    Voice provider controls cloud speech-to-text and text-to-speech. Only providers with voice capabilities (OpenAI or OpenAI-compatible custom endpoints) are shown; local STT/TTS stays on your device.
                   </p>
                 </>
               )}
