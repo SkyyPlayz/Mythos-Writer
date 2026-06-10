@@ -570,7 +570,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
     expect(screen.getByRole('textbox', { name: /default model for this provider/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/provider api key/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument();
   });
 
   it('shows base URL field when switching to ollama', async () => {

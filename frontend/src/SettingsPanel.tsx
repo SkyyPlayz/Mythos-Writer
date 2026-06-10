@@ -679,7 +679,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                           placeholder={settings.provider?.apiKey ? 'Key configured — enter a new key to replace' : 'Paste API key…'}
                           autoComplete="off"
                           spellCheck={false}
-                          aria-label="Provider API key"
+                          aria-label={providerKind === 'anthropic' ? 'Anthropic API key' : 'Provider API key'}
                           onChange={(e) => { setProviderApiKey(e.target.value); setProviderApiKeyDirty(true); setTestConnectionStatus('idle'); setSavedOk(false); }}
                         />
                       </div>
@@ -738,43 +738,6 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 </>
               );
             })()}
-          </section>
-
-          {/* ── API Key ── */}
-          <section className="settings-section" aria-labelledby="section-api-key">
-            <h3 className="settings-section-title" id="section-api-key">API Key</h3>
-            <div className="settings-field">
-              <label className="settings-label" htmlFor="api-key-input">Anthropic API Key</label>
-              <div className="settings-input-row">
-                <input
-                  id="api-key-input"
-                  className={`settings-input${apiKeyError ? ' settings-input-error' : ''}`}
-                  type={showApiKey ? 'text' : 'password'}
-                  value={apiKeyInput}
-                  onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
-                  placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : 'sk-ant-…'}
-                  aria-invalid={apiKeyError ? 'true' : 'false'}
-                  aria-describedby={apiKeyError ? 'api-key-error' : undefined}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <button
-                  className="settings-reveal-btn"
-                  type="button"
-                  onClick={() => setShowApiKey((v) => !v)}
-                  aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-                >
-                  {showApiKey ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              {apiKeyError && (
-                <p className="settings-error-msg" id="api-key-error" role="alert">{apiKeyError}</p>
-              )}
-              {!apiKeyDirty && keyIsConfigured && (
-                <p className="settings-hint" data-testid="key-configured-hint">Key is already configured.</p>
-              )}
-              <p className="settings-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
-            </div>
           </section>
 
           {/* ── Vault paths (SKY-9) ── */}
@@ -915,8 +878,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                       onChange={(e) => setAgentField('writingAssistant', 'autoApply', e.target.checked)}
                     />
                     <span className="settings-toggle-track" />
+                    <span className="settings-label">Auto-apply suggestions</span>
                   </label>
-                  <span className="settings-label">Auto-apply suggestions</span>
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-confidence">Auto-apply threshold</label>
@@ -1026,8 +989,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                       onChange={(e) => setAgentField('brainstorm', 'autoApply', e.target.checked)}
                     />
                     <span className="settings-toggle-track" />
+                    <span className="settings-label">Auto-apply suggestions</span>
                   </label>
-                  <span className="settings-label">Auto-apply suggestions</span>
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-confidence">Auto-apply threshold</label>
@@ -1153,8 +1116,8 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                       onChange={(e) => setAgentField('archive', 'autoApply', e.target.checked)}
                     />
                     <span className="settings-toggle-track" />
+                    <span className="settings-label">Auto-apply suggestions</span>
                   </label>
-                  <span className="settings-label">Auto-apply suggestions</span>
                 </div>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-confidence">Auto-apply threshold</label>
