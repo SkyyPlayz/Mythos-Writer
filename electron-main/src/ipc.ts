@@ -234,6 +234,10 @@ export const IPC_CHANNELS = {
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
   // renderer has one move channel per vault root.
   VAULT_MOVE: 'vault:move',
+  // SKY-862: relocate the entire story vault to a cloud-synced folder.
+  // Distinct from VAULT_MOVE (intra-vault file rename) — this moves the root
+  // directory itself and updates persisted settings.
+  VAULT_GUIDED_FOLDER_MOVE: 'vault:guidedFolderMove',
   // SKY-9: generic folder picker for the Settings UI. Distinct from
   // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
   // and from BG_PICK (image picker). Returns the chosen absolute path with
@@ -368,6 +372,10 @@ export const IPC_CHANNELS = {
   TIMELINE_PROPOSALS_GENERATE: 'timeline:proposals:generate',
   TIMELINE_PROPOSALS_LIST: 'timeline:proposals:list',
   TIMELINE_PROPOSAL_RESOLVE: 'timeline:proposal:resolve',
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
+  VAULT_DISMISS_SYNC_WARNING: 'vault:dismiss-sync-warning',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -536,6 +544,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
@@ -636,6 +645,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_PROPOSALS_GENERATE]: (payload: TimelineProposalsGeneratePayload) => TimelineProposalsGenerateResponse;
   [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: TimelineProposalsListPayload) => TimelineProposalsListResponse;
   [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: TimelineProposalResolvePayload) => TimelineProposalResolveResponse;
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: (payload: never) => Promise<VaultCheckConflictsResponse>;
+  [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (payload: never) => { ok: true };
 }
 
 // ─── Payload / Response types ───
@@ -701,6 +714,27 @@ export interface VaultMkdirPayload {
 export interface VaultMkdirResponse {
   path: string;
   created: boolean;
+}
+
+// ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
+
+/** Big-4 cloud-sync providers supported in Wave 2.B. */
+export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
+
+/**
+ * Payload for VAULT_GUIDED_FOLDER_MOVE.
+ * `sessionToken` must be a registration token issued by a main-process
+ * vault:pick-folder dialog and bound to exactly `targetPath`.
+ */
+export interface VaultGuidedMovePayload {
+  targetPath: string;
+  syncProvider: CloudSyncProvider;
+  sessionToken: string;
+}
+
+export interface VaultGuidedMoveResponse {
+  moved: boolean;
+  newVaultPath: string;
 }
 
 export interface VaultChooseFolderPayload {
@@ -3113,4 +3147,33 @@ export interface TimelineProposalResolveResponse {
    * value (AI proposals never overwrite user-set dates / metadata).
    */
   skippedBecauseUserSet?: boolean;
+}
+
+// ─── SKY-863: Cloud-sync conflict detection + lockfile types ──────────────────
+
+/** One conflict file that was detected and resolved during vault open. */
+export interface ResolvedConflictInfo {
+  conflictPath: string;
+  originalPath: string;
+  provider: 'dropbox' | 'icloud' | 'syncthing';
+  keptPath: string;
+  archivedPath: string;
+  resolvedAt: string;
+}
+
+/** Metadata from an existing lockfile that belongs to a live concurrent session. */
+export interface LockfileConflictInfo {
+  hostname: string;
+  pid: number;
+  timestamp: string;
+}
+
+/** Response from `vault:check-conflicts`. */
+export interface VaultCheckConflictsResponse {
+  /** Conflicts detected and auto-resolved during this call. */
+  resolved: ResolvedConflictInfo[];
+  /** Non-null when another live Mythos session has this vault open. */
+  lockfileConflict: LockfileConflictInfo | null;
+  /** True when the user has previously dismissed warnings for this vault. */
+  dismissed: boolean;
 }

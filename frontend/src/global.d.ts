@@ -422,7 +422,7 @@ interface Window {
     getVaultRoot: () => Promise<{ vaultRoot: string }>;
     importVault: (sourcePath: string, registrationToken: string) => Promise<{ imported: number; skipped: number; errors: string[] }>;
     reindexVault: () => Promise<{ scanned: number; updated: number }>;
-    pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean }>;
+    pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null }>;
     obsidianDryRun: (sourcePath: string, registrationToken: string) => Promise<unknown>;
     obsidianRegister: (sourcePath: string, registrationToken: string) => Promise<unknown>;
     loadSampleProject: () => Promise<unknown>;
@@ -833,6 +833,13 @@ interface Window {
     entityRelationshipsList: (entityId: string) => Promise<{ entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] }>;
     entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
     entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
+
+    // SKY-861: Move vault root to a cloud-sync folder.
+    vaultGuidedFolderMove: (payload: {
+      targetPath: string;
+      syncProvider: 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
+      sessionToken: string;
+    }) => Promise<{ moved: boolean; newVaultPath: string } | { error: string }>;
 
   };
 

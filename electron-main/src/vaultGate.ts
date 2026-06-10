@@ -237,3 +237,85 @@ export function looksLikeObsidianVault(
 ): boolean {
   return existsSync(path.join(p, '.obsidian'));
 }
+
+// ─── checkGuidedMoveGate (SKY-862) ───────────────────────────────────────────
+// Gate for vault:guidedFolderMove. Validates all three required proof layers:
+//   1. targetPath is within os.homedir() and has no `..` components.
+//   2. syncProvider is one of the approved big-4 cloud providers.
+//   3. sessionToken is a valid registration token bound to targetPath.
+// Consuming the token on success makes this a one-shot operation.
+
+export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
+
+const VALID_SYNC_PROVIDERS = new Set<string>(['icloud', 'dropbox', 'google-drive', 'onedrive']);
+
+export interface GuidedMoveGateInput {
+  targetPath: unknown;
+  syncProvider: unknown;
+  sessionToken: unknown;
+}
+
+export type GuidedMoveGateResult =
+  | { ok: true; targetPath: string; syncProvider: CloudSyncProvider }
+  | { ok: false; error: string };
+
+/**
+ * Gate vault:guidedFolderMove (SKY-862, SEC-11 vault-token pattern).
+ *
+ * Pure validation — no FS side effects. Pass `homeDir` from `os.homedir()` so
+ * tests remain Electron-free.
+ *
+ * Rejection reasons:
+ *  - targetPath missing / empty / not absolute.
+ *  - targetPath contains `..` (traversal attempt).
+ *  - targetPath is not within homeDir (system-directory escape).
+ *  - syncProvider is not in the approved set.
+ *  - sessionToken absent, invalid, expired, or bound to a different path.
+ */
+export function checkGuidedMoveGate(
+  input: GuidedMoveGateInput,
+  homeDir: string,
+  now: number = Date.now(),
+): GuidedMoveGateResult {
+  if (!isNonEmptyString(input.targetPath)) {
+    return { ok: false, error: 'targetPath: must be a non-empty string' };
+  }
+  const targetPath = input.targetPath;
+
+  // Reject any path component equal to `..` (belt-and-suspenders alongside resolve).
+  if (targetPath.split(/[/\\]/).some((seg) => seg === '..')) {
+    return { ok: false, error: 'targetPath: path traversal denied' };
+  }
+
+  // Require an absolute path strictly within homeDir (not homeDir itself).
+  const homeWithSep = homeDir.endsWith(path.sep) ? homeDir : homeDir + path.sep;
+  if (!path.isAbsolute(targetPath) || !targetPath.startsWith(homeWithSep)) {
+    return { ok: false, error: 'targetPath: must be within the user home directory' };
+  }
+
+  // Validate syncProvider.
+  if (!isNonEmptyString(input.syncProvider) || !VALID_SYNC_PROVIDERS.has(input.syncProvider)) {
+    return {
+      ok: false,
+      error: `syncProvider: must be one of ${[...VALID_SYNC_PROVIDERS].join(', ')}`,
+    };
+  }
+
+  // Validate sessionToken — must be a registration token issued by vault:pick-folder
+  // and bound to exactly targetPath.
+  if (!isNonEmptyString(input.sessionToken)) {
+    return { ok: false, error: 'sessionToken: required — use vault:pick-folder first' };
+  }
+  const validated = validateRegistrationToken(input.sessionToken, { consume: false, now });
+  if (!validated) {
+    return { ok: false, error: 'sessionToken: invalid or expired — use vault:pick-folder first' };
+  }
+  if (validated.vaultRoot !== targetPath) {
+    return { ok: false, error: 'sessionToken: not bound to the requested targetPath' };
+  }
+
+  // All checks passed. Consume the token (one-shot).
+  validateRegistrationToken(input.sessionToken, { consume: true, now });
+
+  return { ok: true, targetPath, syncProvider: input.syncProvider as CloudSyncProvider };
+}

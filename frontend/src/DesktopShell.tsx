@@ -30,6 +30,7 @@ import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import { useFocusMode } from './useFocusMode';
+import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -560,6 +561,11 @@ export default function DesktopShell() {
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
+  // ─── SKY-863: Sync conflict modal state ───
+  const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
+  const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+
   // ─── Voice session state (SKY-896) ───
   const [voiceListening, setVoiceListening] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -887,6 +893,24 @@ export default function DesktopShell() {
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
+
+      // SKY-863: run conflict check after vault is ready.
+      // Non-fatal: errors here must not prevent opening the vault.
+      try {
+        const api = window as any;
+        if (typeof api.api?.checkVaultConflicts === 'function') {
+          const conflicts = await api.api.checkVaultConflicts();
+          if (conflicts && !conflicts.dismissed) {
+            if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
+              setSyncConflictResolved(conflicts.resolved ?? []);
+              setSyncLockfileConflict(conflicts.lockfileConflict ?? null);
+              setSyncModalOpen(true);
+            }
+          }
+        }
+      } catch {
+        // conflict check is best-effort
+      }
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
     } finally {
@@ -897,6 +921,18 @@ export default function DesktopShell() {
   useEffect(() => {
     loadVault();
   }, [loadVault]);
+
+  // SKY-863: handle sync conflict modal dismiss
+  const handleSyncConflictContinue = useCallback(async (suppress: boolean) => {
+    setSyncModalOpen(false);
+    if (suppress) {
+      try {
+        await (window as any).api?.dismissSyncWarning?.();
+      } catch {
+        // non-fatal
+      }
+    }
+  }, []);
 
   // SKY-204: auto-open today's daily note when journal mode is enabled.
   // Runs once after settings load; creates the note silently in the background.
@@ -2072,6 +2108,13 @@ export default function DesktopShell() {
         onClose={() => setGlobalSearchOpen(false)}
       />
       {promptModal}
+      {syncModalOpen && (
+        <SyncConflictModal
+          resolved={syncConflictResolved}
+          lockfileConflict={syncLockfileConflict}
+          onContinue={handleSyncConflictContinue}
+        />
+      )}
     </div>
   );
 }
