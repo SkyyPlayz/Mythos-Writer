@@ -228,14 +228,23 @@ jobs:
           done
           echo "Guard passed: PERSIST_PROMPTS is not set."
 
-      - name: Build and package (Linux AppImage)
-        # Skip deb/rpm targets: fpm/tar tools not fully provisioned on GabesPC yet.
-        # deb/rpm packaging is in electron-builder.json for release builds; CI validates AppImage only.
+      - name: Build and package (Linux AppImage + deb)
+        # deb packaging is in electron-builder.json for release builds; CI validates AppImage + deb.
+        # Skip rpm target: rpmbuild and fpm not fully provisioned on GabesPC yet.
         # Clear LD_LIBRARY_PATH so the runner's inherited Paperclip embedded-postgres lib path
-        # does not shadow the system liblzma.so.5 and break xz/tar during packaging.
+        # does not shadow the system liblzma.so.5 and break xz/tar/dpkg-deb during packaging.
         env:
           LD_LIBRARY_PATH: ""
-        run: npm run build:electron && npx electron-builder --linux AppImage --publish never
+        run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
+
+      - name: Verify .deb artifact
+        # dpkg-deb also loads liblzma, so clear LD_LIBRARY_PATH here too.
+        env:
+          LD_LIBRARY_PATH: ""
+        run: |
+          DEB=$(ls dist-electron/*.deb | head -1)
+          echo "Verifying .deb: $DEB"
+          dpkg-deb --info "$DEB"
 
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
