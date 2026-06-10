@@ -461,7 +461,11 @@ export async function transcribeAudio(
     (voiceProvider?.baseUrl
       ? `${voiceProvider.baseUrl}/audio/transcriptions`
       : 'https://api.openai.com/v1/audio/transcriptions');
-  const apiKey = voiceProvider?.apiKey ?? settings.cloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
+  const legacyCloudApiKey = !voiceProvider && settings.cloudApiKey ? settings.cloudApiKey : null;
+  if (legacyCloudApiKey) {
+    console.warn('[voice:stt] Using deprecated stt.cloudApiKey fallback. Migrate to a named provider in Settings → AI Provider and select it in the Voice Provider selector.');
+  }
+  const apiKey = voiceProvider?.apiKey ?? legacyCloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
 
   if (!settings.cloudEndpoint && !voiceProvider && !apiKey) {
     throw new InvalidVoiceInputError(
@@ -618,7 +622,11 @@ async function speakAsync(
       (voiceProvider?.baseUrl
         ? `${voiceProvider.baseUrl}/audio/speech`
         : 'https://api.openai.com/v1/audio/speech');
-    const apiKey = voiceProvider?.apiKey ?? settings.cloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
+    const legacyTtsApiKey = !voiceProvider && settings.cloudApiKey ? settings.cloudApiKey : null;
+    if (legacyTtsApiKey) {
+      console.warn('[voice:tts] Using deprecated tts.cloudApiKey fallback. Migrate to a named provider in Settings → AI Provider and select it in the Voice Provider selector.');
+    }
+    const apiKey = voiceProvider?.apiKey ?? legacyTtsApiKey ?? process.env.OPENAI_API_KEY ?? '';
     if (!settings.cloudEndpoint && !voiceProvider && !apiKey) {
       throw new InvalidVoiceInputError(
         'No TTS provider available. Configure tts.localBinaryPath+tts.localModelPath or tts.cloudEndpoint in settings.',
