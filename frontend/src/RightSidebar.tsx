@@ -49,7 +49,7 @@ function NotesPanel({ scene }: { scene: Scene | null }) {
     window.api.notesGet?.(scene.id).then((res) => {
       if (loadedSceneIdRef.current === scene.id) setNote(res.content);
     }).catch(() => {});
-  }, [scene?.id]);
+  }, [scene]);
 
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 

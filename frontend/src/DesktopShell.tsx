@@ -577,8 +577,11 @@ export default function DesktopShell() {
     editorApiRef.current = api;
   }, []);
 
-  // SKY-152: seenTips
-  const seenTips: Record<string, boolean> = (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {};
+  // SKY-152: seenTips — memoized to avoid new object reference on every render
+  const seenTips = useMemo<Record<string, boolean>>(
+    () => (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {},
+    [appSettings],
+  );
   const handleDismissTip = useCallback(async (key: string) => {
     if (!appSettings) return;
     const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
