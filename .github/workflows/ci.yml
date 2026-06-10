@@ -113,6 +113,9 @@ jobs:
 
   build-linux:
     runs-on: self-hosted
+    concurrency:
+      group: build-linux-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v4
