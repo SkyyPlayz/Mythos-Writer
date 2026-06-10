@@ -199,11 +199,12 @@ test('TC-02: create story → chapter → scene and type text', async () => {
   // TipTap mounts a contenteditable div with class ProseMirror
   const editor = page.locator('.ProseMirror');
   await expect(editor).toBeVisible({ timeout: 5_000 });
+  await expect(editor).toBeFocused({ timeout: 5_000 });
 
-  // Type a sentence into the editor
+  // Type a sentence immediately after selecting the scene; selection should move
+  // focus into the blank editor without requiring an extra editor click.
   const SCENE_TEXT = 'The dragon soared over the Foundry as dawn broke.';
-  await editor.click();
-  await editor.pressSequentially(SCENE_TEXT);
+  await page.keyboard.type(SCENE_TEXT);
 
   // Confirm the text landed in the editor
   await expect(editor).toContainText(SCENE_TEXT);

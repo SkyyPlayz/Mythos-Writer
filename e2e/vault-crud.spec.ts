@@ -295,8 +295,10 @@ test('TC-V-04: type prose in scene editor, file content updated in Story Vault',
   const editor = page.locator('.ProseMirror');
   await expect(editor).toBeVisible({ timeout: 8_000 });
 
-  await editor.click();
-  await editor.type(PROSE);
+  // SKY-909: selecting a blank scene should focus the editor automatically;
+  // prose must land without requiring a second click into the empty document.
+  await page.waitForFunction(() => document.activeElement?.classList.contains('ProseMirror'));
+  await page.keyboard.type(PROSE);
   await expect(editor).toContainText(PROSE);
 
   // Wait for the vault write to flush
