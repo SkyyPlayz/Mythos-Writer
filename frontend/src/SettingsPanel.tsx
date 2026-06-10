@@ -1134,7 +1134,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
           {/* ── AI Providers ── */}
           <section className="settings-section provider-settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
             {activeProviderSupportsVoice && (
               <span
                 className="provider-voice-badge"
