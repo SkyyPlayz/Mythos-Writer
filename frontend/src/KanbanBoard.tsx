@@ -204,7 +204,6 @@ function EntrySourcePicker({ selectedIds, onSelectionChange }: EntrySourcePicker
     </div>
   );
 }
-}
 
 interface Props {
   boardPath: string;
