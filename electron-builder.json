@@ -60,6 +60,9 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
   },
+  "deb": {
+    "compression": "gz"
+  },
   "linux": {
     "target": [
       {
