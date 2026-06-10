@@ -1247,13 +1247,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         <div className="settings-body">
 
           {/* ── AI Providers ── */}
-          <section className="settings-section" aria-labelledby="section-providers">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
-              {hasVoiceCapability(settings.provider) && (
-                <span className="settings-badge" title="This provider supports voice (STT/TTS)">Voice</span>
-              )}
-            </div>
+          <section className="settings-section provider-settings-section" aria-labelledby="section-providers">
+            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+            {activeProviderSupportsVoice && (
+              <span
+                className="provider-voice-badge"
+                aria-label="This provider supports voice input and/or output"
+                role="status"
+              >
+                Voice
+              </span>
+            )}
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
