@@ -28,7 +28,7 @@
     "test": "npm run test -w electron-main && npm run test -w frontend",
     "test:e2e": "playwright test e2e/ --reporter=list",
     "test:e2e:smoke": "playwright test e2e/smoke.spec.ts --reporter=list",
-    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts --reporter=list",
+    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts --reporter=list",
     "test:e2e:brainstorm": "playwright test e2e/brainstorm.spec.ts --reporter=list",
     "test:e2e:visual-capture": "playwright test e2e/visual-capture.spec.ts --reporter=list",
     "test:e2e:writing-modes": "playwright test e2e/writing-modes.spec.ts --reporter=list",
