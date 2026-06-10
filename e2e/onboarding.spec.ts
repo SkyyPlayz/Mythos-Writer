@@ -45,8 +45,16 @@ async function launchFreshApp(userData: string): Promise<ElectronApplication> {
   const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
+    // Onboarding's default save path is "~/Documents/MythosWriter".
+    // Point HOME at this test's temp dir so the default path stays isolated
+    // without exercising the native folder picker in headless E2E.
+    env: { ...process.env, HOME: userData },
     timeout: 30_000,
   });
+}
+
+function defaultSaveParent(userData: string): string {
+  return path.join(userData, 'Documents', 'MythosWriter');
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
@@ -83,12 +91,12 @@ async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
 //
 // With no app-settings.json seeded, onboardingComplete defaults to undefined (falsy)
 // and OnboardingWizard is rendered. The test navigates:
-//   screen-step1 → card-blank → screen-step2 → fill title + save path →
+//   screen-step1 → card-blank → screen-step2 → fill title with default save path →
 //   gs-create-story → (real onboarding:complete IPC) → DesktopShell
 //
 // The real IPC handler creates:
-//   <parentPath>/<storyTitle>/Story Vault/   — story vault (manifest written here)
-//   <parentPath>/<storyTitle>/Notes Vault/   — notes vault
+//   ~/Documents/MythosWriter/<storyTitle>/Story Vault/   — story vault (manifest written here)
+//   ~/Documents/MythosWriter/<storyTitle>/Notes Vault/   — notes vault
 
 test.describe('TC-OB-01: Start Blank', () => {
   let userData: string;
@@ -112,18 +120,13 @@ test.describe('TC-OB-01: Start Blank', () => {
 
     // Install IPC mocks before interacting with step-2 controls.
     // vault:validate-path: called twice by handleCreateStory (parent dir + story dir).
-    // vault:chooseFolder: called when user clicks Change… to pick a save location.
-    await app.evaluate(({ ipcMain }, { parentPath }) => {
+    await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
+    });
 
-      ipcMain.removeHandler('vault:chooseFolder');
-      ipcMain.handle('vault:chooseFolder', () => ({ path: parentPath, cancelled: false }));
-    }, { parentPath: userData });
-
-    // Set save location to our tmp dir, fill story title, create
-    await page.locator('[data-testid="gs-change-location"]').click();
-    await expect(page.locator('[data-testid="gs-save-path"]')).toContainText(userData, { timeout: 5_000 });
+    // Keep the default save location; HOME is redirected to userData by launchFreshApp.
+    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveText('~/Documents/MythosWriter');
     await page.locator('[data-testid="gs-title-input"]').fill('Test Story OB-01');
     await page.locator('[data-testid="gs-create-story"]').click();
 
@@ -131,7 +134,7 @@ test.describe('TC-OB-01: Start Blank', () => {
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
     // onboarding:complete (blank) writes manifest.json inside Story Vault
-    const manifestPath = path.join(userData, 'Test Story OB-01', 'Story Vault', 'manifest.json');
+    const manifestPath = path.join(defaultSaveParent(userData), 'Test Story OB-01', 'Story Vault', 'manifest.json');
     const manifestCreated = await waitUntil(() => fs.existsSync(manifestPath));
     expect(manifestCreated, `manifest.json not found at: ${manifestPath}`).toBe(true);
 
@@ -151,7 +154,7 @@ test.describe('TC-OB-01: Start Blank', () => {
 // onboarding:complete's dev-mode path resolution for the sample-project bundle
 // (which differs between packaged and unpackaged Electron builds).
 //
-// Flow: screen-step1 → card-sample → screen-step2 → fill title + save path →
+// Flow: screen-step1 → card-sample → screen-step2 → fill title with default save path →
 //   gs-create-story → (mocked onboarding:complete) → DesktopShell
 //
 // Mocking strategy for onboarding:complete:
@@ -171,7 +174,7 @@ test.describe('TC-OB-02: Sample Novel', () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob02-'));
 
     // Seed the sample vault structure that onboarding:complete (sample) normally creates.
-    const storyDir = path.join(userData, OB02_STORY_TITLE);
+    const storyDir = path.join(defaultSaveParent(userData), OB02_STORY_TITLE);
     const storyVaultPath = path.join(storyDir, 'Story Vault');
     const notesVaultPath = path.join(storyDir, 'Notes Vault');
     fs.mkdirSync(storyVaultPath, { recursive: true });
@@ -197,21 +200,17 @@ test.describe('TC-OB-02: Sample Novel', () => {
     await clickStep1Card(page, 'card-sample');
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
 
-    // Bypass path validation, folder picker, and sample-project copying
+    // Bypass path validation and sample-project copying
     // (actual IPC handler logic is covered by unit tests).
-    await app.evaluate(({ ipcMain }, { parentPath }) => {
+    await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
 
-      ipcMain.removeHandler('vault:chooseFolder');
-      ipcMain.handle('vault:chooseFolder', () => ({ path: parentPath, cancelled: false }));
-
       ipcMain.removeHandler('onboarding:complete');
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
-    }, { parentPath: userData });
+    });
 
-    await page.locator('[data-testid="gs-change-location"]').click();
-    await expect(page.locator('[data-testid="gs-save-path"]')).toContainText(userData, { timeout: 5_000 });
+    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveText('~/Documents/MythosWriter');
     await page.locator('[data-testid="gs-title-input"]').fill(OB02_STORY_TITLE);
     await page.locator('[data-testid="gs-create-story"]').click();
 
@@ -219,8 +218,8 @@ test.describe('TC-OB-02: Sample Novel', () => {
 
     // ── On-disk assertions ────────────────────────────────────────────────────
 
-    const storyVault = path.join(userData, OB02_STORY_TITLE, 'Story Vault');
-    const notesVault = path.join(userData, OB02_STORY_TITLE, 'Notes Vault');
+    const storyVault = path.join(defaultSaveParent(userData), OB02_STORY_TITLE, 'Story Vault');
+    const notesVault = path.join(defaultSaveParent(userData), OB02_STORY_TITLE, 'Notes Vault');
 
     // manifest.json present (written in beforeAll seeding)
     const manifestPath = path.join(storyVault, 'manifest.json');
@@ -260,7 +259,7 @@ test.describe('TC-OB-02: Sample Novel', () => {
 // Mocks onboarding:complete to bypass actual template scaffolding (covered by unit
 // tests). Verifies the full wizard UI flow through the template picker:
 //   screen-step1 → card-template → screen-step1b → template-card-e2e-tmpl →
-//   screen-step2 → fill title + save path → gs-create-story →
+//   screen-step2 → fill title with default save path → gs-create-story →
 //   (mocked onboarding:complete) → DesktopShell
 
 test.describe('TC-OB-03: From Template', () => {
@@ -282,8 +281,8 @@ test.describe('TC-OB-03: From Template', () => {
   test('template path: template picker shown, story details filled, DesktopShell loads', async () => {
     // Install all mocks before any UI interaction.  template:list must be ready
     // when the wizard transitions to step1b and fires the IPC; the remaining
-    // mocks (validate-path, chooseFolder, onboarding:complete) are needed in step2.
-    await app.evaluate(({ ipcMain }, { parentPath }) => {
+    // mocks (validate-path, onboarding:complete) are needed in step2.
+    await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('template:list');
       ipcMain.handle('template:list', () => ({
         templates: [
@@ -300,13 +299,10 @@ test.describe('TC-OB-03: From Template', () => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
 
-      ipcMain.removeHandler('vault:chooseFolder');
-      ipcMain.handle('vault:chooseFolder', () => ({ path: parentPath, cancelled: false }));
-
       // Bypass actual template scaffolding — template unit tests cover the IPC handler.
       ipcMain.removeHandler('onboarding:complete');
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
-    }, { parentPath: userData });
+    });
 
     // Step 1: choose From Template
     await clickStep1Card(page, 'card-template');
@@ -318,8 +314,7 @@ test.describe('TC-OB-03: From Template', () => {
 
     // Step 2: fill in story details
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="gs-change-location"]').click();
-    await expect(page.locator('[data-testid="gs-save-path"]')).toContainText(userData, { timeout: 5_000 });
+    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveText('~/Documents/MythosWriter');
     await page.locator('[data-testid="gs-title-input"]').fill('Template Story OB-03');
     await page.locator('[data-testid="gs-create-story"]').click();
 
