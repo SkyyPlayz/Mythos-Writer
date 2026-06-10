@@ -181,13 +181,16 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
       await Promise.all(
         mdFiles.map(async (item) => {
           try {
-            const readResult = await window.api.readNotesVault(item.path);
+            // listVaultFiles returns paths relative to the Entries/ dir; prepend to get the
+            // full path within the notes vault (needed for readNotesVault and writeNotesVault).
+            const entryPath = `${ENTRIES_DIR}/${item.path}`;
+            const readResult = await window.api.readNotesVault(entryPath);
             if ('error' in readResult) return;
             const parsed = parseEntryFrontmatter(readResult.content);
             if (!parsed) return;
             records.push({
-              id: item.path,
-              path: item.path,
+              id: entryPath,
+              path: entryPath,
               body: parsed.body,
               tags: parsed.tags,
               createdAt: parsed.createdAt,
