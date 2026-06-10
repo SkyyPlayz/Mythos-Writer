@@ -553,6 +553,10 @@ contextBridge.exposeInMainWorld('api', {
   notesTagMerge: (sourceTag: string, targetTag: string) =>
     ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
 
+  // SKY-862: Guided vault relocation to a cloud-sync folder
+  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
+    ipcRenderer.invoke('vault:guidedFolderMove', payload),
+
   // SKY-863: Cloud-sync conflict detection + lockfile
   checkVaultConflicts: () =>
     ipcRenderer.invoke('vault:check-conflicts', undefined),
