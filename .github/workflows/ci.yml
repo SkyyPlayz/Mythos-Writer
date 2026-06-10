@@ -209,6 +209,10 @@ jobs:
       - name: Build and package (Linux AppImage + deb)
         # Skip rpm target: fpm/rpmbuild not provisioned on GabesPC yet.
         # RPM packaging is in electron-builder.json for release builds; CI validates AppImage + deb.
+        # LD_LIBRARY_PATH reset: the self-hosted runner inherits Paperclip's embedded-postgres
+        # LD_LIBRARY_PATH which shadows the system liblzma.so.5, causing fpm's tar -J (XZ) to fail.
+        env:
+          LD_LIBRARY_PATH: ""
         run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
 
       - name: Verify .deb artifact
