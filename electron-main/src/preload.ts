@@ -63,9 +63,6 @@ contextBridge.exposeInMainWorld('api', {
   importVault: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:import', { sourcePath, registrationToken }),
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
   pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
-  // SKY-862: guided vault relocation to a cloud-synced folder.
-  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
-    ipcRenderer.invoke('vault:guidedFolderMove', payload),
   obsidianDryRun: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath, registrationToken }),
   obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
   loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', {}),
@@ -555,10 +552,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notesVault:tag:rename', { oldTag, newTag }),
   notesTagMerge: (sourceTag: string, targetTag: string) =>
     ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
-
-  // SKY-862: Guided vault relocation to a cloud-sync folder
-  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
-    ipcRenderer.invoke('vault:guidedFolderMove', payload),
 
   // SKY-863: Cloud-sync conflict detection + lockfile
   checkVaultConflicts: () =>
