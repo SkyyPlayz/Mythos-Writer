@@ -118,6 +118,7 @@ contextBridge.exposeInMainWorld('api', {
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
+  appQuit: () => ipcRenderer.invoke('app:quit', undefined),
 
   // Versioning — per-scene snapshots
   snapshotSave: (sceneId: string, content: string, label?: string) =>

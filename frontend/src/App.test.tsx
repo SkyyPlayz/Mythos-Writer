@@ -15,6 +15,11 @@ const mockManifest = {
 function makeMockApi(overrides: Record<string, unknown> = {}) {
   return {
     settingsGet: () => Promise.resolve({ onboardingComplete: true }),
+    vaultGetPaths: () => Promise.resolve({
+      storyVaultPath: '/tmp/mythos-story-vault',
+      notesVaultPath: '/tmp/mythos-notes-vault',
+    }),
+    validatePath: () => Promise.resolve({ exists: true, isEmpty: false, writable: true }),
     readManifest: () => Promise.resolve(mockManifest),
     writeManifest: () => Promise.resolve({}),
     onVaultFileChanged: () => () => {},
@@ -69,6 +74,24 @@ describe('App — onboarding gate (SKY-152)', () => {
   it('bypasses wizard when onboardingComplete is true (existing vault)', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/loading your vault/i)).toBeInTheDocument());
+  });
+
+  it('blocks app load with a missing-vault recovery screen when saved story vault is invalid', async () => {
+    (window as any).api = makeMockApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({
+        storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
+        notesVaultPath: '/Volumes/Cloud/Mythos/Notes Vault',
+      }),
+      validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: false }),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /vault not found/i })).toBeInTheDocument());
+    expect(screen.getByText('/Volumes/Cloud/Mythos/Story Vault')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /re-run setup/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open settings/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /quit/i })).toBeInTheDocument();
   });
 });
 
