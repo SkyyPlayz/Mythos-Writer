@@ -63,3 +63,71 @@ export function deriveProjectName(vaultRoot: string, notesVaultRoot?: string): s
   }
   return path.basename(vaultRoot);
 }
+
+// ─── SKY-906: one-click default bundle scaffold ─────────────────────────────
+
+export interface MythosVaultBundle {
+  /** `<parentDir>/<vaultName>` — the wrapping folder that holds both halves. */
+  mythosVaultRoot: string;
+  /** `<mythosVaultRoot>/Story Vault` */
+  storyVaultPath: string;
+  /** `<mythosVaultRoot>/Notes Vault` */
+  notesVaultPath: string;
+  /** Resolved name after collision suffixing. */
+  vaultName: string;
+}
+
+export type ScaffoldDefaultMythosVaultOk = { ok: true } & MythosVaultBundle;
+export type ScaffoldDefaultMythosVaultErr = { ok: false; error: string };
+export type ScaffoldDefaultMythosVaultResult =
+  | ScaffoldDefaultMythosVaultOk
+  | ScaffoldDefaultMythosVaultErr;
+
+/**
+ * Materialise a Mythos Vault bundle on disk under `parentDir` with a
+ * collision-free name. Used by the one-click onboarding flow (SKY-906) and
+ * the multi-vault "+ Create new" switcher action (SKY-320). Pure Node — no
+ * Electron deps so unit tests can drive it with a real tmpdir.
+ *
+ *  - Refuses non-absolute parents (renderer-relative-path escape vector).
+ *  - Refuses path separators / NUL bytes / `..` in `baseName` via isSafeVaultName.
+ *  - Refuses a pre-existing Mythos Vault folder unless it is fully empty —
+ *    we never overwrite user data, even on re-click.
+ *  - Creates `Story Vault/` and `Notes Vault/` subdirs but does NOT seed
+ *    SKY-15 scaffolding here; the caller chains `ensure*VaultDir` to do that.
+ */
+export function scaffoldDefaultMythosVault(
+  parentDir: string,
+  opts: { baseName?: string } = {},
+): ScaffoldDefaultMythosVaultResult {
+  if (!path.isAbsolute(parentDir)) {
+    return { ok: false, error: 'parentDir: must be an absolute path' };
+  }
+  const rawName = (opts.baseName ?? '').trim();
+  if (rawName && !isSafeVaultName(rawName)) {
+    return { ok: false, error: 'vaultName: must not contain path separators or parent references' };
+  }
+  try {
+    fs.mkdirSync(parentDir, { recursive: true });
+  } catch (e) {
+    return { ok: false, error: `Could not create parent directory: ${(e as Error).message}` };
+  }
+  const baseName = rawName || DEFAULT_MYTHOS_VAULT_NAME;
+  const vaultName = pickUniqueMythosVaultName(parentDir, baseName);
+  const mythosVaultRoot = path.join(parentDir, vaultName);
+  const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
+  const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
+  if (fs.existsSync(mythosVaultRoot)) {
+    const entries = fs.readdirSync(mythosVaultRoot);
+    if (entries.length > 0) {
+      return { ok: false, error: 'Mythos Vault folder is not empty' };
+    }
+  }
+  try {
+    fs.mkdirSync(storyVaultPath, { recursive: true });
+    fs.mkdirSync(notesVaultPath, { recursive: true });
+  } catch (e) {
+    return { ok: false, error: `Could not create vault bundle: ${(e as Error).message}` };
+  }
+  return { ok: true, mythosVaultRoot, storyVaultPath, notesVaultPath, vaultName };
+}

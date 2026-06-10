@@ -1562,18 +1562,27 @@ export interface LastOpenedScene {
   cursorLine: number;
 }
 
-/** SKY-627: 3-step onboarding orchestration payload. */
+/** SKY-627 / SKY-906: onboarding orchestration payload.
+ *  `default-mythos-vault` (SKY-906) is the one-click first-run path: main
+ *  creates `<defaultMythosVaultsParent>/<Mythos Vault>/{Story,Notes} Vault`
+ *  with no user input, seeds a first scene, and marks onboarding complete in
+ *  a single round-trip. */
 export interface OnboardingCompletePayload {
-  /** 'blank' | 'sample' | 'template' | 'skip' (skip = bypass without creating a story). */
-  startMode: 'blank' | 'sample' | 'template' | 'skip';
-  /** Required for blank / sample / template modes. */
+  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+  /** Required for blank / sample / template modes. Optional for default-mythos-vault
+   *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;
   /** Optional; persisted to AppSettings.authorName. */
   authorName?: string;
-  /** Parent directory for the new vault. Tilde-expanded server-side. Required for blank/sample/template. */
+  /** Parent directory for the new vault. Tilde-expanded server-side. Required for
+   *  blank/sample/template; for default-mythos-vault the main side falls back to
+   *  the OS-default Mythos vaults parent when this is absent. */
   vaultParentPath?: string;
   /** Required for template mode. */
   templateId?: string;
+  /** Optional override for the Mythos Vault folder name (default-mythos-vault only).
+   *  Rejected if it contains path separators or parent-traversal. */
+  vaultName?: string;
 }
 
 /** SKY-627: response from the extended onboarding:complete handler. */

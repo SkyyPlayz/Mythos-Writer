@@ -344,6 +344,7 @@ import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 import {
   DEFAULT_MYTHOS_VAULT_NAME,
+  scaffoldDefaultMythosVault,
   deriveProjectName,
   isSafeVaultName,
   pickUniqueMythosVaultName,
@@ -1626,10 +1627,10 @@ const handlers: IpcHandlers = {
     return { saved: true };
   },
 
-  // SKY-627: extended onboarding handler — orchestrates vault creation, first-scene setup,
-  // and settings persistence for all three start modes (blank / sample / template / skip).
+  // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
+  // and settings persistence for all start modes (blank / sample / template / skip / default-mythos-vault).
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
-    const { startMode, storyTitle, authorName, vaultParentPath, templateId } = payload ?? {};
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName } = payload ?? {};
 
     const persistSettings = (firstSceneId?: string, firstScenePath?: string) => {
       const current = loadAppSettings();
@@ -1645,6 +1646,76 @@ const handlers: IpcHandlers = {
     if (!startMode || startMode === 'skip') {
       persistSettings();
       return { ok: true };
+    }
+
+    // SKY-906: one-click default Mythos Vault setup. Mirrors the SKY-320
+    // vault:createDefaultMythos bundle layout, then seeds a first scene like
+    // the blank mode so the editor lands on something writable rather than
+    // an empty manuscript. The whole flow is bypassable from a "Skip" link if
+    // the user later wants to start over.
+    if (startMode === 'default-mythos-vault') {
+      const parentBase = (vaultParentPath?.trim() && vaultParentPath.trim().length > 0)
+        ? vaultParentPath.trim().replace(/^~/, app.getPath('home'))
+        : defaultMythosVaultsParent();
+      const bundle = scaffoldDefaultMythosVault(parentBase, { baseName: vaultName });
+      if (!bundle.ok) {
+        return { ok: false, error: bundle.error };
+      }
+      const { storyVaultPath: storyVaultPathDefault, notesVaultPath: notesVaultPathDefault } = bundle;
+
+      saveVaultSettings({
+        vaultRoot: storyVaultPathDefault,
+        notesVaultRoot: notesVaultPathDefault,
+        layoutMode: 'default',
+      });
+      addToRecentProjects(storyVaultPathDefault, notesVaultPathDefault);
+      ensureVaultDir();
+      ensureNotesVaultDir();
+
+      // Seed a first scene so the editor opens on something writable.
+      const effectiveStoryTitle = (storyTitle?.trim() || 'My First Story');
+      const nowStr = new Date().toISOString();
+      const storyId = crypto.randomUUID();
+      const chapterId = crypto.randomUUID();
+      const sceneId = crypto.randomUUID();
+      const titleSlug = toSlug(effectiveStoryTitle);
+      const storyDirPath = `Manuscript/${titleSlug}`;
+      const chapterDirPath = `Manuscript/${titleSlug}/chapter-1`;
+      const sceneRelPath = `Manuscript/${titleSlug}/chapter-1/chapter-1-scene-1.md`;
+
+      writeSceneFile(storyVaultPathDefault, sceneRelPath, {
+        id: sceneId,
+        title: 'Chapter 1, Scene 1',
+        chapterId,
+        storyId,
+        order: 0,
+        prose: '',
+      });
+
+      const scene = {
+        id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath,
+        order: 0, chapterId, storyId, blocks: [],
+        draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr,
+      };
+      const chapter = {
+        id: chapterId, title: 'Chapter 1', path: chapterDirPath,
+        order: 0, scenes: [scene], createdAt: nowStr, updatedAt: nowStr,
+      };
+      const story = {
+        id: storyId, title: effectiveStoryTitle, path: storyDirPath,
+        chapters: [chapter], createdAt: nowStr, updatedAt: nowStr,
+      };
+      const manifest = readManifest(getManifestPath());
+      manifest.stories.push(story);
+      writeManifest(getManifestPath(), manifest);
+
+      await stopVaultWatcher();
+      await startVaultWatcher(storyVaultPathDefault, notifyVaultChanged);
+      await stopNotesVaultWatcher();
+      await startNotesVaultWatcher(notesVaultPathDefault, notifyNotesVaultChanged);
+
+      persistSettings(sceneId, sceneRelPath);
+      return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
     }
 
     if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
