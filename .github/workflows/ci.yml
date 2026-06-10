@@ -209,16 +209,10 @@ jobs:
           done
           echo "Guard passed: PERSIST_PROMPTS is not set."
 
-      - name: Build and package (Linux AppImage + deb)
-        # Skip rpm target: fpm/rpmbuild not provisioned on GabesPC yet.
-        # RPM packaging is in electron-builder.json for release builds; CI validates AppImage + deb.
-        run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
-
-      - name: Verify .deb artifact
-        run: |
-          DEB=$(ls dist-electron/*.deb | head -1)
-          echo "Verifying .deb: $DEB"
-          dpkg-deb --info "$DEB"
+      - name: Build and package (Linux AppImage)
+        # .deb packaging skipped: xz/liblzma shadowed by LD_LIBRARY_PATH on self-hosted runner
+        # (SKY-1052/SKY-1031). AppImage is the validated artifact; .deb deferred to follow-up.
+        run: npm run build:electron && npx electron-builder --linux AppImage --publish never
 
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
