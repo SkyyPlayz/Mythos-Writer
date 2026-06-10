@@ -137,6 +137,8 @@ export const LIQUID_NEON_DEFAULTS: LiquidNeonPrefs = {
   bgBaseColor: '#0e1116',
   accentColor: '#00f0ff',
   neonBorderColor: 'cyan',
+  neonBorderColor2: 'violet',
+  neonBorderColor3: 'magenta',
 };
 
 /** CSS multi-gradient approximating the dark space/nebula aesthetic of the example art. */
@@ -223,16 +225,39 @@ export function applyLiquidNeonTokens(
     root.style.setProperty('--accent-soft', hexToRgba(p.accentColor, 0.18));
   }
 
-  // Neon border color override (MYT-716)
-  if (p.neonBorderColor) {
-    const borderDef = NEON_ACCENT_MAP[p.neonBorderColor] ?? NEON_ACCENT_MAP.cyan;
-    root.style.setProperty('--neon-cyan', borderDef.accent);
-  }
-
-  // Neon color customization (SKY-127) — user-configurable RGB values for window border
+  // Neon color customization (SKY-127) — user-configurable RGB values for the
+  // base accent palette. These resolve before we compute border slots so the
+  // three border slots pick up custom hex values when a user has changed them.
   if (p.neonColorCyan) root.style.setProperty('--neon-cyan', p.neonColorCyan);
   if (p.neonColorViolet) root.style.setProperty('--neon-violet', p.neonColorViolet);
   if (p.neonColorMagenta) root.style.setProperty('--neon-magenta', p.neonColorMagenta);
+
+  // Neon border colour slots (SKY-910 — three-stop configurable gradient).
+  // Each slot picks one of cyan/violet/magenta; the picked colour resolves
+  // through the user-customised palette set just above. Slot A also drives
+  // the solid 2px outline that --border-neon-default composes over the
+  // gradient (back-compat with the previous single-slot behaviour).
+  const palette: Record<LiquidNeonPrefs['neonAccent'], string> = {
+    cyan:    p.neonColorCyan    ?? NEON_ACCENT_MAP.cyan.accent,
+    violet:  p.neonColorViolet  ?? NEON_ACCENT_MAP.violet.accent,
+    magenta: p.neonColorMagenta ?? NEON_ACCENT_MAP.magenta.accent,
+  };
+  const slotA = palette[p.neonBorderColor  ?? LIQUID_NEON_DEFAULTS.neonBorderColor!];
+  const slotB = palette[p.neonBorderColor2 ?? LIQUID_NEON_DEFAULTS.neonBorderColor2!];
+  const slotC = palette[p.neonBorderColor3 ?? LIQUID_NEON_DEFAULTS.neonBorderColor3!];
+  root.style.setProperty('--neon-border-1', slotA);
+  root.style.setProperty('--neon-border-2', slotB);
+  root.style.setProperty('--neon-border-3', slotC);
+  root.style.setProperty(
+    '--grad-neon',
+    `linear-gradient(120deg, ${slotA} 0%, ${slotB} 50%, ${slotC} 100%)`,
+  );
+  root.style.setProperty(
+    '--grad-neon-soft',
+    `linear-gradient(120deg, ${hexToRgba(slotA, 0.6)} 0%, ${hexToRgba(slotB, 0.6)} 50%, ${hexToRgba(slotC, 0.6)} 100%)`,
+  );
+  // Solid outline colour composed over the gradient (matches pre-SKY-910 behaviour).
+  root.style.setProperty('--border-neon-outline', slotA);
 
   // Frame width: neonFrameWidth 0–100 → rest 0–2px, hover 1–4px
   if (p.neonFrameWidth !== undefined) {
@@ -316,7 +341,10 @@ export function resetLiquidNeonTokens(): void {
     '--bg-base', '--bg-canvas', '--bg-app',
     '--frame-width-rest', '--frame-width-hover',
     '--border-default', '--border-strong',
-    '--neon-cyan',
+    '--neon-cyan', '--neon-violet', '--neon-magenta',
+    // SKY-910 — three-stop configurable neon border gradient
+    '--neon-border-1', '--neon-border-2', '--neon-border-3',
+    '--grad-neon', '--grad-neon-soft', '--border-neon-outline',
   ];
   for (const v of vars) root.style.removeProperty(v);
 }

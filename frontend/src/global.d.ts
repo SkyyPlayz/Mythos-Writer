@@ -245,8 +245,12 @@ interface LiquidNeonPrefs {
   bgBaseColor?: string;
   /** Accent / button hex colour. Default '#00f0ff'. */
   accentColor?: string;
-  /** Neon border colour slot. Default 'cyan'. */
+  /** Neon border colour slot A (gradient start). Default 'cyan'. */
   neonBorderColor?: 'cyan' | 'violet' | 'magenta';
+  /** Neon border colour slot B (gradient mid). Default 'violet'. (SKY-910) */
+  neonBorderColor2?: 'cyan' | 'violet' | 'magenta';
+  /** Neon border colour slot C (gradient end). Default 'magenta'. (SKY-910) */
+  neonBorderColor3?: 'cyan' | 'violet' | 'magenta';
 
   // ── Neon color customization (SKY-127) ───────────────────────────────────
   /** Cyan neon color hex. Default '#00f0ff'. */
