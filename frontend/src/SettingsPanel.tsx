@@ -21,15 +21,6 @@ interface CustomFieldDef {
   options?: string[];
 }
 
-/** SKY-818: Helper to check if provider has voice capabilities (transcribe/speak). */
-function hasVoiceCapability(provider: ProviderConfig | undefined): boolean {
-  if (!provider) return false;
-  if (provider.capabilities?.transcribe || provider.capabilities?.speak) return true;
-  if (provider.kind === 'openai') return true;
-  if (provider.kind === 'custom' && provider.baseUrl) return true;
-  return false;
-}
-
 // ─── Persona viewer (MYT-816) ─────────────────────────────────────────────────
 
 type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
@@ -310,6 +301,21 @@ function validateApiKey(key: string): string | null {
   if (!key) return null;
   if (!key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
   return null;
+}
+
+function providerSupportsVoice(provider?: AppSettings['provider']): boolean {
+  if (!provider) return false;
+  if (provider.capabilities?.transcribe || provider.capabilities?.speak) return true;
+  if (provider.kind === 'openai') return true;
+  return provider.kind === 'custom' && Boolean(provider.baseUrl);
+}
+
+function formatProviderLabel(provider: AppSettings['provider']): string {
+  if (!provider) return 'Provider';
+  if (provider.kind === 'openai') return 'OpenAI';
+  if (provider.kind === 'custom') return provider.baseUrl ? `Custom (${provider.baseUrl})` : 'Custom endpoint';
+  const option = PROVIDER_OPTIONS.find((p) => p.value === provider.kind);
+  return option?.label ?? provider.kind.charAt(0).toUpperCase() + provider.kind.slice(1);
 }
 
 /** Contrast ratio badge — shows ratio and colour-codes pass/fail. */
@@ -736,9 +742,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   // Telemetry state (MYT-344 / MYT-779)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
 
-  // Voice provider selector (SKY-818)
-  const [voiceProviderId, setVoiceProviderId] = useState<'global' | 'writingAssistant' | 'brainstorm' | 'archive' | undefined>(undefined);
-
   // Liquid Neon customization state (MYT-613 / MYT-716)
   const [lg, setLg] = useState<LiquidNeonPrefs>({ ...LG_DEFAULTS });
   const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
@@ -782,7 +785,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         archive: loadAgentOverride(s.agents.archive),
       });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
-      setVoiceProviderId(s.voiceProviderId);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -928,6 +930,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         model: providerModel,
         ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
         ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+        ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
       };
       const payload: AppSettings = {
         ...settings,
@@ -941,7 +944,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
           archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
         },
-        voiceProviderId,
       };
       await window.api.settingsSet(payload);
       setSavedOk(true);
@@ -952,7 +954,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, voiceProviderId, onSaved, buildAgentProviderConfig]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved, buildAgentProviderConfig]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -1216,6 +1218,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }
 
   const effectiveBg = lg.bgBaseColor ?? LG_DEFAULTS.bgBaseColor!;
+  const activeProvider = settings.provider?.kind === providerKind ? settings.provider : undefined;
+  const activeProviderSupportsVoice = providerSupportsVoice(activeProvider);
+  const shouldShowVoiceProviderSelector =
+    (settings.stt?.provider ?? 'local') !== 'local' || (settings.tts?.provider ?? 'local') !== 'local';
+  const voiceProviders = activeProviderSupportsVoice && activeProvider ? [activeProvider] : [];
 
   return (
     <>
@@ -1229,13 +1236,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         <div className="settings-body">
 
           {/* ── AI Providers ── */}
-          <section className="settings-section" aria-labelledby="section-providers">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
-              {hasVoiceCapability(settings.provider) && (
-                <span className="settings-badge" title="This provider supports voice (STT/TTS)">Voice</span>
-              )}
-            </div>
+          <section className="settings-section provider-settings-section" aria-labelledby="section-providers">
+            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
+            {activeProviderSupportsVoice && (
+              <span
+                className="provider-voice-badge"
+                aria-label="This provider supports voice input and/or output"
+                role="status"
+              >
+                Voice
+              </span>
+            )}
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
@@ -1331,51 +1342,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               );
             })()}
           </section>
-
-          {/* ── Voice Provider (SKY-818) ── */}
-          {(settings.stt?.provider !== 'local' || settings.tts?.provider !== 'local') && (
-            <section className="settings-section" aria-labelledby="section-voice-provider">
-              <h3 className="settings-section-title" id="section-voice-provider">Voice Provider</h3>
-              <div className="settings-field">
-                <label className="settings-label" htmlFor="voice-provider-select">
-                  Voice Provider
-                  <span className="settings-hint-inline"> (for STT/TTS)</span>
-                </label>
-                {(() => {
-                  const voiceCapableProviders = [
-                    settings.provider && hasVoiceCapability(settings.provider) ? { id: 'global', label: 'Global Provider', config: settings.provider } : null,
-                    settings.agents.writingAssistant.provider && hasVoiceCapability(settings.agents.writingAssistant.provider) ? { id: 'writingAssistant' as const, label: 'Writing Assistant', config: settings.agents.writingAssistant.provider } : null,
-                    settings.agents.brainstorm.provider && hasVoiceCapability(settings.agents.brainstorm.provider) ? { id: 'brainstorm' as const, label: 'Brainstorm', config: settings.agents.brainstorm.provider } : null,
-                    settings.agents.archive.provider && hasVoiceCapability(settings.agents.archive.provider) ? { id: 'archive' as const, label: 'Archive', config: settings.agents.archive.provider } : null,
-                  ].filter(Boolean);
-
-                  if (voiceCapableProviders.length === 0) {
-                    return (
-                      <p className="settings-hint">No providers support voice — configure an OpenAI-compatible provider</p>
-                    );
-                  }
-
-                  return (
-                    <select
-                      id="voice-provider-select"
-                      className="settings-input settings-select"
-                      value={voiceProviderId || 'global'}
-                      aria-label="Voice provider for transcription and text-to-speech"
-                      onChange={(e) => {
-                        setVoiceProviderId(e.target.value as 'global' | 'writingAssistant' | 'brainstorm' | 'archive');
-                        setSavedOk(false);
-                      }}
-                    >
-                      {voiceCapableProviders.map((p) => (
-                        <option key={p!.id} value={p!.id}>{p!.label}</option>
-                      ))}
-                    </select>
-                  );
-                })()}
-                <p className="settings-hint">Select which provider to use for voice transcription (STT) and text-to-speech (TTS) when cloud voice is enabled.</p>
-              </div>
-            </section>
-          )}
 
           {/* ── API Key ── */}
           <section className="settings-section" aria-labelledby="section-api-key">
@@ -2494,8 +2460,42 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </label>
               </div>
 
+              {shouldShowVoiceProviderSelector && (
+                <>
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-provider-select">Voice Provider</label>
+                    <select
+                      id="voice-provider-select"
+                      className="settings-input settings-select"
+                      value={settings.voiceProviderId ?? ''}
+                      aria-label="Voice provider"
+                      aria-describedby="voice-provider-hint"
+                      onChange={(e) => {
+                        const val = e.target.value || undefined;
+                        setSettings((p) => ({ ...p, voiceProviderId: val }));
+                        setSavedOk(false);
+                      }}
+                    >
+                      <option value="">
+                        {voiceProviders.length === 0
+                          ? 'No providers support voice — configure an OpenAI-compatible provider'
+                          : 'Select a provider…'}
+                      </option>
+                      {voiceProviders.map((provider) => (
+                        <option key={provider.kind} value={provider.kind}>
+                          {formatProviderLabel(provider)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="settings-hint" id="voice-provider-hint">
+                    Voice provider controls cloud speech-to-text and text-to-speech. Only providers with voice capabilities (OpenAI or OpenAI-compatible custom endpoints) are shown; local STT/TTS stays on your device.
+                  </p>
+                </>
+              )}
+
               <p className="settings-hint settings-hint-privacy">
-                Voice is processed locally on your device — no audio is sent anywhere.
+                Voice is processed locally on your device when local mode is active; cloud voice uses the selected provider.
               </p>
               <p className="settings-hint">
                 When push-to-talk is on, hold <kbd>Ctrl+Shift+M</kbd> to record and release to stop.

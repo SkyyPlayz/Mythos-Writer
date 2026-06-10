@@ -778,6 +778,106 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('button', { name: /test provider connection/i })).toBeInTheDocument();
   });
 
+  // ── SKY-818: Voice-capable provider UI ──
+
+  it('renders an accessible Voice badge for providers with STT or TTS capabilities', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { transcribe: true } } as AppSettings['provider'],
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const badge = await screen.findByRole('status', { name: /supports voice input and\/or output/i });
+    expect(badge).toHaveTextContent(/^voice$/i);
+  });
+
+  it('does not render a Voice badge for providers without voice capabilities', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    expect(screen.queryByRole('status', { name: /supports voice input and\/or output/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the voice provider selector only when cloud voice is enabled', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { transcribe: true, speak: true } } as AppSettings['provider'],
+      stt: { enabled: true, provider: 'cloud' },
+      tts: { enabled: true, provider: 'local' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const selector = await screen.findByRole('combobox', { name: /voice provider/i });
+    expect(selector).toBeInTheDocument();
+    expect(screen.getByText(/only providers with voice capabilities/i)).toBeInTheDocument();
+  });
+
+  it('hides the voice provider selector when STT and TTS are fully local', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { transcribe: true, speak: true } } as AppSettings['provider'],
+      stt: { enabled: true, provider: 'local' },
+      tts: { enabled: true, provider: 'local' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('heading', { name: /^voice$/i }));
+
+    expect(screen.queryByRole('combobox', { name: /voice provider/i })).not.toBeInTheDocument();
+  });
+
+  it('persists selected voiceProviderId on save', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { speak: true } } as AppSettings['provider'],
+      stt: { enabled: true, provider: 'cloud' },
+      tts: { enabled: true, provider: 'cloud' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    fireEvent.change(await screen.findByRole('combobox', { name: /voice provider/i }), { target: { value: 'openai' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voiceProviderId).toBe('openai');
+  });
+
+  it('shows an empty state when cloud voice is enabled but no provider supports voice', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6' },
+      stt: { enabled: true, provider: 'cloud' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const selector = await screen.findByRole('combobox', { name: /voice provider/i }) as HTMLSelectElement;
+    expect(selector.options[0].textContent).toMatch(/no providers support voice/i);
+  });
+
+  it('lists a custom OpenAI-compatible provider with baseUrl as voice-capable', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'custom', apiKey: 'sk-test', baseUrl: 'https://voice.example/v1', model: 'custom-voice' },
+      stt: { enabled: true, provider: 'cloud' },
+      tts: { enabled: true, provider: 'cloud' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const selector = await screen.findByRole('combobox', { name: /voice provider/i }) as HTMLSelectElement;
+    expect(Array.from(selector.options).map((o) => o.textContent)).toContain('Custom (https://voice.example/v1)');
+  });
+
   // ── MYT-779: Telemetry section ──
 
   it('renders Telemetry section with opt-in toggle', async () => {

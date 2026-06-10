@@ -279,6 +279,8 @@ interface AppSettings {
   apiKey: string;
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderConfig;
+  /** SKY-818: Selected voice-capable provider ID. Absent = use first voice-capable provider. */
+  voiceProviderId?: string;
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
@@ -317,8 +319,6 @@ interface AppSettings {
     cloudEndpoint?: string;
     cloudApiKey?: string;
   };
-  /** SKY-818: Which provider to use for voice I/O (STT/TTS). 'global' = use global provider; agent name = use that agent's override provider. */
-  voiceProviderId?: 'global' | 'writingAssistant' | 'brainstorm' | 'archive';
   /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */
   telemetry?: {
     enabled: boolean;

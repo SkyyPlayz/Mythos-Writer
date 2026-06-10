@@ -1451,7 +1451,10 @@ export interface SttSettings {
   localBinaryPath?: string;
   /** OpenAI-compatible audio transcription endpoint */
   cloudEndpoint?: string;
-  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  /**
+   * @deprecated Use the active provider's apiKey via getVoiceProvider() in provider.ts.
+   * Kept for backward compatibility — serves as fallback when no voice provider is configured.
+   */
   cloudApiKey?: string;
 }
 
@@ -1469,7 +1472,10 @@ export interface TtsSettings {
   localModelPath?: string;
   /** OpenAI-compatible TTS endpoint; defaults to https://api.openai.com/v1/audio/speech */
   cloudEndpoint?: string;
-  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  /**
+   * @deprecated Use the active provider's apiKey via getVoiceProvider() in provider.ts.
+   * Kept for backward compatibility — serves as fallback when no voice provider is configured.
+   */
   cloudApiKey?: string;
 }
 
@@ -1485,6 +1491,8 @@ export interface ProviderSettings {
   baseUrl?: string;
   /** Default model used for all agents unless the agent overrides it */
   model: string;
+  /** Optional STT/TTS capability hints — mirrors ProviderConfig.capabilities in provider.ts */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 /** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;
