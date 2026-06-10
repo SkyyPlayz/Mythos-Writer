@@ -76,7 +76,7 @@ export default function SyncConflictModal({
               <ul className="scm-file-list" aria-label="Resolved conflicts">
                 {resolved.map((r) => (
                   <li key={r.conflictPath} className="scm-file-item">
-                    <span className="scm-provider-badge scm-provider-badge--{r.provider}">
+                    <span className={`scm-provider-badge scm-provider-badge--${r.provider}`}>
                       {PROVIDER_LABEL[r.provider]}
                     </span>
                     <span className="scm-file-kept" title={`Kept: ${r.keptPath}`}>

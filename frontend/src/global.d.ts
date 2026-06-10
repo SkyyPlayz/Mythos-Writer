@@ -841,6 +841,21 @@ interface Window {
       sessionToken: string;
     }) => Promise<{ moved: boolean; newVaultPath: string } | { error: string }>;
 
+    // SKY-863: Conflict detection + lockfile.
+    checkVaultConflicts: () => Promise<{
+      resolved: Array<{
+        conflictPath: string;
+        originalPath: string;
+        provider: 'dropbox' | 'icloud' | 'syncthing';
+        keptPath: string;
+        archivedPath: string;
+        resolvedAt: string;
+      }>;
+      lockfileConflict: { hostname: string; pid: number; timestamp: string } | null;
+      dismissed: boolean;
+    }>;
+    dismissSyncWarning: () => Promise<{ ok: true }>;
+
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

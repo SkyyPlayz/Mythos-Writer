@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import type { CloudSyncProvider } from './vaultGate.js';
+import type { CloudSyncProvider } from './ipc.js';
 
 // ─── Target validation ────────────────────────────────────────────────────────
 

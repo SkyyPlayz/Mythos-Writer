@@ -1492,7 +1492,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </div>
               )}
               <p className="settings-hint">
-                Move your vault to Dropbox, iCloud, OneDrive, or Syncthing so it
+                Move your vault to Dropbox, iCloud, OneDrive, or Google Drive so it
                 syncs to all your devices automatically.
               </p>
             </div>

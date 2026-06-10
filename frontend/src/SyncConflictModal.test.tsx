@@ -33,6 +33,11 @@ describe('SyncConflictModal', () => {
     expect(screen.getByText(/archived older copy/i)).toBeDefined();
   });
 
+  it('adds the provider-specific class to conflict badges', () => {
+    render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
+    expect(screen.getByText('Dropbox').classList.contains('scm-provider-badge--dropbox')).toBe(true);
+  });
+
   it('shows concurrent-session warning when lockfileConflict is provided', () => {
     render(<SyncConflictModal resolved={[]} lockfileConflict={sampleLockfile} onContinue={vi.fn()} />);
     expect(screen.getByText(/concurrent session warning/i)).toBeDefined();
