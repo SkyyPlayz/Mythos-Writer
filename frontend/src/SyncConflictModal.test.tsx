@@ -35,7 +35,9 @@ describe('SyncConflictModal', () => {
 
   it('adds the provider-specific class to conflict badges', () => {
     render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
-    expect(screen.getByText('Dropbox').classList.contains('scm-provider-badge--dropbox')).toBe(true);
+    const badge = screen.getByText('Dropbox');
+    expect(badge.classList.contains('scm-provider-badge--dropbox')).toBe(true);
+    expect(badge.className).not.toContain('{r.provider}');
   });
 
   it('shows concurrent-session warning when lockfileConflict is provided', () => {

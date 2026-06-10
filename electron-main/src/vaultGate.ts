@@ -16,8 +16,8 @@
 
 import path from 'path';
 import fs from 'fs';
-import { validateRegistrationToken } from './registrationToken.js';
 import type { CloudSyncProvider } from './ipc.js';
+import { validateRegistrationToken } from './registrationToken.js';
 export interface SetPathsGateInput {
   storyVaultPath: unknown;
   notesVaultPath: unknown;
