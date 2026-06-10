@@ -215,6 +215,8 @@ jobs:
         run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
 
       - name: Verify .deb artifact
+        env:
+          LD_LIBRARY_PATH: ""
         run: |
           DEB=$(ls dist-electron/*.deb | head -1)
           echo "Verifying .deb: $DEB"
