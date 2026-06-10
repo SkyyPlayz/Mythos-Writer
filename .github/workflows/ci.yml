@@ -99,7 +99,7 @@ jobs:
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
-          retention-days: 7
+          retention-days: 1
 
       - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
@@ -120,7 +120,7 @@ jobs:
         with:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
-          retention-days: 7
+          retention-days: 3
 
       - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
         run: xvfb-run --auto-servernum npm run test:e2e:a11y
@@ -147,7 +147,7 @@ jobs:
         with:
           name: e2e-report
           path: e2e-report/
-          retention-days: 7
+          retention-days: 3
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
@@ -242,7 +242,7 @@ jobs:
           path: |
             dist-electron/*.AppImage
             dist-electron/*.deb
-          retention-days: 7
+          retention-days: 3
 
   report:
     # Event-driven board ping. Runs after all three required jobs (ci /
