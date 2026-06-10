@@ -261,8 +261,8 @@ import {
   listEntityRelationships,
   createEntityRelationship,
   deleteEntityRelationship,
+  applyTypedRelation,
 } from './entities.js';
-import { getReciprocal } from './entityRelations.js';
 import {
   syncEntityToIndex,
   removeEntityFromIndex,
@@ -4739,49 +4739,29 @@ function autoApplyVaultWrite(
         targetEntityPath?: string;
       };
 
-      // ─── Typed-relation apply ───
+      // ─── Typed-relation apply (SKY-195 / SKY-901) ───
+      // Delegates to entities.applyTypedRelation so the write logic is unit-tested
+      // independent of IPC/Electron, and returns 'accepted' (not 'applied') when
+      // neither side wrote, so a stale suggestion referencing a deleted/unknown
+      // entity does not silently report success.
       if (payloadData.kind === 'typed-relation') {
         const {
           relationType,
           sourceEntityId,
-          sourceEntityPath,
           targetEntityId,
-          targetEntityPath,
         } = payloadData;
-        if (!relationType || !sourceEntityId || !sourceEntityPath || !targetEntityId || !targetEntityPath) {
+        if (!relationType || !sourceEntityId || !targetEntityId) {
           return { finalStatus: 'accepted', snapshotPath: null };
         }
         const manifest = readManifest(getManifestPath());
-
-        const sourceEntry = manifest.entities.find((e) => e.id === sourceEntityId);
-        if (sourceEntry) {
-          const existingRelations = sourceEntry.relations ?? [];
-          const alreadyHas = existingRelations.some(
-            (r) => r.type === relationType && r.target === targetEntityId,
-          );
-          if (!alreadyHas) {
-            updateEntity(getVaultRoot(), manifest, sourceEntityId, {
-              relations: [...existingRelations, { type: relationType, target: targetEntityId }],
-            });
-          }
-        }
-
-        const reciprocal = getReciprocal(relationType);
-        const targetEntry = manifest.entities.find((e) => e.id === targetEntityId);
-        if (targetEntry) {
-          const existingRelations = targetEntry.relations ?? [];
-          const alreadyHas = existingRelations.some(
-            (r) => r.type === reciprocal && r.target === sourceEntityId,
-          );
-          if (!alreadyHas) {
-            updateEntity(getVaultRoot(), manifest, targetEntityId, {
-              relations: [...existingRelations, { type: reciprocal, target: sourceEntityId }],
-            });
-          }
-        }
-
+        const { sourceWritten, targetWritten } = applyTypedRelation(
+          getVaultRoot(),
+          manifest,
+          { relationType, sourceEntityId, targetEntityId },
+        );
         writeManifest(getManifestPath(), manifest);
-        return { finalStatus: 'applied', snapshotPath: null };
+        const finalStatus = sourceWritten || targetWritten ? 'applied' : 'accepted';
+        return { finalStatus, snapshotPath: null };
       }
 
       // ─── Standard vault-write apply ───
