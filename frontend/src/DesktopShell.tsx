@@ -897,9 +897,8 @@ export default function DesktopShell() {
       // SKY-863: run conflict check after vault is ready.
       // Non-fatal: errors here must not prevent opening the vault.
       try {
-        const api = window as any;
-        if (typeof api.api?.checkVaultConflicts === 'function') {
-          const conflicts = await api.api.checkVaultConflicts();
+        if (typeof window.api?.checkVaultConflicts === 'function') {
+          const conflicts = await window.api.checkVaultConflicts();
           if (conflicts && !conflicts.dismissed) {
             if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
               setSyncConflictResolved(conflicts.resolved ?? []);
@@ -927,7 +926,7 @@ export default function DesktopShell() {
     setSyncModalOpen(false);
     if (suppress) {
       try {
-        await (window as any).api?.dismissSyncWarning?.();
+        await window.api?.dismissSyncWarning?.();
       } catch {
         // non-fatal
       }

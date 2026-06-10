@@ -17,7 +17,7 @@
 import path from 'path';
 import fs from 'fs';
 import { validateRegistrationToken } from './registrationToken.js';
-
+import type { CloudSyncProvider } from './ipc.js';
 export interface SetPathsGateInput {
   storyVaultPath: unknown;
   notesVaultPath: unknown;
@@ -244,8 +244,6 @@ export function looksLikeObsidianVault(
 //   2. syncProvider is one of the approved big-4 cloud providers.
 //   3. sessionToken is a valid registration token bound to targetPath.
 // Consuming the token on success makes this a one-shot operation.
-
-export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
 
 const VALID_SYNC_PROVIDERS = new Set<string>(['icloud', 'dropbox', 'google-drive', 'onedrive']);
 
