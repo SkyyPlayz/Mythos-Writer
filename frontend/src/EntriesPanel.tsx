@@ -194,8 +194,16 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
       records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       setEntries(records);
       setLoadState('ready');
-    } catch {
-      setLoadState('error');
+    } catch (err) {
+      // Treat a missing Entries directory as "no entries yet" rather than an error —
+      // the directory is created on first write, so it won't exist on a fresh vault.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ENOENT') || msg.includes('no such file')) {
+        setEntries([]);
+        setLoadState('ready');
+      } else {
+        setLoadState('error');
+      }
     }
   }, []);
 
