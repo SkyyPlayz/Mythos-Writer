@@ -17,6 +17,7 @@ permissions:
 jobs:
   ci:
     runs-on: self-hosted
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -158,6 +159,7 @@ jobs:
     # Replace with macos-latest and restore the packaging steps once billing is active
     # (est. June 2026) or a self-hosted macOS runner is added (MYT-749).
     runs-on: self-hosted
+    timeout-minutes: 5
 
     steps:
       - name: macOS build placeholder
@@ -167,6 +169,7 @@ jobs:
 
   build-linux:
     runs-on: self-hosted
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
