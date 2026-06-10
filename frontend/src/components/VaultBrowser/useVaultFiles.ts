@@ -16,13 +16,13 @@ export function useVaultFiles(source: Source = 'story') {
   const load = useCallback(async () => {
     try {
       const api = window.api as typeof window.api & {
-        listNotesVault?: (root?: string) => Promise<{ items?: VaultListItem[] }>;
+        listNotesVault?: (root?: string) => Promise<{ items?: VaultListItem[]; error?: string }>;
       };
       const result =
         source === 'notes' && typeof api.listNotesVault === 'function'
           ? await api.listNotesVault()
           : await api.listVault();
-      setItems(result.items ?? []);
+      setItems(('items' in result ? result.items : undefined) ?? []);
     } catch {
       // vault not ready
     } finally {
