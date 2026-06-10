@@ -302,6 +302,9 @@ test('TC-SKY-814-09: Settings dialog has accessible structure (axe scan in SKY-8
 // ─── TC-SKY-814-10: Section headings use proper heading hierarchy ────────────────
 test('TC-SKY-814-10: Settings sections have proper heading structure', async () => {
   const sections = page.locator('[class*="settings-section"]');
+  // Wait for content to render — dialog may briefly show a loading spinner
+  // that satisfies toBeVisible but has no sections yet.
+  await sections.first().waitFor({ state: 'visible', timeout: 5_000 });
   const count = await sections.count();
   expect(count).toBeGreaterThan(0);
 

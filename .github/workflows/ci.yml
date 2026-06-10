@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -150,7 +150,7 @@ jobs:
           retention-days: 7
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -174,7 +174,7 @@ jobs:
           path: dist-electron/*.dmg
 
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -216,9 +216,6 @@ jobs:
             fi
           done
           echo "Guard passed: PERSIST_PROMPTS is not set."
-
-      - name: Install RPM packaging tools
-        run: sudo apt-get update -q && sudo apt-get install -y rpm
 
       - name: Build and package (Linux)
         run: npm run dist:linux
