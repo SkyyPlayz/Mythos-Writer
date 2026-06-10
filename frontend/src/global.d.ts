@@ -666,13 +666,13 @@ interface Window {
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
     // root via safeVaultIpcJoin on the main side.
-    readNotesVault: (path: string) => Promise<{ content: string; path: string }>;
-    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number }>;
-    listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> }>;
-    deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
-    moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
-    moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
-    mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean }>;
+    readNotesVault: (path: string) => Promise<{ content: string; path: string } | { error: string }>;
+    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
+    listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> } | { error: string }>;
+    deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;
+    moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
+    moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
+    mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean } | { error: string }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)

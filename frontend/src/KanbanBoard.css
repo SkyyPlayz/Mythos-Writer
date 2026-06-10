@@ -340,3 +340,122 @@
   background: var(--accent, #7c8cf8);
   color: #000;
 }
+
+/* ─── Entry source picker ─── */
+
+.kanban-entry-picker {
+  margin: 6px 0 4px;
+  position: relative;
+}
+
+.kanban-entry-picker-toggle {
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 4px;
+  background: var(--bg-bar, #1e1e2e);
+  color: var(--text-secondary, #ccc);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.kanban-entry-picker-toggle:hover {
+  border-color: var(--accent, #7c8cf8);
+  color: var(--accent, #7c8cf8);
+}
+
+.kanban-entry-picker-panel {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 6px;
+  background: var(--bg-bar, #1e1e2e);
+  min-width: 260px;
+  max-width: 380px;
+}
+
+.kanban-entry-tag-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 4px;
+  background: var(--bg-base, #181825);
+  color: var(--text-primary, #eee);
+  font-size: 12px;
+  font-family: inherit;
+  margin-bottom: 6px;
+  outline: none;
+}
+
+.kanban-entry-tag-filter:focus {
+  border-color: var(--accent, #7c8cf8);
+}
+
+.kanban-entry-loading,
+.kanban-entry-empty {
+  padding: 8px 4px;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+
+.kanban-entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.kanban-entry-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #ccc);
+  line-height: 1.4;
+}
+
+.kanban-entry-option:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.kanban-entry-option.selected {
+  background: rgba(124, 140, 248, 0.12);
+  color: var(--text-primary, #eee);
+}
+
+.kanban-entry-option-check {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--accent, #7c8cf8);
+  min-width: 14px;
+}
+
+.kanban-entry-option-body {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-entry-option-tags {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-entry-payload-hint {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle, #333);
+  font-size: 11px;
+  color: var(--accent, #7c8cf8);
+}

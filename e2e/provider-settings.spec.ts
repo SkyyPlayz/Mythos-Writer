@@ -194,8 +194,8 @@ test('TC-PROV-03: "Use different provider for this agent" toggle shows inline pr
   await page.click('[aria-label="Open settings"]');
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
-  // Find the Brainstorm agent's "Use different provider" toggle
-  const toggleInput = page.getByLabel(/use a different provider for brainstorm/i);
+  // Find the Brainstorm agent's provider override toggle
+  const toggleInput = page.getByLabel(/enable brainstorm provider override/i);
   await expect(toggleInput).not.toBeChecked();
 
   // Toggle it on

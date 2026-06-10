@@ -12,6 +12,7 @@ import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
+import EntriesPanel from './EntriesPanel';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
@@ -82,7 +83,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline';
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline' | 'entries';
 
 interface SearchResultItem {
   docId: string;
@@ -258,6 +259,14 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           aria-pressed={view === 'timeline'}
         >
           Timeline
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'entries' ? ' active' : ''}`}
+          onClick={() => onSetView('entries')}
+          aria-pressed={view === 'entries'}
+          data-testid="view-btn-entries"
+        >
+          Entries
         </button>
       </div>
       <div className="writing-mode-selector" aria-label="Writing mode">
@@ -568,8 +577,11 @@ export default function DesktopShell() {
     editorApiRef.current = api;
   }, []);
 
-  // SKY-152: seenTips
-  const seenTips: Record<string, boolean> = (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {};
+  // SKY-152: seenTips — memoized to avoid new object reference on every render
+  const seenTips = useMemo<Record<string, boolean>>(
+    () => (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {},
+    [appSettings],
+  );
   const handleDismissTip = useCallback(async (key: string) => {
     if (!appSettings) return;
     const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
@@ -1665,6 +1677,11 @@ export default function DesktopShell() {
       {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+      )}
+      {view === 'entries' && (
+        <div className="shell-entries">
+          <EntriesPanel storyTitle={selectedStory?.title ?? ''} />
+        </div>
       )}
       {view === 'kanban' && (
         <div className="shell-kanban">

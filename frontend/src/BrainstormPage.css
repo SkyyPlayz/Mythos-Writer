@@ -201,6 +201,43 @@
   cursor: not-allowed;
 }
 
+.brainstorm-input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brainstorm-input-wrapper .brainstorm-input {
+  flex: unset;
+}
+
+.brainstorm-char-counter {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  text-align: right;
+  user-select: none;
+  line-height: 1.2;
+}
+
+.brainstorm-char-counter--warning {
+  color: var(--color-warning-text, #92400e);
+}
+
+.brainstorm-char-counter--error {
+  color: var(--state-error, #dc2626);
+  font-weight: 600;
+}
+
+.brainstorm-paste-warning {
+  font-size: 0.8rem;
+  color: var(--color-warning-text, #92400e);
+  background: var(--color-warning-bg, #fffbeb);
+  border: 1px solid var(--color-warning-border, #fde68a);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
 .brainstorm-send-btn {
   background: var(--accent);
   border: none;
