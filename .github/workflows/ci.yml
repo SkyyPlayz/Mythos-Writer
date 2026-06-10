@@ -212,6 +212,12 @@ jobs:
       - name: Build and package (Linux AppImage + deb)
         # Skip rpm target: fpm/rpmbuild not provisioned on GabesPC yet.
         # RPM packaging is in electron-builder.json for release builds; CI validates AppImage + deb.
+        # LD_LIBRARY_PATH must be cleared: Paperclip's embedded-postgres shadows liblzma, breaking
+        # fpm's tar -J (XZ) compression step. The runner .env sets LD_LIBRARY_PATH= as a backstop,
+        # but the runner service's inherited env can survive that override — step-level clear is
+        # the reliable fix (SKY-1059).
+        env:
+          LD_LIBRARY_PATH: ""
         run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
 
       - name: Verify .deb artifact
