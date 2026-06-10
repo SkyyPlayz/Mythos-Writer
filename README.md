@@ -47,6 +47,7 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 | [Entity System](docs/user-guide/entities.md) | Characters, locations, factions, items, events, concepts — wiki-links, connections, search |
 | [Keyboard Shortcuts](docs/keyboard-shortcuts.md) | Full shortcut reference |
 | [AI Providers Guide](#ai-providers) | Local models (Ollama, LM Studio), BYO provider, per-agent config |
+| [Voice Guide](#voice-stt--tts) | STT/TTS setup, provider capabilities, backward compat |
 
 ## AI Providers
 
@@ -107,6 +108,46 @@ Each agent (Writing Assistant, Brainstorm, Archive) can use a different model or
 3. For a **completely different provider**: toggle **Use a different provider for this agent**, then configure the provider, model, and credentials
 4. Click **Test connection** to verify the per-agent configuration
 5. **Save** — that agent will now use its own provider for all AI requests
+
+## Voice (STT / TTS)
+
+Mythos Writer supports voice input (speech-to-text) and voice output (text-to-speech). Both can use a local binary or route through any voice-capable AI provider.
+
+### Which providers support voice?
+
+| Provider | STT | TTS | Notes |
+|----------|-----|-----|-------|
+| **OpenAI** | ✅ | ✅ | `/v1/audio/transcriptions` and `/v1/audio/speech` |
+| **Custom endpoint** (with Base URL set) | ✅ | ✅ | OpenAI-compatible audio API assumed |
+| **Anthropic** | — | — | No audio API; use OpenAI or a local binary |
+| **Ollama / LM Studio** | — | — | No audio API; use a local binary |
+| **Local whisper.cpp** | ✅ | — | Set `stt.localBinaryPath` in Settings |
+| **Local TTS binary** | — | ✅ | Set `tts.localBinaryPath` in Settings |
+
+A provider shows a **voice badge** (🎙) in Settings when it declares STT or TTS capability.
+
+### Enabling voice with OpenAI
+
+1. In **Settings → AI Provider**, configure an OpenAI (or compatible) provider.
+2. In **Settings → Voice**, the provider appears automatically in the **Voice provider** selector.
+3. Select it and click **Save**.
+4. Toggle the microphone button in the toolbar (or use `Ctrl+Shift+M`) to start recording.
+
+### Capabilities field
+
+When adding a custom provider you can explicitly declare its voice capabilities:
+
+```json
+{
+  "capabilities": { "transcribe": true, "speak": true }
+}
+```
+
+When absent, defaults are inferred: OpenAI-kind providers and custom providers with a `baseUrl` are treated as voice-capable; all other kinds are not.
+
+### Backward compatibility
+
+If you previously set `stt.cloudApiKey` in Settings, that key is still used as a fallback when no voice provider is configured. It is deprecated — migrate to a named provider in **Settings → AI Provider** and select it in the **Voice provider** dropdown.
 
 ## Contributing
 
