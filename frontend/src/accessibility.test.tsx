@@ -624,7 +624,7 @@ describe('Accessibility — SyncConflictModal', () => {
 });
 
 
-// Surface 8 — WritingApp (vault loading / error states)
+// Surface 9 — WritingApp (vault loading / error states)
 // ══════════════════════════════════════════════════════════════════════════════
 import WritingApp from './WritingApp';
 

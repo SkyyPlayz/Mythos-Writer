@@ -287,7 +287,7 @@ describe('SceneEditor save status indicator', () => {
 
   it('save status indicator has aria-live="polite" wrapper', () => {
     render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
-    const saved = screen.getByText('✓ Saved');
+    const saved = screen.getByRole('status');
     const wrapper = saved.parentElement!;
     expect(wrapper).toHaveAttribute('aria-live', 'polite');
     expect(wrapper).toHaveAttribute('aria-atomic', 'true');
