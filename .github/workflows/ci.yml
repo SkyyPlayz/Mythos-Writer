@@ -203,14 +203,20 @@ jobs:
           fi
           for env_file in .env .env.production .env.local; do
             if [ -f "$env_file" ] && grep -qE '^PERSIST_PROMPTS=1' "$env_file"; then
-                    - name: Build and package (Linux AppImage)
-                      # Skip deb/rpm targets: fpm/tar tools not fully provisioned on GabesPC yet.
-                      # deb/rpm packaging is in electron-builder.json for release builds; CI validates AppImage only.
-                      # Clear LD_LIBRARY_PATH so the runner's inherited Paperclip embedded-postgres lib path
-                      # does not shadow the system liblzma.so.5 and break xz/tar during packaging.
-                      env:
-                        LD_LIBRARY_PATH: ""
-                      run: npm run build:electron && npx electron-builder --linux AppImage --publish never
+              echo "ERROR: PERSIST_PROMPTS=1 found in $env_file. This flag stores full prompt text in cleartext and must never be included in a release build. Remove or comment it out before packaging." >&2
+              exit 1
+            fi
+          done
+          echo "Guard passed: PERSIST_PROMPTS is not set."
+
+      - name: Build and package (Linux AppImage)
+        # Skip deb/rpm targets: fpm/tar tools not fully provisioned on GabesPC yet.
+        # deb/rpm packaging is in electron-builder.json for release builds; CI validates AppImage only.
+        # Clear LD_LIBRARY_PATH so the runner's inherited Paperclip embedded-postgres lib path
+        # does not shadow the system liblzma.so.5 and break xz/tar during packaging.
+        env:
+          LD_LIBRARY_PATH: ""
+        run: npm run build:electron && npx electron-builder --linux AppImage --publish never
 
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
