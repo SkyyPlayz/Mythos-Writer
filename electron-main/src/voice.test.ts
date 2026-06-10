@@ -744,10 +744,7 @@ describe('voice:speak handler', () => {
 describe('voice:speak SSRF guard (SKY-847)', () => {
   beforeEach(() => { handleMap.clear(); onMap.clear(); });
 
-  async function runBlocked(endpoint: string): Promise<{
-    errors: Array<{ category: VoiceErrorCategory; error: string }>;
-    fetchSpy: ReturnType<typeof vi.spyOn>;
-  }> {
+  async function runBlocked(endpoint: string) {
     const errors: Array<{ category: VoiceErrorCategory; error: string }> = [];
     const mockSender = {
       send: (ch: string, data: unknown) => {

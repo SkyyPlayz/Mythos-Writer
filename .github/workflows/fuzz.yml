@@ -9,7 +9,9 @@ on:
 
 jobs:
   property-tests-and-fuzz:
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners currently fail before job steps materialize on this account.
+    # Keep the required Fuzz check executable on the same self-hosted runner as CI.
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
