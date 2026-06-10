@@ -115,6 +115,76 @@ describe('search subsystem', () => {
     expect(results.find((r) => r.docId === 'scene-3')).toBeUndefined();
   });
 
+  // SKY-905 regression: mirrors the e2e/tests/global-search.spec.ts seed shape.
+  // Guards the indexer contract used by the Global Search panel: a manifest
+  // with stories[].chapters[].scenes[] + entities[] must produce searchable
+  // rows in both 'story' and 'notes' scope without touching the filesystem.
+  it('buildFullIndex indexes manifest stories + entities so search returns both scopes', () => {
+    const now = new Date().toISOString();
+    const manifest = emptyManifest();
+    manifest.stories = [
+      {
+        id: 'sky905-story',
+        title: 'Global Search Test Vault',
+        path: 'Global Search Test Vault',
+        chapters: [
+          {
+            id: 'sky905-chap',
+            title: 'Story Chapter',
+            path: 'Global Search Test Vault/Story Chapter',
+            order: 0,
+            scenes: [
+              {
+                // Scene title includes the search term so title-only matches succeed
+                // when the on-disk prose file is unavailable (the unit harness has no real vault).
+                id: 'sky905-scene',
+                title: 'The Dragon Scene',
+                path: 'Global Search Test Vault/Story Chapter/Dragon Scene.md',
+                order: 0,
+                blocks: [],
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+    manifest.entities = [
+      {
+        id: 'sky905-entity',
+        name: 'Dragon Oracle',
+        type: 'character',
+        path: 'entities/characters/sky905-entity.md',
+        aliases: [],
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+
+    // buildFullIndex tries to read prose from disk and tolerates missing files,
+    // so we index titles only here. The 'dragon' term matches the scene title
+    // and the entity title.
+    buildFullIndex(db, '/nonexistent/vault', manifest);
+
+    const both = searchVault(db, 'dragon', 'both');
+    expect(both.length).toBeGreaterThanOrEqual(2);
+    expect(both.some((r) => r.docId === 'sky905-scene' && r.vault === 'story')).toBe(true);
+    expect(both.some((r) => r.docId === 'sky905-entity' && r.vault === 'notes')).toBe(true);
+
+    const story = searchVault(db, 'dragon', 'story');
+    expect(story.every((r) => r.vault === 'story')).toBe(true);
+    expect(story.some((r) => r.docId === 'sky905-scene')).toBe(true);
+
+    const notes = searchVault(db, 'dragon', 'notes');
+    expect(notes.some((r) => r.docId === 'sky905-entity')).toBe(true);
+  });
+
   it('buildFullIndex populates from manifest entities', () => {
     const manifest = emptyManifest();
     manifest.entities = [
