@@ -102,7 +102,7 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
   }, [onClose, migrating]);
 
   const handlePickFolder = useCallback(async () => {
-    const res = await (window.api as any).pickFolder();
+    const res = await window.api.pickFolder();
     if (!res.cancelled && res.vaultRoot) {
       setTargetFolder(res.vaultRoot);
       setSessionToken(res.registrationToken ?? null);

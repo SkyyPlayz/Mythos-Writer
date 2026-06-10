@@ -3,6 +3,7 @@ import type { FocusPrefs } from './types';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import { resolveAxisTokens } from './themeAxis';
 import { SUGGESTION_CATEGORY_LABELS } from './types';
+import MoveVaultWizard, { type SyncProvider } from './MoveVaultWizard';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -704,6 +705,10 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [vaultsDirty, setVaultsDirty] = useState(false);
   const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
+
+  // SKY-861: Cloud-sync vault placement wizard
+  const [showMoveWizard, setShowMoveWizard] = useState(false);
+  const [syncProviderLabel, setSyncProviderLabel] = useState<string | null>(null);
 
   // SKY-207: Custom field definitions
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
@@ -1452,6 +1457,45 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               {vaultsError && <span className="settings-error-msg" role="alert">{vaultsError}</span>}
             </div>
             <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
+
+            {/* SKY-861: Cloud sync entry point */}
+            <div className="settings-field">
+              <div className="settings-agent-header">
+                <span className="settings-label">Cloud sync</span>
+              </div>
+              {syncProviderLabel ? (
+                <p className="settings-hint" data-testid="cloud-sync-status">
+                  ✓ Synced via {syncProviderLabel}
+                  {' '}
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-secondary"
+                    style={{ fontSize: '0.78rem', padding: '2px 8px' }}
+                    onClick={() => setShowMoveWizard(true)}
+                    aria-label="Move vault to a different cloud sync folder"
+                    data-testid="move-vault-btn"
+                  >
+                    Move to different folder
+                  </button>
+                </p>
+              ) : (
+                <div className="settings-input-row">
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-secondary"
+                    onClick={() => setShowMoveWizard(true)}
+                    aria-label="Move vault to cloud sync folder"
+                    data-testid="move-vault-btn"
+                  >
+                    Move vault to cloud sync…
+                  </button>
+                </div>
+              )}
+              <p className="settings-hint">
+                Move your vault to Dropbox, iCloud, OneDrive, or Syncthing so it
+                syncs to all your devices automatically.
+              </p>
+            </div>
           </section>
 
           {/* ── Agents ── */}
@@ -3039,6 +3083,22 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         url={remoteWarning.url}
         onConfirm={() => { remoteWarning.onConfirm(); setRemoteWarning(null); }}
         onCancel={() => setRemoteWarning(null)}
+      />
+    )}
+    {showMoveWizard && (
+      <MoveVaultWizard
+        onClose={() => setShowMoveWizard(false)}
+        onSuccess={(newPath, provider) => {
+          setShowMoveWizard(false);
+          setVaults((prev) => ({ ...prev, storyVaultPath: newPath }));
+          const PROVIDER_LABELS: Record<SyncProvider, string> = {
+            dropbox: 'Dropbox',
+            icloud: 'iCloud Drive',
+            onedrive: 'OneDrive',
+            'google-drive': 'Google Drive',
+          };
+          setSyncProviderLabel(PROVIDER_LABELS[provider]);
+        }}
       />
     )}
     </>
