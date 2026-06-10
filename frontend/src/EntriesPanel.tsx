@@ -168,6 +168,12 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
     setLoadState('loading');
     try {
       const listResult = await window.api.listNotesVault(ENTRIES_DIR);
+      // IPC returns { error } when the directory doesn't exist yet — treat as empty.
+      if ('error' in listResult) {
+        setEntries([]);
+        setLoadState('ready');
+        return;
+      }
       const mdFiles = listResult.items.filter(
         (item) => !item.isDirectory && item.name.endsWith('.md'),
       );
@@ -176,6 +182,7 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
         mdFiles.map(async (item) => {
           try {
             const readResult = await window.api.readNotesVault(item.path);
+            if ('error' in readResult) return;
             const parsed = parseEntryFrontmatter(readResult.content);
             if (!parsed) return;
             records.push({
@@ -194,16 +201,8 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
       records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       setEntries(records);
       setLoadState('ready');
-    } catch (err) {
-      // Treat a missing Entries directory as "no entries yet" rather than an error —
-      // the directory is created on first write, so it won't exist on a fresh vault.
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('ENOENT') || msg.includes('no such file')) {
-        setEntries([]);
-        setLoadState('ready');
-      } else {
-        setLoadState('error');
-      }
+    } catch {
+      setLoadState('error');
     }
   }, []);
 
@@ -249,6 +248,7 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
             await window.api.writeNotesVault(notePath, noteContent);
             // Update entry frontmatter with promotedNoteId
             const readResult = await window.api.readNotesVault(entryId);
+            if ('error' in readResult) return;
             const parsed = parseEntryFrontmatter(readResult.content);
             if (parsed) {
               const updated = buildEntryContent(
@@ -298,8 +298,10 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
       const createdAt = new Date().toISOString();
       const path = makeEntryPath();
       const content = buildEntryContent(body, tags, createdAt);
-      await window.api.mkdirNotesVault(ENTRIES_DIR);
-      await window.api.writeNotesVault(path, content);
+      const mkResult = await window.api.mkdirNotesVault(ENTRIES_DIR);
+      if ('error' in mkResult) throw new Error(mkResult.error);
+      const writeResult = await window.api.writeNotesVault(path, content);
+      if ('error' in writeResult) throw new Error(writeResult.error);
       setNewBody('');
       setNewTagsInput('');
       await loadEntries();
@@ -320,10 +322,13 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
         const slug = slugify(entry.body);
         const notePath = `${NOTES_DIR}/${slug}.md`;
         const noteContent = buildPromotedNoteContent(entry.body, entry.path, storyTitle);
-        await window.api.mkdirNotesVault(NOTES_DIR);
-        await window.api.writeNotesVault(notePath, noteContent);
+        const mkNoteResult = await window.api.mkdirNotesVault(NOTES_DIR);
+        if ('error' in mkNoteResult) throw new Error(mkNoteResult.error);
+        const writeNoteResult = await window.api.writeNotesVault(notePath, noteContent);
+        if ('error' in writeNoteResult) throw new Error(writeNoteResult.error);
         const updated = buildEntryContent(entry.body, entry.tags, entry.createdAt, notePath);
-        await window.api.writeNotesVault(entry.path, updated);
+        const updateResult = await window.api.writeNotesVault(entry.path, updated);
+        if ('error' in updateResult) throw new Error(updateResult.error);
         await loadEntries();
         showFeedback(`Note saved to ${notePath}`);
       } catch {

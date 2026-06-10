@@ -100,6 +100,7 @@ function EntrySourcePicker({ selectedIds, onSelectionChange }: EntrySourcePicker
     void (async () => {
       try {
         const listResult = await window.api.listNotesVault('Entries');
+        if ('error' in listResult) { setEntries([]); return; }
         const mdFiles = listResult.items.filter(
           (item) => !item.isDirectory && item.name.endsWith('.md'),
         );
@@ -108,6 +109,7 @@ function EntrySourcePicker({ selectedIds, onSelectionChange }: EntrySourcePicker
           mdFiles.map(async (item) => {
             try {
               const readResult = await window.api.readNotesVault(item.path);
+              if ('error' in readResult) return;
               const parsed = parseEntryFrontmatter(readResult.content);
               if (!parsed) return;
               items.push({ id: item.path, body: parsed.body, tags: parsed.tags });
