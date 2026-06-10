@@ -209,7 +209,7 @@ jobs:
       - name: Build and package (Linux AppImage + deb)
         # Skip rpm target: fpm/rpmbuild not provisioned on GabesPC yet.
         # RPM packaging is in electron-builder.json for release builds; CI validates AppImage + deb.
-        run: npm run build:electron && electron-builder --linux AppImage deb --publish never
+        run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
 
       - name: Verify .deb artifact
         run: |
