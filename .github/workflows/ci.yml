@@ -41,6 +41,8 @@ jobs:
         run: npm run test -w frontend
 
       - name: Build (electron-vite)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
@@ -140,6 +142,8 @@ jobs:
         run: npm run test -w frontend
 
       - name: Build and package (Linux AppImage)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run dist:linux
 
       - name: Upload Linux AppImage artifact
