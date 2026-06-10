@@ -2,7 +2,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
 import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
-import { acquireLockfile, checkLockfile, releaseLockfile } from './lockfile.js';
 import { readBgImageAsDataUrl } from './bgLoad.js';
 import { createRequire } from 'node:module';
 import path from 'path';
@@ -4461,27 +4460,29 @@ const handlers: IpcHandlers = {
     const vaultRoot = getVaultRoot();
     const ts = () => new Date().toISOString();
 
-    // 1. Check for a concurrent live session OR a cross-host lock (SKY-1143).
-    // isLockfileLive: same-host PID still running.
-    // isForeignHostLock: lock written by a different machine — always warn.
+    // SKY-1128: acquireLockfile is now atomic (O_CREAT|O_EXCL / 'ax').
+    // It returns null when a live process (same or foreign host) already holds
+    // the lock — no TOCTOU between the old checkLockfile read and write.
     let lockfileConflict: import('./ipc.js').LockfileConflictInfo | null = null;
-    const existing = checkLockfile(vaultRoot);
-    if (existing && (isLockfileLive(existing) || isForeignHostLock(existing))) {
-      lockfileConflict = { hostname: existing.hostname, pid: existing.pid, timestamp: existing.timestamp };
+    const lock = acquireLockfile(vaultRoot);
+    if (lock === null) {
+      // Contention: read the existing lock for reporting only (best-effort).
+      const existing = checkLockfile(vaultRoot);
+      if (existing) {
+        lockfileConflict = { hostname: existing.hostname, pid: existing.pid, timestamp: existing.timestamp };
+        appendSyncEvent(vaultRoot, {
+          type: 'concurrent_session_detected',
+          ts: ts(),
+          detail: { hostname: existing.hostname, pid: existing.pid },
+        });
+      }
+    } else {
       appendSyncEvent(vaultRoot, {
-        type: 'concurrent_session_detected',
+        type: 'lockfile_acquired',
         ts: ts(),
-        detail: { hostname: existing.hostname, pid: existing.pid },
+        detail: { pid: lock.pid, hostname: lock.hostname },
       });
     }
-
-    // 2. Acquire our lockfile (overwrites stale ones).
-    const lock = acquireLockfile(vaultRoot);
-    appendSyncEvent(vaultRoot, {
-      type: 'lockfile_acquired',
-      ts: ts(),
-      detail: { pid: lock.pid, hostname: lock.hostname },
-    });
 
     // 3. Detect and resolve conflicts.
     const conflicts = detectConflicts(vaultRoot);
