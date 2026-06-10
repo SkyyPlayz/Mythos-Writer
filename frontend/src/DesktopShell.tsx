@@ -1016,6 +1016,12 @@ export default function DesktopShell() {
       }
 
       const mod = e.metaKey || e.ctrlKey;
+      // Ctrl/Cmd+, — open Settings (standard platform convention for preferences)
+      if (mod && !e.shiftKey && !e.altKey && e.key === ',') {
+        e.preventDefault();
+        setSettingsOpen(true);
+        return;
+      }
       // Ctrl+K — open global vault search
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
@@ -1036,7 +1042,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen]);
 
   // ─── Panel resize drag handlers ───
 

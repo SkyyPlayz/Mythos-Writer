@@ -1282,3 +1282,33 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
+
+/* Vault-paths saved confirmation (matches settings-saved-msg) */
+.settings-saved-ok {
+  font-size: 0.78rem;
+  color: var(--state-success);
+  margin: 0;
+}
+
+/* SKY-818: Voice capability badge */
+.settings-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.2) 0%, rgba(155, 95, 255, 0.2) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: rgb(0, 240, 255);
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: light) {
+  .settings-badge {
+    background: linear-gradient(135deg, rgba(0, 180, 200, 0.15) 0%, rgba(120, 80, 200, 0.15) 100%);
+    border-color: rgba(0, 150, 180, 0.5);
+    color: rgb(0, 120, 140);
+  }
+}
