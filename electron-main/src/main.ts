@@ -99,6 +99,7 @@ import {
   type VaultValidatePathPayload,
   type VaultValidatePathResponse,
   type VaultPickFolderByPathPayload,
+  type VaultGuidedMovePayload,
   type ProjectEntry,
   type ProjectSwitchPayload,
   type CreateDefaultMythosVaultPayload,
@@ -199,7 +200,8 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault, checkScaffoldGate } from './vaultGate.js';
+import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault, checkScaffoldGate, checkGuidedMoveGate } from './vaultGate.js';
+import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
   seedTrustedBinariesFromSettings,
@@ -349,6 +351,15 @@ import {
   isSafeVaultName,
   pickUniqueMythosVaultName,
 } from './mythosVault.js';
+import {
+  detectConflicts,
+  resolveConflict,
+  acquireLockfile,
+  releaseLockfile,
+  checkLockfile,
+  isLockfileLive,
+  appendSyncEvent,
+} from './cloudSync.js';
 
 const require = createRequire(import.meta.url);
 
@@ -386,6 +397,8 @@ interface VaultSettings {
   // imported content.
   layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
+  // SKY-863: per-vault "don't show again" for the sync-conflict warning modal.
+  syncWarningDismissed?: boolean;
 }
 
 // SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
@@ -3532,6 +3545,36 @@ const handlers: IpcHandlers = {
     return moveVaultFile(root, payload.fromPath, payload.toPath);
   },
 
+  // SKY-862: relocate the entire story vault to a cloud-synced folder.
+  // SEC-11 vault-token pattern: isFromTopFrame + sanitizeIpcError are applied
+  // automatically by setupIpcMain; session-token validation is in the gate.
+  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: async (
+    payload: VaultGuidedMovePayload,
+  ) => {
+    const homeDir = app.getPath('home');
+
+    // Gate: validates targetPath (homedir containment, no ..), syncProvider,
+    // and sessionToken (registration token bound to targetPath).
+    const gate = checkGuidedMoveGate(payload, homeDir);
+    if (!gate.ok) return { error: gate.error };
+
+    const srcVaultRoot = getVaultRoot();
+
+    // Runtime FS checks: src exists, target not occupied, target writable.
+    const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
+    if (!targetCheck.ok) return { error: targetCheck.error };
+
+    await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
+      syncProvider: gate.syncProvider,
+      updateSettings: (newPath) => {
+        saveVaultSettings({ vaultRoot: newPath });
+        addToRecentProjects(newPath);
+      },
+    });
+
+    return { moved: true, newVaultPath: gate.targetPath };
+  },
+
   // SKY-9: generic folder picker for the Settings panel. Returns the chosen
   // absolute path with no side effects; the renderer then calls vaultSetPaths
   // to persist. Distinct from VAULT_PICK_FOLDER (Obsidian import — tags with
@@ -4408,6 +4451,64 @@ const handlers: IpcHandlers = {
       updatedAt: now,
     };
     return { proposal: updated, scene: responseScene };
+  },
+
+  // ─── SKY-863: Cloud-sync conflict detection + lockfile ───────────────────
+
+  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: async (): Promise<import('./ipc.js').VaultCheckConflictsResponse> => {
+    const vaultRoot = getVaultRoot();
+    const ts = () => new Date().toISOString();
+
+    // 1. Check for a concurrent live session.
+    let lockfileConflict: import('./ipc.js').LockfileConflictInfo | null = null;
+    const existing = checkLockfile(vaultRoot);
+    if (existing && isLockfileLive(existing)) {
+      lockfileConflict = { hostname: existing.hostname, pid: existing.pid, timestamp: existing.timestamp };
+      appendSyncEvent(vaultRoot, {
+        type: 'concurrent_session_detected',
+        ts: ts(),
+        detail: { hostname: existing.hostname, pid: existing.pid },
+      });
+    }
+
+    // 2. Acquire our lockfile (overwrites stale ones).
+    const lock = acquireLockfile(vaultRoot);
+    appendSyncEvent(vaultRoot, {
+      type: 'lockfile_acquired',
+      ts: ts(),
+      detail: { pid: lock.pid, hostname: lock.hostname },
+    });
+
+    // 3. Detect and resolve conflicts.
+    const conflicts = detectConflicts(vaultRoot);
+    const resolved: import('./ipc.js').ResolvedConflictInfo[] = [];
+    for (const conflict of conflicts) {
+      try {
+        const result = resolveConflict(vaultRoot, conflict);
+        appendSyncEvent(vaultRoot, {
+          type: 'conflict_resolved',
+          ts: ts(),
+          detail: {
+            conflictPath: result.conflictPath,
+            originalPath: result.originalPath,
+            keptPath: result.keptPath,
+            archivedPath: result.archivedPath,
+            provider: result.provider,
+          },
+        });
+        resolved.push(result);
+      } catch {
+        // Non-fatal: log but don't crash the vault open if a single conflict can't be resolved.
+      }
+    }
+
+    const dismissed = loadVaultSettings().syncWarningDismissed ?? false;
+    return { resolved, lockfileConflict, dismissed };
+  },
+
+  [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (): { ok: true } => {
+    saveVaultSettings({ syncWarningDismissed: true });
+    return { ok: true };
   },
 
 };
@@ -5929,6 +6030,8 @@ app.on('window-all-closed', async () => {
   await stopVaultWatcher();
   await stopNotesVaultWatcher();
   closeDb();
+  // SKY-863: release the vault lockfile so the next session doesn't see a stale lock.
+  try { releaseLockfile(getVaultRoot()); } catch { /* non-fatal */ }
   if (process.platform !== 'darwin') {
     app.quit();
   }

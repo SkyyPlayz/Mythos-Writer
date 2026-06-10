@@ -551,6 +551,12 @@ contextBridge.exposeInMainWorld('api', {
   notesTagMerge: (sourceTag: string, targetTag: string) =>
     ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
 
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  checkVaultConflicts: () =>
+    ipcRenderer.invoke('vault:check-conflicts', undefined),
+  dismissSyncWarning: () =>
+    ipcRenderer.invoke('vault:dismiss-sync-warning', undefined),
+
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
   goalsLogWords: (date: string, wordsAdded: number) =>
