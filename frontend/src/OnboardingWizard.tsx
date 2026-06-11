@@ -197,6 +197,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const templateCardTriggerRef = useRef<HTMLElement | null>(null);
 
   // Auto-focus title input on step 2
   useEffect(() => {
@@ -307,6 +308,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   function handleSelectTemplate() {
+    templateCardTriggerRef.current = document.activeElement as HTMLElement;
     setStep('step1b');
   }
 
@@ -562,10 +564,23 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-ghost btn-back"
               type="button"
-              onClick={() => { setStep('step1'); }}
+              onClick={() => {
+                setStep('step1');
+                requestAnimationFrame(() => {
+                  // React unmounts/remounts step1 on each transition, so the captured
+                  // element ref is stale. Look up the fresh element by data-testid.
+                  const trigger = templateCardTriggerRef.current;
+                  if (!trigger) return;
+                  const testId = trigger.dataset['testid'];
+                  const el = testId
+                    ? (document.querySelector(`[data-testid="${testId}"]`) as HTMLElement)
+                    : null;
+                  (el ?? trigger).focus();
+                });
+              }}
               data-testid="gs-back-step1b"
             >
-              &#x2190; Back
+              <span aria-hidden="true">&#x2190;</span> Back
             </button>
             <span className="gs-step-label">Step 1 of 3</span>
             <button
@@ -648,7 +663,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={goBackFromStep2}
               data-testid="gs-back-step2"
             >
-              &#x2190; Back
+              <span aria-hidden="true">&#x2190;</span> Back
             </button>
             <span className="gs-step-label">Step 2 of 3</span>
             <button

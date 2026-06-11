@@ -353,6 +353,41 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(screen.queryByTestId('template-card-bundled:novel-3act')).not.toBeInTheDocument();
     await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
   });
+
+  // SKY-1362: F-12 — Back arrow on step1b wrapped in aria-hidden so SR hears "Back, button"
+  it('step1b Back button arrow glyph is wrapped in aria-hidden span', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('gs-back-step1b'));
+    const backBtn = screen.getByTestId('gs-back-step1b');
+    const arrowSpan = backBtn.querySelector('span[aria-hidden="true"]');
+    expect(arrowSpan).toBeInTheDocument();
+    expect(arrowSpan!.textContent).toBe('\u2190');
+  });
+
+  // SKY-1362: F-14 — Back from template-picker restores focus to the "From Template" card
+  it('Back from template-picker restores focus to the card that triggered navigation', async () => {
+    // Capture the rAF callback; fire it after React commits step1 DOM so step1 elements exist.
+    // React unmounts/remounts step1 on transition, so the implementation does a querySelector
+    // on data-testid to find the fresh element rather than using the stale captured ref.
+    const rafRef = { current: null as ((time: number) => void) | null };
+    vi.stubGlobal('requestAnimationFrame', (fn: (time: number) => void) => { rafRef.current = fn; return 0; });
+    try {
+      render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+      const templateCard = screen.getByTestId('card-template');
+      templateCard.focus();
+      fireEvent.click(templateCard);
+      await waitFor(() => screen.getByTestId('gs-back-step1b'));
+      await act(async () => { fireEvent.click(screen.getByTestId('gs-back-step1b')); });
+      // React committed step1; fire rAF — implementation finds the fresh card-template
+      expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+      rafRef.current?.(0);
+      // Check focus on the freshly-mounted card-template element (NOT the stale pre-nav ref)
+      expect(document.activeElement).toBe(screen.getByTestId('card-template'));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 // ─── Step 2: Name your story ──────────────────────────────────────────────────
@@ -372,6 +407,15 @@ describe('OnboardingWizard — Step 2', () => {
   it('shows step indicator "Step 2 of 3"', () => {
     renderAtStep2();
     expect(screen.getByText('Step 2 of 3')).toBeInTheDocument();
+  });
+
+  // SKY-1362: F-12 — step2 Back button arrow also wrapped in aria-hidden
+  it('step2 Back button arrow glyph is wrapped in aria-hidden span', () => {
+    renderAtStep2();
+    const backBtn = screen.getByTestId('gs-back-step2');
+    const arrowSpan = backBtn.querySelector('span[aria-hidden="true"]');
+    expect(arrowSpan).toBeInTheDocument();
+    expect(arrowSpan!.textContent).toBe('\u2190');
   });
 
   it('shows Story title field as required', () => {
