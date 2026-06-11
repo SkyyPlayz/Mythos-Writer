@@ -179,21 +179,23 @@ test('TC-SKY-814-03: Form controls have aria-label or <label> association', asyn
 
 // ─── TC-SKY-814-04: Toggles announce their state ────────────────────────────────
 test('TC-SKY-814-04: Toggle switches can be activated and announce state change', async () => {
-  // Find a toggle control (checkbox styled as toggle)
-  const toggle = page.locator('.settings-toggle input[type="checkbox"]').first();
+  // Find a visible toggle label; the checkbox itself is visually hidden while
+  // remaining accessible to screen readers.
+  const toggle = page.locator('.settings-toggle').first();
   await expect(toggle).toBeVisible();
+  const checkbox = toggle.locator('input[type="checkbox"]');
 
-  const initialChecked = await toggle.isChecked();
+  const initialChecked = await checkbox.isChecked();
 
-  // Click to toggle
+  // Click the visible switch label to toggle the hidden checkbox.
   await toggle.click();
 
   // Verify state changed
-  const finalChecked = await toggle.isChecked();
+  const finalChecked = await checkbox.isChecked();
   expect(finalChecked).not.toBe(initialChecked);
 
-  // Check for aria-label on the toggle
-  const ariaLabel = await toggle.getAttribute('aria-label');
+  // Check for aria-label on the checkbox announced by assistive tech.
+  const ariaLabel = await checkbox.getAttribute('aria-label');
   expect(ariaLabel, 'Toggle should have aria-label').toBeTruthy();
 });
 
@@ -224,23 +226,23 @@ test('TC-SKY-814-06: Focus ring is visible with cyan color on interactive contro
   const input = page.locator('.settings-input').first();
   await input.focus();
 
-  // Check if focus-visible state has a visible outline
-  const outline = await input.evaluate((el) => {
+  // Check if focus-visible state has a visible focus indicator
+  const focusIndicator = await input.evaluate((el) => {
     const style = window.getComputedStyle(el);
     return {
       outlineStyle: style.outlineStyle,
-      outlineColor: style.outlineColor,
       outlineWidth: style.outlineWidth,
+      outlineColor: style.outlineColor,
+      boxShadow: style.boxShadow,
+      borderColor: style.borderColor,
     };
   });
 
-  // Outline should be visible
-  expect(outline.outlineStyle).not.toBe('none');
-  expect(outline.outlineWidth).not.toBe('0px');
-
-  // Color should be cyan-ish (focus-ring = neon-cyan = #00f0ff)
-  // Note: computed color may be in rgb format, so we check for the presence of a color
-  expect(outline.outlineColor).toBeTruthy();
+  // Settings inputs use a cyan border + box-shadow focus indicator rather
+  // than an outline.
+  expect(focusIndicator.boxShadow).not.toBe('none');
+  expect(focusIndicator.boxShadow).toContain('0, 240, 255');
+  expect(focusIndicator.borderColor).toBeTruthy();
 });
 
 // ─── TC-SKY-814-07: Error and status messages have proper roles ────────────────
