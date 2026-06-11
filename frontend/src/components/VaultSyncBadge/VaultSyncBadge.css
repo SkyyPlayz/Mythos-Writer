@@ -1,0 +1,33 @@
+.vault-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.vault-sync-badge--local {
+  color: var(--text-muted);
+  background: var(--bg-inset);
+}
+
+.vault-sync-badge--synced {
+  color: var(--state-success);
+  background: var(--state-success-bg, color-mix(in srgb, var(--state-success) 18%, var(--bg-inset)));
+  border-color: color-mix(in srgb, var(--state-success) 35%, transparent);
+}
+
+[data-contrast="high"] .vault-sync-badge {
+  border-width: 2px;
+  background: var(--bg-canvas);
+}
+
+[data-contrast="high"] .vault-sync-badge--synced {
+  border-color: var(--state-success);
+}

@@ -120,6 +120,66 @@
   margin: 0;
 }
 
+.settings-vault-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+}
+
+.settings-vault-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-vault-card-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-vault-card-title {
+  margin: 0;
+  color: var(--text-header);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.settings-vault-path-display {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  color: var(--text-body);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.settings-vault-move-btn {
+  align-self: flex-start;
+}
+
+[data-contrast="high"] .settings-vault-card {
+  border-color: var(--border-strong);
+  background: var(--bg-canvas);
+}
+
+[data-contrast="high"] .settings-vault-path-display {
+  border-color: var(--border-strong);
+}
+
 .settings-field {
   display: flex;
   flex-direction: column;

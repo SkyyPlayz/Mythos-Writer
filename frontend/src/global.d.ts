@@ -665,7 +665,9 @@ interface Window {
     templateScaffold: (templateId: string, parentToken: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string; storyVaultToken: string; notesVaultToken: string } | { error: string }>;
     templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
-    validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
+    validatePath: (path: string) => Promise<{ valid?: boolean; exists: boolean; isEmpty: boolean; writable: boolean; error?: string }>;
+    appQuit?: () => Promise<void>;
+    openMoveVaultWizard?: () => Promise<void>;
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding

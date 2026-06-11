@@ -19,6 +19,7 @@ const mockSettingsSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockVaultSetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
+const mockOpenMoveVaultWizard = vi.fn();
 const mockAgentPersonaRead = vi.fn();
 const mockAgentPersonaReset = vi.fn();
 const mockOnClose = vi.fn();
@@ -48,6 +49,7 @@ beforeEach(() => {
     vaultGetPaths: mockVaultGetPaths,
     vaultSetPaths: mockVaultSetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
+    openMoveVaultWizard: mockOpenMoveVaultWizard,
     agentPersonaRead: mockAgentPersonaRead,
     agentPersonaReset: mockAgentPersonaReset,
   };
@@ -61,6 +63,29 @@ describe('SettingsPanel', () => {
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
     expect(screen.getByText(/archive agent/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
+  });
+
+  it('shows Account vault card with cloud status badge and guarded move action', async () => {
+    mockVaultGetPaths.mockResolvedValueOnce({
+      storyVaultPath: '/Users/test/Dropbox/Mythos/Story Vault',
+      notesVaultPath: '/Users/test/Mythos/Notes Vault',
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /^account$/i })).toBeInTheDocument());
+    expect(screen.getByText('/Users/test/Dropbox/Mythos/Story Vault')).toBeInTheDocument();
+    expect(screen.getByLabelText('Vault sync status: Synced via Dropbox')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /move to a different folder/i }));
+    expect(mockOpenMoveVaultWizard).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a local vault badge for non-cloud story vault paths', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /^account$/i })).toBeInTheDocument());
+    expect(screen.getByLabelText('Vault sync status: Local')).toBeInTheDocument();
   });
 
   it('exposes PersonaViewer tabpanel links with roving tabIndex', async () => {

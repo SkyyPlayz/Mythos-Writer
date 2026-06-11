@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { FocusPrefs } from './types';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import { resolveAxisTokens } from './themeAxis';
+import { detectCloudProvider } from './lib/cloudSync';
 import { SUGGESTION_CATEGORY_LABELS } from './types';
-import MoveVaultWizard, { type SyncProvider } from './MoveVaultWizard';
+import VaultSyncBadge from './components/VaultSyncBadge';
+import MoveVaultWizard from './MoveVaultWizard';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -706,9 +708,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
 
-  // SKY-861: Cloud-sync vault placement wizard
+  // SKY-861/SKY-1112: Cloud-sync vault placement entry point.
   const [showMoveWizard, setShowMoveWizard] = useState(false);
-  const [syncProviderLabel, setSyncProviderLabel] = useState<string | null>(null);
+  const vaultProvider = useMemo(() => detectCloudProvider(vaults.storyVaultPath), [vaults.storyVaultPath]);
 
   // SKY-207: Custom field definitions
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
@@ -837,6 +839,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }).catch(() => {
       // non-fatal — leave inputs blank; user can still pick folders
     });
+  }, []);
+
+  const handleMoveVault = useCallback(() => {
+    // TODO(SKY-861): wire wizard IPC
+    if (window.api.openMoveVaultWizard) {
+      void window.api.openMoveVaultWizard();
+      return;
+    }
+    setShowMoveWizard(true);
   }, []);
 
   const refreshMicDevices = useCallback(() => {
@@ -1385,6 +1396,30 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </div>
           </section>
 
+          {/* ── Account / Vault status (SKY-1112) ── */}
+          <section className="settings-section settings-account-section" aria-labelledby="section-account">
+            <h3 className="settings-section-title" id="section-account">Account</h3>
+            <div className="settings-vault-card" aria-label="Current Story Vault">
+              <div className="settings-vault-card-header">
+                <div>
+                  <span className="settings-vault-card-kicker">Vault</span>
+                  <h4 className="settings-vault-card-title">Story Vault location</h4>
+                </div>
+                <VaultSyncBadge provider={vaultProvider} />
+              </div>
+              <p className="settings-vault-path-display">{vaults.storyVaultPath || 'No Story Vault configured'}</p>
+              <button
+                className="settings-btn settings-btn-secondary settings-vault-move-btn"
+                type="button"
+                onClick={handleMoveVault}
+                aria-label="Move to a different folder"
+                data-testid="move-vault-btn"
+              >
+                Move to a different folder
+              </button>
+            </div>
+          </section>
+
           {/* ── Vault paths (SKY-9) ── */}
           <section className="settings-section" aria-labelledby="section-vault-paths">
             <h3 className="settings-section-title" id="section-vault-paths">Vault paths</h3>
@@ -1458,58 +1493,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </div>
             <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
 
-            {/* SKY-861: Cloud sync entry point */}
-            <div className="settings-field">
-              <div className="settings-agent-header">
-                <span className="settings-label">Cloud sync</span>
-              </div>
-              {syncProviderLabel ? (
-                <p className="settings-hint" data-testid="cloud-sync-status">
-                  ✓ Synced via {syncProviderLabel}
-                  {' '}
-                  <button
-                    type="button"
-                    className="settings-btn settings-btn-secondary"
-                    style={{ fontSize: '0.78rem', padding: '2px 8px' }}
-                    onClick={() => setShowMoveWizard(true)}
-                    aria-label="Move vault to a different cloud sync folder"
-                    data-testid="move-vault-btn"
-                  >
-                    Move to different folder
-                  </button>
-                </p>
-              ) : (
-                <div className="settings-input-row">
-                  <button
-                    type="button"
-                    className="settings-btn settings-btn-secondary"
-                    onClick={() => setShowMoveWizard(true)}
-                    aria-label="Move vault to cloud sync folder"
-                    data-testid="move-vault-btn"
-                  >
-                    Move vault to cloud sync…
-                  </button>
-                </div>
-              )}
-              <p className="settings-hint">
-                Move your vault to Dropbox, iCloud, OneDrive, or Google Drive so it
-                syncs to all your devices automatically.
-              </p>
-              <div className="settings-help-card" data-testid="cloud-sync-help">
-                <strong>Setup guide</strong>
-                <ol>
-                  <li>Choose your provider in the Move Vault wizard.</li>
-                  <li>Pick the provider folder already managed by your sync client.</li>
-                  <li>Confirm the sync client is running, then let Mythos move the vault.</li>
-                </ol>
-                <strong>Troubleshooting</strong>
-                <ul>
-                  <li><b>Vault not found:</b> reopen Settings and confirm the Story Vault path points at the synced folder.</li>
-                  <li><b>Permission denied:</b> grant file access to the folder, then retry the wizard permission check.</li>
-                  <li><b>Sync client not detected:</b> start Dropbox, iCloud Drive, OneDrive, or Google Drive before moving the vault.</li>
-                </ul>
-              </div>
-            </div>
           </section>
 
           {/* ── Agents ── */}
@@ -3102,16 +3085,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     {showMoveWizard && (
       <MoveVaultWizard
         onClose={() => setShowMoveWizard(false)}
-        onSuccess={(newPath, provider) => {
+        onSuccess={(newPath) => {
           setShowMoveWizard(false);
           setVaults((prev) => ({ ...prev, storyVaultPath: newPath }));
-          const PROVIDER_LABELS: Record<SyncProvider, string> = {
-            dropbox: 'Dropbox',
-            icloud: 'iCloud Drive',
-            onedrive: 'OneDrive',
-            'google-drive': 'Google Drive',
-          };
-          setSyncProviderLabel(PROVIDER_LABELS[provider]);
         }}
       />
     )}
