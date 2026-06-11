@@ -575,9 +575,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   />
                 ))}
               </div>
-              {templates.some((t) => t.isUserTemplate) && (
-                <>
-                  <p className="gs-section-divider">Your Templates</p>
+              <>
+                <p className="gs-section-divider">Your Templates</p>
+                {templates.some((t) => t.isUserTemplate) ? (
                   <div className="gs-template-grid">
                     {templates.filter((t) => t.isUserTemplate).map((tmpl) => (
                       <TemplateCard
@@ -588,8 +588,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                       />
                     ))}
                   </div>
-                </>
-              )}
+                ) : (
+                  <p className="gs-template-empty-hint" data-testid="template-empty-hint">
+                    No saved templates yet &#x2014; use &#x2018;Save as template&#x2019; from the vault menu after you scaffold a story.
+                  </p>
+                )}
+              </>
             </>
           )}
         </div>

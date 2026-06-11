@@ -262,6 +262,24 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
     expect(screen.getByText('My Template')).toBeInTheDocument();
   });
+
+  it('shows empty hint under "Your Templates" when no custom templates saved', async () => {
+    // mockApi returns BUNDLED_TEMPLATES only — no isUserTemplate entries
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
+    expect(screen.getByTestId('template-empty-hint')).toBeInTheDocument();
+    expect(screen.getByTestId('template-empty-hint')).toHaveTextContent('No saved templates yet');
+  });
+
+  it('hides empty hint once a user template is present', async () => {
+    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(screen.getByTestId('template-card-user:my-template')).toBeInTheDocument());
+    expect(screen.queryByTestId('template-empty-hint')).not.toBeInTheDocument();
+  });
 });
 
 // ─── Step 2: Name your story ──────────────────────────────────────────────────
