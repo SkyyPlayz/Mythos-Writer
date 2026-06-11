@@ -1108,3 +1108,144 @@ describe('BrainstormPage — prompt char counter', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+describe('BrainstormPage — sort and filter (SKY-1310)', () => {
+  const DRAFT_FACTS = [
+    { id: 'f1', type: 'character', name: 'Alice', content: 'A hero', savedStatus: 'saved', updatedAt: '2024-01-01T00:00:00.000Z' },
+    { id: 'f2', type: 'location', name: 'Forest', content: 'Dark woods', savedStatus: 'unsaved', updatedAt: '2024-01-02T00:00:00.000Z' },
+    { id: 'f3', type: 'character', name: 'Bob', content: 'A villain', savedStatus: 'unsaved', updatedAt: '2024-01-03T00:00:00.000Z' },
+  ];
+
+  function seedFacts(facts: typeof DRAFT_FACTS) {
+    localStorage.setItem(
+      'brainstorm:draft',
+      JSON.stringify({
+        v: 2,
+        savedAt: new Date().toISOString(),
+        messages: [
+          { role: 'user', text: 'q' },
+          { role: 'assistant', text: 'a', streaming: false },
+        ],
+        facts,
+      }),
+    );
+  }
+
+  it('renders sort dropdown with 4 options when facts exist', () => {
+    seedFacts(DRAFT_FACTS);
+    render(<BrainstormPage onClose={() => {}} />);
+    const select = screen.getByTestId('brainstorm-sort-select') as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toEqual(['newest', 'oldest', 'by-type', 'by-status']);
+  });
+
+  it('renders filter chips for all 5 filter options', () => {
+    seedFacts(DRAFT_FACTS);
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByTestId('brainstorm-filter-all')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-filter-character')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-filter-location')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-filter-item')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-filter-note')).toBeInTheDocument();
+  });
+
+  it('"All types" chip is aria-pressed=true by default', () => {
+    seedFacts(DRAFT_FACTS);
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByTestId('brainstorm-filter-all')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('brainstorm-filter-character')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('default sort is newest — cards in reverse insertion order', () => {
+    seedFacts(DRAFT_FACTS);
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+      (c) => c.getAttribute('data-testid'),
+    );
+    expect(cards).toEqual(['idea-card-f3', 'idea-card-f2', 'idea-card-f1']);
+  });
+
+  it('sort oldest shows cards in insertion order', () => {
+    seedFacts(DRAFT_FACTS);
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'oldest' } });
+    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+      (c) => c.getAttribute('data-testid'),
+    );
+    expect(cards).toEqual(['idea-card-f1', 'idea-card-f2', 'idea-card-f3']);
+  });
+
+  it('sort by-type groups characters before location', () => {
+    seedFacts(DRAFT_FACTS);
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'by-type' } });
+    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+      (c) => c.getAttribute('data-testid'),
+    );
+    const locationIdx = cards.indexOf('idea-card-f2');
+    expect(cards.indexOf('idea-card-f1')).toBeLessThan(locationIdx);
+    expect(cards.indexOf('idea-card-f3')).toBeLessThan(locationIdx);
+  });
+
+  it('sort by-status shows saved fact first', () => {
+    seedFacts(DRAFT_FACTS);
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'by-status' } });
+    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+      (c) => c.getAttribute('data-testid'),
+    );
+    expect(cards[0]).toBe('idea-card-f1');
+  });
+
+  it('filter by character shows only character cards', () => {
+    seedFacts(DRAFT_FACTS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('brainstorm-filter-character'));
+    expect(screen.getByTestId('idea-card-f1')).toBeInTheDocument();
+    expect(screen.getByTestId('idea-card-f3')).toBeInTheDocument();
+    expect(screen.queryByTestId('idea-card-f2')).not.toBeInTheDocument();
+  });
+
+  it('filter to empty type shows type-specific empty state', () => {
+    seedFacts(DRAFT_FACTS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('brainstorm-filter-item'));
+    expect(screen.getByText('No item ideas yet')).toBeInTheDocument();
+    expect(screen.queryByTestId('idea-card-f1')).not.toBeInTheDocument();
+  });
+
+  it('filter + sort are combined: characters oldest-first', () => {
+    seedFacts(DRAFT_FACTS);
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('brainstorm-filter-character'));
+    fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'oldest' } });
+    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+      (c) => c.getAttribute('data-testid'),
+    );
+    expect(cards).toEqual(['idea-card-f1', 'idea-card-f3']);
+    expect(screen.queryByTestId('idea-card-f2')).not.toBeInTheDocument();
+  });
+
+  it('expand all only expands visible (filtered) cards', () => {
+    seedFacts(DRAFT_FACTS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('brainstorm-filter-character'));
+    fireEvent.click(screen.getByTestId('bs-expand-all-btn'));
+    expect(screen.getByTestId('idea-card-toggle-f1')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('idea-card-toggle-f3')).toHaveAttribute('aria-expanded', 'true');
+    // Switch back to all — location card should be collapsed (was not in filtered set)
+    fireEvent.click(screen.getByTestId('brainstorm-filter-all'));
+    expect(screen.getByTestId('idea-card-toggle-f2')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('unified Expand all / Collapse all button toggles label', () => {
+    seedFacts(DRAFT_FACTS);
+    render(<BrainstormPage onClose={() => {}} />);
+    const btn = screen.getByTestId('bs-expand-all-btn');
+    expect(btn).toHaveTextContent('Expand all');
+    fireEvent.click(btn);
+    expect(btn).toHaveTextContent('Collapse all');
+    fireEvent.click(btn);
+    expect(btn).toHaveTextContent('Expand all');
+  });
+});
