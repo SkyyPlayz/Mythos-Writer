@@ -1261,7 +1261,8 @@ describe('SettingsPanel', () => {
     expect(confirm.disabled).toBe(true);
   });
 
-  it('calls templateSaveAs with trimmed name and shows success', async () => {
+  // SKY-1351: toast replaces the inline result spans
+  it('calls templateSaveAs with trimmed name and shows success toast', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
@@ -1270,11 +1271,11 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByTestId('save-as-template-confirm'));
 
     await waitFor(() => expect(mockTemplateSaveAs).toHaveBeenCalledWith('My Novel'));
-    await waitFor(() => expect(screen.getByTestId('save-as-template-success')).toHaveTextContent('My Novel'));
+    await waitFor(() => expect(screen.getByTestId('app-toast')).toHaveTextContent("Template saved as 'My Novel'"));
     expect(screen.queryByTestId('save-as-template-name-input')).not.toBeInTheDocument();
   });
 
-  it('shows error message when templateSaveAs returns error', async () => {
+  it('shows error toast when templateSaveAs returns error', async () => {
     mockTemplateSaveAs.mockResolvedValueOnce({ error: 'Template name already exists' });
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
@@ -1283,8 +1284,21 @@ describe('SettingsPanel', () => {
     fireEvent.change(screen.getByTestId('save-as-template-name-input'), { target: { value: 'Duplicate' } });
     fireEvent.click(screen.getByTestId('save-as-template-confirm'));
 
-    await waitFor(() => expect(screen.getByTestId('save-as-template-error')).toHaveTextContent('Template name already exists'));
+    await waitFor(() => expect(screen.getByTestId('app-toast')).toHaveTextContent('Template name already exists'));
     expect(screen.getByTestId('save-as-template-name-input')).toBeInTheDocument();
+  });
+
+  it('toast close button dismisses the toast', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByTestId('save-as-template-btn'));
+    fireEvent.change(screen.getByTestId('save-as-template-name-input'), { target: { value: 'Quick Test' } });
+    fireEvent.click(screen.getByTestId('save-as-template-confirm'));
+
+    await waitFor(() => screen.getByTestId('app-toast'));
+    fireEvent.click(screen.getByTestId('app-toast-close'));
+    expect(screen.queryByTestId('app-toast')).not.toBeInTheDocument();
   });
 
   it('cancel button hides the name input', async () => {

@@ -6,6 +6,7 @@ import { detectCloudProvider } from './lib/cloudSync';
 import { SUGGESTION_CATEGORY_LABELS } from './types';
 import VaultSyncBadge from './components/VaultSyncBadge';
 import MoveVaultWizard from './MoveVaultWizard';
+import Toast from './components/Toast';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -716,7 +717,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [saveAsTplOpen, setSaveAsTplOpen] = useState(false);
   const [saveAsTplName, setSaveAsTplName] = useState('');
   const [saveAsTplBusy, setSaveAsTplBusy] = useState(false);
-  const [saveAsTplResult, setSaveAsTplResult] = useState<{ ok: true; name: string } | { error: string } | null>(null);
+  // SKY-1351: confirmation toast replaces the inline result span
+  const [saveAsTplToast, setSaveAsTplToast] = useState<{ message: string; variant: 'success' | 'error' } | null>(null);
   const saveAsTplInputRef = useRef<HTMLInputElement>(null);
 
   // SKY-207: Custom field definitions
@@ -1004,11 +1006,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [vaults.storyVaultPath, vaults.notesVaultPath]);
 
-  // SKY-1303: Save-as-Template handlers
+  // SKY-1303/SKY-1351: Save-as-Template handlers
   const handleOpenSaveAsTpl = useCallback(() => {
     setSaveAsTplOpen(true);
     setSaveAsTplName('');
-    setSaveAsTplResult(null);
+    setSaveAsTplToast(null);
     setTimeout(() => saveAsTplInputRef.current?.focus(), 0);
   }, []);
 
@@ -1016,18 +1018,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     const name = saveAsTplName.trim();
     if (!name) return;
     setSaveAsTplBusy(true);
-    setSaveAsTplResult(null);
     try {
       const res = await window.api.templateSaveAs(name);
       if ('error' in res) {
-        setSaveAsTplResult({ error: res.error });
+        setSaveAsTplToast({ message: res.error, variant: 'error' });
       } else {
-        setSaveAsTplResult({ ok: true, name });
+        setSaveAsTplToast({ message: `Template saved as '${name}'`, variant: 'success' });
         setSaveAsTplOpen(false);
         setSaveAsTplName('');
       }
     } catch (e) {
-      setSaveAsTplResult({ error: e instanceof Error ? e.message : 'Failed to save template.' });
+      setSaveAsTplToast({ message: e instanceof Error ? e.message : 'Failed to save template.', variant: 'error' });
     } finally {
       setSaveAsTplBusy(false);
     }
@@ -1036,7 +1037,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const handleCancelSaveAsTpl = useCallback(() => {
     setSaveAsTplOpen(false);
     setSaveAsTplName('');
-    setSaveAsTplResult(null);
+    setSaveAsTplToast(null);
   }, []);
 
   // SKY-207: custom fields handlers
@@ -1567,7 +1568,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     maxLength={80}
                     aria-label="Template name"
                     data-testid="save-as-template-name-input"
-                    onChange={(e) => { setSaveAsTplName(e.target.value); setSaveAsTplResult(null); }}
+                    onChange={(e) => { setSaveAsTplName(e.target.value); }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSaveAsTpl();
                       if (e.key === 'Escape') handleCancelSaveAsTpl();
@@ -1591,16 +1592,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     Cancel
                   </button>
                 </div>
-              )}
-              {saveAsTplResult && 'ok' in saveAsTplResult && (
-                <span className="settings-saved-msg" role="status" data-testid="save-as-template-success">
-                  Saved as &ldquo;{saveAsTplResult.name}&rdquo;
-                </span>
-              )}
-              {saveAsTplResult && 'error' in saveAsTplResult && (
-                <span className="settings-error-msg" role="alert" data-testid="save-as-template-error">
-                  {saveAsTplResult.error}
-                </span>
               )}
               <p className="settings-hint">Snapshots the current Story Vault and Notes Vault folder structure as a reusable template.</p>
             </div>
@@ -3200,6 +3191,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           setShowMoveWizard(false);
           setVaults((prev) => ({ ...prev, storyVaultPath: newPath }));
         }}
+      />
+    )}
+    {saveAsTplToast && (
+      <Toast
+        message={saveAsTplToast.message}
+        variant={saveAsTplToast.variant}
+        onDismiss={() => setSaveAsTplToast(null)}
       />
     )}
     </>
