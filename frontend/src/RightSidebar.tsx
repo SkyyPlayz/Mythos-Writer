@@ -26,6 +26,7 @@ interface Props {
   gettingStartedProgress?: GettingStartedProgress | null;
   onGettingStartedAction?: (itemId: GettingStartedItemId) => void;
   onDismissGettingStarted?: () => void;
+  onToggleGsCollapsed?: () => void;
 }
 
 const SIDEBAR_TABS: { id: Tab; label: string }[] = [
@@ -372,6 +373,7 @@ export default function RightSidebar({
   gettingStartedProgress,
   onGettingStartedAction,
   onDismissGettingStarted,
+  onToggleGsCollapsed,
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -392,11 +394,12 @@ export default function RightSidebar({
 
   return (
     <div className="right-sidebar">
-      {isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && onGettingStartedAction && onDismissGettingStarted && (
+      {isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && onGettingStartedAction && onDismissGettingStarted && onToggleGsCollapsed && (
         <GettingStartedPanel
           progress={gettingStartedProgress}
           onAction={onGettingStartedAction}
           onDismiss={onDismissGettingStarted}
+          onToggleCollapse={onToggleGsCollapsed}
         />
       )}
       <div className="sidebar-tabs" role="tablist" aria-label="Sidebar panels">

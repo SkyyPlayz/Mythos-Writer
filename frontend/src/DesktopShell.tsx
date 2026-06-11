@@ -641,6 +641,11 @@ export default function DesktopShell() {
     persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
   }, [gettingStartedProgress, persistGettingStartedProgress]);
 
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
     const content = selectedScene.blocks.map(b => b.content).join('\n\n');
@@ -2174,6 +2179,7 @@ export default function DesktopShell() {
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
             onGettingStartedAction={handleGettingStartedAction}
             onDismissGettingStarted={handleDismissGettingStarted}
+            onToggleGsCollapsed={handleToggleGsCollapsed}
             gettingStartedProgress={gettingStartedProgress}
             onSelectScene={(sc, ch) => {
               if (selectedStory) {

@@ -18,6 +18,7 @@ describe('RightSidebar getting started slot', () => {
         gettingStartedProgress={progress}
         onGettingStartedAction={onGettingStartedAction}
         onDismissGettingStarted={vi.fn()}
+        onToggleGsCollapsed={vi.fn()}
       />,
     );
 
@@ -43,6 +44,7 @@ describe('RightSidebar getting started slot', () => {
         gettingStartedProgress={progress}
         onGettingStartedAction={vi.fn()}
         onDismissGettingStarted={vi.fn()}
+        onToggleGsCollapsed={vi.fn()}
       />,
     );
 
