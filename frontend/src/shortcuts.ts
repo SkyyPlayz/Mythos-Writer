@@ -72,6 +72,11 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
       entries: [
         { keys: ['Enter'], action: 'Submit prompt' },
         { keys: ['Shift+Enter'], action: 'Insert newline in prompt' },
+        { keys: [`${mod}+N`], action: 'Create new idea (opens detail drawer)' },
+        { keys: [`${mod}+D`], action: 'Delete focused idea (with confirmation)' },
+        { keys: ['↑ / ↓'], action: 'Navigate between idea cards' },
+        { keys: ['Enter (on card)'], action: 'Open idea detail drawer' },
+        { keys: [`${mod}+Shift+A`], action: 'Toggle multi-select mode' },
       ],
     },
     {

@@ -1,0 +1,137 @@
+.idea-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: default;
+  position: relative;
+  transition: background var(--dur-press) var(--ease-out);
+}
+
+.idea-card:hover {
+  background: var(--bg-hover);
+}
+
+.idea-card-compact {
+  height: 72px;
+  padding: var(--space-3);
+}
+
+.idea-card-multiselect {
+  padding-left: calc(var(--space-3) + 24px);
+  cursor: pointer;
+}
+
+.idea-card-selected {
+  background: var(--bg-active);
+}
+
+.idea-card-selected:hover {
+  background: var(--bg-active);
+}
+
+.idea-card:focus-within,
+.idea-card:focus {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+.idea-card-checkbox {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.idea-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.idea-card-title-row {
+  flex-shrink: 0;
+}
+
+.idea-card-chip-row {
+  overflow: hidden;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.idea-card-meta-row {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.idea-card-title {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.idea-card-title:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.idea-card-type-badge {
+  flex-shrink: 0;
+  border-radius: var(--radius-full, 999px);
+  padding: 1px var(--space-1);
+  font-size: var(--text-xs, 11px);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.idea-card-menu-button {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-press) var(--ease-out),
+              background var(--dur-press) var(--ease-out);
+}
+
+.idea-card-menu-button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.idea-card-chip {
+  flex-shrink: 0;
+  border-radius: var(--radius-full, 999px);
+  padding: 1px var(--space-1);
+  font-size: var(--text-xs, 11px);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.idea-card-saved-label {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted);
+  margin-left: auto;
+}

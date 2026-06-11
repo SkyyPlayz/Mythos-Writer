@@ -125,6 +125,13 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   page.on('dialog', (dialog) => {
     void dialog.accept().catch(() => undefined);
   });
+  // Capture renderer console output for debugging.
+  page.on('console', (msg) => {
+    if (msg.text().includes('BrainstormPage') || msg.text().includes('DesktopShell')) {
+      // eslint-disable-next-line no-console
+      console.log('[renderer]', msg.type(), msg.text());
+    }
+  });
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
@@ -257,16 +264,16 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
   const factsPanel = page.locator('.brainstorm-facts-list');
   await expect(factsPanel).toBeVisible({ timeout: 5_000 });
 
-  // The fact name must appear in the panel.
-  const factName = factsPanel.locator('.bs-fact-name', { hasText: MOCK_FACT_NAME });
+  // The fact name appears as an entity chip in the IdeaCard (linkedEntities).
+  const factName = factsPanel.locator('.idea-card-chip', { hasText: MOCK_FACT_NAME });
   await expect(factName).toBeVisible({ timeout: 6_000 });
 
   // The type group header must show "Characters".
   const factGroup = factsPanel.locator('.bs-fact-group').first();
   await expect(factGroup.locator('.bs-fact-group-header')).toContainText('Character');
 
-  // The description must match the mock FACT tag content.
-  const factDesc = factsPanel.locator('.bs-fact-desc').first();
+  // The description is the IdeaCard title (fact.content rendered as the primary text).
+  const factDesc = factsPanel.locator('.idea-card-title', { hasText: MOCK_FACT_DESC }).first();
   await expect(factDesc).toContainText(MOCK_FACT_DESC);
 
   // Facts auto-extract to the vault; the panel reflects the saved state.
@@ -285,6 +292,14 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
 // This test does NOT require an LLM call — it only exercises the UI.
 
 test('TC-BST-04: preset chip is visible and changes label on selection', async () => {
+  // Ensure brainstorm view is active (prior tests may close it).
+  const title = page.locator('.brainstorm-title');
+  const isBrainstormVisible = await title.isVisible().catch(() => false);
+  if (!isBrainstormVisible) {
+    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+    await expect(title).toBeVisible({ timeout: 6_000 });
+  }
+
   // The preset chip is rendered in the header via PresetSelector.
   const chip = page.locator('.preset-selector-chip');
   await expect(chip).toBeVisible({ timeout: 6_000 });
@@ -322,6 +337,14 @@ test('TC-BST-04: preset chip is visible and changes label on selection', async (
 // Relies on TC-BST-01 having run in the same session so messages exist.
 
 test('TC-BST-05: refinement chip triggers new generation', async () => {
+  // Ensure brainstorm view is active (prior tests may close it).
+  const title = page.locator('.brainstorm-title');
+  const isBrainstormVisible = await title.isVisible().catch(() => false);
+  if (!isBrainstormVisible) {
+    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+    await expect(title).toBeVisible({ timeout: 6_000 });
+  }
+
   // Refinement chips render below the last completed assistant message.
   const firstChip = page.locator('.refinement-chips .refinement-chip').first();
   await expect(firstChip).toBeVisible({ timeout: 8_000 });
@@ -350,6 +373,14 @@ test('TC-BST-05: refinement chip triggers new generation', async () => {
 //   - The prose body contains the fact description.
 
 test('TC-BST-03: detected fact is auto-saved as an entity file with correct frontmatter', async () => {
+  // Ensure brainstorm view is active (prior tests may close it).
+  const title = page.locator('.brainstorm-title');
+  const isBrainstormVisible = await title.isVisible().catch(() => false);
+  if (!isBrainstormVisible) {
+    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+    await expect(title).toBeVisible({ timeout: 6_000 });
+  }
+
   const factsPanel = page.locator('.brainstorm-facts-list');
 
   // The fact auto-saves; UI shows "Saved ✓".

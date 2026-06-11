@@ -624,7 +624,84 @@ describe('Accessibility — SyncConflictModal', () => {
 });
 
 
-// Surface 9 — WritingApp (vault loading / error states)
+// ══════════════════════════════════════════════════════════════════════════════
+// Surface 9 — IdeaCard (SKY-1196 a11y)
+// ══════════════════════════════════════════════════════════════════════════════
+import { IdeaCard } from './components/BrainstormCard/IdeaCard';
+import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
+
+const SAMPLE_IDEA = {
+  id: 'a11y-1',
+  title: 'Aria Voss',
+  type: 'character' as const,
+  linkedEntities: [{ id: 'e1', name: 'Aria Voss', type: 'character' as const }],
+  savedPath: 'Characters/Aria Voss.md',
+  updatedAt: '2026-06-11T00:00:00.000Z',
+};
+
+describe('Accessibility — IdeaCard (SKY-1196)', () => {
+  it('default state has no axe violations', async () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard idea={SAMPLE_IDEA} onOpenDetail={() => {}} />
+      </div>,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('multi-select state has no axe violations', async () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard
+          idea={SAMPLE_IDEA}
+          onOpenDetail={() => {}}
+          isMultiSelect
+          isSelected={false}
+          onToggleSelect={() => {}}
+        />
+      </div>,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('renders as <li> (implicit listitem role)', () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard idea={SAMPLE_IDEA} onOpenDetail={() => {}} />
+      </div>,
+    );
+    const card = container.querySelector('[data-testid="idea-card-a11y-1"]');
+    expect(card?.tagName.toLowerCase()).toBe('li');
+  });
+
+  it('card is always keyboard-focusable (tabIndex=0)', () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard idea={SAMPLE_IDEA} onOpenDetail={() => {}} />
+      </div>,
+    );
+    const card = container.querySelector('[data-testid="idea-card-a11y-1"]') as HTMLElement;
+    expect(card?.tabIndex).toBe(0);
+  });
+});
+
+describe('Accessibility — IdeaDetailDrawer (SKY-1196)', () => {
+  beforeEach(() => { stubApi(); vi.clearAllMocks(); });
+
+  it('default state has no axe violations', async () => {
+    const { container } = render(
+      <IdeaDetailDrawer idea={SAMPLE_IDEA} onClose={() => {}} onSave={() => {}} />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// Surface 10 — WritingApp (vault loading / error states)
 // ══════════════════════════════════════════════════════════════════════════════
 import WritingApp from './WritingApp';
 
