@@ -138,6 +138,38 @@ describe('IdeaCard', () => {
     });
   });
 
+  describe('keyboard navigation (SKY-1196)', () => {
+    it('renders as <li> (implicit listitem role)', () => {
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} />);
+      expect(screen.getByTestId('idea-card-idea-1').tagName.toLowerCase()).toBe('li');
+    });
+
+    it('has tabIndex=0 in default (non-multi-select) mode', () => {
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} />);
+      expect(screen.getByTestId('idea-card-idea-1').tabIndex).toBe(0);
+    });
+
+    it('fires onOpenDetail on Enter when the article itself is focused', () => {
+      const onOpenDetail = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={onOpenDetail} />);
+      const card = screen.getByTestId('idea-card-idea-1');
+      // Simulate Enter key with target === currentTarget (focus on the article itself)
+      fireEvent.keyDown(card, { key: 'Enter', target: card });
+      expect(onOpenDetail).toHaveBeenCalledWith('idea-1');
+    });
+
+    it('does not fire onOpenDetail on Enter when focus is on an inner button', () => {
+      const onOpenDetail = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={onOpenDetail} />);
+      const titleBtn = screen.getByRole('button', { name: /open idea detail/i });
+      // keyDown on the title button bubbles to the card but target !== card
+      fireEvent.keyDown(titleBtn, { key: 'Enter' });
+      // onOpenDetail fires from the button's onClick (click event), not from keyDown handler
+      // The keyDown on the button should NOT double-fire via card's handler
+      expect(onOpenDetail).not.toHaveBeenCalled();
+    });
+  });
+
   describe('multi-select mode', () => {
     it('shows checkbox when isMultiSelect is true', () => {
       render(

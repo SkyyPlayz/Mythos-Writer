@@ -210,6 +210,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  // Tracks the id of a brand-new idea created via Ctrl+N that hasn't been saved yet
+  const [pendingNewIdeaId, setPendingNewIdeaId] = useState<string | null>(null);
+  // Tracks which element opened the detail drawer so focus can be restored on close
+  const triggerElementRef = useRef<HTMLElement | null>(null);
 
   // SKY-196: vault context surfaced in the "Context used" panel
   const [contextResult, setContextResult] = useState<ContextResult | null>(null);
@@ -289,17 +293,22 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     return () => window.removeEventListener('beforeunload', handler);
   }, [messages.length, facts.length, prompt]);
 
-  // ESC closes the page, matching the same capture-phase pattern as GlobalSearchPanel
+  // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
+  // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
+      if (e.key !== 'Escape') return;
+      // Drawer / confirm / preset editor handle ESC themselves
+      if (detailDrawerIdeaId || showDeleteConfirm || showPresetEditor || pendingNewIdeaId) return;
+      // Context menus: focus is inside a [role="menu"] element
+      const focused = document.activeElement;
+      if (focused && (focused as HTMLElement).closest('[role="menu"]')) return;
+      e.stopPropagation();
+      onClose();
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  }, [onClose, detailDrawerIdeaId, showDeleteConfirm, showPresetEditor, pendingNewIdeaId]);
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -804,10 +813,60 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     });
   }, []);
 
-  // Keyboard shortcuts: Cmd/Ctrl+Shift+A toggles multi-select; Escape exits it
+  const createNewIdea = useCallback(() => {
+    const id = `idea-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const newFact: DetectedFact = { id, type: 'note', name: 'New idea', content: '', savedStatus: 'unsaved' };
+    triggerElementRef.current = document.activeElement as HTMLElement;
+    setFacts((prev) => [...prev, newFact]);
+    setDetailDrawerIdeaId(id);
+    setPendingNewIdeaId(id);
+    announce('New idea — edit details in the drawer.');
+  }, [announce]);
+
+  const handleDeleteFocused = useCallback(() => {
+    const focused = document.activeElement;
+    if (!focused) return;
+    const card = (focused as HTMLElement).closest('[data-testid^="idea-card-"]');
+    if (!card) return;
+    const testId = card.getAttribute('data-testid');
+    const ideaId = testId?.replace('idea-card-', '');
+    if (ideaId && facts.some((f) => f.id === ideaId)) {
+      setPendingDeleteIds([ideaId]);
+      setShowDeleteConfirm(true);
+    }
+  }, [facts]);
+
+  const handleDetailDrawerClose = useCallback(() => {
+    if (pendingNewIdeaId) {
+      setFacts((prev) => prev.filter((f) => f.id !== pendingNewIdeaId));
+      setPendingNewIdeaId(null);
+    }
+    setDetailDrawerIdeaId(null);
+    const el = triggerElementRef.current;
+    triggerElementRef.current = null;
+    // Restore focus to the card that opened the drawer
+    setTimeout(() => el?.focus(), 0);
+  }, [pendingNewIdeaId]);
+
+  // Keyboard shortcuts: Ctrl/Cmd+N (new idea), Ctrl/Cmd+D (delete focused),
+  // Ctrl/Cmd+Shift+A (toggle multi-select), Escape (exit multi-select)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'A') {
+      const meta = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT';
+
+      if (meta && !e.shiftKey && e.key === 'n' && !inInput) {
+        e.preventDefault();
+        createNewIdea();
+        return;
+      }
+      if (meta && !e.shiftKey && e.key === 'd' && !inInput) {
+        e.preventDefault();
+        handleDeleteFocused();
+        return;
+      }
+      if (meta && e.shiftKey && e.key === 'A') {
         e.preventDefault();
         toggleMultiSelectMode();
       } else if (e.key === 'Escape' && isMultiSelectMode && !showDeleteConfirm) {
@@ -817,7 +876,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isMultiSelectMode, showDeleteConfirm, toggleMultiSelectMode]);
+  }, [isMultiSelectMode, showDeleteConfirm, toggleMultiSelectMode, createNewIdea, handleDeleteFocused]);
 
   useEffect(() => {
     let cancelled = false;
@@ -871,6 +930,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
   }, []);
 
   const openIdeaDetail = useCallback((ideaId: string) => {
+    triggerElementRef.current = document.activeElement as HTMLElement;
     setDetailDrawerIdeaId(ideaId);
     announce('Idea detail drawer opened.');
   }, [announce]);
@@ -899,8 +959,12 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
           : f,
       ),
     );
+    setPendingNewIdeaId(null);
     setDetailDrawerIdeaId(null);
+    const el = triggerElementRef.current;
+    triggerElementRef.current = null;
     announce('Idea saved.');
+    setTimeout(() => el?.focus(), 0);
   }, [announce]);
 
   if (!enabled) {
@@ -924,28 +988,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
         <div className="brainstorm-toast" role="status" aria-live="polite">
           {toast}
         </div>
-      )}
-
-      {detailIdea && (
-        <aside
-          className="brainstorm-detail-drawer-stub"
-          role="dialog"
-          aria-modal="false"
-          aria-label={`Idea detail for ${detailIdea.name}`}
-        >
-          <div>
-            <strong>{detailIdea.name}</strong>
-            <p>Detail drawer coming in the next Brainstorm issue.</p>
-          </div>
-          <button
-            className="brainstorm-detail-drawer-close"
-            type="button"
-            onClick={() => setDetailDrawerIdeaId(null)}
-            aria-label="Close idea detail"
-          >
-            ×
-          </button>
-        </aside>
       )}
 
       <div className="brainstorm-header">
@@ -1389,7 +1431,26 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
                 Named facts will appear here as Claude identifies them.
               </div>
             ) : (
-              FACT_TYPE_ORDER.map((type) => {
+              <div
+                role="list"
+                aria-label="Brainstorm ideas"
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                  const cards = Array.from(
+                    e.currentTarget.querySelectorAll<HTMLElement>('[data-testid^="idea-card-"]'),
+                  );
+                  if (cards.length === 0) return;
+                  const idx = cards.findIndex((c) => c === document.activeElement || c.contains(document.activeElement));
+                  const next = e.key === 'ArrowDown'
+                    ? Math.min(idx + 1, cards.length - 1)
+                    : Math.max(idx - 1, 0);
+                  if (next !== idx && next >= 0) {
+                    e.preventDefault();
+                    cards[next].focus();
+                  }
+                }}
+              >
+              {FACT_TYPE_ORDER.map((type) => {
                 const group = facts.filter((f) => f.type === type);
                 if (group.length === 0) return null;
                 return (
@@ -1438,7 +1499,8 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
                     ))}
                   </div>
                 );
-              })
+              })}
+              </div>
             )}
           </div>
 
@@ -1500,7 +1562,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
             updatedAt: detailIdea.updatedAt,
             savedLabel: detailIdea.savedStatus === 'saved' ? 'Saved ✓' : undefined,
           }}
-          onClose={() => setDetailDrawerIdeaId(null)}
+          onClose={handleDetailDrawerClose}
           onSave={handleSaveIdea}
         />
       )}

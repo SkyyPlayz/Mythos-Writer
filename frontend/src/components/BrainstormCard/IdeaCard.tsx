@@ -152,33 +152,36 @@ export function IdeaCard({
 
   const handleCardKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (isMultiSelect && e.key === ' ') {
+      if (e.key === 'Enter' && !isMultiSelect && e.target === e.currentTarget) {
+        e.preventDefault();
+        onOpenDetail(idea.id);
+      } else if (isMultiSelect && e.key === ' ' && e.target === e.currentTarget) {
         e.preventDefault();
         onToggleSelect?.(idea.id);
       }
     },
-    [isMultiSelect, idea.id, onToggleSelect],
+    [isMultiSelect, idea.id, onToggleSelect, onOpenDetail],
   );
 
   return (
-    <article
+    <li
       className={`idea-card idea-card-compact${isMultiSelect ? ' idea-card-multiselect' : ''}${isSelected ? ' idea-card-selected' : ''}`}
       data-testid={`idea-card-${idea.id}`}
       style={CARD_STYLE}
+      aria-label={`${idea.title}, ${TYPE_LABELS[idea.type]}`}
       onClick={handleCardClick}
       onKeyDown={handleCardKeyDown}
       onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      tabIndex={isMultiSelect ? 0 : undefined}
-      aria-selected={isMultiSelect ? isSelected : undefined}
+      tabIndex={0}
     >
       {isMultiSelect && (
         <input
           type="checkbox"
           className="idea-card-checkbox"
           checked={isSelected}
-          readOnly
+          onChange={() => onToggleSelect?.(idea.id)}
           aria-label={`Select idea ${idea.title}`}
           data-testid={`idea-card-checkbox-${idea.id}`}
         />
@@ -240,6 +243,6 @@ export function IdeaCard({
           hasSavedPath={!!idea.savedPath}
         />
       )}
-    </article>
+    </li>
   );
 }

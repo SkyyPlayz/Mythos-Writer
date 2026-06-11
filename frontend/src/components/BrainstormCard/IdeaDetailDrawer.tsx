@@ -126,6 +126,7 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
   const [showEntityPicker, setShowEntityPicker] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   const isDirty =
     title !== idea.title ||
@@ -142,7 +143,10 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showEntityPicker) handleClose();
+      if (e.key === 'Escape' && !showEntityPicker) {
+        e.stopPropagation();
+        handleClose();
+      }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -151,6 +155,30 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
   useEffect(() => {
     closeButtonRef.current?.focus();
   }, []);
+
+  // Focus trap: Tab cycles within the drawer when no nested overlay is open
+  useEffect(() => {
+    if (showEntityPicker || showDiscard) return;
+    const drawer = drawerRef.current;
+    if (!drawer) return;
+    const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(drawer.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showEntityPicker, showDiscard]);
 
   const handleSave = useCallback(() => {
     onSave({ ...idea, title, linkedEntities });
@@ -189,6 +217,7 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
       <div className="idd-scrim" aria-hidden="true" onClick={handleClose} />
 
       <aside
+        ref={drawerRef}
         className="idd-drawer"
         role="complementary"
         aria-label="Idea detail"
