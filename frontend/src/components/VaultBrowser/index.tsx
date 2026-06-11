@@ -343,7 +343,7 @@ interface NotesVaultEmptyStateProps {
 function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
   return (
     <section
-      className="vb-notes-empty"
+      className="vb-notes-empty vb-empty"
       role="region"
       aria-labelledby="vb-notes-empty-heading"
       data-testid="vb-notes-empty"
@@ -369,7 +369,7 @@ function NotesVaultEmptyState({ onCreate }: NotesVaultEmptyStateProps) {
         </svg>
       </span>
       <h2 id="vb-notes-empty-heading" className="vb-notes-empty-heading">
-        Capture your first idea
+        No notes yet
       </h2>
       <p className="vb-notes-empty-sub">
         Notes are for ideas, characters, places, and lore — anything that supports your scenes but isn&apos;t part of them.

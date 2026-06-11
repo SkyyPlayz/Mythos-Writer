@@ -78,6 +78,9 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
   const vaultSettings = {
     vaultRoot: vaultDir,
     notesVaultRoot: notesVaultDir,
+    // The suite intentionally controls vault contents; use blank mode so
+    // startup creates the roots without seeding the SKY-15 example layout.
+    layoutMode: 'blank',
   };
 
   fs.writeFileSync(
@@ -302,8 +305,12 @@ test.describe('populated vaults: routing regression', () => {
       storyPanel.locator('.vb-name', { hasText: STORY_TITLE }),
     ).toBeVisible({ timeout: 8_000 });
 
-    // Expand the story and create a chapter.
-    await storyPanel.locator('.vb-tree-toggle', { hasText: STORY_TITLE }).click();
+    // Ensure the story is expanded and create a chapter. The Story Vault may
+    // auto-expand the first story, so do not blindly toggle it closed.
+    const storyToggle = storyPanel.locator('.vb-tree-toggle', { hasText: STORY_TITLE });
+    if ((await storyToggle.getAttribute('aria-expanded')) !== 'true') {
+      await storyToggle.click();
+    }
     await storyPanel.locator(`[aria-label="New chapter in ${STORY_TITLE}"]`).click();
     await fillPrompt(page, CHAPTER_TITLE);
 
@@ -311,8 +318,11 @@ test.describe('populated vaults: routing regression', () => {
       storyPanel.locator('.vb-name', { hasText: CHAPTER_TITLE }),
     ).toBeVisible({ timeout: 6_000 });
 
-    // Expand the chapter and create a scene.
-    await storyPanel.locator('.vb-tree-toggle', { hasText: CHAPTER_TITLE }).click();
+    // Ensure the chapter is expanded and create a scene.
+    const chapterToggle = storyPanel.locator('.vb-tree-toggle', { hasText: CHAPTER_TITLE });
+    if ((await chapterToggle.getAttribute('aria-expanded')) !== 'true') {
+      await chapterToggle.click();
+    }
     await storyPanel.locator(`[aria-label="New scene in ${CHAPTER_TITLE}"]`).click();
     await fillPrompt(page, SCENE_TITLE);
 
@@ -358,12 +368,15 @@ test.describe('populated vaults: routing regression', () => {
     // Record storyVaultDir file count before the note creation.
     const storyFilesBefore = findAllFiles(vaultDir).filter((f) => f.endsWith('.md')).length;
 
-    // Click "New Note" — triggers window.prompt() (native dialog).
-    const dialogPromise = page.waitForEvent('dialog', { timeout: 6_000 });
+    // Click "New Note" — current UX uses the in-app template dialog. The
+    // routing invariant remains the load-bearing assertion below.
     await notesPanel.locator('[aria-label="New Note"]').click();
-    const dialog = await dialogPromise;
-    expect(dialog.type()).toBe('prompt');
-    await dialog.accept(NEW_NOTE_NAME);
+    const noteDialog = page.getByRole('dialog', { name: 'New Note from Template' });
+    await expect(noteDialog).toBeVisible({ timeout: 6_000 });
+    await noteDialog.locator('[data-testid="ntd-template-select"]').selectOption('__blank__');
+    await noteDialog.locator('[data-testid="ntd-blank-title"]').fill(NEW_NOTE_NAME);
+    await noteDialog.locator('[data-testid="ntd-submit"]').click();
+    await expect(noteDialog).not.toBeVisible({ timeout: 6_000 });
 
     // Wait for the new note file to appear in notesVaultDir.
     const noteInNotesVault = await waitUntil(() => {
