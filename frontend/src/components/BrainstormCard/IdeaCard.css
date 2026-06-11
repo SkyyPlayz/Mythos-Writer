@@ -147,3 +147,31 @@
   color: var(--text-muted);
   margin-left: auto;
 }
+
+.idea-card-chevron {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-xs, 11px);
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-press) var(--ease-out);
+}
+
+.idea-card-chevron:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.idea-card-body {
+  margin: 0;
+  padding: var(--space-1) 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary, var(--text-muted));
+  line-height: 1.5;
+  max-height: 4.5em;
+  overflow: hidden;
+}

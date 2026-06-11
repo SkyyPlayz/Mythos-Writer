@@ -243,6 +243,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
+  // Per-card body preview toggle: set of fact IDs that are currently expanded.
+  // New facts start expanded so the user sees the extracted content immediately.
+  const [expandedFactIds, setExpandedFactIds] = useState<Set<string>>(new Set());
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
   const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
@@ -326,6 +329,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         if ((draft.v === 1 || draft.v === 2) && (draftMessages.length > 0 || draftFacts.length > 0 || draftPrompt.trim())) {
           setMessages(draftMessages);
           setFacts(draftFacts);
+          setExpandedFactIds(new Set(draftFacts.map((f) => f.id)));
           setPrompt(draftPrompt);
           setShowRecoveryBanner(true);
         }
@@ -460,6 +464,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     cleanupStreamRef.current?.();
     setMessages([]);
     setFacts([]);
+    setExpandedFactIds(new Set());
     setPrompt('');
     setError(null);
     setLoading(false);
@@ -544,6 +549,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           createdAt: nowMs + i,
         }));
         setFacts((prev) => [...prev, ...newFacts]);
+        setExpandedFactIds((prev) => {
+          const next = new Set(prev);
+          for (const f of newFacts) next.add(f.id);
+          return next;
+        });
         for (const fact of newFacts) {
           void persistFactWithRoutingRef.current?.(fact);
         }
@@ -1025,6 +1035,26 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     setPrompt(msgText);
   }, [continuityIssues, answerDrafts]);
 
+  const toggleFactExpanded = useCallback((id: string) => {
+    setExpandedFactIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleExpandAll = useCallback(() => {
+    setExpandedFactIds(new Set(facts.map((f) => f.id)));
+  }, [facts]);
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedFactIds(new Set());
+  }, []);
+
   const toggleIssue = useCallback((id: string) => {
     setExpandedIssueId((prev) => (prev === id ? null : id));
   }, []);
@@ -1505,6 +1535,27 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 {isMultiSelectMode ? 'Done selecting' : 'Select multiple'}
               </button>
             )}
+            {facts.length > 0 && (
+              <div className="bs-fact-header-actions">
+                <button
+                  className="bs-fact-all-btn"
+                  type="button"
+                  onClick={handleExpandAll}
+                  aria-label="Expand all fact cards"
+                >
+                  Expand all
+                </button>
+                <span className="bs-fact-all-sep" aria-hidden="true">/</span>
+                <button
+                  className="bs-fact-all-btn"
+                  type="button"
+                  onClick={handleCollapseAll}
+                  aria-label="Collapse all fact cards"
+                >
+                  Collapse all
+                </button>
+              </div>
+            )}
           </div>
           {facts.length > 0 && (
             <div className="bs-facts-controls" data-testid="bs-facts-controls">
@@ -1620,7 +1671,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                         key={fact.id}
                         idea={{
                           id: fact.id,
-                          title: fact.content || fact.name,
+                          title: fact.name,
                           type: fact.type,
                           linkedEntities: [
                             { id: `${fact.id}-entity`, name: fact.name, type: fact.type },
@@ -1629,6 +1680,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                           updatedAt: fact.updatedAt,
                           savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
                         }}
+                        body={fact.content || undefined}
+                        isExpanded={expandedFactIds.has(fact.id)}
+                        onToggleExpand={() => toggleFactExpanded(fact.id)}
                         metaAction={
                           fact.savedStatus === 'saving' ? (
                             <span className="bs-fact-saving">Saving…</span>

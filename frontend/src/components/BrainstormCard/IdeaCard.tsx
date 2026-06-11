@@ -29,6 +29,12 @@ interface IdeaCardProps {
   isSelected?: boolean;
   onToggleSelect?: (ideaId: string) => void;
   onMenuAction?: (ideaId: string, actionId: string) => void;
+  /** Body text for the inline preview toggle. When provided, a chevron appears. */
+  body?: string;
+  /** Whether the body preview is currently expanded. */
+  isExpanded?: boolean;
+  /** Called when the chevron is clicked to toggle the preview. */
+  onToggleExpand?: () => void;
 }
 
 const TYPE_LABELS: Record<IdeaCardIdea['type'], string> = {
@@ -101,6 +107,9 @@ export function IdeaCard({
   isSelected = false,
   onToggleSelect,
   onMenuAction,
+  body,
+  isExpanded = false,
+  onToggleExpand,
 }: IdeaCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -108,6 +117,9 @@ export function IdeaCard({
 
   const title = truncateTitle(idea.title);
   const metadata = idea.savedPath ? formatRelativeUpdatedAt(idea.updatedAt) : 'unsaved session idea';
+  const bodyPreview = body
+    ? (body.length > 120 ? `${body.slice(0, 120)}…` : body)
+    : undefined;
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
 
@@ -148,6 +160,7 @@ export function IdeaCard({
       if (!isMultiSelect) return;
       if ((e.target as HTMLElement).closest('.idea-card-menu-button')) return;
       if ((e.target as HTMLElement).closest('.idea-card-chip')) return;
+      if ((e.target as HTMLElement).closest('.idea-card-chevron')) return;
       onToggleSelect?.(idea.id);
     },
     [isMultiSelect, idea.id, onToggleSelect],
@@ -168,9 +181,9 @@ export function IdeaCard({
 
   return (
     <li
-      className={`idea-card idea-card-compact${isMultiSelect ? ' idea-card-multiselect' : ''}${isSelected ? ' idea-card-selected' : ''}`}
+      className={`idea-card${!(body && isExpanded) ? ' idea-card-compact' : ''}${isMultiSelect ? ' idea-card-multiselect' : ''}${isSelected ? ' idea-card-selected' : ''}`}
       data-testid={`idea-card-${idea.id}`}
-      style={CARD_STYLE}
+      style={{ ...CARD_STYLE, ...(body && isExpanded ? { height: undefined } : {}) }}
       aria-label={`${idea.title}, ${TYPE_LABELS[idea.type]}`}
       onClick={handleCardClick}
       onKeyDown={handleCardKeyDown}
@@ -203,6 +216,20 @@ export function IdeaCard({
         <span className="idea-card-type-badge" style={BADGE_STYLES[idea.type]}>
           {TYPE_LABELS[idea.type]}
         </span>
+        {body && (
+          <button
+            className="idea-card-chevron"
+            type="button"
+            aria-label={isExpanded ? `Collapse ${idea.title}` : `Expand ${idea.title}`}
+            aria-expanded={isExpanded}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand?.();
+            }}
+          >
+            {isExpanded ? '▾' : '▸'}
+          </button>
+        )}
         <button
           ref={menuBtnRef}
           className="idea-card-menu-button"
@@ -219,6 +246,10 @@ export function IdeaCard({
           ⋮
         </button>
       </div>
+
+      {body && isExpanded && (
+        <p className="idea-card-body">{bodyPreview}</p>
+      )}
 
       <div
         className="idea-card-row idea-card-chip-row"

@@ -166,7 +166,7 @@ describe('BrainstormPage', () => {
     // inside the same act() boundary (avoiding the race where 'Lyra Ashveil' becomes
     // visible from the initial 'saving' state before brainstormWriteNote resolves).
     await waitFor(() => {
-      expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument();
+      expect(screen.getAllByText('Lyra Ashveil').length).toBeGreaterThan(0);
       expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
       expect(screen.getByText(/saved ✓/i)).toBeInTheDocument();
     });
@@ -1056,6 +1056,117 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
+  });
+
+  // ─── SKY-1263: Inline body preview toggle ───────────────────────────────────
+
+  describe('inline body preview toggle', () => {
+    async function renderWithFact(content: string) {
+      render(<BrainstormPage onClose={() => {}} />);
+      fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+        target: { value: 'test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+      await simulateStream([
+        `[FACT:character|Hero|${content}]`,
+      ]);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Hero' })).toBeInTheDocument());
+    }
+
+    it('fact card starts expanded with body preview visible', async () => {
+      await renderWithFact('A brave warrior');
+      expect(screen.getByText('A brave warrior')).toBeInTheDocument();
+      // When expanded the chevron label reads "Collapse <name>"
+      const chevron = screen.getByRole('button', { name: /collapse hero/i });
+      expect(chevron).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('chevron collapses the card body on first click', async () => {
+      await renderWithFact('A brave warrior');
+      const chevron = screen.getByRole('button', { name: /collapse hero/i });
+      fireEvent.click(chevron);
+      expect(screen.queryByText('A brave warrior')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /expand hero/i })).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('chevron re-expands the card body on second click', async () => {
+      await renderWithFact('A brave warrior');
+      const chevron = screen.getByRole('button', { name: /collapse hero/i });
+      fireEvent.click(chevron);
+      fireEvent.click(screen.getByRole('button', { name: /expand hero/i }));
+      expect(screen.getByText('A brave warrior')).toBeInTheDocument();
+    });
+
+    it('truncates body to 120 chars with ellipsis when longer', async () => {
+      const longContent = 'A'.repeat(130);
+      await renderWithFact(longContent);
+      const desc = screen.getByText(`${'A'.repeat(120)}…`);
+      expect(desc).toBeInTheDocument();
+      expect(desc).not.toHaveTextContent('A'.repeat(121));
+    });
+
+    it('shows full body when content is exactly 120 chars', async () => {
+      const exact = 'B'.repeat(120);
+      await renderWithFact(exact);
+      expect(screen.getByText(exact)).toBeInTheDocument();
+    });
+
+    it('Collapse all hides all card bodies', async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+      fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+        target: { value: 'test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+      await simulateStream([
+        '[FACT:character|Alice|Desc A][FACT:character|Bob|Desc B]',
+      ]);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Alice' })).toBeInTheDocument());
+
+      // Both descriptions visible initially
+      expect(screen.getByText('Desc A')).toBeInTheDocument();
+      expect(screen.getByText('Desc B')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all fact cards' }));
+
+      expect(screen.queryByText('Desc A')).not.toBeInTheDocument();
+      expect(screen.queryByText('Desc B')).not.toBeInTheDocument();
+    });
+
+    it('Expand all shows all card bodies after collapse', async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+      fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+        target: { value: 'test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+      await simulateStream([
+        '[FACT:character|Alice|Desc A][FACT:character|Bob|Desc B]',
+      ]);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Alice' })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all fact cards' }));
+      expect(screen.queryByText('Desc A')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand all fact cards' }));
+      expect(screen.getByText('Desc A')).toBeInTheDocument();
+      expect(screen.getByText('Desc B')).toBeInTheDocument();
+    });
+
+    it('Expand all / Collapse all buttons are absent when no facts exist', () => {
+      render(<BrainstormPage onClose={() => {}} />);
+      expect(screen.queryByRole('button', { name: 'Expand all fact cards' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Collapse all fact cards' })).not.toBeInTheDocument();
+    });
+
+    it('title click does not interfere with chevron toggle', async () => {
+      await renderWithFact('A brave warrior');
+      // Clicking the title button opens the drawer but does not collapse the body preview
+      const nameEl = screen.getByRole('button', { name: 'Open idea detail for Hero' });
+      fireEvent.click(nameEl);
+      // Body preview still in the card — title click doesn't change expand state.
+      // getAllByText handles the case where the drawer also shows the same text.
+      const matches = screen.getAllByText('A brave warrior');
+      expect(matches.some((el) => el.classList.contains('idea-card-body'))).toBe(true);
+    });
   });
 });
 
