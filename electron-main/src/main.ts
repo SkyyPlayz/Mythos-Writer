@@ -139,6 +139,8 @@ import {
   type OnboardingCompleteResponse,
 } from './ipc.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
+import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
+import { isExistingUsableVaultRoot } from './validatePathUtil.js';
 import {
   buildAgentSystemPrompt,
   loadPersonaFile,
@@ -520,6 +522,15 @@ function parseMentionEntityIds(prose: string): Set<string> {
     ids.add(m[1]);
   }
   return ids;
+}
+
+function shouldInitializeVaultsOnStartup(): boolean {
+  const settings = loadAppSettings();
+  return shouldInitializeVaultStorage({
+    onboardingComplete: settings.onboardingComplete === true,
+    storyVaultUsable: isExistingUsableVaultRoot(getVaultRoot()),
+    notesVaultUsable: isExistingUsableVaultRoot(getNotesVaultRoot()),
+  });
 }
 
 function ensureVaultDir() {
@@ -1570,17 +1581,7 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
-    const s = maskSettingsForRenderer(loadAppSettings());
-    // SKY-12.4: if the configured vault roots don't exist on disk, force
-    // onboardingComplete=false so the wizard re-appears on next boot. This
-    // handles the case where the user moves or deletes the vault folder.
-    const vaultSettings = loadVaultSettings();
-    const storyMissing = !fs.existsSync(vaultSettings.vaultRoot);
-    const notesMissing = !fs.existsSync(vaultSettings.notesVaultRoot ?? defaultNotesVaultRoot());
-    if (storyMissing || notesMissing) {
-      return { ...s, onboardingComplete: false };
-    }
-    return s;
+    return maskSettingsForRenderer(loadAppSettings());
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
     const startedAt = Date.now();
@@ -5947,10 +5948,13 @@ app.whenReady().then(async () => {
   performance.mark('app:ready-start');
   const appReadyT0 = performance.now();
 
-  ensureVaultDir();
-  ensureNotesVaultDir();
-  // Track current vault in recent projects list on every launch
-  addToRecentProjects(getVaultRoot());
+  const initializeVaults = shouldInitializeVaultsOnStartup();
+  if (initializeVaults) {
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    // Track current vault in recent projects list on every launch.
+    addToRecentProjects(getVaultRoot(), getNotesVaultRoot());
+  }
   performance.mark('app:vault-init-end');
   // MYT-777: initialise the encrypted credential store, then run the one-shot
   // migration that lifts any plaintext API keys out of app-settings.json into
@@ -6012,7 +6016,7 @@ app.whenReady().then(async () => {
   }));
 
 
-  startWritingScanScheduler();
+  if (initializeVaults) startWritingScanScheduler();
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
@@ -6027,22 +6031,26 @@ app.whenReady().then(async () => {
   // Watchers run before FTS so their async dynamic-import yields the event
   // loop, giving the renderer's first IPC calls (e.g. settingsGet) a window
   // to be processed before indexing starts.
-  await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
-  await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
+  if (initializeVaults) {
+    await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
+    await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
+  }
 
   // Defer FTS index build to the next event-loop tick so any IPC messages
   // queued during watcher init (typically the renderer's settingsGet) are
   // processed first. Safe because the watcher re-indexes on every vault change.
-  setImmediate(() => {
-    performance.mark('app:fts-build-start');
-    const ftsBuildT0 = performance.now();
-    try {
-      const manifest = readManifest(getManifestPath());
-      buildFullIndex(getDb(), getVaultRoot(), manifest);
-    } catch { /* non-fatal — index rebuilt on next watcher event */ }
-    performance.mark('app:fts-build-end');
-    console.log(`[perf] app:fts-build: ${(performance.now() - ftsBuildT0).toFixed(0)} ms`);
-  });
+  if (initializeVaults) {
+    setImmediate(() => {
+      performance.mark('app:fts-build-start');
+      const ftsBuildT0 = performance.now();
+      try {
+        const manifest = readManifest(getManifestPath());
+        buildFullIndex(getDb(), getVaultRoot(), manifest);
+      } catch { /* non-fatal — index rebuilt on next watcher event */ }
+      performance.mark('app:fts-build-end');
+      console.log(`[perf] app:fts-build: ${(performance.now() - ftsBuildT0).toFixed(0)} ms`);
+    });
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

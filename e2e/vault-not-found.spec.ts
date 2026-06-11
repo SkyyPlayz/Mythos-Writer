@@ -39,6 +39,8 @@ test('missing Story Vault shows recovery screen after load-time vault check fail
 
   const app = await launchApp(userData);
   try {
+    expect(fs.existsSync(missingStoryVault)).toBe(false);
+
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ valid: false }));
