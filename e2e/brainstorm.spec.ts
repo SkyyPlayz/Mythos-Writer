@@ -415,3 +415,105 @@ test('TC-BST-03: detected fact is auto-saved as an entity file with correct fron
   // Prose body (after the closing ---) must contain the fact description.
   expect(content).toContain(MOCK_FACT_DESC);
 });
+
+// ─── TC-BST-04: Sort + filter controls (Wave 3.2) ────────────────────────────
+//
+// Verify the sort dropdown and filter dropdown appear in the Detected Facts panel
+// when multiple fact types exist, and that:
+//   - Controls render without crashing
+//   - Filtering to "Characters" hides location/item groups
+//   - Filtering back to "All types" restores all groups
+//   - Changing sort order does NOT trigger any disk save (sort is in-memory)
+
+test('TC-BST-04: sort/filter controls appear and filter operates in-memory', async () => {
+  // Re-inject mock with three fact types so groups are populated.
+  const multiTypeMockTokens = [
+    'Here are some story elements.\n\n',
+    '[FACT:character|Hero Jones|A determined adventurer]',
+    '[FACT:location|Dark Cave|A mysterious underground cavern]',
+    '[FACT:item|Magic Staff|An ancient staff that grants power]',
+  ];
+
+  await app!.evaluate(
+    async ({ ipcMain }, tokens: string[]) => {
+      ipcMain.removeHandler('stream:start');
+      ipcMain.handle('stream:start', async (event) => {
+        const streamId = `mock-stream-${Date.now()}`;
+        void (async () => {
+          for (const token of tokens) {
+            await new Promise<void>((r) => setTimeout(r, 30));
+            if (!event.sender.isDestroyed()) {
+              event.sender.send('stream:token', { streamId, token });
+            }
+          }
+          await new Promise<void>((r) => setTimeout(r, 30));
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('stream:end', { streamId });
+          }
+        })();
+        return { streamId };
+      });
+    },
+    multiTypeMockTokens,
+  );
+
+  // Start a new session to clear the previous facts.
+  const newSessionBtn = page.locator('.brainstorm-new-session-btn');
+  if (await newSessionBtn.isVisible().catch(() => false)) {
+    await newSessionBtn.click();
+    // Wait for facts panel to clear.
+    await page.waitForFunction(() => {
+      const list = document.querySelector('.brainstorm-facts-list');
+      return list && !list.querySelector('[data-testid^="idea-card-"]');
+    }, { timeout: 5_000 });
+  } else {
+    // Navigate to brainstorm if not visible.
+    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+    await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 6_000 });
+  }
+
+  // Send a message to trigger the multi-type mock stream.
+  const textarea = page.locator('.brainstorm-input');
+  await textarea.fill('Give me some story elements');
+  await page.locator('button', { hasText: 'Send' }).click();
+
+  // Wait for all three fact groups to appear.
+  await expect(page.locator('[data-testid="bs-group-toggle-character"]')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-testid="bs-group-toggle-location"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-testid="bs-group-toggle-item"]')).toBeVisible({ timeout: 5_000 });
+
+  // Sort and filter controls must be visible.
+  const sortSelect = page.locator('[data-testid="bs-sort-select"]');
+  const filterSelect = page.locator('[data-testid="bs-filter-select"]');
+  await expect(sortSelect).toBeVisible({ timeout: 3_000 });
+  await expect(filterSelect).toBeVisible({ timeout: 3_000 });
+
+  // Default values.
+  await expect(sortSelect).toHaveValue('newest');
+  await expect(filterSelect).toHaveValue('all');
+
+  // Filter to Characters — location and item groups must disappear.
+  await filterSelect.selectOption('character');
+  await expect(page.locator('[data-testid="bs-group-toggle-character"]')).toBeVisible({ timeout: 3_000 });
+  await expect(page.locator('[data-testid="bs-group-toggle-location"]')).not.toBeVisible({ timeout: 3_000 });
+  await expect(page.locator('[data-testid="bs-group-toggle-item"]')).not.toBeVisible({ timeout: 3_000 });
+
+  // Filter back to All types — all groups visible again.
+  await filterSelect.selectOption('all');
+  await expect(page.locator('[data-testid="bs-group-toggle-location"]')).toBeVisible({ timeout: 3_000 });
+  await expect(page.locator('[data-testid="bs-group-toggle-item"]')).toBeVisible({ timeout: 3_000 });
+
+  // Change sort — controls remain stable, no crash.
+  await sortSelect.selectOption('oldest');
+  await expect(sortSelect).toHaveValue('oldest');
+  await sortSelect.selectOption('by-type');
+  await expect(sortSelect).toHaveValue('by-type');
+  await sortSelect.selectOption('by-status');
+  await expect(sortSelect).toHaveValue('by-status');
+
+  // Collapse all then expand all.
+  await page.locator('[data-testid="bs-collapse-all"]').click();
+  await expect(page.locator('[data-testid^="idea-card-"]').first()).not.toBeVisible({ timeout: 3_000 });
+  await page.locator('[data-testid="bs-expand-all"]').click();
+  await expect(page.locator('[data-testid="bs-group-toggle-character"]')).toBeVisible({ timeout: 3_000 });
+});

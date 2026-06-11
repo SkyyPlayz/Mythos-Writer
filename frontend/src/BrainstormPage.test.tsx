@@ -1108,3 +1108,118 @@ describe('BrainstormPage — prompt char counter', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+describe('BrainstormPage — sort + filter controls (Wave 3.2)', () => {
+  async function renderWithFacts() {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream([
+      '[FACT:character|Alice|A hero]',
+      '[FACT:location|Forest|Dark woods]',
+      '[FACT:item|Sword|Magic blade]',
+    ]);
+    await waitFor(() => expect(screen.getByTestId('bs-facts-controls')).toBeInTheDocument());
+  }
+
+  it('shows sort and filter dropdowns when facts exist', async () => {
+    await renderWithFacts();
+    expect(screen.getByTestId('bs-sort-select')).toBeInTheDocument();
+    expect(screen.getByTestId('bs-filter-select')).toBeInTheDocument();
+  });
+
+  it('sort select defaults to Newest first', async () => {
+    await renderWithFacts();
+    expect(screen.getByTestId('bs-sort-select')).toHaveValue('newest');
+  });
+
+  it('filter select defaults to All types', async () => {
+    await renderWithFacts();
+    expect(screen.getByTestId('bs-filter-select')).toHaveValue('all');
+  });
+
+  it('sort dropdown has all four options', async () => {
+    await renderWithFacts();
+    const select = screen.getByTestId('bs-sort-select');
+    const options = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toEqual(['newest', 'oldest', 'by-type', 'by-status']);
+  });
+
+  it('filter dropdown has all five options', async () => {
+    await renderWithFacts();
+    const select = screen.getByTestId('bs-filter-select');
+    const options = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toEqual(['all', 'character', 'location', 'item', 'note']);
+  });
+
+  it('filtering to Characters hides location and item groups', async () => {
+    await renderWithFacts();
+    fireEvent.change(screen.getByTestId('bs-filter-select'), {
+      target: { value: 'character' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('bs-group-toggle-character')).toBeInTheDocument();
+      expect(screen.queryByTestId('bs-group-toggle-location')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('bs-group-toggle-item')).not.toBeInTheDocument();
+    });
+  });
+
+  it('filtering to a type with no matching ideas shows empty message', async () => {
+    await renderWithFacts();
+    fireEvent.change(screen.getByTestId('bs-filter-select'), {
+      target: { value: 'note' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('bs-empty-type-note')).toBeInTheDocument();
+      expect(screen.getByTestId('bs-empty-type-note')).toHaveTextContent(/no concept notes ideas yet/i);
+    });
+  });
+
+  it('changing sort order does not cause IPC or disk calls', async () => {
+    await renderWithFacts();
+    const callsBefore = mockBrainstormWriteNote.mock.calls.length;
+    fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'oldest' } });
+    fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'by-type' } });
+    fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'by-status' } });
+    expect(mockBrainstormWriteNote.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('changing filter does not cause IPC or disk calls', async () => {
+    await renderWithFacts();
+    const callsBefore = mockBrainstormWriteNote.mock.calls.length;
+    fireEvent.change(screen.getByTestId('bs-filter-select'), { target: { value: 'character' } });
+    fireEvent.change(screen.getByTestId('bs-filter-select'), { target: { value: 'all' } });
+    expect(mockBrainstormWriteNote.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('Collapse all hides fact cards within all groups', async () => {
+    await renderWithFacts();
+    fireEvent.click(screen.getByTestId('bs-collapse-all'));
+    await waitFor(() => {
+      // idea-card-{id} cards should not be present (only group headers remain)
+      expect(screen.queryAllByRole('listitem').filter((el) =>
+        el.getAttribute('data-testid')?.match(/^idea-card-[^c]/)
+      )).toHaveLength(0);
+    });
+  });
+
+  it('Expand all after Collapse all restores all visible cards', async () => {
+    await renderWithFacts();
+    fireEvent.click(screen.getByTestId('bs-collapse-all'));
+    fireEvent.click(screen.getByTestId('bs-expand-all'));
+    await waitFor(() => {
+      // each IdeaCard renders as a <li> with data-testid="idea-card-{id}" (not chips)
+      const cards = screen.getAllByRole('listitem').filter((el) =>
+        /^idea-card-(?!chips-)/.test(el.getAttribute('data-testid') ?? ''),
+      );
+      expect(cards.length).toBe(3);
+    });
+  });
+
+  it('sort and filter controls are not shown when there are no facts', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.queryByTestId('bs-facts-controls')).not.toBeInTheDocument();
+  });
+});

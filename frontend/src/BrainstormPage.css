@@ -370,6 +370,57 @@
   padding: 24px 12px;
 }
 
+.brainstorm-facts-empty--type {
+  padding: 10px 4px;
+  font-size: 0.75rem;
+}
+
+/* Sort + filter controls row */
+.bs-facts-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 36px;
+}
+
+.bs-facts-select {
+  font-size: 0.72rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  padding: 2px 5px;
+  height: 24px;
+  flex: 1 1 80px;
+  min-width: 60px;
+  max-width: 130px;
+  cursor: pointer;
+}
+
+.bs-facts-select:focus {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 1px;
+}
+
+.bs-expand-collapse-btn {
+  font-size: 0.68rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bs-expand-collapse-btn:hover {
+  color: var(--text-secondary);
+}
+
 /* Fact cards */
 .bs-fact {
   background: var(--bg-surface);
@@ -405,6 +456,44 @@
   text-transform: uppercase;
   color: var(--text-muted);
   padding: 2px 0;
+}
+
+.bs-fact-group-header-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bs-fact-group-header-btn:hover {
+  color: var(--text-secondary);
+}
+
+.bs-fact-group-header-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.bs-group-count {
+  background: var(--border-default);
+  border-radius: 8px;
+  font-size: 0.62rem;
+  padding: 0 5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bs-group-chevron {
+  margin-left: auto;
+  font-size: 0.6rem;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* Type badge (kept for backwards compatibility) */
