@@ -1181,8 +1181,13 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           <div className="brainstorm-messages">
             {messages.length === 0 && (
               <div className="brainstorm-empty">
-                <p>Tell me about your story. Who are the main characters? What world is it set in? What&apos;s the central conflict?</p>
-                <p>Named characters, locations, and world-building notes will appear in the Facts panel — save them to your vault with one click.</p>
+                <svg className="brainstorm-empty-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3L13.09 8.26L18 9L13.09 9.74L12 15L10.91 9.74L6 9L10.91 8.26L12 3Z"/>
+                  <path d="M5 15.5L5.55 17.95L8 18.5L5.55 19.05L5 21.5L4.45 19.05L2 18.5L4.45 17.95L5 15.5Z"/>
+                  <path d="M18 2L18.4 3.6L20 4L18.4 4.4L18 6L17.6 4.4L16 4L17.6 3.6L18 2Z"/>
+                </svg>
+                <span className="brainstorm-empty-headline">Start your brainstorm</span>
+                <span className="brainstorm-empty-desc">Ask anything about your story &mdash; characters, plot, world-building. Named facts auto-save to your vault.</span>
               </div>
             )}
             {messages.map((msg, i) => (
@@ -1346,7 +1351,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   }
                 }}
                 onKeyDown={handleKey}
-                placeholder="Tell me about your story world, characters, or plot ideas…"
+                placeholder="Ask about your story — characters, plot, world-building…"
                 rows={3}
                 maxLength={PROMPT_MAX_CHARS}
                 disabled={loading}
@@ -1407,7 +1412,13 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             </div>
             <ul className="bs-continuity-list" aria-label="Continuity issues">
               {continuityIssues.length === 0 && (
-                <li className="brainstorm-facts-empty bs-continuity-empty">No continuity issues flagged.</li>
+                <li className="brainstorm-facts-empty bs-continuity-empty">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  <span>No continuity issues.</span>
+                </li>
               )}
               {continuityIssues.map((issue) => {
                 const draft = answerDrafts[issue.id] ?? { kind: 'free-text' as AnswerKind, text: '' };
@@ -1623,7 +1634,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           <div className="brainstorm-facts-list">
             {facts.length === 0 ? (
               <div className="brainstorm-facts-empty">
-                Named facts will appear here as Claude identifies them.
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span>Facts appear here as you chat.</span>
               </div>
             ) : (
               <div

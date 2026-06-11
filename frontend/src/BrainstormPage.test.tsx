@@ -987,7 +987,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     render(<BrainstormPage onClose={() => {}} />);
 
     await waitFor(() =>
-      expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
+      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
     );
   });
 
@@ -1053,7 +1053,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     render(<BrainstormPage onClose={() => {}} />);
 
     await waitFor(() =>
-      expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
+      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
   });
