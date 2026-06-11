@@ -1159,7 +1159,7 @@ describe('BrainstormPage — sort and filter (SKY-1310)', () => {
   it('default sort is newest — cards in reverse insertion order', () => {
     seedFacts(DRAFT_FACTS);
     const { container } = render(<BrainstormPage onClose={() => {}} />);
-    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+    const cards = Array.from(container.querySelectorAll('li.idea-card')).map(
       (c) => c.getAttribute('data-testid'),
     );
     expect(cards).toEqual(['idea-card-f3', 'idea-card-f2', 'idea-card-f1']);
@@ -1169,7 +1169,7 @@ describe('BrainstormPage — sort and filter (SKY-1310)', () => {
     seedFacts(DRAFT_FACTS);
     const { container } = render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'oldest' } });
-    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+    const cards = Array.from(container.querySelectorAll('li.idea-card')).map(
       (c) => c.getAttribute('data-testid'),
     );
     expect(cards).toEqual(['idea-card-f1', 'idea-card-f2', 'idea-card-f3']);
@@ -1179,7 +1179,7 @@ describe('BrainstormPage — sort and filter (SKY-1310)', () => {
     seedFacts(DRAFT_FACTS);
     const { container } = render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'by-type' } });
-    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+    const cards = Array.from(container.querySelectorAll('li.idea-card')).map(
       (c) => c.getAttribute('data-testid'),
     );
     const locationIdx = cards.indexOf('idea-card-f2');
@@ -1191,7 +1191,7 @@ describe('BrainstormPage — sort and filter (SKY-1310)', () => {
     seedFacts(DRAFT_FACTS);
     const { container } = render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'by-status' } });
-    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+    const cards = Array.from(container.querySelectorAll('li.idea-card')).map(
       (c) => c.getAttribute('data-testid'),
     );
     expect(cards[0]).toBe('idea-card-f1');
@@ -1219,7 +1219,7 @@ describe('BrainstormPage — sort and filter (SKY-1310)', () => {
     const { container } = render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('brainstorm-filter-character'));
     fireEvent.change(screen.getByTestId('brainstorm-sort-select'), { target: { value: 'oldest' } });
-    const cards = Array.from(container.querySelectorAll('li[data-testid^="idea-card-"]')).map(
+    const cards = Array.from(container.querySelectorAll('li.idea-card')).map(
       (c) => c.getAttribute('data-testid'),
     );
     expect(cards).toEqual(['idea-card-f1', 'idea-card-f3']);
