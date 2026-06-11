@@ -2,7 +2,7 @@
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  border: 1px solid var(--border-default);
+  border: 1px solid rgba(255, 255, 255, 0.40);
   border-radius: 999px;
   padding: 3px 8px;
   font-size: 0.72rem;
@@ -20,7 +20,7 @@
 .vault-sync-badge--synced {
   color: var(--state-success);
   background: var(--state-success-bg, color-mix(in srgb, var(--state-success) 18%, var(--bg-inset)));
-  border-color: color-mix(in srgb, var(--state-success) 35%, transparent);
+  border-color: color-mix(in srgb, var(--state-success) 55%, transparent);
 }
 
 [data-contrast="high"] .vault-sync-badge {
