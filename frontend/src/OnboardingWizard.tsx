@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,6 +40,7 @@ type Api = {
     vaultName?: string;
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
+  vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
 };
 
 interface TemplateItem {
@@ -180,6 +182,13 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [storyTitle, setStoryTitle] = useState('');
   const [authorName, setAuthorName] = useState('');
   const [savePath, setSavePath] = useState(DEFAULT_SAVE_PATH);
+  const [pathOptions, setPathOptions] = useState<TruncatePathOptions>({});
+
+  useEffect(() => {
+    api().vaultGetPaths?.().then((paths) => {
+      setPathOptions({ homeDir: paths.homeDir, sep: paths.pathSeparator });
+    }).catch(() => { /* non-fatal */ });
+  }, []);
 
   // Error state
   const [titleError, setTitleError] = useState('');
@@ -663,9 +672,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               <div className="gs-save-location">
                 <span
                   className={`gs-save-location__path${savePathError ? ' gs-save-location__path--error' : ''}`}
+                  title={savePath}
                   data-testid="gs-save-path"
                 >
-                  {savePath}
+                  {truncatePath(savePath, 52, pathOptions)}
                 </span>
                 <button
                   className="btn-secondary gs-save-location__change"

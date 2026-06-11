@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
 import './ProjectSwitcher.css';
 
 interface ProjectEntry {
@@ -34,6 +35,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched }: Props) 
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [creating, setCreating] = useState(false);
   const [activeNotesVaultRoot, setActiveNotesVaultRoot] = useState<string | undefined>(undefined);
+  const [pathOptions, setPathOptions] = useState<TruncatePathOptions>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -55,6 +57,12 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched }: Props) 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    window.api?.vaultGetPaths?.().then((paths) => {
+      setPathOptions({ homeDir: paths.homeDir, sep: paths.pathSeparator });
+    }).catch(() => { /* non-fatal */ });
+  }, []);
 
   // Keyboard shortcut: Ctrl/Cmd+Shift+P
   useEffect(() => {
@@ -199,7 +207,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched }: Props) 
                   >
                     <div>
                       <div className="project-switcher-item-name">{displayName}</div>
-                      <div className="project-switcher-item-path">{p.vaultRoot}</div>
+                      <div className="project-switcher-item-path">{truncatePath(p.vaultRoot, 28, pathOptions)}</div>
                     </div>
                   </button>
                 );

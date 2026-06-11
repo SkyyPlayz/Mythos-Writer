@@ -3465,6 +3465,8 @@ const handlers: IpcHandlers = {
     return {
       storyVaultPath: getVaultRoot(),
       notesVaultPath: getNotesVaultRoot(),
+      homeDir: app.getPath('home'),
+      pathSeparator: path.sep as '/' | '\\',
     };
   },
 

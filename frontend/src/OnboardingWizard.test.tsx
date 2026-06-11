@@ -53,12 +53,14 @@ function makeApi(overrides: Partial<{
   validatePath: ReturnType<typeof vi.fn>;
   chooseVaultFolder: ReturnType<typeof vi.fn>;
   templateList: ReturnType<typeof vi.fn>;
+  vaultGetPaths: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
     validatePath: overrides.validatePath ?? vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
     chooseVaultFolder: overrides.chooseVaultFolder ?? vi.fn().mockResolvedValue({ path: '/home/user/Stories', cancelled: false }),
     templateList: overrides.templateList ?? vi.fn().mockResolvedValue({ templates: BUNDLED_TEMPLATES }),
+    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn().mockResolvedValue({ homeDir: '/home/user', pathSeparator: '/' }),
   };
 }
 
@@ -399,7 +401,24 @@ describe('OnboardingWizard — Step 2 validation', () => {
   it('"Change…" updates save path display', async () => {
     renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-change-location'));
-    await waitFor(() => expect(screen.getByTestId('gs-save-path').textContent).toBe('/home/user/Stories'));
+    await waitFor(() => expect(screen.getByTestId('gs-save-path').textContent).toBe('~/Stories'));
+    expect(screen.getByTestId('gs-save-path')).toHaveAttribute('title', '/home/user/Stories');
+  });
+
+  it('middle-truncates long save paths while preserving the full path in the tooltip', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({
+      path: '/home/user/Mythos/Vaults/Long Fantasy Saga With Many Books/Story Vault',
+      cancelled: false,
+    });
+
+    renderAtStep2();
+    fireEvent.click(screen.getByTestId('gs-change-location'));
+
+    await waitFor(() => expect(screen.getByTestId('gs-save-path').textContent).toBe('~/Mythos/…/Story Vault'));
+    expect(screen.getByTestId('gs-save-path')).toHaveAttribute(
+      'title',
+      '/home/user/Mythos/Vaults/Long Fantasy Saga With Many Books/Story Vault',
+    );
   });
 
   it('"Change…" cancelled keeps previous path', async () => {
