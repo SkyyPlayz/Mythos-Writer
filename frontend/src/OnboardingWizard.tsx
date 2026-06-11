@@ -109,11 +109,14 @@ interface TemplateCardProps {
   template: TemplateItem;
   onSelect: () => void;
   testId: string;
+  isChecked: boolean;
 }
 
-function TemplateCard({ template, onSelect, testId }: TemplateCardProps) {
+function TemplateCard({ template, onSelect, testId, isChecked }: TemplateCardProps) {
   return (
     <button
+      role="radio"
+      aria-checked={isChecked}
       className="gs-template-card"
       onClick={onSelect}
       data-testid={testId}
@@ -562,7 +565,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <h2 className="gs-modal__title">Choose a template</h2>
+          <h2 id="template-picker-heading" className="gs-modal__title">Choose a template</h2>
 
           {templateLoadError ? (
             <div className="gs-template-load-error" role="alert" data-testid="template-load-error">
@@ -580,26 +583,28 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <p className="gs-loading">Loading templates&#x2026;</p>
           ) : (
             <>
-              <div className="gs-template-grid">
+              <div role="radiogroup" aria-labelledby="template-picker-heading" className="gs-template-grid">
                 {templates.filter((t) => !t.isUserTemplate).map((tmpl) => (
                   <TemplateCard
                     key={tmpl.id}
                     template={tmpl}
                     onSelect={() => goToStep2FromMode('template', tmpl.id)}
                     testId={`template-card-${tmpl.id}`}
+                    isChecked={selectedTemplateId === tmpl.id}
                   />
                 ))}
               </div>
               <>
-                <p className="gs-section-divider">Your Templates</p>
+                <p id="template-picker-user-heading" className="gs-section-divider">Your Templates</p>
                 {templates.some((t) => t.isUserTemplate) ? (
-                  <div className="gs-template-grid">
+                  <div role="radiogroup" aria-labelledby="template-picker-user-heading" className="gs-template-grid">
                     {templates.filter((t) => t.isUserTemplate).map((tmpl) => (
                       <TemplateCard
                         key={tmpl.id}
                         template={tmpl}
                         onSelect={() => goToStep2FromMode('template', tmpl.id)}
                         testId={`template-card-${tmpl.id}`}
+                        isChecked={selectedTemplateId === tmpl.id}
                       />
                     ))}
                   </div>

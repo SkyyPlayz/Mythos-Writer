@@ -272,6 +272,28 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(screen.getByTestId('template-empty-hint')).toHaveTextContent('No saved templates yet');
   });
 
+  // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
+  it('template grid has role="radiogroup" labelled by the heading', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    const heading = screen.getByRole('heading', { name: 'Choose a template' });
+    expect(heading).toHaveAttribute('id', 'template-picker-heading');
+    const group = screen.getByRole('radiogroup', { name: 'Choose a template' });
+    expect(group).toBeInTheDocument();
+  });
+
+  it('each template card has role="radio" with aria-checked=false before selection', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    const radios = screen.getAllByRole('radio');
+    expect(radios.length).toBe(4);
+    radios.forEach((radio) => {
+      expect(radio).toHaveAttribute('aria-checked', 'false');
+    });
+  });
+
   it('hides empty hint once a user template is present', async () => {
     const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
     mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
@@ -279,6 +301,18 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => expect(screen.getByTestId('template-card-user:my-template')).toBeInTheDocument());
     expect(screen.queryByTestId('template-empty-hint')).not.toBeInTheDocument();
+  });
+
+  // SKY-1358: user-template grid gets its own radiogroup role
+  it('user-template radiogroup is labelled by "Your Templates" heading', async () => {
+    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByText('Your Templates'));
+    const groups = screen.getAllByRole('radiogroup');
+    expect(groups.length).toBe(2);
+    expect(groups[1]).toHaveAttribute('aria-labelledby', 'template-picker-user-heading');
   });
 });
 
