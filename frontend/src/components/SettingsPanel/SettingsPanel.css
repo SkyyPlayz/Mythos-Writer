@@ -47,7 +47,7 @@
 .settings-close {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 4px 6px;
@@ -72,7 +72,7 @@
 .settings-loading {
   padding: 32px 20px;
   text-align: center;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
@@ -85,7 +85,7 @@
 .settings-section-title {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0;
@@ -181,7 +181,7 @@
 
 .settings-slider-value {
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   min-width: 32px;
   text-align: right;
 }
@@ -217,7 +217,7 @@
 
 .settings-hint {
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -430,6 +430,6 @@
   margin: 4px 0 0 0;
   padding-left: 18px;
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   line-height: 1.6;
 }

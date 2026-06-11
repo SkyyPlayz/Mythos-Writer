@@ -47,7 +47,7 @@
 .settings-close {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 4px 6px;
@@ -72,7 +72,7 @@
 .settings-loading {
   padding: 32px 20px;
   text-align: center;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
@@ -85,7 +85,7 @@
 .settings-section-title {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0;
@@ -181,7 +181,7 @@
 
 .settings-slider-value {
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   min-width: 32px;
   text-align: right;
 }
@@ -217,7 +217,7 @@
 
 .settings-hint {
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -442,7 +442,7 @@
 
 .lg-axis-label {
   font-size: 0.72rem;
-  color: #52525b;
+  color: var(--text-muted);
   white-space: nowrap;
   min-width: 40px;
 }
@@ -464,7 +464,7 @@
   gap: 6px;
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.82rem;
   cursor: pointer;
   padding: 4px 0;
@@ -548,7 +548,7 @@
 
 .lg-swatch-name {
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 /* Text color swatches */
@@ -566,7 +566,7 @@
 
 .lg-color-row-label {
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   min-width: 40px;
   flex-shrink: 0;
 }
@@ -597,7 +597,7 @@
   background: transparent;
   border: 1px solid #3f3f46;
   border-radius: 5px;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.78rem;
   padding: 4px 12px;
   cursor: pointer;
@@ -647,7 +647,7 @@
 .lg-relink-btn {
   background: none;
   border: none;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.72rem;
   cursor: pointer;
   font-family: inherit;
@@ -720,7 +720,7 @@
 .lg-popover-section-title {
   font-size: 0.7rem;
   font-weight: 600;
-  color: #52525b;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0 0 2px;
@@ -777,7 +777,7 @@
   align-items: center;
   padding: 4px 12px;
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
   cursor: pointer;
   background: #18181b;
   transition: background 0.1s, color 0.1s;
@@ -818,7 +818,7 @@
   background: #18181b;
   border: 1px solid #27272a;
   font-size: 0.75rem;
-  color: #52525b;
+  color: var(--text-muted);
   cursor: pointer;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
