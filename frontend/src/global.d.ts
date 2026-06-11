@@ -113,8 +113,6 @@ interface VaultCheckInconsistency {
   status: 'proposed' | 'dismissed';
 }
 
-type SuggestionCategory = 'punctuation' | 'spelling' | 'grammar' | 'sentence-structure' | 'style';
-
 interface Suggestion {
   id: string;
   source_agent: 'writing-assistant' | 'brainstorm' | 'archive';
@@ -127,6 +125,14 @@ interface Suggestion {
   category?: SuggestionCategory | null;
 }
 
+type SuggestionCategory =
+  | 'punctuation'
+  | 'spelling'
+  | 'grammar'
+  | 'sentence-structure'
+  | 'style-tone'
+  | 'other';
+
 interface AgentBudgetSettings {
   autoApply: boolean;
   confidenceThreshold: number;
@@ -134,8 +140,8 @@ interface AgentBudgetSettings {
   maxSuggestionsPerHour: number;
   heartbeatIntervalMinutes: number;
   maxTokensPerDay: number;
-  /** Per-category auto-apply toggles (writing-assistant only). All default to true. */
-  autoApplyCategories?: Record<SuggestionCategory, boolean>;
+  /** SKY-908 — per-category auto-apply allow-list. Undefined ⇒ all enabled. */
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
 }
 
 interface AgentVoiceSettings {
@@ -152,6 +158,8 @@ interface VoiceSettings {
   voiceMode?: 'toggle' | 'push-to-talk';
   toggleShortcut?: string;
   pttKey?: string;
+  /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
+  pushToTalkMode?: boolean;
 }
 
 // Web Speech API — not yet in the TypeScript DOM lib bundled with this project.
@@ -239,8 +247,12 @@ interface LiquidNeonPrefs {
   bgBaseColor?: string;
   /** Accent / button hex colour. Default '#00f0ff'. */
   accentColor?: string;
-  /** Neon border colour slot. Default 'cyan'. */
+  /** Neon border colour slot A (gradient start). Default 'cyan'. */
   neonBorderColor?: 'cyan' | 'violet' | 'magenta';
+  /** Neon border colour slot B (gradient mid). Default 'violet'. (SKY-910) */
+  neonBorderColor2?: 'cyan' | 'violet' | 'magenta';
+  /** Neon border colour slot C (gradient end). Default 'magenta'. (SKY-910) */
+  neonBorderColor3?: 'cyan' | 'violet' | 'magenta';
 
   // ── Neon color customization (SKY-127) ───────────────────────────────────
   /** Cyan neon color hex. Default '#00f0ff'. */
@@ -258,6 +270,8 @@ interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   model: string;
+  /** SKY-816: Optional STT/TTS capability hints for voice provider selection. */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 interface AppSettings {
@@ -265,6 +279,8 @@ interface AppSettings {
   apiKey: string;
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderConfig;
+  /** SKY-818: Selected voice-capable provider ID. Absent = use first voice-capable provider. */
+  voiceProviderId?: string;
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
@@ -279,6 +295,17 @@ interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-1188: post-onboarding checklist state. */
+  gettingStartedProgress?: {
+    completedItems?: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
+    dismissed?: boolean;
+    /** Legacy pre-merge shape accepted for migration. */
+    completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
+  };
+  /** SKY-1188: onboarding mode captured when onboarding completed. */
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+  /** SKY-1188: first post-onboarding timestamp, written once. */
+  firstLaunchAt?: string;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
@@ -406,7 +433,7 @@ interface Window {
     getVaultRoot: () => Promise<{ vaultRoot: string }>;
     importVault: (sourcePath: string, registrationToken: string) => Promise<{ imported: number; skipped: number; errors: string[] }>;
     reindexVault: () => Promise<{ scanned: number; updated: number }>;
-    pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean }>;
+    pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null }>;
     obsidianDryRun: (sourcePath: string, registrationToken: string) => Promise<unknown>;
     obsidianRegister: (sourcePath: string, registrationToken: string) => Promise<unknown>;
     loadSampleProject: () => Promise<unknown>;
@@ -639,7 +666,7 @@ interface Window {
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.
-    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string }>;
+    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\' }>;
     // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
     // SKY-270 / MYT-789: storyVaultToken / notesVaultToken from vault:pick-folder satisfy the gate.
     vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
@@ -649,7 +676,9 @@ interface Window {
     templateScaffold: (templateId: string, parentToken: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string; storyVaultToken: string; notesVaultToken: string } | { error: string }>;
     templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
-    validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
+    validatePath: (path: string) => Promise<{ valid?: boolean; exists: boolean; isEmpty: boolean; writable: boolean; error?: string }>;
+    appQuit?: () => Promise<void>;
+    openMoveVaultWizard?: () => Promise<void>;
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
@@ -666,13 +695,13 @@ interface Window {
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
     // root via safeVaultIpcJoin on the main side.
-    readNotesVault: (path: string) => Promise<{ content: string; path: string }>;
-    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number }>;
-    listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> }>;
-    deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
-    moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
-    moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean }>;
-    mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean }>;
+    readNotesVault: (path: string) => Promise<{ content: string; path: string } | { error: string }>;
+    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
+    listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> } | { error: string }>;
+    deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;
+    moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
+    moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
+    mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean } | { error: string }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)
@@ -817,6 +846,28 @@ interface Window {
     entityRelationshipsList: (entityId: string) => Promise<{ entityId: string; relationships: EntityRelationshipRow[]; allLabels: string[] }>;
     entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
     entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
+
+    // SKY-861: Move vault root to a cloud-sync folder.
+    vaultGuidedFolderMove: (payload: {
+      targetPath: string;
+      syncProvider: 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
+      sessionToken: string;
+    }) => Promise<{ moved: boolean; newVaultPath: string } | { error: string }>;
+
+    // SKY-863: Conflict detection + lockfile.
+    checkVaultConflicts: () => Promise<{
+      resolved: Array<{
+        conflictPath: string;
+        originalPath: string;
+        provider: 'dropbox' | 'icloud' | 'syncthing';
+        keptPath: string;
+        archivedPath: string;
+        resolvedAt: string;
+      }>;
+      lockfileConflict: { hostname: string; pid: number; timestamp: string } | null;
+      dismissed: boolean;
+    }>;
+    dismissSyncWarning: () => Promise<{ ok: true }>;
 
   };
 

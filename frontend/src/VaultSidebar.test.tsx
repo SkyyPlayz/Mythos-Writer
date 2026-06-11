@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import VaultSidebar from './VaultSidebar';
 import type { Story, Chapter, Scene } from './types';
@@ -62,7 +62,7 @@ function stubWindowApi(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderSidebar(selectedSceneId: string | null = null) {
+function renderSidebar(selectedSceneId: string | null = null, overrides: Partial<React.ComponentProps<typeof VaultSidebar>> = {}) {
   return render(
     <VaultSidebar
       stories={[STUB_STORY]}
@@ -71,6 +71,7 @@ function renderSidebar(selectedSceneId: string | null = null) {
       onCreateStory={vi.fn()}
       onCreateChapter={vi.fn()}
       onCreateScene={vi.fn()}
+      {...overrides}
     />,
   );
 }
@@ -87,19 +88,37 @@ async function openToSceneRow(selectedSceneId: string | null = null) {
   return utils;
 }
 
+describe('VaultSidebar — post-onboarding guidance', () => {
+  beforeEach(() => { stubWindowApi(); vi.clearAllMocks(); });
+
+  it('shows the template quick-start CTA for blank-mode users', async () => {
+    const onTemplateCtaClick = vi.fn();
+    renderSidebar(null, { stories: [], showTemplateCta: true, onTemplateCtaClick });
+
+    fireEvent.click(screen.getByRole('button', { name: /start from a template/i }));
+
+    expect(onTemplateCtaClick).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+  });
+});
+
 describe('VaultSidebar — Smart Folders (SKY-205)', () => {
   beforeEach(() => { stubWindowApi(); vi.clearAllMocks(); });
 
-  it('renders a "Smart Folders" section header', () => {
+  it('renders a "Smart Folders" section header', async () => {
     renderSidebar();
     expect(screen.getByRole('button', { name: /expand smart folders/i })).toBeInTheDocument();
+    // Flush VaultSidebar's async NotesVault mount effect so state updates land inside act()
+    await act(async () => {});
   });
 
-  it('section starts collapsed', () => {
+  it('section starts collapsed', async () => {
     renderSidebar();
     const toggle = screen.getByRole('button', { name: /expand smart folders/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText(/no smart folders yet/i)).not.toBeInTheDocument();
+    // Flush VaultSidebar's async NotesVault mount effect so state updates land inside act()
+    await act(async () => {});
   });
 
   it('expands on click and shows empty state when no folders', async () => {

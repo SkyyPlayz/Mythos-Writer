@@ -12,6 +12,7 @@ import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
+import EntriesPanel from './EntriesPanel';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
@@ -29,6 +30,15 @@ import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import { useFocusMode } from './useFocusMode';
+import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
+import {
+  createInitialGettingStartedProgress,
+  gettingStartedReducer,
+  isGettingStartedVisible,
+  type GettingStartedItemId,
+  type GettingStartedProgress,
+} from './gettingStartedReducer';
+import TemplatePicker from './TemplatePicker';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -82,7 +92,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline';
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline' | 'entries';
 
 interface SearchResultItem {
   docId: string;
@@ -258,6 +268,14 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           aria-pressed={view === 'timeline'}
         >
           Timeline
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'entries' ? ' active' : ''}`}
+          onClick={() => onSetView('entries')}
+          aria-pressed={view === 'entries'}
+          data-testid="view-btn-entries"
+        >
+          Entries
         </button>
       </div>
       <div className="writing-mode-selector" aria-label="Writing mode">
@@ -522,6 +540,9 @@ export default function DesktopShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -550,6 +571,17 @@ export default function DesktopShell() {
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
+
+  // ─── SKY-863: Sync conflict modal state ───
+  const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
+  const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+
+  // ─── Voice session state (SKY-896) ───
+  const [voiceListening, setVoiceListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const voiceRecognitionRef = useRef<any>(null);
+  const voicePttActiveRef = useRef(false);
   const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -568,14 +600,51 @@ export default function DesktopShell() {
     editorApiRef.current = api;
   }, []);
 
-  // SKY-152: seenTips
-  const seenTips: Record<string, boolean> = (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {};
+  // SKY-152: seenTips — memoized to avoid new object reference on every render
+  const seenTips = useMemo<Record<string, boolean>>(
+    () => (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {},
+    [appSettings],
+  );
   const handleDismissTip = useCallback(async (key: string) => {
     if (!appSettings) return;
     const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
     setAppSettings(updatedSettings);
     window.api.settingsSet(updatedSettings).catch(() => {});
   }, [appSettings, seenTips]);
+
+  const persistGettingStartedProgress = useCallback((next: GettingStartedProgress) => {
+    setGettingStartedProgress(next);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, gettingStartedProgress: next } as AppSettings;
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const checkGettingStartedItem = useCallback((itemId: GettingStartedItemId) => {
+    setGettingStartedProgress((prev) => {
+      if (!prev) return prev;
+      const next = gettingStartedReducer(prev, { type: 'CHECK_ITEM', itemId });
+      setAppSettings((settings) => {
+        if (!settings) return settings;
+        const updated = { ...settings, gettingStartedProgress: next } as AppSettings;
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+      return next;
+    });
+  }, []);
+
+  const handleDismissGettingStarted = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
 
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
@@ -696,10 +765,16 @@ export default function DesktopShell() {
       try { speechRecogRef.current.stop(); } catch { /* already stopped */ }
       speechRecogRef.current = null;
     }
+    if (voiceRecognitionRef.current) {
+      try { voiceRecognitionRef.current.stop(); } catch { /* already stopped */ }
+      voiceRecognitionRef.current = null;
+    }
     const sessionId = voiceSessionRef.current;
     voiceSessionRef.current = null;
     pttDownRef.current = false;
+    voicePttActiveRef.current = false;
     setVoiceActive(false);
+    setVoiceListening(false);
     if (sessionId) {
       window.api.voiceStop(sessionId).catch(() => {});
     }
@@ -720,6 +795,7 @@ export default function DesktopShell() {
     }
     voiceSessionRef.current = sessionId;
     setVoiceActive(true);
+    setVoiceListening(true);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
@@ -763,6 +839,7 @@ export default function DesktopShell() {
       if (sid) window.api.voiceStop(sid).catch(() => {});
     };
     speechRecogRef.current = recog;
+    voiceRecognitionRef.current = recog;
     recog.start();
   }, [appSettings?.voice?.micDeviceId]);
 
@@ -849,6 +926,13 @@ export default function DesktopShell() {
       }
       if (s) {
         setAppSettings(s);
+        setGettingStartedProgress(
+          createInitialGettingStartedProgress(
+            undefined,
+            s.onboardingStartMode,
+            s.gettingStartedProgress,
+          ),
+        );
         applyTheme(s.theme);
         // Load background image data URL if a custom path is stored
         const lg = s.liquidNeon;
@@ -861,6 +945,23 @@ export default function DesktopShell() {
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
+
+      // SKY-863: run conflict check after vault is ready.
+      // Non-fatal: errors here must not prevent opening the vault.
+      try {
+        if (typeof window.api?.checkVaultConflicts === 'function') {
+          const conflicts = await window.api.checkVaultConflicts();
+          if (conflicts && !conflicts.dismissed) {
+            if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
+              setSyncConflictResolved(conflicts.resolved ?? []);
+              setSyncLockfileConflict(conflicts.lockfileConflict ?? null);
+              setSyncModalOpen(true);
+            }
+          }
+        }
+      } catch {
+        // conflict check is best-effort
+      }
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
     } finally {
@@ -871,6 +972,18 @@ export default function DesktopShell() {
   useEffect(() => {
     loadVault();
   }, [loadVault]);
+
+  // SKY-863: handle sync conflict modal dismiss
+  const handleSyncConflictContinue = useCallback(async (suppress: boolean) => {
+    setSyncModalOpen(false);
+    if (suppress) {
+      try {
+        await window.api?.dismissSyncWarning?.();
+      } catch {
+        // non-fatal
+      }
+    }
+  }, []);
 
   // SKY-204: auto-open today's daily note when journal mode is enabled.
   // Runs once after settings load; creates the note silently in the background.
@@ -980,6 +1093,27 @@ export default function DesktopShell() {
     persistLayout(newLayout);
   }, [layout, persistLayout]);
 
+  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
+    checkGettingStartedItem(itemId);
+    if (itemId === 'brainstorm') {
+      setView('brainstorm');
+      return;
+    }
+    if (itemId === 'notes-vault') {
+      setView('editor');
+      persistLayout({ ...layout, leftTab: 'vault' });
+      return;
+    }
+    if (itemId === 'add-character') {
+      setView('brainstorm');
+      return;
+    }
+    if (itemId === 'write-scene') {
+      setView('editor');
+      if (!selectedScene) editorApiRef.current?.focus();
+    }
+  }, [checkGettingStartedItem, layout, selectedScene, persistLayout]);
+
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1004,6 +1138,12 @@ export default function DesktopShell() {
       }
 
       const mod = e.metaKey || e.ctrlKey;
+      // Ctrl/Cmd+, — open Settings (standard platform convention for preferences)
+      if (mod && !e.shiftKey && !e.altKey && e.key === ',') {
+        e.preventDefault();
+        setSettingsOpen(true);
+        return;
+      }
       // Ctrl+K — open global vault search
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
@@ -1024,7 +1164,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen]);
 
   // ─── Panel resize drag handlers ───
 
@@ -1100,6 +1240,10 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
+    if (content.trim()) {
+      checkGettingStartedItem('write-scene');
+      setSeenEmptySceneHints((prev) => new Set(prev).add(selectedScene.id));
+    }
     (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
     // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
     if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
@@ -1107,7 +1251,7 @@ export default function DesktopShell() {
       setSaveState('saved');
       saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
     }, 1200);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem]);
 
   const handleDraftStateChange = useCallback((state: DraftState) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
@@ -1160,6 +1304,11 @@ export default function DesktopShell() {
     setSelectedEntity(null);
     setOpenedNotePath(null);
     setVaultContext('file');
+    editorApiRef.current?.focus();
+    setTimeout(() => {
+      if (document.activeElement?.classList.contains('vb-rename-input')) return;
+      editorApiRef.current?.focus();
+    }, 0);
     if (!restoreInProgressRef.current) {
       // User-initiated open: clear any pending cursor restore and reset cursor to 0
       pendingCursorPosRef.current = null;
@@ -1268,6 +1417,52 @@ export default function DesktopShell() {
     }
   }, [vaultContext]);
 
+  // Insert final voice transcripts into the active editor
+  useEffect(() => {
+    if (!window.api.onVoiceTranscript) return;
+    return window.api.onVoiceTranscript(({ text, isFinal }) => {
+      if (isFinal && text.trim()) editorApiRef.current?.insertText(text.trim() + ' ');
+    });
+  }, []);
+
+  // Voice toggle / push-to-talk keyboard shortcut: Ctrl+Shift+M
+  useEffect(() => {
+    if (!appSettings?.voice?.enabled) return;
+    const pttMode = appSettings.voice.pushToTalkMode ?? false;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || !e.shiftKey || (e.key !== 'M' && e.key !== 'm')) return;
+      e.preventDefault();
+      if (pttMode) {
+        if (!voicePttActiveRef.current) {
+          voicePttActiveRef.current = true;
+          startVoice();
+        }
+      } else {
+        if (voiceSessionRef.current) stopVoice(); else startVoice();
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!pttMode || !voicePttActiveRef.current) return;
+      // Stop on release of any key in the combo
+      if (e.key === 'M' || e.key === 'm' || e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
+        stopVoice();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [appSettings?.voice?.enabled, appSettings?.voice?.pushToTalkMode, startVoice, stopVoice]);
+
+  // Cleanup any active voice session on unmount
+  useEffect(() => () => { stopVoice(); }, [stopVoice]);
+
   // SKY-130: restore last-opened scene + cursor after vault loads
   useEffect(() => {
     if (loading || sceneRestoreAttemptedRef.current) return;
@@ -1323,7 +1518,8 @@ export default function DesktopShell() {
     setSelectedStory(null);
     setSelectedEntity(null);
     setOpenedNotePath(scenePath);
-  }, [stories, handleSelectScene]);
+    checkGettingStartedItem('notes-vault');
+  }, [stories, handleSelectScene, checkGettingStartedItem]);
 
   // SKY-795 §4 — Enter key on the timeline jumps into the editor for the focused scene.
   const handleOpenSceneById = useCallback((sceneId: string) => {
@@ -1345,7 +1541,8 @@ export default function DesktopShell() {
     setSelectedScene(null);
     setSelectedChapter(null);
     setSelectedStory(null);
-  }, []);
+    if (entity.type === 'character') checkGettingStartedItem('add-character');
+  }, [checkGettingStartedItem]);
 
   // SKY-616: navigate to entity page when user clicks an @-mention chip
   const handleEntityMentionClick = useCallback((entityId: string) => {
@@ -1355,9 +1552,10 @@ export default function DesktopShell() {
         setSelectedScene(null);
         setSelectedChapter(null);
         setSelectedStory(null);
+        if (entity.type === 'character') checkGettingStartedItem('add-character');
       }
     }).catch(() => {});
-  }, []);
+  }, [checkGettingStartedItem]);
 
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
@@ -1591,6 +1789,12 @@ export default function DesktopShell() {
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
   const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
 
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const showTemplateCta =
+    appSettings?.onboardingStartMode === 'blank' &&
+    !(gettingStartedProgress?.completedItems.includes('write-scene')) &&
+    !(appSettings.firstLaunchAt && Date.now() - new Date(appSettings.firstLaunchAt).getTime() > SEVEN_DAYS_MS);
+
   const focusWordCount = selectedScene
     ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
     : 0;
@@ -1663,8 +1867,19 @@ export default function DesktopShell() {
         <TourModal onClose={() => setTourOpen(false)} />
       )}
       {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
+      {templatePickerOpen && (
+        <TemplatePicker
+          onApplied={() => { setTemplatePickerOpen(false); }}
+          onClose={() => setTemplatePickerOpen(false)}
+        />
+      )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} onFirstSubmit={() => checkGettingStartedItem('brainstorm')} />
+      )}
+      {view === 'entries' && (
+        <div className="shell-entries">
+          <EntriesPanel storyTitle={selectedStory?.title ?? ''} />
+        </div>
       )}
       {view === 'kanban' && (
         <div className="shell-kanban">
@@ -1729,6 +1944,13 @@ export default function DesktopShell() {
             onContextChange={setVaultContext}
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           onExport={(scope: ExportScope) => setExportScope(scope)}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onEntityCreated={(entity) => {
+              if (entity.type === 'character' && gettingStartedProgress) {
+                persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'CHECK_ITEM', itemId: 'add-character' }));
+              }
+            }}
           />
         </div>
       )}
@@ -1827,6 +2049,12 @@ export default function DesktopShell() {
                   initialCursorPos={pendingCursorPosRef.current ?? undefined}
                   onCursorPosChange={handleCursorPosChange}
                   onEntityClick={handleEntityMentionClick}
+                  emptySceneHint={
+                    isGettingStartedVisible(gettingStartedProgress) &&
+                    !seenEmptySceneHints.has(selectedScene.id)
+                      ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
+                      : ''
+                  }
                 />
                 {(betaReadComments.length > 0 || betaReadLoading) && (
                   <div className="shell-beta-margin">
@@ -1949,6 +2177,10 @@ export default function DesktopShell() {
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+            onGettingStartedAction={handleGettingStartedAction}
+            onDismissGettingStarted={handleDismissGettingStarted}
+            onToggleGsCollapsed={handleToggleGsCollapsed}
+            gettingStartedProgress={gettingStartedProgress}
             onSelectScene={(sc, ch) => {
               if (selectedStory) {
                 handleSelectScene(sc, ch, selectedStory);
@@ -1969,6 +2201,11 @@ export default function DesktopShell() {
           {voiceToast}
         </div>
       )}
+      {voiceListening && (
+        <div className="voice-listening-badge" role="status" aria-live="polite" aria-label="Voice input active">
+          Listening…
+        </div>
+      )}
       <GlobalSearchPanel
         open={globalSearchOpen}
         defaultScope={view === 'editor' ? 'story' : view === 'brainstorm' ? 'notes' : 'both'}
@@ -1979,6 +2216,13 @@ export default function DesktopShell() {
         onClose={() => setGlobalSearchOpen(false)}
       />
       {promptModal}
+      {syncModalOpen && (
+        <SyncConflictModal
+          resolved={syncConflictResolved}
+          lockfileConflict={syncLockfileConflict}
+          onContinue={handleSyncConflictContinue}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,31 @@
 
 Mythos Writer is a local-first desktop writing app for fiction authors. It gives you a structured vault for your stories and notes, a distraction-free scene editor, and an AI brainstorm assistant powered by Claude — all running on your own machine with your files stored as plain Markdown. No subscription, no cloud, no lock-in.
 
+## Screenshots
+
+<table>
+<tr>
+  <td align="center" width="50%">
+    <strong>First launch — onboarding wizard</strong><br/>
+    <img src="docs/screenshots/onboarding-wizard.png" alt="Onboarding wizard — choose a vault path" width="100%"/>
+  </td>
+  <td align="center" width="50%">
+    <strong>Writing shell with Getting Started checklist</strong><br/>
+    <img src="docs/screenshots/getting-started-panel.png" alt="Post-onboarding shell with Getting Started panel" width="100%"/>
+  </td>
+</tr>
+<tr>
+  <td align="center" width="50%">
+    <strong>Brainstorm AI — conversational story development</strong><br/>
+    <img src="docs/screenshots/brainstorm-panel.png" alt="Brainstorm AI panel" width="100%"/>
+  </td>
+  <td align="center" width="50%">
+    <strong>Settings — vault sync status badge</strong><br/>
+    <img src="docs/screenshots/settings-vault-badge.png" alt="Settings panel showing vault sync status" width="100%"/>
+  </td>
+</tr>
+</table>
+
 ## Installation
 
 Download the latest release from the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases):
@@ -16,7 +41,7 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 
 ## Quickstart (5 minutes)
 
-1. **First launch** — the onboarding wizard appears. Pick a folder for your vault (or accept the default `~/Mythos`). Click **Create vault**.
+1. **First launch** — the onboarding wizard appears. Pick a folder for your vault (or accept the default `~/Mythos`). Click **Create vault**. A **Getting Started** checklist appears in the right sidebar to guide you through the app's core features — dismiss it whenever you're ready.
 2. **Create a story** — in the left rail, click **+** next to *Story Vault*, enter a title, press Enter.
 3. **Add a chapter and scene** — expand your story, click **+** to add a chapter, then **+** inside the chapter to create your first scene.
 4. **Write** — click the scene to open the editor. Start typing. Your work is saved automatically.
@@ -38,6 +63,8 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 - **Export** — one-click EPUB and DOCX export (File → Export…)
 - **Snapshot history** — automatic per-scene version snapshots; right-click the editor to restore
 - **Auto-updater** — Stable and Beta release channels; updates install in the background
+- **Vault status badge** — at-a-glance indicator in Settings showing whether your vault is stored locally or synced via a cloud provider (Google Drive, Dropbox, iCloud Drive, OneDrive)
+- **Getting Started checklist** — a guided panel walks new users through writing their first scene, adding a character, trying Brainstorm, and exploring the Notes Vault; dismissible once you're ready to fly solo
 
 ## Documentation
 
@@ -47,6 +74,7 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 | [Entity System](docs/user-guide/entities.md) | Characters, locations, factions, items, events, concepts — wiki-links, connections, search |
 | [Keyboard Shortcuts](docs/keyboard-shortcuts.md) | Full shortcut reference |
 | [AI Providers Guide](#ai-providers) | Local models (Ollama, LM Studio), BYO provider, per-agent config |
+| [Voice Guide](#voice-stt--tts) | STT/TTS setup, provider capabilities, backward compat |
 
 ## AI Providers
 
@@ -97,6 +125,48 @@ Any OpenAI Chat Completions-compatible API works, including:
 5. Click **Test connection**, then **Save**
 
 > **Security note:** When using a remote endpoint (non-localhost), your text is sent to that server. Only use endpoints you own or fully trust. Localhost endpoints (Ollama, LM Studio) never send data over the network.
+
+### Voice
+
+Mythos Writer supports local-first voice input, with optional cloud speech-to-text (STT) and text-to-speech (TTS) through the same provider settings used for AI text.
+
+#### Enable voice
+
+1. Open **Settings → Voice**.
+2. Turn on **Enable voice input**.
+3. Choose **Toggle** or **Push-to-talk** capture mode.
+4. Pick a microphone, or leave **System default** selected.
+5. For cloud STT or TTS, set the STT/TTS provider mode to cloud/auto and choose a **Voice Provider**.
+6. Click **Save**.
+
+Local STT/TTS paths keep using the configured local binaries and never require a cloud provider. When local mode is active, voice stays on your device.
+
+#### Providers that support voice
+
+| Provider | Voice support | Notes |
+|----------|---------------|-------|
+| **OpenAI** | ✅ STT + TTS | Uses OpenAI-compatible `/audio/transcriptions` and `/audio/speech` endpoints |
+| **Custom OpenAI-compatible endpoint** | ✅ STT + TTS when a Base URL is set | Use for providers that implement OpenAI-compatible audio endpoints |
+| **Anthropic** | — | Text AI only; does not provide STT/TTS endpoints |
+| **Ollama / LM Studio** | Local text provider only by default | Local voice still works through the separate local STT/TTS settings |
+
+#### What `capabilities` means
+
+Provider configs can declare `capabilities` to tell Mythos Writer which non-text features are available:
+
+```json
+{
+  "kind": "openai",
+  "model": "gpt-4o-mini",
+  "capabilities": { "transcribe": true, "speak": true }
+}
+```
+
+`transcribe` means the provider can turn audio into text. `speak` means it can synthesize speech. The Voice Provider selector only lists providers that declare one of those capabilities, or known OpenAI-compatible voice providers.
+
+### Backward compatibility
+
+Older installs may still have `stt.cloudApiKey` or `tts.cloudApiKey` saved. Those keys continue to work as a fallback when no voice-capable provider is configured. New setups should prefer the unified provider configuration so text AI, STT, and TTS are managed from one place.
 
 ### Per-agent configuration
 

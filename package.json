@@ -1,7 +1,8 @@
 {
   "name": "mythos-writer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI-powered desktop notes and writing app",
+  "homepage": "https://github.com/SkyyPlayz/Mythos-Writer",
   "author": {
     "name": "SkyyPlayz",
     "email": "skylordplayz@gmail.com"
@@ -27,13 +28,14 @@
     "test": "npm run test -w electron-main && npm run test -w frontend",
     "test:e2e": "playwright test e2e/ --reporter=list",
     "test:e2e:smoke": "playwright test e2e/smoke.spec.ts --reporter=list",
-    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts --reporter=list",
+    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts e2e/vault-not-found.spec.ts --reporter=list",
     "test:e2e:brainstorm": "playwright test e2e/brainstorm.spec.ts --reporter=list",
     "test:e2e:visual-capture": "playwright test e2e/visual-capture.spec.ts --reporter=list",
     "test:e2e:writing-modes": "playwright test e2e/writing-modes.spec.ts --reporter=list",
     "test:e2e:two-vault": "playwright test e2e/tests/two-vault-crud.spec.ts --reporter=list",
     "test:e2e:two-vault-firstrun": "playwright test e2e/tests/two-vault-firstrun.spec.ts --reporter=list",
     "test:e2e:onboarding": "playwright test e2e/onboarding.spec.ts --reporter=list",
+    "test:e2e:cloud-sync": "playwright test e2e/cloud-sync.spec.ts --reporter=list",
     "test:e2e:versioned-drafts": "playwright test e2e/tests/sky-10-rollback.spec.ts --reporter=list",
     "test:e2e:visual-regression": "playwright test e2e/tests/visual-regression.spec.ts --reporter=list",
     "test:e2e:vault-routing": "playwright test e2e/tests/vault-routing-regression.spec.ts --reporter=list",
@@ -44,6 +46,7 @@
     "test:e2e:entity-mention": "playwright test e2e/tests/entity-mention.spec.ts --reporter=list",
     "test:e2e:entity-creation": "playwright test e2e/entity-creation-edge-cases.spec.ts --reporter=list",
     "test:e2e:timeline": "playwright test e2e/timeline.spec.ts --reporter=list",
+    "test:e2e:entries": "playwright test e2e/entries.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only"
   },
   "devDependencies": {

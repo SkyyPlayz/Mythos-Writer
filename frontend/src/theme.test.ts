@@ -166,3 +166,109 @@ describe('applyLiquidNeonTokens contrast guard (MYT-716)', () => {
     expect(root.style.getPropertyValue('--text-header')).toBe('');
   });
 });
+
+// ── SKY-910 three-stop configurable neon border ──────────────────────────────
+
+describe('applyLiquidNeonTokens neon border slots (SKY-910)', () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = '';
+  });
+
+  afterEach(() => {
+    resetLiquidNeonTokens();
+  });
+
+  it('defaults to cyan/violet/magenta across the three slots', () => {
+    expect(LIQUID_NEON_DEFAULTS.neonBorderColor).toBe('cyan');
+    expect(LIQUID_NEON_DEFAULTS.neonBorderColor2).toBe('violet');
+    expect(LIQUID_NEON_DEFAULTS.neonBorderColor3).toBe('magenta');
+  });
+
+  it('writes all three per-slot CSS vars and a matching --grad-neon', () => {
+    applyLiquidNeonTokens(LIQUID_NEON_DEFAULTS);
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--neon-border-1')).toBe('#00f0ff');
+    expect(root.style.getPropertyValue('--neon-border-2')).toBe('#9b5fff');
+    expect(root.style.getPropertyValue('--neon-border-3')).toBe('#ff4dff');
+    const grad = root.style.getPropertyValue('--grad-neon');
+    expect(grad).toContain('#00f0ff');
+    expect(grad).toContain('#9b5fff');
+    expect(grad).toContain('#ff4dff');
+    // Solid 2px outline picks up slot A.
+    expect(root.style.getPropertyValue('--border-neon-outline')).toBe('#00f0ff');
+  });
+
+  it('rebuilds the gradient when all three slots are reassigned', () => {
+    applyLiquidNeonTokens({
+      ...LIQUID_NEON_DEFAULTS,
+      neonBorderColor:  'magenta',
+      neonBorderColor2: 'cyan',
+      neonBorderColor3: 'violet',
+    });
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--neon-border-1')).toBe('#ff4dff');
+    expect(root.style.getPropertyValue('--neon-border-2')).toBe('#00f0ff');
+    expect(root.style.getPropertyValue('--neon-border-3')).toBe('#9b5fff');
+    expect(root.style.getPropertyValue('--border-neon-outline')).toBe('#ff4dff');
+    expect(root.style.getPropertyValue('--grad-neon')).toMatch(
+      /linear-gradient\(120deg,\s*#ff4dff\s+0%,\s*#00f0ff\s+50%,\s*#9b5fff\s+100%\)/,
+    );
+  });
+
+  it('migrates legacy prefs without slots B/C by falling back to violet/magenta defaults', () => {
+    // Legacy persisted record only set the original single slot.
+    const legacy: Partial<LiquidNeonPrefs> = { neonBorderColor: 'cyan' };
+    applyLiquidNeonTokens(legacy);
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--neon-border-1')).toBe('#00f0ff');
+    expect(root.style.getPropertyValue('--neon-border-2')).toBe('#9b5fff');
+    expect(root.style.getPropertyValue('--neon-border-3')).toBe('#ff4dff');
+  });
+
+  it('honours custom hex palette overrides (SKY-127) when resolving border slots', () => {
+    applyLiquidNeonTokens({
+      ...LIQUID_NEON_DEFAULTS,
+      neonColorCyan:    '#112233',
+      neonColorViolet:  '#445566',
+      neonColorMagenta: '#778899',
+      neonBorderColor:  'cyan',
+      neonBorderColor2: 'violet',
+      neonBorderColor3: 'magenta',
+    });
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--neon-border-1')).toBe('#112233');
+    expect(root.style.getPropertyValue('--neon-border-2')).toBe('#445566');
+    expect(root.style.getPropertyValue('--neon-border-3')).toBe('#778899');
+  });
+
+  it('clears all three slot vars + gradient overrides on reset', () => {
+    applyLiquidNeonTokens({
+      ...LIQUID_NEON_DEFAULTS,
+      neonBorderColor:  'magenta',
+      neonBorderColor2: 'cyan',
+      neonBorderColor3: 'violet',
+    });
+    resetLiquidNeonTokens();
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--neon-border-1')).toBe('');
+    expect(root.style.getPropertyValue('--neon-border-2')).toBe('');
+    expect(root.style.getPropertyValue('--neon-border-3')).toBe('');
+    expect(root.style.getPropertyValue('--grad-neon')).toBe('');
+    expect(root.style.getPropertyValue('--grad-neon-soft')).toBe('');
+    expect(root.style.getPropertyValue('--border-neon-outline')).toBe('');
+  });
+});
+
+describe('tokens.css neon border slots (SKY-910)', () => {
+  it('declares the three per-slot border vars in :root', () => {
+    expect(tokensCss).toMatch(/--neon-border-1:\s*var\(--neon-cyan\)/);
+    expect(tokensCss).toMatch(/--neon-border-2:\s*var\(--neon-violet\)/);
+    expect(tokensCss).toMatch(/--neon-border-3:\s*var\(--neon-magenta\)/);
+  });
+
+  it('composes --border-neon-default over --border-neon-outline (slot A)', () => {
+    expect(tokensCss).toMatch(
+      /--border-neon-default:\s*0\s+0\s+16px\s+var\(--grad-neon\),\s*0\s+0\s+2px\s+var\(--border-neon-outline\)/,
+    );
+  });
+});

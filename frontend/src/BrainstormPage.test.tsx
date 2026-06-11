@@ -1058,3 +1058,53 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
   });
 });
+
+describe('BrainstormPage — prompt char counter', () => {
+  it('shows 0 / 2,000 counter when textarea is empty', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByText('0 / 2,000')).toBeInTheDocument();
+  });
+
+  it('updates counter as the user types', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    expect(screen.getByText('5 / 2,000')).toBeInTheDocument();
+  });
+
+  it('counter shows warning style at >=90% of cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1800) } });
+    const counter = screen.getByText('1,800 / 2,000');
+    expect(counter.className).toContain('brainstorm-char-counter--warning');
+  });
+
+  it('counter shows error style at cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(2000) } });
+    const counter = screen.getByText('2,000 / 2,000');
+    expect(counter.className).toContain('brainstorm-char-counter--error');
+  });
+
+  it('shows paste-truncation warning when pasted text would exceed cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1990) } });
+    fireEvent.paste(textarea, {
+      clipboardData: { getData: () => 'b'.repeat(20) },
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(/pasted text exceeded/i);
+  });
+
+  it('does not show paste warning when paste fits within cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'hello' } });
+    fireEvent.paste(textarea, {
+      clipboardData: { getData: () => ' world' },
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});

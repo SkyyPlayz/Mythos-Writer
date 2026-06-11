@@ -241,6 +241,7 @@ export function writeFacts(
       applied_at: null,
       applied_run_id: runId,
       budget_exceeded: 0,
+      category: 'other',
     };
 
     deps.persistSuggestion(suggestion);

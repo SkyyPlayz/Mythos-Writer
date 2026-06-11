@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SettingsPanel from './SettingsPanel';
 import type { FocusPrefs } from './types';
 
-const ALL_CATS: Record<SuggestionCategory, boolean> = { punctuation: true, spelling: true, grammar: true, 'sentence-structure': true, style: true };
+const ALL_CATS: Record<SuggestionCategory, boolean> = { punctuation: true, spelling: true, grammar: true, 'sentence-structure': true, 'style-tone': true, other: true };
 
 const defaultSettings: AppSettings = {
   apiKey: '',
@@ -19,6 +19,9 @@ const mockSettingsSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockVaultSetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
+const mockOpenMoveVaultWizard = vi.fn();
+const mockAgentPersonaRead = vi.fn();
+const mockAgentPersonaReset = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
 
@@ -36,12 +39,19 @@ beforeEach(() => {
     Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
   );
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+  mockAgentPersonaRead.mockImplementation((agentName: string, key: string) =>
+    Promise.resolve({ content: `${agentName} ${key} content`, isCustom: false }),
+  );
+  mockAgentPersonaReset.mockResolvedValue({ reset: true });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
     vaultGetPaths: mockVaultGetPaths,
     vaultSetPaths: mockVaultSetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
+    openMoveVaultWizard: mockOpenMoveVaultWizard,
+    agentPersonaRead: mockAgentPersonaRead,
+    agentPersonaReset: mockAgentPersonaReset,
   };
 });
 
@@ -53,6 +63,97 @@ describe('SettingsPanel', () => {
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
     expect(screen.getByText(/archive agent/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
+  });
+
+  it('shows Account vault card with cloud status badge and guarded move action', async () => {
+    mockVaultGetPaths.mockResolvedValueOnce({
+      storyVaultPath: '/Users/test/Dropbox/Mythos/Story Vault',
+      notesVaultPath: '/Users/test/Mythos/Notes Vault',
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /^account$/i })).toBeInTheDocument());
+    expect(screen.getByText('/Users/test/Dropbox/Mythos/Story Vault')).toBeInTheDocument();
+    expect(screen.getByLabelText('Vault sync status: Synced via Dropbox')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /move to a different folder/i }));
+    expect(mockOpenMoveVaultWizard).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a local vault badge for non-cloud story vault paths', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /^account$/i })).toBeInTheDocument());
+    expect(screen.getByLabelText('Vault sync status: Local')).toBeInTheDocument();
+  });
+
+  it('exposes PersonaViewer tabpanel links with roving tabIndex', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /persona files/i })[0]);
+
+    const agentsTab = await screen.findByRole('tab', { name: /agents\.md/i });
+    const heartbeatTab = screen.getByRole('tab', { name: /heartbeat\.md/i });
+    const soulTab = screen.getByRole('tab', { name: /soul\.md/i });
+    const toolsTab = screen.getByRole('tab', { name: /tools\.md/i });
+    const panel = screen.getByRole('tabpanel');
+
+    expect(agentsTab).toHaveAttribute('id', 'persona-tab-writingAssistant-AGENTS');
+    expect(agentsTab).toHaveAttribute('aria-controls', 'persona-panel-writingAssistant');
+    expect(agentsTab).toHaveAttribute('aria-selected', 'true');
+    expect(agentsTab).toHaveAttribute('tabIndex', '0');
+    for (const inactiveTab of [heartbeatTab, soulTab, toolsTab]) {
+      expect(inactiveTab).toHaveAttribute('tabIndex', '-1');
+      expect(inactiveTab).toHaveAttribute('aria-controls', 'persona-panel-writingAssistant');
+    }
+    expect(panel).toHaveAttribute('id', 'persona-panel-writingAssistant');
+    expect(panel).toHaveAttribute('aria-labelledby', 'persona-tab-writingAssistant-AGENTS');
+  });
+
+  it('moves PersonaViewer tab focus to the next tab with ArrowRight', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /persona files/i })[0]);
+
+    const agentsTab = await screen.findByRole('tab', { name: /agents\.md/i });
+    const heartbeatTab = screen.getByRole('tab', { name: /heartbeat\.md/i });
+    agentsTab.focus();
+
+    fireEvent.keyDown(agentsTab, { key: 'ArrowRight' });
+
+    await waitFor(() => expect(heartbeatTab).toHaveAttribute('aria-selected', 'true'));
+    expect(heartbeatTab).toHaveFocus();
+    expect(heartbeatTab).toHaveAttribute('tabIndex', '0');
+    expect(agentsTab).toHaveAttribute('tabIndex', '-1');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute(
+      'aria-labelledby',
+      'persona-tab-writingAssistant-HEARTBEAT',
+    );
+  });
+
+  it('wraps PersonaViewer tab focus to the previous tab with ArrowLeft', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /persona files/i })[0]);
+
+    const agentsTab = await screen.findByRole('tab', { name: /agents\.md/i });
+    const toolsTab = screen.getByRole('tab', { name: /tools\.md/i });
+    agentsTab.focus();
+
+    fireEvent.keyDown(agentsTab, { key: 'ArrowLeft' });
+
+    await waitFor(() => expect(toolsTab).toHaveAttribute('aria-selected', 'true'));
+    expect(toolsTab).toHaveFocus();
+    expect(toolsTab).toHaveAttribute('tabIndex', '0');
+    expect(agentsTab).toHaveAttribute('tabIndex', '-1');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute(
+      'aria-labelledby',
+      'persona-tab-writingAssistant-TOOLS',
+    );
   });
 
   it('offers dark and high-contrast appearance choices and applies on change', async () => {
@@ -562,7 +663,38 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('combobox', { name: /microphone selection/i })).toBeInTheDocument();
   });
 
-  it('enabling voice saves default voiceMode and shortcuts', async () => {
+  // ── SKY-896: push-to-talk mode + device selector ──
+
+  it('renders push-to-talk toggle in voice section', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    expect(screen.getByRole('checkbox', { name: /push-to-talk mode/i })).toBeInTheDocument();
+  });
+
+  it('push-to-talk toggle is off by default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /push-to-talk mode/i }));
+    const toggle = screen.getByRole('checkbox', { name: /push-to-talk mode/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('push-to-talk mode change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /push-to-talk mode/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /push-to-talk mode/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.pushToTalkMode).toBe(true);
+  });
+
+  it('enabling voice does not clear pushToTalkMode', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      voice: { enabled: false, cloudFallback: false, pushToTalkMode: true },
+    });
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
 
@@ -571,9 +703,8 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
-    expect(saved.voice?.voiceMode).toBe('toggle');
-    expect(saved.voice?.toggleShortcut).toBe('ctrl+shift+v');
-    expect(saved.voice?.pttKey).toBe('alt+v');
+    expect(saved.voice?.enabled).toBe(true);
+    expect(saved.voice?.pushToTalkMode).toBe(true);
   });
 
   it('switching to push-to-talk mode is saved', async () => {
@@ -597,12 +728,26 @@ describe('SettingsPanel', () => {
     expect(screen.getByText(/voice is processed locally on your device/i)).toBeInTheDocument();
   });
 
+  it('shows no microphone selector when no input devices are available', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    expect(screen.queryByRole('combobox', { name: /microphone selection/i })).not.toBeInTheDocument();
+  });
+
+  it('shows shortcut hint text in voice section', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    // The hint renders two kbd elements — one per mode description — so use getAllByText
+    const kbds = screen.getAllByText(/ctrl\+shift\+m/i);
+    expect(kbds.length).toBeGreaterThan(0);
+  });
+
   // ── MYT-779: AI providers section ──
 
-  it('renders AI Provider section with provider selector', async () => {
+  it('renders Provider Configuration section with provider selector', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
-    expect(screen.getByRole('heading', { name: /^ai provider$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^provider configuration$/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /ai provider/i })).toBeInTheDocument();
   });
 
@@ -656,6 +801,106 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('button', { name: /test provider connection/i }));
     expect(screen.getByRole('button', { name: /test provider connection/i })).toBeInTheDocument();
+  });
+
+  // ── SKY-818: Voice-capable provider UI ──
+
+  it('renders an accessible Voice badge for providers with STT or TTS capabilities', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { transcribe: true } } as AppSettings['provider'],
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const badge = await screen.findByRole('status', { name: /supports voice input and\/or output/i });
+    expect(badge).toHaveTextContent(/^voice$/i);
+  });
+
+  it('does not render a Voice badge for providers without voice capabilities', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    expect(screen.queryByRole('status', { name: /supports voice input and\/or output/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the voice provider selector only when cloud voice is enabled', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { transcribe: true, speak: true } } as AppSettings['provider'],
+      stt: { enabled: true, provider: 'cloud' },
+      tts: { enabled: true, provider: 'local' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const selector = await screen.findByRole('combobox', { name: /voice provider/i });
+    expect(selector).toBeInTheDocument();
+    expect(screen.getByText(/only providers with voice capabilities/i)).toBeInTheDocument();
+  });
+
+  it('hides the voice provider selector when STT and TTS are fully local', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { transcribe: true, speak: true } } as AppSettings['provider'],
+      stt: { enabled: true, provider: 'local' },
+      tts: { enabled: true, provider: 'local' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('heading', { name: /^voice$/i }));
+
+    expect(screen.queryByRole('combobox', { name: /voice provider/i })).not.toBeInTheDocument();
+  });
+
+  it('persists selected voiceProviderId on save', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini', capabilities: { speak: true } } as AppSettings['provider'],
+      stt: { enabled: true, provider: 'cloud' },
+      tts: { enabled: true, provider: 'cloud' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    fireEvent.change(await screen.findByRole('combobox', { name: /voice provider/i }), { target: { value: 'openai' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voiceProviderId).toBe('openai');
+  });
+
+  it('shows an empty state when cloud voice is enabled but no provider supports voice', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6' },
+      stt: { enabled: true, provider: 'cloud' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const selector = await screen.findByRole('combobox', { name: /voice provider/i }) as HTMLSelectElement;
+    expect(selector.options[0].textContent).toMatch(/no providers support voice/i);
+  });
+
+  it('lists a custom OpenAI-compatible provider with baseUrl as voice-capable', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      provider: { kind: 'custom', apiKey: 'sk-test', baseUrl: 'https://voice.example/v1', model: 'custom-voice' },
+      stt: { enabled: true, provider: 'cloud' },
+      tts: { enabled: true, provider: 'cloud' },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const selector = await screen.findByRole('combobox', { name: /voice provider/i }) as HTMLSelectElement;
+    expect(Array.from(selector.options).map((o) => o.textContent)).toContain('Custom (https://voice.example/v1)');
   });
 
   // ── MYT-779: Telemetry section ──
@@ -851,5 +1096,115 @@ describe('SettingsPanel', () => {
     // Switch back to Anthropic: dropdown
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'anthropic' } });
     expect(screen.getByLabelText(/writing assistant model/i).tagName).toBe('SELECT');
+  });
+
+  // ── SKY-908 — per-category auto-apply toggles ──
+
+  it('per-category toggle group is hidden when master autoApply is off', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/auto-apply writing assistant suggestions/i));
+
+    expect(screen.queryByTestId('wa-category-toggles')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brainstorm-category-toggles')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-category-toggles')).not.toBeInTheDocument();
+  });
+
+  it('per-category toggle group appears when master autoApply is toggled on', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/auto-apply writing assistant suggestions/i));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /auto-apply writing assistant suggestions/i }));
+
+    expect(screen.getByTestId('wa-category-toggles')).toBeInTheDocument();
+    // Five named categories + 'other' = 6 toggles
+    const punctuation = screen.getByRole('checkbox', { name: /writing assistant auto-apply punctuation/i });
+    const spelling = screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i });
+    const grammar = screen.getByRole('checkbox', { name: /writing assistant auto-apply grammar/i });
+    const structure = screen.getByRole('checkbox', { name: /writing assistant auto-apply sentence structure/i });
+    const style = screen.getByRole('checkbox', { name: /writing assistant auto-apply style \/ tone/i });
+    const other = screen.getByRole('checkbox', { name: /writing assistant auto-apply other/i });
+
+    // All six default to enabled (back-compat: undefined map ⇒ all-on).
+    for (const cb of [punctuation, spelling, grammar, structure, style, other]) {
+      expect((cb as HTMLInputElement).checked).toBe(true);
+    }
+  });
+
+  it('disabling a single category persists a full map via IPC', async () => {
+    const settingsWithAutoApply = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    const map = saved.agents.writingAssistant.autoApplyCategories;
+    expect(map).toBeDefined();
+    expect(map?.['spelling']).toBe(false);
+    // The other five materialise as enabled so the on-disk shape is unambiguous.
+    expect(map?.['punctuation']).toBe(true);
+    expect(map?.['grammar']).toBe(true);
+    expect(map?.['sentence-structure']).toBe(true);
+    expect(map?.['style-tone']).toBe(true);
+    expect(map?.['other']).toBe(true);
+  });
+
+  it('restores per-category state from loaded settings', async () => {
+    const loaded = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          autoApply: true,
+          autoApplyCategories: {
+            'punctuation': true,
+            'spelling': false,
+            'grammar': true,
+            'sentence-structure': false,
+            'style-tone': true,
+            'other': true,
+          },
+        },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(loaded);
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    const spelling = screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i }) as HTMLInputElement;
+    const structure = screen.getByRole('checkbox', { name: /writing assistant auto-apply sentence structure/i }) as HTMLInputElement;
+    const grammar = screen.getByRole('checkbox', { name: /writing assistant auto-apply grammar/i }) as HTMLInputElement;
+    expect(spelling.checked).toBe(false);
+    expect(structure.checked).toBe(false);
+    expect(grammar.checked).toBe(true);
+  });
+
+  it('per-category toggles render for all three agents when their master is on', async () => {
+    const allOn = {
+      ...defaultSettings,
+      agents: {
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true },
+        brainstorm: { ...defaultSettings.agents.brainstorm, autoApply: true },
+        archive: { ...defaultSettings.agents.archive, autoApply: true },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(allOn);
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    expect(screen.getByTestId('wa-category-toggles')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-category-toggles')).toBeInTheDocument();
+    expect(screen.getByTestId('archive-category-toggles')).toBeInTheDocument();
   });
 });

@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { FocusPrefs } from './types';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
 import { resolveAxisTokens } from './themeAxis';
-import { SUGGESTION_CATEGORY_LABELS, SUGGESTION_CATEGORIES } from './types';
+import { detectCloudProvider } from './lib/cloudSync';
+import { SUGGESTION_CATEGORY_LABELS } from './types';
+import VaultSyncBadge from './components/VaultSyncBadge';
+import MoveVaultWizard from './MoveVaultWizard';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -36,6 +39,7 @@ interface PersonaFileState {
 function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainstorm' }) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PersonaKey>('AGENTS');
+  const tablistRef = useRef<HTMLDivElement>(null);
   const [files, setFiles] = useState<Record<PersonaKey, PersonaFileState>>({
     AGENTS:    { content: '', isCustom: false, loading: false, error: null },
     HEARTBEAT: { content: '', isCustom: false, loading: false, error: null },
@@ -71,6 +75,20 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
 
   const file = files[activeTab];
 
+  const handleTabKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const idx = PERSONA_KEYS.indexOf(activeTab);
+    const next = e.key === 'ArrowRight'
+      ? PERSONA_KEYS[(idx + 1) % PERSONA_KEYS.length]
+      : PERSONA_KEYS[(idx + PERSONA_KEYS.length - 1) % PERSONA_KEYS.length];
+    setActiveTab(next);
+    e.preventDefault();
+    const btn = tablistRef.current?.querySelector<HTMLElement>(`[data-tabkey="${next}"]`);
+    btn?.focus();
+  };
+
+  const panelId = `persona-panel-${agentName}`;
+
   return (
     <div className="settings-persona-viewer">
       <button
@@ -84,13 +102,17 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
       </button>
       {open && (
         <div className="settings-persona-panel">
-          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs">
+          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs" ref={tablistRef} onKeyDown={handleTabKeyDown}>
             {PERSONA_KEYS.map((key) => (
               <button
                 key={key}
                 type="button"
                 role="tab"
+                id={`persona-tab-${agentName}-${key}`}
+                data-tabkey={key}
                 aria-selected={activeTab === key}
+                aria-controls={panelId}
+                tabIndex={activeTab === key ? 0 : -1}
                 className={`settings-persona-tab${activeTab === key ? ' settings-persona-tab--active' : ''}`}
                 onClick={() => setActiveTab(key)}
               >
@@ -101,7 +123,7 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
               </button>
             ))}
           </div>
-          <div className="settings-persona-content" role="tabpanel">
+          <div id={panelId} className="settings-persona-content" role="tabpanel" aria-labelledby={`persona-tab-${agentName}-${activeTab}`}>
             {file.loading && <p className="settings-persona-loading">Loading…</p>}
             {file.error && <p className="settings-persona-error">{file.error}</p>}
             {!file.loading && !file.error && (
@@ -213,7 +235,8 @@ const ALL_CATEGORIES_ENABLED: Record<SuggestionCategory, boolean> = {
   spelling: true,
   grammar: true,
   'sentence-structure': true,
-  style: true,
+  'style-tone': true,
+  other: true,
 };
 
 const BUDGET_DEFAULTS: AgentBudgetSettings = {
@@ -225,6 +248,34 @@ const BUDGET_DEFAULTS: AgentBudgetSettings = {
   maxTokensPerDay: 500_000,
   autoApplyCategories: ALL_CATEGORIES_ENABLED,
 };
+
+// SKY-908 — per-category auto-apply toggle group.
+// Order is the display order. 'other' is intentionally last because it covers
+// suggestions that don't fit the four named categories.
+const SUGGESTION_CATEGORY_ORDER: SuggestionCategory[] = [
+  'punctuation',
+  'spelling',
+  'grammar',
+  'sentence-structure',
+  'style-tone',
+  'other',
+];
+
+/**
+ * Read the effective per-category enable state for a settings entry.
+ * Backward compatible: when the map is absent (pre-SKY-908 settings), every
+ * category reads as enabled — the existing master `autoApply` boolean stays
+ * the kill-switch. Absent keys inside an explicit map also default to true so
+ * a forward-compat field never silently disables a new category.
+ */
+function isCategoryAutoApplyEnabled(
+  agent: AgentBudgetSettings,
+  category: SuggestionCategory,
+): boolean {
+  if (!agent.autoApplyCategories) return true;
+  const value = agent.autoApplyCategories[category];
+  return value !== false;
+}
 
 const DEFAULTS: AppSettings = {
   apiKey: '',
@@ -253,6 +304,21 @@ function validateApiKey(key: string): string | null {
   if (!key) return null;
   if (!key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
   return null;
+}
+
+function providerSupportsVoice(provider?: AppSettings['provider']): boolean {
+  if (!provider) return false;
+  if (provider.capabilities?.transcribe || provider.capabilities?.speak) return true;
+  if (provider.kind === 'openai') return true;
+  return provider.kind === 'custom' && Boolean(provider.baseUrl);
+}
+
+function formatProviderLabel(provider: AppSettings['provider']): string {
+  if (!provider) return 'Provider';
+  if (provider.kind === 'openai') return 'OpenAI';
+  if (provider.kind === 'custom') return provider.baseUrl ? `Custom (${provider.baseUrl})` : 'Custom endpoint';
+  const option = PROVIDER_OPTIONS.find((p) => p.value === provider.kind);
+  return option?.label ?? provider.kind.charAt(0).toUpperCase() + provider.kind.slice(1);
 }
 
 /** Contrast ratio badge — shows ratio and colour-codes pass/fail. */
@@ -408,19 +474,19 @@ function AgentProviderSection({
         </p>
       )}
 
-      {/* "Use different provider" toggle */}
+      {/* Per-agent provider override toggle */}
       <div className="settings-field settings-field-inline settings-agent-provider-toggle">
         <label className="settings-toggle" htmlFor={`${idPrefix}-provider-toggle`}>
           <input
             id={`${idPrefix}-provider-toggle`}
             type="checkbox"
-            aria-label={`Use a different provider for ${agentName}`}
+            aria-label={`Enable ${agentName} provider override`}
             checked={override.enabled}
             onChange={(e) => onChange('enabled', e.target.checked)}
           />
           <span className="settings-toggle-track" />
         </label>
-        <span className="settings-label">Use a different provider for this agent</span>
+        <span className="settings-label">Override provider for this agent</span>
       </div>
 
       {override.enabled && (
@@ -550,6 +616,61 @@ const FOCUS_PREFS_DEFAULTS: Pick<FocusPrefs, 'showTitleBar' | 'showStatusBar' | 
   showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
 };
 
+// SKY-908 — per-category auto-apply toggle group, rendered under the master
+// auto-apply checkbox on each agent card. Hidden when the master is off (the
+// kill-switch dominates per CEO direction).
+interface AutoApplyCategoryTogglesProps {
+  idPrefix: string;
+  agentLabel: string;
+  agent: AgentBudgetSettings;
+  agentKey: keyof AppSettings['agents'];
+  onChange: (
+    agent: keyof AppSettings['agents'],
+    category: SuggestionCategory,
+    enabled: boolean,
+  ) => void;
+}
+
+function AutoApplyCategoryToggles({
+  idPrefix,
+  agentLabel,
+  agent,
+  agentKey,
+  onChange,
+}: AutoApplyCategoryTogglesProps) {
+  if (!agent.autoApply) return null;
+  return (
+    <fieldset
+      className="settings-category-toggles"
+      data-testid={`${idPrefix}-category-toggles`}
+      aria-label={`${agentLabel} auto-apply categories`}
+    >
+      <legend className="settings-category-toggles-legend">
+        Auto-apply categories
+      </legend>
+      {SUGGESTION_CATEGORY_ORDER.map((category) => {
+        const id = `${idPrefix}-cat-${category}`;
+        const checked = isCategoryAutoApplyEnabled(agent, category);
+        return (
+          <div key={category} className="settings-field settings-field-inline">
+            <label className="settings-toggle" htmlFor={id}>
+              <input
+                id={id}
+                type="checkbox"
+                aria-label={`${agentLabel} auto-apply ${SUGGESTION_CATEGORY_LABELS[category]}`}
+                checked={checked}
+                onChange={(e) => onChange(agentKey, category, e.target.checked)}
+              />
+              <span className="settings-toggle-track" />
+            </label>
+            <span className="settings-label">{SUGGESTION_CATEGORY_LABELS[category]}</span>
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -586,6 +707,10 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [vaultsDirty, setVaultsDirty] = useState(false);
   const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
+
+  // SKY-861/SKY-1112: Cloud-sync vault placement entry point.
+  const [showMoveWizard, setShowMoveWizard] = useState(false);
+  const vaultProvider = useMemo(() => detectCloudProvider(vaults.storyVaultPath), [vaults.storyVaultPath]);
 
   // SKY-207: Custom field definitions
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
@@ -716,6 +841,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     });
   }, []);
 
+  const handleMoveVault = useCallback(() => {
+    // TODO(SKY-861): wire wizard IPC
+    if (window.api.openMoveVaultWizard) {
+      void window.api.openMoveVaultWizard();
+      return;
+    }
+    setShowMoveWizard(true);
+  }, []);
+
   const refreshMicDevices = useCallback(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     navigator.mediaDevices.enumerateDevices().then((devices) => {
@@ -755,20 +889,35 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setSavedOk(false);
   }, []);
 
-  const setAutoApplyCategory = useCallback((category: SuggestionCategory, enabled: boolean) => {
-    setSettings((prev) => ({
-      ...prev,
-      agents: {
-        ...prev.agents,
-        writingAssistant: {
-          ...prev.agents.writingAssistant,
-          autoApplyCategories: {
-            ...(prev.agents.writingAssistant.autoApplyCategories ?? ALL_CATEGORIES_ENABLED),
-            [category]: enabled,
-          },
+  // SKY-908 — single source of truth for per-category auto-apply edits.
+  // On first edit, materialises a full map seeded with the current enabled
+  // state so the persisted JSON is unambiguous (no implicit "all enabled"
+  // shorthand once the user has expressed an opinion).
+  const setCategoryAutoApply = useCallback((
+    agent: keyof AppSettings['agents'],
+    category: SuggestionCategory,
+    enabled: boolean,
+  ) => {
+    setSettings((prev) => {
+      const current = prev.agents[agent];
+      const existing = current.autoApplyCategories ?? {};
+      const seeded: Record<SuggestionCategory, boolean> = {
+        'punctuation': existing.punctuation ?? true,
+        'spelling': existing.spelling ?? true,
+        'grammar': existing.grammar ?? true,
+        'sentence-structure': existing['sentence-structure'] ?? true,
+        'style-tone': existing['style-tone'] ?? true,
+        'other': existing.other ?? true,
+      };
+      seeded[category] = enabled;
+      return {
+        ...prev,
+        agents: {
+          ...prev.agents,
+          [agent]: { ...current, autoApplyCategories: seeded },
         },
-      },
-    }));
+      };
+    });
     setSavedOk(false);
   }, []);
 
@@ -784,6 +933,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     };
   }, [agentOverrides, settings.agents]);
 
+
   const handleSave = useCallback(async () => {
     if (apiKeyError) return;
     setSaving(true);
@@ -796,6 +946,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         model: providerModel,
         ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
         ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+        ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
       };
       const payload: AppSettings = {
         ...settings,
@@ -1074,7 +1225,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   if (loading) {
     return (
-      <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog">
+      <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
         <div className="settings-panel">
           <div className="settings-loading">Loading settings…</div>
         </div>
@@ -1083,6 +1234,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }
 
   const effectiveBg = lg.bgBaseColor ?? LG_DEFAULTS.bgBaseColor!;
+  const activeProvider = settings.provider?.kind === providerKind ? settings.provider : undefined;
+  const activeProviderSupportsVoice = providerSupportsVoice(activeProvider);
+  const shouldShowVoiceProviderSelector =
+    (settings.stt?.provider ?? 'local') !== 'local' || (settings.tts?.provider ?? 'local') !== 'local';
+  const voiceProviders = activeProviderSupportsVoice && activeProvider ? [activeProvider] : [];
 
   return (
     <>
@@ -1090,14 +1246,23 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
           <h2 className="settings-title">Settings</h2>
-          <button className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
+          <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
         <div className="settings-body">
 
           {/* ── AI Providers ── */}
-          <section className="settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+          <section className="settings-section provider-settings-section" aria-labelledby="section-providers">
+            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
+            {activeProviderSupportsVoice && (
+              <span
+                className="provider-voice-badge"
+                aria-label="This provider supports voice input and/or output"
+                role="status"
+              >
+                Voice
+              </span>
+            )}
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
@@ -1208,7 +1373,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
                   placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : 'sk-ant-…'}
                   aria-invalid={apiKeyError ? 'true' : 'false'}
-                  aria-describedby={apiKeyError ? 'api-key-error' : undefined}
+                  aria-describedby={apiKeyError ? 'api-key-error api-key-hint' : 'api-key-hint'}
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -1227,7 +1392,31 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               {!apiKeyDirty && keyIsConfigured && (
                 <p className="settings-hint" data-testid="key-configured-hint">Key is already configured.</p>
               )}
-              <p className="settings-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
+              <p className="settings-hint" id="api-key-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
+            </div>
+          </section>
+
+          {/* ── Account / Vault status (SKY-1112) ── */}
+          <section className="settings-section settings-account-section" aria-labelledby="section-account">
+            <h3 className="settings-section-title" id="section-account">Account</h3>
+            <div className="settings-vault-card" aria-label="Current Story Vault">
+              <div className="settings-vault-card-header">
+                <div>
+                  <span className="settings-vault-card-kicker">Vault</span>
+                  <h4 className="settings-vault-card-title">Story Vault location</h4>
+                </div>
+                <VaultSyncBadge provider={vaultProvider} />
+              </div>
+              <p className="settings-vault-path-display">{vaults.storyVaultPath || 'No Story Vault configured'}</p>
+              <button
+                className="settings-btn settings-btn-secondary settings-vault-move-btn"
+                type="button"
+                onClick={handleMoveVault}
+                aria-label="Move to a different folder"
+                data-testid="move-vault-btn"
+              >
+                Move to a different folder
+              </button>
             </div>
           </section>
 
@@ -1248,6 +1437,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     setVaultsSavedOk(false);
                   }}
                   placeholder="~/Mythos/Story Vault"
+                  aria-describedby="story-vault-path-hint"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -1260,7 +1450,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   Browse…
                 </button>
               </div>
-              <p className="settings-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
+              <p className="settings-hint" id="story-vault-path-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
             </div>
             <div className="settings-field">
               <label className="settings-label" htmlFor="notes-vault-path-input">Notes Vault</label>
@@ -1276,6 +1466,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     setVaultsSavedOk(false);
                   }}
                   placeholder="~/Mythos/Notes Vault"
+                  aria-describedby="notes-vault-path-hint"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -1288,21 +1479,22 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   Browse…
                 </button>
               </div>
-              <p className="settings-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
+              <p className="settings-hint" id="notes-vault-path-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
             </div>
             <div className="settings-input-row">
               <button
-                className="settings-save"
+                className="settings-btn settings-btn-secondary"
                 type="button"
                 onClick={handleSaveVaults}
                 disabled={!vaultsDirty || !vaults.storyVaultPath.trim() || !vaults.notesVaultPath.trim()}
               >
                 Save vault paths
               </button>
-              {vaultsSavedOk && <span className="settings-saved-ok" role="status">Saved. Restart to fully apply.</span>}
+              {vaultsSavedOk && <span className="settings-saved-msg" role="status">Saved. Restart to fully apply.</span>}
               {vaultsError && <span className="settings-error-msg" role="alert">{vaultsError}</span>}
             </div>
             <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
+
           </section>
 
           {/* ── Agents ── */}
@@ -1399,30 +1591,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
-                {settings.agents.writingAssistant.autoApply && (
-                  <div className="settings-field settings-category-toggles" role="group" aria-label="Auto-apply categories">
-                    <span className="settings-label settings-category-label">Auto-apply categories</span>
-                    {SUGGESTION_CATEGORIES.map((cat) => {
-                      const cats = settings.agents.writingAssistant.autoApplyCategories ?? ALL_CATEGORIES_ENABLED;
-                      const enabled = cats[cat] ?? true;
-                      return (
-                        <div key={cat} className="settings-field settings-field-inline settings-category-row">
-                          <label className="settings-toggle" htmlFor={`wa-cat-${cat}`}>
-                            <input
-                              id={`wa-cat-${cat}`}
-                              type="checkbox"
-                              aria-label={`Auto-apply ${SUGGESTION_CATEGORY_LABELS[cat]} suggestions`}
-                              checked={enabled}
-                              onChange={(e) => setAutoApplyCategory(cat, e.target.checked)}
-                            />
-                            <span className="settings-toggle-track" />
-                          </label>
-                          <span className="settings-label">{SUGGESTION_CATEGORY_LABELS[cat]}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                <AutoApplyCategoryToggles
+                  idPrefix="wa"
+                  agentLabel="Writing Assistant"
+                  agent={settings.agents.writingAssistant}
+                  agentKey="writingAssistant"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -1560,6 +1735,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                <AutoApplyCategoryToggles
+                  idPrefix="brainstorm"
+                  agentLabel="Brainstorm Agent"
+                  agent={settings.agents.brainstorm}
+                  agentKey="brainstorm"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -1713,6 +1895,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                <AutoApplyCategoryToggles
+                  idPrefix="archive"
+                  agentLabel="Archive Agent"
+                  agent={settings.agents.archive}
+                  agentKey="archive"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -1955,17 +2144,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <div className="settings-input-row" style={{ marginTop: 12 }}>
                 <button
                   type="button"
-                  className="settings-save"
+                  className="settings-btn settings-btn-secondary"
                   onClick={handleSaveCustomFields}
                 >
                   Save field definitions
                 </button>
-                {customFieldsSavedOk && <span className="settings-saved-ok" role="status">Saved.</span>}
+                {customFieldsSavedOk && <span className="settings-saved-msg" role="status">Saved.</span>}
                 {customFieldsError && <span className="settings-error-msg" role="alert">{customFieldsError}</span>}
               </div>
             )}
             {!customFieldsDirty && customFieldsSavedOk && (
-              <span className="settings-saved-ok" role="status">Saved.</span>
+              <span className="settings-saved-msg" role="status">Saved.</span>
             )}
           </section>
 
@@ -2205,14 +2394,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                       const enabled = e.target.checked;
                       setSettings((p) => ({
                         ...p,
-                        voice: {
-                          enabled,
-                          cloudFallback: p.voice?.cloudFallback ?? false,
-                          micDeviceId: p.voice?.micDeviceId,
-                          voiceMode: p.voice?.voiceMode ?? 'toggle',
-                          toggleShortcut: p.voice?.toggleShortcut ?? 'ctrl+shift+v',
-                          pttKey: p.voice?.pttKey ?? 'alt+v',
-                        },
+                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), enabled },
                       }));
                       setSavedOk(false);
                     }}
@@ -2300,11 +2482,68 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </>
               )}
 
+              <div className="settings-agent-header" style={{ marginTop: '8px' }}>
+                <span className="settings-label">Push-to-talk mode</span>
+                <label className="settings-toggle" htmlFor="voice-ptt">
+                  <input
+                    id="voice-ptt"
+                    type="checkbox"
+                    aria-label="Push-to-talk mode"
+                    checked={settings.voice?.pushToTalkMode ?? false}
+                    onChange={(e) => {
+                      const pushToTalkMode = e.target.checked;
+                      setSettings((p) => ({
+                        ...p,
+                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), pushToTalkMode },
+                      }));
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+
+              {shouldShowVoiceProviderSelector && (
+                <>
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-provider-select">Voice Provider</label>
+                    <select
+                      id="voice-provider-select"
+                      className="settings-input settings-select"
+                      value={settings.voiceProviderId ?? ''}
+                      aria-label="Voice provider"
+                      aria-describedby="voice-provider-hint"
+                      onChange={(e) => {
+                        const val = e.target.value || undefined;
+                        setSettings((p) => ({ ...p, voiceProviderId: val }));
+                        setSavedOk(false);
+                      }}
+                    >
+                      <option value="">
+                        {voiceProviders.length === 0
+                          ? 'No providers support voice — configure an OpenAI-compatible provider'
+                          : 'Select a provider…'}
+                      </option>
+                      {voiceProviders.map((provider) => (
+                        <option key={provider.kind} value={provider.kind}>
+                          {formatProviderLabel(provider)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="settings-hint" id="voice-provider-hint">
+                    Voice provider controls cloud speech-to-text and text-to-speech. Only providers with voice capabilities (OpenAI or OpenAI-compatible custom endpoints) are shown; local STT/TTS stays on your device.
+                  </p>
+                </>
+              )}
+
               <p className="settings-hint settings-hint-privacy">
-                Voice is processed locally on your device — no audio is sent anywhere.
+                Voice is processed locally on your device when local mode is active; cloud voice uses the selected provider.
               </p>
               <p className="settings-hint">
-                Requires microphone permission. Toggle shortcut works from any panel.
+                When push-to-talk is on, hold <kbd>Ctrl+Shift+M</kbd> to record and release to stop.
+                When off, <kbd>Ctrl+Shift+M</kbd> toggles recording on/off.
+                Requires microphone permission.
               </p>
             </div>
           </section>
@@ -2361,8 +2600,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </div>
           )}
           <div className="settings-footer-actions">
-            <button className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
+            <button type="button" className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
             <button
+              type="button"
               className="settings-btn settings-btn-save"
               onClick={handleSave}
               disabled={saving || !!apiKeyError}
@@ -2732,29 +2972,39 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   onChange={(v) => setLgField('accentColor', v)}
                 />
 
-                {/* Neon border colour slot */}
-                <div className="settings-field">
-                  <label className="settings-label">Neon border</label>
-                  <div className="lg-swatch-row" role="radiogroup" aria-label="Neon border colour">
-                    {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
-                      <label key={accent} className="lg-swatch-label">
-                        <input
-                          type="radio"
-                          name="lg-neon-border"
-                          value={accent}
-                          checked={(lg.neonBorderColor ?? 'cyan') === accent}
-                          onChange={() => setLgField('neonBorderColor', accent)}
-                          aria-label={`Neon border ${accent}`}
-                        />
-                        <span
-                          className={`lg-swatch lg-swatch-${accent}${(lg.neonBorderColor ?? 'cyan') === accent ? ' lg-swatch-active' : ''}`}
-                          title={accent.charAt(0).toUpperCase() + accent.slice(1)}
-                        />
-                        <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                {/* Neon border colour slots A / B / C (SKY-910) — three-stop
+                    configurable gradient for the multi-color border treatment. */}
+                {([
+                  { field: 'neonBorderColor',  label: 'Neon border A', radioName: 'lg-neon-border',   fallback: 'cyan' },
+                  { field: 'neonBorderColor2', label: 'Neon border B', radioName: 'lg-neon-border-2', fallback: 'violet' },
+                  { field: 'neonBorderColor3', label: 'Neon border C', radioName: 'lg-neon-border-3', fallback: 'magenta' },
+                ] as const).map(({ field, label, radioName, fallback }) => {
+                  const current = (lg[field] ?? fallback) as 'cyan' | 'violet' | 'magenta';
+                  return (
+                    <div key={field} className="settings-field">
+                      <label className="settings-label">{label}</label>
+                      <div className="lg-swatch-row" role="radiogroup" aria-label={`${label} colour`}>
+                        {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
+                          <label key={accent} className="lg-swatch-label">
+                            <input
+                              type="radio"
+                              name={radioName}
+                              value={accent}
+                              checked={current === accent}
+                              onChange={() => setLgField(field, accent)}
+                              aria-label={`${label} ${accent}`}
+                            />
+                            <span
+                              className={`lg-swatch lg-swatch-${accent}${current === accent ? ' lg-swatch-active' : ''}`}
+                              title={accent.charAt(0).toUpperCase() + accent.slice(1)}
+                            />
+                            <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
 
                 {/* Legacy neon accent slot (kept for compatibility) */}
                 <div className="settings-field">
@@ -2834,6 +3084,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         onCancel={() => setRemoteWarning(null)}
       />
     )}
+    {showMoveWizard && (
+      <MoveVaultWizard
+        onClose={() => setShowMoveWizard(false)}
+        onSuccess={(newPath) => {
+          setShowMoveWizard(false);
+          setVaults((prev) => ({ ...prev, storyVaultPath: newPath }));
+        }}
+      />
+    )}
     </>
   );
 }
@@ -2877,12 +3136,12 @@ function BrainstormRoutingPanel() {
 
   return (
     <div className="settings-field" data-testid="brainstorm-routing-panel">
-      <label className="settings-label">Notes folder routing</label>
-      <p className="settings-help-text">
+      <label className="settings-label" id="brainstorm-routing-label">Notes folder routing</label>
+      <p className="settings-help-text" id="brainstorm-routing-hint">
         Brainstorm asks once per category in a Blank vault and remembers your
         pick. Clear a row below to be asked again on the next note.
       </p>
-      <ul className="bs-routing-memory-list">
+      <ul className="bs-routing-memory-list" aria-labelledby="brainstorm-routing-label" aria-describedby="brainstorm-routing-hint">
         {ROUTING_CATEGORIES.map((cat) => {
           const dest = routing[cat];
           return (

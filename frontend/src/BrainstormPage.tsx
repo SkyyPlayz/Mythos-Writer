@@ -11,6 +11,7 @@ import {
 } from './presets';
 import type { PresetAxes, RefinementChip } from './presets';
 import EntriesQuickAdd from './EntriesQuickAdd';
+import { PROMPT_MAX_CHARS } from './promptConstants';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -172,9 +173,10 @@ const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item'
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  onFirstSubmit?: () => void;
 }
 
-export default function BrainstormPage({ onClose, enabled = true }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -182,6 +184,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pasteWarning, setPasteWarning] = useState(false);
   const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
@@ -515,6 +518,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     const trimmed = prompt.trim();
     if (!trimmed || loading) return;
 
+    onFirstSubmit?.();
     setLoading(true);
     setError(null);
     setPrompt('');
@@ -550,7 +554,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     contextSystemRef.current = systemPrompt;
 
     await _runStream(apiMessages);
-  }, [prompt, loading, messages, announce, _runStream, effectiveAxes]);
+  }, [prompt, loading, messages, announce, _runStream, effectiveAxes, onFirstSubmit]);
 
   const handleRefine = useCallback((chip: RefinementChip) => {
     if (loading) return;
@@ -1019,16 +1023,49 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             >
               🎤
             </button>
-            <textarea
-              className="brainstorm-input"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Tell me about your story world, characters, or plot ideas…"
-              rows={3}
-              disabled={loading}
-              aria-label="Brainstorm prompt"
-            />
+            <div className="brainstorm-input-wrapper">
+              <textarea
+                className="brainstorm-input"
+                value={prompt}
+                onChange={(e) => {
+                  const next = e.target.value.slice(0, PROMPT_MAX_CHARS);
+                  setPrompt(next);
+                }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  const available = PROMPT_MAX_CHARS - prompt.length;
+                  if (pasted.length > available) {
+                    setPasteWarning(true);
+                    setTimeout(() => setPasteWarning(false), 5000);
+                  }
+                }}
+                onKeyDown={handleKey}
+                placeholder="Tell me about your story world, characters, or plot ideas…"
+                rows={3}
+                maxLength={PROMPT_MAX_CHARS}
+                disabled={loading}
+                aria-label="Brainstorm prompt"
+              />
+              <span
+                className={
+                  'brainstorm-char-counter' +
+                  (prompt.length >= PROMPT_MAX_CHARS
+                    ? ' brainstorm-char-counter--error'
+                    : prompt.length >= PROMPT_MAX_CHARS * 0.9
+                      ? ' brainstorm-char-counter--warning'
+                      : '')
+                }
+                aria-live="polite"
+              >
+                {prompt.length.toLocaleString()} / {PROMPT_MAX_CHARS.toLocaleString()}
+              </span>
+              {pasteWarning && (
+                <div className="brainstorm-paste-warning" role="alert">
+                  Pasted text exceeded {PROMPT_MAX_CHARS.toLocaleString()} chars and was
+                  trimmed—please shorten or split your prompt.
+                </div>
+              )}
+            </div>
             {loading ? (
               <button
                 className="brainstorm-cancel-btn"

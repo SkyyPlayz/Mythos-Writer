@@ -234,6 +234,10 @@ export const IPC_CHANNELS = {
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
   // renderer has one move channel per vault root.
   VAULT_MOVE: 'vault:move',
+  // SKY-862: relocate the entire story vault to a cloud-synced folder.
+  // Distinct from VAULT_MOVE (intra-vault file rename) — this moves the root
+  // directory itself and updates persisted settings.
+  VAULT_GUIDED_FOLDER_MOVE: 'vault:guidedFolderMove',
   // SKY-9: generic folder picker for the Settings UI. Distinct from
   // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
   // and from BG_PICK (image picker). Returns the chosen absolute path with
@@ -368,6 +372,10 @@ export const IPC_CHANNELS = {
   TIMELINE_PROPOSALS_GENERATE: 'timeline:proposals:generate',
   TIMELINE_PROPOSALS_LIST: 'timeline:proposals:list',
   TIMELINE_PROPOSAL_RESOLVE: 'timeline:proposal:resolve',
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
+  VAULT_DISMISS_SYNC_WARNING: 'vault:dismiss-sync-warning',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -536,6 +544,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
@@ -636,6 +645,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_PROPOSALS_GENERATE]: (payload: TimelineProposalsGeneratePayload) => TimelineProposalsGenerateResponse;
   [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: TimelineProposalsListPayload) => TimelineProposalsListResponse;
   [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: TimelineProposalResolvePayload) => TimelineProposalResolveResponse;
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: (payload: never) => Promise<VaultCheckConflictsResponse>;
+  [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (payload: never) => { ok: true };
 }
 
 // ─── Payload / Response types ───
@@ -701,6 +714,27 @@ export interface VaultMkdirPayload {
 export interface VaultMkdirResponse {
   path: string;
   created: boolean;
+}
+
+// ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
+
+/** Big-4 cloud-sync providers supported in Wave 2.B. */
+export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
+
+/**
+ * Payload for VAULT_GUIDED_FOLDER_MOVE.
+ * `sessionToken` must be a registration token issued by a main-process
+ * vault:pick-folder dialog and bound to exactly `targetPath`.
+ */
+export interface VaultGuidedMovePayload {
+  targetPath: string;
+  syncProvider: CloudSyncProvider;
+  sessionToken: string;
+}
+
+export interface VaultGuidedMoveResponse {
+  moved: boolean;
+  newVaultPath: string;
 }
 
 export interface VaultChooseFolderPayload {
@@ -1379,6 +1413,14 @@ export interface AgentArchiveResponse {
 
 // ─── App settings types ───
 
+export type SuggestionCategory =
+  | 'punctuation'
+  | 'spelling'
+  | 'grammar'
+  | 'sentence-structure'
+  | 'style-tone'
+  | 'other';
+
 export interface AgentBudgetSettings {
   autoApply: boolean;
   confidenceThreshold: number;
@@ -1386,8 +1428,8 @@ export interface AgentBudgetSettings {
   maxSuggestionsPerHour: number;
   heartbeatIntervalMinutes: number;
   maxTokensPerDay: number;
-  /** Per-category auto-apply toggles (writing-assistant only). All default to true. */
-  autoApplyCategories?: Record<SuggestionCategory, boolean>;
+  /** SKY-908 — per-category auto-apply allow-list. Undefined ⇒ all enabled. */
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
 }
 
 // ─── Per-agent config (MYT-343) ───
@@ -1429,6 +1471,8 @@ export interface VoiceSettings {
   toggleShortcut?: string;
   /** Hold key for push-to-talk mode (e.g. 'alt+v'). Default: 'alt+v'. */
   pttKey?: string;
+  /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
+  pushToTalkMode?: boolean;
 }
 
 // ─── STT adapter settings (MYT-338) ───
@@ -1441,7 +1485,10 @@ export interface SttSettings {
   localBinaryPath?: string;
   /** OpenAI-compatible audio transcription endpoint */
   cloudEndpoint?: string;
-  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  /**
+   * @deprecated Use the active provider's apiKey via getVoiceProvider() in provider.ts.
+   * Kept for backward compatibility — serves as fallback when no voice provider is configured.
+   */
   cloudApiKey?: string;
 }
 
@@ -1459,7 +1506,10 @@ export interface TtsSettings {
   localModelPath?: string;
   /** OpenAI-compatible TTS endpoint; defaults to https://api.openai.com/v1/audio/speech */
   cloudEndpoint?: string;
-  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  /**
+   * @deprecated Use the active provider's apiKey via getVoiceProvider() in provider.ts.
+   * Kept for backward compatibility — serves as fallback when no voice provider is configured.
+   */
   cloudApiKey?: string;
 }
 
@@ -1475,6 +1525,8 @@ export interface ProviderSettings {
   baseUrl?: string;
   /** Default model used for all agents unless the agent overrides it */
   model: string;
+  /** Optional STT/TTS capability hints — mirrors ProviderConfig.capabilities in provider.ts */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 /** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;
@@ -1522,11 +1574,25 @@ export interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-1188: first-run path used to seed post-onboarding guidance. */
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+  /** SKY-1188: timestamp of first completed onboarding. */
+  firstLaunchAt?: string;
+  /** SKY-1188: persisted post-onboarding checklist state. */
+  gettingStartedProgress?: {
+    firstSeenAt?: string;
+    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+    dismissed: boolean;
+    collapsed?: boolean;
+    completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
+  };
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
   stt?: SttSettings;
   /** TTS adapter config (MYT-339). Absent or enabled=false → synthesis disabled. */
   tts?: TtsSettings;
+  /** SKY-818: Which provider to use for voice I/O (STT/TTS). 'global' = use global provider; agent name = use that agent's override provider. */
+  voiceProviderId?: 'global' | 'writingAssistant' | 'brainstorm' | 'archive';
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
   /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */
@@ -1562,18 +1628,27 @@ export interface LastOpenedScene {
   cursorLine: number;
 }
 
-/** SKY-627: 3-step onboarding orchestration payload. */
+/** SKY-627 / SKY-906: onboarding orchestration payload.
+ *  `default-mythos-vault` (SKY-906) is the one-click first-run path: main
+ *  creates `<defaultMythosVaultsParent>/<Mythos Vault>/{Story,Notes} Vault`
+ *  with no user input, seeds a first scene, and marks onboarding complete in
+ *  a single round-trip. */
 export interface OnboardingCompletePayload {
-  /** 'blank' | 'sample' | 'template' | 'skip' (skip = bypass without creating a story). */
-  startMode: 'blank' | 'sample' | 'template' | 'skip';
-  /** Required for blank / sample / template modes. */
+  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+  /** Required for blank / sample / template modes. Optional for default-mythos-vault
+   *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;
   /** Optional; persisted to AppSettings.authorName. */
   authorName?: string;
-  /** Parent directory for the new vault. Tilde-expanded server-side. Required for blank/sample/template. */
+  /** Parent directory for the new vault. Tilde-expanded server-side. Required for
+   *  blank/sample/template; for default-mythos-vault the main side falls back to
+   *  the OS-default Mythos vaults parent when this is absent. */
   vaultParentPath?: string;
   /** Required for template mode. */
   templateId?: string;
+  /** Optional override for the Mythos Vault folder name (default-mythos-vault only).
+   *  Rejected if it contains path separators or parent-traversal. */
+  vaultName?: string;
 }
 
 /** SKY-627: response from the extended onboarding:complete handler. */
@@ -1699,8 +1774,6 @@ export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' 
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
 export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
 export type TimelineSource = 'explicit_marker' | 'prose';
-export type SuggestionCategory = 'punctuation' | 'spelling' | 'grammar' | 'sentence-structure' | 'style';
-
 export interface SuggestionRow {
   id: string;
   source_agent: SourceAgent | string;
@@ -1716,8 +1789,8 @@ export interface SuggestionRow {
   applied_run_id: string | null;
   /** 1 if this suggestion was blocked by a budget cap, 0 otherwise */
   budget_exceeded: number;
-  /** Writing-assistant suggestion category; null/absent for other agents or legacy rows */
-  category?: SuggestionCategory | null;
+  /** SKY-908 — high-level category for granular auto-apply gating. */
+  category: SuggestionCategory | null;
 }
 
 export interface AuditLogRow {
@@ -2486,6 +2559,8 @@ export interface AgentBudgetUsageResponse {
 export interface VaultGetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
+  homeDir: string;
+  pathSeparator: '/' | '\\';
 }
 
 export type VaultSeedMode = 'default' | 'blank';
@@ -3086,4 +3161,33 @@ export interface TimelineProposalResolveResponse {
    * value (AI proposals never overwrite user-set dates / metadata).
    */
   skippedBecauseUserSet?: boolean;
+}
+
+// ─── SKY-863: Cloud-sync conflict detection + lockfile types ──────────────────
+
+/** One conflict file that was detected and resolved during vault open. */
+export interface ResolvedConflictInfo {
+  conflictPath: string;
+  originalPath: string;
+  provider: 'dropbox' | 'icloud' | 'syncthing';
+  keptPath: string;
+  archivedPath: string;
+  resolvedAt: string;
+}
+
+/** Metadata from an existing lockfile that belongs to a live concurrent session. */
+export interface LockfileConflictInfo {
+  hostname: string;
+  pid: number;
+  timestamp: string;
+}
+
+/** Response from `vault:check-conflicts`. */
+export interface VaultCheckConflictsResponse {
+  /** Conflicts detected and auto-resolved during this call. */
+  resolved: ResolvedConflictInfo[];
+  /** Non-null when another live Mythos session has this vault open. */
+  lockfileConflict: LockfileConflictInfo | null;
+  /** True when the user has previously dismissed warnings for this vault. */
+  dismissed: boolean;
 }

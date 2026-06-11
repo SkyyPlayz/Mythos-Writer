@@ -24,7 +24,9 @@ export interface BlockEditorApi {
   insertWikiLink: (link: string, anchorText: string) => void;
   /** Apply all current auto-linker suggestions as a single undoable transaction. */
   applyAutoLinks: () => void;
+  /** Insert plain text at the current cursor position (used by voice transcript). */
   insertText: (text: string) => void;
+  focus: () => void;
 }
 
 interface Props {
@@ -46,6 +48,8 @@ interface Props {
   initialCursorPos?: number;
   /** SKY-130: debounced callback reporting cursor position changes for session persistence. */
   onCursorPosChange?: (pos: number) => void;
+  /** SKY-1188: post-onboarding guidance copy for blank scenes. */
+  emptySceneHint?: string;
   /** SKY-616: called when user clicks an @-entity chip to navigate to that entity. */
   onEntityClick?: (entityId: string) => void;
 }
@@ -78,13 +82,14 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, onEntityClick }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
     scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
   );
   const wcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectionText, setSelectionText] = useState<string>('');
+  const [isEditorEmpty, setIsEditorEmpty] = useState(() => blocksToMarkdownBody(scene.blocks).trim().length === 0);
   const [betaReadBubble, setBetaReadBubble] = useState<{ top: number; left: number } | null>(null);
   const [hintTooltip, setHintTooltip] = useState<{
     id: string; link: string; anchor: string; top: number; left: number;
@@ -146,7 +151,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const editor = useEditor({
     extensions: [StarterKit, WikiLink, WikiLinkHintExtension, AutoLinkerExtension, EntityMention, EntityMentionPickerExtension, Markdown],
     content: blocksToMarkdownBody(scene.blocks),
+    autofocus: initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end',
     onUpdate({ editor: ed }) {
+      setIsEditorEmpty(ed.isEmpty);
       syncMentionState(ed);
       // Word count: debounced at 250ms so typing stays smooth
       if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
@@ -227,8 +234,17 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   // Expose jump-to-text and insert-wiki-link APIs to the parent once the editor is ready
   useEffect(() => {
     if (!editor) return;
+    const focusEditor = () => {
+      if (!editor) return;
+      // TipTap nulls commandManager during destroy() before React can re-render
+      // the ref to null; guard against the destroyed-but-non-null editor case.
+      try {
+        editor.chain().focus(initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end').run();
+      } catch (_) { /* editor destroyed between render and effect */ }
+    };
+    const focusTimer = setTimeout(focusEditor, 0);
     const cb = onEditorReadyRef.current;
-    if (!cb) return;
+    if (!cb) return () => clearTimeout(focusTimer);
 
     const findTextRange = (text: string): { from: number; to: number } | null => {
       const needle = text.toLowerCase();
@@ -278,7 +294,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       insertText: (text: string) => {
         editor.chain().focus().insertContent(text).run();
       },
+      focus: focusEditor,
     });
+    return () => clearTimeout(focusTimer);
   // Run only when the editor instance changes (new scene key causes remount)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
@@ -511,6 +529,11 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
             selectedIndex={mentionSelectedIndex}
             onSelect={insertEntityMention}
           />
+        )}
+        {isEditorEmpty && emptySceneHint && (
+          <div className="block-editor-empty-hint" aria-live="polite">
+            {emptySceneHint}
+          </div>
         )}
         <EditorContent editor={editor} className="tiptap-content" />
       </div>

@@ -17,6 +17,7 @@ interface Suggestion {
   createdAt: string;
   status: SuggestionStatus;
   payload_json?: string | null;
+  /** SKY-908 — high-level category badge surfaced on the row. */
   category?: SuggestionCategory | null;
 }
 
@@ -153,7 +154,10 @@ function SuggestionRow({
           {AGENT_LABELS[suggestion.source_agent]}
         </span>
         {suggestion.category && (
-          <span className="sr-category-badge" aria-label={`Category: ${SUGGESTION_CATEGORY_LABELS[suggestion.category]}`}>
+          <span
+            className={`sr-category-badge sr-category-${suggestion.category}`}
+            aria-label={`Category: ${SUGGESTION_CATEGORY_LABELS[suggestion.category]}`}
+          >
             {SUGGESTION_CATEGORY_LABELS[suggestion.category]}
           </span>
         )}
@@ -264,6 +268,14 @@ function AuditRow({ suggestion, onRollback, onOpenTarget, rollingBack }: AuditRo
         <span className={`sr-agent-badge sr-agent-${suggestion.source_agent}`}>
           {AGENT_LABELS[suggestion.source_agent]}
         </span>
+        {suggestion.category && (
+          <span
+            className={`sr-category-badge sr-category-${suggestion.category}`}
+            aria-label={`Category: ${SUGGESTION_CATEGORY_LABELS[suggestion.category]}`}
+          >
+            {SUGGESTION_CATEGORY_LABELS[suggestion.category]}
+          </span>
+        )}
         <button
           className="sr-target-link"
           onClick={() => onOpenTarget(suggestion.target)}

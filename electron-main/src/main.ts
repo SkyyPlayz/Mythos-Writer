@@ -99,6 +99,7 @@ import {
   type VaultValidatePathPayload,
   type VaultValidatePathResponse,
   type VaultPickFolderByPathPayload,
+  type VaultGuidedMovePayload,
   type ProjectEntry,
   type ProjectSwitchPayload,
   type CreateDefaultMythosVaultPayload,
@@ -199,13 +200,15 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault, checkScaffoldGate } from './vaultGate.js';
+import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault, checkScaffoldGate, checkGuidedMoveGate } from './vaultGate.js';
+import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
   seedTrustedBinariesFromSettings,
   validateSttShape,
   validateTtsShape,
 } from './voiceGate.js';
+import { buildVoiceProviderSwitchEvents } from './voiceTelemetry.js';
 import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
@@ -261,8 +264,8 @@ import {
   listEntityRelationships,
   createEntityRelationship,
   deleteEntityRelationship,
+  applyTypedRelation,
 } from './entities.js';
-import { getReciprocal } from './entityRelations.js';
 import {
   syncEntityToIndex,
   removeEntityFromIndex,
@@ -344,10 +347,21 @@ import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 import {
   DEFAULT_MYTHOS_VAULT_NAME,
+  scaffoldDefaultMythosVault,
   deriveProjectName,
   isSafeVaultName,
   pickUniqueMythosVaultName,
 } from './mythosVault.js';
+import {
+  detectConflicts,
+  resolveConflict,
+  acquireLockfile,
+  releaseLockfile,
+  checkLockfile,
+  isLockfileLive,
+  isForeignHostLock,
+  appendSyncEvent,
+} from './cloudSync.js';
 
 const require = createRequire(import.meta.url);
 
@@ -385,6 +399,8 @@ interface VaultSettings {
   // imported content.
   layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
+  // SKY-1129: keyed by vaultRoot so dismissal is scoped to each vault.
+  syncWarningDismissed?: Record<string, boolean>;
 }
 
 // SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
@@ -607,6 +623,7 @@ function persistBrainstormSuggestion(
       applied_at: null,
       applied_run_id: null,
       budget_exceeded: 0,
+      category: 'other',
     });
   } catch {
     // Logging is best-effort — a DB hiccup must not block the agent from
@@ -941,7 +958,7 @@ const handlers: IpcHandlers = {
         payload.suggestion.source_agent,
         agentSettings,
         getDb(),
-        payload.suggestion.category ?? null,
+        payload.suggestion.category,
       );
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
@@ -1566,6 +1583,7 @@ const handlers: IpcHandlers = {
     return s;
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
+    const startedAt = Date.now();
     const current = loadAppSettings();
     // Reconcile masked API key fields (apiKey, voice.openaiApiKey) — when the
     // renderer echoes back the masked preview unchanged, preserve the stored
@@ -1615,6 +1633,15 @@ const handlers: IpcHandlers = {
     if (updated.telemetry) {
       configureTelemetry({ enabled: updated.telemetry.enabled, sessionId: updated.telemetry.sessionId });
     }
+    for (const event of buildVoiceProviderSwitchEvents(
+      current.stt,
+      updated.stt,
+      current.tts,
+      updated.tts,
+      Date.now() - startedAt,
+    )) {
+      reportEvent(event);
+    }
     // Restart writing scan scheduler when scanIntervalSeconds or enabled flag changes.
     const prevInterval = current.agents.writingAssistant.scanIntervalSeconds;
     const newInterval = updated.agents.writingAssistant.scanIntervalSeconds;
@@ -1626,14 +1653,20 @@ const handlers: IpcHandlers = {
     return { saved: true };
   },
 
-  // SKY-627: extended onboarding handler — orchestrates vault creation, first-scene setup,
-  // and settings persistence for all three start modes (blank / sample / template / skip).
+  // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
+  // and settings persistence for all start modes (blank / sample / template / skip / default-mythos-vault).
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
-    const { startMode, storyTitle, authorName, vaultParentPath, templateId } = payload ?? {};
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName } = payload ?? {};
 
     const persistSettings = (firstSceneId?: string, firstScenePath?: string) => {
       const current = loadAppSettings();
       const patch: typeof current = { ...current, onboardingComplete: true };
+      patch.onboardingStartMode = startMode ?? 'skip';
+      patch.firstLaunchAt = current.firstLaunchAt ?? new Date().toISOString();
+      patch.gettingStartedProgress = current.gettingStartedProgress ?? {
+        completedItems: [],
+        dismissed: !startMode || startMode === 'skip',
+      };
       if (authorName?.trim()) patch.authorName = authorName.trim();
       if (firstSceneId && firstScenePath) {
         patch.lastOpenedScene = { sceneId: firstSceneId, scenePath: firstScenePath, scrollTop: 0, cursorLine: 0 };
@@ -1645,6 +1678,76 @@ const handlers: IpcHandlers = {
     if (!startMode || startMode === 'skip') {
       persistSettings();
       return { ok: true };
+    }
+
+    // SKY-906: one-click default Mythos Vault setup. Mirrors the SKY-320
+    // vault:createDefaultMythos bundle layout, then seeds a first scene like
+    // the blank mode so the editor lands on something writable rather than
+    // an empty manuscript. The whole flow is bypassable from a "Skip" link if
+    // the user later wants to start over.
+    if (startMode === 'default-mythos-vault') {
+      const parentBase = (vaultParentPath?.trim() && vaultParentPath.trim().length > 0)
+        ? vaultParentPath.trim().replace(/^~/, app.getPath('home'))
+        : defaultMythosVaultsParent();
+      const bundle = scaffoldDefaultMythosVault(parentBase, { baseName: vaultName });
+      if (!bundle.ok) {
+        return { ok: false, error: bundle.error };
+      }
+      const { storyVaultPath: storyVaultPathDefault, notesVaultPath: notesVaultPathDefault } = bundle;
+
+      saveVaultSettings({
+        vaultRoot: storyVaultPathDefault,
+        notesVaultRoot: notesVaultPathDefault,
+        layoutMode: 'default',
+      });
+      addToRecentProjects(storyVaultPathDefault, notesVaultPathDefault);
+      ensureVaultDir();
+      ensureNotesVaultDir();
+
+      // Seed a first scene so the editor opens on something writable.
+      const effectiveStoryTitle = (storyTitle?.trim() || 'My First Story');
+      const nowStr = new Date().toISOString();
+      const storyId = crypto.randomUUID();
+      const chapterId = crypto.randomUUID();
+      const sceneId = crypto.randomUUID();
+      const titleSlug = toSlug(effectiveStoryTitle);
+      const storyDirPath = `Manuscript/${titleSlug}`;
+      const chapterDirPath = `Manuscript/${titleSlug}/chapter-1`;
+      const sceneRelPath = `Manuscript/${titleSlug}/chapter-1/chapter-1-scene-1.md`;
+
+      writeSceneFile(storyVaultPathDefault, sceneRelPath, {
+        id: sceneId,
+        title: 'Chapter 1, Scene 1',
+        chapterId,
+        storyId,
+        order: 0,
+        prose: '',
+      });
+
+      const scene = {
+        id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath,
+        order: 0, chapterId, storyId, blocks: [],
+        draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr,
+      };
+      const chapter = {
+        id: chapterId, title: 'Chapter 1', path: chapterDirPath,
+        order: 0, scenes: [scene], createdAt: nowStr, updatedAt: nowStr,
+      };
+      const story = {
+        id: storyId, title: effectiveStoryTitle, path: storyDirPath,
+        chapters: [chapter], createdAt: nowStr, updatedAt: nowStr,
+      };
+      const manifest = readManifest(getManifestPath());
+      manifest.stories.push(story);
+      writeManifest(getManifestPath(), manifest);
+
+      await stopVaultWatcher();
+      await startVaultWatcher(storyVaultPathDefault, notifyVaultChanged);
+      await stopNotesVaultWatcher();
+      await startNotesVaultWatcher(notesVaultPathDefault, notifyNotesVaultChanged);
+
+      persistSettings(sceneId, sceneRelPath);
+      return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
     }
 
     if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
@@ -2351,6 +2454,7 @@ const handlers: IpcHandlers = {
         applied_at: null,
         applied_run_id: null,
         budget_exceeded: 0,
+        category: 'other' as const,
       };
       upsertSuggestion(counterSuggestion);
       updateSuggestionStatus(payload.suggestionId, 'accepted', now);
@@ -3367,6 +3471,8 @@ const handlers: IpcHandlers = {
     return {
       storyVaultPath: getVaultRoot(),
       notesVaultPath: getNotesVaultRoot(),
+      homeDir: app.getPath('home'),
+      pathSeparator: path.sep as '/' | '\\',
     };
   },
 
@@ -3457,6 +3563,36 @@ const handlers: IpcHandlers = {
     safeVaultIpcJoin(root, payload.fromPath, true);
     safeVaultIpcJoin(root, payload.toPath, true);
     return moveVaultFile(root, payload.fromPath, payload.toPath);
+  },
+
+  // SKY-862: relocate the entire story vault to a cloud-synced folder.
+  // SEC-11 vault-token pattern: isFromTopFrame + sanitizeIpcError are applied
+  // automatically by setupIpcMain; session-token validation is in the gate.
+  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: async (
+    payload: VaultGuidedMovePayload,
+  ) => {
+    const homeDir = app.getPath('home');
+
+    // Gate: validates targetPath (homedir containment, no ..), syncProvider,
+    // and sessionToken (registration token bound to targetPath).
+    const gate = checkGuidedMoveGate(payload, homeDir);
+    if (!gate.ok) return { error: gate.error };
+
+    const srcVaultRoot = getVaultRoot();
+
+    // Runtime FS checks: src exists, target not occupied, target writable.
+    const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
+    if (!targetCheck.ok) return { error: targetCheck.error };
+
+    await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
+      syncProvider: gate.syncProvider,
+      updateSettings: (newPath) => {
+        saveVaultSettings({ vaultRoot: newPath });
+        addToRecentProjects(newPath);
+      },
+    });
+
+    return { moved: true, newVaultPath: gate.targetPath };
   },
 
   // SKY-9: generic folder picker for the Settings panel. Returns the chosen
@@ -4337,6 +4473,70 @@ const handlers: IpcHandlers = {
     return { proposal: updated, scene: responseScene };
   },
 
+  // ─── SKY-863: Cloud-sync conflict detection + lockfile ───────────────────
+
+  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: async (): Promise<import('./ipc.js').VaultCheckConflictsResponse> => {
+    const vaultRoot = getVaultRoot();
+    const ts = () => new Date().toISOString();
+
+    // SKY-1128: acquireLockfile is now atomic (O_CREAT|O_EXCL / 'ax').
+    // It returns null when a live process (same or foreign host) already holds
+    // the lock — no TOCTOU between the old checkLockfile read and write.
+    let lockfileConflict: import('./ipc.js').LockfileConflictInfo | null = null;
+    const lock = acquireLockfile(vaultRoot);
+    if (lock === null) {
+      // Contention: read the existing lock for reporting only (best-effort).
+      const existing = checkLockfile(vaultRoot);
+      if (existing) {
+        lockfileConflict = { hostname: existing.hostname, pid: existing.pid, timestamp: existing.timestamp };
+        appendSyncEvent(vaultRoot, {
+          type: 'concurrent_session_detected',
+          ts: ts(),
+          detail: { hostname: existing.hostname, pid: existing.pid },
+        });
+      }
+    } else {
+      appendSyncEvent(vaultRoot, {
+        type: 'lockfile_acquired',
+        ts: ts(),
+        detail: { pid: lock.pid, hostname: lock.hostname },
+      });
+    }
+
+    // 3. Detect and resolve conflicts.
+    const conflicts = detectConflicts(vaultRoot);
+    const resolved: import('./ipc.js').ResolvedConflictInfo[] = [];
+    for (const conflict of conflicts) {
+      try {
+        const result = resolveConflict(vaultRoot, conflict);
+        appendSyncEvent(vaultRoot, {
+          type: 'conflict_resolved',
+          ts: ts(),
+          detail: {
+            conflictPath: result.conflictPath,
+            originalPath: result.originalPath,
+            keptPath: result.keptPath,
+            archivedPath: result.archivedPath,
+            provider: result.provider,
+          },
+        });
+        resolved.push(result);
+      } catch {
+        // Non-fatal: log but don't crash the vault open if a single conflict can't be resolved.
+      }
+    }
+
+    const dismissed = (loadVaultSettings().syncWarningDismissed ?? {})[vaultRoot] ?? false;
+    return { resolved, lockfileConflict, dismissed };
+  },
+
+  [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (): { ok: true } => {
+    const vaultRoot = getVaultRoot();
+    const current = loadVaultSettings().syncWarningDismissed ?? {};
+    saveVaultSettings({ syncWarningDismissed: { ...current, [vaultRoot]: true } });
+    return { ok: true };
+  },
+
 };
 
 // ─── Create BrowserWindow ───
@@ -4616,7 +4816,8 @@ const AGENT_BUDGET_DEFAULTS = {
     spelling: true,
     grammar: true,
     'sentence-structure': true,
-    style: true,
+    'style-tone': true,
+    other: true,
   } as Record<import('./ipc.js').SuggestionCategory, boolean>,
 };
 
@@ -4665,49 +4866,29 @@ function autoApplyVaultWrite(
         targetEntityPath?: string;
       };
 
-      // ─── Typed-relation apply ───
+      // ─── Typed-relation apply (SKY-195 / SKY-901) ───
+      // Delegates to entities.applyTypedRelation so the write logic is unit-tested
+      // independent of IPC/Electron, and returns 'accepted' (not 'applied') when
+      // neither side wrote, so a stale suggestion referencing a deleted/unknown
+      // entity does not silently report success.
       if (payloadData.kind === 'typed-relation') {
         const {
           relationType,
           sourceEntityId,
-          sourceEntityPath,
           targetEntityId,
-          targetEntityPath,
         } = payloadData;
-        if (!relationType || !sourceEntityId || !sourceEntityPath || !targetEntityId || !targetEntityPath) {
+        if (!relationType || !sourceEntityId || !targetEntityId) {
           return { finalStatus: 'accepted', snapshotPath: null };
         }
         const manifest = readManifest(getManifestPath());
-
-        const sourceEntry = manifest.entities.find((e) => e.id === sourceEntityId);
-        if (sourceEntry) {
-          const existingRelations = sourceEntry.relations ?? [];
-          const alreadyHas = existingRelations.some(
-            (r) => r.type === relationType && r.target === targetEntityId,
-          );
-          if (!alreadyHas) {
-            updateEntity(getVaultRoot(), manifest, sourceEntityId, {
-              relations: [...existingRelations, { type: relationType, target: targetEntityId }],
-            });
-          }
-        }
-
-        const reciprocal = getReciprocal(relationType);
-        const targetEntry = manifest.entities.find((e) => e.id === targetEntityId);
-        if (targetEntry) {
-          const existingRelations = targetEntry.relations ?? [];
-          const alreadyHas = existingRelations.some(
-            (r) => r.type === reciprocal && r.target === sourceEntityId,
-          );
-          if (!alreadyHas) {
-            updateEntity(getVaultRoot(), manifest, targetEntityId, {
-              relations: [...existingRelations, { type: reciprocal, target: sourceEntityId }],
-            });
-          }
-        }
-
+        const { sourceWritten, targetWritten } = applyTypedRelation(
+          getVaultRoot(),
+          manifest,
+          { relationType, sourceEntityId, targetEntityId },
+        );
         writeManifest(getManifestPath(), manifest);
-        return { finalStatus: 'applied', snapshotPath: null };
+        const finalStatus = sourceWritten || targetWritten ? 'applied' : 'accepted';
+        return { finalStatus, snapshotPath: null };
       }
 
       // ─── Standard vault-write apply ───
@@ -5875,6 +6056,8 @@ app.on('window-all-closed', async () => {
   await stopVaultWatcher();
   await stopNotesVaultWatcher();
   closeDb();
+  // SKY-863: release the vault lockfile so the next session doesn't see a stale lock.
+  try { releaseLockfile(getVaultRoot()); } catch { /* non-fatal */ }
   if (process.platform !== 'darwin') {
     app.quit();
   }

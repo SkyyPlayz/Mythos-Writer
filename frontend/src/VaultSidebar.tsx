@@ -90,6 +90,8 @@ interface StoryVaultProps {
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
+  showTemplateCta?: boolean;
+  onTemplateCtaClick?: () => void;
 }
 
 function StoryVault({
@@ -99,6 +101,8 @@ function StoryVault({
   onCreateStory,
   onCreateChapter,
   onCreateScene,
+  showTemplateCta,
+  onTemplateCtaClick,
 }: StoryVaultProps) {
   const [open, setOpen] = useState(true);
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set());
@@ -139,7 +143,17 @@ function StoryVault({
       {open && (
         <div className="vs-section-content">
           {stories.length === 0 ? (
-            <div className="vs-empty">No stories yet. Click + to create one.</div>
+            <div className="vs-empty vs-empty-action">
+              <p>No stories yet. Create one to begin writing.</p>
+              <button type="button" className="vs-empty-cta" onClick={onCreateStory}>
+                Create your first story
+              </button>
+              {showTemplateCta && onTemplateCtaClick && (
+                <button type="button" className="vs-template-cta" onClick={onTemplateCtaClick}>
+                  Start from a template →
+                </button>
+              )}
+            </div>
           ) : (
             stories.map((story) => {
               const storyExpanded = expandedStories.has(story.id);
@@ -886,6 +900,8 @@ export interface VaultSidebarProps {
   onOpenVaultPath?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
   onTagFilter?: (tag: string) => void;
+  showTemplateCta?: boolean;
+  onTemplateCtaClick?: () => void;
   /** SKY-204: whether journal mode is enabled (shows Daily Notes section). */
   journalModeEnabled?: boolean;
 }
@@ -900,6 +916,8 @@ export default function VaultSidebar({
   onOpenVaultPath,
   onContextChange,
   onTagFilter,
+  showTemplateCta,
+  onTemplateCtaClick,
   journalModeEnabled,
 }: VaultSidebarProps) {
   return (
@@ -911,6 +929,8 @@ export default function VaultSidebar({
         onCreateStory={onCreateStory}
         onCreateChapter={onCreateChapter}
         onCreateScene={onCreateScene}
+        showTemplateCta={showTemplateCta}
+        onTemplateCtaClick={onTemplateCtaClick}
       />
       <div className="vs-divider" aria-hidden="true" />
       {journalModeEnabled && (

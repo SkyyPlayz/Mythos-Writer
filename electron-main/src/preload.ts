@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
   moveVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),
+  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
+    ipcRenderer.invoke('vault:guidedFolderMove', payload),
   // SKY-9: generic folder picker for the Settings panel (decoupled from the
   // Obsidian-import token flow). Returns { path, cancelled }.
   chooseVaultFolder: (title?: string, defaultPath?: string) =>
@@ -116,6 +118,7 @@ contextBridge.exposeInMainWorld('api', {
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
+  appQuit: () => ipcRenderer.invoke('app:quit', undefined),
 
   // Versioning — per-scene snapshots
   snapshotSave: (sceneId: string, content: string, label?: string) =>
@@ -550,6 +553,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notesVault:tag:rename', { oldTag, newTag }),
   notesTagMerge: (sourceTag: string, targetTag: string) =>
     ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  checkVaultConflicts: () =>
+    ipcRenderer.invoke('vault:check-conflicts', undefined),
+  dismissSyncWarning: () =>
+    ipcRenderer.invoke('vault:dismiss-sync-warning', undefined),
 
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),

@@ -243,7 +243,6 @@
   font-size: 0.8rem;
   opacity: 0.6;
   font-family: monospace;
-  word-break: break-all;
   margin: 0;
 }
 
@@ -1172,7 +1171,6 @@
   flex: 1;
   font-size: 0.875rem;
   color: var(--color-text, #cdd6f4);
-  word-break: break-all;
 }
 
 .gs-save-location__path--error {

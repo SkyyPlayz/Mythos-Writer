@@ -35,6 +35,9 @@ interface Props {
   onExport?: (scope: ExportScope) => void;
   /** SKY-204: whether journal mode is enabled (shows Daily Notes section in vault tab). */
   journalModeEnabled?: boolean;
+  showTemplateCta?: boolean;
+  onTemplateCtaClick?: () => void;
+  onEntityCreated?: (entity: EntityEntry) => void;
 }
 
 export default function LeftRail({
@@ -53,6 +56,9 @@ export default function LeftRail({
   onContextChange,
   onExport,
   journalModeEnabled,
+  showTemplateCta = false,
+  onTemplateCtaClick,
+  onEntityCreated,
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -107,12 +113,15 @@ export default function LeftRail({
             onCreateChapter={onCreateChapter}
             onCreateScene={onCreateScene}
             onReorderScenes={onReorderScenes}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={onTemplateCtaClick}
           />
         )}
         {activeTab === 'entities' && (
           <EntityBrowser
             onSelectEntity={onSelectEntity}
             selectedEntityId={selectedEntityId}
+            onEntityCreated={onEntityCreated}
           />
         )}
         {activeTab === 'vault' && (

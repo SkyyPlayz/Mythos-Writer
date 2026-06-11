@@ -20,7 +20,8 @@ import { spawn } from 'child_process';
 import type { AppSettings, SttSettings, TtsSettings, VoiceTranscribePayload, VoiceTranscribeResponse } from './ipc.js';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
 import { checkSpawnPath, MAX_STT_AUDIO_BYTES, MAX_TTS_TEXT_BYTES } from './voiceGate.js';
-import { validateBaseUrl } from './provider.js';
+import { getVoiceProvider, validateBaseUrl } from './provider.js';
+import type { ProviderConfig } from './provider.js';
 
 // ─── Channel names ──────────────────────────────────────────────────────────
 
@@ -163,6 +164,7 @@ export function categorizeVoiceError(err: unknown): VoiceErrorCategory {
   if (
     msg.includes('network') ||
     msg.includes('connect') ||
+    msg.includes('econnrefused') ||
     msg.includes('timeout') ||
     msg.includes('dns') ||
     msg.includes('fetch failed')
@@ -344,7 +346,7 @@ export function registerVoiceHandlers(
     }
 
     try {
-      return await transcribeAudio(audioBuf, payload.mimeType ?? 'audio/webm', sttSettings);
+      return await transcribeAudio(audioBuf, payload.mimeType ?? 'audio/webm', sttSettings, getSettings());
     } catch (err) {
       const { category, error } = sanitizeVoiceError('voice:transcribe', 'n/a', err);
       return { error, category };
@@ -380,7 +382,7 @@ export function registerVoiceHandlers(
     activeSpeakSessions.set(speakId, abortController);
 
     const voiceId = payload?.voiceId ?? ttsSettings.voiceId;
-    speakAsync(speakId, text, voiceId, ttsSettings, getSender, abortController.signal)
+    speakAsync(speakId, text, voiceId, ttsSettings, getSender, abortController.signal, getSettings())
       .finally(() => activeSpeakSessions.delete(speakId));
 
     return { speakId } satisfies VoiceSpeakResponse;
@@ -418,11 +420,16 @@ function pushError(getSender: GetSender, event: VoiceErrorEvent): void {
 /**
  * Selects local or cloud STT based on `settings.provider` and runs transcription.
  * Exported for unit testing of adapter selection logic.
+ *
+ * When `appSettings` is provided and contains a voice-capable provider
+ * (see `getVoiceProvider`), the cloud API key and base URL are resolved from
+ * that provider. Falls back to `settings.cloudApiKey` for legacy configs.
  */
 export async function transcribeAudio(
   audio: Buffer,
   mimeType: string,
   settings: SttSettings,
+  appSettings?: { provider?: ProviderConfig },
 ): Promise<VoiceTranscribeResponse> {
   if (!settings.enabled) {
     throw new InvalidVoiceInputError('STT is disabled in settings (stt.enabled = false)');
@@ -449,11 +456,19 @@ export async function transcribeAudio(
   }
 
   // Cloud path — 'cloud' provider, or 'auto' when local binary is unavailable.
+  const voiceProvider = appSettings ? getVoiceProvider(appSettings) : null;
   const endpoint =
-    settings.cloudEndpoint ?? 'https://api.openai.com/v1/audio/transcriptions';
-  const apiKey = settings.cloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
+    settings.cloudEndpoint ??
+    (voiceProvider?.baseUrl
+      ? `${voiceProvider.baseUrl}/audio/transcriptions`
+      : 'https://api.openai.com/v1/audio/transcriptions');
+  const legacyCloudApiKey = !voiceProvider && settings.cloudApiKey ? settings.cloudApiKey : null;
+  if (legacyCloudApiKey) {
+    console.warn('[voice:stt] Using deprecated stt.cloudApiKey fallback. Migrate to a named provider in Settings → AI Provider and select it in the Voice Provider selector.');
+  }
+  const apiKey = voiceProvider?.apiKey ?? legacyCloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
 
-  if (!settings.cloudEndpoint && !apiKey) {
+  if (!settings.cloudEndpoint && !voiceProvider && !apiKey) {
     throw new InvalidVoiceInputError(
       'No STT provider available. Configure stt.localBinaryPath or stt.cloudEndpoint in settings.',
     );
@@ -565,6 +580,7 @@ async function speakAsync(
   settings: TtsSettings,
   getSender: GetSender,
   signal: AbortSignal,
+  appSettings?: { provider?: ProviderConfig },
 ): Promise<void> {
   const sendChunk = (chunk: Buffer) => {
     const sender = getSender();
@@ -601,9 +617,18 @@ async function speakAsync(
     }
 
     // Cloud path — 'cloud' provider, or 'auto' when local binary is unavailable.
-    const endpoint = settings.cloudEndpoint ?? 'https://api.openai.com/v1/audio/speech';
-    const apiKey = settings.cloudApiKey ?? process.env.OPENAI_API_KEY ?? '';
-    if (!settings.cloudEndpoint && !apiKey) {
+    const voiceProvider = appSettings ? getVoiceProvider(appSettings) : null;
+    const endpoint =
+      settings.cloudEndpoint ??
+      (voiceProvider?.baseUrl
+        ? `${voiceProvider.baseUrl}/audio/speech`
+        : 'https://api.openai.com/v1/audio/speech');
+    const legacyTtsApiKey = !voiceProvider && settings.cloudApiKey ? settings.cloudApiKey : null;
+    if (legacyTtsApiKey) {
+      console.warn('[voice:tts] Using deprecated tts.cloudApiKey fallback. Migrate to a named provider in Settings → AI Provider and select it in the Voice Provider selector.');
+    }
+    const apiKey = voiceProvider?.apiKey ?? legacyTtsApiKey ?? process.env.OPENAI_API_KEY ?? '';
+    if (!settings.cloudEndpoint && !voiceProvider && !apiKey) {
       throw new InvalidVoiceInputError(
         'No TTS provider available. Configure tts.localBinaryPath+tts.localModelPath or tts.cloudEndpoint in settings.',
       );

@@ -12,7 +12,7 @@ import {
   serializeFrontmatter,
 } from './vault.js';
 import type { EntityEntry, EntityRelation, EntityRelationship, EntityRelationshipRow, Manifest } from './ipc.js';
-import { parseRelationsBlock, serializeRelations, stripRelationsBlock } from './entityRelations.js';
+import { getReciprocal, parseRelationsBlock, serializeRelations, stripRelationsBlock } from './entityRelations.js';
 
 // ─── Path helpers ───
 
@@ -237,6 +237,61 @@ export function updateEntity(
   manifest.entities = manifest.entities.map((e) => (e.id === id ? updated : e));
 
   return updated;
+}
+
+// ─── Typed-relation apply (SKY-195 / SKY-901) ───
+//
+// Adds a forward relation to the source entity and its reciprocal to the target
+// entity, writing both entity files. Idempotent: a relation already present is
+// not re-added.
+//
+// If either entity is missing from the manifest (stale suggestion referencing a
+// deleted entity), neither side is written — preserves referential integrity so
+// no dangling relation pointing at a missing entity ends up persisted. The
+// caller (suggestionsAccept) uses the returned write flags to downgrade the
+// apply status from 'applied' to 'accepted' when nothing was persisted.
+export function applyTypedRelation(
+  vaultRoot: string,
+  manifest: Manifest,
+  payload: { relationType: string; sourceEntityId: string; targetEntityId: string },
+): { sourceWritten: boolean; targetWritten: boolean } {
+  const { relationType, sourceEntityId, targetEntityId } = payload;
+
+  const sourceEntry = manifest.entities.find((e) => e.id === sourceEntityId);
+  const targetEntry = manifest.entities.find((e) => e.id === targetEntityId);
+  if (!sourceEntry || !targetEntry) {
+    return { sourceWritten: false, targetWritten: false };
+  }
+
+  let sourceWritten = false;
+  const sourceExisting = sourceEntry.relations ?? [];
+  const sourceAlreadyHas = sourceExisting.some(
+    (r) => r.type === relationType && r.target === targetEntityId,
+  );
+  if (!sourceAlreadyHas) {
+    updateEntity(vaultRoot, manifest, sourceEntityId, {
+      relations: [...sourceExisting, { type: relationType, target: targetEntityId }],
+    });
+    sourceWritten = true;
+  }
+
+  const reciprocal = getReciprocal(relationType);
+  let targetWritten = false;
+  // Re-read after the source updateEntity rebuilt the manifest entry — for
+  // self-referential edge cases the target entry object may be stale.
+  const refreshedTarget = manifest.entities.find((e) => e.id === targetEntityId);
+  const targetExisting = refreshedTarget?.relations ?? [];
+  const targetAlreadyHas = targetExisting.some(
+    (r) => r.type === reciprocal && r.target === sourceEntityId,
+  );
+  if (!targetAlreadyHas) {
+    updateEntity(vaultRoot, manifest, targetEntityId, {
+      relations: [...targetExisting, { type: reciprocal, target: sourceEntityId }],
+    });
+    targetWritten = true;
+  }
+
+  return { sourceWritten, targetWritten };
 }
 
 export function deleteEntity(

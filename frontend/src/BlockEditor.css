@@ -97,6 +97,21 @@
   max-width: 720px;
 }
 
+.block-editor-empty-hint {
+  position: absolute;
+  top: 2rem;
+  left: 50%;
+  width: min(720px, calc(100% - 4rem));
+  transform: translateX(-50%);
+  color: var(--text-placeholder);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.75;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.9;
+}
+
 .tiptap-content .ProseMirror {
   outline: none;
   min-height: 60vh;

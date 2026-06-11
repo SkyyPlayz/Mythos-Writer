@@ -33,7 +33,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -56,13 +56,8 @@
 }
 
 .settings-close:hover {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
-}
-
-.settings-close:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
 }
 
 .settings-body {
@@ -87,6 +82,35 @@
   gap: 10px;
 }
 
+.provider-settings-section {
+  position: relative;
+}
+
+.provider-voice-badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: #00f0ff;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: all 150ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+[data-contrast="high"] .provider-voice-badge {
+  background: rgba(0, 240, 255, 0.25);
+  border-color: rgba(0, 240, 255, 0.8);
+  color: #00f0ff;
+}
+
 .settings-section-title {
   font-size: 0.72rem;
   font-weight: 600;
@@ -94,6 +118,66 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0;
+}
+
+.settings-vault-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+}
+
+.settings-vault-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-vault-card-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-vault-card-title {
+  margin: 0;
+  color: var(--text-header);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.settings-vault-path-display {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  color: var(--text-body);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.settings-vault-move-btn {
+  align-self: flex-start;
+}
+
+[data-contrast="high"] .settings-vault-card {
+  border-color: var(--border-strong);
+  background: var(--bg-canvas);
+}
+
+[data-contrast="high"] .settings-vault-path-display {
+  border-color: var(--border-strong);
 }
 
 .settings-field {
@@ -125,7 +209,7 @@
 
 .settings-input {
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-header);
   font-size: 0.85rem;
@@ -135,22 +219,17 @@
   font-family: inherit;
 }
 
-.settings-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
 .settings-input:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.25);
 }
 
 .settings-input-error {
   border-color: var(--state-danger);
 }
 
-.settings-input-error:focus {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--state-danger) 25%, transparent);
+.settings-input-error:focus-visible {
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.25);
 }
 
 .settings-input-sm {
@@ -206,7 +285,7 @@
 
 .settings-reveal-btn {
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-muted);
   font-size: 0.78rem;
@@ -217,7 +296,7 @@
 }
 
 .settings-reveal-btn:hover {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
@@ -244,11 +323,37 @@
   margin: 0;
 }
 
+.settings-help-card {
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--bg-inset);
+  color: var(--text-body);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 10px 12px;
+}
+
+.settings-help-card strong {
+  display: block;
+  color: var(--text-header);
+  margin-bottom: 4px;
+}
+
+.settings-help-card ol,
+.settings-help-card ul {
+  margin: 0 0 8px 18px;
+  padding: 0;
+}
+
+.settings-help-card ul {
+  margin-bottom: 0;
+}
+
 /* Agent cards */
 
 .settings-agent-card {
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 7px;
   padding: 12px 14px;
   display: flex;
@@ -355,7 +460,7 @@
 
 .settings-footer {
   padding: 12px 20px 16px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -393,7 +498,7 @@
 }
 
 .settings-btn-cancel:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: var(--surface-3);
   color: var(--text-header);
 }
 
@@ -402,7 +507,7 @@
    Pairs with the switch-knob flip above — same contrast invariant. */
 .settings-btn-save {
   background: var(--accent);
-  color: var(--bg-canvas);
+  color: #fff;
   font-weight: 500;
 }
 
@@ -427,7 +532,7 @@
   width: 128px;
   height: 64px;
   border-radius: 6px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   flex-shrink: 0;
   background-color: var(--bg-canvas);
 }
@@ -451,7 +556,7 @@
 }
 
 .lg-btn-secondary:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
@@ -475,9 +580,6 @@
 
 .lg-slider-main {
   flex: 1;
-  /* Brand-axis slider always reads as cyan — even in [data-contrast="high"],
-     because the SOFTNESS↔CONTRAST axis is itself the brand identity, not a
-     semantic accent. Use the raw neon anchor, not --accent. */
   accent-color: var(--neon-cyan);
 }
 
@@ -533,7 +635,7 @@
   flex-direction: column;
   gap: 10px;
   padding: 10px 0 4px 12px;
-  border-left: 2px solid var(--border-subtle);
+  border-left: 2px solid var(--border-default);
   margin-left: 4px;
 }
 
@@ -574,13 +676,10 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid var(--border-subtle);
+  border: 2px solid var(--border-default);
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
-/* Swatches are the brand-axis anchors themselves — neon tokens, not --accent.
-   Each must keep its hue so the user can pick between cyan / violet / magenta
-   regardless of which one --accent is currently aliased to. */
 .lg-swatch-cyan    { background: var(--neon-cyan); }
 .lg-swatch-violet  { background: var(--neon-violet); }
 .lg-swatch-magenta { background: var(--neon-magenta); }
@@ -650,13 +749,8 @@
 
 .lg-btn-reset:hover {
   background: var(--bg-inset);
-  color: var(--text-body);
-  border-color: var(--border-strong);
-}
-
-.lg-btn-reset:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  color: var(--text-muted);
+  border-color: var(--text-muted);
 }
 
 /* ── Slider band with Advanced pill (MYT-716) ─────────────────────────────── */
@@ -711,13 +805,7 @@
 }
 
 .lg-relink-btn:hover {
-  color: var(--text-body);
-}
-
-.lg-relink-btn:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  border-radius: 2px;
+  color: var(--text-muted);
 }
 
 /* ── Advanced popover overlay (MYT-716) ──────────────────────────────────── */
@@ -751,7 +839,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -807,7 +895,7 @@
   align-items: center;
   gap: 8px;
   padding-top: 4px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-default);
 }
 
 /* ── Background section ───────────────────────────────────────────────────── */
@@ -819,7 +907,7 @@
   padding: 8px;
   background: var(--bg-inset);
   border-radius: 6px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
 }
 
 /* Mode toggle */
@@ -828,7 +916,7 @@
   gap: 0;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   width: fit-content;
 }
 
@@ -851,11 +939,11 @@
 }
 
 .lg-mode-btn + .lg-mode-btn {
-  border-left: 1px solid var(--border-subtle);
+  border-left: 1px solid var(--border-default);
 }
 
 .lg-mode-btn-active {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-header);
 }
 
@@ -876,7 +964,7 @@
   height: 28px;
   border-radius: 4px;
   background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   font-size: 0.75rem;
   color: var(--text-muted);
   cursor: pointer;
@@ -891,14 +979,14 @@
 }
 
 .lg-position-cell-active {
-  background: var(--bg-active);
+  background: var(--bg-elevated);
   color: var(--text-header);
-  border-color: var(--border-default);
+  border-color: var(--border-strong);
 }
 
 .lg-position-cell:hover:not(.lg-position-cell-active) {
-  background: var(--bg-hover);
-  color: var(--text-body);
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 /* ── Color picker control (MYT-716) ──────────────────────────────────────── */
@@ -919,7 +1007,7 @@
 .lg-color-input {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   padding: 2px;
   background: var(--bg-inset);
@@ -947,17 +1035,17 @@
 }
 
 .tcs-badge-pass {
-  background: var(--state-success-bg);
+  background: rgba(74, 222, 128, 0.15);
   color: var(--state-success);
 }
 
 .tcs-badge-warn {
-  background: var(--state-warning-bg);
+  background: rgba(251, 191, 36, 0.15);
   color: var(--state-warning);
 }
 
 .tcs-badge-fail {
-  background: var(--state-danger-bg);
+  background: rgba(248, 113, 113, 0.15);
   color: var(--state-danger);
 }
 
@@ -1060,7 +1148,7 @@
   box-sizing: border-box;
 }
 
-.settings-persona-textarea:focus {
+.settings-persona-textarea:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: 2px;
 }
@@ -1099,6 +1187,11 @@
 .settings-persona-reset-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.settings-persona-reset-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .settings-persona-loading,
@@ -1187,6 +1280,9 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.8rem;
+  font-family: inherit;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .settings-btn-secondary:hover:not(:disabled) {
@@ -1240,30 +1336,34 @@
   border-radius: 3px;
 }
 
-/* ─── SKY-321: per-category auto-apply toggles ─────────────────────────────── */
+/* ─── SKY-908: per-category auto-apply toggle group ─────────────────────────── */
 .settings-category-toggles {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px 12px 4px;
+  margin: 4px 0 8px 24px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: 4px;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
-.settings-category-label {
-  font-size: 11px;
+.settings-category-toggles-legend {
+  font-size: 0.72rem;
   font-weight: 600;
+  color: #a1a1aa;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted, rgba(255,255,255,0.5));
-  margin-bottom: 2px;
+  letter-spacing: 0.06em;
+  padding: 0 6px;
 }
 
-.settings-category-row {
-  margin: 0;
-  padding: 0;
+.settings-category-toggles .settings-field-inline {
+  gap: 8px;
+}
+
+.settings-category-toggles .settings-label {
+  min-width: auto;
+  font-size: 0.8rem;
 }
 
 /* Vault-paths save button (matches settings-btn-save token scheme) */
@@ -1293,8 +1393,108 @@
   outline-offset: 2px;
 }
 
+.settings-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-persona-tab:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
 /* Vault-paths saved confirmation (matches settings-saved-msg) */
 .settings-saved-ok {
   font-size: 0.78rem;
   color: var(--state-success);
   margin: 0;
+}
+
+/* SKY-818: Voice capability badge */
+.settings-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.2) 0%, rgba(155, 95, 255, 0.2) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: rgb(0, 240, 255);
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: light) {
+  .settings-badge {
+    background: linear-gradient(135deg, rgba(0, 180, 200, 0.15) 0%, rgba(120, 80, 200, 0.15) 100%);
+    border-color: rgba(0, 150, 180, 0.5);
+    color: rgb(0, 120, 140);
+  }
+}
+
+/* Help text in BrainstormRoutingPanel */
+.settings-help-text {
+  font-size: 0.78rem;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  margin: 0 0 10px;
+}
+
+/* Brainstorm routing memory list */
+.bs-routing-memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bs-routing-memory-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  font-size: 0.8rem;
+}
+
+.bs-routing-memory-cat {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-body, rgba(255,255,255,0.85));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bs-routing-memory-dest {
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.bs-routing-memory-reset {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.bs-routing-memory-reset:hover {
+  color: var(--text-body, rgba(255,255,255,0.85));
+  background: rgba(255,255,255,0.08);
+}

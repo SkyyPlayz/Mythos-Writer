@@ -35,6 +35,7 @@ function makeSettings(
   voice?: Partial<AppSettings['voice']>,
   stt?: Partial<SttSettings>,
   tts?: Partial<TtsSettings>,
+  provider?: AppSettings['provider'],
 ): AppSettings {
   return {
     apiKey: '',
@@ -47,6 +48,7 @@ function makeSettings(
     voice: voice ? { enabled: false, cloudFallback: false, ...voice } : undefined,
     stt: stt ? { enabled: false, provider: 'auto', ...stt } : undefined,
     tts: tts ? { enabled: false, provider: 'auto', ...tts } : undefined,
+    provider,
   };
 }
 
@@ -400,6 +402,67 @@ describe('transcribeAudio adapter selection', () => {
     expect(result.text).toBe('fallback');
     fetchSpy.mockRestore();
   });
+
+  // ─── getVoiceProvider integration (SKY-817) ────────────────────────────────
+
+  it('STT: provider-resolved key wins over legacy cloudApiKey', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'provider result' }),
+    } as Response);
+
+    const settings: SttSettings = {
+      enabled: true,
+      provider: 'cloud',
+      cloudEndpoint: 'http://localhost/stt',
+      cloudApiKey: 'legacy-key',
+    };
+    const appSettings = {
+      provider: { kind: 'openai' as const, model: 'whisper-1', apiKey: 'provider-key-123' },
+    };
+    const result = await transcribeAudio(Buffer.from('audio'), 'audio/wav', settings, appSettings);
+    expect(result.text).toBe('provider result');
+    const [, opts] = fetchSpy.mock.calls[0];
+    expect((opts as RequestInit).headers).toMatchObject({ Authorization: 'Bearer provider-key-123' });
+    fetchSpy.mockRestore();
+  });
+
+  it('STT: falls back to legacy cloudApiKey when getVoiceProvider returns null', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'legacy result' }),
+    } as Response);
+
+    const settings: SttSettings = {
+      enabled: true,
+      provider: 'cloud',
+      cloudEndpoint: 'http://localhost/stt',
+      cloudApiKey: 'legacy-key-only',
+    };
+    // Anthropic is not voice-capable → getVoiceProvider returns null → legacy key used
+    const appSettings = {
+      provider: { kind: 'anthropic' as const, model: 'claude-haiku-4-5-20251001', apiKey: 'llm-key' },
+    };
+    const result = await transcribeAudio(Buffer.from('audio'), 'audio/wav', settings, appSettings);
+    expect(result.text).toBe('legacy result');
+    const [, opts] = fetchSpy.mock.calls[0];
+    expect((opts as RequestInit).headers).toMatchObject({ Authorization: 'Bearer legacy-key-only' });
+    fetchSpy.mockRestore();
+  });
+
+  it('STT: null provider + no legacy key + no env key throws clear error', async () => {
+    const savedKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const settings: SttSettings = { enabled: true, provider: 'cloud' };
+    // Anthropic is not voice-capable, no cloudApiKey, no env var
+    const appSettings = {
+      provider: { kind: 'anthropic' as const, model: 'claude-haiku-4-5-20251001', apiKey: 'llm-key' },
+    };
+    await expect(
+      transcribeAudio(Buffer.from('audio'), 'audio/wav', settings, appSettings),
+    ).rejects.toThrow(/No STT provider/i);
+    if (savedKey !== undefined) process.env.OPENAI_API_KEY = savedKey;
+  });
 });
 
 // ─── SSRF guard on STT cloudEndpoint (SKY-847) ───────────────────────────────
@@ -733,6 +796,100 @@ describe('voice:speak handler', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
+
+  // ─── getVoiceProvider integration (SKY-817) ──────────────────────────────────
+
+  it('TTS: uses provider-resolved API key when voice provider is configured', async () => {
+    const mockReader = {
+      read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => mockReader },
+    } as unknown as Response);
+
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(
+        undefined,
+        undefined,
+        { enabled: true, provider: 'cloud', cloudEndpoint: 'http://tts.local' },
+        { kind: 'openai', model: 'tts-1', apiKey: 'provider-tts-key' },
+      ),
+    );
+    await invokeHandle('voice:speak', { text: 'Hello' });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://tts.local',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer provider-tts-key' }),
+      }),
+    );
+    fetchSpy.mockRestore();
+  });
+
+  it('TTS: falls back to legacy cloudApiKey when getVoiceProvider returns null', async () => {
+    const mockReader = {
+      read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => mockReader },
+    } as unknown as Response);
+
+    // Anthropic is not voice-capable → getVoiceProvider returns null → legacy key used
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(
+        undefined,
+        undefined,
+        { enabled: true, provider: 'cloud', cloudEndpoint: 'http://tts.local', cloudApiKey: 'legacy-tts-key' },
+        { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: 'llm-key' },
+      ),
+    );
+    await invokeHandle('voice:speak', { text: 'Hello' });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://tts.local',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer legacy-tts-key' }),
+      }),
+    );
+    fetchSpy.mockRestore();
+  });
+
+  it('TTS: pushes invalid_input error event when null provider and no legacy key', async () => {
+    const savedKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    const errors: Array<{ speakId: string; category: VoiceErrorCategory; error: string }> = [];
+    const mockSender = {
+      send: (ch: string, data: unknown) => {
+        if (ch === 'voice:speak:error') errors.push(data as { speakId: string; category: VoiceErrorCategory; error: string });
+      },
+      isDestroyed: () => false,
+    };
+
+    // Anthropic is not voice-capable, no cloudApiKey, no env var → InvalidVoiceInputError
+    registerVoiceHandlers(
+      () => mockSender,
+      () => makeSettings(
+        undefined,
+        undefined,
+        { enabled: true, provider: 'cloud' },
+        { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: 'llm-key' },
+      ),
+    );
+    await invokeHandle('voice:speak', { text: 'Hello' });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].category).toBe(VOICE_ERROR_CATEGORIES.INVALID_INPUT);
+
+    if (savedKey !== undefined) process.env.OPENAI_API_KEY = savedKey;
+  });
 });
 
 // ─── SSRF guard on TTS cloudEndpoint (SKY-847) ───────────────────────────────
@@ -744,10 +901,7 @@ describe('voice:speak handler', () => {
 describe('voice:speak SSRF guard (SKY-847)', () => {
   beforeEach(() => { handleMap.clear(); onMap.clear(); });
 
-  async function runBlocked(endpoint: string): Promise<{
-    errors: Array<{ category: VoiceErrorCategory; error: string }>;
-    fetchSpy: ReturnType<typeof vi.spyOn>;
-  }> {
+  const runBlocked = async (endpoint: string) => {
     const errors: Array<{ category: VoiceErrorCategory; error: string }> = [];
     const mockSender = {
       send: (ch: string, data: unknown) => {
@@ -768,7 +922,7 @@ describe('voice:speak SSRF guard (SKY-847)', () => {
     await invokeHandle('voice:speak', { text: 'hi' });
     await new Promise(resolve => setTimeout(resolve, 20));
     return { errors, fetchSpy };
-  }
+  };
 
   it('blocks 192.168.x.x (RFC-1918 /16)', async () => {
     const { errors, fetchSpy } = await runBlocked('http://192.168.1.1/speak');
@@ -1054,6 +1208,13 @@ describe('categorizeVoiceError', () => {
     expect(categorizeVoiceError(new Error('request timeout after 30s'))).toBe(
       VOICE_ERROR_CATEGORIES.NETWORK,
     );
+  });
+
+  it('maps ECONNREFUSED provider failures to NETWORK', () => {
+    expect(categorizeVoiceError(new Error('connect ECONNREFUSED 127.0.0.1:8080'))).toBe(
+      VOICE_ERROR_CATEGORIES.NETWORK,
+    );
+    expect(categorizeVoiceError(new Error('ECONNREFUSED'))).toBe(VOICE_ERROR_CATEGORIES.NETWORK);
   });
 
   it('maps unrecognised error to UNKNOWN', () => {

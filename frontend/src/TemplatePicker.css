@@ -1,0 +1,104 @@
+.tp-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tp-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  width: min(480px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tp-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-header);
+  margin: 0;
+}
+
+.tp-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--text-lg);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+}
+
+.tp-close:hover { color: var(--neon-cyan); }
+
+.tp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.tp-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  transition: border-color var(--dur-hover-in) var(--ease-out);
+  position: relative;
+}
+
+.tp-card:hover { border-color: rgba(255,255,255,0.15); }
+
+.tp-card--selected {
+  border-color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.05);
+}
+
+.tp-badge {
+  font-size: var(--text-xs);
+  color: var(--neon-violet);
+  font-weight: 600;
+}
+
+.tp-card-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-header);
+}
+
+.tp-card-desc {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.tp-error {
+  color: var(--state-error);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.tp-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}

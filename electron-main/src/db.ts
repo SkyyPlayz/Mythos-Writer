@@ -7,6 +7,7 @@ import type { SQLInputValue } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import type { SuggestionCategory } from './suggestionCategory.js';
 
 // ─── Domain types ───
 
@@ -14,7 +15,7 @@ export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' 
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
 export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
 export type TimelineSource = 'explicit_marker' | 'prose';
-export type SuggestionCategory = 'punctuation' | 'spelling' | 'grammar' | 'sentence-structure' | 'style';
+export type { SuggestionCategory } from './suggestionCategory.js';
 
 export interface DbSuggestion {
   id: string;
@@ -31,8 +32,9 @@ export interface DbSuggestion {
   applied_run_id: string | null;
   /** 1 if blocked by a budget cap; 0 otherwise */
   budget_exceeded: number;
-  /** Writing-assistant suggestion category; null/absent for other agents or legacy rows */
-  category?: SuggestionCategory | null;
+  /** SKY-908: high-level category for granular auto-apply gating.
+   *  Nullable in the DB for back-compat with rows written before v18. */
+  category: SuggestionCategory | null;
 }
 
 export interface DbAuditLog {
@@ -453,6 +455,8 @@ function runMigrations(db: DatabaseSync): void {
   }
 
   if (currentVersion < 18) {
+    // SKY-908 — per-category auto-apply gating. Nullable so pre-v18 rows
+    // continue to read; the gate coerces null → 'other' at evaluation time.
     const hasSuggestions = db.prepare(
       "SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions'"
     ).get();

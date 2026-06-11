@@ -1,0 +1,108 @@
+.vault-not-found-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: var(--bg-app);
+}
+
+.vault-not-found-card {
+  width: min(560px, 100%);
+  padding: 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--glass-fill-fallback);
+  box-shadow: var(--elev-3);
+  color: var(--text-body);
+  text-align: center;
+}
+
+.vault-not-found-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 14px;
+  border: 1px solid var(--state-warning);
+  border-radius: 999px;
+  color: var(--state-warning);
+  font-weight: 800;
+}
+
+.vault-not-found-eyebrow {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.vault-not-found-card h1 {
+  margin: 0;
+  color: var(--text-header);
+  font-size: 1.8rem;
+}
+
+.vault-not-found-copy {
+  margin: 12px auto 18px;
+  max-width: 440px;
+  color: var(--text-body);
+  line-height: 1.55;
+}
+
+.vault-not-found-path {
+  margin: 0 auto 22px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.vault-not-found-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vault-not-found-primary,
+.vault-not-found-secondary,
+.vault-not-found-danger {
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vault-not-found-primary {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.vault-not-found-secondary {
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-body);
+}
+
+.vault-not-found-danger {
+  border: 1px solid color-mix(in srgb, var(--state-danger) 60%, transparent);
+  background: transparent;
+  color: var(--state-danger);
+}
+
+.vault-not-found-primary:hover,
+.vault-not-found-secondary:hover,
+.vault-not-found-danger:hover {
+  border-color: var(--border-strong);
+  filter: brightness(1.08);
+}
