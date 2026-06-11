@@ -264,16 +264,16 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
   const factsPanel = page.locator('.brainstorm-facts-list');
   await expect(factsPanel).toBeVisible({ timeout: 5_000 });
 
-  // The fact name appears as an entity chip in the IdeaCard (linkedEntities).
-  const factName = factsPanel.locator('.idea-card-chip', { hasText: MOCK_FACT_NAME });
+  // SKY-1263: fact.name is now the IdeaCard title; linkedEntities no longer carries the name chip.
+  const factName = factsPanel.locator('.idea-card-title', { hasText: MOCK_FACT_NAME }).first();
   await expect(factName).toBeVisible({ timeout: 6_000 });
 
   // The type group header must show "Characters".
   const factGroup = factsPanel.locator('.bs-fact-group').first();
   await expect(factGroup.locator('.bs-fact-group-header')).toContainText('Character');
 
-  // The description is the IdeaCard title (fact.content rendered as the primary text).
-  const factDesc = factsPanel.locator('.idea-card-title', { hasText: MOCK_FACT_DESC }).first();
+  // SKY-1263: fact.content is now the expandable body preview; cards auto-expand on first detection.
+  const factDesc = factsPanel.locator('.idea-card-body').first();
   await expect(factDesc).toContainText(MOCK_FACT_DESC);
 
   // Facts auto-extract to the vault; the panel reflects the saved state.
