@@ -203,8 +203,8 @@ export default function WritingApp() {
     setSelectedStory(story);
   };
 
-  if (loading) return <div className="writing-loading">Loading vault…</div>;
-  if (error) return <div className="writing-error">{error}</div>;
+  if (loading) return <div className="writing-loading" role="status">Loading vault…</div>;
+  if (error) return <div className="writing-error" role="alert">{error}</div>;
 
   return (
     <div className="writing-app">

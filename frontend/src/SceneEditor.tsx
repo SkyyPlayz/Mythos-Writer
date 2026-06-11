@@ -243,11 +243,13 @@ export default function SceneEditor({ sceneId, scenePath, initialContent = '' }:
 
       <div className="scene-editor-toolbar">
         <span className="scene-title">{scenePath}</span>
-        <SaveStatusIndicator
-          status={saveStatus}
-          savedAt={savedAt}
-          onRetry={() => takeSnapshot(contentRef.current)}
-        />
+        <span aria-live="polite" aria-atomic="true">
+          <SaveStatusIndicator
+            status={saveStatus}
+            savedAt={savedAt}
+            onRetry={() => takeSnapshot(contentRef.current)}
+          />
+        </span>
         {wordStats && (
           <span className="scene-wordcount">
             {wordStats.words} words · {wordStats.mins} min read
