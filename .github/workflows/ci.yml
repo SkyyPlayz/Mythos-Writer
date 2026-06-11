@@ -43,11 +43,21 @@ jobs:
       - name: Type-check (electron-main)
         run: npm run typecheck -w electron-main
 
-      - name: Test (electron-main)
-        run: npm run test -w electron-main
+      - name: Test with coverage (electron-main)
+        run: npm run test -w electron-main -- --coverage
 
-      - name: Test (frontend)
-        run: npm run test -w frontend
+      - name: Test with coverage (frontend)
+        run: npm run test -w frontend -- --coverage
+
+      - name: Upload coverage report
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            electron-main/coverage/
+            frontend/coverage/
+          retention-days: 3
 
       # SKY-361: coverage-guided fuzz run on every PR — 60 s per harness.
       # Fuzzes parseFrontmatter (Obsidian import path) and the DOCX/EPUB inline
