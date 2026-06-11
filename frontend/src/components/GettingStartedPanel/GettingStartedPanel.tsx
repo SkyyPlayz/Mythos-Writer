@@ -35,7 +35,7 @@ export default function GettingStartedPanel({ progress, onAction, onDismiss, onT
   const collapsed = progress.collapsed ?? false;
 
   return (
-    <section className={`gs-panel${collapsed ? ' gs-panel--collapsed' : ''}`} aria-labelledby="getting-started-title">
+    <section data-testid="gs-panel" className={`gs-panel${collapsed ? ' gs-panel--collapsed' : ''}`} aria-labelledby="getting-started-title">
       <div className="gs-header">
         <button
           type="button"
@@ -51,7 +51,7 @@ export default function GettingStartedPanel({ progress, onAction, onDismiss, onT
         {!collapsed && (
           <span className="gs-progress-label" aria-live="polite">{completed} of {total} complete</span>
         )}
-        <button type="button" className="gs-dismiss" onClick={onDismiss} aria-label="Dismiss Getting Started">
+        <button type="button" data-testid="gs-dismiss" className="gs-dismiss" onClick={onDismiss} aria-label="Dismiss Getting Started">
           ×
         </button>
       </div>
@@ -68,6 +68,7 @@ export default function GettingStartedPanel({ progress, onAction, onDismiss, onT
                 <li key={itemId}>
                   <button
                     type="button"
+                    data-testid={`gs-item-${itemId}`}
                     className={`gs-item${done ? ' gs-item--done' : ''}`}
                     onClick={() => onAction(itemId)}
                     role="checkbox"

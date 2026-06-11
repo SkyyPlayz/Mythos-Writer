@@ -2035,7 +2035,7 @@ export default function DesktopShell() {
                   History
                 </button>
               </div>
-              <div className="shell-editor-beta-wrap">
+              <div className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
                 <BlockEditor
                   key={`${selectedScene.id}-${restoreKey}`}
                   scene={selectedScene}
