@@ -1373,7 +1373,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
                   placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : 'sk-ant-…'}
                   aria-invalid={apiKeyError ? 'true' : 'false'}
-                  aria-describedby={apiKeyError ? 'api-key-error' : undefined}
+                  aria-describedby={apiKeyError ? 'api-key-error api-key-hint' : 'api-key-hint'}
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -1392,7 +1392,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               {!apiKeyDirty && keyIsConfigured && (
                 <p className="settings-hint" data-testid="key-configured-hint">Key is already configured.</p>
               )}
-              <p className="settings-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
+              <p className="settings-hint" id="api-key-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
             </div>
           </section>
 
@@ -1437,6 +1437,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     setVaultsSavedOk(false);
                   }}
                   placeholder="~/Mythos/Story Vault"
+                  aria-describedby="story-vault-path-hint"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -1449,7 +1450,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   Browse…
                 </button>
               </div>
-              <p className="settings-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
+              <p className="settings-hint" id="story-vault-path-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
             </div>
             <div className="settings-field">
               <label className="settings-label" htmlFor="notes-vault-path-input">Notes Vault</label>
@@ -1465,6 +1466,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     setVaultsSavedOk(false);
                   }}
                   placeholder="~/Mythos/Notes Vault"
+                  aria-describedby="notes-vault-path-hint"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -1477,7 +1479,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   Browse…
                 </button>
               </div>
-              <p className="settings-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
+              <p className="settings-hint" id="notes-vault-path-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
             </div>
             <div className="settings-input-row">
               <button
@@ -3134,12 +3136,12 @@ function BrainstormRoutingPanel() {
 
   return (
     <div className="settings-field" data-testid="brainstorm-routing-panel">
-      <label className="settings-label">Notes folder routing</label>
-      <p className="settings-help-text">
+      <label className="settings-label" id="brainstorm-routing-label">Notes folder routing</label>
+      <p className="settings-help-text" id="brainstorm-routing-hint">
         Brainstorm asks once per category in a Blank vault and remembers your
         pick. Clear a row below to be asked again on the next note.
       </p>
-      <ul className="bs-routing-memory-list">
+      <ul className="bs-routing-memory-list" aria-labelledby="brainstorm-routing-label" aria-describedby="brainstorm-routing-hint">
         {ROUTING_CATEGORIES.map((cat) => {
           const dest = routing[cat];
           return (
