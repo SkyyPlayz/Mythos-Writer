@@ -49,10 +49,16 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 
 > **API key required for AI features.** Open **Settings** (⚙ icon in the top bar) → enter your [Anthropic API key](https://console.anthropic.com/). The key is stored locally — it never leaves your machine.
 
+## Project Templates
+
+Start a new project from a ready-made vault structure instead of a blank canvas. Mythos Writer ships with bundled templates — **Novel (3-Act)**, **Short Story**, **World-building Bible**, and **Series Bible** — that pre-populate your vault with a sensible chapter/scene hierarchy and notes folders for that story type.
+
+Templates are available when you create a new story (click **+** next to *Story Vault* in the left rail and pick a template from the dialog).
+
 ## Key features
 
 - **Story Vault** — organise your manuscript as Stories → Chapters → Scenes; each scene is a Markdown file you own
-- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference
+- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference; its storage location (local or cloud-synced) is shown by the vault status badge in Settings
 - **Rich scene editor** — TipTap-powered editor with WikiLinks (`[[Character Name]]`), draft states (In Progress / Review / Final), and word count
 - **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
 - **Brainstorm AI** — conversational story development; automatically extracts facts into your vault entities
