@@ -20,17 +20,24 @@ const sampleLockfile: LockfileConflictInfo = {
 };
 
 describe('SyncConflictModal', () => {
-  it('renders the dialog heading', () => {
-    render(<SyncConflictModal resolved={[]} lockfileConflict={null} onContinue={vi.fn()} />);
-    expect(screen.getByRole('dialog')).toBeDefined();
-    expect(screen.getByText(/sync conflict detected/i)).toBeDefined();
+  it('labels the dialog from the visible heading and body', () => {
+    render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog');
+    const heading = screen.getByRole('heading', { name: /sync conflict detected/i });
+    const body = dialog.querySelector('.scm-body');
+
+    expect(dialog.getAttribute('aria-label')).toBeNull();
+    expect(dialog.getAttribute('aria-labelledby')).toBe(heading.id);
+    expect(dialog.getAttribute('aria-describedby')).toBe(body?.id);
   });
 
   it('shows resolved conflict file list', () => {
     render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
-    expect(screen.getByText(/Manuscript\/Ch01\/scene\.md/)).toBeDefined();
+    expect(screen.getByText('scene.md')).toBeDefined();
+    expect(screen.queryByText(/Manuscript\/Ch01\/scene\.md/)).toBeNull();
     expect(screen.getByText('Dropbox')).toBeDefined();
-    expect(screen.getByText(/archived older copy/i)).toBeDefined();
+    expect(screen.getByText(/older version archived/i)).toBeDefined();
   });
 
   it('adds the provider-specific class to conflict badges', () => {
@@ -40,8 +47,59 @@ describe('SyncConflictModal', () => {
 
   it('shows concurrent-session warning when lockfileConflict is provided', () => {
     render(<SyncConflictModal resolved={[]} lockfileConflict={sampleLockfile} onContinue={vi.fn()} />);
-    expect(screen.getByText(/concurrent session warning/i)).toBeDefined();
+    expect(screen.getByText(/another session is open/i)).toBeDefined();
     expect(screen.getByText(/other-machine\.local/)).toBeDefined();
+    expect(screen.queryByText(/12345/)).toBeNull();
+  });
+
+  it('calls onContinue(false) when Escape is pressed', () => {
+    const onContinue = vi.fn();
+    render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={onContinue} />);
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    expect(onContinue).toHaveBeenCalledWith(false);
+  });
+
+  it('wraps Tab from Continue to the checkbox', () => {
+    render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog');
+    const checkbox = screen.getByRole('checkbox');
+    const continueButton = screen.getByRole('button', { name: /continue/i });
+
+    continueButton.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+
+    expect(document.activeElement).toBe(checkbox);
+  });
+
+  it('wraps Shift+Tab from the checkbox to Continue', () => {
+    render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog');
+    const checkbox = screen.getByRole('checkbox');
+    const continueButton = screen.getByRole('button', { name: /continue/i });
+
+    checkbox.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+
+    expect(document.activeElement).toBe(continueButton);
+  });
+
+  it('uses the full kept path as the row title', () => {
+    render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
+
+    expect(screen.getByText('scene.md').getAttribute('title')).toBe('Manuscript/Ch01/scene.md');
+  });
+
+  it('uses a recovery-oriented archive tooltip', () => {
+    render(<SyncConflictModal resolved={sampleResolved} lockfileConflict={null} onContinue={vi.fn()} />);
+
+    expect(screen.getByText(/older version archived/i).getAttribute('title')).toBe(
+      'Older version saved to: .mythos/.archive/2024-01-15T12-00-00Z/scene (conflicted copy 2024-01-15).md',
+    );
   });
 
   it('calls onContinue(false) when Continue clicked without checking the box', () => {
