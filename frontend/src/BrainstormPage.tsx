@@ -87,6 +87,54 @@ interface DetectedFact {
   savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review' | 'needs_routing';
   savedPath?: string;
   updatedAt?: string;
+  createdAt?: number;
+}
+
+type SortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status';
+type FilterType = 'all' | 'character' | 'location' | 'item' | 'note';
+
+const SORT_LABELS: Record<SortOrder, string> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+  'by-type': 'By type',
+  'by-status': 'By status (saved first)',
+};
+
+const FILTER_LABELS: Record<FilterType, string> = {
+  all: 'All types',
+  character: 'Characters',
+  location: 'Locations',
+  item: 'Items',
+  note: 'Concept notes',
+};
+
+const SAVED_STATUS_RANK: Record<DetectedFact['savedStatus'], number> = {
+  saved: 0,
+  saving: 1,
+  unsaved: 2,
+  pending_review: 3,
+  needs_routing: 4,
+  error: 5,
+};
+
+function sortFacts(facts: DetectedFact[], sortOrder: SortOrder): DetectedFact[] {
+  return [...facts].sort((a, b) => {
+    switch (sortOrder) {
+      case 'newest':
+        return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      case 'oldest':
+        return (a.createdAt ?? 0) - (b.createdAt ?? 0);
+      case 'by-type': {
+        const ai = FACT_TYPE_ORDER.indexOf(a.type);
+        const bi = FACT_TYPE_ORDER.indexOf(b.type);
+        return ai !== bi ? ai - bi : (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      }
+      case 'by-status': {
+        const diff = SAVED_STATUS_RANK[a.savedStatus] - SAVED_STATUS_RANK[b.savedStatus];
+        return diff !== 0 ? diff : (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      }
+    }
+  });
 }
 
 // SKY-196: context selection result surfaced in the "Context used" panel.
@@ -210,6 +258,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   // Tracks the id of a brand-new idea created via Ctrl+N that hasn't been saved yet
   const [pendingNewIdeaId, setPendingNewIdeaId] = useState<string | null>(null);
   // Tracks which element opened the detail drawer so focus can be restored on close
@@ -232,6 +283,30 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
   const effectiveAxes = useMemo(
     () => getEffectiveAxes(presetId, presetOverrides),
     [presetId, presetOverrides],
+  );
+
+  const displayedFacts = useMemo(
+    () => sortFacts(filterType === 'all' ? facts : facts.filter((f) => f.type === filterType), sortOrder),
+    [facts, sortOrder, filterType],
+  );
+
+  const visibleTypes = useMemo(
+    () => (filterType === 'all' ? FACT_TYPE_ORDER : ([filterType] as DetectedFact['type'][])),
+    [filterType],
+  );
+
+  const toggleGroup = useCallback((type: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      return next;
+    });
+  }, []);
+
+  const expandAllGroups = useCallback(() => setCollapsedGroups(new Set()), []);
+  const collapseAllGroups = useCallback(
+    () => setCollapsedGroups(new Set(visibleTypes)),
+    [visibleTypes],
   );
 
   // Restore draft from localStorage on mount
@@ -459,10 +534,12 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
       });
 
       if (extracted.length > 0) {
-        const newFacts: DetectedFact[] = extracted.map((f) => ({
+        const nowMs = Date.now();
+        const newFacts: DetectedFact[] = extracted.map((f, i) => ({
           ...f,
-          id: `fact-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          id: `fact-${nowMs}-${Math.random().toString(36).slice(2)}`,
           savedStatus: 'saving' as const,
+          createdAt: nowMs + i,
         }));
         setFacts((prev) => [...prev, ...newFacts]);
         for (const fact of newFacts) {
@@ -815,7 +892,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
 
   const createNewIdea = useCallback(() => {
     const id = `idea-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const newFact: DetectedFact = { id, type: 'note', name: 'New idea', content: '', savedStatus: 'unsaved' };
+    const newFact: DetectedFact = { id, type: 'note', name: 'New idea', content: '', savedStatus: 'unsaved', createdAt: Date.now() };
     triggerElementRef.current = document.activeElement as HTMLElement;
     setFacts((prev) => [...prev, newFact]);
     setDetailDrawerIdeaId(id);
@@ -1392,7 +1469,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
           <div className="brainstorm-facts-header brainstorm-facts-header-divider">
             <span className="brainstorm-facts-title">Detected Facts</span>
             {facts.length > 0 && (
-              <span className="brainstorm-facts-count">{facts.length}</span>
+              <span className="brainstorm-facts-count" data-testid="bs-facts-count">{facts.length}</span>
             )}
             {facts.length > 0 && (
               <button
@@ -1406,6 +1483,50 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
               </button>
             )}
           </div>
+          {facts.length > 0 && (
+            <div className="bs-facts-controls" data-testid="bs-facts-controls">
+              <select
+                className="bs-facts-select"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                aria-label="Sort ideas"
+                data-testid="bs-sort-select"
+              >
+                {(Object.keys(SORT_LABELS) as SortOrder[]).map((key) => (
+                  <option key={key} value={key}>{SORT_LABELS[key]}</option>
+                ))}
+              </select>
+              <select
+                className="bs-facts-select"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as FilterType)}
+                aria-label="Filter by type"
+                data-testid="bs-filter-select"
+              >
+                {(Object.keys(FILTER_LABELS) as FilterType[]).map((key) => (
+                  <option key={key} value={key}>{FILTER_LABELS[key]}</option>
+                ))}
+              </select>
+              <button
+                className="bs-expand-collapse-btn"
+                type="button"
+                onClick={expandAllGroups}
+                aria-label="Expand all groups"
+                data-testid="bs-expand-all"
+              >
+                ↕ Expand all
+              </button>
+              <button
+                className="bs-expand-collapse-btn"
+                type="button"
+                onClick={collapseAllGroups}
+                aria-label="Collapse all groups"
+                data-testid="bs-collapse-all"
+              >
+                ↕ Collapse all
+              </button>
+            </div>
+          )}
           {isMultiSelectMode && selectedIds.size > 0 && (
             <div className="bs-bulk-toolbar" role="toolbar" aria-label="Bulk actions">
               <span className="bs-bulk-count">{selectedIds.size} selected</span>
@@ -1450,13 +1571,28 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
                   }
                 }}
               >
-              {FACT_TYPE_ORDER.map((type) => {
-                const group = facts.filter((f) => f.type === type);
-                if (group.length === 0) return null;
+              {visibleTypes.map((type) => {
+                const group = displayedFacts.filter((f) => f.type === type);
+                const isCollapsed = collapsedGroups.has(type);
                 return (
                   <div key={type} className="bs-fact-group">
-                    <div className="bs-fact-group-header">{FACT_TYPE_LABELS[type]}s</div>
-                    {group.map((fact) => (
+                    <button
+                      className="bs-fact-group-header bs-fact-group-header-btn"
+                      type="button"
+                      onClick={() => toggleGroup(type)}
+                      aria-expanded={!isCollapsed}
+                      data-testid={`bs-group-toggle-${type}`}
+                    >
+                      <span>{FACT_TYPE_LABELS[type]}s</span>
+                      <span className="bs-group-count">{group.length}</span>
+                      <span className="bs-group-chevron">{isCollapsed ? '▶' : '▼'}</span>
+                    </button>
+                    {!isCollapsed && group.length === 0 && (
+                      <div className="brainstorm-facts-empty brainstorm-facts-empty--type" data-testid={`bs-empty-type-${type}`}>
+                        No {FILTER_LABELS[type].toLowerCase()} ideas yet
+                      </div>
+                    )}
+                    {!isCollapsed && group.map((fact) => (
                       <IdeaCard
                         key={fact.id}
                         idea={{
