@@ -38,6 +38,7 @@ import {
   type GettingStartedItemId,
   type GettingStartedProgress,
 } from './gettingStartedReducer';
+import TemplatePicker from './TemplatePicker';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -540,6 +541,7 @@ export default function DesktopShell() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1782,6 +1784,12 @@ export default function DesktopShell() {
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
   const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
 
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const showTemplateCta =
+    appSettings?.onboardingStartMode === 'blank' &&
+    !(gettingStartedProgress?.completedItems.includes('write-scene')) &&
+    !(appSettings.firstLaunchAt && Date.now() - new Date(appSettings.firstLaunchAt).getTime() > SEVEN_DAYS_MS);
+
   const focusWordCount = selectedScene
     ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
     : 0;
@@ -1854,6 +1862,12 @@ export default function DesktopShell() {
         <TourModal onClose={() => setTourOpen(false)} />
       )}
       {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
+      {templatePickerOpen && (
+        <TemplatePicker
+          onApplied={() => { setTemplatePickerOpen(false); }}
+          onClose={() => setTemplatePickerOpen(false)}
+        />
+      )}
       {view === 'brainstorm' && (
         <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} onFirstSubmit={() => checkGettingStartedItem('brainstorm')} />
       )}
@@ -1925,6 +1939,13 @@ export default function DesktopShell() {
             onContextChange={setVaultContext}
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           onExport={(scope: ExportScope) => setExportScope(scope)}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onEntityCreated={(entity) => {
+              if (entity.type === 'character' && gettingStartedProgress) {
+                persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'CHECK_ITEM', itemId: 'add-character' }));
+              }
+            }}
           />
         </div>
       )}

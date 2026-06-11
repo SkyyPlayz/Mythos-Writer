@@ -257,3 +257,23 @@
   outline: 2px solid var(--focus-ring, #7c3aed);
   outline-offset: -2px;
 }
+
+.vs-template-cta {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 8px 8px 4px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px dashed var(--border-muted, rgba(255,255,255,0.15));
+  border-radius: 4px;
+  color: var(--text-muted, rgba(255,255,255,0.45));
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.vs-template-cta:hover {
+  border-color: var(--accent-cyan, #00d4ff);
+  color: var(--accent-cyan, #00d4ff);
+}
