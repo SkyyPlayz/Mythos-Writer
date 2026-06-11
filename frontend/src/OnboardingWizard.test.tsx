@@ -350,6 +350,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => screen.getByRole('status'));
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('template-card-bundled:novel-3act')).not.toBeInTheDocument();
     await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
   });
 });
