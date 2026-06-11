@@ -239,6 +239,17 @@ jobs:
           done
           echo "Guard passed: PERSIST_PROMPTS is not set."
 
+      - name: Free disk space before packaging
+        # SKY-1334: runner accumulates linux-unpacked staging dirs and /tmp electron-builder
+        # scratch trees from prior runs; purge them before the deb/AppImage build to avoid ENOSPC.
+        run: |
+          echo "=== Disk before cleanup ===" && df -h .
+          find ~/.cache/electron-builder -mindepth 2 -maxdepth 3 \
+            \( -name 'linux-unpacked' -o -name '*.deb' -o -name '*.AppImage' \) \
+            -exec rm -rf {} + 2>/dev/null || true
+          find /tmp -maxdepth 1 -name 'electron-builder-*' -type d -exec rm -rf {} + 2>/dev/null || true
+          echo "=== Disk after cleanup ===" && df -h .
+
       - name: Build and package (Linux AppImage + deb)
         # deb packaging is in electron-builder.json for release builds; CI validates AppImage + deb.
         # Skip rpm target: rpmbuild and fpm not fully provisioned on GabesPC yet.
