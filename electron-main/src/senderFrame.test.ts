@@ -9,6 +9,8 @@
 //   2. setupIpcMain() wrapper rejects nested-frame invocations.
 //   3. Manually-registered voice + streaming handlers reject nested-frame
 //      invocations.
+//   4. Manually-registered agent-persona handlers reject nested-frame
+//      invocations and sanitize errors.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -27,6 +29,11 @@ vi.mock('electron', () => ({
 
 vi.mock('@anthropic-ai/sdk', () => ({ default: vi.fn() }));
 
+vi.mock('./agentPersona.js', () => ({
+  loadPersonaFile: vi.fn().mockReturnValue({ content: 'hi', isCustom: false }),
+  resetPersonaFile: vi.fn(),
+}));
+
 import {
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
@@ -36,6 +43,7 @@ import {
 } from './ipc.js';
 import { registerVoiceHandlers, VoiceRegistry } from './voice.js';
 import { registerStreamingHandlers, STREAM_CHANNELS } from './streaming.js';
+import { registerAgentPersonaHandlers } from './agentPersonaIpc.js';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 
 // ─── Frame helpers ───────────────────────────────────────────────────────────
@@ -266,5 +274,76 @@ describe('streaming handlers reject nested-frame invocations', () => {
     expect(() =>
       fn(nestedEvent({ sender: { id: 9 } }), { streamId: 's', count: 1 }),
     ).not.toThrow();
+  });
+});
+
+// ─── 4. Agent persona handlers reject nested frames + sanitize errors ─────────
+
+describe('agent persona handlers reject nested-frame invocations', () => {
+  beforeEach(() => { handleMap.clear(); onMap.clear(); });
+
+  it('agent:persona:read rejects nested-frame invocation', async () => {
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_READ)!;
+
+    const result = await fn(nestedEvent(), { agentName: 'brainstorm', key: 'SOUL' });
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('agent:persona:read rejects null-frame invocation', async () => {
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_READ)!;
+
+    const result = await fn(nullFrameEvent(), { agentName: 'brainstorm', key: 'SOUL' });
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('agent:persona:reset rejects nested-frame invocation', async () => {
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_RESET)!;
+
+    const result = await fn(nestedEvent(), { agentName: 'brainstorm', key: 'SOUL' });
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('agent:persona:reset rejects null-frame invocation', async () => {
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_RESET)!;
+
+    const result = await fn(nullFrameEvent(), { agentName: 'brainstorm', key: 'SOUL' });
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('agent:persona:read forwards to loadPersonaFile for top-frame callers', async () => {
+    const { loadPersonaFile } = await import('./agentPersona.js');
+    (loadPersonaFile as ReturnType<typeof vi.fn>).mockReturnValue({ content: 'soul text', isCustom: false });
+
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_READ)!;
+
+    const result = await fn(topEvent(), { agentName: 'brainstorm', key: 'SOUL' }) as { content: string; isCustom: boolean };
+
+    expect(result.content).toBe('soul text');
+    expect(result.isCustom).toBe(false);
+  });
+
+  it('agent:persona:read sanitizes thrown errors (no raw stack leak)', async () => {
+    const { loadPersonaFile } = await import('./agentPersona.js');
+    (loadPersonaFile as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error('ENOENT: no such file or directory');
+    });
+
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_READ)!;
+
+    const result = await fn(topEvent(), { agentName: 'brainstorm', key: 'SOUL' }) as { error: string };
+
+    expect(typeof result.error).toBe('string');
+    expect(result.error).not.toMatch(/ENOENT/);
+    expect(result.error).not.toMatch(/stack/i);
   });
 });
