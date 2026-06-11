@@ -712,6 +712,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [showMoveWizard, setShowMoveWizard] = useState(false);
   const vaultProvider = useMemo(() => detectCloudProvider(vaults.storyVaultPath), [vaults.storyVaultPath]);
 
+  // SKY-1303: Save-as-Template inline prompt state
+  const [saveAsTplOpen, setSaveAsTplOpen] = useState(false);
+  const [saveAsTplName, setSaveAsTplName] = useState('');
+  const [saveAsTplBusy, setSaveAsTplBusy] = useState(false);
+  const [saveAsTplResult, setSaveAsTplResult] = useState<{ ok: true; name: string } | { error: string } | null>(null);
+  const saveAsTplInputRef = useRef<HTMLInputElement>(null);
+
   // SKY-207: Custom field definitions
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
   const [customFieldsDirty, setCustomFieldsDirty] = useState(false);
@@ -996,6 +1003,41 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       setVaultsError(e instanceof Error ? e.message : 'Failed to save vault paths.');
     }
   }, [vaults.storyVaultPath, vaults.notesVaultPath]);
+
+  // SKY-1303: Save-as-Template handlers
+  const handleOpenSaveAsTpl = useCallback(() => {
+    setSaveAsTplOpen(true);
+    setSaveAsTplName('');
+    setSaveAsTplResult(null);
+    setTimeout(() => saveAsTplInputRef.current?.focus(), 0);
+  }, []);
+
+  const handleSaveAsTpl = useCallback(async () => {
+    const name = saveAsTplName.trim();
+    if (!name) return;
+    setSaveAsTplBusy(true);
+    setSaveAsTplResult(null);
+    try {
+      const res = await window.api.templateSaveAs(name);
+      if ('error' in res) {
+        setSaveAsTplResult({ error: res.error });
+      } else {
+        setSaveAsTplResult({ ok: true, name });
+        setSaveAsTplOpen(false);
+        setSaveAsTplName('');
+      }
+    } catch (e) {
+      setSaveAsTplResult({ error: e instanceof Error ? e.message : 'Failed to save template.' });
+    } finally {
+      setSaveAsTplBusy(false);
+    }
+  }, [saveAsTplName]);
+
+  const handleCancelSaveAsTpl = useCallback(() => {
+    setSaveAsTplOpen(false);
+    setSaveAsTplName('');
+    setSaveAsTplResult(null);
+  }, []);
 
   // SKY-207: custom fields handlers
   const handleSaveCustomFields = useCallback(async () => {
@@ -1500,6 +1542,68 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </div>
             <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
 
+            {/* SKY-1303: Save-as-Template (AC-3) */}
+            <div className="settings-save-as-tpl">
+              {!saveAsTplOpen && (
+                <button
+                  type="button"
+                  className="settings-reveal-btn"
+                  onClick={handleOpenSaveAsTpl}
+                  aria-label="Save current vault structure as a template"
+                  data-testid="save-as-template-btn"
+                >
+                  Save as Template…
+                </button>
+              )}
+              {saveAsTplOpen && (
+                <div className="settings-save-as-tpl-form" role="group" aria-label="Save as template">
+                  <input
+                    ref={saveAsTplInputRef}
+                    id="save-as-tpl-name"
+                    className="settings-input"
+                    type="text"
+                    placeholder="Template name"
+                    value={saveAsTplName}
+                    maxLength={80}
+                    aria-label="Template name"
+                    data-testid="save-as-template-name-input"
+                    onChange={(e) => { setSaveAsTplName(e.target.value); setSaveAsTplResult(null); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveAsTpl();
+                      if (e.key === 'Escape') handleCancelSaveAsTpl();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-save"
+                    disabled={!saveAsTplName.trim() || saveAsTplBusy}
+                    onClick={handleSaveAsTpl}
+                    data-testid="save-as-template-confirm"
+                  >
+                    {saveAsTplBusy ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-reveal-btn"
+                    onClick={handleCancelSaveAsTpl}
+                    data-testid="save-as-template-cancel"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {saveAsTplResult && 'ok' in saveAsTplResult && (
+                <span className="settings-saved-msg" role="status" data-testid="save-as-template-success">
+                  Saved as &ldquo;{saveAsTplResult.name}&rdquo;
+                </span>
+              )}
+              {saveAsTplResult && 'error' in saveAsTplResult && (
+                <span className="settings-error-msg" role="alert" data-testid="save-as-template-error">
+                  {saveAsTplResult.error}
+                </span>
+              )}
+              <p className="settings-hint">Snapshots the current Story Vault and Notes Vault folder structure as a reusable template.</p>
+            </div>
           </section>
 
           {/* ── Agents ── */}
