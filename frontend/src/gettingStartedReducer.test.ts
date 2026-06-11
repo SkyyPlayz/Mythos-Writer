@@ -78,4 +78,30 @@ describe('gettingStartedReducer', () => {
     expect(state.dismissed).toBe(true);
     expect(isGettingStartedVisible(state)).toBe(false);
   });
+
+  it('collapses and expands via TOGGLE_COLLAPSE', () => {
+    const initial = createInitialGettingStartedProgress(undefined, 'blank');
+    expect(initial.collapsed).toBe(false);
+    const collapsed = gettingStartedReducer(initial, { type: 'TOGGLE_COLLAPSE' });
+    expect(collapsed.collapsed).toBe(true);
+    const expanded = gettingStartedReducer(collapsed, { type: 'TOGGLE_COLLAPSE' });
+    expect(expanded.collapsed).toBe(false);
+  });
+
+  it('restores persisted collapsed state on load', () => {
+    const state = createInitialGettingStartedProgress(undefined, 'blank', {
+      completedItems: ['write-scene'],
+      dismissed: false,
+      collapsed: true,
+    });
+    expect(state.collapsed).toBe(true);
+  });
+
+  it('defaults collapsed to false when not persisted', () => {
+    const state = createInitialGettingStartedProgress(undefined, 'blank', {
+      completedItems: [],
+      dismissed: false,
+    });
+    expect(state.collapsed).toBe(false);
+  });
 });

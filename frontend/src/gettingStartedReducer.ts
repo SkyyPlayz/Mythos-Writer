@@ -6,6 +6,7 @@ export type OnboardingStartMode = 'blank' | 'sample' | 'template' | 'skip' | 'de
 export interface GettingStartedProgress {
   completedItems: GettingStartedItemId[];
   dismissed: boolean;
+  collapsed?: boolean;
 }
 
 type LegacyItemId = 'writeScene' | 'addCharacter' | 'openNotes';
@@ -18,6 +19,7 @@ type PartialProgress = Partial<GettingStartedProgress> & {
 export type GettingStartedAction =
   | { type: 'CHECK_ITEM'; itemId: AnyItemId }
   | { type: 'DISMISS' }
+  | { type: 'TOGGLE_COLLAPSE' }
   | { type: 'RESET'; onboardingStartMode?: OnboardingStartMode };
 
 const LEGACY_ID_MAP: Record<LegacyItemId, GettingStartedItemId> = {
@@ -52,6 +54,7 @@ export function createInitialGettingStartedProgress(
   const completedItems = normalizeCompleted(existing);
   return {
     completedItems,
+    collapsed: existing?.collapsed ?? false,
     dismissed: existing?.dismissed ?? completedItems.length === CHECKLIST_ITEM_IDS.length,
   };
 }
@@ -79,6 +82,8 @@ export function gettingStartedReducer(
     }
     case 'DISMISS':
       return { ...state, dismissed: true };
+    case 'TOGGLE_COLLAPSE':
+      return { ...state, collapsed: !state.collapsed };
     case 'RESET':
       return createInitialGettingStartedProgress(undefined, action.onboardingStartMode);
     default:

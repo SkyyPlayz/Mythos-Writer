@@ -1583,6 +1583,7 @@ export interface AppSettings {
     firstSeenAt?: string;
     onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
     dismissed: boolean;
+    collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
   };
   voice?: VoiceSettings;
