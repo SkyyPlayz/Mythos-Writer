@@ -128,35 +128,48 @@ function seedMinimalVault(vaultDir: string): void {
 
   fs.writeFileSync(path.join(storyDir, `${sceneId}.md`), sceneContent);
 
+  const scenePath = `Manuscript/${storyId}/${chapterId}/${sceneId}.md`;
+  const now = new Date(Date.now() - 5_000).toISOString(); // 5s in the past so mtime > updatedAt triggers reindex
   const manifest = {
     schemaVersion: 1,
+    version: '2.0.0',
     stories: [
       {
         id: storyId,
         title: 'Test Story',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
         chapters: [
           {
             id: chapterId,
             title: 'Chapter One',
             order: 0,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            path: `Manuscript/${storyId}/${chapterId}`,
+            createdAt: now,
+            updatedAt: now,
             scenes: [
               {
                 id: sceneId,
                 title: 'Opening Scene',
+                path: scenePath,
                 order: 0,
                 draftState: 'in-progress',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
+                blocks: [],
+                createdAt: now,
+                updatedAt: now,
               },
             ],
           },
         ],
       },
     ],
+    // reindexVault iterates manifest.scenes — must be an array, not undefined
+    scenes: [],
+    entities: [],
+    suggestions: [],
+    chapters: [],
+    provenance: {},
+    boardReferences: [],
   };
 
   fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
