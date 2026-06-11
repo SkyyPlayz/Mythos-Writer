@@ -11,6 +11,7 @@
 //      invocations.
 //   4. Manually-registered agent-persona handlers reject nested-frame
 //      invocations and sanitize errors.
+//   5. Manually-registered preset handlers reject nested-frame invocations.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -44,6 +45,7 @@ import {
 import { registerVoiceHandlers, VoiceRegistry } from './voice.js';
 import { registerStreamingHandlers, STREAM_CHANNELS } from './streaming.js';
 import { registerAgentPersonaHandlers } from './agentPersonaIpc.js';
+import { registerPresetHandlers } from './presetIpc.js';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 
 // ─── Frame helpers ───────────────────────────────────────────────────────────
@@ -345,5 +347,57 @@ describe('agent persona handlers reject nested-frame invocations', () => {
     expect(typeof result.error).toBe('string');
     expect(result.error).not.toMatch(/ENOENT/);
     expect(result.error).not.toMatch(/stack/i);
+  });
+});
+
+// ─── 5. Preset handlers reject nested frames ─────────────────────────────────
+
+describe('preset handlers reject nested-frame invocations', () => {
+  beforeEach(() => { handleMap.clear(); onMap.clear(); });
+
+  it('preset:getAll rejects nested-frame invocation', async () => {
+    registerPresetHandlers();
+    const fn = handleMap.get('preset:getAll')!;
+
+    const result = await fn(nestedEvent(), undefined);
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('preset:getAll rejects null-frame invocation', async () => {
+    registerPresetHandlers();
+    const fn = handleMap.get('preset:getAll')!;
+
+    const result = await fn(nullFrameEvent(), undefined);
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('preset:getRubric rejects nested-frame invocation', async () => {
+    registerPresetHandlers();
+    const fn = handleMap.get('preset:getRubric')!;
+
+    const result = await fn(nestedEvent(), undefined);
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('preset:getAll returns data for top-frame callers', async () => {
+    registerPresetHandlers();
+    const fn = handleMap.get('preset:getAll')!;
+
+    const result = await fn(topEvent(), undefined) as { count: number };
+
+    expect(result.count).toBe(12);
+  });
+
+  it('preset:getRubric returns criteria array for top-frame callers', async () => {
+    registerPresetHandlers();
+    const fn = handleMap.get('preset:getRubric')!;
+
+    const result = await fn(topEvent(), undefined) as { criteria: { id: string }[] };
+
+    expect(Array.isArray(result.criteria)).toBe(true);
+    expect(result.criteria.length).toBeGreaterThan(0);
   });
 });
