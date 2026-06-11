@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import './TemplatePicker.css';
 
 interface TemplateItem {
@@ -24,6 +24,16 @@ export default function TemplatePicker({ onApplied, onClose }: Props) {
       .then((res: { templates: TemplateItem[] }) => setTemplates(res.templates ?? []))
       .catch(() => {});
   }, []);
+
+  function handleGridArrowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
+    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const idx = cards.indexOf(document.activeElement as HTMLElement);
+    if (idx === -1) return;
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % cards.length;
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   next = (idx - 1 + cards.length) % cards.length;
+    if (next !== -1) { e.preventDefault(); cards[next].focus(); }
+  }
 
   const handleApply = async () => {
     if (!selected || busy) return;
@@ -53,13 +63,15 @@ export default function TemplatePicker({ onApplied, onClose }: Props) {
           <h2 className="tp-title">Choose a project template</h2>
           <button className="tp-close" onClick={onClose} aria-label="Close template picker">×</button>
         </div>
-        <div className="tp-grid" role="list">
-          {templates.map((t) => (
+        <div className="tp-grid" role="radiogroup" aria-label="Project templates" onKeyDown={handleGridArrowKeys}>
+          {templates.map((t, i) => (
             <button
               key={t.id}
-              role="listitem"
+              role="radio"
+              aria-checked={selected?.id === t.id}
               className={`tp-card${selected?.id === t.id ? ' tp-card--selected' : ''}`}
               data-testid={`template-${t.id}`}
+              tabIndex={selected?.id === t.id || (!selected && i === 0) ? 0 : -1}
               onClick={() => setSelected(t)}
             >
               {t.isUserTemplate && <span className="tp-badge">Saved</span>}

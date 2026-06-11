@@ -314,6 +314,44 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(groups.length).toBe(2);
     expect(groups[1]).toHaveAttribute('aria-labelledby', 'template-picker-user-heading');
   });
+
+  // SKY-1360: F-06 — loading indicator with aria-live while templateList() is in flight
+  it('shows loading status with role=status and aria-live=polite while fetching', async () => {
+    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
+    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    const status = await waitFor(() => screen.getByRole('status'));
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status.textContent).toMatch(/Loading templates/);
+    // resolve the fetch so the test cleans up without act() warnings
+    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
+  });
+
+  // SKY-1360: F-05 — empty-state message with role=status when list resolves to 0 items
+  it('shows empty-state status with role=status and aria-live=polite when list is empty', async () => {
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [] });
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    const status = await waitFor(() => {
+      const el = screen.getByRole('status');
+      expect(el.textContent).toMatch(/No templates available/);
+      return el;
+    });
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  });
+
+  // SKY-1360: no empty-grid flash — grid is not shown before fetch completes
+  it('does not render the radiogroup while loading is in progress', async () => {
+    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
+    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByRole('status'));
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
+  });
 });
 
 // ─── Step 2: Name your story ──────────────────────────────────────────────────
