@@ -281,6 +281,7 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
+  TEMPLATE_DELETE: 'template:delete',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -465,6 +466,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
   [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse | { error: string }>;
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
+  // SKY-1304: delete user template (AC-6)
+  [IPC_CHANNELS.TEMPLATE_DELETE]: (payload: TemplateDeletePayload) => TemplateDeleteResponse | { error: string };
 }
 
 // ─── Payload / Response types ───
@@ -2268,4 +2271,12 @@ export interface TemplateSaveAsPayload {
 export interface TemplateSaveAsResponse {
   ok: true;
   id: string;
+}
+
+export interface TemplateDeletePayload {
+  templateId: string;
+}
+
+export interface TemplateDeleteResponse {
+  ok: true;
 }

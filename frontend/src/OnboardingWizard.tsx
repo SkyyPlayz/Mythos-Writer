@@ -54,6 +54,7 @@ type Api = {
   onboardingComplete: () => Promise<{ ok: boolean }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string } | { error: string }>;
+  templateDelete: (templateId: string) => Promise<{ ok: true } | { error: string }>;
 };
 
 interface TemplateItem {
@@ -732,18 +733,39 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           </p>
           <div className="template-grid" role="list">
             {templates.map((tmpl) => (
-              <button
-                key={tmpl.id}
-                role="listitem"
-                className={`template-card${selectedTemplate?.id === tmpl.id ? ' template-card--selected' : ''}`}
-                onClick={() => setSelectedTemplate(tmpl)}
-                data-testid={`template-${tmpl.id}`}
-                aria-pressed={selectedTemplate?.id === tmpl.id}
-              >
-                {tmpl.isUserTemplate && <span className="template-card__badge">Saved</span>}
-                <span className="template-card__name">{tmpl.name}</span>
-                <span className="template-card__desc">{tmpl.description}</span>
-              </button>
+              <div key={tmpl.id} role="listitem" className="template-card-item">
+                <button
+                  className={`template-card${selectedTemplate?.id === tmpl.id ? ' template-card--selected' : ''}`}
+                  onClick={() => setSelectedTemplate(tmpl)}
+                  data-testid={`template-${tmpl.id}`}
+                  aria-pressed={selectedTemplate?.id === tmpl.id}
+                >
+                  {tmpl.isUserTemplate && <span className="template-card__badge">Saved</span>}
+                  <span className="template-card__name">{tmpl.name}</span>
+                  <span className="template-card__desc">{tmpl.description}</span>
+                </button>
+                {tmpl.isUserTemplate && (
+                  <button
+                    className="template-card__delete"
+                    data-testid={`template-delete-${tmpl.id}`}
+                    aria-label={`Delete template "${tmpl.name}"`}
+                    title="Delete this template"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        const res = await api().templateDelete(tmpl.id);
+                        if ('error' in res) { setError(res.error); return; }
+                        setTemplates((prev) => prev.filter((t) => t.id !== tmpl.id));
+                        if (selectedTemplate?.id === tmpl.id) setSelectedTemplate(null);
+                      } catch {
+                        setError('Failed to delete template');
+                      }
+                    }}
+                  >
+                    &#x2715;
+                  </button>
+                )}
+              </div>
             ))}
           </div>
           {selectedTemplate && (

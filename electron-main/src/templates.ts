@@ -335,3 +335,31 @@ export function saveAsTemplate(
   fs.writeFileSync(path.join(dir, fileName), JSON.stringify(template, null, 2), 'utf-8');
   return id;
 }
+
+// ─── Delete user template ─────────────────────────────────────────────────────
+
+/**
+ * Delete a user-saved template by id. Scans the templates directory for a
+ * JSON file whose parsed `id` field matches, then removes it. Throws if no
+ * matching template is found.
+ */
+export function deleteUserTemplate(appDataPath: string, templateId: string): void {
+  const dir = userTemplatesDir(appDataPath);
+  if (!fs.existsSync(dir)) {
+    throw new Error(`Template not found: ${templateId}`);
+  }
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(dir, f), 'utf-8');
+      const parsed = JSON.parse(raw) as TemplateDefinition;
+      if (parsed.id === templateId) {
+        fs.unlinkSync(path.join(dir, f));
+        return;
+      }
+    } catch {
+      // Skip malformed files
+    }
+  }
+  throw new Error(`Template not found: ${templateId}`);
+}

@@ -482,6 +482,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
   templateSaveAs: (name: string) =>
     ipcRenderer.invoke('template:saveAs', { name }),
+  // SKY-1304: delete user template (AC-6)
+  templateDelete: (templateId: string) =>
+    ipcRenderer.invoke('template:delete', { templateId }),
 
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),

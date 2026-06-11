@@ -250,7 +250,7 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
 } from './brainstormRouting.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate } from './templates.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, deleteUserTemplate } from './templates.js';
 
 const require = createRequire(import.meta.url);
 
@@ -2968,6 +2968,18 @@ const handlers: IpcHandlers = {
     if (!name) return { error: 'Template name is required' };
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
+  },
+
+  // SKY-1304: delete user template (AC-6)
+  [IPC_CHANNELS.TEMPLATE_DELETE]: (payload: import('./ipc.js').TemplateDeletePayload): import('./ipc.js').TemplateDeleteResponse | { error: string } => {
+    const { templateId } = payload ?? {};
+    if (!templateId) return { error: 'templateId is required' };
+    try {
+      deleteUserTemplate(app.getPath('userData'), templateId);
+      return { ok: true as const };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to delete template' };
+    }
   },
 
 };
