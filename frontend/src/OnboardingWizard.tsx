@@ -177,6 +177,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [startMode, setStartMode] = useState<StartMode | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [templateLoadError, setTemplateLoadError] = useState('');
 
   // Step 2 form state
   const [storyTitle, setStoryTitle] = useState('');
@@ -213,7 +214,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     if (step === 'step1b' && templates.length === 0) {
       api().templateList().then((res) => {
         if ('templates' in res) setTemplates(res.templates);
-      }).catch(() => {});
+      }).catch(() => {
+        setTemplateLoadError("Bundled templates couldn't be loaded. You can still create a blank story.");
+      });
     }
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -561,7 +564,19 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </div>
           <h2 className="gs-modal__title">Choose a template</h2>
 
-          {templates.length === 0 ? (
+          {templateLoadError ? (
+            <div className="gs-template-load-error" role="alert" data-testid="template-load-error">
+              <p>{templateLoadError}</p>
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => goToStep2FromMode('blank')}
+                data-testid="template-error-blank-cta"
+              >
+                Create blank story
+              </button>
+            </div>
+          ) : templates.length === 0 ? (
             <p className="gs-loading">Loading templates&#x2026;</p>
           ) : (
             <>
