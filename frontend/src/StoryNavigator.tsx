@@ -11,6 +11,8 @@ interface Props {
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onReorderScenes?: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
+  showTemplateCta?: boolean;
+  onTemplateCtaClick?: () => void;
 }
 
 export default function StoryNavigator({
@@ -21,6 +23,8 @@ export default function StoryNavigator({
   onCreateChapter,
   onCreateScene,
   onReorderScenes,
+  showTemplateCta = false,
+  onTemplateCtaClick,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -261,6 +265,16 @@ export default function StoryNavigator({
           </div>
         )})}
       </div>
+      {showTemplateCta && onTemplateCtaClick && (
+        <button
+          className="vs-template-cta"
+          onClick={onTemplateCtaClick}
+          data-testid="vs-template-cta"
+          aria-label="Start from a template"
+        >
+          Start from a template →
+        </button>
+      )}
     </nav>
   );
 }

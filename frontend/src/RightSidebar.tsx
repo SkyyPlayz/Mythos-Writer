@@ -3,6 +3,8 @@ import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
 import ArchivePanel from './ArchivePanel';
+import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
+import { isGettingStartedVisible, type GettingStartedItemId, type GettingStartedProgress } from './gettingStartedReducer';
 import './RightSidebar.css';
 
 type Tab = 'notes' | 'properties' | 'ai' | 'outline';
@@ -21,6 +23,9 @@ interface Props {
   onInsertWikiLink?: (link: string, anchorText: string) => void;
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
   onSelectScene?: (scene: Scene, chapter: Chapter) => void;
+  gettingStartedProgress?: GettingStartedProgress | null;
+  onGettingStartedAction?: (itemId: GettingStartedItemId) => void;
+  onDismissGettingStarted?: () => void;
 }
 
 const SIDEBAR_TABS: { id: Tab; label: string }[] = [
@@ -364,6 +369,9 @@ export default function RightSidebar({
   onInsertWikiLink,
   onWikiLinkSuggestionsChange,
   onSelectScene,
+  gettingStartedProgress,
+  onGettingStartedAction,
+  onDismissGettingStarted,
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -384,6 +392,13 @@ export default function RightSidebar({
 
   return (
     <div className="right-sidebar">
+      {isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && onGettingStartedAction && onDismissGettingStarted && (
+        <GettingStartedPanel
+          progress={gettingStartedProgress}
+          onAction={onGettingStartedAction}
+          onDismiss={onDismissGettingStarted}
+        />
+      )}
       <div className="sidebar-tabs" role="tablist" aria-label="Sidebar panels">
         {SIDEBAR_TABS.map((t, i) => (
           <button

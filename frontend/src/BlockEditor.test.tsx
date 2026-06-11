@@ -382,4 +382,17 @@ describe('BlockEditor empty-scene entry', () => {
       expect(document.activeElement).toHaveClass('ProseMirror');
     });
   });
+
+  it('uses the post-onboarding prompt when provided', () => {
+    render(
+      <BlockEditor
+        scene={makeBlankScene()}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        emptySceneHint="Start with a sentence, a beat, or a line of dialogue."
+      />
+    );
+
+    expect(screen.getByText(/start with a sentence/i)).toBeInTheDocument();
+  });
 });

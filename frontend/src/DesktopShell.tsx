@@ -31,6 +31,14 @@ import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import { useFocusMode } from './useFocusMode';
 import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
+import {
+  createInitialGettingStartedProgress,
+  gettingStartedReducer,
+  isGettingStartedVisible,
+  type GettingStartedItemId,
+  type GettingStartedProgress,
+} from './gettingStartedReducer';
+import TemplatePicker from './TemplatePicker';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -532,6 +540,9 @@ export default function DesktopShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -600,6 +611,35 @@ export default function DesktopShell() {
     setAppSettings(updatedSettings);
     window.api.settingsSet(updatedSettings).catch(() => {});
   }, [appSettings, seenTips]);
+
+  const persistGettingStartedProgress = useCallback((next: GettingStartedProgress) => {
+    setGettingStartedProgress(next);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, gettingStartedProgress: next } as AppSettings;
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const checkGettingStartedItem = useCallback((itemId: GettingStartedItemId) => {
+    setGettingStartedProgress((prev) => {
+      if (!prev) return prev;
+      const next = gettingStartedReducer(prev, { type: 'CHECK_ITEM', itemId });
+      setAppSettings((settings) => {
+        if (!settings) return settings;
+        const updated = { ...settings, gettingStartedProgress: next } as AppSettings;
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+      return next;
+    });
+  }, []);
+
+  const handleDismissGettingStarted = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
 
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
@@ -881,6 +921,13 @@ export default function DesktopShell() {
       }
       if (s) {
         setAppSettings(s);
+        setGettingStartedProgress(
+          createInitialGettingStartedProgress(
+            undefined,
+            s.onboardingStartMode,
+            s.gettingStartedProgress,
+          ),
+        );
         applyTheme(s.theme);
         // Load background image data URL if a custom path is stored
         const lg = s.liquidNeon;
@@ -1041,6 +1088,27 @@ export default function DesktopShell() {
     persistLayout(newLayout);
   }, [layout, persistLayout]);
 
+  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
+    checkGettingStartedItem(itemId);
+    if (itemId === 'brainstorm') {
+      setView('brainstorm');
+      return;
+    }
+    if (itemId === 'notes-vault') {
+      setView('editor');
+      persistLayout({ ...layout, leftTab: 'vault' });
+      return;
+    }
+    if (itemId === 'add-character') {
+      setView('brainstorm');
+      return;
+    }
+    if (itemId === 'write-scene') {
+      setView('editor');
+      if (!selectedScene) editorApiRef.current?.focus();
+    }
+  }, [checkGettingStartedItem, layout, selectedScene, persistLayout]);
+
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1167,6 +1235,10 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
+    if (content.trim()) {
+      checkGettingStartedItem('write-scene');
+      setSeenEmptySceneHints((prev) => new Set(prev).add(selectedScene.id));
+    }
     (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
     // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
     if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
@@ -1174,7 +1246,7 @@ export default function DesktopShell() {
       setSaveState('saved');
       saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
     }, 1200);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem]);
 
   const handleDraftStateChange = useCallback((state: DraftState) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
@@ -1441,7 +1513,8 @@ export default function DesktopShell() {
     setSelectedStory(null);
     setSelectedEntity(null);
     setOpenedNotePath(scenePath);
-  }, [stories, handleSelectScene]);
+    checkGettingStartedItem('notes-vault');
+  }, [stories, handleSelectScene, checkGettingStartedItem]);
 
   // SKY-795 §4 — Enter key on the timeline jumps into the editor for the focused scene.
   const handleOpenSceneById = useCallback((sceneId: string) => {
@@ -1463,7 +1536,8 @@ export default function DesktopShell() {
     setSelectedScene(null);
     setSelectedChapter(null);
     setSelectedStory(null);
-  }, []);
+    if (entity.type === 'character') checkGettingStartedItem('add-character');
+  }, [checkGettingStartedItem]);
 
   // SKY-616: navigate to entity page when user clicks an @-mention chip
   const handleEntityMentionClick = useCallback((entityId: string) => {
@@ -1473,9 +1547,10 @@ export default function DesktopShell() {
         setSelectedScene(null);
         setSelectedChapter(null);
         setSelectedStory(null);
+        if (entity.type === 'character') checkGettingStartedItem('add-character');
       }
     }).catch(() => {});
-  }, []);
+  }, [checkGettingStartedItem]);
 
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
@@ -1709,6 +1784,12 @@ export default function DesktopShell() {
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
   const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
 
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const showTemplateCta =
+    appSettings?.onboardingStartMode === 'blank' &&
+    !(gettingStartedProgress?.completedItems.includes('write-scene')) &&
+    !(appSettings.firstLaunchAt && Date.now() - new Date(appSettings.firstLaunchAt).getTime() > SEVEN_DAYS_MS);
+
   const focusWordCount = selectedScene
     ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
     : 0;
@@ -1781,8 +1862,14 @@ export default function DesktopShell() {
         <TourModal onClose={() => setTourOpen(false)} />
       )}
       {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
+      {templatePickerOpen && (
+        <TemplatePicker
+          onApplied={() => { setTemplatePickerOpen(false); }}
+          onClose={() => setTemplatePickerOpen(false)}
+        />
+      )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} onFirstSubmit={() => checkGettingStartedItem('brainstorm')} />
       )}
       {view === 'entries' && (
         <div className="shell-entries">
@@ -1852,6 +1939,13 @@ export default function DesktopShell() {
             onContextChange={setVaultContext}
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           onExport={(scope: ExportScope) => setExportScope(scope)}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onEntityCreated={(entity) => {
+              if (entity.type === 'character' && gettingStartedProgress) {
+                persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'CHECK_ITEM', itemId: 'add-character' }));
+              }
+            }}
           />
         </div>
       )}
@@ -1950,6 +2044,12 @@ export default function DesktopShell() {
                   initialCursorPos={pendingCursorPosRef.current ?? undefined}
                   onCursorPosChange={handleCursorPosChange}
                   onEntityClick={handleEntityMentionClick}
+                  emptySceneHint={
+                    isGettingStartedVisible(gettingStartedProgress) &&
+                    !seenEmptySceneHints.has(selectedScene.id)
+                      ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
+                      : ''
+                  }
                 />
                 {(betaReadComments.length > 0 || betaReadLoading) && (
                   <div className="shell-beta-margin">
@@ -2072,6 +2172,9 @@ export default function DesktopShell() {
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+            onGettingStartedAction={handleGettingStartedAction}
+            onDismissGettingStarted={handleDismissGettingStarted}
+            gettingStartedProgress={gettingStartedProgress}
             onSelectScene={(sc, ch) => {
               if (selectedStory) {
                 handleSelectScene(sc, ch, selectedStory);

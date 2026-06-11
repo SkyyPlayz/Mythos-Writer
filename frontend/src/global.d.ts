@@ -295,6 +295,17 @@ interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-1188: post-onboarding checklist state. */
+  gettingStartedProgress?: {
+    completedItems?: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
+    dismissed?: boolean;
+    /** Legacy pre-merge shape accepted for migration. */
+    completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
+  };
+  /** SKY-1188: onboarding mode captured when onboarding completed. */
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+  /** SKY-1188: first post-onboarding timestamp, written once. */
+  firstLaunchAt?: string;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
