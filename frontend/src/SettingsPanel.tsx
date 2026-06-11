@@ -1407,7 +1407,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </div>
                 <VaultSyncBadge provider={vaultProvider} />
               </div>
-              <p className="settings-vault-path-display">{vaults.storyVaultPath || 'No Story Vault configured'}</p>
+              <p
+                className="settings-vault-path-display"
+                title={vaults.storyVaultPath || undefined}
+              >
+                {vaults.storyVaultPath || 'No Story Vault configured'}
+              </p>
               <button
                 className="settings-btn settings-btn-secondary settings-vault-move-btn"
                 type="button"

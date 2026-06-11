@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SettingsPanel from './SettingsPanel';
 import type { FocusPrefs } from './types';
+
+const settingsPanelCss = readFileSync('src/SettingsPanel.css', 'utf8');
 
 const ALL_CATS: Record<SuggestionCategory, boolean> = { punctuation: true, spelling: true, grammar: true, 'sentence-structure': true, 'style-tone': true, other: true };
 
@@ -79,6 +82,26 @@ describe('SettingsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /move to a different folder/i }));
     expect(mockOpenMoveVaultWizard).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates long Account vault paths with an ellipsis', async () => {
+    const longPath = '/Users/test/Dropbox/Mythos/Story Vault/with/a/very/deep/folder/name/that/should/not/wrap/in/settings';
+    mockVaultGetPaths.mockResolvedValueOnce({
+      storyVaultPath: longPath,
+      notesVaultPath: '/Users/test/Mythos/Notes Vault',
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    const pathDisplay = await screen.findByText(longPath);
+    expect(pathDisplay).toHaveClass('settings-vault-path-display');
+    expect(pathDisplay).toHaveAttribute('title', longPath);
+
+    const ruleBody = settingsPanelCss.match(/\.settings-vault-path-display\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? '';
+    expect(ruleBody).toContain('overflow: hidden;');
+    expect(ruleBody).toContain('text-overflow: ellipsis;');
+    expect(ruleBody).toContain('white-space: nowrap;');
+    expect(ruleBody).not.toContain('overflow-wrap: anywhere;');
   });
 
   it('renders a local vault badge for non-cloud story vault paths', async () => {
