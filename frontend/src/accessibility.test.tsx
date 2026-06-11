@@ -178,10 +178,15 @@ describe('Accessibility — EntityBrowser (Vault browser / Entities)', () => {
   });
 
   it('CreateDialog open state has no axe violations', async () => {
+    // Pre-populate so the toolbar "+ New Entity" button is visible (toolbar hidden in empty state)
+    (window as unknown as { api: { entityList: ReturnType<typeof vi.fn> } }).api.entityList =
+      vi.fn().mockResolvedValue({
+        entities: [{ id: 'c1', name: 'Aria Voss', type: 'character', aliases: [], tags: [], prose: '', createdAt: '', updatedAt: '' }],
+      });
     const { container, getByRole } = render(
       <EntityBrowser onSelectEntity={() => {}} selectedEntityId={null} />,
     );
-    await waitFor(() => expect(container.querySelector('.entity-browser')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('.entity-group')).not.toBeNull());
     fireEvent.click(getByRole('button', { name: /new entity/i }));
     await waitFor(() => expect(container.querySelector('[role="dialog"]')).not.toBeNull());
     const results = await axe(container);
