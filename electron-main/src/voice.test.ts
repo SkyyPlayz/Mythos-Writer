@@ -1210,6 +1210,13 @@ describe('categorizeVoiceError', () => {
     );
   });
 
+  it('maps ECONNREFUSED provider failures to NETWORK', () => {
+    expect(categorizeVoiceError(new Error('connect ECONNREFUSED 127.0.0.1:8080'))).toBe(
+      VOICE_ERROR_CATEGORIES.NETWORK,
+    );
+    expect(categorizeVoiceError(new Error('ECONNREFUSED'))).toBe(VOICE_ERROR_CATEGORIES.NETWORK);
+  });
+
   it('maps unrecognised error to UNKNOWN', () => {
     expect(categorizeVoiceError(new Error('something weird happened'))).toBe(
       VOICE_ERROR_CATEGORIES.UNKNOWN,

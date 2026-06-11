@@ -164,6 +164,7 @@ export function categorizeVoiceError(err: unknown): VoiceErrorCategory {
   if (
     msg.includes('network') ||
     msg.includes('connect') ||
+    msg.includes('econnrefused') ||
     msg.includes('timeout') ||
     msg.includes('dns') ||
     msg.includes('fetch failed')
