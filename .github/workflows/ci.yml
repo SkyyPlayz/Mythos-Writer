@@ -93,6 +93,8 @@ jobs:
           retention-days: 30
 
       - name: Build (electron-vite)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
@@ -189,6 +191,9 @@ jobs:
   build-linux:
     runs-on: self-hosted
     timeout-minutes: 40
+    concurrency:
+      group: build-linux-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v4
@@ -238,6 +243,7 @@ jobs:
         # does not shadow the system liblzma.so.5 and break xz/tar/dpkg-deb during packaging.
         env:
           LD_LIBRARY_PATH: ""
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
 
       - name: Verify .deb artifact
