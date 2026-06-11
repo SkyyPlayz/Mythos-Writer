@@ -166,7 +166,7 @@ describe('BrainstormPage', () => {
     // inside the same act() boundary (avoiding the race where 'Lyra Ashveil' becomes
     // visible from the initial 'saving' state before brainstormWriteNote resolves).
     await waitFor(() => {
-      expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument();
+      expect(screen.getAllByText('Lyra Ashveil').length).toBeGreaterThan(0);
       expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
       expect(screen.getByText(/saved ✓/i)).toBeInTheDocument();
     });
@@ -1070,7 +1070,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       await simulateStream([
         `[FACT:character|Hero|${content}]`,
       ]);
-      await waitFor(() => expect(screen.getByText('Hero')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Hero' })).toBeInTheDocument());
     }
 
     it('fact card starts expanded with body preview visible', async () => {
@@ -1120,7 +1120,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       await simulateStream([
         '[FACT:character|Alice|Desc A][FACT:character|Bob|Desc B]',
       ]);
-      await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Alice' })).toBeInTheDocument());
 
       // Both descriptions visible initially
       expect(screen.getByText('Desc A')).toBeInTheDocument();
@@ -1141,7 +1141,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       await simulateStream([
         '[FACT:character|Alice|Desc A][FACT:character|Bob|Desc B]',
       ]);
-      await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Alice' })).toBeInTheDocument());
 
       fireEvent.click(screen.getByRole('button', { name: 'Collapse all fact cards' }));
       expect(screen.queryByText('Desc A')).not.toBeInTheDocument();
@@ -1160,7 +1160,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     it('title click does not interfere with chevron toggle', async () => {
       await renderWithFact('A brave warrior');
       // Clicking the title button opens the drawer but does not collapse the body preview
-      const nameEl = screen.getByText('Hero');
+      const nameEl = screen.getByRole('button', { name: 'Open idea detail for Hero' });
       fireEvent.click(nameEl);
       // Body preview still in the card — title click doesn't change expand state.
       // getAllByText handles the case where the drawer also shows the same text.
