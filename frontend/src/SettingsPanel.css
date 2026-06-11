@@ -219,7 +219,7 @@
   font-family: inherit;
 }
 
-.settings-input:focus {
+.settings-input:focus-visible {
   border-color: var(--focus-ring);
   box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.25);
 }
@@ -228,7 +228,7 @@
   border-color: var(--state-danger);
 }
 
-.settings-input-error:focus {
+.settings-input-error:focus-visible {
   box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.25);
 }
 
@@ -298,6 +298,11 @@
 .settings-reveal-btn:hover {
   background: var(--bg-elevated);
   color: var(--text-header);
+}
+
+.settings-reveal-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .settings-error-msg {
@@ -1143,7 +1148,7 @@
   box-sizing: border-box;
 }
 
-.settings-persona-textarea:focus {
+.settings-persona-textarea:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: 2px;
 }
@@ -1182,6 +1187,11 @@
 .settings-persona-reset-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.settings-persona-reset-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .settings-persona-loading,
