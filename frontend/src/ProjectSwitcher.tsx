@@ -13,6 +13,7 @@ interface ProjectEntry {
 interface Props {
   activeVaultRoot: string;
   onSwitched: (vaultRoot: string) => void;
+  requestText: (label: string) => Promise<string | null>;
 }
 
 // SKY-320: parent folder of `<Mythos Vault>/Story Vault/` is the user-facing
@@ -30,7 +31,7 @@ function deriveDisplayName(p: ProjectEntry | { vaultRoot: string; notesVaultRoot
   return story[story.length - 1] ?? p.vaultRoot;
 }
 
-export default function ProjectSwitcher({ activeVaultRoot, onSwitched }: Props) {
+export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestText }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [creating, setCreating] = useState(false);
@@ -134,8 +135,8 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched }: Props) 
   const handleCreateNewMythosVault = useCallback(async () => {
     if (creating) return;
     setOpen(false);
-    const name = window.prompt('Name for the new Mythos Vault:', '');
-    if (name === null) return; // user cancelled
+    const name = await requestText('Name for the new Mythos Vault:');
+    if (name === null) return;
     const trimmed = name.trim();
     if (trimmed && (trimmed.includes('/') || trimmed.includes('\\') || trimmed === '.' || trimmed === '..')) {
       alert('Vault name cannot contain slashes or path traversal.');
@@ -160,7 +161,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched }: Props) 
     } finally {
       setCreating(false);
     }
-  }, [creating, loadProjects, onSwitched]);
+  }, [creating, loadProjects, onSwitched, requestText]);
 
   const handleBtnClick = () => {
     if (!open) loadProjects();

@@ -119,9 +119,10 @@ interface AppMenuBarProps {
   onToggleDistractionFree: () => void;
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
+  requestText: (label: string) => Promise<string | null>;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -163,7 +164,7 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} onSwitched={onProjectSwitched} />
+      <ProjectSwitcher activeVaultRoot={activeVaultRoot} onSwitched={onProjectSwitched} requestText={requestText} />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -1829,6 +1830,7 @@ export default function DesktopShell() {
           onToggleDistractionFree={toggleDistractionFree}
           onOpenTour={() => setTourOpen(true)}
           onOpenExport={(scope: ExportScope) => setExportScope(scope)}
+          requestText={requestText}
         />
       )}
       {showStatusOverlay && (

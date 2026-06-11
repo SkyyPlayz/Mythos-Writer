@@ -225,22 +225,13 @@ test('TC-SKY-906-03: vault switcher creates a 2nd vault, switches, and switches 
     // Wait for DesktopShell to render — the project switcher button is part of the toolbar.
     await pg.locator('.project-switcher-btn').waitFor({ timeout: 30_000 });
     await pg.locator('.project-switcher-btn').click();
-    await pg.locator('[data-testid="project-switcher-create-new"]').click();
 
-    // The "+ Create new Mythos Vault" prompt path goes through `window.prompt`,
-    // which Playwright must answer via a dialog handler. We accept it with
-    // "Second" so the bundle lands at <home>/Mythos/Vaults/Second.
-    pg.once('dialog', async (dialog) => {
-      await dialog.accept('Second');
-    });
-    // The prompt may have already fired before we registered (since handlers
-    // run synchronously). Try the click again; the dialog handler is one-shot.
-    if (!fs.existsSync(path.join(homeOverride, 'Mythos', 'Vaults', 'Second'))) {
-      pg.once('dialog', async (dialog) => {
-        await dialog.accept('Second');
-      });
-      await pg.locator('[data-testid="project-switcher-create-new"]').click({ trial: false }).catch(() => {});
-    }
+    // The "+ Create new Mythos Vault" path uses the in-app useTextPrompt modal
+    // (window.prompt is unsupported in Electron). Fill the modal and confirm.
+    await pg.locator('[data-testid="project-switcher-create-new"]').click();
+    await pg.locator('.prompt-modal-input').waitFor({ timeout: 10_000 });
+    await pg.locator('.prompt-modal-input').fill('Second');
+    await pg.locator('.prompt-modal-ok').click();
 
     // Wait until vault-settings reflects the new active vault.
     await expect.poll(

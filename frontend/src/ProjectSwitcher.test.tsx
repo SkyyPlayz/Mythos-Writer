@@ -30,7 +30,7 @@ describe('ProjectSwitcher path display', () => {
   });
 
   it('middle-truncates recent project paths while preserving full path in the tooltip', async () => {
-    render(<ProjectSwitcher activeVaultRoot={longVaultRoot} onSwitched={vi.fn()} />);
+    render(<ProjectSwitcher activeVaultRoot={longVaultRoot} onSwitched={vi.fn()} requestText={vi.fn().mockResolvedValue(null)} />);
 
     fireEvent.click(screen.getByRole('button', { name: /active project/i }));
 
