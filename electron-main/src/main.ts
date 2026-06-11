@@ -145,6 +145,7 @@ import {
   buildAgentSystemPrompt,
 } from './agentPersona.js';
 import { registerAgentPersonaHandlers } from './agentPersonaIpc.js';
+import { registerPresetHandlers } from './presetIpc.js';
 import {
   buildVaultSummary,
   truncateContext,
@@ -4705,29 +4706,29 @@ function normalizeReleaseNotes(
 
 function initAutoUpdater() {
   // Always register IPC handlers — safe no-ops when flag is off or not packaged.
-  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, (event) => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, wrapIpcHandler(IPC_CHANNELS.UPDATE_CHECK, (event) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) return { queued: false, reason: 'disabled' };
     applyUpdateChannel();
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     return { queued: true };
-  });
+  }));
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, (event, payload?: { quit: boolean }) => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, wrapIpcHandler(IPC_CHANNELS.UPDATE_INSTALL, (event, payload?: { quit: boolean }) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { ok: false, reason: 'disabled' };
     const quit = payload?.quit !== false; // default true = restart immediately
     autoUpdater.quitAndInstall(false, quit);
     return { ok: true };
-  });
+  }));
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, (event) => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_INFO, wrapIpcHandler(IPC_CHANNELS.UPDATE_GET_INFO, (event) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     return lastUpdateInfo;
-  });
+  }));
 
   // MYT-337: app:checkForUpdate — async check that returns { available, version, releaseNotes }
-  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async (event) => {
+  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, wrapIpcHandler(IPC_CHANNELS.APP_CHECK_FOR_UPDATE, async (event) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED || !app.isPackaged) {
       return { available: false, version: null, releaseNotes: null };
@@ -4752,15 +4753,15 @@ function initAutoUpdater() {
     } catch {
       return { available: false, version: null, releaseNotes: null };
     }
-  });
+  }));
 
   // MYT-337: app:installUpdate — schedules install on next quit (autoInstallOnAppQuit=true).
   // Does NOT trigger an immediate restart; the downloaded update is applied when the user quits normally.
-  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, (event) => {
+  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, wrapIpcHandler(IPC_CHANNELS.APP_INSTALL_UPDATE, (event) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     if (!AUTO_UPDATE_ENABLED) return { scheduled: false };
     return { scheduled: updateDownloaded };
-  });
+  }));
 
   if (!AUTO_UPDATE_ENABLED) return;
 
@@ -5975,22 +5976,7 @@ app.whenReady().then(async () => {
   registerBetaReadScanHandler();
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
-  // SKY-456: Creative quality controls — static preset and rubric data (spec §5.2).
-  // The preset list is defined in frontend/src/presets.ts. Since main and renderer
-  // are separate bundles, we return static data inline here. The renderer also
-  // reads BUNDLED_PRESETS directly from presets.ts — these handlers exist so
-  // future eval harnesses or server-side tooling can query them via IPC.
-  ipcMain.handle('preset:getAll', (_event) => ({ count: 12, note: 'presets are served client-side from presets.ts' }));
-  ipcMain.handle('preset:getRubric', (_event) => ({
-    criteria: [
-      { id: 'specificity', name: 'Specificity' },
-      { id: 'coherence', name: 'Coherence' },
-      { id: 'genre-fit', name: 'Genre Fit' },
-      { id: 'constraint-respect', name: 'Constraint Respect' },
-      { id: 'usefulness', name: 'Usefulness as a Starter' },
-      { id: 'actionability', name: 'Actionability' },
-    ],
-  }));
+  registerPresetHandlers();
 
 
   if (initializeVaults) startWritingScanScheduler();
