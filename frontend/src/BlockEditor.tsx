@@ -48,6 +48,8 @@ interface Props {
   initialCursorPos?: number;
   /** SKY-130: debounced callback reporting cursor position changes for session persistence. */
   onCursorPosChange?: (pos: number) => void;
+  /** SKY-1188: post-onboarding guidance copy for blank scenes. */
+  emptySceneHint?: string;
   /** SKY-616: called when user clicks an @-entity chip to navigate to that entity. */
   onEntityClick?: (entityId: string) => void;
 }
@@ -80,7 +82,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, onEntityClick }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
     scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
@@ -528,9 +530,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
             onSelect={insertEntityMention}
           />
         )}
-        {isEditorEmpty && (
+        {isEditorEmpty && emptySceneHint && (
           <div className="block-editor-empty-hint" aria-live="polite">
-            Start typing to begin.
+            {emptySceneHint}
           </div>
         )}
         <EditorContent editor={editor} className="tiptap-content" />

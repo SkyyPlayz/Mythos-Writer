@@ -1650,6 +1650,12 @@ const handlers: IpcHandlers = {
     const persistSettings = (firstSceneId?: string, firstScenePath?: string) => {
       const current = loadAppSettings();
       const patch: typeof current = { ...current, onboardingComplete: true };
+      patch.onboardingStartMode = startMode ?? 'skip';
+      patch.firstLaunchAt = current.firstLaunchAt ?? new Date().toISOString();
+      patch.gettingStartedProgress = current.gettingStartedProgress ?? {
+        completedItems: [],
+        dismissed: !startMode || startMode === 'skip',
+      };
       if (authorName?.trim()) patch.authorName = authorName.trim();
       if (firstSceneId && firstScenePath) {
         patch.lastOpenedScene = { sceneId: firstSceneId, scenePath: firstScenePath, scrollTop: 0, cursorLine: 0 };

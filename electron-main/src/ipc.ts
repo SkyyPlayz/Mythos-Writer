@@ -1574,6 +1574,17 @@ export interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-1188: first-run path used to seed post-onboarding guidance. */
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+  /** SKY-1188: timestamp of first completed onboarding. */
+  firstLaunchAt?: string;
+  /** SKY-1188: persisted post-onboarding checklist state. */
+  gettingStartedProgress?: {
+    firstSeenAt?: string;
+    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+    dismissed: boolean;
+    completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
+  };
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
   stt?: SttSettings;

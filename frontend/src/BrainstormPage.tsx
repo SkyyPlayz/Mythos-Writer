@@ -173,9 +173,10 @@ const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item'
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  onFirstSubmit?: () => void;
 }
 
-export default function BrainstormPage({ onClose, enabled = true }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -517,6 +518,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     const trimmed = prompt.trim();
     if (!trimmed || loading) return;
 
+    onFirstSubmit?.();
     setLoading(true);
     setError(null);
     setPrompt('');
@@ -552,7 +554,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     contextSystemRef.current = systemPrompt;
 
     await _runStream(apiMessages);
-  }, [prompt, loading, messages, announce, _runStream, effectiveAxes]);
+  }, [prompt, loading, messages, announce, _runStream, effectiveAxes, onFirstSubmit]);
 
   const handleRefine = useCallback((chip: RefinementChip) => {
     if (loading) return;

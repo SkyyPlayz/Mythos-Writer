@@ -62,7 +62,7 @@ function stubWindowApi(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderSidebar(selectedSceneId: string | null = null) {
+function renderSidebar(selectedSceneId: string | null = null, overrides: Partial<React.ComponentProps<typeof VaultSidebar>> = {}) {
   return render(
     <VaultSidebar
       stories={[STUB_STORY]}
@@ -71,6 +71,7 @@ function renderSidebar(selectedSceneId: string | null = null) {
       onCreateStory={vi.fn()}
       onCreateChapter={vi.fn()}
       onCreateScene={vi.fn()}
+      {...overrides}
     />,
   );
 }
@@ -86,6 +87,20 @@ async function openToSceneRow(selectedSceneId: string | null = null) {
   fireEvent.click(screen.getAllByRole('button', { name: /chapter one/i })[0]);
   return utils;
 }
+
+describe('VaultSidebar — post-onboarding guidance', () => {
+  beforeEach(() => { stubWindowApi(); vi.clearAllMocks(); });
+
+  it('shows the template quick-start CTA for blank-mode users', async () => {
+    const onTemplateCtaClick = vi.fn();
+    renderSidebar(null, { stories: [], showTemplateCta: true, onTemplateCtaClick });
+
+    fireEvent.click(screen.getByRole('button', { name: /start from a template/i }));
+
+    expect(onTemplateCtaClick).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+  });
+});
 
 describe('VaultSidebar — Smart Folders (SKY-205)', () => {
   beforeEach(() => { stubWindowApi(); vi.clearAllMocks(); });

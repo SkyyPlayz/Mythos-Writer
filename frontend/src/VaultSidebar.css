@@ -120,7 +120,48 @@
 .vs-empty {
   padding: 8px 12px;
   font-size: 0.78rem;
-  color: var(--text-faint);
+  color: var(--text-muted);
+}
+
+.vs-empty-action {
+  display: grid;
+  gap: 8px;
+}
+
+.vs-empty-action p {
+  margin: 0;
+}
+
+.vs-empty-cta {
+  justify-self: start;
+  border: 1px solid var(--accent, #8b5cf6);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.vs-template-cta {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--accent, #8b5cf6);
+  padding: 2px 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vs-template-cta:hover,
+.vs-template-cta:focus-visible {
+  text-decoration: underline;
+}
+
+.vs-empty-cta:hover,
+.vs-empty-cta:focus-visible {
+  background: rgba(139, 92, 246, 0.24);
 }
 
 /* Story / chapter rows with inline + button */
