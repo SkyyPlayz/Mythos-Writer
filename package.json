@@ -47,6 +47,7 @@
     "test:e2e:entity-creation": "playwright test e2e/entity-creation-edge-cases.spec.ts --reporter=list",
     "test:e2e:timeline": "playwright test e2e/timeline.spec.ts --reporter=list",
     "test:e2e:entries": "playwright test e2e/entries.spec.ts --reporter=list",
+    "test:e2e:post-onboarding": "playwright test e2e/post-onboarding.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only"
   },
   "devDependencies": {
