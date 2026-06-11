@@ -3,6 +3,8 @@ import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
 import ArchivePanel from './ArchivePanel';
+import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
+import type { GsItemKey, GsAction } from './gettingStartedReducer';
 import './RightSidebar.css';
 
 type Tab = 'notes' | 'properties' | 'ai';
@@ -20,6 +22,9 @@ interface Props {
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
+  gettingStartedItems?: GsItemKey[];
+  onGettingStartedAction?: (action: GsAction) => void;
+  showGettingStarted?: boolean;
 }
 
 const SIDEBAR_TABS: { id: Tab; label: string }[] = [
@@ -243,6 +248,9 @@ export default function RightSidebar({
   onJumpToText,
   onInsertWikiLink,
   onWikiLinkSuggestionsChange,
+  gettingStartedItems = [],
+  onGettingStartedAction,
+  showGettingStarted = false,
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -263,6 +271,12 @@ export default function RightSidebar({
 
   return (
     <div className="right-sidebar">
+      {showGettingStarted && onGettingStartedAction && (
+        <GettingStartedPanel
+          completedItems={gettingStartedItems}
+          onAction={onGettingStartedAction}
+        />
+      )}
       <div className="sidebar-tabs" role="tablist" aria-label="Sidebar panels">
         {SIDEBAR_TABS.map((t, i) => (
           <button

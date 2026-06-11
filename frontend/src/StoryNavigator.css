@@ -212,3 +212,30 @@
   background: #052e16;
   color: #86efac;
 }
+
+/* SKY-1188: template quick-start CTA (reuses .vs-template-cta token set) */
+.vs-template-cta {
+  display: block;
+  width: calc(100% - var(--space-3) * 2);
+  margin: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--dur-hover-in) var(--ease-out),
+              border-color var(--dur-hover-in) var(--ease-out);
+}
+
+.vs-template-cta:hover {
+  color: var(--neon-cyan);
+  border-color: var(--neon-cyan);
+}
+
+.vs-template-cta:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}

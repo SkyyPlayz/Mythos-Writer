@@ -214,6 +214,15 @@ interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-1188: start mode chosen in the onboarding wizard. */
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'default-mythos-vault' | 'skip';
+  /** SKY-1188: epoch ms written once on first onboarding:complete call. */
+  firstLaunchAt?: number;
+  /** SKY-1188: Getting Started checklist progress. Absent = show panel. */
+  gettingStartedProgress?: {
+    completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
+    dismissed: boolean;
+  };
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
@@ -499,9 +508,13 @@ interface Window {
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-12.4: mark onboarding complete (persisted to main-process settings)
-    onboardingComplete: () => Promise<{ ok: boolean }>;
+    // SKY-1188: optional startMode persists post-onboarding feature gating.
+    onboardingComplete: (payload?: { startMode?: string }) => Promise<{ ok: boolean }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;
+    // SKY-156: Project Templates
+    templateList: () => Promise<{ templates: Array<{ id: string; name: string; description: string; isUserTemplate?: boolean }> }>;
+    templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault

@@ -51,7 +51,7 @@ type Api = {
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
   obsidianPickFolderByPath: (sourcePath: string) => Promise<{ vaultRoot: string | null; registrationToken: string | null; error?: string }>;
   onObsidianImportProgress?: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
-  onboardingComplete: () => Promise<{ ok: boolean }>;
+  onboardingComplete: (payload?: { startMode?: string }) => Promise<{ ok: boolean }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string } | { error: string }>;
 };
@@ -374,11 +374,11 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
 
   const isBlankCTADisabled = blankPathStatus === 'non-empty' || blankPathStatus === 'not-writable' || busy;
 
-  const finishOnboarding = useCallback(() => {
+  const finishOnboarding = useCallback((startMode?: 'blank' | 'sample' | 'template' | 'default-mythos-vault' | 'skip') => {
     // Persist the flag on the main-process side; don't await — fire and forget
     // so the UI transitions immediately. The SETTINGS_GET handler enforces this
     // flag on next boot based on vault path existence, so a lost call is harmless.
-    api().onboardingComplete().catch(() => { /* non-fatal */ });
+    api().onboardingComplete({ startMode }).catch(() => { /* non-fatal */ });
     const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
     setScreen('done');
     onComplete(updated);
@@ -392,7 +392,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
       const notesPath = joinPath(parentPath, NOTES_VAULT_DIR);
       const res = await api().vaultSetPaths(storyPath, notesPath, { seedMode });
       if ('error' in res) throw new Error(res.error);
-      finishOnboarding();
+      finishOnboarding(seedMode === 'blank' ? 'blank' : 'default-mythos-vault');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create vault');
     } finally {
@@ -569,7 +569,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
     try {
       const res = await api().loadSampleTwoVault(samplePath);
       if ('error' in res) throw new Error(res.error);
-      finishOnboarding();
+      finishOnboarding('sample');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load sample project';
       const isDiskFull = msg.toLowerCase().includes('enospc') || msg.toLowerCase().includes('no space left');
@@ -803,7 +803,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
                       );
                       if ('error' in res) { setError(res.error); return; }
                       await api().vaultSetPaths(res.storyVaultPath, res.notesVaultPath, { seedMode: 'blank' });
-                      await api().onboardingComplete();
+                      await api().onboardingComplete({ startMode: 'template' });
                       onComplete(initialSettings);
                     } catch (e) {
                       setError(e instanceof Error ? e.message : 'Failed to apply template');
@@ -1121,7 +1121,7 @@ export default function OnboardingWizard({ initialSettings, onComplete }: Onboar
           <div className="onboarding-actions">
             <button
               className="btn-primary"
-              onClick={finishOnboarding}
+              onClick={() => finishOnboarding('default-mythos-vault')}
               data-testid="import-success-continue"
             >
               Continue →

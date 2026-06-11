@@ -32,7 +32,8 @@ contextBridge.exposeInMainWorld('api', {
   loadSampleTwoVault: (parentPath: string) =>
     ipcRenderer.invoke('vault:load-sample-twovault', { parentPath }),
   // SKY-12.4: mark onboarding as complete — persists flag without full settings roundtrip.
-  onboardingComplete: () => ipcRenderer.invoke('onboarding:complete', undefined),
+  // SKY-1188: optional startMode so post-onboarding features can gate by start mode.
+  onboardingComplete: (payload?: { startMode?: string }) => ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
   onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
 

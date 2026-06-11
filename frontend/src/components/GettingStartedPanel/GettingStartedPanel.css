@@ -1,0 +1,165 @@
+.gs-panel {
+  margin: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.gs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.gs-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-header);
+  letter-spacing: 0.01em;
+}
+
+.gs-progress-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: auto;
+  margin-right: var(--space-2);
+}
+
+.gs-dismiss {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color var(--dur-hover-in) var(--ease-out),
+              background var(--dur-hover-in) var(--ease-out);
+}
+
+.gs-dismiss:hover {
+  color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.gs-dismiss:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+.gs-progress-track {
+  height: 3px;
+  background: var(--bg-inset);
+  border-radius: 99px;
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+}
+
+.gs-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-violet));
+  border-radius: 99px;
+  transition: width var(--dur-panel, 280ms) var(--ease-standard, ease);
+}
+
+.gs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.gs-item {
+  display: flex;
+}
+
+.gs-item-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: background var(--dur-hover-in) var(--ease-out);
+  min-height: 40px;
+}
+
+.gs-item-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.gs-item-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: -2px;
+}
+
+.gs-check {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--glass-border);
+  border-radius: 4px;
+  background: transparent;
+  position: relative;
+  transition: border-color var(--dur-hover-in) var(--ease-out),
+              background var(--dur-hover-in) var(--ease-out);
+}
+
+.gs-item-btn:hover .gs-check {
+  border-color: var(--neon-cyan);
+}
+
+.gs-item--done .gs-item-btn .gs-check {
+  border-color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.15);
+}
+
+.gs-item--done .gs-item-btn .gs-check::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 10 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 4 L3.5 6.5 L9 1' stroke='%2300f0ff' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+.gs-label {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-body);
+  transition: color var(--dur-hover-in) var(--ease-out);
+}
+
+.gs-item--done .gs-label {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(138, 155, 176, 0.5);
+}
+
+.gs-arrow {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity var(--dur-hover-in) var(--ease-out),
+              transform var(--dur-hover-in) var(--ease-out);
+}
+
+.gs-item-btn:hover .gs-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}

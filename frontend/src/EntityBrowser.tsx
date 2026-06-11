@@ -143,9 +143,10 @@ function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
 interface Props {
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId?: string | null;
+  onEntityCreated?: (entity: EntityEntry) => void;
 }
 
-export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Props) {
+export default function EntityBrowser({ onSelectEntity, selectedEntityId, onEntityCreated }: Props) {
   const [entities, setEntities] = useState<EntityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<EntityType>>(
@@ -186,6 +187,7 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
     createBtnRef.current?.focus();
     await loadEntities();
     onSelectEntity(created);
+    onEntityCreated?.(created);
   };
 
   const handleDelete = async (id: string) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
@@ -22,6 +22,8 @@ import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import { useFocusMode } from './useFocusMode';
+import { gsReducer, makeInitialGsState, type GsState } from './gettingStartedReducer';
+import TemplatePicker from './TemplatePicker';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -462,6 +464,9 @@ export default function DesktopShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [gsState, gsDispatch] = useReducer(gsReducer, makeInitialGsState(null));
+  const gsStateRef = useRef<GsState>(gsState);
+  gsStateRef.current = gsState;
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
@@ -492,6 +497,53 @@ export default function DesktopShell() {
   const handleJumpToText = useCallback((text: string) => {
     editorApiRef.current?.jumpToText(text);
   }, []);
+
+  const persistGsProgress = useCallback((state: GsState) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, gettingStartedProgress: { completedItems: state.completedItems, dismissed: state.dismissed } };
+      window.api.settingsSet?.(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const handleGsAction = useCallback((action: Parameters<typeof gsDispatch>[0]) => {
+    gsDispatch(action);
+  }, []);
+
+  const [pendingGsNav, setPendingGsNav] = useState<'brainstorm' | 'notes-vault' | null>(null);
+
+  const handleGsItemClick = useCallback((action: Parameters<typeof gsDispatch>[0]) => {
+    gsDispatch(action);
+    if (action.type === 'CHECK_ITEM') {
+      if (action.item === 'brainstorm') setView('brainstorm');
+      else if (action.item === 'notes-vault') setPendingGsNav('notes-vault');
+    }
+  }, []);
+
+  const handleBrainstormFirstMessage = useCallback(() => {
+    gsDispatch({ type: 'CHECK_ITEM', item: 'brainstorm' });
+  }, []);
+
+  const handleEntityCreatedForGs = useCallback((entity: { type?: string }) => {
+    if (entity.type === 'character') {
+      gsDispatch({ type: 'CHECK_ITEM', item: 'add-character' });
+    }
+  }, []);
+
+  const handleNotesVaultTabOpen = useCallback((tab: string) => {
+    if (tab === 'vault' || tab === 'notes') {
+      gsDispatch({ type: 'CHECK_ITEM', item: 'notes-vault' });
+    }
+  }, []);
+
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const hintShownScenesRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (appSettings) persistGsProgress(gsState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gsState.completedItems.length, gsState.dismissed]);
 
   const handleInsertWikiLink = useCallback((link: string, anchorText: string) => {
     editorApiRef.current?.insertWikiLink(link, anchorText);
@@ -584,6 +636,15 @@ export default function DesktopShell() {
       }
       if (s) {
         setAppSettings(s);
+        gsDispatch({ type: 'RESET' });
+        if (!s.gettingStartedProgress?.dismissed) {
+          const initial = makeInitialGsState(s.gettingStartedProgress ?? null);
+          if (initial.completedItems.length > 0) {
+            initial.completedItems.forEach((item) => gsDispatch({ type: 'CHECK_ITEM', item }));
+          }
+        } else {
+          gsDispatch({ type: 'DISMISS' });
+        }
         applyTheme(s.theme);
         // Load background image data URL if a custom path is stored
         const lg = s.liquidNeon;
@@ -667,6 +728,12 @@ export default function DesktopShell() {
     setManifest(updated);
     scheduleManifestSave(updated);
   }, [manifest, scheduleManifestSave]);
+
+  useEffect(() => {
+    if (!pendingGsNav) return;
+    if (pendingGsNav === 'notes-vault') persistLayout({ ...layout, leftTab: 'vault' });
+    setPendingGsNav(null);
+  }, [pendingGsNav, layout, persistLayout]);
 
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
@@ -786,6 +853,9 @@ export default function DesktopShell() {
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
     (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
+    if (!gsStateRef.current.dismissed && !gsStateRef.current.completedItems.includes('write-scene') && content.trim().length > 0) {
+      gsDispatch({ type: 'CHECK_ITEM', item: 'write-scene' });
+    }
     // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
     if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
     saveIndicatorTimer.current = setTimeout(() => {
@@ -1180,6 +1250,28 @@ export default function DesktopShell() {
     archive: appSettings?.agents?.archive?.enabled ?? true,
   };
 
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const showGettingStarted =
+    !gsState.dismissed &&
+    appSettings?.onboardingComplete === true &&
+    appSettings.onboardingStartMode !== 'skip';
+
+  const showTemplateCta =
+    appSettings?.onboardingStartMode === 'blank' &&
+    !gsState.completedItems.includes('write-scene') &&
+    !(appSettings.firstLaunchAt && Date.now() - appSettings.firstLaunchAt > SEVEN_DAYS_MS);
+
+  const sceneIsEmpty = selectedScene != null && selectedScene.blocks.every((b) => !b.content.trim());
+  const showSceneHint =
+    showGettingStarted &&
+    sceneIsEmpty &&
+    selectedScene != null &&
+    !hintShownScenesRef.current.has(selectedScene.id);
+
+  if (showSceneHint && selectedScene) {
+    hintShownScenesRef.current.add(selectedScene.id);
+  }
+
   const writingMode: WritingMode = layout.writingMode ?? 'normal';
   const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
@@ -1242,7 +1334,7 @@ export default function DesktopShell() {
         <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} onFirstMessage={handleBrainstormFirstMessage} />
       )}
       {view === 'kanban' && (
         <div className="shell-kanban">
@@ -1272,7 +1364,7 @@ export default function DesktopShell() {
         <div className="shell-left" style={{ width: layout.leftWidth }}>
           <LeftRail
             activeTab={layout.leftTab}
-            onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
+            onTabChange={(tab) => { persistLayout({ ...layout, leftTab: tab }); handleNotesVaultTabOpen(tab); }}
             stories={stories}
             selectedSceneId={selectedScene?.id ?? null}
             selectedEntityId={selectedEntity?.id ?? null}
@@ -1284,6 +1376,9 @@ export default function DesktopShell() {
             onReorderScenes={handleReorderScenes}
             onOpenVaultPath={handleOpenSceneByPath}
             onContextChange={setVaultContext}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onEntityCreated={handleEntityCreatedForGs}
           />
         </div>
       )}
@@ -1347,7 +1442,7 @@ export default function DesktopShell() {
               }}
             />
           ) : selectedScene ? (
-            <div className="shell-editor-beta-wrap">
+            <div className={`shell-editor-beta-wrap${showSceneHint ? ' shell-editor-beta-wrap--hint' : ''}`}>
               <BlockEditor
                 key={selectedScene.id}
                 scene={selectedScene}
@@ -1443,6 +1538,9 @@ export default function DesktopShell() {
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+            showGettingStarted={showGettingStarted}
+            gettingStartedItems={gsState.completedItems}
+            onGettingStartedAction={handleGsItemClick}
           />
         </div>
       )}
@@ -1462,6 +1560,16 @@ export default function DesktopShell() {
         />
       )}
       {promptModal}
+      {templatePickerOpen && (
+        <TemplatePicker
+          onApplied={() => {
+            setTemplatePickerOpen(false);
+            gsDispatch({ type: 'CHECK_ITEM', item: 'write-scene' });
+            loadVault().catch(() => {});
+          }}
+          onClose={() => setTemplatePickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

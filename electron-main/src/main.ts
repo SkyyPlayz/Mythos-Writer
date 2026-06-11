@@ -55,6 +55,7 @@ import {
   type VaultIndexEntry,
   type VaultCheckInconsistency,
   type AppSettings,
+  type OnboardingCompletePayload,
   type SettingsSetPayload,
   type SuggestionsListPayload,
   type SuggestionsGetPayload,
@@ -1261,9 +1262,13 @@ const handlers: IpcHandlers = {
   },
 
   // SKY-12.4: mark onboarding as complete without sending back the full settings object.
-  [IPC_CHANNELS.ONBOARDING_COMPLETE]: () => {
+  // SKY-1188: also persist startMode and firstLaunchAt (written once, never overwritten).
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => {
     const current = loadAppSettings();
-    saveAppSettings({ ...current, onboardingComplete: true });
+    const updates: Partial<AppSettings> = { onboardingComplete: true };
+    if (payload?.startMode) updates.onboardingStartMode = payload.startMode;
+    if (!current.firstLaunchAt) updates.firstLaunchAt = Date.now();
+    saveAppSettings({ ...current, ...updates });
     return { ok: true as const };
   },
 

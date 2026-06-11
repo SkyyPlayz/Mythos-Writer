@@ -465,6 +465,8 @@ export interface VaultSidebarProps {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenVaultPath?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  showTemplateCta?: boolean;
+  onTemplateCtaClick?: () => void;
 }
 
 export default function VaultSidebar({
@@ -476,6 +478,8 @@ export default function VaultSidebar({
   onCreateScene,
   onOpenVaultPath,
   onContextChange,
+  showTemplateCta = false,
+  onTemplateCtaClick,
 }: VaultSidebarProps) {
   return (
     <div className="vault-sidebar">
@@ -487,6 +491,16 @@ export default function VaultSidebar({
         onCreateChapter={onCreateChapter}
         onCreateScene={onCreateScene}
       />
+      {showTemplateCta && onTemplateCtaClick && (
+        <button
+          className="vs-template-cta"
+          onClick={onTemplateCtaClick}
+          data-testid="vs-template-cta"
+          aria-label="Start from a template"
+        >
+          Start from a template →
+        </button>
+      )}
       <div className="vs-divider" aria-hidden="true" />
       <NotesVault onOpenPath={onOpenVaultPath} onContextChange={onContextChange} />
     </div>

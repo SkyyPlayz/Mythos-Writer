@@ -457,7 +457,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
   // SKY-12 onboarding channels
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
-  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => { ok: true };
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
@@ -1181,6 +1181,15 @@ export interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-1188: start mode chosen in the onboarding wizard. Absent = show panel (backward-compat). */
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'default-mythos-vault' | 'skip';
+  /** SKY-1188: epoch ms written once on first onboarding:complete call; never overwritten. */
+  firstLaunchAt?: number;
+  /** SKY-1188: Getting Started checklist progress. Absent = show panel. */
+  gettingStartedProgress?: {
+    completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
+    dismissed: boolean;
+  };
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
   stt?: SttSettings;
@@ -1872,6 +1881,12 @@ export interface VaultLoadSamplePayload {
 
 export interface VaultLoadSampleResponse {
   vaultRoot: string;
+}
+
+// ─── SKY-1188: onboarding complete payload ───
+
+export interface OnboardingCompletePayload {
+  startMode?: 'blank' | 'sample' | 'template' | 'default-mythos-vault' | 'skip';
 }
 
 // ─── SKY-12.3: two-vault sample project loader ───

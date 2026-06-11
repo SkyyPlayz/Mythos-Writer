@@ -795,3 +795,29 @@
 .focus-save-ok {
   color: var(--success, #16a34a);
 }
+
+/* SKY-1188: Scene editor empty-state hint */
+.shell-editor-beta-wrap--hint {
+  position: relative;
+}
+
+.shell-editor-beta-wrap--hint::after {
+  content: 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.';
+  position: absolute;
+  top: 72px;
+  left: 48px;
+  right: 48px;
+  pointer-events: none;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  opacity: 0.55;
+  font-style: italic;
+  line-height: 1.5;
+  /* Excluded from print/export via CSS @media print in base styles */
+}
+
+@media print {
+  .shell-editor-beta-wrap--hint::after {
+    display: none;
+  }
+}

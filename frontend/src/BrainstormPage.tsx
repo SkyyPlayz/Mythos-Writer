@@ -120,9 +120,10 @@ const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item'
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  onFirstMessage?: () => void;
 }
 
-export default function BrainstormPage({ onClose, enabled = true }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstMessage }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -428,6 +429,8 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     const trimmed = prompt.trim();
     if (!trimmed || loading) return;
 
+    if (messages.length === 0) onFirstMessage?.();
+
     setLoading(true);
     setError(null);
     setPrompt('');
@@ -443,7 +446,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     }));
 
     await _runStream(apiMessages);
-  }, [prompt, loading, messages, announce, _runStream]);
+  }, [prompt, loading, messages, onFirstMessage, announce, _runStream]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

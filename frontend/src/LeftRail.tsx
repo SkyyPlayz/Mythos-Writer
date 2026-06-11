@@ -21,6 +21,9 @@ interface Props {
   onReorderScenes: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
   onOpenVaultPath?: (path: string) => void;
   onContextChange?: (context: 'file' | 'folder' | null) => void;
+  showTemplateCta?: boolean;
+  onTemplateCtaClick?: () => void;
+  onEntityCreated?: (entity: EntityEntry) => void;
 }
 
 export default function LeftRail({
@@ -37,6 +40,9 @@ export default function LeftRail({
   onReorderScenes,
   onOpenVaultPath,
   onContextChange,
+  showTemplateCta = false,
+  onTemplateCtaClick,
+  onEntityCreated,
 }: Props) {
   return (
     <div className="left-rail">
@@ -98,12 +104,15 @@ export default function LeftRail({
             onCreateChapter={onCreateChapter}
             onCreateScene={onCreateScene}
             onReorderScenes={onReorderScenes}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={onTemplateCtaClick}
           />
         )}
         {activeTab === 'entities' && (
           <EntityBrowser
             onSelectEntity={onSelectEntity}
             selectedEntityId={selectedEntityId}
+            onEntityCreated={onEntityCreated}
           />
         )}
         {activeTab === 'vault' && (
