@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { validatePathForVault } from './validatePathUtil.js';
+import { validatePathForVault, isExistingUsableVaultRoot } from './validatePathUtil.js';
 
 const HOME = os.homedir();
 
@@ -86,5 +86,39 @@ describe('validatePathForVault', () => {
     const result = validatePathForVault(target, HOME);
     expect(result.exists).toBe(false);
     expect(result.writable).toBe(true);
+  });
+});
+
+describe('isExistingUsableVaultRoot', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-startup-test-'));
+  });
+
+  afterEach(() => {
+    fs.chmodSync(tmpDir, 0o700);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('rejects a missing vault root without creating it', () => {
+    const target = path.join(tmpDir, 'missing-story-vault');
+
+    expect(isExistingUsableVaultRoot(target)).toBe(false);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it('accepts an existing readable and writable vault directory', () => {
+    const target = path.join(tmpDir, 'story-vault');
+    fs.mkdirSync(target);
+
+    expect(isExistingUsableVaultRoot(target)).toBe(true);
+  });
+
+  it('rejects files because a vault root must be a directory', () => {
+    const target = path.join(tmpDir, 'story-vault.md');
+    fs.writeFileSync(target, '# not a vault');
+
+    expect(isExistingUsableVaultRoot(target)).toBe(false);
   });
 });
