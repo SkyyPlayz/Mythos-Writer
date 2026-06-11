@@ -18,6 +18,8 @@ export interface IdeaCardIdea {
   savedPath?: string;
   updatedAt?: string;
   savedLabel?: string;
+  /** Notes body — shown as a 120-char inline preview when expanded. */
+  body?: string;
 }
 
 interface IdeaCardProps {
@@ -28,6 +30,9 @@ interface IdeaCardProps {
   isSelected?: boolean;
   onToggleSelect?: (ideaId: string) => void;
   onMenuAction?: (ideaId: string, actionId: string) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: (ideaId: string) => void;
+  onChipClick?: (chip: IdeaCardChip) => void;
 }
 
 const TYPE_LABELS: Record<IdeaCardIdea['type'], string> = {
@@ -52,10 +57,26 @@ const CHIP_STYLES: Record<IdeaCardType, CSSProperties> = {
   scene: { background: 'var(--bg-inset)', color: 'var(--neon-cyan)' },
 };
 
-const CARD_STYLE: CSSProperties = {
+const CARD_STYLE_COMPACT: CSSProperties = {
   height: '72px',
   padding: 'var(--space-3)',
   borderRadius: 'var(--radius-md)',
+};
+
+const CARD_STYLE_EXPANDED: CSSProperties = {
+  padding: 'var(--space-3)',
+  borderRadius: 'var(--radius-md)',
+};
+
+const TOGGLE_BTN_STYLE: CSSProperties = {
+  flexShrink: 0,
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  padding: '0 2px',
+  lineHeight: 1,
+  fontSize: '10px',
+  color: 'var(--text-muted)',
 };
 
 const MENU_STYLE: CSSProperties = {
@@ -67,8 +88,14 @@ const CHIPS_ROW_STYLE: CSSProperties = {
   overflow: 'hidden',
 };
 
+const BODY_PREVIEW_MAX = 120;
+
 function truncateTitle(title: string) {
   return title.length > 80 ? `${title.slice(0, 80)}…` : title;
+}
+
+function truncateBody(body: string) {
+  return body.length > BODY_PREVIEW_MAX ? `${body.slice(0, BODY_PREVIEW_MAX)}…` : body;
 }
 
 function formatRelativeUpdatedAt(updatedAt?: string) {
@@ -99,6 +126,9 @@ export function IdeaCard({
   isSelected = false,
   onToggleSelect,
   onMenuAction,
+  isExpanded = false,
+  onToggleExpand,
+  onChipClick,
 }: IdeaCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -106,6 +136,8 @@ export function IdeaCard({
 
   const title = truncateTitle(idea.title);
   const metadata = idea.savedPath ? formatRelativeUpdatedAt(idea.updatedAt) : 'unsaved session idea';
+  const bodyPreview = idea.body ? truncateBody(idea.body) : '';
+  const bodyPreviewId = `idea-card-body-${idea.id}`;
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
 
@@ -165,9 +197,9 @@ export function IdeaCard({
 
   return (
     <li
-      className={`idea-card idea-card-compact${isMultiSelect ? ' idea-card-multiselect' : ''}${isSelected ? ' idea-card-selected' : ''}`}
+      className={`idea-card idea-card-compact${isExpanded ? ' idea-card-expanded' : ''}${isMultiSelect ? ' idea-card-multiselect' : ''}${isSelected ? ' idea-card-selected' : ''}`}
       data-testid={`idea-card-${idea.id}`}
-      style={CARD_STYLE}
+      style={isExpanded ? CARD_STYLE_EXPANDED : CARD_STYLE_COMPACT}
       aria-label={`${idea.title}, ${TYPE_LABELS[idea.type]}`}
       onClick={handleCardClick}
       onKeyDown={handleCardKeyDown}
@@ -188,6 +220,21 @@ export function IdeaCard({
       )}
 
       <div className="idea-card-row idea-card-title-row">
+        <button
+          className="idea-card-toggle-btn"
+          type="button"
+          style={TOGGLE_BTN_STYLE}
+          aria-expanded={isExpanded}
+          aria-controls={bodyPreviewId}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} body preview for ${idea.title}`}
+          data-testid={`idea-card-toggle-${idea.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand?.(idea.id);
+          }}
+        >
+          {isExpanded ? '▾' : '▸'}
+        </button>
         <button
           className="idea-card-title"
           type="button"
@@ -223,17 +270,42 @@ export function IdeaCard({
         style={CHIPS_ROW_STYLE}
         aria-label="Linked entities"
       >
-        {(idea.linkedEntities ?? []).map((chip) => (
-          <span key={chip.id} className="idea-card-chip" style={CHIP_STYLES[chip.type]} title={chip.name}>
-            {chip.name}
-          </span>
-        ))}
+        {(idea.linkedEntities ?? []).map((chip) =>
+          onChipClick ? (
+            <button
+              key={chip.id}
+              type="button"
+              className="idea-card-chip idea-card-chip-interactive"
+              style={CHIP_STYLES[chip.type]}
+              title={chip.name}
+              aria-label={`Navigate to ${chip.name}`}
+              onClick={(e) => { e.stopPropagation(); onChipClick(chip); }}
+            >
+              {chip.name}
+            </button>
+          ) : (
+            <span key={chip.id} className="idea-card-chip" style={CHIP_STYLES[chip.type]} title={chip.name}>
+              {chip.name}
+            </span>
+          )
+        )}
       </div>
 
       <div className="idea-card-row idea-card-meta-row">
         <span>{metadata}</span>
         {metaAction ?? (idea.savedLabel && <span className="idea-card-saved-label">{idea.savedLabel}</span>)}
       </div>
+
+      {isExpanded && (
+        <div
+          id={bodyPreviewId}
+          className="idea-card-body-preview"
+          data-testid={`idea-card-body-preview-${idea.id}`}
+          aria-label="Body preview"
+        >
+          {bodyPreview || null}
+        </div>
+      )}
 
       {menuOpen && (
         <IdeaContextMenu

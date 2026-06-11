@@ -19,6 +19,10 @@
   padding: var(--space-3);
 }
 
+.idea-card-expanded {
+  height: auto;
+}
+
 .idea-card-multiselect {
   padding-left: calc(var(--space-3) + 24px);
   cursor: pointer;
@@ -130,8 +134,55 @@
   white-space: nowrap;
 }
 
+.idea-card-chip-interactive {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+
+.idea-card-chip-interactive:hover {
+  text-decoration: underline;
+  opacity: 0.9;
+}
+
+.idea-card-chip-interactive:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 1px;
+}
+
 .idea-card-saved-label {
   font-size: var(--text-xs, 11px);
   color: var(--text-muted);
   margin-left: auto;
+}
+
+.idea-card-toggle-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-press) var(--ease-out);
+}
+
+.idea-card-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+.idea-card-body-preview {
+  font-size: var(--text-sm);
+  color: var(--text-secondary, var(--text-muted));
+  line-height: 1.4;
+  padding-top: var(--space-1);
+  overflow: hidden;
+  max-height: 3.6em;
+  word-break: break-word;
 }

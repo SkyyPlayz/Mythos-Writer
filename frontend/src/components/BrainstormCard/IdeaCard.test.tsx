@@ -170,6 +170,134 @@ describe('IdeaCard', () => {
     });
   });
 
+  describe('body preview toggle (SKY-1308)', () => {
+    const ideaWithBody = {
+      ...baseIdea,
+      body: 'A long backstory that reveals her true lineage and the curse she carries from birth.',
+    };
+
+    it('renders the toggle button in compact mode', () => {
+      render(<IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} />);
+
+      expect(screen.getByTestId('idea-card-toggle-idea-1')).toBeInTheDocument();
+    });
+
+    it('toggle button shows ▸ when collapsed and ▾ when expanded', () => {
+      const { rerender } = render(
+        <IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={false} />,
+      );
+      expect(screen.getByTestId('idea-card-toggle-idea-1')).toHaveTextContent('▸');
+
+      rerender(<IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={true} />);
+      expect(screen.getByTestId('idea-card-toggle-idea-1')).toHaveTextContent('▾');
+    });
+
+    it('toggle button has aria-expanded reflecting isExpanded prop', () => {
+      const { rerender } = render(
+        <IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={false} />,
+      );
+      expect(screen.getByTestId('idea-card-toggle-idea-1')).toHaveAttribute('aria-expanded', 'false');
+
+      rerender(<IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={true} />);
+      expect(screen.getByTestId('idea-card-toggle-idea-1')).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('calls onToggleExpand with idea id when toggle button is clicked', () => {
+      const onToggleExpand = vi.fn();
+      render(
+        <IdeaCard
+          idea={ideaWithBody}
+          onOpenDetail={() => {}}
+          onToggleExpand={onToggleExpand}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('idea-card-toggle-idea-1'));
+
+      expect(onToggleExpand).toHaveBeenCalledWith('idea-1');
+    });
+
+    it('does not render body preview when collapsed', () => {
+      render(<IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={false} />);
+
+      expect(screen.queryByTestId('idea-card-body-preview-idea-1')).not.toBeInTheDocument();
+    });
+
+    it('renders body preview when expanded', () => {
+      render(<IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={true} />);
+
+      const preview = screen.getByTestId('idea-card-body-preview-idea-1');
+      expect(preview).toBeInTheDocument();
+      expect(preview).toHaveTextContent(ideaWithBody.body);
+    });
+
+    it('truncates body preview at 120 chars with ellipsis', () => {
+      const longBody = 'X'.repeat(150);
+      render(
+        <IdeaCard
+          idea={{ ...baseIdea, body: longBody }}
+          onOpenDetail={() => {}}
+          isExpanded={true}
+        />,
+      );
+
+      const preview = screen.getByTestId('idea-card-body-preview-idea-1');
+      expect(preview.textContent).toBe(`${'X'.repeat(120)}…`);
+    });
+
+    it('does not truncate body that is exactly 120 chars', () => {
+      const exactBody = 'Y'.repeat(120);
+      render(
+        <IdeaCard
+          idea={{ ...baseIdea, body: exactBody }}
+          onOpenDetail={() => {}}
+          isExpanded={true}
+        />,
+      );
+
+      const preview = screen.getByTestId('idea-card-body-preview-idea-1');
+      expect(preview.textContent).toBe(exactBody);
+    });
+
+    it('expanded card does not have the 72px height constraint', () => {
+      render(<IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={true} />);
+
+      const card = screen.getByTestId('idea-card-idea-1');
+      expect(card).not.toHaveStyle({ height: '72px' });
+    });
+
+    it('compact card still has the 72px height', () => {
+      render(<IdeaCard idea={ideaWithBody} onOpenDetail={() => {}} isExpanded={false} />);
+
+      expect(screen.getByTestId('idea-card-idea-1')).toHaveStyle({ height: '72px' });
+    });
+
+    it('title button still opens detail drawer when card is expanded', () => {
+      const onOpenDetail = vi.fn();
+      render(
+        <IdeaCard
+          idea={ideaWithBody}
+          onOpenDetail={onOpenDetail}
+          isExpanded={true}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /open idea detail/i }));
+
+      expect(onOpenDetail).toHaveBeenCalledWith('idea-1');
+    });
+
+    it('renders empty body preview region when body is empty string', () => {
+      render(
+        <IdeaCard idea={{ ...baseIdea, body: '' }} onOpenDetail={() => {}} isExpanded={true} />,
+      );
+
+      const preview = screen.getByTestId('idea-card-body-preview-idea-1');
+      expect(preview).toBeInTheDocument();
+      expect(preview.textContent).toBe('');
+    });
+  });
+
   describe('multi-select mode', () => {
     it('shows checkbox when isMultiSelect is true', () => {
       render(

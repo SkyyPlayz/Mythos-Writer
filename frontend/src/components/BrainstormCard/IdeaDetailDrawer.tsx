@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { IdeaCardIdea, IdeaCardType } from './IdeaCard';
+import type { IdeaCardChip, IdeaCardIdea, IdeaCardType } from './IdeaCard';
 import './IdeaDetailDrawer.css';
 
 interface EntityPickerItem {
@@ -117,11 +117,12 @@ export interface IdeaDetailDrawerProps {
   idea: IdeaCardIdea;
   onClose: () => void;
   onSave: (updated: IdeaCardIdea) => void;
+  onEntityPillClick?: (entity: IdeaCardChip) => void;
 }
 
-export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProps) {
+export function IdeaDetailDrawer({ idea, onClose, onSave, onEntityPillClick }: IdeaDetailDrawerProps) {
   const [title, setTitle] = useState(idea.title);
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState(idea.body ?? '');
   const [linkedEntities, setLinkedEntities] = useState(idea.linkedEntities ?? []);
   const [showEntityPicker, setShowEntityPicker] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
@@ -130,7 +131,7 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
 
   const isDirty =
     title !== idea.title ||
-    body !== '' ||
+    body !== (idea.body ?? '') ||
     linkedEntities.length !== (idea.linkedEntities ?? []).length;
 
   const handleClose = useCallback(() => {
@@ -181,9 +182,9 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
   }, [showEntityPicker, showDiscard]);
 
   const handleSave = useCallback(() => {
-    onSave({ ...idea, title, linkedEntities });
+    onSave({ ...idea, title, body, linkedEntities });
     setShowDiscard(false);
-  }, [idea, title, linkedEntities, onSave]);
+  }, [idea, title, body, linkedEntities, onSave]);
 
   const handleDiscard = useCallback(() => {
     setShowDiscard(false);
@@ -285,7 +286,18 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
             <div className="idd-entity-pills" aria-label="Linked entities">
               {linkedEntities.map((e) => (
                 <span key={e.id} className={`idd-entity-pill idd-badge-${e.type}`}>
-                  {e.name}
+                  {onEntityPillClick ? (
+                    <button
+                      type="button"
+                      className="idd-pill-navigate"
+                      aria-label={`Navigate to ${e.name}`}
+                      onClick={() => onEntityPillClick(e)}
+                    >
+                      {e.name}
+                    </button>
+                  ) : (
+                    <span className="idd-pill-name">{e.name}</span>
+                  )}
                   <button
                     type="button"
                     className="idd-pill-remove"

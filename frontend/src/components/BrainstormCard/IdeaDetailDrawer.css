@@ -170,6 +170,30 @@
   font-weight: var(--weight-md, 500);
 }
 
+.idd-pill-name {
+  font: inherit;
+}
+
+.idd-pill-navigate {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+}
+
+.idd-pill-navigate:hover {
+  text-decoration: underline;
+}
+
+.idd-pill-navigate:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 .idd-pill-remove {
   background: transparent;
   border: none;

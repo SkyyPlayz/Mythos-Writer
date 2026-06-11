@@ -1558,6 +1558,31 @@ export default function DesktopShell() {
     }).catch(() => {});
   }, [checkGettingStartedItem]);
 
+  // SKY-1309: navigate to entity from brainstorm chip click
+  const handleBrainstormNavigateEntity = useCallback((entityId: string) => {
+    window.api.entityRead(entityId).then((entity) => {
+      if (entity) {
+        handleSelectEntity(entity);
+        setView('editor');
+      }
+    }).catch(() => {});
+  }, [handleSelectEntity]);
+
+  // SKY-1309: navigate to scene from brainstorm chip click; returns false when not found
+  const handleBrainstormNavigateScene = useCallback((sceneId: string): boolean => {
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+        if (scene) {
+          handleSelectScene(scene, chapter, story);
+          setView('editor');
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [stories, handleSelectScene]);
+
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
       // Navigate to scene by docId
@@ -1876,7 +1901,13 @@ export default function DesktopShell() {
         />
       )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} onFirstSubmit={() => checkGettingStartedItem('brainstorm')} />
+        <BrainstormPage
+          onClose={() => setView('editor')}
+          enabled={agentFlags.brainstorm}
+          onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
+          onNavigateEntity={handleBrainstormNavigateEntity}
+          onNavigateScene={handleBrainstormNavigateScene}
+        />
       )}
       {view === 'entries' && (
         <div className="shell-entries">

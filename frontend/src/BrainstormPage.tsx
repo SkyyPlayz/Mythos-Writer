@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
+import type { IdeaCardChip } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import PresetSelector from './components/PresetSelector';
@@ -87,6 +88,8 @@ interface DetectedFact {
   savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review' | 'needs_routing';
   savedPath?: string;
   updatedAt?: string;
+  /** User-authored notes body; shown as inline preview when card is expanded. */
+  body?: string;
 }
 
 // SKY-196: context selection result surfaced in the "Context used" panel.
@@ -174,13 +177,43 @@ const FACT_TYPE_LABELS: Record<DetectedFact['type'], string> = {
 
 const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item', 'note'];
 
+export type IdeaSortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status';
+export type IdeaFilterType = 'all' | DetectedFact['type'];
+
+const SORT_OPTIONS: { value: IdeaSortOrder; label: string }[] = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'by-type', label: 'By type' },
+  { value: 'by-status', label: 'By status (saved first)' },
+];
+
+const FILTER_ORDER: IdeaFilterType[] = ['all', 'character', 'location', 'item', 'note'];
+
+const FILTER_LABELS: Record<IdeaFilterType, string> = {
+  all: 'All types',
+  character: 'Characters',
+  location: 'Locations',
+  item: 'Items',
+  note: 'Concept notes',
+};
+
+const FILTER_EMPTY_LABELS: Record<IdeaFilterType, string> = {
+  all: 'Named facts will appear here as Claude identifies them.',
+  character: 'No character ideas yet',
+  location: 'No location ideas yet',
+  item: 'No item ideas yet',
+  note: 'No concept note ideas yet',
+};
+
 interface Props {
   onClose: () => void;
   enabled?: boolean;
   onFirstSubmit?: () => void;
+  onNavigateEntity?: (entityId: string) => void;
+  onNavigateScene?: (sceneId: string) => boolean;
 }
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateEntity, onNavigateScene }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -212,8 +245,12 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   // Tracks the id of a brand-new idea created via Ctrl+N that hasn't been saved yet
   const [pendingNewIdeaId, setPendingNewIdeaId] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<IdeaSortOrder>('newest');
+  const [filterType, setFilterType] = useState<IdeaFilterType>('all');
   // Tracks which element opened the detail drawer so focus can be restored on close
   const triggerElementRef = useRef<HTMLElement | null>(null);
+  // SKY-1308: per-card expanded state (session-only, not persisted)
+  const [expandedIdeaIds, setExpandedIdeaIds] = useState<Set<string>>(new Set());
 
   // SKY-196: vault context surfaced in the "Context used" panel
   const [contextResult, setContextResult] = useState<ContextResult | null>(null);
@@ -233,6 +270,29 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     () => getEffectiveAxes(presetId, presetOverrides),
     [presetId, presetOverrides],
   );
+
+  const displayedFacts = useMemo(() => {
+    const filtered = filterType === 'all' ? facts : facts.filter((f) => f.type === filterType);
+    const sorted = [...filtered];
+    switch (sortOrder) {
+      case 'newest':
+        sorted.reverse();
+        break;
+      case 'oldest':
+        break;
+      case 'by-type':
+        sorted.sort((a, b) => FACT_TYPE_ORDER.indexOf(a.type) - FACT_TYPE_ORDER.indexOf(b.type));
+        break;
+      case 'by-status':
+        sorted.sort((a, b) => {
+          const aRank = a.savedStatus === 'saved' ? 0 : 1;
+          const bRank = b.savedStatus === 'saved' ? 0 : 1;
+          return aRank - bRank;
+        });
+        break;
+    }
+    return sorted;
+  }, [facts, sortOrder, filterType]);
 
   // Restore draft from localStorage on mount
   useEffect(() => {
@@ -391,6 +451,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     setRoutingPrompts([]);
     setContextResult(null);
     setContextOpen(false);
+    setSortOrder('newest');
+    setFilterType('all');
+    setExpandedIdeaIds(new Set());
     contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
   }, []);
@@ -813,6 +876,26 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     });
   }, []);
 
+  const handleToggleExpand = useCallback((ideaId: string) => {
+    setExpandedIdeaIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ideaId)) {
+        next.delete(ideaId);
+      } else {
+        next.add(ideaId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleExpandAll = useCallback(() => {
+    setExpandedIdeaIds(new Set(displayedFacts.map((f) => f.id)));
+  }, [displayedFacts]);
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedIdeaIds(new Set());
+  }, []);
+
   const createNewIdea = useCallback(() => {
     const id = `idea-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const newFact: DetectedFact = { id, type: 'note', name: 'New idea', content: '', savedStatus: 'unsaved' };
@@ -935,6 +1018,37 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     announce('Idea detail drawer opened.');
   }, [announce]);
 
+  const handleChipNavigate = useCallback(async (chip: IdeaCardChip) => {
+    if (chip.type === 'scene') {
+      if (onNavigateScene) {
+        const found = onNavigateScene(chip.id);
+        if (!found) {
+          setToast('Entity not found in vault');
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+          toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+        }
+      }
+    } else {
+      try {
+        const { entities } = await window.api.entityList();
+        const entity = entities.find(
+          (e) => e.name.toLowerCase() === chip.name.toLowerCase(),
+        );
+        if (entity && onNavigateEntity) {
+          onNavigateEntity(entity.id);
+        } else {
+          setToast('Entity not found in vault');
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+          toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+        }
+      } catch {
+        setToast('Entity not found in vault');
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+      }
+    }
+  }, [onNavigateEntity, onNavigateScene]);
+
   const setDraftKind = useCallback((issueId: string, kind: AnswerKind) => {
     setAnswerDrafts((prev) => ({
       ...prev,
@@ -955,7 +1069,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     setFacts((prev) =>
       prev.map((f) =>
         f.id === updated.id
-          ? { ...f, name: updated.title, content: updated.title }
+          ? { ...f, name: updated.title, content: updated.title, body: updated.body }
           : f,
       ),
     );
@@ -1406,6 +1520,46 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
               </button>
             )}
           </div>
+          {facts.length > 0 && (
+            <div className="bs-ideas-controls">
+              <div className="bs-ideas-sort-row">
+                <select
+                  className="bs-ideas-sort-select"
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as IdeaSortOrder)}
+                  aria-label="Sort ideas"
+                  data-testid="brainstorm-sort-select"
+                >
+                  {SORT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <button
+                  className="bs-expand-all-btn"
+                  type="button"
+                  onClick={expandedIdeaIds.size > 0 ? handleCollapseAll : handleExpandAll}
+                  aria-label={expandedIdeaIds.size > 0 ? 'Collapse all ideas' : 'Expand all ideas'}
+                  data-testid="bs-expand-all-btn"
+                >
+                  {expandedIdeaIds.size > 0 ? 'Collapse all' : 'Expand all'}
+                </button>
+              </div>
+              <div className="bs-ideas-filter-chips" role="group" aria-label="Filter by type">
+                {FILTER_ORDER.map((ft) => (
+                  <button
+                    key={ft}
+                    className={`bs-ideas-chip${filterType === ft ? ' bs-ideas-chip-active' : ''}`}
+                    onClick={() => setFilterType(ft)}
+                    type="button"
+                    aria-pressed={filterType === ft}
+                    data-testid={`brainstorm-filter-${ft}`}
+                  >
+                    {FILTER_LABELS[ft]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {isMultiSelectMode && selectedIds.size > 0 && (
             <div className="bs-bulk-toolbar" role="toolbar" aria-label="Bulk actions">
               <span className="bs-bulk-count">{selectedIds.size} selected</span>
@@ -1426,9 +1580,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
             </div>
           )}
           <div className="brainstorm-facts-list">
-            {facts.length === 0 ? (
+            {displayedFacts.length === 0 ? (
               <div className="brainstorm-facts-empty">
-                Named facts will appear here as Claude identifies them.
+                {FILTER_EMPTY_LABELS[filterType]}
               </div>
             ) : (
               <div
@@ -1469,6 +1623,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
                           savedPath: fact.savedPath,
                           updatedAt: fact.updatedAt,
                           savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+                          body: fact.body,
                         }}
                         metaAction={
                           fact.savedStatus === 'saving' ? (
@@ -1495,6 +1650,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
                         isMultiSelect={isMultiSelectMode}
                         isSelected={selectedIds.has(fact.id)}
                         onToggleSelect={handleToggleSelect}
+                        isExpanded={expandedIdeaIds.has(fact.id)}
+                        onToggleExpand={handleToggleExpand}
+                        onChipClick={(onNavigateEntity || onNavigateScene) ? (chip) => void handleChipNavigate(chip) : undefined}
                       />
                     ))}
                   </div>
@@ -1561,9 +1719,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
             savedPath: detailIdea.savedPath,
             updatedAt: detailIdea.updatedAt,
             savedLabel: detailIdea.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+            body: detailIdea.body,
           }}
           onClose={handleDetailDrawerClose}
           onSave={handleSaveIdea}
+          onEntityPillClick={(onNavigateEntity || onNavigateScene) ? (chip) => void handleChipNavigate(chip) : undefined}
         />
       )}
     </div>
