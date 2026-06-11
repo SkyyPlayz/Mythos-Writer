@@ -13,6 +13,7 @@ This guide covers the main feature surfaces of Mythos Writer. For installation a
 5. [Settings and appearance](#settings-and-appearance)
 6. [Backup and portability](#backup-and-portability)
 7. [Entity system](user-guide/entities.md) *(separate guide)*
+8. [Cloud Sync](user-guide/cloud-sync.md) *(separate guide)*
 
 ---
 
