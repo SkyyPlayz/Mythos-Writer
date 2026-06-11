@@ -322,17 +322,19 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId, onEnti
 
   return (
     <div className="entity-browser">
-      <div className="entity-browser-toolbar">
-        <div className="entity-browser-toolbar-inner">
-          <button
-            ref={createBtnRef}
-            className="entity-btn entity-btn-primary entity-btn-sm"
-            onClick={() => setShowCreate(true)}
-          >
-            + New Entity
-          </button>
+      {hasAny && (
+        <div className="entity-browser-toolbar">
+          <div className="entity-browser-toolbar-inner">
+            <button
+              ref={createBtnRef}
+              className="entity-btn entity-btn-primary entity-btn-sm"
+              onClick={() => setShowCreate(true)}
+            >
+              + New Entity
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {!hasAny && (
         <div className="entity-empty">
