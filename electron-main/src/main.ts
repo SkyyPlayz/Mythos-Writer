@@ -208,6 +208,7 @@ import {
   validateSttShape,
   validateTtsShape,
 } from './voiceGate.js';
+import { buildVoiceProviderSwitchEvents } from './voiceTelemetry.js';
 import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
 import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
@@ -1582,6 +1583,7 @@ const handlers: IpcHandlers = {
     return s;
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
+    const startedAt = Date.now();
     const current = loadAppSettings();
     // Reconcile masked API key fields (apiKey, voice.openaiApiKey) — when the
     // renderer echoes back the masked preview unchanged, preserve the stored
@@ -1630,6 +1632,15 @@ const handlers: IpcHandlers = {
     // Re-configure telemetry in-process immediately.
     if (updated.telemetry) {
       configureTelemetry({ enabled: updated.telemetry.enabled, sessionId: updated.telemetry.sessionId });
+    }
+    for (const event of buildVoiceProviderSwitchEvents(
+      current.stt,
+      updated.stt,
+      current.tts,
+      updated.tts,
+      Date.now() - startedAt,
+    )) {
+      reportEvent(event);
     }
     // Restart writing scan scheduler when scanIntervalSeconds or enabled flag changes.
     const prevInterval = current.agents.writingAssistant.scanIntervalSeconds;
