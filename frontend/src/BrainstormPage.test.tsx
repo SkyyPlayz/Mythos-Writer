@@ -946,3 +946,58 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
   });
 });
+
+// ─── SKY-1318: entity:list IPC error banner + retry CTA ──────────────────────
+
+describe('BrainstormPage — entity:list error banner', () => {
+  it('shows error banner when entity:list rejects', async () => {
+    mockEntityList.mockRejectedValue(new Error('vault not ready'));
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('brainstorm-entity-error')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('brainstorm-entity-error')).toHaveTextContent(
+      "Couldn't load entities",
+    );
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('does NOT show error banner when entity:list resolves (empty list)', async () => {
+    mockEntityList.mockResolvedValue({ entities: [] });
+    render(<BrainstormPage onClose={() => {}} />);
+
+    // Give the effect time to settle
+    await waitFor(() => expect(mockEntityList).toHaveBeenCalled());
+    expect(screen.queryByTestId('brainstorm-entity-error')).not.toBeInTheDocument();
+  });
+
+  it('does NOT show error banner when entity:list resolves with results', async () => {
+    mockEntityList.mockResolvedValue({
+      entities: [{ id: 'e1', name: 'Aria', type: 'character', path: 'entities/characters/Aria.md', createdAt: '', updatedAt: '' }],
+    });
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() => expect(mockEntityList).toHaveBeenCalled());
+    expect(screen.queryByTestId('brainstorm-entity-error')).not.toBeInTheDocument();
+  });
+
+  it('Retry button re-issues entity:list and clears the banner on success', async () => {
+    mockEntityList
+      .mockRejectedValueOnce(new Error('vault not ready'))
+      .mockResolvedValueOnce({ entities: [] });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('brainstorm-entity-error')).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('brainstorm-entity-error')).not.toBeInTheDocument(),
+    );
+    expect(mockEntityList).toHaveBeenCalledTimes(2);
+  });
+});

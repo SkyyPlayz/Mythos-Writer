@@ -136,6 +136,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
   const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
+  const [entityLoadError, setEntityLoadError] = useState(false);
   // SKY-20: routing state — list of pending prompts plus the folder catalog
   // pulled from the Notes Vault. Both are populated lazily on first need.
   const [routingPrompts, setRoutingPrompts] = useState<RoutingPrompt[]>([]);
@@ -598,6 +599,17 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     return () => { cancelled = true; };
   }, []);
 
+  const loadVaultEntities = useCallback(async () => {
+    setEntityLoadError(false);
+    try {
+      await window.api.entityList();
+    } catch {
+      setEntityLoadError(true);
+    }
+  }, []);
+
+  useEffect(() => { void loadVaultEntities(); }, [loadVaultEntities]);
+
   const submitContinuityAnswer = useCallback(async (issueId: string) => {
     const issue = continuityIssues.find((i) => i.id === issueId);
     if (!issue) return;
@@ -978,6 +990,18 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             )}
           </div>
           <div className="brainstorm-facts-list">
+            {entityLoadError && (
+              <div className="bs-entity-load-error" role="alert" data-testid="brainstorm-entity-error">
+                Couldn&apos;t load entities —{' '}
+                <button
+                  className="bs-entity-retry-btn"
+                  type="button"
+                  onClick={() => void loadVaultEntities()}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             {facts.length === 0 ? (
               <div className="brainstorm-facts-empty">
                 Named facts will appear here as Claude identifies them.
