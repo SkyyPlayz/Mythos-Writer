@@ -17,6 +17,18 @@ export interface ValidatePathResult {
  *   this module stays Electron-free).
  * - Does NOT create or modify anything on disk.
  */
+export function isExistingUsableVaultRoot(p: string): boolean {
+  if (!p || typeof p !== 'string') return false;
+  try {
+    const stat = fs.statSync(p);
+    if (!stat.isDirectory()) return false;
+    fs.accessSync(p, fs.constants.R_OK | fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function validatePathForVault(p: string, homeDir: string): ValidatePathResult {
   if (!p || typeof p !== 'string') {
     return { exists: false, isEmpty: true, writable: false, error: 'path must be a non-empty string' };

@@ -1,27 +1,44 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
+import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens } from './theme';
 import LeftRail from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
+import EntriesPanel from './EntriesPanel';
 import KanbanBoard from './KanbanBoard';
 import VaultGraphView from './VaultGraphView';
+import ManuscriptStructureView from './ManuscriptStructureView';
+import TimelineSpreadsheet from './TimelineSpreadsheet';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
+import SceneHistory from './SceneHistory';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
+import TourModal from './TourModal';
+import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import { useFocusMode } from './useFocusMode';
+import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
+import {
+  createInitialGettingStartedProgress,
+  gettingStartedReducer,
+  isGettingStartedVisible,
+  type GettingStartedItemId,
+  type GettingStartedProgress,
+} from './gettingStartedReducer';
+import TemplatePicker from './TemplatePicker';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -75,7 +92,7 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph';
+type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline' | 'entries';
 
 interface SearchResultItem {
   docId: string;
@@ -100,9 +117,12 @@ interface AppMenuBarProps {
   onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
+  onOpenTour: () => void;
+  onOpenExport?: (scope: ExportScope) => void;
+  requestText: (label: string) => Promise<string | null>;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -122,6 +142,11 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
       .catch((err: Error) => alert(`Export failed: ${err.message}`));
   };
 
+  const handleExportFormat = () => {
+    if (!selectedStoryId) { alert('Select a story first to export.'); return; }
+    onOpenExport?.({ kind: 'story', storyId: selectedStoryId });
+  };
+
   const handleExportDocx = () => {
     if (!selectedStoryId) {
       alert('Select a story first to export it as DOCX.');
@@ -139,7 +164,7 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} onSwitched={onProjectSwitched} />
+      <ProjectSwitcher activeVaultRoot={activeVaultRoot} onSwitched={onProjectSwitched} requestText={requestText} />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -163,6 +188,8 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Markdown…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportFormat(); }}>Export Plain Text…</button>
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); onOpenHistory(); }}>Prompt History…</button>
               <div className="app-menu-separator" role="separator" />
@@ -229,6 +256,28 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         >
           Graph
         </button>
+        <button
+          className={`app-menu-view-btn${view === 'structure' ? ' active' : ''}`}
+          onClick={() => onSetView('structure')}
+          aria-pressed={view === 'structure'}
+        >
+          Structure
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'timeline' ? ' active' : ''}`}
+          onClick={() => onSetView('timeline')}
+          aria-pressed={view === 'timeline'}
+        >
+          Timeline
+        </button>
+        <button
+          className={`app-menu-view-btn${view === 'entries' ? ' active' : ''}`}
+          onClick={() => onSetView('entries')}
+          aria-pressed={view === 'entries'}
+          data-testid="view-btn-entries"
+        >
+          Entries
+        </button>
       </div>
       <div className="writing-mode-selector" aria-label="Writing mode">
         <button
@@ -273,6 +322,15 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         title="Distraction-free mode (F11)"
       >
         ⊡
+      </button>
+      <button
+        className="app-menu-tour-btn"
+        onClick={onOpenTour}
+        aria-label="Quick tour"
+        title="Quick tour"
+        data-testid="toolbar-tour-btn"
+      >
+        ?
       </button>
       <button
         className="app-menu-gear-btn"
@@ -390,6 +448,11 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
     () => [...story.chapters].sort((a, b) => a.order - b.order),
     [story.chapters],
   );
+  const activeSceneRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedSceneId]);
 
   return (
     <div className="book-outline-view">
@@ -413,6 +476,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                       return (
                         <div
                           key={scene.id}
+                          ref={isActiveScene ? activeSceneRef : null}
                           className={`book-outline-scene${isActiveScene ? ' active-scene' : ''}`}
                           role="button"
                           tabIndex={0}
@@ -420,7 +484,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') { e.preventDefault(); onSelectScene(scene, chapter); }
                           }}
-                          aria-pressed={isActiveScene}
+                          aria-current={isActiveScene ? 'true' : undefined}
                         >
                           {scene.title}
                         </div>
@@ -438,6 +502,21 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
 }
 
 // ─────────────────────────────────────
+
+/** Match a KeyboardEvent against a shortcut string like 'ctrl+shift+v' or 'alt+v'. */
+function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
+  const parts = shortcut.toLowerCase().split('+');
+  const key = parts[parts.length - 1];
+  const wantsCtrl = parts.includes('ctrl');
+  const wantsShift = parts.includes('shift');
+  const wantsAlt = parts.includes('alt');
+  return (
+    e.key.toLowerCase() === key &&
+    !!(e.ctrlKey || e.metaKey) === wantsCtrl &&
+    e.shiftKey === wantsShift &&
+    e.altKey === wantsAlt
+  );
+}
 
 interface DragState {
   target: 'left' | 'right';
@@ -462,22 +541,55 @@ export default function DesktopShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [budgetToast, setBudgetToast] = useState<string | null>(null);
   const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Voice state (SKY-322) ───
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceToast, setVoiceToast] = useState<string | null>(null);
+  const voiceSessionRef = useRef<string | null>(null);
+  const speechRecogRef = useRef<SpeechRecognition | null>(null);
+  const pttDownRef = useRef(false);
+  const voiceToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
+  const [exportScope, setExportScope] = useState<ExportScope | null>(null);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
+  const [showSceneHistory, setShowSceneHistory] = useState(false);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
+  const [restoreKey, setRestoreKey] = useState(0);
+  /** SKY-204: currently open vault note path (relative to notes vault root). */
+  const [openedNotePath, setOpenedNotePath] = useState<string | null>(null);
+  /** SKY-204: word count of the currently open vault note, updated live. */
+  const [openedNoteWordCount, setOpenedNoteWordCount] = useState(0);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
+
+  // ─── SKY-863: Sync conflict modal state ───
+  const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
+  const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+
+  // ─── Voice session state (SKY-896) ───
+  const [voiceListening, setVoiceListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const voiceRecognitionRef = useRef<any>(null);
+  const voicePttActiveRef = useRef(false);
   const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
+  // SKY-192: entity registry for the auto-linker
+  const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
 
   // SKY-130: cross-restart scene/cursor restore refs
   const pendingCursorPosRef = useRef<number | null>(null);
@@ -488,6 +600,77 @@ export default function DesktopShell() {
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
   }, []);
+
+  // SKY-152: seenTips — memoized to avoid new object reference on every render
+  const seenTips = useMemo<Record<string, boolean>>(
+    () => (appSettings as (AppSettings & { seenTips?: Record<string, boolean> }) | null)?.seenTips ?? {},
+    [appSettings],
+  );
+  const handleDismissTip = useCallback(async (key: string) => {
+    if (!appSettings) return;
+    const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
+    setAppSettings(updatedSettings);
+    window.api.settingsSet(updatedSettings).catch(() => {});
+  }, [appSettings, seenTips]);
+
+  const persistGettingStartedProgress = useCallback((next: GettingStartedProgress) => {
+    setGettingStartedProgress(next);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, gettingStartedProgress: next } as AppSettings;
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const checkGettingStartedItem = useCallback((itemId: GettingStartedItemId) => {
+    setGettingStartedProgress((prev) => {
+      if (!prev) return prev;
+      const next = gettingStartedReducer(prev, { type: 'CHECK_ITEM', itemId });
+      setAppSettings((settings) => {
+        if (!settings) return settings;
+        const updated = { ...settings, gettingStartedProgress: next } as AppSettings;
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+      return next;
+    });
+  }, []);
+
+  const handleDismissGettingStarted = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleManualSnapshot = useCallback(async () => {
+    if (!selectedScene) return;
+    const content = selectedScene.blocks.map(b => b.content).join('\n\n');
+    try {
+      await (window as any).api.snapshotSave?.(selectedScene.id, content);
+      setSnapshotSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      // non-fatal
+    }
+  }, [selectedScene]);
+
+  const handleSceneRestore = useCallback((content: string) => {
+    if (!selectedScene) return;
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
+    setRestoreKey(k => k + 1);
+    setShowSceneHistory(false);
+  }, [selectedScene]);
 
   const handleJumpToText = useCallback((text: string) => {
     editorApiRef.current?.jumpToText(text);
@@ -526,7 +709,13 @@ export default function DesktopShell() {
     } else {
       setBetaReadComments([]);
     }
-  }, [selectedScene?.id, loadBetaReadComments]);
+  }, [selectedScene, loadBetaReadComments]);
+
+  useEffect(() => {
+    setSnapshotSavedAt(null);
+    setShowSceneHistory(false);
+    setRestoreKey(0);
+  }, [selectedScene?.id]);
 
   const handleBetaReadRequest = useCallback(async (selectedText: string) => {
     if (!selectedScene || betaReadLoading) return;
@@ -568,6 +757,160 @@ export default function DesktopShell() {
     };
   }, []);
 
+  // ─── Voice input (SKY-322) ───
+
+  const stopVoice = useCallback(async () => {
+    if (speechRecogRef.current) {
+      speechRecogRef.current.onresult = null;
+      speechRecogRef.current.onerror = null;
+      try { speechRecogRef.current.stop(); } catch { /* already stopped */ }
+      speechRecogRef.current = null;
+    }
+    if (voiceRecognitionRef.current) {
+      try { voiceRecognitionRef.current.stop(); } catch { /* already stopped */ }
+      voiceRecognitionRef.current = null;
+    }
+    const sessionId = voiceSessionRef.current;
+    voiceSessionRef.current = null;
+    pttDownRef.current = false;
+    voicePttActiveRef.current = false;
+    setVoiceActive(false);
+    setVoiceListening(false);
+    if (sessionId) {
+      window.api.voiceStop(sessionId).catch(() => {});
+    }
+  }, []);
+
+  const startVoice = useCallback(async () => {
+    if (voiceSessionRef.current) return;
+    const micDeviceId = appSettings?.voice?.micDeviceId;
+    let sessionId: string;
+    try {
+      const res = await window.api.voiceStart(micDeviceId) as { sessionId: string };
+      sessionId = res.sessionId;
+    } catch {
+      setVoiceToast('Failed to start voice input.');
+      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+      voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      return;
+    }
+    voiceSessionRef.current = sessionId;
+    setVoiceActive(true);
+    setVoiceListening(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      setVoiceToast('Web Speech API not available.');
+      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+      voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      voiceSessionRef.current = null;
+      setVoiceActive(false);
+      window.api.voiceStop(sessionId).catch(() => {});
+      return;
+    }
+
+    const recog = new SpeechRecognitionCtor();
+    recog.continuous = true;
+    recog.interimResults = true;
+    recog.onresult = (evt) => {
+      const sid = voiceSessionRef.current;
+      if (!sid) return;
+      for (let i = evt.resultIndex; i < evt.results.length; i++) {
+        const r = evt.results[i];
+        if (r[0]) {
+          window.api.voiceLocalTranscript(sid, r[0].transcript, r.isFinal);
+        }
+      }
+    };
+    recog.onerror = (evt) => {
+      const msg = evt.error === 'not-allowed'
+        ? 'Microphone permission denied. Check your system settings.'
+        : evt.error !== 'aborted' ? 'Voice recognition error. Please try again.' : null;
+      if (msg) {
+        setVoiceToast(msg);
+        if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+        voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      }
+      const sid = voiceSessionRef.current;
+      speechRecogRef.current = null;
+      voiceSessionRef.current = null;
+      pttDownRef.current = false;
+      setVoiceActive(false);
+      if (sid) window.api.voiceStop(sid).catch(() => {});
+    };
+    speechRecogRef.current = recog;
+    voiceRecognitionRef.current = recog;
+    recog.start();
+  }, [appSettings?.voice?.micDeviceId]);
+
+  // Subscribe to transcript push events — insert final text at cursor
+  useEffect(() => {
+    if (!window.api?.onVoiceTranscript) return;
+    const unsub = window.api.onVoiceTranscript(({ text, isFinal }) => {
+      if (!isFinal) return;
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (editorApiRef.current) {
+        editorApiRef.current.insertText(trimmed + ' ');
+      } else {
+        setVoiceToast('Voice captured — open a scene to insert text.');
+        if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+        voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      }
+    });
+    return () => {
+      unsub();
+      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
+    };
+  }, []);
+
+  // Keyboard shortcuts: toggle (Ctrl+Shift+V) and push-to-talk (Alt+V hold)
+  useEffect(() => {
+    if (!appSettings?.voice?.enabled) return;
+    const voiceMode = appSettings.voice.voiceMode ?? 'toggle';
+    const toggleShortcut = appSettings.voice.toggleShortcut ?? 'ctrl+shift+v';
+    const pttKey = appSettings.voice.pttKey ?? 'alt+v';
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (voiceMode === 'toggle' && matchesShortcut(e, toggleShortcut)) {
+        e.preventDefault();
+        if (voiceSessionRef.current) {
+          stopVoice().catch(() => {});
+        } else {
+          startVoice().catch(() => {});
+        }
+      } else if (voiceMode === 'push-to-talk' && matchesShortcut(e, pttKey)) {
+        if (!pttDownRef.current) {
+          e.preventDefault();
+          pttDownRef.current = true;
+          startVoice().catch(() => {});
+        }
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (voiceMode === 'push-to-talk' && matchesShortcut(e, pttKey)) {
+        pttDownRef.current = false;
+        stopVoice().catch(() => {});
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [
+    appSettings?.voice?.enabled,
+    appSettings?.voice?.voiceMode,
+    appSettings?.voice?.toggleShortcut,
+    appSettings?.voice?.pttKey,
+    startVoice,
+    stopVoice,
+  ]);
+
   const loadVault = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -584,6 +927,13 @@ export default function DesktopShell() {
       }
       if (s) {
         setAppSettings(s);
+        setGettingStartedProgress(
+          createInitialGettingStartedProgress(
+            undefined,
+            s.onboardingStartMode,
+            s.gettingStartedProgress,
+          ),
+        );
         applyTheme(s.theme);
         // Load background image data URL if a custom path is stored
         const lg = s.liquidNeon;
@@ -596,6 +946,23 @@ export default function DesktopShell() {
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
+
+      // SKY-863: run conflict check after vault is ready.
+      // Non-fatal: errors here must not prevent opening the vault.
+      try {
+        if (typeof window.api?.checkVaultConflicts === 'function') {
+          const conflicts = await window.api.checkVaultConflicts();
+          if (conflicts && !conflicts.dismissed) {
+            if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
+              setSyncConflictResolved(conflicts.resolved ?? []);
+              setSyncLockfileConflict(conflicts.lockfileConflict ?? null);
+              setSyncModalOpen(true);
+            }
+          }
+        }
+      } catch {
+        // conflict check is best-effort
+      }
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
     } finally {
@@ -606,6 +973,57 @@ export default function DesktopShell() {
   useEffect(() => {
     loadVault();
   }, [loadVault]);
+
+  // SKY-863: handle sync conflict modal dismiss
+  const handleSyncConflictContinue = useCallback(async (suppress: boolean) => {
+    setSyncModalOpen(false);
+    if (suppress) {
+      try {
+        await window.api?.dismissSyncWarning?.();
+      } catch {
+        // non-fatal
+      }
+    }
+  }, []);
+
+  // SKY-204: auto-open today's daily note when journal mode is enabled.
+  // Runs once after settings load; creates the note silently in the background.
+  useEffect(() => {
+    if (!appSettings?.journalMode?.enabled) return;
+    window.api.dailyNoteOpenToday().then((r) => {
+      if (r.created) {
+        // Note was just created — open it automatically.
+        setOpenedNotePath(r.path);
+        setSelectedScene(null);
+        setSelectedChapter(null);
+        setSelectedStory(null);
+        setSelectedEntity(null);
+      }
+    }).catch(() => {});
+  // Only run when journal mode enabled setting becomes truthy (settings load or toggle).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appSettings?.journalMode?.enabled]);
+
+  // SKY-192: load entities for the auto-linker on mount and vault changes
+  const loadEntities = useCallback(async () => {
+    try {
+      const res = await window.api.entityList();
+      setAllEntities(res.entities ?? []);
+    } catch {
+      // non-fatal; auto-linker just won't suggest anything
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEntities();
+  }, [loadEntities]);
+
+  useEffect(() => {
+    const off = window.api.onVaultFileChanged(() => {
+      loadEntities();
+    });
+    return off;
+  }, [loadEntities]);
 
   // Handle project switches pushed from main process
   useEffect(() => {
@@ -676,11 +1094,37 @@ export default function DesktopShell() {
     persistLayout(newLayout);
   }, [layout, persistLayout]);
 
+  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
+    checkGettingStartedItem(itemId);
+    if (itemId === 'brainstorm') {
+      setView('brainstorm');
+      return;
+    }
+    if (itemId === 'notes-vault') {
+      setView('editor');
+      persistLayout({ ...layout, leftTab: 'vault' });
+      return;
+    }
+    if (itemId === 'add-character') {
+      setView('brainstorm');
+      return;
+    }
+    if (itemId === 'write-scene') {
+      setView('editor');
+      if (!selectedScene) editorApiRef.current?.focus();
+    }
+  }, [checkGettingStartedItem, layout, selectedScene, persistLayout]);
+
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // ? key (with or without Shift) opens the keyboard shortcuts help dialog,
-      // but not when focus is inside a text input or contenteditable.
+      // Cmd/Ctrl+/ opens the keyboard shortcuts dialog from anywhere.
+      if (e.key === '/' && (e.ctrlKey || e.metaKey) && !e.altKey) {
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+      // ? key opens the keyboard shortcuts dialog, but not from text inputs.
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const target = e.target as HTMLElement;
         const inText =
@@ -695,6 +1139,18 @@ export default function DesktopShell() {
       }
 
       const mod = e.metaKey || e.ctrlKey;
+      // Ctrl/Cmd+, — open Settings (standard platform convention for preferences)
+      if (mod && !e.shiftKey && !e.altKey && e.key === ',') {
+        e.preventDefault();
+        setSettingsOpen(true);
+        return;
+      }
+      // Ctrl+K — open global vault search
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setGlobalSearchOpen(true);
+        return;
+      }
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
@@ -709,7 +1165,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen]);
 
   // ─── Panel resize drag handlers ───
 
@@ -785,6 +1241,10 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
     persistSceneMarkdown(updatedScene);
     const content = blocks.map((b) => b.content).join('\n\n');
+    if (content.trim()) {
+      checkGettingStartedItem('write-scene');
+      setSeenEmptySceneHints((prev) => new Set(prev).add(selectedScene.id));
+    }
     (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
     // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
     if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
@@ -792,7 +1252,7 @@ export default function DesktopShell() {
       setSaveState('saved');
       saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
     }, 1200);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem]);
 
   const handleDraftStateChange = useCallback((state: DraftState) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
@@ -838,6 +1298,31 @@ export default function DesktopShell() {
     ));
   }, [stories, updateManifest, requestText]);
 
+  const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
+    setSelectedScene(scene);
+    setSelectedChapter(chapter);
+    setSelectedStory(story);
+    setSelectedEntity(null);
+    setOpenedNotePath(null);
+    setVaultContext('file');
+    editorApiRef.current?.focus();
+    setTimeout(() => {
+      if (document.activeElement?.classList.contains('vb-rename-input')) return;
+      editorApiRef.current?.focus();
+    }, 0);
+    if (!restoreInProgressRef.current) {
+      // User-initiated open: clear any pending cursor restore and reset cursor to 0
+      pendingCursorPosRef.current = null;
+      // SKY-130: persist the newly active scene (cursor will be updated as user types/scrolls)
+      window.api.sessionSaveScene({
+        sceneId: scene.id,
+        scenePath: scene.path,
+        scrollTop: 0,
+        cursorLine: 0,
+      }).catch(() => {});
+    }
+  }, []);
+
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
     if (!title?.trim()) return;
@@ -859,8 +1344,11 @@ export default function DesktopShell() {
         ),
       }
     ));
+    // Auto-navigate to the newly created scene so the editor opens immediately.
+    handleSelectScene(scene, chapter, story);
+    setViewDepth('scene');
     (window as any).api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, updateManifest, requestText]);
+  }, [stories, updateManifest, requestText, handleSelectScene]);
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
     const updatedStories = stories.map((s) =>
@@ -880,24 +1368,46 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
 
-  const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
-    setSelectedScene(scene);
-    setSelectedChapter(chapter);
-    setSelectedStory(story);
-    setSelectedEntity(null);
-    setVaultContext('file');
-    if (!restoreInProgressRef.current) {
-      // User-initiated open: clear any pending cursor restore and reset cursor to 0
-      pendingCursorPosRef.current = null;
-      // SKY-130: persist the newly active scene (cursor will be updated as user types/scrolls)
-      window.api.sessionSaveScene({
-        sceneId: scene.id,
-        scenePath: scene.path,
-        scrollTop: 0,
-        cursorLine: 0,
-      }).catch(() => {});
-    }
-  }, []);
+  const handleMoveScene = useCallback((
+    storyId: string,
+    sceneId: string,
+    fromChapterId: string,
+    toChapterId: string,
+    insertBeforeSceneId: string | null,
+  ) => {
+    const updatedStories = stories.map((s) => {
+      if (s.id !== storyId) return s;
+      const fromChapter = s.chapters.find((c) => c.id === fromChapterId);
+      if (!fromChapter) return s;
+      const scene = fromChapter.scenes.find((sc) => sc.id === sceneId);
+      if (!scene) return s;
+      const updatedChapters = s.chapters.map((ch) => {
+        if (ch.id === fromChapterId) {
+          const remaining = ch.scenes
+            .filter((sc) => sc.id !== sceneId)
+            .map((sc, idx) => ({ ...sc, order: idx }));
+          return { ...ch, scenes: remaining };
+        }
+        if (ch.id === toChapterId) {
+          const withoutScene = ch.scenes.filter((sc) => sc.id !== sceneId);
+          const insertIdx = insertBeforeSceneId
+            ? withoutScene.findIndex((sc) => sc.id === insertBeforeSceneId)
+            : withoutScene.length;
+          const idx = insertIdx === -1 ? withoutScene.length : insertIdx;
+          const updatedScene = { ...scene, chapterId: toChapterId, order: idx };
+          const newScenes = [
+            ...withoutScene.slice(0, idx),
+            updatedScene,
+            ...withoutScene.slice(idx),
+          ].map((sc, i) => ({ ...sc, order: i }));
+          return { ...ch, scenes: newScenes };
+        }
+        return ch;
+      });
+      return { ...s, chapters: updatedChapters };
+    });
+    updateManifest(updatedStories);
+  }, [stories, updateManifest]);
 
   // SKY-127: Update window chrome neon border context based on selected vault item
   useEffect(() => {
@@ -907,6 +1417,52 @@ export default function DesktopShell() {
       document.documentElement.removeAttribute('data-context');
     }
   }, [vaultContext]);
+
+  // Insert final voice transcripts into the active editor
+  useEffect(() => {
+    if (!window.api.onVoiceTranscript) return;
+    return window.api.onVoiceTranscript(({ text, isFinal }) => {
+      if (isFinal && text.trim()) editorApiRef.current?.insertText(text.trim() + ' ');
+    });
+  }, []);
+
+  // Voice toggle / push-to-talk keyboard shortcut: Ctrl+Shift+M
+  useEffect(() => {
+    if (!appSettings?.voice?.enabled) return;
+    const pttMode = appSettings.voice.pushToTalkMode ?? false;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || !e.shiftKey || (e.key !== 'M' && e.key !== 'm')) return;
+      e.preventDefault();
+      if (pttMode) {
+        if (!voicePttActiveRef.current) {
+          voicePttActiveRef.current = true;
+          startVoice();
+        }
+      } else {
+        if (voiceSessionRef.current) stopVoice(); else startVoice();
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!pttMode || !voicePttActiveRef.current) return;
+      // Stop on release of any key in the combo
+      if (e.key === 'M' || e.key === 'm' || e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
+        stopVoice();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [appSettings?.voice?.enabled, appSettings?.voice?.pushToTalkMode, startVoice, stopVoice]);
+
+  // Cleanup any active voice session on unmount
+  useEffect(() => () => { stopVoice(); }, [stopVoice]);
 
   // SKY-130: restore last-opened scene + cursor after vault loads
   useEffect(() => {
@@ -929,6 +1485,7 @@ export default function DesktopShell() {
     // Scene not found (deleted/moved) — silently skip per spec
   }, [loading, appSettings, stories, handleSelectScene]);
 
+  // SKY-206: keep outline highlight in sync with the active scene (immediate on selection change)
   // SKY-130: debounced cursor persistence as user types/navigates
   const handleCursorPosChange = useCallback((pos: number) => {
     if (!selectedScene) return;
@@ -943,13 +1500,37 @@ export default function DesktopShell() {
     }, 1000);
   }, [selectedScene]);
 
-  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories
+  // Navigate to a scene from a backlink click by looking it up by path in the loaded stories.
+  // If no scene matches, treat the path as a vault note and open it in the NoteViewer (SKY-204).
   const handleOpenSceneByPath = useCallback((scenePath: string) => {
     for (const story of stories) {
       for (const chapter of story.chapters) {
         const scene = chapter.scenes.find((sc) => sc.path === scenePath);
         if (scene) {
+          setOpenedNotePath(null);
           handleSelectScene(scene, chapter, story);
+          return;
+        }
+      }
+    }
+    // Not a story scene — open as a vault note.
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
+    setSelectedEntity(null);
+    setOpenedNotePath(scenePath);
+    checkGettingStartedItem('notes-vault');
+  }, [stories, handleSelectScene, checkGettingStartedItem]);
+
+  // SKY-795 §4 — Enter key on the timeline jumps into the editor for the focused scene.
+  const handleOpenSceneById = useCallback((sceneId: string) => {
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+        if (scene) {
+          setOpenedNotePath(null);
+          handleSelectScene(scene, chapter, story);
+          setView('editor');
           return;
         }
       }
@@ -961,7 +1542,21 @@ export default function DesktopShell() {
     setSelectedScene(null);
     setSelectedChapter(null);
     setSelectedStory(null);
-  }, []);
+    if (entity.type === 'character') checkGettingStartedItem('add-character');
+  }, [checkGettingStartedItem]);
+
+  // SKY-616: navigate to entity page when user clicks an @-mention chip
+  const handleEntityMentionClick = useCallback((entityId: string) => {
+    window.api.entityRead(entityId).then((entity) => {
+      if (entity) {
+        setSelectedEntity(entity);
+        setSelectedScene(null);
+        setSelectedChapter(null);
+        setSelectedStory(null);
+        if (entity.type === 'character') checkGettingStartedItem('add-character');
+      }
+    }).catch(() => {});
+  }, [checkGettingStartedItem]);
 
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
@@ -1181,20 +1776,44 @@ export default function DesktopShell() {
   };
 
   const writingMode: WritingMode = layout.writingMode ?? 'normal';
-  const focusPrefs: FocusPrefs = layout.focusPrefs ?? { showLeftSidebar: false, showRightSidebar: false, showBottomBar: false };
+  const focusPrefs: FocusPrefs = {
+    showLeftSidebar: false, showRightSidebar: false, showBottomBar: false,
+    showTitleBar: true, showStatusBar: true, showTabBar: true,
+    showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+    ...layout.focusPrefs,
+  };
+  const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
   const showRightSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
+  const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
+  const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
+  const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
+
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const showTemplateCta =
+    appSettings?.onboardingStartMode === 'blank' &&
+    !(gettingStartedProgress?.completedItems.includes('write-scene')) &&
+    !(appSettings.firstLaunchAt && Date.now() - new Date(appSettings.firstLaunchAt).getTime() > SEVEN_DAYS_MS);
 
   const focusWordCount = selectedScene
     ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
     : 0;
   const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
 
+  const shellClasses = [
+    'desktop-shell',
+    `writing-mode-${writingMode}`,
+    distractionFree && 'distraction-free',
+    inFocusOrDF && !focusPrefs.showSidebarButtons && 'focus-hide-sidebar-btns',
+    inFocusOrDF && !focusPrefs.showScrollbars && 'focus-hide-scrollbars',
+    inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={`desktop-shell writing-mode-${writingMode}${distractionFree ? ' distraction-free' : ''}`}>
+    <div className={shellClasses}>
       <UpdateBanner />
-      {!distractionFree && (
+      {showTitleBar && (
         <AppMenuBar
           view={view}
           onSetView={setView}
@@ -1209,9 +1828,12 @@ export default function DesktopShell() {
           onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
+          onOpenTour={() => setTourOpen(true)}
+          onOpenExport={(scope: ExportScope) => setExportScope(scope)}
+          requestText={requestText}
         />
       )}
-      {distractionFree && (
+      {showStatusOverlay && (
         <FocusModeOverlay
           wordCount={focusWordCount}
           readingMinutes={focusReadingMinutes}
@@ -1226,6 +1848,8 @@ export default function DesktopShell() {
             applyTheme(s.theme);
             applyLiquidNeonTokens(s.liquidNeon);
           }}
+          focusPrefs={focusPrefs}
+          onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
         />
       )}
       {historyOpen && (
@@ -1241,8 +1865,23 @@ export default function DesktopShell() {
       {shortcutsOpen && (
         <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
+      {tourOpen && (
+        <TourModal onClose={() => setTourOpen(false)} />
+      )}
+      {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
+      {templatePickerOpen && (
+        <TemplatePicker
+          onApplied={() => { setTemplatePickerOpen(false); }}
+          onClose={() => setTemplatePickerOpen(false)}
+        />
+      )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} />
+        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} onFirstSubmit={() => checkGettingStartedItem('brainstorm')} />
+      )}
+      {view === 'entries' && (
+        <div className="shell-entries">
+          <EntriesPanel storyTitle={selectedStory?.title ?? ''} />
+        </div>
       )}
       {view === 'kanban' && (
         <div className="shell-kanban">
@@ -1266,6 +1905,27 @@ export default function DesktopShell() {
           <VaultGraphView onOpenNote={handleOpenSceneByPath} />
         </div>
       )}
+      {view === 'timeline' && (
+        <div className="shell-timeline">
+          <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
+        </div>
+      )}
+      {view === 'structure' && (
+        <div className="shell-structure">
+          <ManuscriptStructureView
+            story={selectedStory ?? null}
+            onSelectScene={(scene, chapter, story) => {
+              handleSelectScene(scene, chapter, story);
+              setView('editor');
+            }}
+            onReorderScenes={handleReorderScenes}
+            onMoveScene={handleMoveScene}
+            onCreateScene={createScene}
+            onCreateChapter={createChapter}
+            vaultRoot={activeVaultRoot}
+          />
+        </div>
+      )}
       {view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
       {showLeftSidebar && (
@@ -1276,7 +1936,7 @@ export default function DesktopShell() {
             stories={stories}
             selectedSceneId={selectedScene?.id ?? null}
             selectedEntityId={selectedEntity?.id ?? null}
-            onSelectScene={handleSelectScene}
+            onSelectScene={(sc, ch, story) => { handleSelectScene(sc, ch, story); setViewDepth('scene'); }}
             onSelectEntity={handleSelectEntity}
             onCreateStory={createStory}
             onCreateChapter={createChapter}
@@ -1284,6 +1944,15 @@ export default function DesktopShell() {
             onReorderScenes={handleReorderScenes}
             onOpenVaultPath={handleOpenSceneByPath}
             onContextChange={setVaultContext}
+            journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
+          onExport={(scope: ExportScope) => setExportScope(scope)}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onEntityCreated={(entity) => {
+              if (entity.type === 'character' && gettingStartedProgress) {
+                persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'CHECK_ITEM', itemId: 'add-character' }));
+              }
+            }}
           />
         </div>
       )}
@@ -1312,7 +1981,7 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {selectedStory && !distractionFree && (
+          {selectedStory && showTabBar && (
             <DepthSlider
               depth={viewDepth}
               onDepthChange={handleViewDepthChange}
@@ -1347,33 +2016,71 @@ export default function DesktopShell() {
               }}
             />
           ) : selectedScene ? (
-            <div className="shell-editor-beta-wrap">
-              <BlockEditor
-                key={selectedScene.id}
-                scene={selectedScene}
-                onBlocksChange={handleBlocksChange}
-                onDraftStateChange={handleDraftStateChange}
-                onEditorReady={handleEditorReady}
-                onBetaReadRequest={handleBetaReadRequest}
-                wikiLinkSuggestions={wikiLinkSuggestions}
-                onAcceptWikiLink={handleEditorAcceptWikiLink}
-                onRejectWikiLink={handleEditorRejectWikiLink}
-                initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                onCursorPosChange={handleCursorPosChange}
-              />
-              {(betaReadComments.length > 0 || betaReadLoading) && (
-                <div className="shell-beta-margin">
-                  {betaReadLoading && (
-                    <div className="br-loading" aria-live="polite">
-                      <span className="wa-spinner" aria-hidden="true" />
-                      Reading…
-                    </div>
-                  )}
-                  <BetaReadMargin
-                    comments={betaReadComments}
-                    onDismiss={handleBetaReadDismiss}
-                  />
-                </div>
+            <div className="shell-editor-scene-wrap">
+              <div className="scene-snapshot-toolbar">
+                <button
+                  className="scene-snapshot-save"
+                  onClick={handleManualSnapshot}
+                >
+                  Save snapshot now
+                </button>
+                <span className="scene-autosave" aria-live="polite">
+                  {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
+                </span>
+                <button
+                  className="btn-history"
+                  onClick={() => setShowSceneHistory(true)}
+                  aria-label="Open scene history"
+                >
+                  History
+                </button>
+              </div>
+              <div className="shell-editor-beta-wrap">
+                <BlockEditor
+                  key={`${selectedScene.id}-${restoreKey}`}
+                  scene={selectedScene}
+                  onBlocksChange={handleBlocksChange}
+                  onDraftStateChange={handleDraftStateChange}
+                  onEditorReady={handleEditorReady}
+                  onBetaReadRequest={handleBetaReadRequest}
+                  wikiLinkSuggestions={wikiLinkSuggestions}
+                  onAcceptWikiLink={handleEditorAcceptWikiLink}
+                  onRejectWikiLink={handleEditorRejectWikiLink}
+                  autoLinkerEntities={allEntities}
+                  autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                  initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                  onCursorPosChange={handleCursorPosChange}
+                  onEntityClick={handleEntityMentionClick}
+                  emptySceneHint={
+                    isGettingStartedVisible(gettingStartedProgress) &&
+                    !seenEmptySceneHints.has(selectedScene.id)
+                      ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
+                      : ''
+                  }
+                />
+                {(betaReadComments.length > 0 || betaReadLoading) && (
+                  <div className="shell-beta-margin">
+                    {betaReadLoading && (
+                      <div className="br-loading" aria-live="polite">
+                        <span className="wa-spinner" aria-hidden="true" />
+                        Reading…
+                      </div>
+                    )}
+                    <BetaReadMargin
+                      comments={betaReadComments}
+                      onDismiss={handleBetaReadDismiss}
+                    />
+                  </div>
+                )}
+              </div>
+              {showSceneHistory && (
+                <SceneHistory
+                  sceneId={selectedScene.id}
+                  scenePath={selectedScene.path}
+                  currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                  onRestore={handleSceneRestore}
+                  onClose={() => setShowSceneHistory(false)}
+                />
               )}
             </div>
           ) : selectedEntity ? (
@@ -1385,14 +2092,40 @@ export default function DesktopShell() {
               onDeleted={() => setSelectedEntity(null)}
               onOpenScene={handleOpenSceneByPath}
             />
+          ) : openedNotePath ? (
+            // SKY-204: vault note viewer (daily notes and any other .md file)
+            <NoteViewer
+              key={openedNotePath}
+              path={openedNotePath}
+              onWordCountChange={setOpenedNoteWordCount}
+              onClose={() => setOpenedNotePath(null)}
+            />
           ) : (
             <div className="shell-editor-empty">
               <div className="shell-editor-empty-icon">✍️</div>
               <h2>Welcome to Mythos Writer</h2>
-              <p>Select a scene from the left panel to start writing.</p>
-              <p className="shell-editor-empty-sub">
-                No stories yet? Click the <strong>+</strong> button in the Stories panel to create your first story.
-              </p>
+              {stories.length === 0 ? (
+                <>
+                  <p>Create your first story to begin writing.</p>
+                  <button
+                    className="shell-editor-empty-cta"
+                    onClick={createStory}
+                    data-testid="shell-empty-new-story"
+                  >
+                    New Story
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Select a scene from the left panel to start writing.</p>
+                  <PaneTip
+                    tipKey="editor"
+                    text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                    seen={seenTips['editor'] ?? false}
+                    onDismiss={handleDismissTip}
+                  />
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1402,6 +2135,9 @@ export default function DesktopShell() {
             selectedChapter={selectedChapter}
             selectedStory={selectedStory}
             onNavigateScene={handleNavigateScene}
+            activeNotePath={openedNotePath}
+            activeNoteWordCount={openedNoteWordCount}
+            isVoiceActive={voiceActive}
           />
         )}
       </div>
@@ -1443,6 +2179,16 @@ export default function DesktopShell() {
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
             onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+            onGettingStartedAction={handleGettingStartedAction}
+            onDismissGettingStarted={handleDismissGettingStarted}
+            onToggleGsCollapsed={handleToggleGsCollapsed}
+            gettingStartedProgress={gettingStartedProgress}
+            onSelectScene={(sc, ch) => {
+              if (selectedStory) {
+                handleSelectScene(sc, ch, selectedStory);
+                setViewDepth('scene');
+              }
+            }}
           />
         </div>
       )}
@@ -1452,16 +2198,33 @@ export default function DesktopShell() {
           {budgetToast}
         </div>
       )}
-      {globalSearchOpen && (
-        <GlobalSearchPanel
-          onNavigate={(result) => {
-            handleSearchNavigate(result);
-            setGlobalSearchOpen(false);
-          }}
-          onClose={() => setGlobalSearchOpen(false)}
+      {voiceToast && (
+        <div className="voice-toast" role="status" aria-live="polite">
+          {voiceToast}
+        </div>
+      )}
+      {voiceListening && (
+        <div className="voice-listening-badge" role="status" aria-live="polite" aria-label="Voice input active">
+          Listening…
+        </div>
+      )}
+      <GlobalSearchPanel
+        open={globalSearchOpen}
+        defaultScope={view === 'editor' ? 'story' : view === 'brainstorm' ? 'notes' : 'both'}
+        onNavigate={(result) => {
+          handleSearchNavigate(result);
+          setGlobalSearchOpen(false);
+        }}
+        onClose={() => setGlobalSearchOpen(false)}
+      />
+      {promptModal}
+      {syncModalOpen && (
+        <SyncConflictModal
+          resolved={syncConflictResolved}
+          lockfileConflict={syncLockfileConflict}
+          onContinue={handleSyncConflictContinue}
         />
       )}
-      {promptModal}
     </div>
   );
 }

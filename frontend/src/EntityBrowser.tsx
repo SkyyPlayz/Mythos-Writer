@@ -1,34 +1,43 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EntityEntry, EntityType } from './types';
+import { NodeIcon } from './NodeIcon';
 import './EntityBrowser.css';
+
+// The 6 canonical display types; 'other' is kept in EntityType for data compat only.
+const TYPE_ORDER: EntityType[] = ['character', 'location', 'faction', 'item', 'event', 'concept'];
 
 const TYPE_LABELS: Record<EntityType, string> = {
   character: 'Characters',
   location: 'Locations',
+  faction: 'Factions',
   item: 'Items',
+  event: 'Events',
   concept: 'Concepts',
   other: 'Other',
 };
 
-const TYPE_ORDER: EntityType[] = ['character', 'location', 'item', 'concept', 'other'];
-
 const TYPE_ICONS: Record<EntityType, string> = {
   character: '👤',
   location: '📍',
+  faction: '⚔️',
   item: '💎',
+  event: '📅',
   concept: '💡',
   other: '📄',
 };
 
-interface CreateDialogProps {
-  onConfirm: (name: string, type: EntityType, aliases: string[], tags: string[]) => Promise<void>;
-  onCancel: () => void;
-}
-
 const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
+const MAX_NAME_LENGTH = 256;
+
+interface CreateDialogProps {
+  onConfirm: (name: string, type: EntityType, aliases: string[], tags: string[]) => Promise<void>;
+  onCancel: () => void;
+  existingEntities?: EntityEntry[];
+}
+
+function CreateDialog({ onConfirm, onCancel, existingEntities = [] }: CreateDialogProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<EntityType>('character');
   const [aliases, setAliases] = useState('');
@@ -37,10 +46,19 @@ function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  const isDuplicate = (testName: string, testType: EntityType): boolean => {
+    return existingEntities.some((e) => e.type === testType && e.name === testName);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) { setError('Name is required.'); return; }
+    if (trimmed.length > MAX_NAME_LENGTH) {
+      setError(`Name must be ${MAX_NAME_LENGTH} characters or less.`);
+      return;
+    }
+    if (isDuplicate(trimmed, type)) { setError('An entity with this name already exists in this type.'); return; }
     setSaving(true);
     try {
       const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
@@ -143,14 +161,13 @@ function CreateDialog({ onConfirm, onCancel }: CreateDialogProps) {
 interface Props {
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId?: string | null;
+  onEntityCreated?: (entity: EntityEntry) => void;
 }
 
-export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Props) {
+export default function EntityBrowser({ onSelectEntity, selectedEntityId, onEntityCreated }: Props) {
   const [entities, setEntities] = useState<EntityEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Set<EntityType>>(
-    new Set<EntityType>(['character', 'location', 'item', 'concept', 'other'])
-  );
+  const [expanded, setExpanded] = useState<Set<EntityType>>(new Set(TYPE_ORDER));
   const [showCreate, setShowCreate] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const createBtnRef = useRef<HTMLButtonElement>(null);
@@ -186,6 +203,10 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
     createBtnRef.current?.focus();
     await loadEntities();
     onSelectEntity(created);
+    onEntityCreated?.(created);
+    // SKY-324: fire-and-forget — brainstorm agent generates a description for
+    // this entry and writes it to the Notes Vault in the background.
+    void window.api.brainstormEnrichEntry({ name, type }).catch(() => undefined);
   };
 
   const handleDelete = async (id: string) => {
@@ -201,23 +222,19 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
     {} as Record<EntityType, EntityEntry[]>
   );
 
-  const hasAny = entities.length > 0;
-
   return (
     <div className="entity-browser">
       <div className="entity-browser-toolbar">
-        <button ref={createBtnRef} className="entity-btn entity-btn-primary entity-btn-sm" onClick={() => setShowCreate(true)}>
-          + New Entity
-        </button>
-      </div>
-
-      {!hasAny && (
-        <div className="entity-empty">
-          <div className="entity-empty-icon">🗃️</div>
-          <p>No entities yet.</p>
-          <p className="entity-empty-sub">Create characters, locations, and items to track your world.</p>
+        <div className="entity-browser-toolbar-inner">
+          <button
+            ref={createBtnRef}
+            className="entity-btn entity-btn-primary entity-btn-sm"
+            onClick={() => setShowCreate(true)}
+          >
+            + New Entity
+          </button>
         </div>
-      )}
+      </div>
 
       {TYPE_ORDER.map((type) => {
         const items = grouped[type];
@@ -246,6 +263,9 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
                       onClick={() => onSelectEntity(entity)}
                       aria-pressed={entity.id === selectedEntityId}
                     >
+                      <span className="entity-item-icon" aria-hidden="true">
+                        <NodeIcon icon={entity.properties?.icon as string | undefined} fallback={TYPE_ICONS[type]} />
+                      </span>
                       <span className="entity-item-name">{entity.name}</span>
                     </button>
                     {deleteConfirm === entity.id ? (
@@ -285,8 +305,10 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId }: Prop
         <CreateDialog
           onConfirm={handleCreate}
           onCancel={() => { setShowCreate(false); createBtnRef.current?.focus(); }}
+          existingEntities={entities}
         />
       )}
     </div>
   );
 }
+

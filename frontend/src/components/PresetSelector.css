@@ -1,0 +1,139 @@
+.preset-selector {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.preset-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preset-selector-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent, #0ff);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+
+.preset-selector-chip:hover {
+  border-color: var(--accent, #0ff);
+  background: color-mix(in srgb, var(--accent, #0ff) 8%, transparent);
+}
+
+.preset-selector-chip:focus-visible {
+  outline: 2px solid var(--accent, #0ff);
+  outline-offset: 2px;
+}
+
+.preset-selector-chip-arrow {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.preset-selector-action-btn {
+  padding: 2px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.preset-selector-action-btn:hover {
+  border-color: var(--border-strong, #444);
+  color: var(--text-dim);
+}
+
+.preset-selector-action-btn:focus-visible {
+  outline: 2px solid var(--accent, #0ff);
+  outline-offset: 2px;
+}
+
+.preset-selector-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--bg-elevated, #1a1a1a);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.preset-selector-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.preset-selector-item:hover,
+.preset-selector-item--focused {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.preset-selector-item--active {
+  background: color-mix(in srgb, var(--accent, #0ff) 10%, transparent);
+}
+
+.preset-selector-check {
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--accent, #0ff);
+  font-size: 0.75rem;
+}
+
+.preset-selector-name {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.preset-selector-desc {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-selector-divider {
+  height: 1px;
+  background: var(--border-default);
+  margin: 4px 0;
+}
+
+.preset-selector-disabled-action {
+  padding: 5px 10px 6px 30px;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.preset-selector--compact .preset-selector-action-btn {
+  display: none;
+}

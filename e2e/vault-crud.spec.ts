@@ -36,7 +36,9 @@ const PROSE = 'The vault held every secret the kingdom had ever kept.';
 const STORY_TITLE = 'Vault Chronicles';
 const CHAPTER_TITLE = 'The First Chamber';
 const SCENE_TITLE = 'Descent';
-const ENTITY_NAME = 'Seraphine Dusk';
+// SKY-619 replaced TypePickerPopover with CreateDialog; TC-V-06 enters the
+// entity name explicitly in the dialog input.
+const ENTITY_NAME = 'New Character';
 const SCENE_RENAMED = 'Renamed Scene Title';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -86,13 +88,19 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  // Pass --headless when no display is available (CI / WSL without X server).
-  // --no-sandbox is required for Electron to spawn its renderer under Xvfb in CI
-  // (matches the packaged-app smoke test in ci.yml).
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  // On macOS, Electron uses Quartz natively — headless is not needed and
+  // prevents Playwright from detecting the Chrome DevTools endpoint (Electron 42 /
+  // Chrome 130+ new headless mode suppresses "DevTools listening on ws://…").
+  // On Linux CI, xvfb-run provides DISPLAY so the condition is false.
+  // On Linux without a display (local dev), fall through to --headless as a
+  // fallback, but prefer running via xvfb-run to match CI behaviour.
+  // --no-sandbox is required for Electron to spawn its renderer under Xvfb in CI.
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   const app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
   // Surface main-process stdout/stderr so a startup crash (which otherwise just
   // manifests as a firstWindow timeout) is visible in CI logs.
@@ -157,7 +165,7 @@ async function waitUntil(
 let userData: string;
 let vaultDir: string;
 let notesVaultDir: string;
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
@@ -170,7 +178,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => {});
+  await app?.close().catch(() => {});
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
@@ -254,6 +262,9 @@ test('TC-V-03: create scene, scene .md file written to Story Vault on disk', asy
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
   await expect(sceneRow).toContainText(SCENE_TITLE);
 
+  // SKY-316: creating a scene must auto-open the editor (no manual click needed).
+  await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 6_000 });
+
   // The scene file is written with path: stories/<storyId>/chapters/<chapterId>/scenes/<sceneId>.md
   // Use findMdFiles across the entire vaultDir and look for any .md file under a
   // chapters/.../scenes/ hierarchy to confirm the per-scene file layout is in place.
@@ -284,8 +295,10 @@ test('TC-V-04: type prose in scene editor, file content updated in Story Vault',
   const editor = page.locator('.ProseMirror');
   await expect(editor).toBeVisible({ timeout: 8_000 });
 
-  await editor.click();
-  await editor.type(PROSE);
+  // SKY-909: selecting a blank scene should focus the editor automatically;
+  // prose must land without requiring a second click into the empty document.
+  await page.waitForFunction(() => document.activeElement?.classList.contains('ProseMirror'));
+  await page.keyboard.type(PROSE);
   await expect(editor).toContainText(PROSE);
 
   // Wait for the vault write to flush
@@ -309,7 +322,7 @@ test('TC-V-04: type prose in scene editor, file content updated in Story Vault',
 
 test('TC-V-05: prose persists after full app restart (same userData)', async () => {
   // Close the current instance
-  await app.close().catch(() => {});
+  await app?.close().catch(() => {});
 
   // Relaunch with the same userData (vault-settings.json points at the same vaultDir)
   app = await launchApp(userData);
@@ -387,22 +400,21 @@ test('TC-V-06: create entity (note), entity shown in Entities tab, file written 
   // Wait for entity browser toolbar
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
-  // Click "+ New Entity" / primary add button
+  // Click "+ New Entity" — SKY-619 replaced TypePickerPopover with CreateDialog.
   await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').click();
 
-  // Entity creation dialog
+  // A dialog appears for entering the entity name
   const dialog = page.locator('[role="dialog"]');
   await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-  // Fill the entity name (type field defaults to 'character')
-  const nameInput = dialog.locator('.entity-dialog-input').first();
-  await nameInput.fill(ENTITY_NAME);
-
-  // Submit
+  // Enter entity name and submit
+  await dialog.locator('.entity-dialog-input').first().fill(ENTITY_NAME);
   await dialog.locator('.entity-btn.entity-btn-primary').click();
 
-  // Dialog closes, entity appears in the list
+  // Dialog closes after creation
   await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+
+  // Entity appears in the browser with the default name
   const entityItem = page.locator('.entity-item-name', { hasText: ENTITY_NAME });
   await expect(entityItem).toBeVisible({ timeout: 8_000 });
 

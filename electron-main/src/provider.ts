@@ -19,6 +19,13 @@ export interface ProviderConfig {
   baseUrl?: string;
   /** Model identifier, e.g. 'claude-haiku-4-5-20251001', 'gpt-4o-mini', 'llama3', etc. */
   model: string;
+  /**
+   * Optional STT/TTS capability hints.
+   * When absent, defaults are inferred from provider kind:
+   * - openai and custom (with baseUrl set): treated as { transcribe: true, speak: true }
+   * - all other kinds: no voice capability
+   */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 // ─── Default base URLs ────────────────────────────────────────────────────────
@@ -46,6 +53,70 @@ export interface StreamResult {
   /** Populated after the stream ends; may be null for providers that don't report usage */
   usage?: { inputTokens: number; outputTokens: number } | null;
 }
+
+// ─── Capability types ─────────────────────────────────────────────────────────
+
+/** Voice capabilities a provider adapter may declare. */
+export type ProviderCapability = 'stt' | 'tts';
+
+/** Options for audio-to-text transcription. */
+export interface TranscribeOptions {
+  /** BCP-47 language tag (e.g. 'en'). Omit to let the provider auto-detect. */
+  language?: string;
+  /** Context hint to guide transcription style or spelling. */
+  prompt?: string;
+}
+
+/** Options for text-to-audio synthesis. */
+export interface SpeakOptions {
+  /** Voice identifier understood by the provider (e.g. 'alloy', 'echo', 'shimmer'). */
+  voice?: string;
+  /** Playback speed multiplier (0.25–4.0); provider default if omitted. */
+  speed?: number;
+}
+
+/** Raw audio data chunk emitted by a speak stream. */
+export interface AudioChunk {
+  /** Raw audio bytes (format determined by provider/negotiation). */
+  data: Buffer;
+  /** MIME type for the bytes, e.g. 'audio/opus', 'audio/mp3'. */
+  mimeType: string;
+}
+
+// ─── Provider object interface ────────────────────────────────────────────────
+
+/**
+ * A Provider wraps a ProviderConfig and exposes the adapter's capabilities
+ * alongside the streaming and (for OpenAI-compatible adapters) voice methods.
+ */
+export interface Provider {
+  readonly config: ProviderConfig;
+  /** Capabilities declared by this adapter. */
+  readonly capabilities: ReadonlyArray<ProviderCapability>;
+  /** Stream text tokens from the LLM. */
+  stream(req: StreamRequest): AsyncIterable<string>;
+  /** Returns true if this adapter declares support for the given capability. */
+  supportsCapability(cap: ProviderCapability): boolean;
+  /** Transcribe audio to text. Present only when capabilities includes 'stt'. */
+  transcribe?(audio: Buffer | Blob, opts?: TranscribeOptions): Promise<string>;
+  /** Synthesise speech from text. Present only when capabilities includes 'tts'. */
+  speak?(text: string, opts?: SpeakOptions): AsyncIterable<AudioChunk>;
+}
+
+// ─── Capability declarations ──────────────────────────────────────────────────
+
+/**
+ * Declared capabilities for each provider kind.
+ * OpenAI-compatible endpoints expose /audio/transcriptions and /audio/speech;
+ * implementation is wired in a follow-up child issue.
+ */
+export const PROVIDER_CAPABILITIES: Record<ProviderKind, ReadonlyArray<ProviderCapability>> = {
+  anthropic: [],
+  openai: ['stt', 'tts'],
+  ollama: ['stt', 'tts'],
+  lmstudio: ['stt', 'tts'],
+  custom: ['stt', 'tts'],
+};
 
 // ─── Anthropic implementation ─────────────────────────────────────────────────
 
@@ -82,6 +153,12 @@ async function* runOpenAICompatibleStream(
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URLS[config.kind] ?? '';
   if (!baseUrl) {
     throw new Error(`Provider "${config.kind}" requires a baseUrl.`);
+  }
+
+  // SSRF guard: validate before any outbound fetch (SKY-739).
+  const urlError = validateBaseUrl(baseUrl);
+  if (urlError) {
+    throw new Error(urlError);
   }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -156,7 +233,138 @@ async function* runOpenAICompatibleStream(
   }
 }
 
+// ─── Provider factory ─────────────────────────────────────────────────────────
+
+function makeAnthropicProvider(config: ProviderConfig): Provider {
+  return {
+    config,
+    capabilities: PROVIDER_CAPABILITIES.anthropic,
+    stream(req: StreamRequest): AsyncIterable<string> {
+      return runAnthropicStream(config, req);
+    },
+    supportsCapability(_cap: ProviderCapability): boolean {
+      return false;
+    },
+  };
+}
+
+function makeOpenAICompatibleProvider(config: ProviderConfig): Provider {
+  const caps = PROVIDER_CAPABILITIES[config.kind];
+  return {
+    config,
+    capabilities: caps,
+    stream(req: StreamRequest): AsyncIterable<string> {
+      return runOpenAICompatibleStream(config, req);
+    },
+    supportsCapability(cap: ProviderCapability): boolean {
+      return caps.includes(cap);
+    },
+    async transcribe(_audio: Buffer | Blob, _opts?: TranscribeOptions): Promise<string> {
+      throw new Error('transcribe: not yet implemented — wired in a follow-up child issue.');
+    },
+    async *speak(_text: string, _opts?: SpeakOptions): AsyncGenerator<AudioChunk> {
+      throw new Error('speak: not yet implemented — wired in a follow-up child issue.');
+    },
+  };
+}
+
+/**
+ * Create a Provider adapter from a ProviderConfig.
+ * The returned Provider declares capabilities and exposes stub voice methods on
+ * OpenAI-compatible adapters (implementation in a follow-up child issue).
+ */
+export function createProvider(config: ProviderConfig): Provider {
+  if (config.kind === 'anthropic') {
+    return makeAnthropicProvider(config);
+  }
+  return makeOpenAICompatibleProvider(config);
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+/** Allowlist of valid model IDs for the Anthropic provider. */
+export const ANTHROPIC_MODEL_ALLOWLIST = new Set([
+  'claude-haiku-4-5-20251001',
+  'claude-sonnet-4-6',
+  'claude-opus-4-7',
+]);
+
+/**
+ * Validates that a base URL is safe for outbound HTTP fetch calls (SSRF prevention, SKY-739).
+ * Returns null if the URL is acceptable, or an error string if it should be rejected.
+ *
+ * Allow: http/https schemes; loopback (127.0.0.0/8, ::1, localhost).
+ * Block: non-http(s) schemes; link-local/APIPA (169.254.x.x, fe80::); 0.0.0.0;
+ *        RFC-1918 private ranges (10.x, 172.16-31.x, 192.168.x).
+ */
+export function validateBaseUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'Invalid URL: cannot parse.';
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return `URL scheme "${parsed.protocol.replace(':', '')}" is not allowed — only http and https are permitted.`;
+  }
+
+  // WHATWG URL API includes brackets for IPv6 hosts (e.g. "[::1]") — strip them before matching.
+  const raw = parsed.hostname.toLowerCase();
+  const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
+
+  // IPv4-mapped IPv6: WHATWG URL normalizes e.g. ::ffff:192.168.1.1 → ::ffff:c0a8:101.
+  // Decode the embedded IPv4 and re-run all guards (SKY-752).
+  const v4mapped = host.match(/^::ffff:([0-9a-f]+):([0-9a-f]+)$/i);
+  if (v4mapped) {
+    const hi = parseInt(v4mapped[1], 16);
+    const lo = parseInt(v4mapped[2], 16);
+    const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return validateBaseUrl(`http://${ipv4}`);
+  }
+
+  // Allow loopback — Ollama (127.0.0.1:11434) and LM Studio (127.0.0.1:1234) live here.
+  if (host === 'localhost' || host === '::1') return null;
+  if (/^127\./.test(host)) return null;
+
+  // Block link-local / APIPA (AWS/GCP/Azure IMDS lives at 169.254.169.254).
+  if (/^169\.254\./.test(host) || /^fe80:/i.test(host)) {
+    return 'URL targets a link-local address — not allowed.';
+  }
+
+  // Block unspecified address.
+  if (host === '0.0.0.0') {
+    return 'URL targets 0.0.0.0 — not allowed.';
+  }
+
+  // Block RFC-1918 private ranges.
+  if (/^10\./.test(host)) {
+    return 'URL targets an RFC-1918 private address (10.0.0.0/8) — not allowed.';
+  }
+  if (/^192\.168\./.test(host)) {
+    return 'URL targets an RFC-1918 private address (192.168.0.0/16) — not allowed.';
+  }
+  const m172 = host.match(/^172\.(\d+)\./);
+  if (m172) {
+    const second = parseInt(m172[1], 10);
+    if (second >= 16 && second <= 31) {
+      return 'URL targets an RFC-1918 private address (172.16.0.0/12) — not allowed.';
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Validates a model name for a given provider kind.
+ * Anthropic: must be in ANTHROPIC_MODEL_ALLOWLIST (security control).
+ * All other providers: any non-empty string up to 128 chars (no canonical registry).
+ */
+export function isModelValid(model: string, kind: ProviderKind): boolean {
+  if (!model || model.trim() === '') return false;
+  if (kind === 'anthropic') return ANTHROPIC_MODEL_ALLOWLIST.has(model);
+  return model.length <= 128;
+}
 
 /**
  * Stream tokens from any configured provider.
@@ -195,13 +403,43 @@ export function validateProviderConfig(cfg: ProviderConfig): string | null {
 }
 
 /**
+ * Return the active provider if it claims STT/TTS capability, otherwise null.
+ *
+ * Explicit capabilities take precedence. When absent, kind-based defaults apply:
+ * - openai: always voice-capable (OpenAI /v1/audio/* endpoints)
+ * - custom with a baseUrl: assumed voice-capable (OpenAI-compatible audio path)
+ * - all other kinds: not voice-capable unless explicitly opted in
+ *
+ * The parameter is structurally compatible with AppSettings from ipc.ts.
+ */
+export function getVoiceProvider(settings: { provider?: ProviderConfig }): ProviderConfig | null {
+  const p = settings.provider;
+  if (!p) return null;
+  if (p.capabilities?.transcribe || p.capabilities?.speak) return p;
+  if (p.kind === 'openai') return p;
+  if (p.kind === 'custom' && p.baseUrl) return p;
+  return null;
+}
+
+/**
  * Build a ProviderConfig from AppSettings for a named agent slot.
- * Falls back to the global provider if agent-level override is absent.
+ * When agentProviderOverride is supplied, it is returned as-is (full per-agent config).
+ * When only agentModelOverride is supplied, it overrides the model on the global config.
+ * Falls back to the global provider when neither override is present.
  */
 export function providerConfigForAgent(
   globalProvider: ProviderConfig,
   agentModelOverride?: string,
+  agentProviderOverride?: ProviderConfig,
 ): ProviderConfig {
+  if (agentProviderOverride) {
+    // PM spec §3: same kind + no agent-level API key → fall back to global key.
+    // Lets users pick a different model for an agent without re-entering the global API key.
+    if (!agentProviderOverride.apiKey && agentProviderOverride.kind === globalProvider.kind) {
+      return { ...agentProviderOverride, apiKey: globalProvider.apiKey };
+    }
+    return agentProviderOverride;
+  }
   if (!agentModelOverride) return globalProvider;
   return { ...globalProvider, model: agentModelOverride };
 }

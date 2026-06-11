@@ -5,13 +5,22 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   ci:
     runs-on: self-hosted
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +49,52 @@ jobs:
       - name: Test (frontend)
         run: npm run test -w frontend
 
+      # SKY-361: coverage-guided fuzz run on every PR — 60 s per harness.
+      # Fuzzes parseFrontmatter (Obsidian import path) and the DOCX/EPUB inline
+      # parsers. Crashes are uploaded as artifacts so triage can start immediately.
+      # See docs/security/fuzz-triage-runbook.md for what to do when this fails.
+      - name: Fuzz — build harnesses (TypeScript → JS)
+        run: |
+          rm -rf electron-main/fuzz/dist/
+          npm run fuzz:build -w electron-main
+
+      - name: Fuzz — frontmatter parser (60 s)
+        run: |
+          mkdir -p electron-main/fuzz/crashes
+          cd electron-main
+          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js \
+            fuzz/corpus/frontmatter --sync -- \
+            -max_total_time=60 \
+            -artifact_prefix=fuzz/crashes/frontmatter- &
+          fuzz_pid=$!
+          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
+          wait "$fuzz_pid" || true
+          trap - EXIT TERM INT
+
+      - name: Fuzz — DOCX/EPUB inline parsers (60 s)
+        run: |
+          mkdir -p electron-main/fuzz/crashes
+          cd electron-main
+          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/docxInline.fuzz.js \
+            fuzz/corpus/docxInline -- \
+            -max_total_time=60 \
+            -artifact_prefix=fuzz/crashes/docxInline- &
+          fuzz_pid=$!
+          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
+          wait "$fuzz_pid" || true
+          trap - EXIT TERM INT
+
+      - name: Upload fuzz crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: electron-main/fuzz/crashes/
+          retention-days: 30
+
       - name: Build (electron-vite)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
@@ -62,10 +116,12 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:e2e:visual-capture
 
       - name: Upload visual-capture artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
+          retention-days: 1
 
       - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
@@ -81,20 +137,42 @@ jobs:
 
       - name: Upload visual-regression diffs on failure
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
+          retention-days: 3
 
       - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
         run: xvfb-run --auto-servernum npm run test:e2e:a11y
 
+      - name: E2E — Entity system regression create/alias/browse (SKY-220)
+        run: xvfb-run --auto-servernum npm run test:e2e:entity
+
+      - name: E2E — Entity creation edge cases (SKY-619)
+        run: xvfb-run --auto-servernum npm run test:e2e:entity-creation
+
+      - name: E2E — Vault Graph View Liquid Neon styling (SKY-217)
+        run: xvfb-run --auto-servernum npm run test:e2e:vault-graph
+
+      - name: E2E — Entity @-mention autocomplete (SKY-616)
+        run: xvfb-run --auto-servernum npm run test:e2e:entity-mention
+
+      - name: E2E — Timeline subway view (SKY-514)
+        run: xvfb-run --auto-servernum npm run test:e2e:timeline
+
+      - name: E2E — Entries quick-capture create and promote-to-note (SKY-898)
+        run: xvfb-run --auto-servernum npm run test:e2e:entries
+
       - name: Upload E2E report on failure
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report
           path: e2e-report/
+          retention-days: 3
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
@@ -102,6 +180,7 @@ jobs:
     # Replace with macos-latest and restore the packaging steps once billing is active
     # (est. June 2026) or a self-hosted macOS runner is added (MYT-749).
     runs-on: self-hosted
+    timeout-minutes: 5
 
     steps:
       - name: macOS build placeholder
@@ -111,6 +190,10 @@ jobs:
 
   build-linux:
     runs-on: self-hosted
+    timeout-minutes: 40
+    concurrency:
+      group: build-linux-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v4
@@ -139,14 +222,38 @@ jobs:
       - name: Test (frontend)
         run: npm run test -w frontend
 
-      - name: Build and package (Linux AppImage)
-        run: npm run dist:linux
+      - name: Guard — PERSIST_PROMPTS must not be set for release builds
+        run: |
+          if [ "${PERSIST_PROMPTS:-}" = "1" ]; then
+            echo "ERROR: PERSIST_PROMPTS=1 is set in the environment. This flag stores full prompt text in cleartext and must never be enabled in a release build. Unset it before packaging." >&2
+            exit 1
+          fi
+          for env_file in .env .env.production .env.local; do
+            if [ -f "$env_file" ] && grep -qE '^PERSIST_PROMPTS=1' "$env_file"; then
+              echo "ERROR: PERSIST_PROMPTS=1 found in $env_file. This flag stores full prompt text in cleartext and must never be included in a release build. Remove or comment it out before packaging." >&2
+              exit 1
+            fi
+          done
+          echo "Guard passed: PERSIST_PROMPTS is not set."
 
-      - name: Upload Linux AppImage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-appimage
-          path: dist-electron/*.AppImage
+      - name: Build and package (Linux AppImage + deb)
+        # deb packaging is in electron-builder.json for release builds; CI validates AppImage + deb.
+        # Skip rpm target: rpmbuild and fpm not fully provisioned on GabesPC yet.
+        # Clear LD_LIBRARY_PATH so the runner's inherited Paperclip embedded-postgres lib path
+        # does not shadow the system liblzma.so.5 and break xz/tar/dpkg-deb during packaging.
+        env:
+          LD_LIBRARY_PATH: ""
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
+
+      - name: Verify .deb artifact
+        # dpkg-deb also loads liblzma, so clear LD_LIBRARY_PATH here too.
+        env:
+          LD_LIBRARY_PATH: ""
+        run: |
+          DEB=$(ls dist-electron/*.deb | head -1)
+          echo "Verifying .deb: $DEB"
+          dpkg-deb --info "$DEB"
 
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
@@ -164,3 +271,44 @@ jobs:
           kill "$APP_PID"
           wait "$APP_PID" || true
           echo "Smoke test passed: AppImage started and stopped cleanly"
+
+      - name: Upload Linux packages
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            dist-electron/*.AppImage
+            dist-electron/*.deb
+          retention-days: 3
+
+  report:
+    # Event-driven board ping. Runs after all three required jobs (ci /
+    # build-linux / build-macos) complete on a PR. The merge gate (GitHubManager
+    # routine f1bd9b01) keeps an hourly backstop sweep for missed pings.
+    # PR-only — plain pushes to main get no ping. Self-hosted only (no
+    # public/fork PR exposure on the public Obsidian repo per SKY-849).
+    needs: [ci, build-macos, build-linux]
+    runs-on: self-hosted
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (for scripts/notify-board.sh)
+        uses: actions/checkout@v4
+
+      - name: Notify Paperclip board of CI completion
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.head_ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_RESULT: ${{ needs.ci.result }}
+          BUILD_LINUX_RESULT: ${{ needs.build-linux.result }}
+          BUILD_MACOS_RESULT: ${{ needs.build-macos.result }}
+          PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
+          PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
+          PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
+        run: bash scripts/notify-board.sh

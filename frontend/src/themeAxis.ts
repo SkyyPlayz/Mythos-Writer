@@ -27,7 +27,7 @@ const WCAG_AA_LARGE = 3.0;
 /** Named axis presets */
 export const AXIS_PRESETS: Record<ContrastPreset, AxisTokens> = {
   soft: { blur: 24, glass: 0.58, neon: 0.6 },
-  default: { blur: 16, glass: 0.72, neon: 0.5 },
+  default: { blur: 16, glass: 0.72, neon: 0.57 },
   sharp: { blur: 8, glass: 0.90, neon: 0.35 },
 };
 

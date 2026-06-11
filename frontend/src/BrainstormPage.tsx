@@ -1,5 +1,19 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { IdeaCard } from './components/BrainstormCard/IdeaCard';
+import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import PresetSelector from './components/PresetSelector';
+import PresetEditor from './components/PresetEditor';
+import RefinementChips from './components/RefinementChips';
+import {
+  loadSessionPreset,
+  saveSessionPreset,
+  getEffectiveAxes,
+  buildPresetContext,
+} from './presets';
+import type { PresetAxes, RefinementChip } from './presets';
+import EntriesQuickAdd from './EntriesQuickAdd';
+import { PROMPT_MAX_CHARS } from './promptConstants';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -45,6 +59,12 @@ export const HARD_TIMEOUT_MS = 90_000;
 const DRAFT_KEY = 'brainstorm:draft';
 const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
 
+// Sentinel value used when the user explicitly picks "Vault root" in the
+// routing-prompt select. Empty string is reserved for "nothing selected yet"
+// (the disabled placeholder), so vault-root needs its own distinct token.
+// resolveRoutingPrompt translates this back to '' before calling the API.
+export const VAULT_ROOT_SENTINEL = '__vault_root__';
+
 interface BrainstormDraft {
   v: 2;
   savedAt: string;
@@ -65,6 +85,43 @@ interface DetectedFact {
   name: string;
   content: string;
   savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review' | 'needs_routing';
+  savedPath?: string;
+  updatedAt?: string;
+}
+
+// SKY-196: context selection result surfaced in the "Context used" panel.
+interface ContextResultItem {
+  path: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'note';
+  content: string;
+  estimatedTokens: number;
+  whyIncluded: string;
+}
+
+interface ContextResult {
+  included: ContextResultItem[];
+  excluded: ContextResultItem[];
+  usedTokens: number;
+  budgetTokens: number;
+}
+
+function buildContextBlock(items: ContextResultItem[]): string {
+  const lines = [
+    '',
+    '---',
+    '## Story Vault Context',
+    "The following entities are in the user's story vault and may be relevant:",
+    '',
+  ];
+  for (const item of items) {
+    lines.push(`**${item.name}** (${item.type})`);
+    if (item.content.trim()) {
+      lines.push(item.content.trim().slice(0, 400));
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
 }
 
 // SKY-20: a pending routing prompt rendered as a chat bubble. When the
@@ -120,9 +177,10 @@ const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item'
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  onFirstSubmit?: () => void;
 }
 
-export default function BrainstormPage({ onClose, enabled = true }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -130,16 +188,36 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pasteWarning, setPasteWarning] = useState(false);
+  const [detailDrawerIdeaId, setDetailDrawerIdeaId] = useState<string | null>(null);
   const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
   const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
+  const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
+  const [presetOverrides, setPresetOverrides] = useState<Partial<PresetAxes>>(
+    () => loadSessionPreset().overrides,
+  );
+  const [showPresetEditor, setShowPresetEditor] = useState(false);
+  const [activeRefinementId, setActiveRefinementId] = useState<string | null>(null);
   // SKY-20: routing state — list of pending prompts plus the folder catalog
   // pulled from the Notes Vault. Both are populated lazily on first need.
   const [routingPrompts, setRoutingPrompts] = useState<RoutingPrompt[]>([]);
   const [notesFolders, setNotesFolders] = useState<Array<{ path: string; label: string }>>([]);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  // Tracks the id of a brand-new idea created via Ctrl+N that hasn't been saved yet
+  const [pendingNewIdeaId, setPendingNewIdeaId] = useState<string | null>(null);
+  // Tracks which element opened the detail drawer so focus can be restored on close
+  const triggerElementRef = useRef<HTMLElement | null>(null);
+
+  // SKY-196: vault context surfaced in the "Context used" panel
+  const [contextResult, setContextResult] = useState<ContextResult | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
 
   const streamIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef<string>('');
@@ -148,7 +226,13 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTokenAtRef = useRef<number>(0);
   const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  // Holds the system prompt augmented with vault context for the current/last request.
+  const contextSystemRef = useRef<string>(BRAINSTORM_SYSTEM_PROMPT);
   const { announce, liveText } = useLiveAnnounce();
+  const effectiveAxes = useMemo(
+    () => getEffectiveAxes(presetId, presetOverrides),
+    [presetId, presetOverrides],
+  );
 
   // Restore draft from localStorage on mount
   useEffect(() => {
@@ -208,6 +292,23 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [messages.length, facts.length, prompt]);
+
+  // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
+  // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Drawer / confirm / preset editor handle ESC themselves
+      if (detailDrawerIdeaId || showDeleteConfirm || showPresetEditor || pendingNewIdeaId) return;
+      // Context menus: focus is inside a [role="menu"] element
+      const focused = document.activeElement;
+      if (focused && (focused as HTMLElement).closest('[role="menu"]')) return;
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [onClose, detailDrawerIdeaId, showDeleteConfirm, showPresetEditor, pendingNewIdeaId]);
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -288,6 +389,9 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setDraftSizeWarning(false);
     setShowRecoveryBanner(false);
     setRoutingPrompts([]);
+    setContextResult(null);
+    setContextOpen(false);
+    contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
   }, []);
 
@@ -306,6 +410,10 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     a.click();
     URL.revokeObjectURL(url);
   }, [messages]);
+
+  // Ref holds the latest persistFactWithRouting to avoid a forward-reference
+  // circular dep between _runStream and persistFactWithRouting.
+  const persistFactWithRoutingRef = useRef<((fact: DetectedFact) => Promise<void>) | null>(null);
 
   const _runStream = useCallback(async (apiMessages: Array<{ role: 'user' | 'assistant'; content: string }>) => {
     lastApiMessagesRef.current = apiMessages;
@@ -358,7 +466,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
         }));
         setFacts((prev) => [...prev, ...newFacts]);
         for (const fact of newFacts) {
-          void persistFactWithRouting(fact);
+          void persistFactWithRoutingRef.current?.(fact);
         }
       }
 
@@ -394,7 +502,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     try {
       const { streamId: sid } = await window.api.streamStart({
         messages: apiMessages,
-        system: BRAINSTORM_SYSTEM_PROMPT,
+        system: contextSystemRef.current,
       });
       streamIdRef.current = sid;
     } catch (err) {
@@ -428,6 +536,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     const trimmed = prompt.trim();
     if (!trimmed || loading) return;
 
+    onFirstSubmit?.();
     setLoading(true);
     setError(null);
     setPrompt('');
@@ -442,8 +551,58 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       content: m.text,
     }));
 
+    // SKY-196: fetch vault context before streaming so relevant entities are
+    // visible to Claude. Non-critical — proceed without context on any error.
+    const presetGuide = buildPresetContext(effectiveAxes);
+    let systemPrompt = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
+    try {
+      const convText = messages.map((m) => m.text).join('\n');
+      const ctx = await window.api.brainstormSelectContext?.({
+        userMessage: trimmed,
+        conversationText: convText,
+      });
+      if (ctx) {
+        setContextResult(ctx);
+        if (ctx.included.length > 0) {
+          // Preserve preset context alongside vault context
+          systemPrompt = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT + buildContextBlock(ctx.included);
+        }
+      }
+    } catch { /* vault context is non-critical */ }
+    contextSystemRef.current = systemPrompt;
+
     await _runStream(apiMessages);
-  }, [prompt, loading, messages, announce, _runStream]);
+  }, [prompt, loading, messages, announce, _runStream, effectiveAxes, onFirstSubmit]);
+
+  const handleRefine = useCallback((chip: RefinementChip) => {
+    if (loading) return;
+    const adjusted = chip.adjustAxes(effectiveAxes);
+    const newOverrides = { ...presetOverrides, ...adjusted };
+    setPresetOverrides(newOverrides);
+    saveSessionPreset(presetId, newOverrides);
+    setActiveRefinementId(chip.id);
+
+    const refinementText = `Please rewrite your previous response with a ${chip.description} style.`;
+    const userMsg: Message = { role: 'user', text: refinementText };
+    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
+    setLoading(true);
+    setError(null);
+    announce('Refining…');
+
+    const presetGuide = buildPresetContext({ ...effectiveAxes, ...adjusted });
+    contextSystemRef.current = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
+
+    const apiMessages = [...messages, userMsg].map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.text,
+    }));
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    void _runStream(apiMessages);
+  }, [announce, effectiveAxes, loading, messages, presetId, presetOverrides, _runStream]);
+
+  useEffect(() => {
+    if (!loading) setActiveRefinementId(null);
+  }, [loading]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -490,7 +649,11 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
         });
         if (result.status === 'written') {
           setFacts((prev) =>
-            prev.map((f) => (f.id === fact.id ? { ...f, savedStatus: 'saved' } : f)),
+            prev.map((f) => (
+              f.id === fact.id
+                ? { ...f, savedStatus: 'saved', savedPath: result.path, updatedAt: new Date().toISOString() }
+                : f
+            )),
           );
           return;
         }
@@ -519,6 +682,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     },
     [announce, ensureNotesFolders],
   );
+  persistFactWithRoutingRef.current = persistFactWithRouting;
 
   // SKY-20: commit the user's pick — main moves the staged file and (when
   // `remember` is true) persists the choice as the new default for this
@@ -527,24 +691,31 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     async (factId: string, remember: boolean) => {
       const prompt = routingPrompts.find((p) => p.factId === factId);
       if (!prompt) return;
-      const chosen = (prompt.customFolder.trim() || prompt.destination || '').trim();
-      // Empty string is a legitimate choice — it pins the note at the vault root.
-      // We just need an explicit selection (any of the two inputs touched).
-      if (prompt.destination === '' && prompt.customFolder.trim() === '' && prompt.destination !== '') {
+      // Block when neither the select nor the custom-folder input has been touched.
+      // VAULT_ROOT_SENTINEL in destination means the user explicitly chose vault root;
+      // translate that sentinel to '' (empty path) before passing it to the API.
+      if (prompt.destination === '' && prompt.customFolder.trim() === '') {
         return;
       }
+      const chosen = prompt.customFolder.trim()
+        ? prompt.customFolder.trim()
+        : prompt.destination === VAULT_ROOT_SENTINEL ? '' : prompt.destination;
       setFacts((prev) =>
         prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saving' } : f)),
       );
       try {
-        await window.api.brainstormResolveRouting({
+        const result = await window.api.brainstormResolveRouting({
           stagedPath: prompt.stagedPath,
           category: prompt.category,
           destination: chosen,
           remember,
         });
         setFacts((prev) =>
-          prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
+          prev.map((f) => (
+            f.id === factId
+              ? { ...f, savedStatus: 'saved', savedPath: result.path, updatedAt: new Date().toISOString() }
+              : f
+          )),
         );
         setRoutingPrompts((prev) => prev.filter((p) => p.factId !== factId));
         // Folder list may have grown if the user typed a new path — refresh.
@@ -580,6 +751,132 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     },
     [facts, persistFactWithRouting],
   );
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  const handleIdeaMenuAction = useCallback((ideaId: string, action: string) => {
+    const fact = facts.find((f) => f.id === ideaId);
+    if (!fact) return;
+    if (action === 'edit') {
+      setDetailDrawerIdeaId(ideaId);
+      announce('Idea detail drawer opened.');
+    } else if (action === 'delete') {
+      setPendingDeleteIds([ideaId]);
+      setShowDeleteConfirm(true);
+    } else if (action === 'copy-markdown') {
+      const md = `# ${fact.name}\n\n${fact.content}`;
+      void navigator.clipboard.writeText(md).then(() => showToast('Copied to clipboard'));
+    } else if (action === 'copy-vault-path' && fact.savedPath) {
+      void navigator.clipboard.writeText(fact.savedPath).then(() => showToast('Copied to clipboard'));
+    }
+    // link-entity + add-to-scene deferred to v2
+  }, [facts, announce, showToast]);
+
+  const handleBulkDelete = useCallback(() => {
+    setPendingDeleteIds([...selectedIds]);
+    setShowDeleteConfirm(true);
+  }, [selectedIds]);
+
+  const confirmDelete = useCallback(() => {
+    const toDelete = new Set(pendingDeleteIds);
+    setFacts((prev) => prev.filter((f) => !toDelete.has(f.id)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      toDelete.forEach((id) => next.delete(id));
+      return next;
+    });
+    setShowDeleteConfirm(false);
+    setPendingDeleteIds([]);
+    if (pendingDeleteIds.length > 1) setIsMultiSelectMode(false);
+  }, [pendingDeleteIds]);
+
+  const handleToggleSelect = useCallback((ideaId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ideaId)) {
+        next.delete(ideaId);
+      } else {
+        next.add(ideaId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleMultiSelectMode = useCallback(() => {
+    setIsMultiSelectMode((prev) => {
+      if (prev) setSelectedIds(new Set());
+      return !prev;
+    });
+  }, []);
+
+  const createNewIdea = useCallback(() => {
+    const id = `idea-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const newFact: DetectedFact = { id, type: 'note', name: 'New idea', content: '', savedStatus: 'unsaved' };
+    triggerElementRef.current = document.activeElement as HTMLElement;
+    setFacts((prev) => [...prev, newFact]);
+    setDetailDrawerIdeaId(id);
+    setPendingNewIdeaId(id);
+    announce('New idea — edit details in the drawer.');
+  }, [announce]);
+
+  const handleDeleteFocused = useCallback(() => {
+    const focused = document.activeElement;
+    if (!focused) return;
+    const card = (focused as HTMLElement).closest('[data-testid^="idea-card-"]');
+    if (!card) return;
+    const testId = card.getAttribute('data-testid');
+    const ideaId = testId?.replace('idea-card-', '');
+    if (ideaId && facts.some((f) => f.id === ideaId)) {
+      setPendingDeleteIds([ideaId]);
+      setShowDeleteConfirm(true);
+    }
+  }, [facts]);
+
+  const handleDetailDrawerClose = useCallback(() => {
+    if (pendingNewIdeaId) {
+      setFacts((prev) => prev.filter((f) => f.id !== pendingNewIdeaId));
+      setPendingNewIdeaId(null);
+    }
+    setDetailDrawerIdeaId(null);
+    const el = triggerElementRef.current;
+    triggerElementRef.current = null;
+    // Restore focus to the card that opened the drawer
+    setTimeout(() => el?.focus(), 0);
+  }, [pendingNewIdeaId]);
+
+  // Keyboard shortcuts: Ctrl/Cmd+N (new idea), Ctrl/Cmd+D (delete focused),
+  // Ctrl/Cmd+Shift+A (toggle multi-select), Escape (exit multi-select)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT';
+
+      if (meta && !e.shiftKey && e.key === 'n' && !inInput) {
+        e.preventDefault();
+        createNewIdea();
+        return;
+      }
+      if (meta && !e.shiftKey && e.key === 'd' && !inInput) {
+        e.preventDefault();
+        handleDeleteFocused();
+        return;
+      }
+      if (meta && e.shiftKey && e.key === 'A') {
+        e.preventDefault();
+        toggleMultiSelectMode();
+      } else if (e.key === 'Escape' && isMultiSelectMode && !showDeleteConfirm) {
+        setIsMultiSelectMode(false);
+        setSelectedIds(new Set());
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isMultiSelectMode, showDeleteConfirm, toggleMultiSelectMode, createNewIdea, handleDeleteFocused]);
 
   useEffect(() => {
     let cancelled = false;
@@ -632,6 +929,12 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setExpandedIssueId((prev) => (prev === id ? null : id));
   }, []);
 
+  const openIdeaDetail = useCallback((ideaId: string) => {
+    triggerElementRef.current = document.activeElement as HTMLElement;
+    setDetailDrawerIdeaId(ideaId);
+    announce('Idea detail drawer opened.');
+  }, [announce]);
+
   const setDraftKind = useCallback((issueId: string, kind: AnswerKind) => {
     setAnswerDrafts((prev) => ({
       ...prev,
@@ -645,6 +948,24 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       [issueId]: { kind: prev[issueId]?.kind ?? 'free-text', text },
     }));
   }, []);
+
+  const detailIdea = detailDrawerIdeaId ? facts.find((fact) => fact.id === detailDrawerIdeaId) : null;
+
+  const handleSaveIdea = useCallback((updated: import('./components/BrainstormCard/IdeaCard').IdeaCardIdea) => {
+    setFacts((prev) =>
+      prev.map((f) =>
+        f.id === updated.id
+          ? { ...f, name: updated.title, content: updated.title }
+          : f,
+      ),
+    );
+    setPendingNewIdeaId(null);
+    setDetailDrawerIdeaId(null);
+    const el = triggerElementRef.current;
+    triggerElementRef.current = null;
+    announce('Idea saved.');
+    setTimeout(() => el?.focus(), 0);
+  }, [announce]);
 
   if (!enabled) {
     return (
@@ -676,6 +997,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
         <div className="brainstorm-header-text">
           <div className="brainstorm-title">Brainstorm Agent</div>
           <div className="brainstorm-subtitle">Talk through your story — facts auto-extract to your vault</div>
+        </div>
+        <div className="brainstorm-header-preset">
+          <PresetSelector
+            activePresetId={presetId}
+            onSelect={(id) => { setPresetId(id); setPresetOverrides({}); saveSessionPreset(id, {}); }}
+            onCustomize={() => setShowPresetEditor(true)}
+            compact
+          />
         </div>
         <div className="brainstorm-header-actions">
           {messages.length > 0 && (
@@ -736,6 +1065,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                       {msg.text}
                       {msg.streaming && <span className="bs-cursor" aria-hidden="true">▍</span>}
                     </div>
+                    {!msg.streaming && i === messages.length - 1 && (
+                      <RefinementChips
+                        effectiveAxes={effectiveAxes}
+                        onRefine={handleRefine}
+                        disabled={loading}
+                        activeChipId={activeRefinementId}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -770,11 +1107,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                       <option value="" disabled>
                         Choose a folder…
                       </option>
-                      {notesFolders.map((f) => (
-                        <option key={f.path} value={f.path}>
-                          {f.label}
-                        </option>
-                      ))}
+                      <option value={VAULT_ROOT_SENTINEL}>/ (vault root)</option>
+                      {notesFolders
+                        .filter((f) => f.path !== '')
+                        .map((f) => (
+                          <option key={f.path} value={f.path}>
+                            {f.label}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <label className="bs-routing-row">
@@ -859,16 +1199,49 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             >
               🎤
             </button>
-            <textarea
-              className="brainstorm-input"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Tell me about your story world, characters, or plot ideas…"
-              rows={3}
-              disabled={loading}
-              aria-label="Brainstorm prompt"
-            />
+            <div className="brainstorm-input-wrapper">
+              <textarea
+                className="brainstorm-input"
+                value={prompt}
+                onChange={(e) => {
+                  const next = e.target.value.slice(0, PROMPT_MAX_CHARS);
+                  setPrompt(next);
+                }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  const available = PROMPT_MAX_CHARS - prompt.length;
+                  if (pasted.length > available) {
+                    setPasteWarning(true);
+                    setTimeout(() => setPasteWarning(false), 5000);
+                  }
+                }}
+                onKeyDown={handleKey}
+                placeholder="Tell me about your story world, characters, or plot ideas…"
+                rows={3}
+                maxLength={PROMPT_MAX_CHARS}
+                disabled={loading}
+                aria-label="Brainstorm prompt"
+              />
+              <span
+                className={
+                  'brainstorm-char-counter' +
+                  (prompt.length >= PROMPT_MAX_CHARS
+                    ? ' brainstorm-char-counter--error'
+                    : prompt.length >= PROMPT_MAX_CHARS * 0.9
+                      ? ' brainstorm-char-counter--warning'
+                      : '')
+                }
+                aria-live="polite"
+              >
+                {prompt.length.toLocaleString()} / {PROMPT_MAX_CHARS.toLocaleString()}
+              </span>
+              {pasteWarning && (
+                <div className="brainstorm-paste-warning" role="alert">
+                  Pasted text exceeded {PROMPT_MAX_CHARS.toLocaleString()} chars and was
+                  trimmed—please shorten or split your prompt.
+                </div>
+              )}
+            </div>
             {loading ? (
               <button
                 className="brainstorm-cancel-btn"
@@ -971,62 +1344,228 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             </ul>
           </div>
 
+          {/* SKY-196: collapsible "Context used" panel */}
+          {contextResult && (
+            <div className="bs-context-section" data-testid="brainstorm-context-section">
+              <button
+                className="bs-context-header"
+                onClick={() => setContextOpen((o) => !o)}
+                aria-expanded={contextOpen}
+                aria-controls="bs-context-body"
+                type="button"
+              >
+                <span className="bs-context-title">Context sent</span>
+                <span className="bs-context-counts">
+                  {contextResult.included.length} item{contextResult.included.length !== 1 ? 's' : ''}
+                  {contextResult.excluded.length > 0 && `, ${contextResult.excluded.length} excluded`}
+                </span>
+                <span className="bs-context-chevron" aria-hidden="true">{contextOpen ? '▲' : '▼'}</span>
+              </button>
+              {contextOpen && (
+                <div id="bs-context-body" className="bs-context-body">
+                  <div className="bs-context-budget">
+                    {contextResult.usedTokens.toLocaleString()} / {contextResult.budgetTokens.toLocaleString()} tokens
+                  </div>
+                  {contextResult.included.length === 0 ? (
+                    <div className="bs-context-empty">No vault items sent.</div>
+                  ) : (
+                    <ul className="bs-context-list" aria-label="Context items sent to AI">
+                      {contextResult.included.map((item) => (
+                        <li key={item.path} className="bs-context-item">
+                          <span className="bs-context-item-name">{item.name}</span>
+                          <span className={`bs-context-item-type bs-context-type-${item.type}`}>{item.type}</span>
+                          <span className="bs-context-item-why">{item.whyIncluded}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {contextResult.excluded.length > 0 && (
+                    <div className="bs-context-excluded">
+                      {contextResult.excluded.length} item{contextResult.excluded.length !== 1 ? 's' : ''} excluded — token budget reached
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="brainstorm-facts-header brainstorm-facts-header-divider">
             <span className="brainstorm-facts-title">Detected Facts</span>
             {facts.length > 0 && (
               <span className="brainstorm-facts-count">{facts.length}</span>
             )}
+            {facts.length > 0 && (
+              <button
+                className={`bs-multiselect-toggle${isMultiSelectMode ? ' active' : ''}`}
+                type="button"
+                onClick={toggleMultiSelectMode}
+                aria-pressed={isMultiSelectMode}
+                data-testid="bs-multiselect-toggle"
+              >
+                {isMultiSelectMode ? 'Done selecting' : 'Select multiple'}
+              </button>
+            )}
           </div>
+          {isMultiSelectMode && selectedIds.size > 0 && (
+            <div className="bs-bulk-toolbar" role="toolbar" aria-label="Bulk actions">
+              <span className="bs-bulk-count">{selectedIds.size} selected</span>
+              <button
+                className="bs-bulk-deselect-btn"
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Deselect all
+              </button>
+              <button
+                className="bs-bulk-delete-btn"
+                type="button"
+                onClick={handleBulkDelete}
+              >
+                Delete
+              </button>
+            </div>
+          )}
           <div className="brainstorm-facts-list">
             {facts.length === 0 ? (
               <div className="brainstorm-facts-empty">
                 Named facts will appear here as Claude identifies them.
               </div>
             ) : (
-              FACT_TYPE_ORDER.map((type) => {
+              <div
+                role="list"
+                aria-label="Brainstorm ideas"
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                  const cards = Array.from(
+                    e.currentTarget.querySelectorAll<HTMLElement>('[data-testid^="idea-card-"]'),
+                  );
+                  if (cards.length === 0) return;
+                  const idx = cards.findIndex((c) => c === document.activeElement || c.contains(document.activeElement));
+                  const next = e.key === 'ArrowDown'
+                    ? Math.min(idx + 1, cards.length - 1)
+                    : Math.max(idx - 1, 0);
+                  if (next !== idx && next >= 0) {
+                    e.preventDefault();
+                    cards[next].focus();
+                  }
+                }}
+              >
+              {FACT_TYPE_ORDER.map((type) => {
                 const group = facts.filter((f) => f.type === type);
                 if (group.length === 0) return null;
                 return (
                   <div key={type} className="bs-fact-group">
                     <div className="bs-fact-group-header">{FACT_TYPE_LABELS[type]}s</div>
                     {group.map((fact) => (
-                      <div
+                      <IdeaCard
                         key={fact.id}
-                        className={`bs-fact${fact.savedStatus === 'saved' ? ' bs-fact-saved' : ''}`}
-                      >
-                        <div className="bs-fact-name">{fact.name}</div>
-                        <p className="bs-fact-desc">{fact.content}</p>
-                        <div className="bs-fact-actions">
-                          {fact.savedStatus === 'saving' && (
+                        idea={{
+                          id: fact.id,
+                          title: fact.content || fact.name,
+                          type: fact.type,
+                          linkedEntities: [
+                            { id: `${fact.id}-entity`, name: fact.name, type: fact.type },
+                          ],
+                          savedPath: fact.savedPath,
+                          updatedAt: fact.updatedAt,
+                          savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+                        }}
+                        metaAction={
+                          fact.savedStatus === 'saving' ? (
                             <span className="bs-fact-saving">Saving…</span>
-                          )}
-                          {fact.savedStatus === 'saved' && (
+                          ) : fact.savedStatus === 'saved' ? (
                             <span className="bs-fact-saved-label">Saved ✓</span>
-                          )}
-                          {fact.savedStatus === 'pending_review' && (
+                          ) : fact.savedStatus === 'pending_review' ? (
                             <span className="bs-fact-pending-review">Pending review →</span>
-                          )}
-                          {fact.savedStatus === 'error' && (
+                          ) : fact.savedStatus === 'error' ? (
                             <span className="bs-fact-save-error">
                               Failed —{' '}
                               <button
                                 className="bs-fact-retry-btn"
                                 onClick={() => saveFactToVault(fact.id)}
+                                type="button"
                               >
                                 retry
                               </button>
                             </span>
-                          )}
-                        </div>
-                      </div>
+                          ) : undefined
+                        }
+                        onOpenDetail={openIdeaDetail}
+                        onMenuAction={handleIdeaMenuAction}
+                        isMultiSelect={isMultiSelectMode}
+                        isSelected={selectedIds.has(fact.id)}
+                        onToggleSelect={handleToggleSelect}
+                      />
                     ))}
                   </div>
                 );
-              })
+              })}
+              </div>
             )}
           </div>
+
+          <EntriesQuickAdd />
         </div>
       </div>
+
+      {showPresetEditor && (
+        <PresetEditor
+          activePresetId={presetId}
+          overrides={presetOverrides}
+          onApply={(overrides) => {
+            setPresetOverrides(overrides);
+            saveSessionPreset(presetId, overrides);
+          }}
+          onClose={() => setShowPresetEditor(false)}
+        />
+      )}
+
+      {showDeleteConfirm && (
+        <div
+          className="bs-delete-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete idea"
+          data-testid="bs-delete-confirm"
+        >
+          <div className="bs-delete-confirm-dialog">
+            <p className="bs-delete-confirm-message">Delete idea?</p>
+            <div className="bs-delete-confirm-actions">
+              <button
+                className="bs-delete-confirm-cancel"
+                type="button"
+                onClick={() => { setShowDeleteConfirm(false); setPendingDeleteIds([]); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="bs-delete-confirm-ok"
+                type="button"
+                onClick={confirmDelete}
+                data-testid="bs-delete-confirm-ok"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailIdea && (
+        <IdeaDetailDrawer
+          idea={{
+            id: detailIdea.id,
+            title: detailIdea.content || detailIdea.name,
+            type: detailIdea.type,
+            linkedEntities: [{ id: `${detailIdea.id}-entity`, name: detailIdea.name, type: detailIdea.type }],
+            savedPath: detailIdea.savedPath,
+            updatedAt: detailIdea.updatedAt,
+            savedLabel: detailIdea.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+          }}
+          onClose={handleDetailDrawerClose}
+          onSave={handleSaveIdea}
+        />
+      )}
     </div>
   );
 }

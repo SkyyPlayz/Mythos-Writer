@@ -335,3 +335,319 @@ export function saveAsTemplate(
   fs.writeFileSync(path.join(dir, fileName), JSON.stringify(template, null, 2), 'utf-8');
   return id;
 }
+
+// ─── Note Templates — per-note body templates with variable grammar ───────────
+//
+// Grammar (static; no JS execution):
+//   {{key}}                  — literal interpolation (resolved from vars map)
+//   {{key | prompt(label)}}  — user is prompted for a value at creation time
+//   {{key | pick(Type)}}     — user picks from existing vault entities of that type
+//
+// Type aliases accepted by pick(): Characters → character, Locations → location,
+// Items → item (singular also accepted). Multiple types separated by | are NOT
+// supported in this version — only the first is used.
+
+export type NoteTemplateFieldKind = 'literal' | 'prompt' | 'pick';
+
+export interface NoteTemplateField {
+  key: string;
+  kind: NoteTemplateFieldKind;
+  /** Display label for prompt/pick fields (falls back to key when absent) */
+  label: string;
+  /** Vault entity type for pick fields */
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  /** Which note kind this template targets */
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note' | 'daily-note';
+  /** Markdown body containing {{var}}, {{var | prompt(label)}}, {{var | pick(Type)}} */
+  body: string;
+  /** Parsed fields derived from body */
+  fields: NoteTemplateField[];
+}
+
+// ─── Grammar ─────────────────────────────────────────────────────────────────
+
+const EXPR_RE = /\{\{([^}]+)\}\}/g;
+
+export function parseNoteTemplateFields(body: string): NoteTemplateField[] {
+  const seen = new Set<string>();
+  const fields: NoteTemplateField[] = [];
+
+  for (const match of body.matchAll(EXPR_RE)) {
+    const expr = match[1].trim();
+    const pipeIdx = expr.indexOf('|');
+
+    if (pipeIdx === -1) {
+      const key = expr;
+      if (!seen.has(key)) {
+        seen.add(key);
+        fields.push({ key, kind: 'literal', label: key });
+      }
+      continue;
+    }
+
+    const key = expr.slice(0, pipeIdx).trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const modifier = expr.slice(pipeIdx + 1).trim();
+
+    const promptM = modifier.match(/^prompt\(([^)]*)\)$/);
+    if (promptM) {
+      fields.push({ key, kind: 'prompt', label: promptM[1].trim() || key });
+      continue;
+    }
+
+    const pickM = modifier.match(/^pick\(([^)]+)\)$/);
+    if (pickM) {
+      const rawType = pickM[1].trim().split('|')[0].trim().toLowerCase();
+      // Normalise plural → singular: 'characters' → 'character', etc.
+      const entityType = (rawType.endsWith('s') ? rawType.slice(0, -1) : rawType) as
+        | 'character'
+        | 'location'
+        | 'item';
+      fields.push({ key, kind: 'pick', label: key, entityType });
+      continue;
+    }
+
+    // Unknown modifier — fall back to prompt
+    fields.push({ key, kind: 'prompt', label: key });
+  }
+
+  return fields;
+}
+
+/** Replace all {{var}} / {{var | modifier(...)}} expressions with resolved values. */
+export function resolveNoteTemplate(body: string, vars: Record<string, string>): string {
+  return body.replace(EXPR_RE, (_, expr) => {
+    const key = expr.split('|')[0].trim();
+    return vars[key] ?? '';
+  });
+}
+
+// ─── Bundled Note Templates ───────────────────────────────────────────────────
+
+function makeNote(
+  id: string,
+  name: string,
+  description: string,
+  kind: NoteTemplate['kind'],
+  body: string,
+): NoteTemplate {
+  return { id, name, description, kind, body, fields: parseNoteTemplateFields(body) };
+}
+
+const DEFAULT_SCENE_BODY = `---
+title: "{{title | prompt(Scene Title)}}"
+pov: "{{pov | prompt(POV Character)}}"
+location: "{{location | pick(Locations)}}"
+time_of_day: "{{time_of_day | prompt(Time of Day)}}"
+---
+
+# {{title}}
+
+**POV:** {{pov}}
+**Location:** {{location}}
+**Time of Day:** {{time_of_day}}
+
+<!-- Beat: What changes for the POV character in this scene? -->
+
+`;
+
+const DEFAULT_CHARACTER_BODY = `---
+title: "{{name | prompt(Character Name)}}"
+aliases: []
+archetype: "{{archetype | pick(Characters)}}"
+age: "{{age | prompt(Age)}}"
+goal: "{{goal | prompt(Core Goal)}}"
+fear: "{{fear | prompt(Core Fear)}}"
+---
+
+# {{name}}
+
+**Age:** {{age}}
+**Archetype inspired by:** {{archetype}}
+
+## Goal
+
+{{goal}}
+
+## Fear
+
+{{fear}}
+`;
+
+const DEFAULT_LOCATION_BODY = `---
+title: "{{name | prompt(Location Name)}}"
+region: "{{region | prompt(Region)}}"
+atmosphere: "{{atmosphere | prompt(Atmosphere)}}"
+---
+
+# {{name}}
+
+**Region:** {{region}}
+**Atmosphere:** {{atmosphere}}
+
+## Description
+
+
+
+## Notable Features
+
+
+`;
+
+const DEFAULT_ITEM_BODY = `---
+title: "{{name | prompt(Item Name)}}"
+owner: "{{owner | pick(Characters)}}"
+origin: "{{origin | prompt(Origin)}}"
+---
+
+# {{name}}
+
+**Owner:** {{owner}}
+**Origin:** {{origin}}
+
+## Description
+
+
+
+## Significance
+
+
+`;
+
+const SAVE_THE_CAT_BODY = `---
+title: "{{title | prompt(Chapter Title)}}"
+beat: "{{beat | prompt(Beat Name)}}"
+---
+
+# {{title}}
+
+**Beat:** {{beat}}
+
+## Opening Image
+
+
+## Theme Stated
+
+
+## Set-Up
+
+
+## Catalyst
+
+
+## Debate
+
+
+## Break into Two
+
+
+## B Story
+
+
+## Fun and Games
+
+
+## Midpoint
+
+
+## Bad Guys Close In
+
+
+## All Is Lost
+
+
+## Dark Night of the Soul
+
+
+## Break into Three
+
+
+## Finale
+
+
+## Final Image
+
+`;
+
+// SKY-204: Daily note template body — {{date}} is auto-resolved to today's date.
+const DAILY_NOTE_BODY = `---
+date: "{{date}}"
+---
+
+# {{date}}
+
+## Today's focus
+
+
+
+## Notes
+
+
+
+## Words written today
+
+`;
+
+export const BUNDLED_NOTE_TEMPLATES: NoteTemplate[] = [
+  makeNote(
+    'note:daily-note',
+    'Daily Note',
+    'Default daily journal entry with date, focus, and notes sections.',
+    'daily-note',
+    DAILY_NOTE_BODY,
+  ),
+  makeNote(
+    'note:default-scene',
+    'Default Scene',
+    'Scene note with POV, location, and time-of-day fields.',
+    'scene',
+    DEFAULT_SCENE_BODY,
+  ),
+  makeNote(
+    'note:default-character',
+    'Default Character',
+    'Character note with name, archetype, age, goal, and fear.',
+    'character',
+    DEFAULT_CHARACTER_BODY,
+  ),
+  makeNote(
+    'note:default-location',
+    'Default Location',
+    'Location note with region and atmosphere.',
+    'location',
+    DEFAULT_LOCATION_BODY,
+  ),
+  makeNote(
+    'note:default-item',
+    'Default Item',
+    'Item note with owner entity-pick and origin.',
+    'item',
+    DEFAULT_ITEM_BODY,
+  ),
+  makeNote(
+    'note:save-the-cat',
+    'Save-the-Cat Chapter',
+    'Beat sheet following the Save the Cat structure.',
+    'chapter',
+    SAVE_THE_CAT_BODY,
+  ),
+];
+
+export function listNoteTemplates(kind?: string): NoteTemplate[] {
+  if (!kind) return BUNDLED_NOTE_TEMPLATES;
+  return BUNDLED_NOTE_TEMPLATES.filter((t) => t.kind === kind);
+}
+
+export function getNoteTemplate(id: string): NoteTemplate | undefined {
+  return BUNDLED_NOTE_TEMPLATES.find((t) => t.id === id);
+}
+

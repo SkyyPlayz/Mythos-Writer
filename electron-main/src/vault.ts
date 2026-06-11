@@ -14,6 +14,8 @@ import type {
   VaultObsidianDryRunReport,
   ObsidianBrokenLink,
   ObsidianNameCollision,
+  ArcEntry,
+  TimelineSettings,
 } from './ipc.js';
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 import { safeVaultJoin } from './vault/safeVaultJoin.js';
@@ -291,14 +293,25 @@ interface Frontmatter {
 }
 
 export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose: string } {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { frontmatter: {}, prose: raw };
+  // Null bytes (\x00) are not valid in YAML; strip them before processing
+  // (SKY-398: prevents ambiguous key comparisons in fuzz roundtrip checks).
+  const sanitized = raw.replace(/\x00/g, '');
 
-  const fm: Frontmatter = {};
+  // Closing delimiter must be exactly "---" on its own line (only optional
+  // spaces/tabs after it, then newline or end-of-string). This prevents a
+  // frontmatter key starting with "---" from being mis-identified as the
+  // closing delimiter (SKY-384, crash 47c4c1f3; SKY-398).
+  const match = sanitized.match(/^---\r?\n([\s\S]*?)\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, prose: sanitized };
+  // Object.create(null) prevents prototype-pollution: keys like '__proto__' or
+  // 'constructor' become plain own properties instead of intercepting prototype
+  // chain operations.  Callers spread into {} literals, so downstream code is safe.
+  const fm: Frontmatter = Object.create(null) as Frontmatter;
   for (const line of match[1].split('\n')) {
     const colon = line.indexOf(':');
     if (colon === -1) continue;
     const key = line.slice(0, colon).trim();
+    if (!key) continue;
     const val = line.slice(colon + 1).trim();
     // Parse arrays like `tags: [a, b]`
     if (val.startsWith('[') && val.endsWith(']')) {
@@ -347,11 +360,49 @@ export interface SceneFileData {
   outcome?: string;
   pov?: string;
   storyTime?: string;
+  /** SKY-207: writer-defined custom frontmatter fields (e.g. mood, tension). */
+  customFields?: Record<string, unknown>;
+  // SKY-791: chronological timeline metadata (stored in frontmatter)
+  chronologicalDate?: string;
+  chronologicalIsEstimated?: boolean;
+  chronologicalConfidence?: number;
+  chronologicalSource?: string;
+  entityCharacterIds?: string[];
+  entityLocationId?: string;
+  entityArcs?: string[];
+  metaWordCount?: number;
+  metaMood?: string;
+  metaPov?: string;
   prose: string;
 }
 
-export function writeSceneFile(vaultRoot: string, relativePath: string, data: SceneFileData): void {
-  const fm: Frontmatter = {
+/** Built-in frontmatter keys that are managed by the app. Custom fields must not shadow these. */
+const BUILTIN_FM_KEYS = new Set([
+  'id', 'title', 'chapterId', 'storyId', 'order', 'tags',
+  'goal', 'conflict', 'outcome', 'pov', 'storyTime', 'updatedAt',
+  // SKY-791: timeline fields
+  'chronologicalDate', 'chronologicalIsEstimated', 'chronologicalConfidence', 'chronologicalSource',
+  'entityCharacterIds', 'entityLocationId', 'entityArcs',
+  'metaWordCount', 'metaMood', 'metaPov',
+]);
+
+function sceneTimelineFrontmatter(data: SceneFileData): Frontmatter {
+  return {
+    ...(data.chronologicalDate ? { chronologicalDate: data.chronologicalDate } : {}),
+    ...(data.chronologicalIsEstimated !== undefined ? { chronologicalIsEstimated: data.chronologicalIsEstimated } : {}),
+    ...(data.chronologicalConfidence !== undefined ? { chronologicalConfidence: data.chronologicalConfidence } : {}),
+    ...(data.chronologicalSource ? { chronologicalSource: data.chronologicalSource } : {}),
+    ...(data.entityCharacterIds?.length ? { entityCharacterIds: data.entityCharacterIds } : {}),
+    ...(data.entityLocationId ? { entityLocationId: data.entityLocationId } : {}),
+    ...(data.entityArcs?.length ? { entityArcs: data.entityArcs } : {}),
+    ...(data.metaWordCount !== undefined ? { metaWordCount: data.metaWordCount } : {}),
+    ...(data.metaMood ? { metaMood: data.metaMood } : {}),
+    ...(data.metaPov ? { metaPov: data.metaPov } : {}),
+  };
+}
+
+function buildSceneFrontmatter(data: SceneFileData): Frontmatter {
+  return {
     id: data.id,
     title: data.title,
     ...(data.chapterId ? { chapterId: data.chapterId } : {}),
@@ -363,35 +414,40 @@ export function writeSceneFile(vaultRoot: string, relativePath: string, data: Sc
     ...(data.outcome ? { outcome: data.outcome } : {}),
     ...(data.pov ? { pov: data.pov } : {}),
     ...(data.storyTime ? { storyTime: data.storyTime } : {}),
+    // SKY-791: timeline metadata fields
+    ...sceneTimelineFrontmatter(data),
+    // SKY-207: custom fields go after built-ins; shadow protection via BUILTIN_FM_KEYS
+    ...(data.customFields
+      ? Object.fromEntries(
+          Object.entries(data.customFields).filter(
+            ([k, v]) => !BUILTIN_FM_KEYS.has(k) && v !== undefined && v !== null && v !== '',
+          ),
+        )
+      : {}),
     updatedAt: new Date().toISOString(),
   };
-  const content = serializeFrontmatter(fm, data.prose);
+}
+
+export function writeSceneFile(vaultRoot: string, relativePath: string, data: SceneFileData): void {
+  const content = serializeFrontmatter(buildSceneFrontmatter(data), data.prose);
   writeVaultFileAtomic(vaultRoot, relativePath, content);
 }
 
 /** Atomic variant of writeSceneFile — temp + fdatasync + rename. */
 export function writeSceneFileAtomic(vaultRoot: string, relativePath: string, data: SceneFileData): void {
-  const fm: Frontmatter = {
-    id: data.id,
-    title: data.title,
-    ...(data.chapterId ? { chapterId: data.chapterId } : {}),
-    ...(data.storyId ? { storyId: data.storyId } : {}),
-    ...(data.order !== undefined ? { order: data.order } : {}),
-    ...(data.tags?.length ? { tags: data.tags } : {}),
-    ...(data.goal ? { goal: data.goal } : {}),
-    ...(data.conflict ? { conflict: data.conflict } : {}),
-    ...(data.outcome ? { outcome: data.outcome } : {}),
-    ...(data.pov ? { pov: data.pov } : {}),
-    ...(data.storyTime ? { storyTime: data.storyTime } : {}),
-    updatedAt: new Date().toISOString(),
-  };
-  const content = serializeFrontmatter(fm, data.prose);
+  const content = serializeFrontmatter(buildSceneFrontmatter(data), data.prose);
   writeVaultFileAtomic(vaultRoot, relativePath, content);
 }
 
 export function readSceneFile(vaultRoot: string, relativePath: string): SceneFileData {
   const { content } = readVaultFile(vaultRoot, relativePath);
   const { frontmatter, prose } = parseFrontmatter(content);
+
+  // SKY-207: extract any key not in the built-in set as a custom field
+  const customFields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(frontmatter)) {
+    if (!BUILTIN_FM_KEYS.has(k)) customFields[k] = v;
+  }
 
   return {
     id: String(frontmatter.id ?? crypto.randomUUID()),
@@ -405,6 +461,18 @@ export function readSceneFile(vaultRoot: string, relativePath: string): SceneFil
     outcome: frontmatter.outcome ? String(frontmatter.outcome) : undefined,
     pov: frontmatter.pov ? String(frontmatter.pov) : undefined,
     storyTime: frontmatter.storyTime ? String(frontmatter.storyTime) : undefined,
+    customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+    // SKY-791: timeline metadata
+    chronologicalDate: frontmatter.chronologicalDate ? String(frontmatter.chronologicalDate) : undefined,
+    chronologicalIsEstimated: frontmatter.chronologicalIsEstimated !== undefined ? Boolean(frontmatter.chronologicalIsEstimated) : undefined,
+    chronologicalConfidence: frontmatter.chronologicalConfidence !== undefined ? Number(frontmatter.chronologicalConfidence) : undefined,
+    chronologicalSource: frontmatter.chronologicalSource ? String(frontmatter.chronologicalSource) : undefined,
+    entityCharacterIds: Array.isArray(frontmatter.entityCharacterIds) ? frontmatter.entityCharacterIds.map(String) : undefined,
+    entityLocationId: frontmatter.entityLocationId ? String(frontmatter.entityLocationId) : undefined,
+    entityArcs: Array.isArray(frontmatter.entityArcs) ? frontmatter.entityArcs.map(String) : undefined,
+    metaWordCount: frontmatter.metaWordCount !== undefined ? Number(frontmatter.metaWordCount) : undefined,
+    metaMood: frontmatter.metaMood ? String(frontmatter.metaMood) : undefined,
+    metaPov: frontmatter.metaPov ? String(frontmatter.metaPov) : undefined,
     prose,
   };
 }
@@ -1073,4 +1141,49 @@ export function mergeProvenanceFrontmatter(
 
   const content = serializeFrontmatter(merged, newProse);
   writeVaultFileAtomic(vaultRoot, filePath, content);
+}
+
+// ─── Timeline settings persistence (SKY-791) ───
+
+const TIMELINE_SETTINGS_FILENAME = 'timeline-settings.json';
+const ARCS_FILENAME = 'arcs.json';
+
+export const DEFAULT_TIMELINE_SETTINGS: TimelineSettings = {
+  primaryGrouping: 'arc',
+  spacingMode: 'uniform',
+  showUndatedScenes: true,
+  autoLayoutTracks: true,
+  defaultColorScheme: 'liquid-neon',
+  visibleTrackFilters: [],
+};
+
+export function readTimelineSettings(vaultRoot: string): TimelineSettings {
+  const settingsPath = path.join(vaultRoot, TIMELINE_SETTINGS_FILENAME);
+  if (!fs.existsSync(settingsPath)) return { ...DEFAULT_TIMELINE_SETTINGS };
+  try {
+    const raw = fs.readFileSync(settingsPath, 'utf-8');
+    return { ...DEFAULT_TIMELINE_SETTINGS, ...(JSON.parse(raw) as Partial<TimelineSettings>) };
+  } catch {
+    return { ...DEFAULT_TIMELINE_SETTINGS };
+  }
+}
+
+export function writeTimelineSettings(vaultRoot: string, settings: TimelineSettings): void {
+  const settingsPath = path.join(vaultRoot, TIMELINE_SETTINGS_FILENAME);
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+export function readArcManifest(vaultRoot: string): ArcEntry[] {
+  const arcsPath = path.join(vaultRoot, ARCS_FILENAME);
+  if (!fs.existsSync(arcsPath)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(arcsPath, 'utf-8')) as ArcEntry[];
+  } catch {
+    return [];
+  }
+}
+
+export function writeArcManifest(vaultRoot: string, arcs: ArcEntry[]): void {
+  const arcsPath = path.join(vaultRoot, ARCS_FILENAME);
+  fs.writeFileSync(arcsPath, JSON.stringify(arcs, null, 2), 'utf-8');
 }

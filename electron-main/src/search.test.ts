@@ -115,6 +115,76 @@ describe('search subsystem', () => {
     expect(results.find((r) => r.docId === 'scene-3')).toBeUndefined();
   });
 
+  // SKY-905 regression: mirrors the e2e/tests/global-search.spec.ts seed shape.
+  // Guards the indexer contract used by the Global Search panel: a manifest
+  // with stories[].chapters[].scenes[] + entities[] must produce searchable
+  // rows in both 'story' and 'notes' scope without touching the filesystem.
+  it('buildFullIndex indexes manifest stories + entities so search returns both scopes', () => {
+    const now = new Date().toISOString();
+    const manifest = emptyManifest();
+    manifest.stories = [
+      {
+        id: 'sky905-story',
+        title: 'Global Search Test Vault',
+        path: 'Global Search Test Vault',
+        chapters: [
+          {
+            id: 'sky905-chap',
+            title: 'Story Chapter',
+            path: 'Global Search Test Vault/Story Chapter',
+            order: 0,
+            scenes: [
+              {
+                // Scene title includes the search term so title-only matches succeed
+                // when the on-disk prose file is unavailable (the unit harness has no real vault).
+                id: 'sky905-scene',
+                title: 'The Dragon Scene',
+                path: 'Global Search Test Vault/Story Chapter/Dragon Scene.md',
+                order: 0,
+                blocks: [],
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+    manifest.entities = [
+      {
+        id: 'sky905-entity',
+        name: 'Dragon Oracle',
+        type: 'character',
+        path: 'entities/characters/sky905-entity.md',
+        aliases: [],
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+
+    // buildFullIndex tries to read prose from disk and tolerates missing files,
+    // so we index titles only here. The 'dragon' term matches the scene title
+    // and the entity title.
+    buildFullIndex(db, '/nonexistent/vault', manifest);
+
+    const both = searchVault(db, 'dragon', 'both');
+    expect(both.length).toBeGreaterThanOrEqual(2);
+    expect(both.some((r) => r.docId === 'sky905-scene' && r.vault === 'story')).toBe(true);
+    expect(both.some((r) => r.docId === 'sky905-entity' && r.vault === 'notes')).toBe(true);
+
+    const story = searchVault(db, 'dragon', 'story');
+    expect(story.every((r) => r.vault === 'story')).toBe(true);
+    expect(story.some((r) => r.docId === 'sky905-scene')).toBe(true);
+
+    const notes = searchVault(db, 'dragon', 'notes');
+    expect(notes.some((r) => r.docId === 'sky905-entity')).toBe(true);
+  });
+
   it('buildFullIndex populates from manifest entities', () => {
     const manifest = emptyManifest();
     manifest.entities = [
@@ -138,6 +208,78 @@ describe('search subsystem', () => {
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].docId).toBe('ent-1');
     expect(results[0].title).toBe('Kalen Blackwood');
+  });
+
+  it('scene results have resultType "scene"', () => {
+    indexDocument(db, {
+      docId: 'scene-rt',
+      vault: 'story',
+      kind: 'scene',
+      title: 'The Iron Gate',
+      body: 'The iron gate creaked open at midnight.',
+    });
+
+    const results = searchVault(db, 'iron gate', 'story');
+    expect(results.length).toBeGreaterThan(0);
+    const scene = results.find((r) => r.docId === 'scene-rt');
+    expect(scene?.resultType).toBe('scene');
+  });
+
+  it('entity results have resultType "entity"', () => {
+    indexDocument(db, {
+      docId: 'ent-rt',
+      vault: 'notes',
+      kind: 'character',
+      title: 'Selene Ashveil',
+      body: 'A wandering scholar with silver hair.',
+    });
+
+    const results = searchVault(db, 'selene', 'notes');
+    expect(results.length).toBeGreaterThan(0);
+    const entity = results.find((r) => r.docId === 'ent-rt');
+    expect(entity?.resultType).toBe('entity');
+  });
+
+  it('mixed search returns both scene and entity results with correct resultType', () => {
+    indexDocument(db, {
+      docId: 'scene-mix',
+      vault: 'story',
+      kind: 'scene',
+      title: 'Thornwood Forest',
+      body: 'They crossed the thornwood at dawn.',
+    });
+    indexDocument(db, {
+      docId: 'ent-mix',
+      vault: 'notes',
+      kind: 'location',
+      title: 'Thornwood Forest',
+      body: 'An ancient cursed forest in the northern reaches.',
+    });
+
+    const results = searchVault(db, 'thornwood', 'both');
+    expect(results.length).toBeGreaterThan(0);
+
+    const sceneResult = results.find((r) => r.docId === 'scene-mix');
+    const entityResult = results.find((r) => r.docId === 'ent-mix');
+
+    expect(sceneResult?.resultType).toBe('scene');
+    expect(entityResult?.resultType).toBe('entity');
+  });
+
+  it('entity found via fuzzy name match has resultType "entity"', () => {
+    indexDocument(db, {
+      docId: 'char-fuzzy',
+      vault: 'notes',
+      kind: 'character',
+      title: 'Dawnstrider Vael',
+      body: 'A ranger of the eastern plains.',
+    });
+
+    // 'dawnstr' won't hit FTS stemmer but will hit the LIKE fallback
+    const results = searchVault(db, 'dawnstr', 'notes');
+    const found = results.find((r) => r.docId === 'char-fuzzy');
+    expect(found).toBeDefined();
+    expect(found?.resultType).toBe('entity');
   });
 
   it('returns results within 200ms on vault with 500 documents (perf budget)', () => {

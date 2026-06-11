@@ -1,7 +1,20 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
+import PresetSelector from './components/PresetSelector';
+import PresetEditor from './components/PresetEditor';
+import PresetBrowser from './components/PresetBrowser';
+import RefinementChips from './components/RefinementChips';
+import QualityRubric from './components/QualityRubric';
+import {
+  getEffectiveAxes,
+  buildPresetContext,
+  loadSessionPreset,
+  saveSessionPreset,
+  DEFAULT_PRESET_ID,
+} from './presets';
+import type { PresetAxes, RefinementChip } from './presets';
 
 export const STALL_WARNING_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
@@ -43,6 +56,22 @@ export default function WritingAssistantPanel({
   const [loading, setLoading] = useState(false);
   const [stalled, setStalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showRubric, setShowRubric] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+  const [showBrowser, setShowBrowser] = useState(false);
+  const [activeRefinementId, setActiveRefinementId] = useState<string | null>(null);
+
+  // Preset state — persisted per session via sessionStorage
+  const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
+  const [presetOverrides, setPresetOverrides] = useState<Partial<PresetAxes>>(
+    () => loadSessionPreset().overrides,
+  );
+
+  const effectiveAxes = useMemo(
+    () => getEffectiveAxes(presetId, presetOverrides),
+    [presetId, presetOverrides],
+  );
+
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,6 +160,7 @@ export default function WritingAssistantPanel({
     setLoading(true);
     setStalled(false);
     setError(null);
+    setActiveRefinementId(null);
     if (!overridePrompt) setPrompt('');
     announce('Generating response…');
 
@@ -142,9 +172,11 @@ export default function WritingAssistantPanel({
       return [...base, userMsg, assistantMsg];
     });
 
-    const context = scene
+    const styleGuide = buildPresetContext(effectiveAxes);
+    const sceneText = scene
       ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
       : undefined;
+    const context = [styleGuide, sceneText].filter(Boolean).join('\n\n') || undefined;
 
     // Subscribe to streaming chunks before invoking
     clearStreamResources();
@@ -201,7 +233,7 @@ export default function WritingAssistantPanel({
         setStalled(false);
       }
     }
-  }, [announce, clearStreamResources, loading, prompt, scene, scheduleStallTimers]);
+  }, [announce, clearStreamResources, effectiveAxes, loading, prompt, scene, scheduleStallTimers]);
 
   const retryGeneration = useCallback(() => {
     const retryPrompt = lastPromptRef.current;
@@ -212,6 +244,24 @@ export default function WritingAssistantPanel({
     setLoading(false);
     ask(retryPrompt);
   }, [ask, clearStreamResources]);
+
+  const handleRefine = useCallback((chip: RefinementChip) => {
+    const adjusted = chip.adjustAxes(effectiveAxes);
+    const newOverrides = { ...presetOverrides, ...adjusted };
+    setPresetOverrides(newOverrides);
+    saveSessionPreset(presetId, newOverrides);
+    setActiveRefinementId(chip.id);
+    const lastUserMsg = lastPromptRef.current;
+    if (lastUserMsg) {
+      ask(lastUserMsg);
+    }
+  }, [ask, effectiveAxes, presetId, presetOverrides]);
+
+  const handlePresetSelect = useCallback((id: string) => {
+    setPresetId(id);
+    setPresetOverrides({});
+    saveSessionPreset(id, {});
+  }, []);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -257,6 +307,24 @@ export default function WritingAssistantPanel({
         </p>
       </div>
 
+      <div className="wa-preset-row">
+        <PresetSelector
+          activePresetId={presetId}
+          onSelect={handlePresetSelect}
+          onCustomize={() => setShowEditor(true)}
+          onBrowse={() => setShowBrowser(true)}
+        />
+        <button
+          className="wa-rubric-help-btn"
+          onClick={() => setShowRubric(true)}
+          aria-label="Open quality rubric"
+          type="button"
+          title="Quality standards for AI generations"
+        >
+          ?
+        </button>
+      </div>
+
       {scheduledResult && scheduledResult.tips.length > 0 && (
         <div className="wa-scheduled-tips" aria-label="Writing tips">
           <p className="wa-tips-heading">Writing tips</p>
@@ -283,25 +351,33 @@ export default function WritingAssistantPanel({
                   aria-label="Writing assistant response"
                 >
                   {msg.text}
-                  {msg.streaming && <span className="wa-cursor" aria-hidden="true">▍</span>}
+                  {msg.streaming && <span className="wa-cursor" aria-hidden="true">&#x258c;</span>}
                 </div>
                 {!msg.streaming && msg.suggestion && msg.suggestion.status === 'proposed' && (
-                  <div className="wa-suggestion-actions">
-                    <button
-                      className="wa-btn wa-btn-accept"
-                      onClick={() => applySuggestionStatus(msg.suggestion!.id, 'accepted')}
-                      aria-label="Accept suggestion"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      className="wa-btn wa-btn-reject"
-                      onClick={() => applySuggestionStatus(msg.suggestion!.id, 'rejected')}
-                      aria-label="Reject suggestion"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
+                  <>
+                    <div className="wa-suggestion-actions">
+                      <button
+                        className="wa-btn wa-btn-accept"
+                        onClick={() => applySuggestionStatus(msg.suggestion!.id, 'accepted')}
+                        aria-label="Accept suggestion"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        className="wa-btn wa-btn-reject"
+                        onClick={() => applySuggestionStatus(msg.suggestion!.id, 'rejected')}
+                        aria-label="Reject suggestion"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    <RefinementChips
+                      effectiveAxes={effectiveAxes}
+                      onRefine={handleRefine}
+                      disabled={loading}
+                      activeChipId={activeRefinementId}
+                    />
+                  </>
                 )}
                 {!msg.streaming && msg.suggestion && msg.suggestion.status !== 'proposed' && (
                   <div className={`wa-suggestion-status wa-status-${msg.suggestion.status}`}>
@@ -313,7 +389,23 @@ export default function WritingAssistantPanel({
           </div>
         ))}
 
-        {messages.length === 0 && !error && (
+        {messages.length === 0 && !error && presetId === DEFAULT_PRESET_ID && (
+          <div className="writing-assistant-empty wa-first-visit-tip" role="note" aria-label="Genre preset tip">
+            <span className="wa-tip-icon" aria-hidden="true">💡</span>
+            <span className="wa-tip-body">
+              <strong>Tip:</strong> Choose a genre preset to shape how suggestions sound.{' '}
+              E.g., &ldquo;Epic Fantasy&rdquo; favors morally complex scenarios.{' '}
+            </span>
+            <button
+              className="wa-tip-browse-btn"
+              onClick={() => setShowBrowser(true)}
+              type="button"
+            >
+              Show Presets
+            </button>
+          </div>
+        )}
+        {messages.length === 0 && !error && presetId !== DEFAULT_PRESET_ID && (
           <div className="writing-assistant-empty">
             Ask for writing advice — pacing, voice, clarity, what to try next.
           </div>
@@ -380,6 +472,28 @@ export default function WritingAssistantPanel({
           </button>
         )}
       </div>
+
+      {showEditor && (
+        <PresetEditor
+          activePresetId={presetId}
+          overrides={presetOverrides}
+          onApply={(overrides) => {
+            setPresetOverrides(overrides);
+            saveSessionPreset(presetId, overrides);
+          }}
+          onClose={() => setShowEditor(false)}
+        />
+      )}
+
+      {showBrowser && (
+        <PresetBrowser
+          activePresetId={presetId}
+          onApply={handlePresetSelect}
+          onClose={() => setShowBrowser(false)}
+        />
+      )}
+
+      {showRubric && <QualityRubric onClose={() => setShowRubric(false)} />}
     </div>
   );
 }

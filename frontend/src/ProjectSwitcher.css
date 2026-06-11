@@ -21,7 +21,6 @@
   max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .project-switcher-btn:hover,
@@ -37,7 +36,6 @@
 
 .project-switcher-label {
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -116,9 +114,7 @@
   font-size: 0.68rem;
   color: var(--text-secondary);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 160px;
 }
 
 .project-switcher-sep {
@@ -130,4 +126,16 @@
 .project-switcher-item.open-other {
   color: var(--text-secondary);
   font-style: italic;
+}
+
+/* SKY-320: Obsidian-style "Create new Mythos Vault" lives between recents
+   and "Open Other Folder…", styled as a calm primary action. */
+.project-switcher-item.create-new {
+  color: var(--color-accent, var(--text-primary));
+  font-weight: 500;
+}
+
+.project-switcher-item.create-new:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }

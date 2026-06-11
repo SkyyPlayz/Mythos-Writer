@@ -47,7 +47,7 @@ function validateEntity(raw: unknown, idx: number): ManifestEntityEntry {
   assertString(o.id, `entities[${idx}].id`);
   assertString(o.name, `entities[${idx}].name`);
   assertString(o.path, `entities[${idx}].path`);
-  const validTypes = ['character', 'location', 'item', 'concept', 'other'];
+  const validTypes = ['character', 'location', 'faction', 'item', 'event', 'concept', 'other'];
   if (!validTypes.includes(o.type as string))
     throw new ManifestValidationError(`entities[${idx}].type`, `must be one of ${validTypes.join(', ')}`);
   assertString(o.createdAt, `entities[${idx}].createdAt`);

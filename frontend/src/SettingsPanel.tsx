@@ -1,10 +1,27 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { FocusPrefs } from './types';
 import { applyTheme, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, DEFAULT_BG_GRADIENT, contrastRatio, enforceContrastFloor, type ThemeMode } from './theme';
+import { resolveAxisTokens } from './themeAxis';
+import { detectCloudProvider } from './lib/cloudSync';
+import { SUGGESTION_CATEGORY_LABELS } from './types';
+import VaultSyncBadge from './components/VaultSyncBadge';
+import MoveVaultWizard from './MoveVaultWizard';
 import './SettingsPanel.css';
 
 interface MicDevice {
   deviceId: string;
   label: string;
+}
+
+// ─── SKY-207: Custom frontmatter field schema (mirrors electron-main/src/ipc.ts) ──
+
+type FieldType = 'text' | 'number' | 'select';
+
+interface CustomFieldDef {
+  id: string;
+  name: string;
+  type: FieldType;
+  options?: string[];
 }
 
 // ─── Persona viewer (MYT-816) ─────────────────────────────────────────────────
@@ -22,6 +39,7 @@ interface PersonaFileState {
 function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainstorm' }) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PersonaKey>('AGENTS');
+  const tablistRef = useRef<HTMLDivElement>(null);
   const [files, setFiles] = useState<Record<PersonaKey, PersonaFileState>>({
     AGENTS:    { content: '', isCustom: false, loading: false, error: null },
     HEARTBEAT: { content: '', isCustom: false, loading: false, error: null },
@@ -57,6 +75,20 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
 
   const file = files[activeTab];
 
+  const handleTabKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const idx = PERSONA_KEYS.indexOf(activeTab);
+    const next = e.key === 'ArrowRight'
+      ? PERSONA_KEYS[(idx + 1) % PERSONA_KEYS.length]
+      : PERSONA_KEYS[(idx + PERSONA_KEYS.length - 1) % PERSONA_KEYS.length];
+    setActiveTab(next);
+    e.preventDefault();
+    const btn = tablistRef.current?.querySelector<HTMLElement>(`[data-tabkey="${next}"]`);
+    btn?.focus();
+  };
+
+  const panelId = `persona-panel-${agentName}`;
+
   return (
     <div className="settings-persona-viewer">
       <button
@@ -70,13 +102,17 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
       </button>
       {open && (
         <div className="settings-persona-panel">
-          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs">
+          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs" ref={tablistRef} onKeyDown={handleTabKeyDown}>
             {PERSONA_KEYS.map((key) => (
               <button
                 key={key}
                 type="button"
                 role="tab"
+                id={`persona-tab-${agentName}-${key}`}
+                data-tabkey={key}
                 aria-selected={activeTab === key}
+                aria-controls={panelId}
+                tabIndex={activeTab === key ? 0 : -1}
                 className={`settings-persona-tab${activeTab === key ? ' settings-persona-tab--active' : ''}`}
                 onClick={() => setActiveTab(key)}
               >
@@ -87,7 +123,7 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
               </button>
             ))}
           </div>
-          <div className="settings-persona-content" role="tabpanel">
+          <div id={panelId} className="settings-persona-content" role="tabpanel" aria-labelledby={`persona-tab-${agentName}-${activeTab}`}>
             {file.loading && <p className="settings-persona-loading">Loading…</p>}
             {file.error && <p className="settings-persona-error">{file.error}</p>}
             {!file.loading && !file.error && (
@@ -155,6 +191,54 @@ const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-opus-4-7', label: 'claude-opus' },
 ];
 
+type AgentName = 'writingAssistant' | 'brainstorm' | 'archive';
+
+/** Per-agent provider override state; null means "use global provider". */
+interface AgentOverrideState {
+  enabled: boolean;
+  kind: ProviderKind;
+  apiKey: string;
+  apiKeyDirty: boolean;
+  baseUrl: string;
+  model: string;
+}
+
+const DEFAULT_AGENT_OVERRIDE: AgentOverrideState = {
+  enabled: false,
+  kind: 'anthropic',
+  apiKey: '',
+  apiKeyDirty: false,
+  baseUrl: '',
+  model: '',
+};
+
+const DEFAULT_BASE_URLS: Record<ProviderKind, string> = {
+  anthropic: '',
+  openai: 'https://api.openai.com/v1',
+  ollama: 'http://127.0.0.1:11434/v1',
+  lmstudio: 'http://127.0.0.1:1234/v1',
+  custom: '',
+};
+
+/** Returns true when a base URL points to localhost / 127.x.x.x / [::1]. */
+function isLocalhostUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
+const ALL_CATEGORIES_ENABLED: Record<SuggestionCategory, boolean> = {
+  punctuation: true,
+  spelling: true,
+  grammar: true,
+  'sentence-structure': true,
+  'style-tone': true,
+  other: true,
+};
+
 const BUDGET_DEFAULTS: AgentBudgetSettings = {
   autoApply: false,
   confidenceThreshold: 0.85,
@@ -162,7 +246,36 @@ const BUDGET_DEFAULTS: AgentBudgetSettings = {
   maxSuggestionsPerHour: 50,
   heartbeatIntervalMinutes: 5,
   maxTokensPerDay: 500_000,
+  autoApplyCategories: ALL_CATEGORIES_ENABLED,
 };
+
+// SKY-908 — per-category auto-apply toggle group.
+// Order is the display order. 'other' is intentionally last because it covers
+// suggestions that don't fit the four named categories.
+const SUGGESTION_CATEGORY_ORDER: SuggestionCategory[] = [
+  'punctuation',
+  'spelling',
+  'grammar',
+  'sentence-structure',
+  'style-tone',
+  'other',
+];
+
+/**
+ * Read the effective per-category enable state for a settings entry.
+ * Backward compatible: when the map is absent (pre-SKY-908 settings), every
+ * category reads as enabled — the existing master `autoApply` boolean stays
+ * the kill-switch. Absent keys inside an explicit map also default to true so
+ * a forward-compat field never silently disables a new category.
+ */
+function isCategoryAutoApplyEnabled(
+  agent: AgentBudgetSettings,
+  category: SuggestionCategory,
+): boolean {
+  if (!agent.autoApplyCategories) return true;
+  const value = agent.autoApplyCategories[category];
+  return value !== false;
+}
 
 const DEFAULTS: AppSettings = {
   apiKey: '',
@@ -191,6 +304,21 @@ function validateApiKey(key: string): string | null {
   if (!key) return null;
   if (!key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
   return null;
+}
+
+function providerSupportsVoice(provider?: AppSettings['provider']): boolean {
+  if (!provider) return false;
+  if (provider.capabilities?.transcribe || provider.capabilities?.speak) return true;
+  if (provider.kind === 'openai') return true;
+  return provider.kind === 'custom' && Boolean(provider.baseUrl);
+}
+
+function formatProviderLabel(provider: AppSettings['provider']): string {
+  if (!provider) return 'Provider';
+  if (provider.kind === 'openai') return 'OpenAI';
+  if (provider.kind === 'custom') return provider.baseUrl ? `Custom (${provider.baseUrl})` : 'Custom endpoint';
+  const option = PROVIDER_OPTIONS.find((p) => p.value === provider.kind);
+  return option?.label ?? provider.kind.charAt(0).toUpperCase() + provider.kind.slice(1);
 }
 
 /** Contrast ratio badge — shows ratio and colour-codes pass/fail. */
@@ -273,12 +401,277 @@ function ColorPicker({
   );
 }
 
+/** Security warning dialog shown once when user configures a non-localhost custom endpoint. */
+function SecurityWarningDialog({
+  url,
+  onConfirm,
+  onCancel,
+}: {
+  url: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  let hostname = url;
+  try { hostname = new URL(url).hostname; } catch { /* use full url */ }
+  return (
+    <div className="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="security-warn-title">
+      <div className="settings-panel settings-security-warning" style={{ maxWidth: 420 }}>
+        <h3 id="security-warn-title" className="settings-section-title">⚠ Remote Endpoint Warning</h3>
+        <p className="settings-hint" style={{ marginBottom: 8 }}>
+          This endpoint is not on your local network.
+        </p>
+        <p className="settings-hint" style={{ marginBottom: 8 }}>
+          When you use it, Mythos Writer will send your text to:
+        </p>
+        <code className="settings-security-hostname">{hostname}</code>
+        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 12 }}>
+          We cannot inspect or encrypt this traffic before it leaves your device.
+          Proceed only if you own or fully trust this endpoint.
+        </p>
+        <div className="settings-action-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="settings-btn" onClick={onCancel}>Cancel</button>
+          <button type="button" className="settings-btn settings-btn-danger" onClick={onConfirm}>
+            I understand, continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Per-agent provider override section, shown inside each agent card. */
+function AgentProviderSection({
+  agentName,
+  idPrefix,
+  globalProviderKind,
+  override,
+  savedApiKey,
+  testStatus,
+  testMsg,
+  onChange,
+  onTest,
+}: {
+  agentName: AgentName;
+  idPrefix: string;
+  globalProviderKind: ProviderKind;
+  override: AgentOverrideState;
+  savedApiKey?: string;
+  testStatus: TestConnectionStatus;
+  testMsg: string;
+  onChange: <K extends keyof AgentOverrideState>(field: K, value: AgentOverrideState[K]) => void;
+  onTest: () => void;
+}) {
+  const activeKind = override.enabled ? override.kind : globalProviderKind;
+  const activeDef = PROVIDER_OPTIONS.find((p) => p.value === activeKind)!;
+  const overrideDef = PROVIDER_OPTIONS.find((p) => p.value === override.kind)!;
+
+  return (
+    <>
+      {/* Per-agent model selector (uses global provider when override is off) */}
+      {!override.enabled && (
+        <p className="settings-hint" style={{ marginTop: 2, marginBottom: 2 }}>
+          Using global provider ({activeDef.label}). Defaults from provider settings above.
+        </p>
+      )}
+
+      {/* Per-agent provider override toggle */}
+      <div className="settings-field settings-field-inline settings-agent-provider-toggle">
+        <label className="settings-toggle" htmlFor={`${idPrefix}-provider-toggle`}>
+          <input
+            id={`${idPrefix}-provider-toggle`}
+            type="checkbox"
+            aria-label={`Enable ${agentName} provider override`}
+            checked={override.enabled}
+            onChange={(e) => onChange('enabled', e.target.checked)}
+          />
+          <span className="settings-toggle-track" />
+        </label>
+        <span className="settings-label">Override provider for this agent</span>
+      </div>
+
+      {override.enabled && (
+        <div className="settings-agent-provider-form">
+          {/* Provider kind selector */}
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor={`${idPrefix}-provider-kind`}>Provider</label>
+            <select
+              id={`${idPrefix}-provider-kind`}
+              className="settings-input settings-select settings-input-sm"
+              value={override.kind}
+              aria-label={`Provider for ${agentName}`}
+              onChange={(e) => {
+                const newKind = e.target.value as ProviderKind;
+                onChange('kind', newKind);
+                if (DEFAULT_BASE_URLS[newKind]) onChange('baseUrl', DEFAULT_BASE_URLS[newKind]);
+              }}
+            >
+              {PROVIDER_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* API Key (anthropic / openai / custom) */}
+          {overrideDef.needsKey && (
+            <div className="settings-field settings-field-inline">
+              <label className="settings-label" htmlFor={`${idPrefix}-api-key`}>API Key</label>
+              <input
+                id={`${idPrefix}-api-key`}
+                className="settings-input settings-input-sm"
+                type="password"
+                value={override.apiKey}
+                placeholder={savedApiKey ? 'Key configured — enter new key to replace' : 'Paste API key…'}
+                aria-label={`API key for ${agentName}`}
+                onChange={(e) => { onChange('apiKey', e.target.value); onChange('apiKeyDirty', true); }}
+              />
+              {!override.apiKeyDirty && savedApiKey && (
+                <p className="settings-hint">Key is already configured.</p>
+              )}
+            </div>
+          )}
+
+          {/* Base URL (ollama / lmstudio / custom) */}
+          {overrideDef.needsUrl && (
+            <div className="settings-field settings-field-inline">
+              <label className="settings-label" htmlFor={`${idPrefix}-base-url`}>Base URL</label>
+              <input
+                id={`${idPrefix}-base-url`}
+                className="settings-input settings-input-sm"
+                type="url"
+                value={override.baseUrl}
+                placeholder={DEFAULT_BASE_URLS[override.kind] || 'https://…/v1'}
+                aria-label={`Base URL for ${agentName}`}
+                onChange={(e) => onChange('baseUrl', e.target.value)}
+              />
+              {override.baseUrl && !isLocalhostUrl(override.baseUrl) && (
+                <p className="settings-hint settings-hint-warn" role="alert">
+                  ⚠ This endpoint is not on localhost — your text will be sent to a remote server. Only use endpoints you own or fully trust.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Model */}
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor={`${idPrefix}-model`}>Model</label>
+            {override.kind === 'anthropic' ? (
+              <select
+                id={`${idPrefix}-model`}
+                className="settings-input settings-select settings-input-sm"
+                value={MODEL_OPTIONS.some((o) => o.value === override.model) ? override.model : ''}
+                aria-label={`Model for ${agentName}`}
+                onChange={(e) => onChange('model', e.target.value)}
+              >
+                {MODEL_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id={`${idPrefix}-model`}
+                className="settings-input settings-input-sm"
+                type="text"
+                value={override.model}
+                placeholder="e.g. llama3-70b, gpt-4o-mini"
+                aria-label={`Model for ${agentName}`}
+                maxLength={128}
+                onChange={(e) => onChange('model', e.target.value)}
+              />
+            )}
+          </div>
+
+          {/* Test connection */}
+          <div className="settings-field settings-field-inline">
+            <button
+              type="button"
+              className="settings-btn"
+              disabled={testStatus === 'testing'}
+              aria-label={`Test provider connection for ${agentName}`}
+              onClick={onTest}
+            >
+              {testStatus === 'testing' ? 'Testing…' : 'Test connection'}
+            </button>
+            {testStatus === 'ok' && (
+              <span className="settings-test-ok" role="status">{testMsg}</span>
+            )}
+            {testStatus === 'error' && (
+              <span className="settings-test-error" role="alert">{testMsg}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 interface Props {
   onClose: () => void;
   onSaved?: (settings: AppSettings) => void;
+  focusPrefs?: FocusPrefs;
+  onFocusPrefsChange?: (prefs: FocusPrefs) => void;
 }
 
-export default function SettingsPanel({ onClose, onSaved }: Props) {
+const FOCUS_PREFS_DEFAULTS: Pick<FocusPrefs, 'showTitleBar' | 'showStatusBar' | 'showTabBar' | 'showSidebarButtons' | 'showScrollbars' | 'showFileTreeArrows'> = {
+  showTitleBar: true, showStatusBar: true, showTabBar: true,
+  showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
+};
+
+// SKY-908 — per-category auto-apply toggle group, rendered under the master
+// auto-apply checkbox on each agent card. Hidden when the master is off (the
+// kill-switch dominates per CEO direction).
+interface AutoApplyCategoryTogglesProps {
+  idPrefix: string;
+  agentLabel: string;
+  agent: AgentBudgetSettings;
+  agentKey: keyof AppSettings['agents'];
+  onChange: (
+    agent: keyof AppSettings['agents'],
+    category: SuggestionCategory,
+    enabled: boolean,
+  ) => void;
+}
+
+function AutoApplyCategoryToggles({
+  idPrefix,
+  agentLabel,
+  agent,
+  agentKey,
+  onChange,
+}: AutoApplyCategoryTogglesProps) {
+  if (!agent.autoApply) return null;
+  return (
+    <fieldset
+      className="settings-category-toggles"
+      data-testid={`${idPrefix}-category-toggles`}
+      aria-label={`${agentLabel} auto-apply categories`}
+    >
+      <legend className="settings-category-toggles-legend">
+        Auto-apply categories
+      </legend>
+      {SUGGESTION_CATEGORY_ORDER.map((category) => {
+        const id = `${idPrefix}-cat-${category}`;
+        const checked = isCategoryAutoApplyEnabled(agent, category);
+        return (
+          <div key={category} className="settings-field settings-field-inline">
+            <label className="settings-toggle" htmlFor={id}>
+              <input
+                id={id}
+                type="checkbox"
+                aria-label={`${agentLabel} auto-apply ${SUGGESTION_CATEGORY_LABELS[category]}`}
+                checked={checked}
+                onChange={(e) => onChange(agentKey, category, e.target.checked)}
+              />
+              <span className="settings-toggle-track" />
+            </label>
+            <span className="settings-label">{SUGGESTION_CATEGORY_LABELS[category]}</span>
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -315,6 +708,20 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
 
+  // SKY-861/SKY-1112: Cloud-sync vault placement entry point.
+  const [showMoveWizard, setShowMoveWizard] = useState(false);
+  const vaultProvider = useMemo(() => detectCloudProvider(vaults.storyVaultPath), [vaults.storyVaultPath]);
+
+  // SKY-207: Custom field definitions
+  const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
+  const [customFieldsDirty, setCustomFieldsDirty] = useState(false);
+  const [customFieldsSavedOk, setCustomFieldsSavedOk] = useState(false);
+  const [customFieldsError, setCustomFieldsError] = useState<string | null>(null);
+  const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldType, setNewFieldType] = useState<FieldType>('text');
+  const [newFieldOptions, setNewFieldOptions] = useState('');
+  const [addingField, setAddingField] = useState(false);
+
   // Provider state (MYT-779)
   const [providerKind, setProviderKind] = useState<ProviderKind>('anthropic');
   const [providerApiKey, setProviderApiKey] = useState('');
@@ -323,6 +730,21 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   const [providerModel, setProviderModel] = useState('');
   const [testConnectionStatus, setTestConnectionStatus] = useState<TestConnectionStatus>('idle');
   const [testConnectionMsg, setTestConnectionMsg] = useState('');
+
+  // Per-agent provider overrides (SKY-686)
+  const [agentOverrides, setAgentOverrides] = useState<Record<AgentName, AgentOverrideState>>({
+    writingAssistant: { ...DEFAULT_AGENT_OVERRIDE },
+    brainstorm: { ...DEFAULT_AGENT_OVERRIDE },
+    archive: { ...DEFAULT_AGENT_OVERRIDE },
+  });
+  const [agentTestStatus, setAgentTestStatus] = useState<Record<AgentName, TestConnectionStatus>>({
+    writingAssistant: 'idle', brainstorm: 'idle', archive: 'idle',
+  });
+  const [agentTestMsg, setAgentTestMsg] = useState<Record<AgentName, string>>({
+    writingAssistant: '', brainstorm: '', archive: '',
+  });
+  // Security warning: non-localhost endpoint confirmation
+  const [remoteWarning, setRemoteWarning] = useState<{ agent: AgentName | 'global' | null; url: string; onConfirm: () => void } | null>(null);
 
   // Telemetry state (MYT-344 / MYT-779)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
@@ -351,6 +773,24 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         setProviderBaseUrl(s.provider.baseUrl ?? '');
         setProviderModel(s.provider.model ?? '');
       }
+      // Load per-agent provider overrides
+      const loadAgentOverride = (agentCfg: { provider?: ProviderConfig }): AgentOverrideState => {
+        const p = agentCfg.provider;
+        if (!p) return { ...DEFAULT_AGENT_OVERRIDE };
+        return {
+          enabled: true,
+          kind: p.kind as ProviderKind,
+          apiKey: '',
+          apiKeyDirty: false,
+          baseUrl: p.baseUrl ?? '',
+          model: p.model,
+        };
+      };
+      setAgentOverrides({
+        writingAssistant: loadAgentOverride(s.agents.writingAssistant),
+        brainstorm: loadAgentOverride(s.agents.brainstorm),
+        archive: loadAgentOverride(s.agents.archive),
+      });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
       setLoading(false);
     }).catch(() => {
@@ -365,6 +805,14 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [lgAdvancedOpen]);
+
+  // Keep --lg-neon in sync with the softness slider (SKY-261)
+  useEffect(() => {
+    const s = lg.softnessContrast;
+    if (s != null && !isNaN(s)) {
+      document.documentElement.style.setProperty('--lg-neon', resolveAxisTokens(s * 100).neon.toFixed(2));
+    }
+  }, [lg.softnessContrast]);
 
   // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
   useEffect(() => {
@@ -393,7 +841,16 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     });
   }, []);
 
-  useEffect(() => {
+  const handleMoveVault = useCallback(() => {
+    // TODO(SKY-861): wire wizard IPC
+    if (window.api.openMoveVaultWizard) {
+      void window.api.openMoveVaultWizard();
+      return;
+    }
+    setShowMoveWizard(true);
+  }, []);
+
+  const refreshMicDevices = useCallback(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     navigator.mediaDevices.enumerateDevices().then((devices) => {
       const mics = devices
@@ -402,6 +859,17 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
       setMicDevices(mics);
     }).catch(() => {});
   }, []);
+
+  // SKY-207: load custom field definitions
+  useEffect(() => {
+    (window.api as any).customFieldsList?.()
+      .then((res: { fields: CustomFieldDef[] }) => {
+        if (res?.fields) setCustomFields(res.fields);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { refreshMicDevices(); }, [refreshMicDevices]);
 
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
@@ -421,6 +889,51 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setSavedOk(false);
   }, []);
 
+  // SKY-908 — single source of truth for per-category auto-apply edits.
+  // On first edit, materialises a full map seeded with the current enabled
+  // state so the persisted JSON is unambiguous (no implicit "all enabled"
+  // shorthand once the user has expressed an opinion).
+  const setCategoryAutoApply = useCallback((
+    agent: keyof AppSettings['agents'],
+    category: SuggestionCategory,
+    enabled: boolean,
+  ) => {
+    setSettings((prev) => {
+      const current = prev.agents[agent];
+      const existing = current.autoApplyCategories ?? {};
+      const seeded: Record<SuggestionCategory, boolean> = {
+        'punctuation': existing.punctuation ?? true,
+        'spelling': existing.spelling ?? true,
+        'grammar': existing.grammar ?? true,
+        'sentence-structure': existing['sentence-structure'] ?? true,
+        'style-tone': existing['style-tone'] ?? true,
+        'other': existing.other ?? true,
+      };
+      seeded[category] = enabled;
+      return {
+        ...prev,
+        agents: {
+          ...prev.agents,
+          [agent]: { ...current, autoApplyCategories: seeded },
+        },
+      };
+    });
+    setSavedOk(false);
+  }, []);
+
+  const buildAgentProviderConfig = useCallback((agentName: AgentName): ProviderConfig | undefined => {
+    const ov = agentOverrides[agentName];
+    if (!ov.enabled) return undefined;
+    const def = PROVIDER_OPTIONS.find((p) => p.value === ov.kind)!;
+    return {
+      kind: ov.kind,
+      model: ov.model,
+      ...(def.needsKey ? { apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName].provider?.apiKey ?? '') } : {}),
+      ...(def.needsUrl && ov.baseUrl ? { baseUrl: ov.baseUrl } : {}),
+    };
+  }, [agentOverrides, settings.agents]);
+
+
   const handleSave = useCallback(async () => {
     if (apiKeyError) return;
     setSaving(true);
@@ -433,6 +946,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         model: providerModel,
         ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
         ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+        ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
       };
       const payload: AppSettings = {
         ...settings,
@@ -440,6 +954,12 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         provider,
         liquidNeon: lg,
         telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
+        agents: {
+          ...settings.agents,
+          writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
+          brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
+          archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
+        },
       };
       await window.api.settingsSet(payload);
       setSavedOk(true);
@@ -450,7 +970,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, onSaved, buildAgentProviderConfig]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -476,6 +996,53 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
       setVaultsError(e instanceof Error ? e.message : 'Failed to save vault paths.');
     }
   }, [vaults.storyVaultPath, vaults.notesVaultPath]);
+
+  // SKY-207: custom fields handlers
+  const handleSaveCustomFields = useCallback(async () => {
+    setCustomFieldsError(null);
+    setCustomFieldsSavedOk(false);
+    try {
+      const res = await (window.api as any).customFieldsSet?.(customFields) as { fields: CustomFieldDef[] };
+      if (res?.fields) {
+        setCustomFields(res.fields);
+        setCustomFieldsDirty(false);
+        setCustomFieldsSavedOk(true);
+      }
+    } catch (e) {
+      setCustomFieldsError(e instanceof Error ? e.message : 'Failed to save field definitions.');
+    }
+  }, [customFields]);
+
+  const handleAddField = useCallback(() => {
+    const name = newFieldName.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!name) return;
+    if (customFields.some((f) => f.name === name)) {
+      setCustomFieldsError(`A field named "${name}" already exists.`);
+      return;
+    }
+    const options = newFieldType === 'select'
+      ? newFieldOptions.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined;
+    const newDef: CustomFieldDef = {
+      id: crypto.randomUUID(),
+      name,
+      type: newFieldType,
+      ...(options ? { options } : {}),
+    };
+    setCustomFields((prev) => [...prev, newDef]);
+    setCustomFieldsDirty(true);
+    setCustomFieldsSavedOk(false);
+    setCustomFieldsError(null);
+    setNewFieldName('');
+    setNewFieldOptions('');
+    setAddingField(false);
+  }, [customFields, newFieldName, newFieldType, newFieldOptions]);
+
+  const handleRemoveField = useCallback((id: string) => {
+    setCustomFields((prev) => prev.filter((f) => f.id !== id));
+    setCustomFieldsDirty(true);
+    setCustomFieldsSavedOk(false);
+  }, []);
 
   const handlePickVaultFolder = useCallback(
     async (which: 'storyVaultPath' | 'notesVaultPath') => {
@@ -520,7 +1087,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     setTestConnectionStatus('testing');
     setTestConnectionMsg('');
     try {
-      const result = await (window.api as unknown as Record<string, (a: unknown) => Promise<{ ok: boolean; error?: string }>>).testProviderConnection?.({
+      const result = await window.api.settingsTestConnection({
         kind: providerKind,
         apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? ''),
         baseUrl: providerBaseUrl || undefined,
@@ -539,6 +1106,42 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
     }
   }, [providerKind, providerApiKey, providerApiKeyDirty, providerBaseUrl, providerModel, settings.provider?.apiKey]);
 
+  const handleAgentTestConnection = useCallback(async (agentName: AgentName) => {
+    setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'testing' }));
+    setAgentTestMsg((prev) => ({ ...prev, [agentName]: '' }));
+    const ov = agentOverrides[agentName];
+    try {
+      const result = await window.api.settingsTestConnection({
+        kind: ov.kind,
+        apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName].provider?.apiKey ?? ''),
+        baseUrl: ov.baseUrl || undefined,
+        model: ov.model,
+      });
+      if (result?.ok) {
+        setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'ok' }));
+        setAgentTestMsg((prev) => ({ ...prev, [agentName]: 'Connection successful' }));
+      } else {
+        setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'error' }));
+        setAgentTestMsg((prev) => ({ ...prev, [agentName]: result?.error ?? 'Connection failed' }));
+      }
+    } catch (e) {
+      setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'error' }));
+      setAgentTestMsg((prev) => ({ ...prev, [agentName]: e instanceof Error ? e.message : 'Connection failed' }));
+    }
+  }, [agentOverrides, settings.agents]);
+
+  const setAgentOverride = useCallback(<K extends keyof AgentOverrideState>(
+    agentName: AgentName,
+    field: K,
+    value: AgentOverrideState[K],
+  ) => {
+    setAgentOverrides((prev) => ({
+      ...prev,
+      [agentName]: { ...prev[agentName], [field]: value },
+    }));
+    setSavedOk(false);
+  }, []);
+
   // ── Liquid Neon helpers ──────────────────────────────────────────────────
 
   const setLgField = useCallback(<K extends keyof LiquidNeonPrefs>(key: K, value: LiquidNeonPrefs[K]) => {
@@ -551,6 +1154,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }, [bgPreviewUrl]);
 
   const handleSoftnessChange = useCallback((s: number) => {
+    document.documentElement.style.setProperty('--lg-neon', resolveAxisTokens(s * 100).neon.toFixed(2));
     setLg((prev) => {
       if (prev.advancedDecoupled) {
         // When decoupled only update the master; individual sliders stay
@@ -621,7 +1225,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
 
   if (loading) {
     return (
-      <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog">
+      <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
         <div className="settings-panel">
           <div className="settings-loading">Loading settings…</div>
         </div>
@@ -630,20 +1234,35 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
   }
 
   const effectiveBg = lg.bgBaseColor ?? LG_DEFAULTS.bgBaseColor!;
+  const activeProvider = settings.provider?.kind === providerKind ? settings.provider : undefined;
+  const activeProviderSupportsVoice = providerSupportsVoice(activeProvider);
+  const shouldShowVoiceProviderSelector =
+    (settings.stt?.provider ?? 'local') !== 'local' || (settings.tts?.provider ?? 'local') !== 'local';
+  const voiceProviders = activeProviderSupportsVoice && activeProvider ? [activeProvider] : [];
 
   return (
+    <>
     <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
       <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
           <h2 className="settings-title">Settings</h2>
-          <button className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
+          <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
         <div className="settings-body">
 
           {/* ── AI Providers ── */}
-          <section className="settings-section" aria-labelledby="section-providers">
-            <h3 className="settings-section-title" id="section-providers">AI Provider</h3>
+          <section className="settings-section provider-settings-section" aria-labelledby="section-providers">
+            <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
+            {activeProviderSupportsVoice && (
+              <span
+                className="provider-voice-badge"
+                aria-label="This provider supports voice input and/or output"
+                role="status"
+              >
+                Voice
+              </span>
+            )}
             <div className="settings-field">
               <label className="settings-label" htmlFor="provider-select">Provider</label>
               <select
@@ -754,7 +1373,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
                   placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : 'sk-ant-…'}
                   aria-invalid={apiKeyError ? 'true' : 'false'}
-                  aria-describedby={apiKeyError ? 'api-key-error' : undefined}
+                  aria-describedby={apiKeyError ? 'api-key-error api-key-hint' : 'api-key-hint'}
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -773,7 +1392,36 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               {!apiKeyDirty && keyIsConfigured && (
                 <p className="settings-hint" data-testid="key-configured-hint">Key is already configured.</p>
               )}
-              <p className="settings-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
+              <p className="settings-hint" id="api-key-hint">Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.</p>
+            </div>
+          </section>
+
+          {/* ── Account / Vault status (SKY-1112) ── */}
+          <section className="settings-section settings-account-section" aria-labelledby="section-account">
+            <h3 className="settings-section-title" id="section-account">Account</h3>
+            <div className="settings-vault-card" aria-label="Current Story Vault">
+              <div className="settings-vault-card-header">
+                <div>
+                  <span className="settings-vault-card-kicker">Vault</span>
+                  <h4 className="settings-vault-card-title">Story Vault location</h4>
+                </div>
+                <VaultSyncBadge provider={vaultProvider} />
+              </div>
+              <p
+                className="settings-vault-path-display"
+                title={vaults.storyVaultPath || undefined}
+              >
+                {vaults.storyVaultPath || 'No Story Vault configured'}
+              </p>
+              <button
+                className="settings-btn settings-btn-secondary settings-vault-move-btn"
+                type="button"
+                onClick={handleMoveVault}
+                aria-label="Move to a different folder"
+                data-testid="move-vault-btn"
+              >
+                Move to a different folder
+              </button>
             </div>
           </section>
 
@@ -794,6 +1442,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     setVaultsSavedOk(false);
                   }}
                   placeholder="~/Mythos/Story Vault"
+                  aria-describedby="story-vault-path-hint"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -806,7 +1455,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   Browse…
                 </button>
               </div>
-              <p className="settings-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
+              <p className="settings-hint" id="story-vault-path-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
             </div>
             <div className="settings-field">
               <label className="settings-label" htmlFor="notes-vault-path-input">Notes Vault</label>
@@ -822,6 +1471,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                     setVaultsSavedOk(false);
                   }}
                   placeholder="~/Mythos/Notes Vault"
+                  aria-describedby="notes-vault-path-hint"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -834,21 +1484,22 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   Browse…
                 </button>
               </div>
-              <p className="settings-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
+              <p className="settings-hint" id="notes-vault-path-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
             </div>
             <div className="settings-input-row">
               <button
-                className="settings-save"
+                className="settings-btn settings-btn-secondary"
                 type="button"
                 onClick={handleSaveVaults}
                 disabled={!vaultsDirty || !vaults.storyVaultPath.trim() || !vaults.notesVaultPath.trim()}
               >
                 Save vault paths
               </button>
-              {vaultsSavedOk && <span className="settings-saved-ok" role="status">Saved. Restart to fully apply.</span>}
+              {vaultsSavedOk && <span className="settings-saved-msg" role="status">Saved. Restart to fully apply.</span>}
               {vaultsError && <span className="settings-error-msg" role="alert">{vaultsError}</span>}
             </div>
             <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
+
           </section>
 
           {/* ── Agents ── */}
@@ -869,18 +1520,45 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 </label>
               </div>
               <div className="settings-agent-fields">
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="wa-model">Model</label>
-                  <select
-                    id="wa-model"
-                    className="settings-input settings-select settings-input-sm"
-                    value={settings.agents.writingAssistant.model}
-                    aria-label="Writing Assistant model"
-                    onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
-                  >
-                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
+                {/* Model selector for global provider override */}
+                {!agentOverrides.writingAssistant.enabled && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="wa-model">Model</label>
+                    {providerKind === 'anthropic' ? (
+                      <select
+                        id="wa-model"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.writingAssistant.model}
+                        aria-label="Writing Assistant model"
+                        onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
+                      >
+                        {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id="wa-model"
+                        className="settings-input settings-input-sm"
+                        type="text"
+                        value={settings.agents.writingAssistant.model}
+                        placeholder="model name (e.g. llama3-70b)"
+                        aria-label="Writing Assistant model"
+                        maxLength={128}
+                        onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+                <AgentProviderSection
+                  agentName="writingAssistant"
+                  idPrefix="wa"
+                  globalProviderKind={providerKind}
+                  override={agentOverrides.writingAssistant}
+                  savedApiKey={settings.agents.writingAssistant.provider?.apiKey}
+                  testStatus={agentTestStatus.writingAssistant}
+                  testMsg={agentTestMsg.writingAssistant}
+                  onChange={(field, value) => setAgentOverride('writingAssistant', field, value)}
+                  onTest={() => handleAgentTestConnection('writingAssistant')}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-interval">Scan interval (s)</label>
                   <input
@@ -918,6 +1596,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                <AutoApplyCategoryToggles
+                  idPrefix="wa"
+                  agentLabel="Writing Assistant"
+                  agent={settings.agents.writingAssistant}
+                  agentKey="writingAssistant"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -992,18 +1677,44 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 </label>
               </div>
               <div className="settings-agent-fields">
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="brainstorm-model">Model</label>
-                  <select
-                    id="brainstorm-model"
-                    className="settings-input settings-select settings-input-sm"
-                    value={settings.agents.brainstorm.model}
-                    aria-label="Brainstorm Agent model"
-                    onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
-                  >
-                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
+                {!agentOverrides.brainstorm.enabled && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="brainstorm-model">Model</label>
+                    {providerKind === 'anthropic' ? (
+                      <select
+                        id="brainstorm-model"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.brainstorm.model}
+                        aria-label="Brainstorm Agent model"
+                        onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
+                      >
+                        {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id="brainstorm-model"
+                        className="settings-input settings-input-sm"
+                        type="text"
+                        value={settings.agents.brainstorm.model}
+                        placeholder="model name (e.g. llama3-70b)"
+                        aria-label="Brainstorm Agent model"
+                        maxLength={128}
+                        onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+                <AgentProviderSection
+                  agentName="brainstorm"
+                  idPrefix="brainstorm"
+                  globalProviderKind={providerKind}
+                  override={agentOverrides.brainstorm}
+                  savedApiKey={settings.agents.brainstorm.provider?.apiKey}
+                  testStatus={agentTestStatus.brainstorm}
+                  testMsg={agentTestMsg.brainstorm}
+                  onChange={(field, value) => setAgentOverride('brainstorm', field, value)}
+                  onTest={() => handleAgentTestConnection('brainstorm')}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-heartbeat">Heartbeat interval (min)</label>
                   <input
@@ -1029,6 +1740,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                <AutoApplyCategoryToggles
+                  idPrefix="brainstorm"
+                  agentLabel="Brainstorm Agent"
+                  agent={settings.agents.brainstorm}
+                  agentKey="brainstorm"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="brainstorm-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -1107,18 +1825,44 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                 </label>
               </div>
               <div className="settings-agent-fields">
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="archive-model">Model</label>
-                  <select
-                    id="archive-model"
-                    className="settings-input settings-select settings-input-sm"
-                    value={settings.agents.archive.model}
-                    aria-label="Archive Agent model"
-                    onChange={(e) => setAgentField('archive', 'model', e.target.value)}
-                  >
-                    {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
+                {!agentOverrides.archive.enabled && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="archive-model">Model</label>
+                    {providerKind === 'anthropic' ? (
+                      <select
+                        id="archive-model"
+                        className="settings-input settings-select settings-input-sm"
+                        value={settings.agents.archive.model}
+                        aria-label="Archive Agent model"
+                        onChange={(e) => setAgentField('archive', 'model', e.target.value)}
+                      >
+                        {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id="archive-model"
+                        className="settings-input settings-input-sm"
+                        type="text"
+                        value={settings.agents.archive.model}
+                        placeholder="model name (e.g. llama3-70b)"
+                        aria-label="Archive Agent model"
+                        maxLength={128}
+                        onChange={(e) => setAgentField('archive', 'model', e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
+                <AgentProviderSection
+                  agentName="archive"
+                  idPrefix="archive"
+                  globalProviderKind={providerKind}
+                  override={agentOverrides.archive}
+                  savedApiKey={settings.agents.archive.provider?.apiKey}
+                  testStatus={agentTestStatus.archive}
+                  testMsg={agentTestMsg.archive}
+                  onChange={(field, value) => setAgentOverride('archive', field, value)}
+                  onTest={() => handleAgentTestConnection('archive')}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-interval">Continuity check interval (s)</label>
                   <input
@@ -1156,6 +1900,13 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   </label>
                   <span className="settings-label">Auto-apply suggestions</span>
                 </div>
+                <AutoApplyCategoryToggles
+                  idPrefix="archive"
+                  agentLabel="Archive Agent"
+                  agent={settings.agents.archive}
+                  agentKey="archive"
+                  onChange={setCategoryAutoApply}
+                />
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="archive-confidence">Auto-apply threshold</label>
                   <div className="settings-slider-row">
@@ -1216,6 +1967,202 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
           </section>
 
+          {/* ── Auto Linker (SKY-192) ── */}
+          <section className="settings-section" aria-labelledby="section-autolinker">
+            <h3 className="settings-section-title" id="section-autolinker">Auto Linker</h3>
+            <div className="settings-field">
+              <label className="settings-label">Entity mention mode</label>
+              <div className="settings-radio-group" role="radiogroup" aria-label="Auto Linker mode">
+                {([
+                  { value: 'off', label: 'Off' },
+                  { value: 'suggest', label: 'Suggest (default)' },
+                  { value: 'auto', label: 'Auto on save' },
+                ] as const).map(({ value, label }) => (
+                  <label key={value} className="settings-radio-label">
+                    <input
+                      type="radio"
+                      name="autoLinkerMode"
+                      value={value}
+                      checked={(settings.autoLinker?.mode ?? 'suggest') === value}
+                      onChange={() => {
+                        setSettings((p) => ({ ...p, autoLinker: { mode: value } }));
+                        setSavedOk(false);
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="settings-hint">
+                <strong>Suggest</strong> — underlines unlinked entity names; click to wrap in{' '}
+                <code>[[wikilink]]</code>.{' '}
+                <strong>Auto on save</strong> — applies all suggestions automatically when the scene is saved
+                (one Undo to revert).
+              </p>
+            </div>
+          </section>
+
+          {/* ── Journal Mode (SKY-204) ── */}
+          <section className="settings-section" aria-labelledby="section-journal">
+            <h3 className="settings-section-title" id="section-journal">Journal Mode</h3>
+            <div className="settings-field">
+              <label className="settings-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={settings.journalMode?.enabled ?? false}
+                  onChange={(e) => {
+                    setSettings((p) => ({
+                      ...p,
+                      journalMode: { ...(p.journalMode ?? {}), enabled: e.target.checked },
+                    }));
+                    setSavedOk(false);
+                  }}
+                />
+                Enable daily notes (auto-create a dated note each day you open the app)
+              </label>
+              <p className="settings-hint">
+                Creates a note like <code>Daily Notes/2025-01-15.md</code> on first launch of each new
+                calendar day. The writing streak counter in the Notes sidebar tracks consecutive days
+                with a note.
+              </p>
+            </div>
+            {(settings.journalMode?.enabled) && (
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="journal-folder">Daily notes folder</label>
+                <input
+                  id="journal-folder"
+                  className="settings-input"
+                  type="text"
+                  placeholder="Daily Notes"
+                  value={settings.journalMode?.noteFolder ?? ''}
+                  onChange={(e) => {
+                    setSettings((p) => ({
+                      ...p,
+                      journalMode: { ...(p.journalMode ?? { enabled: true }), noteFolder: e.target.value || undefined },
+                    }));
+                    setSavedOk(false);
+                  }}
+                />
+              </div>
+            )}
+          </section>
+
+          {/* ── Scene Fields (SKY-207) ── */}
+          <section className="settings-section" aria-labelledby="section-scene-fields">
+            <h3 className="settings-section-title" id="section-scene-fields">Scene Fields</h3>
+            <p className="settings-hint">
+              Define custom frontmatter fields — mood, tension, weather, POV, etc. — that appear in the scene
+              properties panel and are queryable in Saved Searches (e.g. <code>mood: tense AND tension: 8</code>).
+              Removing a field definition does not delete existing values from scene files.
+            </p>
+            {customFields.length > 0 && (
+              <ul className="cf-field-list" aria-label="Custom field definitions">
+                {customFields.map((f) => (
+                  <li key={f.id} className="cf-field-item">
+                    <span className="cf-field-name">{f.name}</span>
+                    <span className="cf-field-type">{f.type}</span>
+                    {f.type === 'select' && f.options && (
+                      <span className="cf-field-options">{f.options.join(', ')}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="cf-field-remove"
+                      aria-label={`Remove field ${f.name}`}
+                      onClick={() => handleRemoveField(f.id)}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!addingField ? (
+              <button
+                type="button"
+                className="settings-btn settings-btn-secondary"
+                onClick={() => { setAddingField(true); setCustomFieldsError(null); }}
+              >
+                + Add field
+              </button>
+            ) : (
+              <div className="cf-add-form" role="group" aria-label="Add custom field">
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="cf-name">Name</label>
+                  <input
+                    id="cf-name"
+                    className="settings-input"
+                    type="text"
+                    placeholder="mood"
+                    value={newFieldName}
+                    autoFocus
+                    onChange={(e) => setNewFieldName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddField(); if (e.key === 'Escape') setAddingField(false); }}
+                  />
+                </div>
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-label" htmlFor="cf-type">Type</label>
+                  <select
+                    id="cf-type"
+                    className="settings-input settings-select"
+                    value={newFieldType}
+                    onChange={(e) => setNewFieldType(e.target.value as FieldType)}
+                  >
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="select">Select</option>
+                  </select>
+                </div>
+                {newFieldType === 'select' && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="cf-options">Options</label>
+                    <input
+                      id="cf-options"
+                      className="settings-input"
+                      type="text"
+                      placeholder="calm, tense, urgent"
+                      value={newFieldOptions}
+                      onChange={(e) => setNewFieldOptions(e.target.value)}
+                    />
+                    <span className="settings-hint" style={{ marginLeft: 8 }}>comma-separated</span>
+                  </div>
+                )}
+                <div className="settings-input-row" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-save"
+                    onClick={handleAddField}
+                    disabled={!newFieldName.trim()}
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-cancel"
+                    onClick={() => setAddingField(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {customFieldsDirty && (
+              <div className="settings-input-row" style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="settings-btn settings-btn-secondary"
+                  onClick={handleSaveCustomFields}
+                >
+                  Save field definitions
+                </button>
+                {customFieldsSavedOk && <span className="settings-saved-msg" role="status">Saved.</span>}
+                {customFieldsError && <span className="settings-error-msg" role="alert">{customFieldsError}</span>}
+              </div>
+            )}
+            {!customFieldsDirty && customFieldsSavedOk && (
+              <span className="settings-saved-msg" role="status">Saved.</span>
+            )}
+          </section>
+
           {/* ── Snapshots ── */}
           <section className="settings-section" aria-labelledby="section-snapshots">
             <h3 className="settings-section-title" id="section-snapshots">Snapshots</h3>
@@ -1254,6 +2201,19 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
               </div>
             </div>
             <p className="settings-hint">Snapshots are taken automatically while you write. Older ones are pruned by count and age.</p>
+            <div className="settings-field settings-field-inline" style={{ marginTop: 8 }}>
+              <span className="settings-label">Danger zone</span>
+              <button
+                className="settings-btn-danger"
+                onClick={async () => {
+                  if (!window.confirm('Delete ALL snapshots across every scene? This cannot be undone.')) return;
+                  await window.api.snapshotDeleteAll();
+                  setSavedOk(false);
+                }}
+              >
+                Delete all snapshots
+              </button>
+            </div>
           </section>
 
           {/* ── Updates ── */}
@@ -1377,6 +2337,52 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
 
           </section>
 
+          {/* ── Focus Mode (SKY-325) ── */}
+          {onFocusPrefsChange && (
+            <section className="settings-section" aria-labelledby="section-focus-mode">
+              <h3 className="settings-section-title" id="section-focus-mode">Focus Mode</h3>
+              <p className="settings-hint">Choose which UI elements stay visible in Focus Mode and Distraction-Free mode. Changes apply immediately.</p>
+              {(
+                [
+                  { key: 'showTitleBar',       label: 'Show title bar' },
+                  { key: 'showStatusBar',       label: 'Show status bar' },
+                  { key: 'showTabBar',          label: 'Show tabs' },
+                  { key: 'showSidebarButtons',  label: 'Show sidebar collapse buttons' },
+                  { key: 'showScrollbars',      label: 'Show scrollbars' },
+                  { key: 'showFileTreeArrows',  label: 'Show file tree toggle arrows' },
+                ] as const
+              ).map(({ key, label }) => {
+                const checked = focusPrefs ? focusPrefs[key] : FOCUS_PREFS_DEFAULTS[key];
+                return (
+                  <label key={key} className="settings-focus-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={label}
+                      onChange={() => {
+                        if (!focusPrefs || !onFocusPrefsChange) return;
+                        onFocusPrefsChange({ ...focusPrefs, [key]: !checked });
+                      }}
+                    />
+                    <span className="settings-label">{label}</span>
+                  </label>
+                );
+              })}
+              <div className="settings-input-row" style={{ marginTop: 8 }}>
+                <button
+                  className="settings-btn settings-btn-secondary"
+                  type="button"
+                  onClick={() => {
+                    if (!focusPrefs || !onFocusPrefsChange) return;
+                    onFocusPrefsChange({ ...focusPrefs, ...FOCUS_PREFS_DEFAULTS });
+                  }}
+                >
+                  Reset to defaults
+                </button>
+              </div>
+            </section>
+          )}
+
           {/* ── Voice ── */}
           <section className="settings-section" aria-labelledby="section-voice">
             <h3 className="settings-section-title" id="section-voice">Voice</h3>
@@ -1393,7 +2399,7 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                       const enabled = e.target.checked;
                       setSettings((p) => ({
                         ...p,
-                        voice: { enabled, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: p.voice?.micDeviceId },
+                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), enabled },
                       }));
                       setSavedOk(false);
                     }}
@@ -1401,32 +2407,148 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   <span className="settings-toggle-track" />
                 </label>
               </div>
-              {micDevices.length > 0 && (
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="voice-mic">Microphone</label>
-                  <select
-                    id="voice-mic"
-                    className="settings-input settings-select"
-                    value={settings.voice?.micDeviceId ?? ''}
-                    aria-label="Microphone selection"
+
+              {(settings.voice?.enabled) && (
+                <>
+                  {/* Capture mode */}
+                  <div className="settings-field">
+                    <span className="settings-label">Capture mode</span>
+                    <div className="settings-radio-group" role="radiogroup" aria-label="Voice capture mode">
+                      <label className="settings-radio-label">
+                        <input
+                          type="radio"
+                          name="voice-mode"
+                          value="toggle"
+                          checked={(settings.voice?.voiceMode ?? 'toggle') === 'toggle'}
+                          onChange={() => {
+                            setSettings((p) => ({
+                              ...p,
+                              voice: { ...(p.voice ?? { enabled: true, cloudFallback: false }), voiceMode: 'toggle' },
+                            }));
+                            setSavedOk(false);
+                          }}
+                        />
+                        <span>Toggle — press <kbd>Ctrl+Shift+V</kbd> to start/stop</span>
+                      </label>
+                      <label className="settings-radio-label">
+                        <input
+                          type="radio"
+                          name="voice-mode"
+                          value="push-to-talk"
+                          checked={settings.voice?.voiceMode === 'push-to-talk'}
+                          onChange={() => {
+                            setSettings((p) => ({
+                              ...p,
+                              voice: { ...(p.voice ?? { enabled: true, cloudFallback: false }), voiceMode: 'push-to-talk' },
+                            }));
+                            setSavedOk(false);
+                          }}
+                        />
+                        <span>Push-to-talk — hold <kbd>Alt+V</kbd> while speaking</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Microphone device */}
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-mic">Microphone</label>
+                    <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                      <select
+                        id="voice-mic"
+                        className="settings-input settings-select"
+                        style={{ flex: 1 }}
+                        value={settings.voice?.micDeviceId ?? ''}
+                        aria-label="Microphone selection"
+                        onChange={(e) => {
+                          const val = e.target.value || undefined;
+                          setSettings((p) => ({
+                            ...p,
+                            voice: { ...(p.voice ?? { enabled: true, cloudFallback: false }), micDeviceId: val },
+                          }));
+                          setSavedOk(false);
+                        }}
+                      >
+                        <option value="">System default</option>
+                        {micDevices.map((d) => (
+                          <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="settings-btn"
+                        onClick={refreshMicDevices}
+                        aria-label="Refresh microphone list"
+                        title="Refresh device list"
+                      >
+                        ↺
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="settings-agent-header" style={{ marginTop: '8px' }}>
+                <span className="settings-label">Push-to-talk mode</span>
+                <label className="settings-toggle" htmlFor="voice-ptt">
+                  <input
+                    id="voice-ptt"
+                    type="checkbox"
+                    aria-label="Push-to-talk mode"
+                    checked={settings.voice?.pushToTalkMode ?? false}
                     onChange={(e) => {
-                      const val = e.target.value || undefined;
+                      const pushToTalkMode = e.target.checked;
                       setSettings((p) => ({
                         ...p,
-                        voice: { enabled: p.voice?.enabled ?? false, cloudFallback: p.voice?.cloudFallback ?? false, micDeviceId: val },
+                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), pushToTalkMode },
                       }));
                       setSavedOk(false);
                     }}
-                  >
-                    <option value="">System default</option>
-                    {micDevices.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
-                    ))}
-                  </select>
-                </div>
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+
+              {shouldShowVoiceProviderSelector && (
+                <>
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="voice-provider-select">Voice Provider</label>
+                    <select
+                      id="voice-provider-select"
+                      className="settings-input settings-select"
+                      value={settings.voiceProviderId ?? ''}
+                      aria-label="Voice provider"
+                      aria-describedby="voice-provider-hint"
+                      onChange={(e) => {
+                        const val = e.target.value || undefined;
+                        setSettings((p) => ({ ...p, voiceProviderId: val }));
+                        setSavedOk(false);
+                      }}
+                    >
+                      <option value="">
+                        {voiceProviders.length === 0
+                          ? 'No providers support voice — configure an OpenAI-compatible provider'
+                          : 'Select a provider…'}
+                      </option>
+                      {voiceProviders.map((provider) => (
+                        <option key={provider.kind} value={provider.kind}>
+                          {formatProviderLabel(provider)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="settings-hint" id="voice-provider-hint">
+                    Voice provider controls cloud speech-to-text and text-to-speech. Only providers with voice capabilities (OpenAI or OpenAI-compatible custom endpoints) are shown; local STT/TTS stays on your device.
+                  </p>
+                </>
               )}
+
+              <p className="settings-hint settings-hint-privacy">
+                Voice is processed locally on your device when local mode is active; cloud voice uses the selected provider.
+              </p>
               <p className="settings-hint">
-                Voice input lets you dictate text into the editor. Requires microphone permission.
+                When push-to-talk is on, hold <kbd>Ctrl+Shift+M</kbd> to record and release to stop.
+                When off, <kbd>Ctrl+Shift+M</kbd> toggles recording on/off.
+                Requires microphone permission.
               </p>
             </div>
           </section>
@@ -1483,8 +2605,9 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
             </div>
           )}
           <div className="settings-footer-actions">
-            <button className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
+            <button type="button" className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
             <button
+              type="button"
               className="settings-btn settings-btn-save"
               onClick={handleSave}
               disabled={saving || !!apiKeyError}
@@ -1854,29 +2977,39 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
                   onChange={(v) => setLgField('accentColor', v)}
                 />
 
-                {/* Neon border colour slot */}
-                <div className="settings-field">
-                  <label className="settings-label">Neon border</label>
-                  <div className="lg-swatch-row" role="radiogroup" aria-label="Neon border colour">
-                    {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
-                      <label key={accent} className="lg-swatch-label">
-                        <input
-                          type="radio"
-                          name="lg-neon-border"
-                          value={accent}
-                          checked={(lg.neonBorderColor ?? 'cyan') === accent}
-                          onChange={() => setLgField('neonBorderColor', accent)}
-                          aria-label={`Neon border ${accent}`}
-                        />
-                        <span
-                          className={`lg-swatch lg-swatch-${accent}${(lg.neonBorderColor ?? 'cyan') === accent ? ' lg-swatch-active' : ''}`}
-                          title={accent.charAt(0).toUpperCase() + accent.slice(1)}
-                        />
-                        <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                {/* Neon border colour slots A / B / C (SKY-910) — three-stop
+                    configurable gradient for the multi-color border treatment. */}
+                {([
+                  { field: 'neonBorderColor',  label: 'Neon border A', radioName: 'lg-neon-border',   fallback: 'cyan' },
+                  { field: 'neonBorderColor2', label: 'Neon border B', radioName: 'lg-neon-border-2', fallback: 'violet' },
+                  { field: 'neonBorderColor3', label: 'Neon border C', radioName: 'lg-neon-border-3', fallback: 'magenta' },
+                ] as const).map(({ field, label, radioName, fallback }) => {
+                  const current = (lg[field] ?? fallback) as 'cyan' | 'violet' | 'magenta';
+                  return (
+                    <div key={field} className="settings-field">
+                      <label className="settings-label">{label}</label>
+                      <div className="lg-swatch-row" role="radiogroup" aria-label={`${label} colour`}>
+                        {(['cyan', 'violet', 'magenta'] as const).map((accent) => (
+                          <label key={accent} className="lg-swatch-label">
+                            <input
+                              type="radio"
+                              name={radioName}
+                              value={accent}
+                              checked={current === accent}
+                              onChange={() => setLgField(field, accent)}
+                              aria-label={`${label} ${accent}`}
+                            />
+                            <span
+                              className={`lg-swatch lg-swatch-${accent}${current === accent ? ' lg-swatch-active' : ''}`}
+                              title={accent.charAt(0).toUpperCase() + accent.slice(1)}
+                            />
+                            <span className="lg-swatch-name">{accent.charAt(0).toUpperCase() + accent.slice(1)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
 
                 {/* Legacy neon accent slot (kept for compatibility) */}
                 <div className="settings-field">
@@ -1949,6 +3082,23 @@ export default function SettingsPanel({ onClose, onSaved }: Props) {
         </div>
       )}
     </div>
+    {remoteWarning && (
+      <SecurityWarningDialog
+        url={remoteWarning.url}
+        onConfirm={() => { remoteWarning.onConfirm(); setRemoteWarning(null); }}
+        onCancel={() => setRemoteWarning(null)}
+      />
+    )}
+    {showMoveWizard && (
+      <MoveVaultWizard
+        onClose={() => setShowMoveWizard(false)}
+        onSuccess={(newPath) => {
+          setShowMoveWizard(false);
+          setVaults((prev) => ({ ...prev, storyVaultPath: newPath }));
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -1991,12 +3141,12 @@ function BrainstormRoutingPanel() {
 
   return (
     <div className="settings-field" data-testid="brainstorm-routing-panel">
-      <label className="settings-label">Notes folder routing</label>
-      <p className="settings-help-text">
+      <label className="settings-label" id="brainstorm-routing-label">Notes folder routing</label>
+      <p className="settings-help-text" id="brainstorm-routing-hint">
         Brainstorm asks once per category in a Blank vault and remembers your
         pick. Clear a row below to be asked again on the next note.
       </p>
-      <ul className="bs-routing-memory-list">
+      <ul className="bs-routing-memory-list" aria-labelledby="brainstorm-routing-label" aria-describedby="brainstorm-routing-hint">
         {ROUTING_CATEGORIES.map((cat) => {
           const dest = routing[cat];
           return (

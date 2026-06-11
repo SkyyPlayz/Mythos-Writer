@@ -71,6 +71,8 @@ export const IPC_CHANNELS = {
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',
+  SNAPSHOT_DELETE: 'snapshot:delete',
+  SNAPSHOT_DELETE_ALL: 'snapshot:delete-all',
 
   // Versioned drafts — Phase 2 (MYT-198), SKY-10 upgrade
   VERSION_LIST: 'version:list',
@@ -88,6 +90,11 @@ export const IPC_CHANNELS = {
   ENTITY_DELETE: 'entity:delete',
   ENTITY_LIST: 'entity:list',
   ENTITY_BACKLINKS: 'entity:backlinks',
+
+  // Entity Relationships (SKY-232)
+  ENTITY_RELATIONSHIPS_LIST: 'entity:relationships:list',
+  ENTITY_RELATIONSHIPS_CREATE: 'entity:relationships:create',
+  ENTITY_RELATIONSHIPS_DELETE: 'entity:relationships:delete',
 
   // App settings
   SETTINGS_GET: 'settings:get',
@@ -227,6 +234,10 @@ export const IPC_CHANNELS = {
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
   // renderer has one move channel per vault root.
   VAULT_MOVE: 'vault:move',
+  // SKY-862: relocate the entire story vault to a cloud-synced folder.
+  // Distinct from VAULT_MOVE (intra-vault file rename) — this moves the root
+  // directory itself and updates persisted settings.
+  VAULT_GUIDED_FOLDER_MOVE: 'vault:guidedFolderMove',
   // SKY-9: generic folder picker for the Settings UI. Distinct from
   // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
   // and from BG_PICK (image picker). Returns the chosen absolute path with
@@ -259,6 +270,11 @@ export const IPC_CHANNELS = {
   BRAINSTORM_RESOLVE_ROUTING: 'brainstorm:resolveRouting',
   BRAINSTORM_RESET_CATEGORY_ROUTING: 'brainstorm:resetCategoryRouting',
   BRAINSTORM_LIST_NOTES_FOLDERS: 'brainstorm:listNotesFolders',
+  // SKY-196: token-budgeted context selection for Brainstorm AI requests
+  BRAINSTORM_SELECT_CONTEXT: 'brainstorm:selectContext',
+  // SKY-324: one-shot entry enrichment — generate a description for a newly
+  // created entity and write it to the Notes Vault via the existing routing logic.
+  BRAINSTORM_ENRICH_ENTRY: 'brainstorm:enrichEntry',
 
   // SKY-12.3: two-vault sample project loader. Copies the bundled sample
   // from resources/sample-project/ into <parentPath>/Story Vault/ and
@@ -281,6 +297,85 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
+  // SKY-190: Note Templates — per-note variable/prompt/pick templates
+  NOTE_TEMPLATE_LIST: 'note-template:list',
+
+  // SKY-193: Tag Wrangler — list / rename / merge notes-vault tags
+  NOTES_TAG_LIST: 'notesVault:tag:list',
+  NOTES_TAG_RENAME: 'notesVault:tag:rename',
+  NOTES_TAG_MERGE: 'notesVault:tag:merge',
+  // SKY-55: per-scene notes
+  NOTES_GET: 'notes:get',
+  NOTES_SET: 'notes:set',
+  // SKY-158: Tag & cross-reference system
+  TAGS_LIST: 'tags:list',
+  TAGS_UPSERT: 'tags:upsert',
+  TAGS_DELETE: 'tags:delete',
+  TAGS_RENAME: 'tags:rename',
+  TAGS_FOR_ITEM: 'tags:forItem',
+  TAGS_SET_FOR_ITEM: 'tags:setForItem',
+  TAGS_ITEMS_FOR_TAG: 'tags:itemsForTag',
+  TAGS_BULK_APPLY: 'tags:bulkApply',
+  SCENE_SET_TAGS: 'scene:setTags',
+  // SKY-154: Writing Goals & Progress Dashboard
+  GOALS_LOG_WORDS: 'goals:logWords',
+  GOALS_GET_STATS: 'goals:getStats',
+  GOALS_SET_GOAL: 'goals:setGoal',
+  GOALS_RESET_STREAK: 'goals:resetStreak',
+  // SKY-170: Scene-to-entity links
+  SCENE_ENTITY_LINKS_LIST: 'sceneEntityLinks:list',
+  SCENE_ENTITY_LINKS_UPSERT: 'sceneEntityLinks:upsert',
+  SCENE_ENTITY_LINKS_DELETE: 'sceneEntityLinks:delete',
+  ENTITY_LINKED_SCENES: 'entity:linkedScenes',
+
+  // SKY-203: Note-level backlinks — which notes link to a given note
+  NOTE_BACKLINKS: 'notesVault:backlinks',
+
+  // SKY-194: Iconize — per-node icons with bundled + user icon packs
+  NOTES_VAULT_READ_ICONS: 'notesVault:readIcons',
+  VAULT_READ_ICONS: 'vault:readIcons',
+  ICONS_LIST_USER_PACKS: 'icons:listUserPacks',
+  ICONS_READ_SVG: 'icons:readSvg',
+
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  SMART_FOLDER_LIST: 'smartFolder:list',
+  SMART_FOLDER_CREATE: 'smartFolder:create',
+  SMART_FOLDER_UPDATE: 'smartFolder:update',
+  SMART_FOLDER_DELETE: 'smartFolder:delete',
+  SMART_FOLDER_QUERY: 'smartFolder:query',
+  // SKY-204: Daily Notes — opt-in journal mode
+  DAILY_NOTE_OPEN_TODAY: 'dailyNote:openToday',
+  DAILY_NOTE_GET_STREAK: 'dailyNote:getStreak',
+  // SKY-207: Per-scene custom frontmatter fields
+  CUSTOM_FIELDS_LIST: 'customFields:list',
+  CUSTOM_FIELDS_SET: 'customFields:set',
+  SCENE_PROPS_GET: 'scene:propsGet',
+  SCENE_PROPS_SET: 'scene:propsSet',
+
+  // SKY-320: one-click Mythos Vault create (Vaults/<name>/{Story Vault, Notes Vault}).
+  // Skips the folder picker; renderer either accepts the default parent
+  // (~/Mythos/Vaults) or supplies one it already validated.
+  VAULT_CREATE_DEFAULT_MYTHOS: 'vault:createDefaultMythos',
+
+  // SKY-445/SKY-458: Continuity drift detection — cross-chapter lore consistency check
+  CONTINUITY_CHECK: 'continuity:check',
+
+  // SKY-791: Timeline data model + settings IPC
+  TIMELINE_GET_SETTINGS: 'timeline:getSettings',
+  TIMELINE_SAVE_SETTINGS: 'timeline:saveSettings',
+  TIMELINE_GET_SCENES: 'timeline:getScenes',
+  TIMELINE_UPDATE_SCENE: 'timeline:updateScene',
+  TIMELINE_UPDATE_ARC_COLOR: 'timeline:updateArcColor',
+  TIMELINE_LIST_ARCS: 'timeline:listArcs',
+
+  // SKY-796: Timeline AI auto-population proposals
+  TIMELINE_PROPOSALS_GENERATE: 'timeline:proposals:generate',
+  TIMELINE_PROPOSALS_LIST: 'timeline:proposals:list',
+  TIMELINE_PROPOSAL_RESOLVE: 'timeline:proposal:resolve',
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
+  VAULT_DISMISS_SYNC_WARNING: 'vault:dismiss-sync-warning',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -366,6 +461,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SNAPSHOT_LIST]: (payload: SnapshotListPayload) => SnapshotListResponse;
   [IPC_CHANNELS.SNAPSHOT_GET]: (payload: SnapshotGetPayload) => SnapshotGetResponse;
   [IPC_CHANNELS.SNAPSHOT_RESTORE]: (payload: SnapshotRestorePayload) => SnapshotRestoreResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE]: (payload: SnapshotDeletePayload) => SnapshotDeleteResponse;
+  [IPC_CHANNELS.SNAPSHOT_DELETE_ALL]: (payload: SnapshotDeleteAllPayload) => SnapshotDeleteAllResponse;
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
@@ -377,6 +474,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ENTITY_DELETE]: (payload: EntityDeletePayload) => EntityDeleteResponse;
   [IPC_CHANNELS.ENTITY_LIST]: (payload: EntityListPayload) => EntityListResponse;
   [IPC_CHANNELS.ENTITY_BACKLINKS]: (payload: EntityBacklinksPayload) => EntityBacklinksResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_LIST]: (payload: EntityRelationshipsListPayload) => EntityRelationshipsListResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_CREATE]: (payload: EntityRelationshipsCreatePayload) => EntityRelationshipsCreateResponse;
+  [IPC_CHANNELS.ENTITY_RELATIONSHIPS_DELETE]: (payload: EntityRelationshipsDeletePayload) => { deleted: boolean };
   [IPC_CHANNELS.SETTINGS_GET]: (payload: never) => AppSettings;
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => SettingsSetResponse;
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) => Promise<SettingsTestConnectionResponse>;
@@ -419,8 +519,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
   [IPC_CHANNELS.VOICE_PICK_BINARY]: (payload: VoicePickBinaryPayload) => Promise<VoicePickBinaryResponse>;
-  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse>;
-  [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse>;
+  [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse | RegistrationTokenError>;
+  [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_VALIDATE_PATH]: (payload: VaultValidatePathPayload) => Promise<VaultValidatePathResponse>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER_BY_PATH]: (payload: VaultPickFolderByPathPayload) => Promise<VaultPickFolderResponse>;
   [IPC_CHANNELS.TIMELINE_INFER]: (payload: TimelineInferPayload) => TimelineInferResponse;
@@ -444,6 +544,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
@@ -455,16 +556,99 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (payload: BrainstormResetCategoryRoutingPayload) => BrainstormResetCategoryRoutingResponse;
   [IPC_CHANNELS.BRAINSTORM_LIST_NOTES_FOLDERS]: (payload: never) => BrainstormListNotesFoldersResponse;
+  [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (payload: BrainstormSelectContextPayload) => BrainstormSelectContextResponse;
   // SKY-12 onboarding channels
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
-  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: never) => { ok: true };
+  // SKY-627: extended payload — orchestrates vault creation + first-scene setup
+  [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-156: Project Templates
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
-  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse>;
-  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse;
+  [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse | { error: string }>;
+  [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
+  // SKY-190: Note Templates
+  [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
+  // SKY-204: Daily Notes
+  [IPC_CHANNELS.DAILY_NOTE_OPEN_TODAY]: (payload: never) => DailyNoteOpenTodayResponse;
+  [IPC_CHANNELS.DAILY_NOTE_GET_STREAK]: (payload: never) => DailyNoteGetStreakResponse;
+  // SKY-193: Tag Wrangler
+  [IPC_CHANNELS.NOTES_TAG_LIST]: (payload: never) => NotesTagListResponse;
+  [IPC_CHANNELS.NOTES_TAG_RENAME]: (payload: NotesTagRenamePayload) => NotesTagRenameResponse;
+  [IPC_CHANNELS.NOTES_TAG_MERGE]: (payload: NotesTagMergePayload) => NotesTagMergeResponse;
+
+  // SKY-55: per-scene notes
+  [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
+  [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
+
+  // SKY-158: Tag & cross-reference system
+  [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;
+  [IPC_CHANNELS.TAGS_UPSERT]: (payload: TagsUpsertPayload) => TagsUpsertResponse;
+  [IPC_CHANNELS.TAGS_DELETE]: (payload: TagsDeletePayload) => TagsDeleteResponse;
+  [IPC_CHANNELS.TAGS_RENAME]: (payload: TagsRenamePayload) => TagsRenameResponse;
+  [IPC_CHANNELS.TAGS_FOR_ITEM]: (payload: TagsForItemPayload) => TagsForItemResponse;
+  [IPC_CHANNELS.TAGS_SET_FOR_ITEM]: (payload: TagsSetForItemPayload) => TagsSetForItemResponse;
+  [IPC_CHANNELS.TAGS_ITEMS_FOR_TAG]: (payload: TagsItemsForTagPayload) => TagsItemsForTagResponse;
+  [IPC_CHANNELS.TAGS_BULK_APPLY]: (payload: TagsBulkApplyPayload) => TagsBulkApplyResponse;
+  [IPC_CHANNELS.SCENE_SET_TAGS]: (payload: SceneSetTagsPayload) => SceneSetTagsResponse;
+
+  // SKY-154: Writing Goals
+  [IPC_CHANNELS.GOALS_LOG_WORDS]: (payload: GoalsLogWordsPayload) => GoalsLogWordsResponse;
+  [IPC_CHANNELS.GOALS_GET_STATS]: (payload: never) => GoalsGetStatsResponse;
+  [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => GoalsSetGoalResponse;
+  [IPC_CHANNELS.GOALS_RESET_STREAK]: (payload: never) => GoalsResetStreakResponse;
+
+  // SKY-170: Scene-to-entity links
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_LIST]: (payload: SceneEntityLinksListPayload) => SceneEntityLinksListResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_UPSERT]: (payload: SceneEntityLinksUpsertPayload) => SceneEntityLinksUpsertResponse;
+  [IPC_CHANNELS.SCENE_ENTITY_LINKS_DELETE]: (payload: SceneEntityLinksDeletePayload) => void;
+  [IPC_CHANNELS.ENTITY_LINKED_SCENES]: (payload: EntityLinkedScenesPayload) => EntityLinkedScenesResponse;
+
+  // SKY-203: Note-level backlinks
+  [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => NoteBacklinksResponse;
+
+  // SKY-194: Iconize — per-node icon IPC
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (payload: never) => { packName: string; icons: string[] }[];
+  [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }) => { svg: string | null };
+
+  // SKY-205: Smart Folders
+  [IPC_CHANNELS.SMART_FOLDER_LIST]: (payload: never) => { smartFolders: SmartFolderEntry[] };
+  [IPC_CHANNELS.SMART_FOLDER_CREATE]: (payload: { name: string; query: string }) => { smartFolder: SmartFolderEntry };
+  [IPC_CHANNELS.SMART_FOLDER_UPDATE]: (payload: { id: string; name?: string; query?: string }) => { smartFolder: SmartFolderEntry };
+  [IPC_CHANNELS.SMART_FOLDER_DELETE]: (payload: { id: string }) => { success: boolean };
+  [IPC_CHANNELS.SMART_FOLDER_QUERY]: (payload: { query: string }) => { results: SmartFolderResult[] };
+
+  // SKY-207: Per-scene custom frontmatter fields
+  [IPC_CHANNELS.CUSTOM_FIELDS_LIST]: (payload: never) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.CUSTOM_FIELDS_SET]: (payload: { fields: CustomFieldDef[] }) => { fields: CustomFieldDef[] };
+  [IPC_CHANNELS.SCENE_PROPS_GET]: (payload: { sceneId: string }) => { customFields: Record<string, unknown> };
+  [IPC_CHANNELS.SCENE_PROPS_SET]: (payload: { sceneId: string; customFields: Record<string, unknown> }) => { ok: boolean };
+
+  // SKY-320: one-click Mythos Vault create
+  [IPC_CHANNELS.VAULT_CREATE_DEFAULT_MYTHOS]: (payload: CreateDefaultMythosVaultPayload) => Promise<CreateDefaultMythosVaultResponse>;
+
+  // SKY-445/SKY-458: Continuity drift check
+  [IPC_CHANNELS.CONTINUITY_CHECK]: (payload: ContinuityCheckPayload) => ContinuityCheckResponse;
+
+  // SKY-791: Timeline data model + settings
+  [IPC_CHANNELS.TIMELINE_GET_SETTINGS]: (payload: TimelineGetSettingsPayload) => TimelineGetSettingsResponse;
+  [IPC_CHANNELS.TIMELINE_SAVE_SETTINGS]: (payload: TimelineSaveSettingsPayload) => TimelineSaveSettingsResponse;
+  [IPC_CHANNELS.TIMELINE_GET_SCENES]: (payload: TimelineGetScenesPayload) => TimelineGetScenesResponse;
+  [IPC_CHANNELS.TIMELINE_UPDATE_SCENE]: (payload: TimelineUpdateScenePayload) => TimelineUpdateSceneResponse;
+  [IPC_CHANNELS.TIMELINE_UPDATE_ARC_COLOR]: (payload: TimelineUpdateArcColorPayload) => TimelineUpdateArcColorResponse;
+  // SKY-794: Spreadsheet view — arc manifest listing
+  [IPC_CHANNELS.TIMELINE_LIST_ARCS]: (payload: TimelineListArcsPayload) => TimelineListArcsResponse;
+  // SKY-796: Timeline AI auto-population proposals
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_GENERATE]: (payload: TimelineProposalsGeneratePayload) => TimelineProposalsGenerateResponse;
+  [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: TimelineProposalsListPayload) => TimelineProposalsListResponse;
+  [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: TimelineProposalResolvePayload) => TimelineProposalResolveResponse;
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: (payload: never) => Promise<VaultCheckConflictsResponse>;
+  [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (payload: never) => { ok: true };
 }
 
 // ─── Payload / Response types ───
@@ -532,6 +716,27 @@ export interface VaultMkdirResponse {
   created: boolean;
 }
 
+// ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
+
+/** Big-4 cloud-sync providers supported in Wave 2.B. */
+export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
+
+/**
+ * Payload for VAULT_GUIDED_FOLDER_MOVE.
+ * `sessionToken` must be a registration token issued by a main-process
+ * vault:pick-folder dialog and bound to exactly `targetPath`.
+ */
+export interface VaultGuidedMovePayload {
+  targetPath: string;
+  syncProvider: CloudSyncProvider;
+  sessionToken: string;
+}
+
+export interface VaultGuidedMoveResponse {
+  moved: boolean;
+  newVaultPath: string;
+}
+
 export interface VaultChooseFolderPayload {
   title?: string;
   defaultPath?: string;
@@ -543,6 +748,33 @@ export interface VaultChooseFolderResponse {
 }
 
 // ─── Full manifest schema ───
+
+export interface SmartFolderEntry {
+  id: string;
+  name: string;
+  /** Serialized query string, e.g. "pov: Lyra AND status: draft" */
+  query: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// SKY-207: Per-scene custom frontmatter field schema
+export type FieldType = 'text' | 'number' | 'select';
+
+export interface CustomFieldDef {
+  id: string;
+  /** The frontmatter key (e.g. "mood", "tension"). Lowercase, no spaces. */
+  name: string;
+  type: FieldType;
+  /** Only for type "select". */
+  options?: string[];
+}
+
+export interface SmartFolderResult {
+  /** Vault-relative path */
+  path: string;
+  title: string;
+}
 
 export interface Manifest {
   schemaVersion: number;
@@ -558,6 +790,10 @@ export interface Manifest {
   provenance: Record<string, string>;
   /** Scene Crafter board file paths */
   boardReferences: string[];
+  /** SKY-205: Named smart folders with frontmatter-backed queries */
+  smartFolders?: SmartFolderEntry[];
+  /** Entity-to-entity relationships (SKY-232). */
+  relationships?: EntityRelationship[];
 }
 
 export interface StoryEntry {
@@ -596,6 +832,10 @@ export interface SceneEntry {
   createdAt: string;
   updatedAt: string;
   provenance?: AgentProvenance;
+  // SKY-791: timeline metadata
+  chronologicalTime?: ChronologicalTime;
+  entityLinks?: SceneEntityLinks;
+  timelineMetadata?: SceneTimelineMetadata;
 }
 
 export interface BlockEntry {
@@ -620,13 +860,19 @@ export interface SceneTimestamp {
   duration?: string;
 }
 
+export interface EntityRelation {
+  type: string;
+  target: string; // entity id
+}
+
 export interface EntityEntry {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'item' | 'concept' | 'other';
+  type: 'character' | 'location' | 'faction' | 'item' | 'event' | 'concept' | 'other';
   path: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   properties?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -782,11 +1028,15 @@ export interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  /** Human-readable name set on manual saves or special triggers (e.g. "Pre-export snapshot"). */
+  label?: string;
 }
 
 export interface SnapshotSavePayload {
   sceneId: string;
   content: string;
+  /** Optional label for the snapshot; auto-saves leave this unset. */
+  label?: string;
 }
 
 export interface SnapshotListPayload {
@@ -815,6 +1065,24 @@ export interface SnapshotRestorePayload {
 export interface SnapshotRestoreResponse {
   restored: SceneSnapshot;
   preRestoreSnapshot: SceneSnapshot;
+}
+
+export interface SnapshotDeletePayload {
+  sceneId: string;
+  snapshotId: string;
+}
+
+export interface SnapshotDeleteResponse {
+  deleted: boolean;
+}
+
+export interface SnapshotDeleteAllPayload {
+  /** When provided, deletes all for that scene. Omit to delete all across the vault. */
+  sceneId?: string;
+}
+
+export interface SnapshotDeleteAllResponse {
+  deleted: number;
 }
 
 // ─── Versioned drafts types (SKY-10 upgrade of MYT-198) ───
@@ -913,6 +1181,7 @@ export interface EntityCreatePayload {
   type: EntityEntry['type'];
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   prose?: string;
   properties?: Record<string, unknown>;
 }
@@ -926,6 +1195,7 @@ export interface EntityUpdatePayload {
   name?: string;
   aliases?: string[];
   tags?: string[];
+  relations?: EntityRelation[];
   prose?: string;
   properties?: Record<string, unknown>;
 }
@@ -961,6 +1231,71 @@ export interface EntityBacklinkScene {
 export interface EntityBacklinksResponse {
   entityId: string;
   scenes: EntityBacklinkScene[];
+}
+
+// ─── Note backlinks (SKY-203) ───
+
+export interface NoteBacklinksPayload {
+  /** Vault-relative path of the note to find backlinks for (e.g. "my-note.md"). */
+  notePath: string;
+}
+
+export interface NoteBacklinkEntry {
+  /** Vault-relative path of the linking note. */
+  path: string;
+  /** Display name (filename without .md extension). */
+  name: string;
+  /** Short excerpt around the [[wikilink]] hit. */
+  snippet: string;
+}
+
+export interface NoteBacklinksResponse {
+  notePath: string;
+  backlinks: NoteBacklinkEntry[];
+}
+
+// ─── Entity Relationship types (SKY-232) ───
+
+export interface EntityRelationship {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+  createdAt: string;
+}
+
+export interface EntityRelationshipRow {
+  id: string;
+  label: string;
+  direction: 'outgoing' | 'incoming';
+  otherEntityId: string;
+  otherEntityName: string;
+  otherEntityType: EntityEntry['type'];
+  createdAt: string;
+}
+
+export interface EntityRelationshipsListPayload {
+  entityId: string;
+}
+
+export interface EntityRelationshipsListResponse {
+  entityId: string;
+  relationships: EntityRelationshipRow[];
+  allLabels: string[];
+}
+
+export interface EntityRelationshipsCreatePayload {
+  fromEntityId: string;
+  toEntityId: string;
+  label: string;
+}
+
+export interface EntityRelationshipsCreateResponse {
+  relationship: EntityRelationshipRow;
+}
+
+export interface EntityRelationshipsDeletePayload {
+  relationshipId: string;
 }
 
 // ─── Brainstorm Agent types (Epic 5 — separate chat page, writes to vault) ───
@@ -1019,6 +1354,37 @@ export interface VaultCheckResponse {
   inconsistencies: VaultCheckInconsistency[];
 }
 
+// ─── Continuity check types (SKY-445/SKY-458) ───
+
+export interface ContinuityCheckPayload {
+  chapters: Array<{ text: string; scenePath: string }>;
+}
+
+export interface ContinuityCheckMismatch {
+  entityName: string;
+  propKey: string;
+  canonicalValue: string;
+  contradictingPhrase: string;
+  snippet: string;
+}
+
+export interface ContinuityCheckChapterResult {
+  scenePath: string;
+  entitiesReferenced: string[];
+  checkedCount: number;
+  mismatchCount: number;
+  mismatches: ContinuityCheckMismatch[];
+}
+
+export interface ContinuityCheckResponse {
+  chapters: ContinuityCheckChapterResult[];
+  totalCheckedCount: number;
+  totalMismatchCount: number;
+  /** Ratio of mismatches to checks; 0 when no checks were performed. */
+  driftScore: number;
+  sessionId: string;
+}
+
 // ─── Archive Agent streaming types (Phase 3 — MYT-180) ───
 
 export interface AgentArchivePayload {
@@ -1047,6 +1413,14 @@ export interface AgentArchiveResponse {
 
 // ─── App settings types ───
 
+export type SuggestionCategory =
+  | 'punctuation'
+  | 'spelling'
+  | 'grammar'
+  | 'sentence-structure'
+  | 'style-tone'
+  | 'other';
+
 export interface AgentBudgetSettings {
   autoApply: boolean;
   confidenceThreshold: number;
@@ -1054,6 +1428,8 @@ export interface AgentBudgetSettings {
   maxSuggestionsPerHour: number;
   heartbeatIntervalMinutes: number;
   maxTokensPerDay: number;
+  /** SKY-908 — per-category auto-apply allow-list. Undefined ⇒ all enabled. */
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
 }
 
 // ─── Per-agent config (MYT-343) ───
@@ -1089,6 +1465,14 @@ export interface VoiceSettings {
   cloudFallback: boolean;
   micDeviceId?: string;
   openaiApiKey?: string;
+  /** 'toggle' = shortcut key toggles capture on/off; 'push-to-talk' = hold key while speaking. Default: 'toggle'. */
+  voiceMode?: 'toggle' | 'push-to-talk';
+  /** Keyboard shortcut for toggle mode. Format: modifier+modifier+key (e.g. 'ctrl+shift+v'). Default: 'ctrl+shift+v'. */
+  toggleShortcut?: string;
+  /** Hold key for push-to-talk mode (e.g. 'alt+v'). Default: 'alt+v'. */
+  pttKey?: string;
+  /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
+  pushToTalkMode?: boolean;
 }
 
 // ─── STT adapter settings (MYT-338) ───
@@ -1101,7 +1485,10 @@ export interface SttSettings {
   localBinaryPath?: string;
   /** OpenAI-compatible audio transcription endpoint */
   cloudEndpoint?: string;
-  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  /**
+   * @deprecated Use the active provider's apiKey via getVoiceProvider() in provider.ts.
+   * Kept for backward compatibility — serves as fallback when no voice provider is configured.
+   */
   cloudApiKey?: string;
 }
 
@@ -1119,7 +1506,10 @@ export interface TtsSettings {
   localModelPath?: string;
   /** OpenAI-compatible TTS endpoint; defaults to https://api.openai.com/v1/audio/speech */
   cloudEndpoint?: string;
-  /** API key for cloud endpoint; falls back to OPENAI_API_KEY env var */
+  /**
+   * @deprecated Use the active provider's apiKey via getVoiceProvider() in provider.ts.
+   * Kept for backward compatibility — serves as fallback when no voice provider is configured.
+   */
   cloudApiKey?: string;
 }
 
@@ -1135,6 +1525,8 @@ export interface ProviderSettings {
   baseUrl?: string;
   /** Default model used for all agents unless the agent overrides it */
   model: string;
+  /** Optional STT/TTS capability hints — mirrors ProviderConfig.capabilities in provider.ts */
+  capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
 /** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;
@@ -1171,9 +1563,10 @@ export interface AppSettings {
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderSettings;
   agents: {
-    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number } & AgentBudgetSettings;
-    brainstorm: { enabled: boolean; model: string } & AgentBudgetSettings;
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number } & AgentBudgetSettings;
+    /** Per-agent `provider` overrides the global provider for that agent (SKY-683). API key stored in SecretsStore under `provider.<agentName>.apiKey`. */
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
+    brainstorm: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
   };
   theme: 'dark' | 'high-contrast';
   snapshots?: {
@@ -1181,11 +1574,25 @@ export interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-1188: first-run path used to seed post-onboarding guidance. */
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+  /** SKY-1188: timestamp of first completed onboarding. */
+  firstLaunchAt?: string;
+  /** SKY-1188: persisted post-onboarding checklist state. */
+  gettingStartedProgress?: {
+    firstSeenAt?: string;
+    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+    dismissed: boolean;
+    collapsed?: boolean;
+    completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
+  };
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
   stt?: SttSettings;
   /** TTS adapter config (MYT-339). Absent or enabled=false → synthesis disabled. */
   tts?: TtsSettings;
+  /** SKY-818: Which provider to use for voice I/O (STT/TTS). 'global' = use global provider; agent name = use that agent's override provider. */
+  voiceProviderId?: 'global' | 'writingAssistant' | 'brainstorm' | 'archive';
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
   /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */
@@ -1197,6 +1604,20 @@ export interface AppSettings {
   liquidNeon?: LiquidNeonPrefs;
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;
+  /** SKY-204: opt-in daily notes / journal mode. */
+  journalMode?: JournalModeSettings;
+  /** SKY-627: author name entered during onboarding (optional). */
+  authorName?: string;
+}
+
+/** SKY-204: daily notes journal mode configuration. */
+export interface JournalModeSettings {
+  /** Whether journal mode is active. Defaults to false. */
+  enabled: boolean;
+  /** Subfolder inside the Notes Vault for daily notes. Defaults to "Daily Notes". */
+  noteFolder?: string;
+  /** Date format for note filenames. Currently only "YYYY-MM-DD" is supported. */
+  noteFormat?: string;
 }
 
 /** SKY-130: persisted cross-restart scene + cursor position. */
@@ -1205,6 +1626,39 @@ export interface LastOpenedScene {
   scenePath: string;
   scrollTop: number;
   cursorLine: number;
+}
+
+/** SKY-627 / SKY-906: onboarding orchestration payload.
+ *  `default-mythos-vault` (SKY-906) is the one-click first-run path: main
+ *  creates `<defaultMythosVaultsParent>/<Mythos Vault>/{Story,Notes} Vault`
+ *  with no user input, seeds a first scene, and marks onboarding complete in
+ *  a single round-trip. */
+export interface OnboardingCompletePayload {
+  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+  /** Required for blank / sample / template modes. Optional for default-mythos-vault
+   *  (defaults to "My First Story" — a renamable seed). */
+  storyTitle?: string;
+  /** Optional; persisted to AppSettings.authorName. */
+  authorName?: string;
+  /** Parent directory for the new vault. Tilde-expanded server-side. Required for
+   *  blank/sample/template; for default-mythos-vault the main side falls back to
+   *  the OS-default Mythos vaults parent when this is absent. */
+  vaultParentPath?: string;
+  /** Required for template mode. */
+  templateId?: string;
+  /** Optional override for the Mythos Vault folder name (default-mythos-vault only).
+   *  Rejected if it contains path separators or parent-traversal. */
+  vaultName?: string;
+}
+
+/** SKY-627: response from the extended onboarding:complete handler. */
+export interface OnboardingCompleteResponse {
+  ok: boolean;
+  /** Scene ID of the first scene (blank/template/sample starts). */
+  firstSceneId?: string;
+  /** Relative path of the first scene within the story vault. */
+  firstScenePath?: string;
+  error?: string;
 }
 
 export interface SessionSaveScenePayload {
@@ -1249,21 +1703,56 @@ export interface SettingsTestConnectionResponse {
 export interface ProjectEntry {
   name: string;
   vaultRoot: string;
+  // SKY-320: paired Notes Vault path so switching a Mythos Vault swaps both
+  // halves atomically. Optional for back-compat with entries written before
+  // pairing landed; resolved to the legacy default at switch time.
+  notesVaultRoot?: string;
   openedAt: string;
 }
 
 export interface ProjectListResponse {
   projects: ProjectEntry[];
   activeVaultRoot: string;
+  /** SKY-320: paired Notes Vault for the currently-active project. */
+  activeNotesVaultRoot?: string;
 }
 
 export interface ProjectSwitchPayload {
   vaultRoot: string;
+  /** SKY-320: optional Notes Vault to switch to atomically with the Story Vault. */
+  notesVaultRoot?: string;
 }
 
 export interface ProjectSwitchResponse {
   vaultRoot: string;
+  /** SKY-320: present when the switch also moved the Notes Vault. */
+  notesVaultRoot?: string;
   switched: boolean;
+  error?: string;
+}
+
+// ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
+
+export interface CreateDefaultMythosVaultPayload {
+  /**
+   * Optional parent folder for the Mythos Vault. When absent, the bundle is
+   * created under `~/Mythos/Vaults/`. Allowed to point anywhere the user
+   * already trusts (e.g. a OneDrive directory).
+   */
+  parentPath?: string;
+  /** Optional display name for the new Mythos Vault. */
+  vaultName?: string;
+  /** Default 'default' (full scaffold); 'blank' suppresses seed content. */
+  seedMode?: 'default' | 'blank';
+}
+
+export interface CreateDefaultMythosVaultResponse {
+  mythosVaultRoot: string;
+  vaultRoot: string;
+  notesVaultRoot: string;
+  name: string;
+  /** False when the bundle already existed; we still re-persisted settings. */
+  created: boolean;
   error?: string;
 }
 
@@ -1285,7 +1774,6 @@ export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' 
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
 export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
 export type TimelineSource = 'explicit_marker' | 'prose';
-
 export interface SuggestionRow {
   id: string;
   source_agent: SourceAgent | string;
@@ -1301,6 +1789,8 @@ export interface SuggestionRow {
   applied_run_id: string | null;
   /** 1 if this suggestion was blocked by a budget cap, 0 otherwise */
   budget_exceeded: number;
+  /** SKY-908 — high-level category for granular auto-apply gating. */
+  category: SuggestionCategory | null;
 }
 
 export interface AuditLogRow {
@@ -1482,6 +1972,9 @@ export interface GenerationLogRow {
   payload_digest: string | null;
   prompt_text: string | null;
   response_text: string | null;
+  entity_count: number | null;
+  context_chars: number | null;
+  truncated: number | null;
 }
 
 export interface GenerationLogRecentPayload {
@@ -1606,6 +2099,8 @@ export interface SceneSavePayload {
   order?: number;
   /** SKY-10: classifies the save so snapshots can dedupe autosaves. Defaults to 'save'. */
   intent?: VersionIntent;
+  /** SKY-207: custom frontmatter field values to persist alongside prose. */
+  customFields?: Record<string, unknown>;
 }
 
 export interface SceneSaveResponse {
@@ -1650,9 +2145,11 @@ export interface SearchQueryPayload {
   query: string;
   scope: SearchScope;
   limit?: number;
+  filterTags?: string[];
 }
 
 export interface SearchResultItem {
+  resultType: 'scene' | 'entity';
   docId: string;
   vault: 'story' | 'notes';
   kind: string;
@@ -1890,6 +2387,8 @@ export interface VaultLoadSampleTwoVaultResponse {
 
 export interface VaultCreateBlankPayload {
   targetPath: string;
+  /** Registration token from vault:pick-folder, required when targetPath is not in the recent-projects allowlist */
+  registrationToken?: string;
 }
 
 export interface VaultCreateBlankResponse {
@@ -2060,6 +2559,8 @@ export interface AgentBudgetUsageResponse {
 export interface VaultGetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
+  homeDir: string;
+  pathSeparator: '/' | '\\';
 }
 
 export type VaultSeedMode = 'default' | 'blank';
@@ -2124,10 +2625,9 @@ export interface WritingModeSetPayload {
 
 // ─── App data backup / restore (MYT-346) ───
 
-export interface BackupAppDataPayload {
-  /** If provided, write the archive here instead of showing a save dialog. */
-  outputPath?: string;
-}
+// SKY-699: outputPath removed — renderer must not supply a write destination;
+// the handler always calls dialog.showSaveDialog to obtain it (CWE-73 fix).
+export interface BackupAppDataPayload {}
 
 export interface BackupAppDataResponse {
   /** Absolute path to the created archive; null when cancelled. */
@@ -2137,8 +2637,6 @@ export interface BackupAppDataResponse {
 }
 
 export interface RestoreAppDataPayload {
-  /** If provided, read from this path instead of showing an open dialog. */
-  archivePath?: string;
   /** Must be true when app data already exists; absent/false → reject with requiresConfirmation. */
   confirmed?: boolean;
 }
@@ -2227,6 +2725,55 @@ export interface BrainstormListNotesFoldersResponse {
   notesVaultRoot: string;
 }
 
+// ─── SKY-196: Brainstorm context selection ────────────────────────────────────
+
+/** A vault note that was scored for context inclusion. */
+export interface BrainstormContextItem {
+  path: string;
+  name: string;
+  type: BrainstormFactType;
+  content: string;
+  /** Approximate token cost used for budget accounting. */
+  estimatedTokens: number;
+  /** Human-readable reason this item was included or excluded. */
+  whyIncluded: string;
+}
+
+export interface BrainstormSelectContextPayload {
+  /** The user's current message (highest-priority for name matching). */
+  userMessage: string;
+  /** Concatenated prior conversation text (lower-priority name matching). */
+  conversationText: string;
+  /** Token ceiling for included items. Defaults to 4 000. */
+  tokenBudget?: number;
+}
+
+export interface BrainstormSelectContextResponse {
+  /** Items included in the context within the budget. */
+  included: BrainstormContextItem[];
+  /** Items that were candidates but would have exceeded the budget. */
+  excluded: BrainstormContextItem[];
+  /** Total tokens consumed by included items. */
+  usedTokens: number;
+  /** The budget that was applied. */
+  budgetTokens: number;
+}
+
+// ─── SKY-324: Entry quick-enrich ─────────────────────────────────────────────
+
+export interface BrainstormEnrichEntryPayload {
+  /** The entity name as entered by the user. */
+  name: string;
+  /** EntityType value ('character' | 'location' | 'item' | 'concept' | 'other').
+   *  Mapped to FactType in the handler: concept/other → 'note'. */
+  type: string;
+}
+
+export type BrainstormEnrichEntryResponse =
+  | { status: 'ok'; path: string; content: string }
+  | { status: 'skipped'; reason: string };
+
+
 // ─── SKY-156: Project Templates ───────────────────────────────────────────────
 
 export interface TemplateNode {
@@ -2251,21 +2798,396 @@ export interface TemplateListResponse {
 
 export interface TemplateScaffoldPayload {
   templateId: string;
-  storyVaultPath: string;
-  notesVaultPath: string;
+  // SKY-780: proof of user intent — registration token from a prior
+  // vault:pick-folder dialog call. The handler derives story/notes vault
+  // paths from the token; the renderer cannot supply arbitrary FS paths.
+  parentToken: string;
 }
 
 export interface TemplateScaffoldResponse {
   ok: true;
   storyVaultPath: string;
   notesVaultPath: string;
+  // One-shot tokens for the derived paths — pass to vault:setPaths as
+  // storyVaultToken / notesVaultToken to authorize that call too.
+  storyVaultToken: string;
+  notesVaultToken: string;
 }
 
 export interface TemplateSaveAsPayload {
   name: string;
 }
 
-export interface TemplateSaveAsResponse {
-  ok: true;
+export type TemplateSaveAsResponse =
+  | { ok: true; id: string }
+  | { error: string };
+
+// ─── SKY-190: Note Templates ──────────────────────────────────────────────────
+
+export interface NoteTemplateField {
+  key: string;
+  kind: 'literal' | 'prompt' | 'pick';
+  label: string;
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+export interface NoteTemplate {
   id: string;
+  name: string;
+  description: string;
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note' | 'daily-note';
+  body: string;
+  fields: NoteTemplateField[];
+}
+
+export interface NoteTemplateListPayload {
+  kind?: string;
+}
+
+export interface NoteTemplateListResponse {
+  templates: NoteTemplate[];
+}
+
+// ─── SKY-204: Daily Notes ─────────────────────────────────────────────────────
+
+/** Opens (or creates) today's daily note. Returns the relative path within the Notes Vault. */
+export interface DailyNoteOpenTodayResponse {
+  /** Relative path to today's note inside the Notes Vault (e.g. "Daily Notes/2025-01-15.md"). */
+  path: string;
+  /** True if the note was just created; false if it already existed. */
+  created: boolean;
+}
+
+export interface DailyNoteGetStreakResponse {
+  /** Number of consecutive calendar days with a daily note, ending today (or yesterday). */
+  streakDays: number;
+  /** True if today's note already exists on disk. */
+  todayExists: boolean;
+}
+
+// ─── SKY-193: Tag Wrangler ───
+
+export interface NotesTagEntry {
+  name: string;
+  fullName: string;
+  count: number;
+  paths: string[];
+  children: NotesTagEntry[];
+}
+
+export interface NotesTagListResponse {
+  tags: NotesTagEntry[];
+}
+
+export interface NotesTagRenamePayload {
+  oldTag: string;
+  newTag: string;
+}
+
+export interface NotesTagRenameResponse {
+  affectedFiles: number;
+}
+
+export interface NotesTagMergePayload {
+  sourceTag: string;
+  targetTag: string;
+}
+
+export interface NotesTagMergeResponse {
+  affectedFiles: number;
+}
+// ─── SKY-55: per-scene notes ───
+export interface NotesGetPayload { sceneId: string }
+export interface NotesGetResponse { content: string }
+export interface NotesSetPayload { sceneId: string; content: string }
+export interface NotesSetResponse { saved: boolean }
+// ─── Tag types (SKY-158) ───
+export interface TagEntry {
+  id: string;
+  name: string;
+  color?: string | null;
+  createdAt: string;
+}
+export interface TagsListResponse { tags: TagEntry[] }
+export interface TagsUpsertPayload { name: string; color?: string | null }
+export interface TagsUpsertResponse { tag: TagEntry }
+export interface TagsDeletePayload { id: string }
+export interface TagsDeleteResponse { deleted: boolean }
+export interface TagsRenamePayload { id: string; name: string }
+export interface TagsRenameResponse { tag: TagEntry }
+export interface TagsForItemPayload { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsForItemResponse { tags: string[] }
+export interface TagsSetForItemPayload { itemId: string; itemKind: 'scene' | 'entity'; tags: string[] }
+export interface TagsSetForItemResponse { tags: string[] }
+export interface TagsItemsForTagPayload { tagName: string }
+export interface TagsItemsForTagItem { itemId: string; itemKind: 'scene' | 'entity' }
+export interface TagsItemsForTagResponse { items: TagsItemsForTagItem[] }
+export interface TagsBulkApplyPayload {
+  itemIds: string[];
+  itemKind: 'scene' | 'entity';
+  addTags?: string[];
+  removeTags?: string[];
+}
+export interface TagsBulkApplyResponse { updated: number }
+export interface SceneSetTagsPayload { sceneId: string; tags: string[] }
+export interface SceneSetTagsResponse { scene: SceneEntry }
+// ─── SKY-154: Writing Goals types ───
+export interface GoalsLogWordsPayload { date: string; wordsAdded: number; }
+export type GoalsLogWordsResponse = { ok: true };
+export interface HeatmapEntry { date: string; words: number; }
+export interface GoalsGetStatsResponse { todayWords: number; weekWords: number; dailyGoal: number; streakDays: number; heatmap: HeatmapEntry[]; }
+export interface GoalsSetGoalPayload { dailyGoal: number; }
+export type GoalsSetGoalResponse = { ok: true };
+export type GoalsResetStreakResponse = { ok: true };
+// ─── SKY-170: Scene-to-entity links ─────────────────────────────────────────
+export interface SceneEntityLink {
+  sceneId: string;
+  entityId: string;
+  linkKind: 'mention' | 'tag';
+  createdAt: string;
+}
+export interface LinkedScene {
+  sceneId: string;
+  scenePath: string;
+  sceneTitle: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterOrder: number;
+  storyId: string;
+  linkKind: 'mention' | 'tag';
+}
+export interface SceneEntityLinksListPayload {
+  sceneId: string;
+}
+export interface SceneEntityLinksListResponse {
+  links: SceneEntityLink[];
+}
+export interface SceneEntityLinksUpsertPayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+export interface SceneEntityLinksUpsertResponse {
+  link: SceneEntityLink;
+}
+export interface SceneEntityLinksDeletePayload {
+  sceneId: string;
+  entityId: string;
+  kind: 'mention' | 'tag';
+}
+export interface EntityLinkedScenesPayload {
+  entityId: string;
+}
+export interface EntityLinkedScenesResponse {
+  scenes: LinkedScene[];
+}
+
+// ─── Timeline data model types (SKY-791) ───
+
+export interface ChronologicalTime {
+  date: string;
+  isEstimated: boolean;
+  confidence: number;
+  source: string;
+}
+
+export interface SceneEntityLinks {
+  characterIds: string[];
+  locationId?: string;
+  arcs: string[];
+}
+
+export interface SceneTimelineMetadata {
+  wordCount?: number;
+  mood?: string;
+  pov?: string;
+  locationId?: string;
+}
+
+export interface ArcEntry {
+  id: string;
+  title: string;
+  color: string;
+  colorIsCustom: boolean;
+  scenes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TimelinePrimaryGrouping = 'arc' | 'chapter' | 'character' | 'location';
+export type TimelineSpacingMode = 'uniform' | 'proportional';
+export type TimelineDefaultColorScheme = 'liquid-neon' | 'monochrome' | 'custom';
+
+export interface TimelineViewportPreference {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export interface TimelineSettings {
+  primaryGrouping: TimelinePrimaryGrouping;
+  spacingMode: TimelineSpacingMode;
+  showUndatedScenes: boolean;
+  autoLayoutTracks: boolean;
+  defaultColorScheme: TimelineDefaultColorScheme;
+  visibleTrackFilters: string[];
+  viewportPreference?: TimelineViewportPreference;
+}
+
+// ─── Timeline IPC payload / response types (SKY-791) ───
+
+export interface TimelineGetSettingsPayload {
+  storyId?: string;
+}
+
+export interface TimelineGetSettingsResponse {
+  settings: TimelineSettings;
+}
+
+export interface TimelineSaveSettingsPayload {
+  settings: TimelineSettings;
+  storyId?: string;
+}
+
+export interface TimelineSaveSettingsResponse {
+  saved: boolean;
+}
+
+export interface TimelineGetScenesPayload {
+  storyId: string;
+}
+
+export interface TimelineGetScenesResponse {
+  scenes: SceneEntry[];
+}
+
+export interface TimelineUpdateScenePayload {
+  sceneId: string;
+  chronologicalTime?: ChronologicalTime;
+  entityLinks?: SceneEntityLinks;
+  timelineMetadata?: SceneTimelineMetadata;
+}
+
+export interface TimelineUpdateSceneResponse {
+  scene: SceneEntry;
+}
+
+export interface TimelineUpdateArcColorPayload {
+  arcId: string;
+  color: string;
+  colorIsCustom: boolean;
+}
+
+export interface TimelineUpdateArcColorResponse {
+  arc: ArcEntry;
+}
+
+// SKY-794: arc manifest listing for spreadsheet view
+export type TimelineListArcsPayload = Record<string, never>;
+
+export interface TimelineListArcsResponse {
+  arcs: ArcEntry[];
+}
+
+// ─── SKY-796: Timeline AI auto-population proposals ───
+//
+// AI-derived suggestions (date estimation, character mention, mood inference)
+// surfaced as transparent, revokable badges on the spreadsheet. A proposal
+// never silently overwrites a user-set field; the renderer renders a badge
+// + accept/reject control and the main process only applies the value when
+// the user clicks accept. Stored under <storyVault>/timeline-proposals.json
+// keyed by scene id.
+
+export type TimelineProposalKind = 'date' | 'characters' | 'mood';
+export type TimelineProposalStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface TimelineAIProposal {
+  /** Stable id (sceneId + kind + payloadHash) so re-runs are idempotent. */
+  id: string;
+  sceneId: string;
+  kind: TimelineProposalKind;
+  /**
+   * For `date` proposals: ISO-ish date string ("Year 42", "2340-06-15", etc.).
+   * For `characters`: comma-separated entity ids (POV/secondary).
+   * For `mood`: short mood label (e.g. 'tense', 'revelatory').
+   */
+  value: string;
+  /** Human-readable cue text shown in tooltip — e.g. the matched phrase. */
+  reason: string;
+  /** 0..1 confidence; the engine never proposes below 0.4. */
+  confidence: number;
+  /** Provenance — always `'ai'` for engine-derived proposals. */
+  source: 'ai';
+  /** Always true for proposals; cleared on accept. */
+  isEstimated: true;
+  status: TimelineProposalStatus;
+  createdAt: string;
+  /** Filled in when the user resolves the proposal. */
+  resolvedAt?: string;
+}
+
+export interface TimelineProposalsGeneratePayload {
+  storyId: string;
+}
+
+export interface TimelineProposalsGenerateResponse {
+  /** All pending proposals for the story (post-merge with previously-resolved ones). */
+  proposals: TimelineAIProposal[];
+}
+
+export interface TimelineProposalsListPayload {
+  storyId: string;
+}
+
+export interface TimelineProposalsListResponse {
+  proposals: TimelineAIProposal[];
+}
+
+export interface TimelineProposalResolvePayload {
+  proposalId: string;
+  decision: 'accept' | 'reject';
+}
+
+export interface TimelineProposalResolveResponse {
+  proposal: TimelineAIProposal;
+  /**
+   * Populated when `decision === 'accept'` and the value was applied to the
+   * scene — the renderer can refresh the row in-place.
+   */
+  scene?: SceneEntry;
+  /**
+   * True when accept was a no-op because the field already held a user-set
+   * value (AI proposals never overwrite user-set dates / metadata).
+   */
+  skippedBecauseUserSet?: boolean;
+}
+
+// ─── SKY-863: Cloud-sync conflict detection + lockfile types ──────────────────
+
+/** One conflict file that was detected and resolved during vault open. */
+export interface ResolvedConflictInfo {
+  conflictPath: string;
+  originalPath: string;
+  provider: 'dropbox' | 'icloud' | 'syncthing';
+  keptPath: string;
+  archivedPath: string;
+  resolvedAt: string;
+}
+
+/** Metadata from an existing lockfile that belongs to a live concurrent session. */
+export interface LockfileConflictInfo {
+  hostname: string;
+  pid: number;
+  timestamp: string;
+}
+
+/** Response from `vault:check-conflicts`. */
+export interface VaultCheckConflictsResponse {
+  /** Conflicts detected and auto-resolved during this call. */
+  resolved: ResolvedConflictInfo[];
+  /** Non-null when another live Mythos session has this vault open. */
+  lockfileConflict: LockfileConflictInfo | null;
+  /** True when the user has previously dismissed warnings for this vault. */
+  dismissed: boolean;
 }

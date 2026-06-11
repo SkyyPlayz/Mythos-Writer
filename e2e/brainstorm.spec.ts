@@ -104,12 +104,17 @@ function seedUserData(userData: string, vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  // --headless when no X display; --no-sandbox so Electron can spawn its renderer
-  // under Xvfb in CI (matches the packaged-app smoke test in ci.yml).
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  // On macOS, Electron uses Quartz natively — headless is not needed and
+  // prevents Playwright from detecting the Chrome DevTools endpoint (Electron 42 /
+  // Chrome 130+ new headless mode suppresses "DevTools listening on ws://…").
+  // On Linux CI, xvfb-run provides DISPLAY so the condition is false.
+  // --no-sandbox is required for Electron to spawn its renderer under Xvfb in CI.
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -119,6 +124,13 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   // BrainstormPage installs once messages exist) so teardown close doesn't hang.
   page.on('dialog', (dialog) => {
     void dialog.accept().catch(() => undefined);
+  });
+  // Capture renderer console output for debugging.
+  page.on('console', (msg) => {
+    if (msg.text().includes('BrainstormPage') || msg.text().includes('DesktopShell')) {
+      // eslint-disable-next-line no-console
+      console.log('[renderer]', msg.type(), msg.text());
+    }
   });
   await page.waitForLoadState('domcontentloaded');
   return page;
@@ -142,7 +154,7 @@ async function waitUntil(
 
 let userData: string;
 let vaultDir: string;
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
@@ -163,7 +175,7 @@ test.beforeAll(async () => {
    *
    * Electron's ipcMain.removeHandler(channel) is available since Electron 9.
    */
-  await app.evaluate(
+  await app!.evaluate(
     async ({ ipcMain }, tokens: string[]) => {
       ipcMain.removeHandler('stream:start');
       ipcMain.handle('stream:start', async (event) => {
@@ -191,11 +203,12 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  // Bound the graceful close — a beforeunload prompt can otherwise block it — and
-  // force-kill the Electron process if it does not exit in time.
-  const proc = app.process();
+  // Guard against app being undefined when beforeAll threw before electron.launch
+  // resolved (e.g. the 60 s launch timeout fired). Without this guard, accessing
+  // app.process() throws TypeError and masks the original launch failure.
+  const proc = app?.process();
   await Promise.race([
-    app.close().catch(() => undefined),
+    app?.close().catch(() => undefined) ?? Promise.resolve(),
     new Promise<void>((r) => setTimeout(r, 5_000)),
   ]);
   try {
@@ -251,22 +264,104 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
   const factsPanel = page.locator('.brainstorm-facts-list');
   await expect(factsPanel).toBeVisible({ timeout: 5_000 });
 
-  // The fact name must appear in the panel.
-  const factName = factsPanel.locator('.bs-fact-name', { hasText: MOCK_FACT_NAME });
+  // The fact name appears as an entity chip in the IdeaCard (linkedEntities).
+  const factName = factsPanel.locator('.idea-card-chip', { hasText: MOCK_FACT_NAME });
   await expect(factName).toBeVisible({ timeout: 6_000 });
 
   // The type group header must show "Characters".
   const factGroup = factsPanel.locator('.bs-fact-group').first();
   await expect(factGroup.locator('.bs-fact-group-header')).toContainText('Character');
 
-  // The description must match the mock FACT tag content.
-  const factDesc = factsPanel.locator('.bs-fact-desc').first();
+  // The description is the IdeaCard title (fact.content rendered as the primary text).
+  const factDesc = factsPanel.locator('.idea-card-title', { hasText: MOCK_FACT_DESC }).first();
   await expect(factDesc).toContainText(MOCK_FACT_DESC);
 
   // Facts auto-extract to the vault; the panel reflects the saved state.
   const savedLabel = factsPanel.locator('.bs-fact-saved-label').first();
   await expect(savedLabel).toBeVisible({ timeout: 8_000 });
   await expect(savedLabel).toContainText('Saved');
+});
+
+// ─── TC-BST-04: Preset selection ─────────────────────────────────────────────
+//
+// The Brainstorm header contains a PresetSelector chip. Verify that:
+//   - The preset chip renders with the default preset name.
+//   - Clicking the chip opens the preset listbox dropdown.
+//   - Selecting a different preset updates the chip label.
+//
+// This test does NOT require an LLM call — it only exercises the UI.
+
+test('TC-BST-04: preset chip is visible and changes label on selection', async () => {
+  // Ensure brainstorm view is active (prior tests may close it).
+  const title = page.locator('.brainstorm-title');
+  const isBrainstormVisible = await title.isVisible().catch(() => false);
+  if (!isBrainstormVisible) {
+    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+    await expect(title).toBeVisible({ timeout: 6_000 });
+  }
+
+  // The preset chip is rendered in the header via PresetSelector.
+  const chip = page.locator('.preset-selector-chip');
+  await expect(chip).toBeVisible({ timeout: 6_000 });
+
+  // Record the current preset name.
+  const initialName = await chip.textContent();
+
+  // Click the chip to open the dropdown.
+  await chip.click();
+  const listbox = page.locator('[role="listbox"]');
+  await expect(listbox).toBeVisible({ timeout: 4_000 });
+
+  // Pick the second preset option (different from the active one).
+  const options = listbox.locator('[role="option"]');
+  const count = await options.count();
+  expect(count).toBeGreaterThan(1);
+
+  // Click the last option to ensure it differs from the default.
+  await options.last().click();
+
+  // Dropdown closes and the chip reflects the new selection.
+  await expect(listbox).not.toBeVisible({ timeout: 3_000 });
+  const updatedName = await chip.textContent();
+  expect(updatedName).not.toBe(initialName);
+});
+
+// ─── TC-BST-05: One refinement cycle ─────────────────────────────────────────
+//
+// After the response from TC-BST-01 is complete, refinement chips appear below
+// the last assistant message. Verify that:
+//   - At least one refinement chip is visible.
+//   - Clicking a chip triggers a new generation (streaming cursor appears).
+//   - The generation completes and the cursor disappears.
+//
+// Relies on TC-BST-01 having run in the same session so messages exist.
+
+test('TC-BST-05: refinement chip triggers new generation', async () => {
+  // Ensure brainstorm view is active (prior tests may close it).
+  const title = page.locator('.brainstorm-title');
+  const isBrainstormVisible = await title.isVisible().catch(() => false);
+  if (!isBrainstormVisible) {
+    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+    await expect(title).toBeVisible({ timeout: 6_000 });
+  }
+
+  // Refinement chips render below the last completed assistant message.
+  const firstChip = page.locator('.refinement-chips .refinement-chip').first();
+  await expect(firstChip).toBeVisible({ timeout: 8_000 });
+
+  // Click the first refinement chip.
+  await firstChip.click();
+
+  // A new streaming generation should start — the cursor (▍) must appear.
+  const cursor = page.locator('.bs-cursor');
+  await expect(cursor).toBeVisible({ timeout: 6_000 });
+
+  // The generation completes — cursor disappears.
+  await expect(cursor).not.toBeVisible({ timeout: 12_000 });
+
+  // The response area still has content.
+  const assistantBubble = page.locator('.bs-assistant-bubble').last();
+  await expect(assistantBubble).not.toBeEmpty({ timeout: 3_000 });
 });
 
 // ─── TC-BST-03: Vault note creation ──────────────────────────────────────────
@@ -278,6 +373,14 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
 //   - The prose body contains the fact description.
 
 test('TC-BST-03: detected fact is auto-saved as an entity file with correct frontmatter', async () => {
+  // Ensure brainstorm view is active (prior tests may close it).
+  const title = page.locator('.brainstorm-title');
+  const isBrainstormVisible = await title.isVisible().catch(() => false);
+  if (!isBrainstormVisible) {
+    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+    await expect(title).toBeVisible({ timeout: 6_000 });
+  }
+
   const factsPanel = page.locator('.brainstorm-facts-list');
 
   // The fact auto-saves; UI shows "Saved ✓".

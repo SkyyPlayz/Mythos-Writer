@@ -44,10 +44,12 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

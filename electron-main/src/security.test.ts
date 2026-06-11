@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { secureWebPreferences, createWindowOpenHandler } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, HEADER_CSP } from './security.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ELECTRON_MAIN_DIR = path.resolve(HERE, '..');
@@ -107,6 +107,12 @@ describe('main.ts wiring — secureWebPreferences is the source of truth for the
     expect(mainSrc).toMatch(/replaceMisspelling/);
     expect(mainSrc).toMatch(/addWordToSpellCheckerDictionary/);
   });
+
+  it('main.ts calls installCspHeaders on the window session (SKY-743)', () => {
+    const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+    expect(mainSrc).toMatch(/installCspHeaders\s*\(/);
+    expect(mainSrc).toMatch(/installCspHeaders\s*\(\s*mainWindow\.webContents\.session/);
+  });
 });
 
 describe('preload.ts — contextBridge.exposeInMainWorld is the only export path', () => {
@@ -152,8 +158,13 @@ describe('frontend/index.html — CSP meta tag', () => {
     expect(csp).toMatch(/object-src\s+'none'/);
   });
 
-  it('frame-ancestors is none (renderer is never iframed)', () => {
-    expect(csp).toMatch(/frame-ancestors\s+'none'/);
+  it('does not include frame-ancestors (ignored in meta — SKY-743; enforced via session header instead)', () => {
+    // Chromium silently ignores frame-ancestors when delivered via <meta>.
+    // The directive must be delivered as an HTTP response header
+    // (see installCspHeaders in security.ts).  Keeping it in the meta tag
+    // creates false confidence and emits a "directive is not supported"
+    // console warning in E2E tests.
+    expect(csp).not.toMatch(/frame-ancestors/);
   });
 
   it('does not allow unsafe-eval in script-src', () => {
@@ -163,5 +174,134 @@ describe('frontend/index.html — CSP meta tag', () => {
     expect(scriptSrcMatch).not.toBeNull();
     expect(scriptSrcMatch?.[1]).not.toMatch(/'unsafe-eval'/);
     expect(scriptSrcMatch?.[1]).not.toMatch(/'unsafe-inline'/);
+  });
+});
+
+// SKY-700 / RISK-3 — app:restoreAppData must always require a dialog (CWE-73)
+describe('app:restoreAppData — headless archivePath path is permanently removed', () => {
+  const ipcSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/ipc.ts'), 'utf-8');
+  const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+  const preloadSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/preload.ts'), 'utf-8');
+
+  it('RestoreAppDataPayload does not expose archivePath (ipc.ts)', () => {
+    // The interface must not include archivePath — dropping it ensures no
+    // renderer-supplied path can bypass the dialog gate.
+    const ifaceMatch = ipcSrc.match(/interface RestoreAppDataPayload\s*\{[^}]*\}/s);
+    expect(ifaceMatch).not.toBeNull();
+    expect(ifaceMatch![0]).not.toMatch(/archivePath/);
+  });
+
+  it('app:restoreAppData handler always calls showOpenDialog before reading (main.ts)', () => {
+    // The handler must invoke dialog.showOpenDialog unconditionally — no early
+    // branch that skips the dialog when payload.archivePath is present.
+    const handlerMatch = mainSrc.match(
+      /APP_RESTORE_APP_DATA[\s\S]*?showOpenDialog[\s\S]*?(?=\[IPC_CHANNELS\.)/,
+    );
+    expect(handlerMatch).not.toBeNull();
+    // The handler must not reference payload.archivePath as an escape hatch.
+    expect(handlerMatch![0]).not.toMatch(/payload\??\.archivePath/);
+  });
+
+  it('preload restoreAppData does not forward archivePath to main process', () => {
+    // The preload bridge must not include archivePath in the IPC payload so a
+    // compromised renderer cannot supply an attacker-controlled path.
+    const restoreCall = preloadSrc.match(/restoreAppData[\s\S]*?ipcRenderer\.invoke[\s\S]*?\)/);
+    expect(restoreCall).not.toBeNull();
+    expect(restoreCall![0]).not.toMatch(/archivePath/);
+  });
+});
+
+// SKY-699 / RISK-2 — app:backupAppData must always require a dialog (CWE-73)
+describe('app:backupAppData — headless outputPath path is permanently removed', () => {
+  const ipcSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/ipc.ts'), 'utf-8');
+  const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+  const preloadSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/preload.ts'), 'utf-8');
+
+  it('BackupAppDataPayload does not expose outputPath (ipc.ts)', () => {
+    // The interface must not include outputPath — dropping it ensures no
+    // renderer-supplied path can bypass the dialog gate.
+    const ifaceMatch = ipcSrc.match(/interface BackupAppDataPayload\s*\{[^}]*\}/s);
+    expect(ifaceMatch).not.toBeNull();
+    expect(ifaceMatch![0]).not.toMatch(/outputPath/);
+  });
+
+  it('app:backupAppData handler always calls showSaveDialog before writing (main.ts)', () => {
+    // The handler must invoke dialog.showSaveDialog unconditionally — no early
+    // branch that skips the dialog when payload.outputPath is present.
+    const handlerMatch = mainSrc.match(
+      /APP_BACKUP_APP_DATA[\s\S]*?showSaveDialog[\s\S]*?(?=\[IPC_CHANNELS\.)/,
+    );
+    expect(handlerMatch).not.toBeNull();
+    // The handler must not reference payload.outputPath as an escape hatch.
+    expect(handlerMatch![0]).not.toMatch(/payload\??\.outputPath/);
+  });
+
+  it('preload backupAppData does not forward outputPath to main process', () => {
+    // The preload bridge must not include outputPath in the IPC payload so a
+    // compromised renderer cannot supply an attacker-controlled write path.
+    const backupCall = preloadSrc.match(/backupAppData[\s\S]*?ipcRenderer\.invoke[\s\S]*?\)/);
+    expect(backupCall).not.toBeNull();
+    expect(backupCall![0]).not.toMatch(/outputPath/);
+  });
+});
+
+describe('installCspHeaders — frame-ancestors enforcement via session header (SKY-743)', () => {
+  // Minimal duck-typed mock that matches the Electron Session.webRequest shape
+  // used by installCspHeaders without importing the Electron runtime.
+  function makeMockSession(capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null }) {
+    return {
+      webRequest: {
+        onHeadersReceived: (fn: typeof capture.listener) => { capture.listener = fn; },
+      },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+  }
+
+  it('HEADER_CSP includes frame-ancestors none', () => {
+    expect(HEADER_CSP).toMatch(/frame-ancestors\s+'none'/);
+  });
+
+  it('calls onHeadersReceived on the provided session', () => {
+    const onHeadersReceived = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    installCspHeaders({ webRequest: { onHeadersReceived } } as any);
+    expect(onHeadersReceived).toHaveBeenCalledOnce();
+  });
+
+  it('injects Content-Security-Policy header with frame-ancestors none', () => {
+    const capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null } = { listener: null };
+    installCspHeaders(makeMockSession(capture));
+    expect(capture.listener).not.toBeNull();
+
+    const cbSpy = vi.fn();
+    capture.listener!({ responseHeaders: {} }, cbSpy);
+    expect(cbSpy).toHaveBeenCalledOnce();
+
+    const [resp] = cbSpy.mock.calls[0] as [{ responseHeaders: Record<string, string[]> }];
+    const cspValues = resp.responseHeaders['content-security-policy'];
+    expect(cspValues).toBeDefined();
+    expect(cspValues[0]).toMatch(/frame-ancestors\s+'none'/);
+  });
+
+  it('preserves existing response headers when injecting CSP', () => {
+    const capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null } = { listener: null };
+    installCspHeaders(makeMockSession(capture));
+    const cbSpy = vi.fn();
+    capture.listener!({ responseHeaders: { 'x-custom': ['kept'] } }, cbSpy);
+
+    const [resp] = cbSpy.mock.calls[0] as [{ responseHeaders: Record<string, string[]> }];
+    expect(resp.responseHeaders['x-custom']).toEqual(['kept']);
+    expect(resp.responseHeaders['content-security-policy']).toBeDefined();
+  });
+
+  it('handles missing responseHeaders in details (e.g. file:// responses)', () => {
+    const capture: { listener: ((d: { responseHeaders?: Record<string, string[]> }, cb: (r: { responseHeaders: Record<string, string[]> }) => void) => void) | null } = { listener: null };
+    installCspHeaders(makeMockSession(capture));
+    const cbSpy = vi.fn();
+    // Pass details with no responseHeaders (undefined)
+    capture.listener!({}, cbSpy);
+
+    const [resp] = cbSpy.mock.calls[0] as [{ responseHeaders: Record<string, string[]> }];
+    expect(resp.responseHeaders['content-security-policy'][0]).toMatch(/frame-ancestors\s+'none'/);
   });
 });

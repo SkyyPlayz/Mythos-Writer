@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS } from './BrainstormPage';
+import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -19,6 +19,8 @@ const mockEntityList = vi.fn();
 const mockBrainstormWriteNote = vi.fn();
 const mockBrainstormResolveRouting = vi.fn();
 const mockBrainstormListNotesFolders = vi.fn();
+// SKY-196: context selection mock — empty vault by default so tests stay fast.
+const mockBrainstormSelectContext = vi.fn();
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +32,7 @@ function buildApi(overrides: Record<string, unknown> = {}) {
     brainstormWriteNote: mockBrainstormWriteNote,
     brainstormResolveRouting: mockBrainstormResolveRouting,
     brainstormListNotesFolders: mockBrainstormListNotesFolders,
+    brainstormSelectContext: mockBrainstormSelectContext,
     onStreamToken: (cb: TokenHandler) => {
       tokenCb = cb;
       return () => {
@@ -58,7 +61,10 @@ function buildApi(overrides: Record<string, unknown> = {}) {
 
 async function simulateStream(tokens: string[], errorMessage?: string) {
   await waitFor(() => expect(tokenCb).not.toBeNull());
-  act(() => {
+  // Use async act so the act() boundary stays open while microtasks from
+  // persistFactWithRouting (which awaits brainstormWriteNote) drain, ensuring
+  // the resulting setFacts() state update is wrapped in act().
+  await act(async () => {
     for (const t of tokens) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
@@ -71,6 +77,12 @@ async function simulateStream(tokens: string[], errorMessage?: string) {
 }
 
 beforeEach(() => {
+  // useLiveAnnounce calls requestAnimationFrame to avoid re-announcing the same string.
+  // In jsdom rAF is a macrotask (setTimeout 0) which fires outside act() and causes
+  // act() warnings. Make it synchronous so the setLiveText call lands inside act().
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+
   vi.resetAllMocks();
   tokenCb = null;
   endCb = null;
@@ -96,8 +108,16 @@ beforeEach(() => {
     ],
     notesVaultRoot: '/tmp/notes',
   });
+  // SKY-196: empty vault context by default so context fetch resolves fast.
+  mockBrainstormSelectContext.mockResolvedValue({
+    included: [], excluded: [], usedTokens: 0, budgetTokens: 4000,
+  });
   (window as unknown as { api: unknown }).api = buildApi();
   localStorage.clear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('BrainstormPage', () => {
@@ -141,11 +161,15 @@ describe('BrainstormPage', () => {
       'Great character! [FACT:character|Lyra Ashveil|A young mage with silver hair and a troubled past]',
     ]);
 
-    await waitFor(() =>
-      expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument(),
-    );
-    expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
+    // Wait for brainstormWriteNote to resolve and final 'Saved ✓' state to settle.
+    // A single waitFor ensures all state updates from persistFactWithRouting land
+    // inside the same act() boundary (avoiding the race where 'Lyra Ashveil' becomes
+    // visible from the initial 'saving' state before brainstormWriteNote resolves).
+    await waitFor(() => {
+      expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument();
+      expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
+      expect(screen.getByText(/saved ✓/i)).toBeInTheDocument();
+    });
     expect(mockBrainstormWriteNote).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Lyra Ashveil', category: 'character' }),
     );
@@ -178,11 +202,15 @@ describe('BrainstormPage', () => {
     expect(prompt).toBeInTheDocument();
     expect(prompt).toHaveTextContent('Aria Voss');
     // Folder picker is populated from the Notes Vault catalog.
+    // Vault root is shown as an explicit sentinel option; the disabled placeholder '' is separate.
     await waitFor(() => expect(mockBrainstormListNotesFolders).toHaveBeenCalled());
     const select = screen.getByTestId('brainstorm-routing-select-character') as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.value)).toEqual(
-      expect.arrayContaining(['', 'Universes', 'Worldbuilding/People']),
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    expect(optionValues).toEqual(
+      expect.arrayContaining([VAULT_ROOT_SENTINEL, 'Universes', 'Worldbuilding/People']),
     );
+    // The path:'' vault-root folder from the API must NOT appear as a duplicate '' option.
+    expect(optionValues.filter((v) => v === '').length).toBe(1); // only the disabled placeholder
   });
 
   it('SKY-20: picking "Save here & remember" calls resolveRouting and clears the prompt', async () => {
@@ -222,6 +250,80 @@ describe('BrainstormPage', () => {
     await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
   });
 
+  it('SKY-441: save buttons are disabled and resolveRouting is NOT called when nothing is selected', async () => {
+    // Regression: the old guard (destination==='' && ... && destination!=='') could never fire,
+    // so a user could submit with nothing selected. This test proves the guard works.
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'needs_routing',
+      stagedPath: '.brainstorm-staging/uuid__Aria Voss.md',
+      category: 'character',
+      name: 'Aria Voss',
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'tell me about the hero' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Aria Voss|A young sorceress]']);
+
+    await screen.findByTestId('brainstorm-routing-prompt-character');
+
+    // Neither destination nor customFolder has been touched — both buttons must be disabled.
+    const saveBtn = screen.getByTestId('brainstorm-routing-save-character');
+    const onceBtn = screen.getByRole('button', { name: /just this once/i });
+    expect(saveBtn).toBeDisabled();
+    expect(onceBtn).toBeDisabled();
+
+    // Simulate a direct click attempt (e.g. via keyboard shortcut bypass) — resolveRouting must NOT be called.
+    fireEvent.click(saveBtn);
+    expect(mockBrainstormResolveRouting).not.toHaveBeenCalled();
+  });
+
+  it('SKY-441: picking "Vault root" calls resolveRouting with destination="" (empty string)', async () => {
+    // Vault root is a distinct sentinel in the select — resolving it must send '' to the API,
+    // not the sentinel string, so the backend writes directly to the vault root.
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'needs_routing',
+      stagedPath: '.brainstorm-staging/uuid__Aria Voss.md',
+      category: 'character',
+      name: 'Aria Voss',
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'tell me about the hero' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Aria Voss|A young sorceress]']);
+
+    await screen.findByTestId('brainstorm-routing-prompt-character');
+    const select = screen.getByTestId('brainstorm-routing-select-character') as HTMLSelectElement;
+    await waitFor(() => expect(select.options.length).toBeGreaterThan(1));
+
+    // Select the vault root sentinel.
+    fireEvent.change(select, { target: { value: VAULT_ROOT_SENTINEL } });
+
+    // Both save buttons must now be enabled.
+    const saveBtn = screen.getByTestId('brainstorm-routing-save-character');
+    expect(saveBtn).not.toBeDisabled();
+
+    fireEvent.click(saveBtn);
+
+    await waitFor(() =>
+      expect(mockBrainstormResolveRouting).toHaveBeenCalledWith({
+        stagedPath: '.brainstorm-staging/uuid__Aria Voss.md',
+        category: 'character',
+        destination: '',  // sentinel translated → empty string (vault root)
+        remember: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('brainstorm-routing-prompt-character')).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
+  });
+
   it('SKY-20: second same-category fact routes silently when main returns "written"', async () => {
     // First fact triggers the prompt — main stages and asks.
     mockBrainstormWriteNote
@@ -248,9 +350,12 @@ describe('BrainstormPage', () => {
       '[FACT:character|Aria|Hero 1][FACT:character|Kael|Hero 2]',
     ]);
 
-    // Only the first fact's prompt is shown — main routed the second silently.
-    await screen.findByTestId('brainstorm-routing-prompt-character');
+    // Wait for both the routing prompt (Aria) AND the silent save (Kael) to settle in
+    // a single waitFor so all state updates from persistFactWithRouting land inside
+    // the same act() boundary — avoiding a race where the routing prompt appears before
+    // brainstormWriteNote resolves for the second fact.
     await waitFor(() => {
+      expect(screen.getByTestId('brainstorm-routing-prompt-character')).toBeInTheDocument();
       const saved = screen.getAllByText(/saved ✓/i);
       expect(saved.length).toBeGreaterThanOrEqual(1);
     });
@@ -645,8 +750,9 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush the brainstormSelectContext microtask so _runStream (and onStreamToken) run
+    await act(async () => {});
 
-    // tokenCb is set synchronously before _runStream's first await
     expect(tokenCb).not.toBeNull();
 
     // Use async act to flush React 18 batched updates triggered by timer callbacks
@@ -664,6 +770,8 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush the brainstormSelectContext microtask so _runStream (and onStreamToken) run
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -681,6 +789,7 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});  // flush brainstormSelectContext microtask
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -700,6 +809,7 @@ describe('Stalled-stream UX', () => {
       target: { value: 'retry-me' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});  // flush brainstormSelectContext microtask
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -724,10 +834,11 @@ describe('Stalled-stream UX', () => {
       target: { value: 'slow request' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush brainstormSelectContext microtask, then the streamStart() microtask
+    await act(async () => {});
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
-    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
-    await act(async () => {});
 
     await act(async () => { vi.advanceTimersByTime(HARD_TIMEOUT_MS + 1000); });
 
@@ -742,10 +853,11 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush brainstormSelectContext microtask, then streamStart() microtask
+    await act(async () => {});
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
-    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
-    await act(async () => {});
     expect(screen.getByRole('button', { name: /cancel streaming/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /cancel streaming/i }));
@@ -944,5 +1056,55 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('BrainstormPage — prompt char counter', () => {
+  it('shows 0 / 2,000 counter when textarea is empty', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByText('0 / 2,000')).toBeInTheDocument();
+  });
+
+  it('updates counter as the user types', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    expect(screen.getByText('5 / 2,000')).toBeInTheDocument();
+  });
+
+  it('counter shows warning style at >=90% of cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1800) } });
+    const counter = screen.getByText('1,800 / 2,000');
+    expect(counter.className).toContain('brainstorm-char-counter--warning');
+  });
+
+  it('counter shows error style at cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(2000) } });
+    const counter = screen.getByText('2,000 / 2,000');
+    expect(counter.className).toContain('brainstorm-char-counter--error');
+  });
+
+  it('shows paste-truncation warning when pasted text would exceed cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1990) } });
+    fireEvent.paste(textarea, {
+      clipboardData: { getData: () => 'b'.repeat(20) },
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(/pasted text exceeded/i);
+  });
+
+  it('does not show paste warning when paste fits within cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'hello' } });
+    fireEvent.paste(textarea, {
+      clipboardData: { getData: () => ' world' },
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

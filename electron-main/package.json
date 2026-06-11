@@ -9,7 +9,11 @@
     "build": "tsc",
     "test": "vitest run",
     "perf": "vitest run --config vitest.perf.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "fuzz:build": "tsc --project fuzz/tsconfig.fuzz.json",
+    "fuzz:frontmatter": "npm run fuzz:build && mkdir -p fuzz/crashes && jazzer fuzz/dist/fuzz/frontmatter.fuzz.js fuzz/corpus/frontmatter --sync -- -max_total_time=60 -artifact_prefix=fuzz/crashes/frontmatter-",
+    "fuzz:docxInline": "npm run fuzz:build && mkdir -p fuzz/crashes && jazzer fuzz/dist/fuzz/docxInline.fuzz.js fuzz/corpus/docxInline -- -max_total_time=60 -artifact_prefix=fuzz/crashes/docxInline-",
+    "fuzz": "npm run fuzz:frontmatter && npm run fuzz:docxInline"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
@@ -19,9 +23,11 @@
     "jszip": "^3.10.1"
   },
   "devDependencies": {
+    "@jazzer.js/core": "^4.0.0",
     "@types/node": "^22.19.19",
     "electron-vite": "^5.0.0",
+    "fast-check": "^4.8.0",
     "typescript": "^5.3.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.8"
   }
 }

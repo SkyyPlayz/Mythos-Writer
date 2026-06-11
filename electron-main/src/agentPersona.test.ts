@@ -1,9 +1,16 @@
 // agentPersona.test.ts — Unit tests for MYT-816 persona loader/composer
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+
+// Hoist electron mock so ipc.ts can be imported for §6 frame-guard tests.
+vi.mock('electron', () => ({
+  ipcMain: { handle: vi.fn(), on: vi.fn(), off: vi.fn() },
+  ipcRenderer: { invoke: vi.fn(), on: vi.fn() },
+}));
+
 import {
   loadPersonaFile,
   loadAgentPersona,
@@ -11,8 +18,14 @@ import {
   resetPersonaFile,
   getBundledPersona,
   getPersonaOverridePath,
+  validatePersonaArgs,
+  resolvedInsideRoot,
   PERSONA_KEYS,
+  validatePersonaPayload,
 } from './agentPersona.js';
+import type { AgentPersonaName } from './agentPersona.js';
+import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
+import type { IpcMainInvokeEvent } from 'electron';
 
 let tmpDir: string;
 
@@ -182,5 +195,222 @@ describe('getBundledPersona (§5)', () => {
   it('brainstorm AGENTS bundled default contains FACT tag syntax', () => {
     const content = getBundledPersona('brainstorm', 'AGENTS');
     expect(content).toContain('[FACT:');
+  });
+});
+
+// ─── §6  Security: validatePersonaArgs + resetPersonaFile containment ─────────
+
+describe('validatePersonaArgs (§6)', () => {
+  it('throws on out-of-enum agentName', () => {
+    expect(() => validatePersonaArgs('../../databases', 'AGENTS')).toThrow('invalid_agent_name');
+  });
+
+  it('throws on out-of-enum key', () => {
+    expect(() => validatePersonaArgs('writingAssistant', '../../etc/passwd')).toThrow('invalid_key');
+  });
+
+  it('throws when both agentName and key are invalid', () => {
+    expect(() => validatePersonaArgs('badAgent', 'badKey')).toThrow('invalid_agent_name');
+  });
+
+  it('throws on non-string agentName (null)', () => {
+    expect(() => validatePersonaArgs(null, 'AGENTS')).toThrow('invalid_agent_name');
+  });
+
+  it('throws on non-string key (object)', () => {
+    expect(() => validatePersonaArgs('writingAssistant', {})).toThrow('invalid_key');
+  });
+
+  it('does not throw for all valid agentName + key combinations', () => {
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => validatePersonaArgs(agent, key)).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('resetPersonaFile containment guard (§6)', () => {
+  it('throws and does not delete when agentName traverses outside agent-personas', () => {
+    const userData = path.join(tmpDir, 'userData');
+    fs.mkdirSync(userData, { recursive: true });
+
+    // path.join(userData, 'agent-personas', '../secret', 'AGENTS.md')
+    // normalises to path.join(userData, 'secret', 'AGENTS.md') — outside agent-personas/
+    const victimFile = path.join(userData, 'secret', 'AGENTS.md');
+    fs.mkdirSync(path.dirname(victimFile), { recursive: true });
+    fs.writeFileSync(victimFile, 'precious data', 'utf-8');
+
+    expect(() => {
+      resetPersonaFile(userData, '../secret' as AgentPersonaName, 'AGENTS');
+    }).toThrow('Path escape detected');
+
+    expect(fs.existsSync(victimFile)).toBe(true);
+  });
+
+  it('valid reset still deletes the correct override file', () => {
+    const overridePath = getPersonaOverridePath(tmpDir, 'writingAssistant', 'AGENTS');
+    fs.mkdirSync(path.dirname(overridePath), { recursive: true });
+    fs.writeFileSync(overridePath, '# custom', 'utf-8');
+
+    resetPersonaFile(tmpDir, 'writingAssistant', 'AGENTS');
+
+    expect(fs.existsSync(overridePath)).toBe(false);
+  });
+});
+
+// ─── §6b  resolvedInsideRoot + getPersonaOverridePath containment ─────────────
+// Regression for SEC-5: path traversal via agentName or key supplied over IPC.
+
+describe('resolvedInsideRoot (§6b)', () => {
+  it('returns the resolved absolute path for valid inputs', () => {
+    const result = resolvedInsideRoot(tmpDir, 'writingAssistant', 'SOUL.md');
+    expect(result).toBe(path.resolve(tmpDir, 'writingAssistant', 'SOUL.md'));
+  });
+
+  it('throws when ../.. in first segment escapes root', () => {
+    expect(() => resolvedInsideRoot(tmpDir, '../../etc', 'AGENTS.md')).toThrow('Path escape detected');
+  });
+
+  it('throws when traversal is in a later segment', () => {
+    expect(() => resolvedInsideRoot(tmpDir, 'writingAssistant', '../../../etc/passwd')).toThrow(
+      'Path escape detected',
+    );
+  });
+
+  it('does not throw for all real persona combos', () => {
+    const personasRoot = path.join(tmpDir, 'agent-personas');
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => resolvedInsideRoot(personasRoot, agent, `${key}.md`)).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('getPersonaOverridePath containment (§6b)', () => {
+  it('throws when agentName contains path traversal', () => {
+    expect(() =>
+      getPersonaOverridePath(tmpDir, '../../etc' as AgentPersonaName, 'AGENTS'),
+    ).toThrow('Path escape detected');
+  });
+
+  it('does not throw for valid agentName and key', () => {
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        expect(() => getPersonaOverridePath(tmpDir, agent, key)).not.toThrow();
+      }
+    }
+  });
+});
+
+// ─── §6 SEC-6 anti-injection instruction regression ───────────────────────────
+// The bundled writingAssistant AGENTS must include the content-security instruction
+// so the LLM knows to treat <scene_context> content as data, not instructions.
+
+describe('writingAssistant AGENTS anti-injection instruction (§6 / SEC-6)', () => {
+  it('bundled AGENTS default includes the scene_context tag name', () => {
+    const content = getBundledPersona('writingAssistant', 'AGENTS');
+    expect(content).toContain('scene_context');
+  });
+
+  it('bundled AGENTS default instructs LLM to treat context as data not instructions', () => {
+    const content = getBundledPersona('writingAssistant', 'AGENTS');
+    // The instruction must communicate that the tagged block is source material / data.
+    expect(content.toLowerCase()).toMatch(/data|source material/);
+    expect(content.toLowerCase()).toMatch(/not.*instructions?|instructions?.*not/);
+  });
+
+  it('system prompt includes the anti-injection instruction', () => {
+    const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
+    expect(prompt).toContain('scene_context');
+    expect(prompt.toLowerCase()).toMatch(/data|source material/);
+  });
+
+  it('system prompt does not include the instruction when AGENTS override removes it', () => {
+    // Verify the guard lives in bundled AGENTS, not hardcoded elsewhere.
+    const overridePath = getPersonaOverridePath(tmpDir, 'writingAssistant', 'AGENTS');
+    fs.mkdirSync(path.dirname(overridePath), { recursive: true });
+    fs.writeFileSync(overridePath, '# Custom agents — no security section', 'utf-8');
+
+    const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
+    expect(prompt).not.toContain('scene_context');
+  });
+});
+
+// ─── §6c  validatePersonaPayload — return-style validation (SKY-698) ──────────
+
+describe('validatePersonaPayload — traversal rejection (§6c)', () => {
+  it('rejects path-traversal agentName, returns { error: "invalid agentName" }', () => {
+    expect(validatePersonaPayload('../../..', 'SOUL')).toEqual({ ok: false, error: 'invalid agentName' });
+  });
+
+  it('rejects path-traversal key', () => {
+    expect(validatePersonaPayload('writingAssistant', '../../../foo')).toEqual({
+      ok: false,
+      error: 'invalid key',
+    });
+  });
+
+  it('rejects traversal in both fields — agentName checked first', () => {
+    expect(validatePersonaPayload('../../..', '../../../foo')).toEqual({
+      ok: false,
+      error: 'invalid agentName',
+    });
+  });
+
+  it('rejects null agentName', () => {
+    expect(validatePersonaPayload(null, 'SOUL')).toEqual({ ok: false, error: 'invalid agentName' });
+  });
+
+  it('rejects undefined key', () => {
+    expect(validatePersonaPayload('writingAssistant', undefined)).toEqual({
+      ok: false,
+      error: 'invalid key',
+    });
+  });
+
+  it('accepts every valid agentName + key combination', () => {
+    for (const agent of ['writingAssistant', 'brainstorm'] as const) {
+      for (const key of PERSONA_KEYS) {
+        const result = validatePersonaPayload(agent, key);
+        expect(result).toMatchObject({ ok: true, agentName: agent, key });
+      }
+    }
+  });
+});
+
+// ─── §6d  isFromTopFrame frame guard (SKY-698) ───────────────────────────────
+
+describe('isFromTopFrame frame guard (§6d — used by persona handlers)', () => {
+  function makeTopFrame(): Record<string, unknown> {
+    const frame: Record<string, unknown> = {};
+    frame.top = frame; // self-reference: top === itself
+    return frame;
+  }
+
+  function makeNestedFrame(): { frame: Record<string, unknown>; top: Record<string, unknown> } {
+    const top = makeTopFrame();
+    const frame: Record<string, unknown> = { top };
+    return { frame, top };
+  }
+
+  it('handler returns UNTRUSTED_FRAME_REJECTION when senderFrame is a nested frame', () => {
+    const { frame } = makeNestedFrame();
+    const event = { senderFrame: frame } as unknown as IpcMainInvokeEvent;
+    const result = !isFromTopFrame(event) ? UNTRUSTED_FRAME_REJECTION : null;
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('handler proceeds past the frame guard when senderFrame is the top frame', () => {
+    const top = makeTopFrame();
+    const event = { senderFrame: top } as unknown as IpcMainInvokeEvent;
+    expect(isFromTopFrame(event)).toBe(true);
+  });
+
+  it('handler returns UNTRUSTED_FRAME_REJECTION when senderFrame is null (frame destroyed)', () => {
+    const event = { senderFrame: null } as unknown as IpcMainInvokeEvent;
+    const result = !isFromTopFrame(event) ? UNTRUSTED_FRAME_REJECTION : null;
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
   });
 });

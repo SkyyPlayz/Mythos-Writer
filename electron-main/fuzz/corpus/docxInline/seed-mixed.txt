@@ -1,0 +1,1 @@
+**Bold start**, then *star italic* and _underscore italic_ together.

@@ -48,9 +48,17 @@
       rgba(155, 95, 255, 0.6) 50%,
       rgba(255, 77, 255, 0.6) 100%);
 
-  /* ── Neon border tokens (SKY-127) — window chrome multi-color treatment ──── */
-  --border-neon-default: 0 0 16px var(--grad-neon), 0 0 2px var(--neon-cyan);
-  --border-neon-hover: 0 0 24px var(--grad-neon), 0 0 4px var(--neon-cyan);
+  /* ── Neon border tokens (SKY-127 / SKY-910) — window chrome multi-color treatment ──── */
+  /* Per-slot border accents (SKY-910). Defaults match the static --grad-neon
+     stops; applyLiquidNeonTokens overrides these from user prefs and rebuilds
+     --grad-neon / --grad-neon-soft to match. */
+  --neon-border-1: var(--neon-cyan);
+  --neon-border-2: var(--neon-violet);
+  --neon-border-3: var(--neon-magenta);
+  /* Solid outline composed over the gradient — picks up slot A by default. */
+  --border-neon-outline: var(--neon-border-1);
+  --border-neon-default: 0 0 16px var(--grad-neon), 0 0 2px var(--border-neon-outline);
+  --border-neon-hover: 0 0 24px var(--grad-neon), 0 0 4px var(--border-neon-outline);
   --border-neon-context-folder: 0 0 16px
       linear-gradient(120deg, #9b5fff 0%, #ff4dff 50%, #9b5fff 100%),
       0 0 2px var(--neon-violet);
@@ -181,6 +189,14 @@
   --state-success: #4ade80;
   --state-warning: #fbbf24;
   --state-info: var(--neon-cyan);
+
+  /* State background fills — for banners / badges / inline notices that need a
+     tinted surface, not just text. Mixed against --bg-inset so the same alias
+     reads correctly on a panel or in a well. The 18% mix lands at ≥ 7:1 for
+     adjacent --state-* text on the resulting surface (MYT-520 §0 rule 1). */
+  --state-danger-bg: color-mix(in srgb, var(--state-danger) 18%, var(--bg-inset));
+  --state-success-bg: color-mix(in srgb, var(--state-success) 18%, var(--bg-inset));
+  --state-warning-bg: color-mix(in srgb, var(--state-warning) 18%, var(--bg-inset));
 
   /* =========================================================================
    * Compatibility aliases.

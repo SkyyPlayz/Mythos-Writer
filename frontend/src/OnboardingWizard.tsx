@@ -1,59 +1,46 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WizardScreen =
-  | 'welcome'
-  | 'template-picker'
-  | 'default-path'
-  | 'blank-path'
-  | 'import-source'
-  | 'import-dryrun'
-  | 'import-progress'
-  | 'import-success'
-  | 'sample-path'
-  | 'done';
+type WizardStep = 'step1' | 'step1b' | 'step2' | 'step3';
+// SKY-906: 'default-mythos-vault' is the one-click first-run path that
+// bypasses the title/save-path form entirely.
+type StartMode = 'blank' | 'sample' | 'template' | 'default-mythos-vault';
 
-type SeedMode = 'default' | 'blank';
-
-type PathStatus = 'checking' | 'new' | 'empty-ok' | 'non-empty' | 'not-writable' | 'unknown';
-
-interface DryRunReport {
-  notesCount: number;
-  brokenLinks: Array<{ file: string; target: string }>;
-  nameCollisions: Array<{ name: string; file: string }>;
-  missingFrontmatter: string[];
-  fatalError: string | null;
-  restructured?: Array<{ from: string; to: string }>;
-  leftAsIs?: string[];
+interface TemplateItem {
+  id: string;
+  name: string;
+  description: string;
+  story: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
+  notes: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
+  isUserTemplate?: boolean;
+  savedAt?: string;
 }
 
 interface OnboardingWizardProps {
   initialSettings: AppSettings;
   onComplete: (settings: AppSettings) => void;
+  onCancel?: () => void;
 }
 
 // ─── Typed window.api access ──────────────────────────────────────────────────
 
 type Api = {
   pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null; error?: string }>;
-  obsidianDryRun: (path: string, token: string) => Promise<DryRunReport | { error: string }>;
-  obsidianRegister: (path: string, token: string) => Promise<{ vaultRoot: string; notesIndexed: number; snapshotPath?: string } | { error: string }>;
-  vaultSetPaths: (
-    storyVaultPath: string,
-    notesVaultPath: string,
-    opts?: { seedMode?: SeedMode }
-  ) => Promise<{ ok: true } | { error: string }>;
-  loadSampleTwoVault: (
-    parentPath: string
-  ) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
+  chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
-  obsidianPickFolderByPath: (sourcePath: string) => Promise<{ vaultRoot: string | null; registrationToken: string | null; error?: string }>;
-  onObsidianImportProgress?: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
-  onboardingComplete: () => Promise<{ ok: boolean }>;
+  onboardingComplete: (payload?: {
+    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+    storyTitle?: string;
+    authorName?: string;
+    vaultParentPath?: string;
+    templateId?: string;
+    vaultName?: string;
+  }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
-  templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string } | { error: string }>;
+  vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
 };
 
 interface TemplateItem {
@@ -70,203 +57,112 @@ function api(): Api {
   return (window as unknown as { api: Api }).api;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const DEFAULT_SAVE_PATH = '~/Documents/MythosWriter';
+const INVALID_TITLE_RE = /[/\\:*?"<>|]/;
+const TITLE_MAX = 120;
+const AUTHOR_MAX = 80;
+
+// Exact error copy from spec
+const ERR_EMPTY_TITLE = 'Please give your story a title before continuing.';
+const ERR_INVALID_CHARS = 'Story titles can\'t contain these characters: / \\ : * ? " < > |';
+const ERR_TITLE_EXISTS = (title: string) =>
+  `A story called "${title}" already exists in that folder. Choose a different title or save location.`;
+const ERR_UNWRITABLE_PATH = 'Can\'t save to that folder. Please choose a different location.';
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-interface PickerCardProps {
-  recommended?: boolean;
+interface StartingPointCardProps {
   icon: string;
   title: string;
   description: string;
   ctaLabel: string;
   onActivate: () => void;
-  testId?: string;
+  testId: string;
 }
 
-function PickerCard({ recommended, icon, title, description, ctaLabel, onActivate, testId }: PickerCardProps) {
+function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId }: StartingPointCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onActivate();
     }
   };
-
   return (
     <button
-      className={`picker-card${recommended ? ' picker-card--recommended' : ''}`}
+      className="gs-card"
       onClick={onActivate}
       onKeyDown={handleKeyDown}
       data-testid={testId}
-      aria-describedby={testId ? `${testId}-desc` : undefined}
+      type="button"
     >
-      {recommended && <span className="picker-card__badge">Recommended</span>}
-      <span className="picker-card__icon" aria-hidden="true">{icon}</span>
-      <span className="picker-card__title">{title}</span>
-      <span className="picker-card__desc" id={testId ? `${testId}-desc` : undefined}>{description}</span>
-      <span className="picker-card__cta" aria-hidden="true">{ctaLabel}</span>
+      <span className="gs-card__icon" aria-hidden="true">{icon}</span>
+      <span className="gs-card__title">{title}</span>
+      <span className="gs-card__desc">{description}</span>
+      <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
     </button>
   );
 }
 
-interface FolderPathFieldProps {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  onBlur?: () => void;
-  onBrowse: () => void;
-  status: PathStatus;
-  disabled?: boolean;
-  testId?: string;
+interface TemplateCardProps {
+  template: TemplateItem;
+  onSelect: () => void;
+  testId: string;
 }
 
-function FolderPathField({ label, value, onChange, onBlur, onBrowse, status, disabled, testId }: FolderPathFieldProps) {
-  const hintMap: Record<PathStatus, { text: string; level: 'info' | 'warn' | 'error' }> = {
-    new:          { text: "This folder doesn't exist yet — we'll create it.", level: 'info' },
-    'empty-ok':   { text: "Folder exists and is empty — we'll use it.", level: 'info' },
-    'non-empty':  { text: "Folder exists but isn't empty — pick a new folder or a sub-path.", level: 'warn' },
-    'not-writable': { text: "This path isn't writable — pick a different folder.", level: 'error' },
-    checking:     { text: 'Checking path…', level: 'info' },
-    unknown:      { text: '', level: 'info' },
-  };
-  const hint = hintMap[status];
-
+function TemplateCard({ template, onSelect, testId }: TemplateCardProps) {
   return (
-    <div className="folder-path-field">
-      <label className="folder-path-field__label" htmlFor={testId}>{label}</label>
-      <div className="folder-path-field__row">
-        <input
-          id={testId}
-          className="folder-path-field__input"
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          disabled={disabled}
-          data-testid={testId}
-          aria-describedby={testId ? `${testId}-hint` : undefined}
-        />
-        <button
-          className="btn-secondary"
-          type="button"
-          onClick={onBrowse}
-          disabled={disabled}
-          aria-label="Browse for folder"
-        >
-          Browse
-        </button>
-      </div>
-      {hint.text && (
-        <p
-          className={`folder-path-field__hint folder-path-field__hint--${hint.level}`}
-          id={testId ? `${testId}-hint` : undefined}
-          aria-live="polite"
-          data-testid={testId ? `${testId}-hint` : undefined}
-        >
-          {hint.text}
-        </p>
-      )}
-    </div>
-  );
-}
-
-interface FolderDropZoneProps {
-  onPickFolder: () => void;
-  onDrop: (path: string) => void;
-  scanning?: boolean;
-  testId?: string;
-}
-
-function FolderDropZone({ onPickFolder, onDrop, scanning, testId }: FolderDropZoneProps) {
-  const [dragging, setDragging] = useState(false);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragging(true);
-  };
-  const handleDragLeave = () => setDragging(false);
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragging(false);
-    // Electron exposes .path on File objects for dragged OS items
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      const filePath = (file as unknown as { path?: string }).path;
-      if (filePath) onDrop(filePath);
-    }
-  };
-
-  return (
-    <div
-      className={`folder-drop-zone${dragging ? ' folder-drop-zone--dragging' : ''}`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+    <button
+      className="gs-template-card"
+      onClick={onSelect}
       data-testid={testId}
-      aria-label="Drop vault folder here or pick folder"
+      type="button"
     >
-      {scanning ? (
-        <>
-          <span className="folder-drop-zone__spinner" aria-hidden="true" />
-          <span className="folder-drop-zone__scanning">Scanning vault…</span>
-        </>
-      ) : (
-        <>
-          <span className="folder-drop-zone__icon" aria-hidden="true">📁</span>
-          <span className="folder-drop-zone__hint">Drop a vault folder here</span>
-          <span className="folder-drop-zone__or" aria-hidden="true">— or —</span>
-          <button
-            className="btn-secondary"
-            type="button"
-            onClick={onPickFolder}
-            data-testid={testId ? `${testId}-btn` : undefined}
-          >
-            Pick folder
-          </button>
-        </>
-      )}
-    </div>
+      {template.isUserTemplate && <span className="gs-template-card__badge">Saved</span>}
+      <span className="gs-template-card__name">{template.name}</span>
+      <span className="gs-template-card__desc">{template.description}</span>
+      <span className="gs-template-card__cta" aria-hidden="true">Use this &#x2192;</span>
+    </button>
   );
 }
 
 interface ConfirmDialogProps {
-  title: string;
-  body: string;
-  primaryLabel: string;
-  destructiveLabel: string;
-  onPrimary: () => void;
-  onDestructive: () => void;
-  testId?: string;
+  onKeepGoing: () => void;
+  onCancelSetup: () => void;
 }
 
-function ConfirmDialog({ title, body, primaryLabel, destructiveLabel, onPrimary, onDestructive, testId }: ConfirmDialogProps) {
+function ConfirmDialog({ onKeepGoing, onCancelSetup }: ConfirmDialogProps) {
   return (
     <div
-      className="confirm-dialog-overlay"
+      className="gs-confirm-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
-      data-testid={testId}
+      aria-labelledby="gs-confirm-title"
+      data-testid="gs-cancel-confirm"
     >
-      <div className="confirm-dialog">
-        <h3 className="confirm-dialog__title">{title}</h3>
-        <p className="confirm-dialog__body">{body}</p>
-        <div className="confirm-dialog__actions">
+      <div className="gs-confirm">
+        <h3 className="gs-confirm__title" id="gs-confirm-title">Cancel setup?</h3>
+        <p className="gs-confirm__body">
+          Your story hasn&apos;t been created yet.<br />
+          If you close now, you&apos;ll start fresh next time.
+        </p>
+        <div className="gs-confirm__actions">
           <button
             className="btn-primary"
             type="button"
-            onClick={onPrimary}
-            data-testid={testId ? `${testId}-primary` : undefined}
+            onClick={onKeepGoing}
+            data-testid="gs-keep-going"
           >
-            {primaryLabel}
+            Keep Going
           </button>
           <button
             className="btn-ghost btn-destructive"
             type="button"
-            onClick={onDestructive}
-            data-testid={testId ? `${testId}-destructive` : undefined}
+            onClick={onCancelSetup}
+            data-testid="gs-cancel-setup"
           >
-            {destructiveLabel}
+            Cancel Setup
           </button>
         </div>
       </div>
@@ -274,919 +170,580 @@ function ConfirmDialog({ title, body, primaryLabel, destructiveLabel, onPrimary,
   );
 }
 
-// ─── Step indicator helpers ───────────────────────────────────────────────────
-
-const STEP_MAP: Partial<Record<WizardScreen, [number, number]>> = {
-  'default-path':     [1, 1],
-  'blank-path':       [1, 1],
-  'import-source':    [1, 3],
-  'import-dryrun':    [2, 3],
-  'import-progress':  [3, 3],
-  'sample-path':      [1, 1],
-};
-
-const STORY_VAULT_DIR = 'Story Vault';
-const NOTES_VAULT_DIR = 'Notes Vault';
-
-function joinPath(parent: string, child: string): string {
-  const cleaned = parent.replace(/[/\\]+$/, '');
-  return `${cleaned}/${child}`;
-}
-
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
-export default function OnboardingWizard({ initialSettings, onComplete }: OnboardingWizardProps) {
-  // Navigation
-  const [screen, setScreen] = useState<WizardScreen>('welcome');
-
-  // Default-layout flow
-  const [defaultPath, setDefaultPath] = useState('~/Mythos');
-  const [defaultPathStatus, setDefaultPathStatus] = useState<PathStatus>('new');
-
-  // Blank vault flow
-  const [blankPath, setBlankPath] = useState('~/Mythos');
+export default function OnboardingWizard({ initialSettings, onComplete, onCancel }: OnboardingWizardProps) {
+  const [step, setStep] = useState<WizardStep>('step1');
+  const [startMode, setStartMode] = useState<StartMode | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem | null>(null);
-  const [templateParentPath, setTemplateParentPath] = useState<string>('');
-  const [templatePathStatus, setTemplatePathStatus] = useState<PathStatus>('new');
-  const [blankPathStatus, setBlankPathStatus] = useState<PathStatus>('new');
 
-  // Import flow
-  const [importSourcePath, setImportSourcePath] = useState('');
-  const [registrationToken, setRegistrationToken] = useState('');
-  const [dryRun, setDryRun] = useState<DryRunReport | null>(null);
-  const [importNotesCount, setImportNotesCount] = useState(0);
-  const [importSnapshotPath, setImportSnapshotPath] = useState<string | null>(null);
-  const [importProgress, setImportProgress] = useState({ current: 0, total: 0, lastAction: '' });
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const cancelledRef = useRef(false);
-  const [dryRunBanner, setDryRunBanner] = useState('');
+  // Step 2 form state
+  const [storyTitle, setStoryTitle] = useState('');
+  const [authorName, setAuthorName] = useState('');
+  const [savePath, setSavePath] = useState(DEFAULT_SAVE_PATH);
+  const [pathOptions, setPathOptions] = useState<TruncatePathOptions>({});
 
-  // Sample flow
-  const [samplePath, setSamplePath] = useState('~/Mythos Sample');
-  const [samplePathStatus, setSamplePathStatus] = useState<PathStatus>('new');
-
-  // Shared
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  // ─── Validation helpers ─────────────────────────────────────────────────────
-
-  const validatePathStatus = useCallback(async (path: string, setter: (s: PathStatus) => void) => {
-    if (!path.trim()) { setter('unknown'); return; }
-    setter('checking');
-    try {
-      const res = await api().validatePath(path);
-      if (!res.writable) { setter('not-writable'); return; }
-      if (!res.exists)   { setter('new'); return; }
-      if (res.isEmpty)   { setter('empty-ok'); return; }
-      setter('non-empty');
-    } catch {
-      setter('unknown');
-    }
+  useEffect(() => {
+    api().vaultGetPaths?.().then((paths) => {
+      setPathOptions({ homeDir: paths.homeDir, sep: paths.pathSeparator });
+    }).catch(() => { /* non-fatal */ });
   }, []);
 
-  // ─── Blank vault flow ───────────────────────────────────────────────────────
+  // Error state
+  const [titleError, setTitleError] = useState('');
+  const [savePathError, setSavePathError] = useState('');
+  const [scaffoldError, setScaffoldError] = useState('');
 
-  const handleBlankBrowse = useCallback(async () => {
-    try {
-      const res = await api().pickFolder();
-      if (res.error === 'permission-denied') {
-        setError("macOS blocked access to that folder. Pick a folder in your home directory, or grant access in System Settings → Privacy & Security → Files and Folders.");
-        return;
-      }
-      if (res.cancelled || !res.vaultRoot) return;
-      setBlankPath(res.vaultRoot);
-      await validatePathStatus(res.vaultRoot, setBlankPathStatus);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to open folder picker');
-    }
-  }, [validatePathStatus]);
+  // UI state
+  const [scaffolding, setScaffolding] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
-  const handleBlankPathChange = (v: string) => {
-    setBlankPath(v);
-    setBlankPathStatus('unknown');
-  };
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
-  const handleBlankPathBlur = async () => {
-    await validatePathStatus(blankPath, setBlankPathStatus);
-  };
-
-  const isBlankCTADisabled = blankPathStatus === 'non-empty' || blankPathStatus === 'not-writable' || busy;
-
-  const finishOnboarding = useCallback(() => {
-    // Persist the flag on the main-process side; don't await — fire and forget
-    // so the UI transitions immediately. The SETTINGS_GET handler enforces this
-    // flag on next boot based on vault path existence, so a lost call is harmless.
-    api().onboardingComplete().catch(() => { /* non-fatal */ });
-    const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
-    setScreen('done');
-    onComplete(updated);
-  }, [initialSettings, onComplete]);
-
-  const handleCreateVault = useCallback(async (parentPath: string, seedMode: SeedMode) => {
-    setError('');
-    setBusy(true);
-    try {
-      const storyPath = joinPath(parentPath, STORY_VAULT_DIR);
-      const notesPath = joinPath(parentPath, NOTES_VAULT_DIR);
-      const res = await api().vaultSetPaths(storyPath, notesPath, { seedMode });
-      if ('error' in res) throw new Error(res.error);
-      finishOnboarding();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create vault');
-    } finally {
-      setBusy(false);
-    }
-  }, [finishOnboarding]);
-
-  const handleCreateBlankVault = () => handleCreateVault(blankPath, 'blank');
-  const handleCreateDefaultVault = () => handleCreateVault(defaultPath, 'default');
-
-  // ─── Default-layout flow ───────────────────────────────────────────────────
-
-  const handleDefaultBrowse = useCallback(async () => {
-    try {
-      const res = await api().pickFolder();
-      if (res.error === 'permission-denied') {
-        setError("macOS blocked access to that folder. Pick a folder in your home directory, or grant access in System Settings → Privacy & Security → Files and Folders.");
-        return;
-      }
-      if (res.cancelled || !res.vaultRoot) return;
-      setDefaultPath(res.vaultRoot);
-      await validatePathStatus(res.vaultRoot, setDefaultPathStatus);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to open folder picker');
-    }
-  }, [validatePathStatus]);
-
-  const handleDefaultPathChange = (v: string) => {
-    setDefaultPath(v);
-    setDefaultPathStatus('unknown');
-  };
-
-  const handleDefaultPathBlur = async () => {
-    await validatePathStatus(defaultPath, setDefaultPathStatus);
-  };
-
-  const isDefaultCTADisabled = defaultPathStatus === 'not-writable' || busy;
-
-  // ─── Import flow ────────────────────────────────────────────────────────────
-
-  const handleImportPickFolder = useCallback(async () => {
-    setError('');
-    try {
-      const res = await api().pickFolder();
-      if (res.error === 'permission-denied') {
-        setError("macOS blocked access to that folder. Pick a folder in your home directory, or grant access in System Settings → Privacy & Security → Files and Folders.");
-        return;
-      }
-      if (res.cancelled || !res.vaultRoot || !res.registrationToken) return;
-      await runDryRun(res.vaultRoot, res.registrationToken);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to open folder picker');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleImportDrop = useCallback(async (droppedPath: string) => {
-    setError('');
-    try {
-      const res = await api().obsidianPickFolderByPath(droppedPath);
-      if (!res.vaultRoot || !res.registrationToken) {
-        setError(res.error ?? 'Could not access the dropped folder.');
-        return;
-      }
-      await runDryRun(res.vaultRoot, res.registrationToken);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to access dropped folder');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const runDryRun = async (sourcePath: string, token: string) => {
-    setImportSourcePath(sourcePath);
-    setRegistrationToken(token);
-    setBusy(true);
-    try {
-      const report = await api().obsidianDryRun(sourcePath, token);
-      if ('error' in report) {
-        setError(report.error);
-        return;
-      }
-      if (report.fatalError) {
-        const isNotObsidian = report.fatalError.toLowerCase().includes('no .obsidian') ||
-          report.fatalError.toLowerCase().includes('no .md');
-        if (isNotObsidian) {
-          setError("This doesn't look like an Obsidian vault. Pick the folder that contains your notes.");
-        } else {
-          setError(`We couldn't scan that vault.\n\nDetails: ${report.fatalError}`);
-        }
-        return;
-      }
-      setDryRun(report);
-      setScreen('import-dryrun');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Scan failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleStartImport = async () => {
-    if (!registrationToken) {
-      setError('Folder selection expired — please pick the folder again.');
-      setScreen('import-source');
-      setDryRun(null);
-      return;
-    }
-    setError('');
-    cancelledRef.current = false;
-    setImportProgress({ current: 0, total: dryRun?.notesCount ?? 0, lastAction: '' });
-    setScreen('import-progress');
-
-    // Subscribe to progress events if supported
-    let unsubscribe: (() => void) | undefined;
-    if (typeof api().onObsidianImportProgress === 'function') {
-      unsubscribe = api().onObsidianImportProgress!((data) => {
-        setImportProgress(data);
-      });
-    }
-
-    try {
-      const res = await api().obsidianRegister(importSourcePath, registrationToken);
-      if ('error' in res) throw new Error(res.error);
-      setRegistrationToken('');
-      setImportNotesCount(res.notesIndexed);
-      setImportSnapshotPath(res.snapshotPath ?? null);
-      if (cancelledRef.current) {
-        // User confirmed cancel while import was running
-        setDryRunBanner('Import cancelled. The original vault is unchanged.');
-        setScreen('import-dryrun');
-      } else {
-        setScreen('import-success');
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Import failed';
-      const isDiskFull = msg.toLowerCase().includes('enospc') || msg.toLowerCase().includes('no space left');
-      if (isDiskFull) {
-        setDryRunBanner("Out of disk space. We stopped before writing. The original vault is untouched.");
-      } else {
-        setDryRunBanner(`Import failed. We're rolling back to the original vault.\n\nDetails: ${msg}`);
-      }
-      setScreen('import-dryrun');
-    } finally {
-      unsubscribe?.();
-    }
-  };
-
-  const handleCancelConfirm = () => {
-    cancelledRef.current = true;
-    setShowCancelConfirm(false);
-    // The obsidianRegister promise will resolve and we'll handle transition in handleStartImport
-  };
-
-  // ─── Sample flow ────────────────────────────────────────────────────────────
-
-  const handleSampleBrowse = useCallback(async () => {
-    try {
-      const res = await api().pickFolder();
-      if (res.error === 'permission-denied') {
-        setError("macOS blocked access to that folder. Pick a folder in your home directory, or grant access in System Settings → Privacy & Security → Files and Folders.");
-        return;
-      }
-      if (res.cancelled || !res.vaultRoot) return;
-      setSamplePath(res.vaultRoot);
-      await validatePathStatus(res.vaultRoot, setSamplePathStatus);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to open folder picker');
-    }
-  }, [validatePathStatus]);
-
-  const isSampleCTADisabled = samplePathStatus === 'not-writable' || busy;
-
-  const handleOpenSample = async () => {
-    setError('');
-    setBusy(true);
-    try {
-      const res = await api().loadSampleTwoVault(samplePath);
-      if ('error' in res) throw new Error(res.error);
-      finishOnboarding();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load sample project';
-      const isDiskFull = msg.toLowerCase().includes('enospc') || msg.toLowerCase().includes('no space left');
-      setError(isDiskFull
-        ? "Out of disk space. Pick a folder with more room."
-        : `We couldn't copy the sample project. Try a different folder, or restart Mythos Writer.\n\nDetails: ${msg}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // ─── Validate blank/sample path on change (blur) ───────────────────────────
-
+  // Auto-focus title input on step 2
   useEffect(() => {
-    // Pre-validate default paths when the respective screens mount
-    if (screen === 'default-path' && defaultPathStatus === 'new') {
-      validatePathStatus(defaultPath, setDefaultPathStatus).catch(() => {});
+    if (step === 'step2') {
+      titleInputRef.current?.focus();
     }
-    if (screen === 'blank-path' && blankPathStatus === 'new') {
-      validatePathStatus(blankPath, setBlankPathStatus).catch(() => {});
-    }
-    if (screen === 'sample-path' && samplePathStatus === 'new') {
-      validatePathStatus(samplePath, setSamplePathStatus).catch(() => {});
-    }
-  }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step]);
 
+  // Load templates when step1b mounts
   useEffect(() => {
-    if (screen === 'template-picker' && templates.length === 0) {
+    if (step === 'step1b' && templates.length === 0) {
       api().templateList().then((res) => {
         if ('templates' in res) setTemplates(res.templates);
       }).catch(() => {});
     }
-  }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Step indicator ─────────────────────────────────────────────────────────
+  // ─── Validation helpers ─────────────────────────────────────────────────────
 
-  const stepInfo = STEP_MAP[screen];
-  const stepLabel = stepInfo ? `Step ${stepInfo[0]} of ${stepInfo[1]}` : null;
-
-  // ─── Render helpers ─────────────────────────────────────────────────────────
-
-  function renderProgressBar() {
-    const { current, total } = importProgress;
-    const pct = total > 0 ? Math.round((current / total) * 100) : null;
-    if (pct !== null) {
-      return (
-        <div className="import-progress-bar-wrap">
-          <div
-            className="import-progress-bar"
-            role="progressbar"
-            aria-valuenow={pct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            style={{ '--progress-pct': `${pct}%` } as React.CSSProperties}
-          />
-          <span className="import-progress-bar__pct">{pct}%</span>
-        </div>
-      );
-    }
-    return <div className="import-progress-bar-wrap import-progress-bar-wrap--indeterminate" role="progressbar" aria-label="Importing…" />;
+  function validateTitle(raw: string): string {
+    const t = raw.trim();
+    if (!t) return ERR_EMPTY_TITLE;
+    if (INVALID_TITLE_RE.test(t)) return ERR_INVALID_CHARS;
+    if (t.length > TITLE_MAX) return ERR_INVALID_CHARS;
+    return '';
   }
 
-  // ─── Screen renders ─────────────────────────────────────────────────────────
+  // ─── Navigation ────────────────────────────────────────────────────────────
+
+  function goToStep2FromMode(mode: StartMode, templateId?: string) {
+    setStartMode(mode);
+    if (templateId) setSelectedTemplateId(templateId);
+    setTitleError('');
+    setSavePathError('');
+    setScaffoldError('');
+    setStep('step2');
+  }
+
+  function goBackFromStep2() {
+    setTitleError('');
+    setSavePathError('');
+    if (startMode === 'template') {
+      setStep('step1b');
+    } else {
+      setStep('step1');
+    }
+  }
+
+  // ─── Step 1 actions ─────────────────────────────────────────────────────────
+
+  // SKY-906: one-click default Mythos Vault. Bypasses the title + save-path
+  // form entirely — main creates ~/Mythos/Vaults/Mythos Vault/{Story,Notes} Vault,
+  // seeds a "My First Story" scene, and persists onboardingComplete.
+  // Re-running on a populated parent auto-suffixes ("Mythos Vault 2"), so the
+  // button is safe to re-press after a kill-and-relaunch.
+  async function handleOneClickDefaultMythosVault() {
+    // Tracks the chosen start mode so the existing step3 "Try Again" button
+    // retries the same one-click flow instead of falling through to the
+    // blank/sample/template path that depends on user-entered title state.
+    setStartMode('default-mythos-vault');
+    setScaffoldError('');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const res = await api().onboardingComplete({ startMode: 'default-mythos-vault' });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
+      setScaffolding(false);
+    }
+  }
+
+  function handleSelectBlank() {
+    goToStep2FromMode('blank');
+  }
+
+  function handleSelectSample() {
+    goToStep2FromMode('sample');
+  }
+
+  function handleSelectTemplate() {
+    setStep('step1b');
+  }
+
+  function handleSkip() {
+    api().onboardingComplete({ startMode: 'skip' }).catch(() => {});
+    const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
+    onComplete(updated);
+  }
+
+  // ─── Step 2 actions ─────────────────────────────────────────────────────────
+
+  async function handleChangeSaveLocation() {
+    try {
+      const res = await api().chooseVaultFolder('Choose save location');
+      if (!res.cancelled && res.path) {
+        setSavePath(res.path);
+        setSavePathError('');
+      }
+    } catch {
+      // folder picker cancelled or failed — keep current path
+    }
+  }
+
+  async function handleCreateStory() {
+    const trimmedTitle = storyTitle.trim();
+    const err = validateTitle(storyTitle);
+    if (err) {
+      setTitleError(err);
+      titleInputRef.current?.focus();
+      return;
+    }
+
+    // Check writable path first
+    let pathValidation: { exists: boolean; isEmpty: boolean; writable: boolean } | null = null;
+    try {
+      pathValidation = await api().validatePath(savePath);
+    } catch {
+      setSavePathError(ERR_UNWRITABLE_PATH);
+      return;
+    }
+
+    if (pathValidation && !pathValidation.writable) {
+      setSavePathError(ERR_UNWRITABLE_PATH);
+      return;
+    }
+
+    // Check for title conflict — does vaultParentPath/storyTitle/ already exist?
+    const storyDir = savePath.replace(/\/+$/, '') + '/' + trimmedTitle;
+    try {
+      const conflict = await api().validatePath(storyDir);
+      if (conflict.exists && !conflict.isEmpty) {
+        setTitleError(ERR_TITLE_EXISTS(trimmedTitle));
+        titleInputRef.current?.focus();
+        return;
+      }
+    } catch {
+      // can't check — allow to proceed; main process will error if conflict
+    }
+
+    setTitleError('');
+    setSavePathError('');
+    setScaffoldError('');
+    setStep('step3');
+    setScaffolding(true);
+
+    try {
+      const res = await api().onboardingComplete({
+        startMode: startMode!,
+        storyTitle: trimmedTitle,
+        authorName: authorName.trim() || undefined,
+        vaultParentPath: savePath,
+        templateId: selectedTemplateId || undefined,
+      });
+
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your story.');
+        setScaffolding(false);
+        return;
+      }
+
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
+      setScaffolding(false);
+    }
+  }
+
+  // Step 3 error recovery
+  async function handleTryAgain() {
+    setScaffoldError('');
+    setScaffolding(true);
+
+    try {
+      // SKY-906: the one-click flow never collected a title/save path, so
+      // retry must not echo those fields — re-issuing with empty strings
+      // would be rejected by the main-side validator.
+      const payload = startMode === 'default-mythos-vault'
+        ? { startMode: 'default-mythos-vault' as const }
+        : {
+            startMode: startMode!,
+            storyTitle: storyTitle.trim(),
+            authorName: authorName.trim() || undefined,
+            vaultParentPath: savePath,
+            templateId: selectedTemplateId || undefined,
+          };
+      const res = await api().onboardingComplete(payload);
+
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your story.');
+        setScaffolding(false);
+        return;
+      }
+
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
+      setScaffolding(false);
+    }
+  }
+
+  function handleOpenExistingStory() {
+    api().onboardingComplete({ startMode: 'skip' }).catch(() => {});
+    const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
+    onComplete(updated);
+  }
+
+  // ─── Keyboard / escape handling ─────────────────────────────────────────────
+
+  function handleOverlayKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Escape') {
+      if (step === 'step3') return; // close disabled during scaffolding
+      if (showCancelConfirm) {
+        setShowCancelConfirm(false);
+        return;
+      }
+      if (step === 'step1' || step === 'step1b' || step === 'step2') {
+        setShowCancelConfirm(true);
+      }
+    }
+  }
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="onboarding-overlay" role="dialog" aria-modal="true" aria-label="Onboarding wizard">
-      {/* Cancel confirm dialog (renders above everything during S2c) */}
+    <div
+      className="gs-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Getting Started"
+      onKeyDown={handleOverlayKeyDown}
+      data-testid="gs-overlay"
+    >
+      {/* Confirm dialog */}
       {showCancelConfirm && (
         <ConfirmDialog
-          title="Cancel import?"
-          body={`Files moved so far will be restored${importSnapshotPath ? ` to ${importSnapshotPath}` : ''}.`}
-          primaryLabel="Keep going"
-          destructiveLabel="Yes, cancel"
-          onPrimary={() => setShowCancelConfirm(false)}
-          onDestructive={handleCancelConfirm}
-          testId="cancel-confirm-dialog"
+          onKeepGoing={() => setShowCancelConfirm(false)}
+          onCancelSetup={() => {
+            setShowCancelConfirm(false);
+            onCancel?.();
+          }}
         />
       )}
 
-      {/* ── S0 Welcome ── */}
-      {screen === 'welcome' && (
-        <div className="onboarding-welcome" data-testid="screen-welcome">
-          <div className="onboarding-brand">
-            <div className="onboarding-brand__wordmark">
-              <span className="onboarding-brand__glyph" aria-hidden="true">✦</span>
-              Mythos Writer
-            </div>
-            <p className="onboarding-brand__tagline">Write the world before you write the book.</p>
+      {/* ── Step 1: Choose your starting point ── */}
+      {step === 'step1' && (
+        <div className="gs-modal" data-testid="screen-step1">
+          <div className="gs-modal__header">
+            <span className="gs-step-label">Step 1 of 3</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-step1"
+            >
+              &#x2715;
+            </button>
           </div>
+          <h1 className="gs-modal__title">Welcome to Mythos Writer</h1>
+          <p className="gs-modal__subtitle">How would you like to begin?</p>
 
-          <div className="picker-grid" role="group" aria-label="Choose how to get started">
-            <PickerCard
-              recommended
-              icon="✨"
-              title="Use the default layout"
-              description="Create both Story Vault and Notes Vault under your chosen folder, seeded with the standard Mythos structure plus a starter universe and story."
-              ctaLabel="Choose path →"
-              onActivate={() => { setError(''); setScreen('default-path'); }}
-              testId="card-default"
+          <div className="gs-cards" role="group" aria-label="Choose how to get started">
+            <StartingPointCard
+              icon="&#x2728;"
+              title="Create default Mythos Vault"
+              description="One click — we'll create your Mythos Vault with the standard Notes + Story Vault layout under your home folder. No path picker."
+              ctaLabel="Create vault &#x2192;"
+              onActivate={handleOneClickDefaultMythosVault}
+              testId="card-default-mythos-vault"
             />
-            <PickerCard
-              icon="📄"
-              title="Start blank"
-              description="Create both vaults with empty roots and let the Brainstorm Agent learn your own organization pattern."
-              ctaLabel="Choose path →"
-              onActivate={() => { setError(''); setScreen('blank-path'); }}
+            <StartingPointCard
+              icon="&#x2726;"
+              title="Blank Story"
+              description="Start with a clean slate. One empty scene, ready for your words."
+              ctaLabel="Start &#x2192;"
+              onActivate={handleSelectBlank}
               testId="card-blank"
             />
-            <PickerCard
-              icon="📥"
-              title="Import Obsidian vault"
-              description="Point us at an existing vault. We'll show a dry-run report of what changes before anything is written."
-              ctaLabel="Pick folder →"
-              onActivate={() => { setError(''); setScreen('import-source'); }}
-              testId="card-import"
-            />
-            <PickerCard
-              icon="✦"
-              title="Open sample project"
-              description="Tour the app with a pre-built worldbuilding demo — one universe, one story, populated notes."
-              ctaLabel="Open sample →"
-              onActivate={() => { setError(''); setScreen('sample-path'); }}
+            <StartingPointCard
+              icon="&#x1F4D6;"
+              title="Sample Novel"
+              description="Explore a pre-loaded demo project to see Mythos Writer in action."
+              ctaLabel="Load &#x2192;"
+              onActivate={handleSelectSample}
               testId="card-sample"
             />
-            <PickerCard
-              icon="📋"
-              title="Start from template"
-              description="Pick a bundled project template (Novel, Short Story, World-building Bible, or Series Bible) and apply it to a new vault."
-              ctaLabel="Browse templates &#x2192;"
-              onActivate={() => { setError(''); setScreen('template-picker'); }}
+            <StartingPointCard
+              icon="&#x1F5C2;"
+              title="From Template"
+              description="Choose a structure: 3-act novel, short story, worldbuilding bible&#x2026;"
+              ctaLabel="Browse &#x2192;"
+              onActivate={handleSelectTemplate}
               testId="card-template"
             />
           </div>
 
-          {error && <p className="onboarding-error" role="alert">{error}</p>}
-
-          <p className="onboarding-footer">
-            Need help? See the{' '}
-            <a
-              href="https://docs.mythoswriter.app/quick-start"
-              target="_blank"
-              rel="noreferrer"
-              className="onboarding-footer__link"
-            >
-              quick-start guide ↗
-            </a>
-          </p>
+          <button
+            className="gs-skip-link"
+            type="button"
+            onClick={handleSkip}
+            data-testid="gs-skip"
+          >
+            Skip &#x2014; open empty workspace
+          </button>
         </div>
       )}
 
-      {/* ── Template Picker (SKY-156) ── */}
-      {screen === 'template-picker' && (
-        <div className="onboarding-card onboarding-card--wide" data-testid="screen-template-picker">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>&#x2190; Back</button>
+      {/* ── Step 1b: Template sub-picker ── */}
+      {step === 'step1b' && (
+        <div className="gs-modal gs-modal--wide" data-testid="screen-step1b">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => { setStep('step1'); }}
+              data-testid="gs-back-step1b"
+            >
+              &#x2190; Back
+            </button>
+            <span className="gs-step-label">Step 1 of 3</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-step1b"
+            >
+              &#x2715;
+            </button>
           </div>
-          <h2 className="onboarding-title">Choose a project template</h2>
-          <p className="onboarding-subtitle">
-            Select a template to apply to a new vault, then choose where to put it.
-          </p>
-          <div className="template-grid" role="list">
-            {templates.map((tmpl) => (
-              <button
-                key={tmpl.id}
-                role="listitem"
-                className={`template-card${selectedTemplate?.id === tmpl.id ? ' template-card--selected' : ''}`}
-                onClick={() => setSelectedTemplate(tmpl)}
-                data-testid={`template-${tmpl.id}`}
-                aria-pressed={selectedTemplate?.id === tmpl.id}
-              >
-                {tmpl.isUserTemplate && <span className="template-card__badge">Saved</span>}
-                <span className="template-card__name">{tmpl.name}</span>
-                <span className="template-card__desc">{tmpl.description}</span>
-              </button>
-            ))}
-          </div>
-          {selectedTemplate && (
-            <div className="template-preview">
-              <h3 className="template-preview__title">{selectedTemplate.name} &#x2014; structure preview</h3>
-              <div className="template-preview__cols">
-                <div>
-                  <strong>Story Vault</strong>
-                  <ul className="template-tree">
-                    {selectedTemplate.story.map((n) => (
-                      <li key={n.name}>{n.name}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <strong>Notes Vault</strong>
-                  <ul className="template-tree">
-                    {selectedTemplate.notes.map((n) => (
-                      <li key={n.name}>{n.name}</li>
-                    ))}
-                  </ul>
-                </div>
+          <h2 className="gs-modal__title">Choose a template</h2>
+
+          {templates.length === 0 ? (
+            <p className="gs-loading">Loading templates&#x2026;</p>
+          ) : (
+            <>
+              <div className="gs-template-grid">
+                {templates.filter((t) => !t.isUserTemplate).map((tmpl) => (
+                  <TemplateCard
+                    key={tmpl.id}
+                    template={tmpl}
+                    onSelect={() => goToStep2FromMode('template', tmpl.id)}
+                    testId={`template-card-${tmpl.id}`}
+                  />
+                ))}
               </div>
-              <FolderPathField
-                label="Parent folder"
-                value={templateParentPath}
-                onChange={(v) => {
-                  setTemplateParentPath(v);
-                  setTemplatePathStatus('checking');
-                  api().validatePath(v).then((r) => {
-                    setTemplatePathStatus(!r.writable ? 'not-writable' : 'new');
-                  }).catch(() => setTemplatePathStatus('unknown'));
-                }}
-                onBlur={() => {}}
-                onBrowse={async () => {
-                  const r = await api().pickFolder();
-                  if (!r.cancelled && r.vaultRoot) setTemplateParentPath(r.vaultRoot);
-                }}
-                status={templatePathStatus}
-                disabled={busy}
-                testId="template-path-input"
+              {templates.some((t) => t.isUserTemplate) && (
+                <>
+                  <p className="gs-section-divider">Your Templates</p>
+                  <div className="gs-template-grid">
+                    {templates.filter((t) => t.isUserTemplate).map((tmpl) => (
+                      <TemplateCard
+                        key={tmpl.id}
+                        template={tmpl}
+                        onSelect={() => goToStep2FromMode('template', tmpl.id)}
+                        testId={`template-card-${tmpl.id}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Step 2: Name your story ── */}
+      {step === 'step2' && (
+        <div className="gs-modal" data-testid="screen-step2">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={goBackFromStep2}
+              data-testid="gs-back-step2"
+            >
+              &#x2190; Back
+            </button>
+            <span className="gs-step-label">Step 2 of 3</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-step2"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">What&apos;s your story called?</h2>
+
+          <div className="gs-form">
+            {/* Story title */}
+            <div className="gs-form__field">
+              <label className="gs-form__label" htmlFor="gs-story-title">
+                Story title <span aria-hidden="true">*</span>
+              </label>
+              <input
+                id="gs-story-title"
+                ref={titleInputRef}
+                className={`gs-form__input${titleError ? ' gs-form__input--error' : ''}`}
+                type="text"
+                value={storyTitle}
+                maxLength={TITLE_MAX}
+                placeholder='e.g., "The Iron Garden"'
+                aria-required="true"
+                aria-describedby={titleError ? 'gs-title-error' : undefined}
+                onChange={(e) => { setStoryTitle(e.target.value); setTitleError(''); }}
+                onBlur={() => setTitleError(validateTitle(storyTitle))}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateStory(); }}
+                data-testid="gs-title-input"
               />
-              {error && <p className="onboarding-error" role="alert">{error}</p>}
-              <div className="onboarding-actions">
+              {titleError && (
+                <p className="gs-form__error" id="gs-title-error" role="alert" data-testid="gs-title-error">
+                  {titleError}
+                </p>
+              )}
+            </div>
+
+            {/* Author name */}
+            <div className="gs-form__field">
+              <label className="gs-form__label" htmlFor="gs-author-name">
+                Author name <span className="gs-form__label--optional">(optional)</span>
+              </label>
+              <input
+                id="gs-author-name"
+                className="gs-form__input"
+                type="text"
+                value={authorName}
+                maxLength={AUTHOR_MAX}
+                placeholder='e.g., "Alex Rivera"'
+                onChange={(e) => setAuthorName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateStory(); }}
+                data-testid="gs-author-input"
+              />
+            </div>
+
+            {/* Save location */}
+            <div className="gs-form__field">
+              <label className="gs-form__label">Save location</label>
+              <div className="gs-save-location">
+                <span
+                  className={`gs-save-location__path${savePathError ? ' gs-save-location__path--error' : ''}`}
+                  title={savePath}
+                  data-testid="gs-save-path"
+                >
+                  {truncatePath(savePath, 52, pathOptions)}
+                </span>
+                <button
+                  className="btn-secondary gs-save-location__change"
+                  type="button"
+                  onClick={handleChangeSaveLocation}
+                  data-testid="gs-change-location"
+                >
+                  Change&#x2026;
+                </button>
+              </div>
+              {savePathError ? (
+                <p className="gs-form__error" role="alert" data-testid="gs-path-error">{savePathError}</p>
+              ) : (
+                <p className="gs-form__hint">
+                  Your story files will be created here. You can move them later from File &gt; Move Story.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="gs-actions">
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={handleCreateStory}
+              data-testid="gs-create-story"
+            >
+              Create Story &#x2192;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Creating your story ── */}
+      {step === 'step3' && (
+        <div className="gs-modal" data-testid="screen-step3">
+          {scaffolding && !scaffoldError ? (
+            <>
+              <h2 className="gs-modal__title">Setting up your story&#x2026;</h2>
+              <div className="gs-spinner" aria-label="Creating story" role="status" data-testid="gs-spinner" />
+              <p className="gs-modal__subtitle">Creating your folders and first scene&#x2026;</p>
+            </>
+          ) : scaffoldError ? (
+            <div className="gs-scaffold-error" data-testid="gs-scaffold-error">
+              <p className="gs-scaffold-error__msg">Something went wrong creating your story.</p>
+              {scaffoldError && scaffoldError !== 'Something went wrong creating your story.' && (
+                <p className="gs-scaffold-error__detail">{scaffoldError}</p>
+              )}
+              <div className="gs-actions gs-actions--center">
                 <button
                   className="btn-primary"
-                  disabled={busy || !templateParentPath || templatePathStatus === 'not-writable' || templatePathStatus === 'checking' || templatePathStatus === 'unknown'}
-                  onClick={async () => {
-                    setBusy(true);
-                    setError('');
-                    try {
-                      const base = templateParentPath.replace(/[/\\]+$/, '');
-                      const res = await api().templateScaffold(
-                        selectedTemplate.id,
-                        `${base}/Story Vault`,
-                        `${base}/Notes Vault`,
-                      );
-                      if ('error' in res) { setError(res.error); return; }
-                      await api().vaultSetPaths(res.storyVaultPath, res.notesVaultPath, { seedMode: 'blank' });
-                      await api().onboardingComplete();
-                      onComplete(initialSettings);
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : 'Failed to apply template');
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
+                  type="button"
+                  onClick={handleTryAgain}
+                  data-testid="gs-try-again"
                 >
-                  {busy ? 'Creating…' : `Apply "${selectedTemplate.name}"`}
+                  Try Again
+                </button>
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  onClick={handleOpenExistingStory}
+                  data-testid="gs-open-existing"
+                >
+                  Open Existing Story
                 </button>
               </div>
             </div>
-          )}
-        </div>
-      )}
-
-            {/* ── S1a Default layout ── */}
-      {screen === 'default-path' && (
-        <div className="onboarding-card" data-testid="screen-default-path">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">Where should we put your vaults?</h2>
-          <p className="onboarding-subtitle">
-            We&apos;ll create <code>Story Vault/</code> and <code>Notes Vault/</code> side-by-side under this folder, seeded with the standard Mythos layout plus a starter universe and story.
-          </p>
-
-          <FolderPathField
-            label="Parent folder"
-            value={defaultPath}
-            onChange={handleDefaultPathChange}
-            onBlur={handleDefaultPathBlur}
-            onBrowse={handleDefaultBrowse}
-            status={defaultPathStatus}
-            disabled={busy}
-            testId="default-path-input"
-          />
-
-          {error && <p className="onboarding-error" role="alert">{error}</p>}
-
-          <div className="onboarding-actions">
-            <button
-              className="btn-primary"
-              onClick={handleCreateDefaultVault}
-              disabled={isDefaultCTADisabled}
-              data-testid="create-default-vault"
-            >
-              {busy ? 'Creating…' : 'Create vaults →'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── S1b Start blank ── */}
-      {screen === 'blank-path' && (
-        <div className="onboarding-card" data-testid="screen-blank-path">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">Where should we put your blank vaults?</h2>
-          <p className="onboarding-subtitle">
-            We&apos;ll create empty <code>Story Vault/</code> and <code>Notes Vault/</code> roots here — no scaffolding folders. The Brainstorm Agent will learn the structure you build.
-          </p>
-
-          <FolderPathField
-            label="Parent folder"
-            value={blankPath}
-            onChange={handleBlankPathChange}
-            onBlur={handleBlankPathBlur}
-            onBrowse={handleBlankBrowse}
-            status={blankPathStatus}
-            disabled={busy}
-            testId="blank-path-input"
-          />
-
-          {error && <p className="onboarding-error" role="alert">{error}</p>}
-
-          <div className="onboarding-actions">
-            <button
-              className="btn-primary"
-              onClick={handleCreateBlankVault}
-              disabled={isBlankCTADisabled}
-              data-testid="create-blank-vault"
-            >
-              {busy ? 'Creating…' : 'Create blank vaults →'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── S2a Import source picker ── */}
-      {screen === 'import-source' && (
-        <div className="onboarding-card" data-testid="screen-import-source">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">Choose the Obsidian vault to import</h2>
-          <p className="onboarding-subtitle">Nothing is written until you confirm the dry-run report.</p>
-
-          <FolderDropZone
-            onPickFolder={handleImportPickFolder}
-            onDrop={handleImportDrop}
-            scanning={busy}
-            testId="import-drop-zone"
-          />
-
-          {error && <p className="onboarding-error" role="alert">{error}</p>}
-        </div>
-      )}
-
-      {/* ── S2b Dry-run report ── */}
-      {screen === 'import-dryrun' && dryRun && (
-        <div className="onboarding-card onboarding-card--wide" data-testid="screen-import-dryrun">
-          <div className="onboarding-top-bar">
-            <button
-              className="btn-ghost btn-back"
-              onClick={() => { setError(''); setDryRun(null); setDryRunBanner(''); setRegistrationToken(''); setScreen('import-source'); }}
-            >
-              ← Back
-            </button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">Vault scan report</h2>
-          <p className="onboarding-vault-path">{importSourcePath}</p>
-
-          {dryRunBanner && (
-            <div className="dry-run-banner" role="alert" data-testid="dry-run-banner">{dryRunBanner}</div>
-          )}
-
-          <div className="dry-run-report" data-testid="dry-run-report">
-            <div className="dry-run-stat">
-              <span className="dry-run-stat-value">{dryRun.notesCount}</span>
-              <span className="dry-run-stat-label">notes found</span>
-            </div>
-
-            {/* Restructured section — always shown when data present */}
-            {dryRun.restructured !== undefined && (
-              <details className="dry-run-section" open={dryRun.restructured.length > 0} data-testid="section-restructured">
-                <summary className="dry-run-section-title">
-                  ▼ Restructured
-                </summary>
-                {dryRun.restructured.length > 0 ? (
-                  <div className="dry-run-section__body">
-                    <p className="dry-run-section__count">{dryRun.restructured.length} notes will be moved into the Notes Vault layout</p>
-                    <ul className="dry-run-list">
-                      {dryRun.restructured.slice(0, 5).map((r, i) => (
-                        <li key={i}>
-                          <span className="dry-run-file">{r.from}</span>
-                          {' → '}
-                          <span className="dry-run-file">{r.to}</span>
-                        </li>
-                      ))}
-                      {dryRun.restructured.length > 5 && (
-                        <li className="dry-run-more">…and {dryRun.restructured.length - 5} more</li>
-                      )}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="dry-run-section__empty">No notes require restructuring.</p>
-                )}
-              </details>
-            )}
-
-            {/* Left as-is section */}
-            {dryRun.leftAsIs !== undefined && (
-              <details className="dry-run-section" open={false} data-testid="section-left-as-is">
-                <summary className="dry-run-section-title">
-                  ▼ Left as-is
-                </summary>
-                <p className="dry-run-section__body dry-run-section__count">
-                  {dryRun.leftAsIs.length} notes will keep their current path
-                </p>
-              </details>
-            )}
-
-            {dryRun.brokenLinks.length > 0 && (
-              <details className="dry-run-section" open>
-                <summary className="dry-run-section-title dry-run-warn">
-                  {dryRun.brokenLinks.length} broken [[link{dryRun.brokenLinks.length !== 1 ? 's' : ''}]]
-                </summary>
-                <ul className="dry-run-list">
-                  {dryRun.brokenLinks.slice(0, 20).map((l, i) => (
-                    <li key={i}>
-                      <span className="dry-run-file">{l.file}</span>{' → '}
-                      <code className="dry-run-link">[[{l.target}]]</code>
-                    </li>
-                  ))}
-                  {dryRun.brokenLinks.length > 20 && (
-                    <li className="dry-run-more">…and {dryRun.brokenLinks.length - 20} more</li>
-                  )}
-                </ul>
-              </details>
-            )}
-
-            {dryRun.nameCollisions.length > 0 && (
-              <details className="dry-run-section" open>
-                <summary className="dry-run-section-title dry-run-warn">
-                  {dryRun.nameCollisions.length} name collision{dryRun.nameCollisions.length !== 1 ? 's' : ''} with built-in entities
-                </summary>
-                <ul className="dry-run-list">
-                  {dryRun.nameCollisions.map((c, i) => (
-                    <li key={i}>
-                      <span className="dry-run-file">{c.file}</span>{' — '}<strong>{c.name}</strong>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            {dryRun.missingFrontmatter.length > 0 && (
-              <details className="dry-run-section">
-                <summary className="dry-run-section-title dry-run-info">
-                  {dryRun.missingFrontmatter.length} note{dryRun.missingFrontmatter.length !== 1 ? 's' : ''} missing frontmatter
-                </summary>
-                <ul className="dry-run-list">
-                  {dryRun.missingFrontmatter.slice(0, 20).map((f, i) => (
-                    <li key={i}><span className="dry-run-file">{f}</span></li>
-                  ))}
-                  {dryRun.missingFrontmatter.length > 20 && (
-                    <li className="dry-run-more">…and {dryRun.missingFrontmatter.length - 20} more</li>
-                  )}
-                </ul>
-              </details>
-            )}
-
-            {dryRun.brokenLinks.length === 0 && dryRun.nameCollisions.length === 0 &&
-              dryRun.missingFrontmatter.length === 0 && !dryRun.restructured?.length && (
-              <p className="dry-run-ok" data-testid="dry-run-ok">No issues found — vault looks great!</p>
-            )}
-
-            <p className="dry-run-snapshot-promise">
-              ⓘ A snapshot is taken before any change. Rollback is one click during and immediately after the import.
-            </p>
-          </div>
-
-          {error && <p className="onboarding-error" role="alert">{error}</p>}
-
-          <div className="onboarding-actions">
-            <button
-              className="btn-secondary"
-              onClick={() => { setDryRun(null); setDryRunBanner(''); setRegistrationToken(''); setScreen('import-source'); }}
-            >
-              Pick a different folder
-            </button>
-            {!dryRun.fatalError && (
-              <button
-                className="btn-primary"
-                onClick={handleStartImport}
-                disabled={busy}
-                data-testid="confirm-import"
-              >
-                {busy ? 'Preparing…' : 'Import →'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── S2c Import progress ── */}
-      {screen === 'import-progress' && (
-        <div className="onboarding-card" data-testid="screen-import-progress">
-          <div className="onboarding-top-bar">
-            <span />
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">Importing your vault…</h2>
-          <p className="onboarding-vault-path">{importSourcePath}</p>
-
-          {renderProgressBar()}
-
-          {importProgress.total > 0 && (
-            <p className="import-progress-status">
-              Restructuring {importProgress.current} of {importProgress.total} notes
-            </p>
-          )}
-
-          {importProgress.lastAction && (
-            <p className="import-progress-last-action">Last action: {importProgress.lastAction}</p>
-          )}
-
-          <p className="import-progress-hint">ⓘ Safe to cancel — we&apos;ll roll back to before the import.</p>
-
-          <div className="onboarding-actions onboarding-actions--center">
-            <button
-              className="btn-secondary"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="cancel-import"
-            >
-              Cancel and roll back
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── S2d Import success ── */}
-      {screen === 'import-success' && (
-        <div className="onboarding-card" data-testid="screen-import-success">
-          <div className="import-success-icon" aria-hidden="true">✓</div>
-          <h2 className="onboarding-title">Vault imported</h2>
-          <p className="onboarding-subtitle">{importNotesCount} notes are now in your Mythos Vault.</p>
-          {importSnapshotPath && (
-            <>
-              <p className="import-snapshot-path">
-                A snapshot of the original is saved at{' '}
-                <span className="import-snapshot-path__value">{importSnapshotPath}</span>
-              </p>
-              <p className="import-snapshot-footnote">
-                ⓘ You can delete the snapshot from Settings → Vault later.
-              </p>
-            </>
-          )}
-          <div className="onboarding-actions">
-            <button
-              className="btn-primary"
-              onClick={finishOnboarding}
-              data-testid="import-success-continue"
-            >
-              Continue →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── S3a Sample project ── */}
-      {screen === 'sample-path' && (
-        <div className="onboarding-card" data-testid="screen-sample-path">
-          <div className="onboarding-top-bar">
-            <button className="btn-ghost btn-back" onClick={() => { setError(''); setScreen('welcome'); }}>← Back</button>
-            {stepLabel && <span className="step-label">{stepLabel}</span>}
-          </div>
-          <h2 className="onboarding-title">Where should we put the sample project?</h2>
-          <p className="onboarding-subtitle">
-            We&apos;ll create <code>Story Vault/</code> and <code>Notes Vault/</code> under this folder, populated with the demo content.
-          </p>
-
-          <FolderPathField
-            label="Parent folder"
-            value={samplePath}
-            onChange={(v) => { setSamplePath(v); setSamplePathStatus('unknown'); }}
-            onBrowse={handleSampleBrowse}
-            status={samplePathStatus}
-            disabled={busy}
-            testId="sample-path-input"
-          />
-
-          <div className="sample-contents">
-            <p className="sample-contents__header">The sample includes:</p>
-            <ul className="sample-contents__list">
-              <li>1 universe (&ldquo;Argent&rdquo;) with characters, locations, and a custom system</li>
-              <li>1 story (&ldquo;The Glass Library&rdquo;) with two chapters and a synopsis</li>
-              <li>Beats, themes, and notes wired up to the story</li>
-            </ul>
-          </div>
-
-          <p className="sample-footnote">
-            ⓘ You can keep working in the sample, or start your own vault from File → New project at any time.
-          </p>
-
-          {error && <p className="onboarding-error" role="alert">{error}</p>}
-
-          <div className="onboarding-actions">
-            <button
-              className="btn-primary"
-              onClick={handleOpenSample}
-              disabled={isSampleCTADisabled}
-              data-testid="open-sample"
-            >
-              {busy ? 'Copying sample project…' : 'Open sample →'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── S4 Done ── */}
-      {screen === 'done' && (
-        <div className="onboarding-card" data-testid="screen-done">
-          <p className="onboarding-phase-label">You&apos;re set</p>
-          <div className="onboarding-done-icon" aria-hidden="true">✓</div>
-          <h2 className="onboarding-title">You&apos;re all set!</h2>
-          <p className="onboarding-subtitle">Mythos Writer is ready. Start writing your story.</p>
+          ) : null}
         </div>
       )}
     </div>
