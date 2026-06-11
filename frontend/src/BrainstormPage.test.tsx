@@ -1126,7 +1126,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       expect(screen.getByText('Desc A')).toBeInTheDocument();
       expect(screen.getByText('Desc B')).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: /collapse all/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all fact cards' }));
 
       expect(screen.queryByText('Desc A')).not.toBeInTheDocument();
       expect(screen.queryByText('Desc B')).not.toBeInTheDocument();
@@ -1143,18 +1143,18 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       ]);
       await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: /collapse all/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all fact cards' }));
       expect(screen.queryByText('Desc A')).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: /expand all/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Expand all fact cards' }));
       expect(screen.getByText('Desc A')).toBeInTheDocument();
       expect(screen.getByText('Desc B')).toBeInTheDocument();
     });
 
     it('Expand all / Collapse all buttons are absent when no facts exist', () => {
       render(<BrainstormPage onClose={() => {}} />);
-      expect(screen.queryByRole('button', { name: /expand all/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /collapse all/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Expand all fact cards' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Collapse all fact cards' })).not.toBeInTheDocument();
     });
 
     it('title click does not interfere with chevron toggle', async () => {
