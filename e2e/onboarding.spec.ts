@@ -312,6 +312,10 @@ test.describe('TC-OB-03: From Template', () => {
     await expect(page.locator('[data-testid="template-card-e2e-tmpl"]')).toBeVisible({ timeout: 6_000 });
     await page.locator('[data-testid="template-card-e2e-tmpl"]').click();
 
+    // Preview panel appears — confirm template selection
+    await expect(page.locator('[data-testid="template-use-btn"]')).toBeVisible({ timeout: 4_000 });
+    await page.locator('[data-testid="template-use-btn"]').click();
+
     // Step 2: fill in story details
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('[data-testid="gs-save-path"]')).toHaveText('~/Documents/MythosWriter');

@@ -1112,6 +1112,29 @@
   font-style: italic;
 }
 
+/* ─── Template preview panel (step 1b, F-13) ── */
+
+.template-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  margin-top: 0.5rem;
+  background: var(--color-surface-alt, #181825);
+  border: 1px solid var(--color-accent, #89b4fa);
+  border-radius: 10px;
+}
+
+.template-preview__desc {
+  font-size: 0.875rem;
+  color: var(--color-muted, #6c7086);
+  margin: 0;
+}
+
+.template-preview__cta {
+  align-self: flex-start;
+}
+
 /* ─── Step 2 form ── */
 
 .gs-form {

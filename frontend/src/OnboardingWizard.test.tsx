@@ -69,6 +69,7 @@ let mockApi: ReturnType<typeof makeApi>;
 beforeEach(() => {
   mockApi = makeApi();
   (window as unknown as { api: unknown }).api = mockApi;
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
 });
 
 // ─── Step 1 ───────────────────────────────────────────────────────────────────
@@ -246,11 +247,54 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
   });
 
-  it('selecting a template advances to Step 2', async () => {
+  it('selecting a template card shows preview without navigating', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
+    expect(screen.getByTestId('template-preview')).toBeInTheDocument();
+  });
+
+  it('sr-only live region announces selected template name (F-13)', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    expect(screen.getByTestId('template-announcement')).toHaveTextContent(
+      'Preview for Novel (3-Act) is ready below.'
+    );
+  });
+
+  it('selected card has aria-checked=true, others false', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('template-card-bundled:short-story')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('switching selection updates live region and aria-checked', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    fireEvent.click(screen.getByTestId('template-card-bundled:short-story'));
+    expect(screen.getByTestId('template-announcement')).toHaveTextContent(
+      'Preview for Short Story is ready below.'
+    );
+    expect(screen.getByTestId('template-card-bundled:short-story')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('confirming preview advances to Step 2', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    await waitFor(() => screen.getByTestId('template-use-btn'));
+    fireEvent.click(screen.getByTestId('template-use-btn'));
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
   });
 
@@ -457,6 +501,8 @@ describe('OnboardingWizard — Step 2', () => {
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    await waitFor(() => screen.getByTestId('template-use-btn'));
+    fireEvent.click(screen.getByTestId('template-use-btn'));
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-back-step2'));
     expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
@@ -648,6 +694,8 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    await waitFor(() => screen.getByTestId('template-use-btn'));
+    fireEvent.click(screen.getByTestId('template-use-btn'));
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Epic Saga' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
