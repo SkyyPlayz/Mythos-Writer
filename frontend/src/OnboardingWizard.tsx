@@ -232,6 +232,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     if (next !== -1) { e.preventDefault(); cards[next].focus(); }
   }
 
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+
   // ─── Validation helpers ─────────────────────────────────────────────────────
 
   function validateTitle(raw: string): string {
@@ -595,6 +597,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </div>
           <h2 id="template-picker-heading" className="gs-modal__title">Choose a template</h2>
 
+          {/* sr-only live region — announces selection to screen readers (F-13) */}
+          <p className="sr-only" aria-live="polite" aria-atomic="true" data-testid="template-announcement">
+            {selectedTemplate ? `Preview for ${selectedTemplate.name} is ready below.` : ''}
+          </p>
+
           {loadingTemplates ? (
             <p className="gs-loading" role="status" aria-live="polite">Loading templates&#x2026;</p>
           ) : templateLoadError ? (
@@ -620,7 +627,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   <TemplateCard
                     key={tmpl.id}
                     template={tmpl}
-                    onSelect={() => goToStep2FromMode('template', tmpl.id)}
+                    onSelect={() => setSelectedTemplateId(tmpl.id)}
                     testId={`template-card-${tmpl.id}`}
                     isChecked={selectedTemplateId === tmpl.id}
                     tabIndex={selectedTemplateId === tmpl.id || (!hasBundledSelection && i === 0) ? 0 : -1}
@@ -635,7 +642,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                       <TemplateCard
                         key={tmpl.id}
                         template={tmpl}
-                        onSelect={() => goToStep2FromMode('template', tmpl.id)}
+                        onSelect={() => setSelectedTemplateId(tmpl.id)}
                         testId={`template-card-${tmpl.id}`}
                         isChecked={selectedTemplateId === tmpl.id}
                         tabIndex={selectedTemplateId === tmpl.id || (!hasUserSelection && i === 0) ? 0 : -1}
@@ -648,6 +655,20 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   </p>
                 )}
               </>
+
+              {selectedTemplate && (
+                <div className="template-preview" data-testid="template-preview">
+                  <p className="template-preview__desc">{selectedTemplate.description}</p>
+                  <button
+                    className="btn-primary template-preview__cta"
+                    type="button"
+                    data-testid="template-use-btn"
+                    onClick={() => goToStep2FromMode('template', selectedTemplate.id)}
+                  >
+                    Use this template &#x2192;
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
