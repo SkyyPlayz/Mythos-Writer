@@ -352,6 +352,25 @@
   margin-bottom: 0;
 }
 
+/* SKY-1303: Save-as-Template inline prompt */
+
+.settings-save-as-tpl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.settings-save-as-tpl-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-save-as-tpl-form .settings-input {
+  flex: 1;
+}
+
 /* Agent cards */
 
 .settings-agent-card {
