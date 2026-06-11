@@ -128,13 +128,35 @@
 }
 
 .brainstorm-empty {
-  color: var(--text-muted);
-  font-size: 0.87rem;
-  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   padding: 40px 20px;
   text-align: center;
   max-width: 480px;
   margin: auto;
+  gap: 6px;
+}
+
+.brainstorm-empty-icon {
+  color: var(--text-faint);
+  opacity: 0.6;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.brainstorm-empty-headline {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.brainstorm-empty-desc {
+  font-size: 0.87rem;
+  color: var(--text-faint);
+  line-height: 1.6;
+  max-width: 360px;
 }
 
 /* Messages */
@@ -363,9 +385,13 @@
 }
 
 .brainstorm-facts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   color: var(--text-faint);
-  font-size: 0.81rem;
-  line-height: 1.6;
+  font-size: 0.78rem;
+  line-height: 1.5;
   text-align: center;
   padding: 24px 12px;
 }
@@ -831,7 +857,14 @@
 }
 
 .bs-continuity-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 12px 0;
+  color: var(--color-success, var(--text-faint));
+  font-size: 0.78rem;
+  list-style: none;
 }
 
 .bs-cont-item {

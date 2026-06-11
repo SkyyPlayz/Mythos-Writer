@@ -269,7 +269,17 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
             <div className="gsp-state-msg" aria-live="polite">Searching…</div>
           )}
           {!loading && query.trim() && flatResults.length === 0 && (
-            <div className="gsp-state-msg">No results for &ldquo;{query}&rdquo;</div>
+            <div className="gsp-state-msg gsp-no-results">
+              <svg className="gsp-state-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <span className="gsp-state-headline">No results for &ldquo;{query}&rdquo;</span>
+              <span className="gsp-state-desc">Try a different keyword, or check spelling.</span>
+              <button className="gsp-clear-btn" onClick={() => setQuery('')} aria-label="Clear search">
+                Clear search
+              </button>
+            </div>
           )}
 
           {!loading && sceneResults.length > 0 && (
@@ -294,6 +304,10 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
 
           {!loading && !query && !activeTagFilters.length && (
             <div className="gsp-state-msg gsp-hint">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ opacity: 0.5 }}>
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
               Type to search across all scenes and notes.
             </div>
           )}

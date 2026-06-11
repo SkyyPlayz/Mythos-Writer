@@ -401,7 +401,8 @@ test('TC-V-06: create entity (note), entity shown in Entities tab, file written 
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
   // Click "+ New Entity" — SKY-619 replaced TypePickerPopover with CreateDialog.
-  await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').click();
+  // .first() to avoid strict-mode violation from empty-state per-type CTA buttons (SKY-1326).
+  await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').first().click();
 
   // A dialog appears for entering the entity name
   const dialog = page.locator('[role="dialog"]');
