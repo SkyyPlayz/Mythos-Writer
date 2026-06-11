@@ -589,6 +589,10 @@ interface Window {
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
+
+    // SKY-156: Project Templates
+    templateList: () => Promise<{ templates: Array<{ id: string; name: string; description: string; isUserTemplate?: boolean; savedAt?: string }> }>;
+    templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
   };
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */

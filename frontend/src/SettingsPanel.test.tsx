@@ -16,6 +16,7 @@ const mockSettingsSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockVaultSetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
+const mockTemplateSaveAs = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
 
@@ -33,12 +34,14 @@ beforeEach(() => {
     Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
   );
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+  mockTemplateSaveAs.mockResolvedValue({ ok: true, id: 'tpl-abc' });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
     vaultGetPaths: mockVaultGetPaths,
     vaultSetPaths: mockVaultSetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
+    templateSaveAs: mockTemplateSaveAs,
   };
 });
 
@@ -639,5 +642,70 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
+  });
+
+  // ── SKY-1303: Save-as-Template (AC-3) ──
+
+  it('renders Save as Template button in vault section', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(screen.getByTestId('save-as-template-btn')).toBeInTheDocument();
+  });
+
+  it('reveals name input when Save as Template is clicked', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByTestId('save-as-template-btn'));
+    expect(screen.getByTestId('save-as-template-name-input')).toBeInTheDocument();
+    expect(screen.getByTestId('save-as-template-confirm')).toBeInTheDocument();
+    expect(screen.getByTestId('save-as-template-cancel')).toBeInTheDocument();
+  });
+
+  it('Save confirm button is disabled when name is empty', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByTestId('save-as-template-btn'));
+    const confirm = screen.getByTestId('save-as-template-confirm') as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+  });
+
+  it('calls templateSaveAs with trimmed name and shows success', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByTestId('save-as-template-btn'));
+    fireEvent.change(screen.getByTestId('save-as-template-name-input'), { target: { value: 'My Novel' } });
+    fireEvent.click(screen.getByTestId('save-as-template-confirm'));
+
+    await waitFor(() => expect(mockTemplateSaveAs).toHaveBeenCalledWith('My Novel'));
+    await waitFor(() => expect(screen.getByTestId('save-as-template-success')).toHaveTextContent('My Novel'));
+    expect(screen.queryByTestId('save-as-template-name-input')).not.toBeInTheDocument();
+  });
+
+  it('shows error message when templateSaveAs returns error', async () => {
+    mockTemplateSaveAs.mockResolvedValueOnce({ error: 'Template name already exists' });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByTestId('save-as-template-btn'));
+    fireEvent.change(screen.getByTestId('save-as-template-name-input'), { target: { value: 'Duplicate' } });
+    fireEvent.click(screen.getByTestId('save-as-template-confirm'));
+
+    await waitFor(() => expect(screen.getByTestId('save-as-template-error')).toHaveTextContent('Template name already exists'));
+    expect(screen.getByTestId('save-as-template-name-input')).toBeInTheDocument();
+  });
+
+  it('cancel button hides the name input', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByTestId('save-as-template-btn'));
+    expect(screen.getByTestId('save-as-template-name-input')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('save-as-template-cancel'));
+    expect(screen.queryByTestId('save-as-template-name-input')).not.toBeInTheDocument();
+    expect(screen.getByTestId('save-as-template-btn')).toBeInTheDocument();
   });
 });
