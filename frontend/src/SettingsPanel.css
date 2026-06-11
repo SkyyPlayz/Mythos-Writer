@@ -60,6 +60,11 @@
   color: #e4e4e7;
 }
 
+.settings-close:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
 .settings-body {
   flex: 1;
   overflow-y: auto;
@@ -130,7 +135,7 @@
   font-family: inherit;
 }
 
-.settings-input:focus {
+.settings-input:focus-visible {
   border-color: #7c3aed;
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25);
 }
@@ -139,7 +144,7 @@
   border-color: #ef4444;
 }
 
-.settings-input-error:focus {
+.settings-input-error:focus-visible {
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
 }
 
@@ -201,6 +206,11 @@
 .settings-reveal-btn:hover {
   background: #27272a;
   color: #e4e4e7;
+}
+
+.settings-reveal-btn:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
 
 .settings-error-msg {
@@ -355,6 +365,11 @@
 .settings-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.settings-btn:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
 
 .settings-btn-cancel {
@@ -1000,7 +1015,7 @@
   box-sizing: border-box;
 }
 
-.settings-persona-textarea:focus {
+.settings-persona-textarea:focus-visible {
   outline: 2px solid rgba(125, 211, 252, 0.4);
   border-radius: 2px;
 }
@@ -1039,6 +1054,11 @@
 .settings-persona-reset-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.settings-persona-reset-btn:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
 
 .settings-persona-loading,
@@ -1095,4 +1115,9 @@
 .settings-btn-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.settings-btn-secondary:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
