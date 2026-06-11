@@ -201,6 +201,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Pre-flight — clean stale AppImage temp dirs (SKY-1347)
+        # APPIMAGE_EXTRACT_AND_RUN=1 in the smoke-test step leaves /tmp/appimage_extracted_*
+        # dirs (~307 MB each) that accumulate across CI runs on the self-hosted runner and
+        # fill the 24 GB tmpfs, causing fpm ENOSPC during deb packaging. This sweep reclaims
+        # space from any prior run's leftovers before we start the build.
+        run: find /tmp -maxdepth 1 -name 'appimage_extracted_*' -type d -exec rm -rf {} + 2>/dev/null || true
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -274,6 +281,12 @@ jobs:
           kill "$APP_PID"
           wait "$APP_PID" || true
           echo "Smoke test passed: AppImage started and stopped cleanly"
+
+      - name: Clean AppImage temp dirs after smoke test
+        # Remove the extracted AppImage dir created by APPIMAGE_EXTRACT_AND_RUN=1.
+        # Runs even on failure so partial extractions don't accumulate.
+        if: always()
+        run: find /tmp -maxdepth 1 -name 'appimage_extracted_*' -type d -exec rm -rf {} + 2>/dev/null || true
 
       - name: Upload Linux packages
         continue-on-error: true
