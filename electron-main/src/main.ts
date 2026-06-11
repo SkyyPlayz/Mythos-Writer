@@ -3804,7 +3804,12 @@ const handlers: IpcHandlers = {
   },
   // SKY-156: Project Templates
   [IPC_CHANNELS.TEMPLATE_LIST]: (): import('./ipc.js').TemplateListResponse => {
-    return { templates: listTemplates(app.getPath('userData')) };
+    try {
+      return { templates: listTemplates(app.getPath('userData')) };
+    } catch (e) {
+      console.warn('[template:list] failed to load bundled templates:', (e as Error).message);
+      return { templates: [] };
+    }
   },
 
   [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: async (payload: import('./ipc.js').TemplateScaffoldPayload): Promise<import('./ipc.js').TemplateScaffoldResponse | { error: string }> => {

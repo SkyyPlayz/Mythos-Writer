@@ -608,6 +608,36 @@ describe('OnboardingWizard — Step 3 error state', () => {
   });
 });
 
+// ─── SKY-1353: bundled-template fetch fallback ────────────────────────────────
+
+describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
+  it('shows inline error when templateList rejects', async () => {
+    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(screen.getByTestId('template-load-error')).toBeInTheDocument());
+    expect(screen.getByTestId('template-load-error').textContent).toContain(
+      "Bundled templates couldn't be loaded. You can still create a blank story."
+    );
+  });
+
+  it('error is announced as an alert for screen readers', async () => {
+    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  it('"Create blank story" CTA navigates to Step 2', async () => {
+    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(screen.getByTestId('template-error-blank-cta')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('template-error-blank-cta'));
+    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
+  });
+});
+
 // ─── AC coverage ──────────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — AC coverage', () => {
