@@ -23,6 +23,7 @@ export interface IdeaCardIdea {
 interface IdeaCardProps {
   idea: IdeaCardIdea;
   onOpenDetail: (ideaId: string) => void;
+  onChipClick?: (chip: IdeaCardChip) => void;
   metaAction?: ReactNode;
   isMultiSelect?: boolean;
   isSelected?: boolean;
@@ -94,6 +95,7 @@ const LONG_PRESS_MS = 500;
 export function IdeaCard({
   idea,
   onOpenDetail,
+  onChipClick,
   metaAction,
   isMultiSelect = false,
   isSelected = false,
@@ -145,6 +147,7 @@ export function IdeaCard({
     (e: React.MouseEvent) => {
       if (!isMultiSelect) return;
       if ((e.target as HTMLElement).closest('.idea-card-menu-button')) return;
+      if ((e.target as HTMLElement).closest('.idea-card-chip')) return;
       onToggleSelect?.(idea.id);
     },
     [isMultiSelect, idea.id, onToggleSelect],
@@ -224,9 +227,20 @@ export function IdeaCard({
         aria-label="Linked entities"
       >
         {(idea.linkedEntities ?? []).map((chip) => (
-          <span key={chip.id} className="idea-card-chip" style={CHIP_STYLES[chip.type]} title={chip.name}>
+          <button
+            key={chip.id}
+            type="button"
+            className={`idea-card-chip${onChipClick ? ' idea-card-chip--clickable' : ''}`}
+            style={CHIP_STYLES[chip.type]}
+            title={chip.name}
+            aria-label={`Navigate to ${chip.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChipClick?.(chip);
+            }}
+          >
             {chip.name}
-          </span>
+          </button>
         ))}
       </div>
 

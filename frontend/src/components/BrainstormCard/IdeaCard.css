@@ -128,6 +128,18 @@
   font-size: var(--text-xs, 11px);
   font-weight: 500;
   white-space: nowrap;
+  border: none;
+  cursor: default;
+  font-family: inherit;
+}
+
+.idea-card-chip--clickable {
+  cursor: pointer;
+}
+
+.idea-card-chip--clickable:hover {
+  filter: brightness(1.15);
+  text-decoration: underline;
 }
 
 .idea-card-saved-label {

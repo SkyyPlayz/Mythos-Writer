@@ -1223,3 +1223,52 @@ describe('BrainstormPage — sort + filter controls (Wave 3.2)', () => {
     expect(screen.queryByTestId('bs-facts-controls')).not.toBeInTheDocument();
   });
 });
+
+describe('BrainstormPage — chip-click entity navigation (SKY-1264)', () => {
+  async function renderWithFact(props: { onNavigateToEntity?: (id: string) => void; onNavigateToScene?: (id: string) => Promise<boolean> } = {}) {
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'written',
+      path: 'Universes/World/Characters/Lyra Ashveil.md',
+      suggestionId: 'sug-1',
+      reason: 'default-layout',
+    });
+    render(<BrainstormPage onClose={() => {}} {...props} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'tell me about the hero' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Lyra Ashveil|A young mage]']);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' })).toBeInTheDocument());
+  }
+
+  it('navigates to entity when chip is clicked and entity exists in vault', async () => {
+    const onNavigateToEntity = vi.fn();
+    mockEntityList.mockResolvedValue({
+      entities: [{ id: 'real-entity-id', name: 'Lyra Ashveil', type: 'character' }],
+    });
+
+    await renderWithFact({ onNavigateToEntity });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+    await waitFor(() => expect(onNavigateToEntity).toHaveBeenCalledWith('real-entity-id'));
+  });
+
+  it('shows "Entity not found in vault" toast when entity is missing from vault', async () => {
+    mockEntityList.mockResolvedValue({ entities: [] });
+
+    await renderWithFact();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+    await waitFor(() => expect(screen.getByText('Entity not found in vault')).toBeInTheDocument());
+  });
+
+  it('shows "Entity not found in vault" toast on entityList API failure', async () => {
+    mockEntityList.mockRejectedValue(new Error('network error'));
+
+    await renderWithFact();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+    await waitFor(() => expect(screen.getByText('Entity not found in vault')).toBeInTheDocument());
+  });
+});

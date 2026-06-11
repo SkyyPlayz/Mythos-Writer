@@ -1876,7 +1876,32 @@ export default function DesktopShell() {
         />
       )}
       {view === 'brainstorm' && (
-        <BrainstormPage onClose={() => setView('editor')} enabled={agentFlags.brainstorm} onFirstSubmit={() => checkGettingStartedItem('brainstorm')} />
+        <BrainstormPage
+          onClose={() => setView('editor')}
+          enabled={agentFlags.brainstorm}
+          onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
+          onNavigateToEntity={(entityId) => {
+            window.api.entityRead(entityId).then((entity) => {
+              if (entity) {
+                setSelectedEntity(entity);
+                setView('editor');
+              }
+            }).catch(() => {});
+          }}
+          onNavigateToScene={async (sceneId) => {
+            for (const story of stories) {
+              for (const chapter of story.chapters) {
+                const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+                if (scene) {
+                  handleSelectScene(scene, chapter, story);
+                  setView('editor');
+                  return true;
+                }
+              }
+            }
+            return false;
+          }}
+        />
       )}
       {view === 'entries' && (
         <div className="shell-entries">

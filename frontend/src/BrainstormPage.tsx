@@ -226,9 +226,11 @@ interface Props {
   onClose: () => void;
   enabled?: boolean;
   onFirstSubmit?: () => void;
+  onNavigateToEntity?: (entityId: string) => void;
+  onNavigateToScene?: (sceneId: string) => Promise<boolean>;
 }
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -834,6 +836,27 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   }, []);
+
+  const handleChipClick = useCallback(async (chip: import('./components/BrainstormCard/IdeaCard').IdeaCardChip) => {
+    if (chip.type === 'scene') {
+      if (onNavigateToScene) {
+        const found = await onNavigateToScene(chip.id);
+        if (!found) showToast('Entity not found in vault');
+      }
+      return;
+    }
+    try {
+      const { entities } = await window.api.entityList();
+      const match = entities.find((e) => e.name.toLowerCase() === chip.name.toLowerCase());
+      if (match && onNavigateToEntity) {
+        onNavigateToEntity(match.id);
+      } else {
+        showToast('Entity not found in vault');
+      }
+    } catch {
+      showToast('Entity not found in vault');
+    }
+  }, [onNavigateToEntity, onNavigateToScene, showToast]);
 
   const handleIdeaMenuAction = useCallback((ideaId: string, action: string) => {
     const fact = facts.find((f) => f.id === ideaId);
@@ -1627,6 +1650,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
                           ) : undefined
                         }
                         onOpenDetail={openIdeaDetail}
+                        onChipClick={handleChipClick}
                         onMenuAction={handleIdeaMenuAction}
                         isMultiSelect={isMultiSelectMode}
                         isSelected={selectedIds.has(fact.id)}
@@ -1700,6 +1724,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit 
           }}
           onClose={handleDetailDrawerClose}
           onSave={handleSaveIdea}
+          onChipClick={handleChipClick}
         />
       )}
     </div>

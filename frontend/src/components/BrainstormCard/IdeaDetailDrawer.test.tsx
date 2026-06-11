@@ -104,6 +104,34 @@ describe('IdeaDetailDrawer', () => {
     expect(screen.queryByLabelText('Search entities')).not.toBeInTheDocument();
   });
 
+  describe('drawer chip-click navigation (SKY-1264)', () => {
+    it('renders entity name as button and calls onChipClick when clicked', () => {
+      const onChipClick = vi.fn();
+      render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={vi.fn()} onChipClick={onChipClick} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Aria Voss' }));
+
+      expect(onChipClick).toHaveBeenCalledWith({ id: 'e1', name: 'Aria Voss', type: 'character' });
+    });
+
+    it('renders entity name as plain span when onChipClick is not provided', () => {
+      render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={vi.fn()} />);
+
+      expect(screen.queryByRole('button', { name: 'Navigate to Aria Voss' })).not.toBeInTheDocument();
+      expect(screen.getByText('Aria Voss')).toBeInTheDocument();
+    });
+
+    it('remove button still works independently of onChipClick', () => {
+      const onSave = vi.fn();
+      render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={onSave} onChipClick={vi.fn()} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Aria Voss' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ linkedEntities: [] }));
+    });
+  });
+
   it('body textarea enforces 8000 char max', () => {
     render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={vi.fn()} />);
     const textarea = screen.getByLabelText('Idea notes');
