@@ -11,6 +11,43 @@
 }
 
 /* Header */
+.brainstorm-detail-drawer-stub {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 20;
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  max-width: 280px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--elev-2);
+}
+
+.brainstorm-detail-drawer-stub p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.brainstorm-detail-drawer-close {
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.brainstorm-detail-drawer-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Header */
 .brainstorm-header {
   display: flex;
   align-items: center;
@@ -967,4 +1004,155 @@
   align-items: center;
   padding: 4px 12px 0;
   flex-shrink: 0;
+}
+
+/* Multi-select toggle */
+.bs-multiselect-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+  transition: background var(--dur-hover-in), color var(--dur-hover-in);
+}
+
+.bs-multiselect-toggle:hover,
+.bs-multiselect-toggle.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Bulk action toolbar */
+.bs-bulk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border-default);
+  animation: bs-bulk-in var(--dur-hover-in) var(--ease-out);
+}
+
+@keyframes bs-bulk-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bs-bulk-count {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.bs-bulk-deselect-btn,
+.bs-bulk-delete-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+}
+
+.bs-bulk-deselect-btn {
+  color: var(--text-secondary);
+}
+
+.bs-bulk-deselect-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.bs-bulk-delete-btn {
+  color: var(--state-danger, #e05252);
+  border-color: var(--state-danger, #e05252);
+}
+
+.bs-bulk-delete-btn:hover {
+  background: color-mix(in srgb, var(--state-danger, #e05252) 12%, transparent);
+}
+
+/* Multi-select checkbox on IdeaCard */
+.idea-card-checkbox {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #7c6ff7);
+  pointer-events: none;
+}
+
+.idea-card-multiselect {
+  position: relative;
+  cursor: pointer;
+}
+
+.idea-card-selected {
+  border-color: var(--accent, #7c6ff7);
+  background: color-mix(in srgb, var(--accent, #7c6ff7) 8%, var(--bg-surface));
+}
+
+/* Delete confirmation overlay */
+.bs-delete-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.bs-delete-confirm-dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  min-width: 240px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.bs-delete-confirm-message {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-heading);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3);
+}
+
+.bs-delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.bs-delete-confirm-cancel,
+.bs-delete-confirm-ok {
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.bs-delete-confirm-cancel {
+  background: none;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.bs-delete-confirm-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.bs-delete-confirm-ok {
+  background: var(--state-danger, #e05252);
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+.bs-delete-confirm-ok:hover {
+  opacity: 0.9;
 }
