@@ -1095,6 +1095,13 @@
   font-size: 0.875rem;
 }
 
+.gs-template-empty-hint {
+  font-size: 0.8125rem;
+  color: var(--color-muted, #6c7086);
+  margin: 0;
+  font-style: italic;
+}
+
 /* ─── Step 2 form ── */
 
 .gs-form {
