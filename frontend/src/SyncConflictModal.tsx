@@ -1,4 +1,5 @@
-import { useState, useId } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import './SyncConflictModal.css';
 
 export interface ResolvedConflictInfo {
@@ -36,31 +37,80 @@ export default function SyncConflictModal({
 }: SyncConflictModalProps) {
   const [suppress, setSuppress] = useState(false);
   const checkboxId = useId();
+  const titleId = useId();
+  const bodyId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const hasConcurrentSession = lockfileConflict !== null;
   const hasConflicts = resolved.length > 0;
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onContinue(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const dialog = dialogRef.current;
+      if (!dialog) {
+        return;
+      }
+
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
+      );
+      if (focusable.length === 0) {
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey) {
+        if (active === first || !dialog.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+        return;
+      }
+
+      if (active === last || !dialog.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+    [onContinue],
+  );
 
   return (
     <div
       className="scm-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Sync conflict detected"
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
+      ref={dialogRef}
+      onKeyDown={handleKeyDown}
     >
       <div className="scm-dialog">
         <header className="scm-header">
-          <h2 className="scm-title">Sync Conflict Detected</h2>
+          <h2 id={titleId} className="scm-title">Sync Conflict Detected</h2>
         </header>
 
-        <div className="scm-body">
+        <div id={bodyId} className="scm-body">
           {hasConcurrentSession && (
             <div className="scm-section scm-concurrent" role="alert">
-              <strong>Concurrent session warning</strong>
+              <strong>Another session is open</strong>
               <p>
-                Another Mythos Writer session appears to have this vault open
-                (host: <code>{lockfileConflict.hostname}</code>, PID:{' '}
-                <code>{lockfileConflict.pid}</code>). Editing from two sessions
-                simultaneously may cause data loss.
+                Mythos is also open on another device ({lockfileConflict.hostname}).
+                Writing from two apps at the same time can mix up your work — close
+                the other session before continuing.
               </p>
             </div>
           )}
@@ -68,10 +118,12 @@ export default function SyncConflictModal({
           {hasConflicts && (
             <div className="scm-section">
               <p className="scm-lead">
-                {resolved.length} conflict{resolved.length !== 1 ? 's' : ''} were
-                automatically resolved using the <em>last-modified wins</em>{' '}
-                rule. Older versions were moved to{' '}
-                <code>.mythos/.archive/</code>.
+                {resolved.length} file{resolved.length === 1 ? '' : 's'} had
+                changes coming in from two places at the same time. Mythos kept
+                the most recently edited version of each one. The older version
+                {resolved.length === 1 ? ' is' : 's are'} saved in your vault
+                archive (<code>.mythos/.archive/</code>) in case you need to
+                recover them.
               </p>
               <ul className="scm-file-list" aria-label="Resolved conflicts">
                 {resolved.map((r) => (
@@ -79,11 +131,14 @@ export default function SyncConflictModal({
                     <span className={`scm-provider-badge scm-provider-badge--${r.provider}`}>
                       {PROVIDER_LABEL[r.provider]}
                     </span>
-                    <span className="scm-file-kept" title={`Kept: ${r.keptPath}`}>
-                      {r.keptPath}
+                    <span className="scm-file-kept" title={r.keptPath}>
+                      {r.keptPath.split('/').pop()}
                     </span>
-                    <span className="scm-file-archived" title={`Archived: ${r.archivedPath}`}>
-                      → archived older copy
+                    <span
+                      className="scm-file-archived"
+                      title={`Older version saved to: ${r.archivedPath}`}
+                    >
+                      · older version archived
                     </span>
                   </li>
                 ))}

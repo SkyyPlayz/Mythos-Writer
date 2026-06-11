@@ -569,3 +569,56 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
     expect(onSelectScene).toHaveBeenCalledWith(scene2, chapter);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Surface 8 — SyncConflictModal
+// ══════════════════════════════════════════════════════════════════════════════
+import SyncConflictModal, {
+  type LockfileConflictInfo,
+  type ResolvedConflictInfo,
+} from './SyncConflictModal';
+
+const SYNC_CONFLICT_RESOLVED: ResolvedConflictInfo[] = [
+  {
+    conflictPath: 'Manuscript/Ch01/scene (conflicted copy).md',
+    originalPath: 'Manuscript/Ch01/scene.md',
+    provider: 'dropbox',
+    keptPath: 'Manuscript/Ch01/scene.md',
+    archivedPath: '.mythos/.archive/scene (conflicted copy).md',
+    resolvedAt: '2024-01-15T12:00:00.000Z',
+  },
+];
+
+const SYNC_LOCKFILE_CONFLICT: LockfileConflictInfo = {
+  hostname: 'other-machine.local',
+  pid: 12345,
+  timestamp: '2024-01-15T12:00:00.000Z',
+};
+
+describe('Accessibility — SyncConflictModal', () => {
+  it('resolved-conflicts state has no axe violations', async () => {
+    const { container } = render(
+      <SyncConflictModal
+        resolved={SYNC_CONFLICT_RESOLVED}
+        lockfileConflict={null}
+        onContinue={() => {}}
+      />,
+    );
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('lockfile-warning state has no axe violations', async () => {
+    const { container } = render(
+      <SyncConflictModal
+        resolved={[]}
+        lockfileConflict={SYNC_LOCKFILE_CONFLICT}
+        onContinue={() => {}}
+      />,
+    );
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+});
