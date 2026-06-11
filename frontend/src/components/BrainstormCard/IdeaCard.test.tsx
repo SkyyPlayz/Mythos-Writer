@@ -298,6 +298,56 @@ describe('IdeaCard', () => {
     });
   });
 
+  describe('chip-click navigation (SKY-1309)', () => {
+    it('renders chips as <span> when onChipClick is not provided', () => {
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} />);
+      const chipRow = screen.getByTestId('idea-card-chips-idea-1');
+      // spans, not buttons
+      expect(chipRow.querySelector('button')).toBeNull();
+      expect(chipRow.querySelector('span[title="Lyra Ashveil"]')).toBeInTheDocument();
+      expect(chipRow.querySelector('span[title="Moonlit Bridge"]')).toBeInTheDocument();
+    });
+
+    it('renders chips as <button> when onChipClick is provided', () => {
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} onChipClick={() => {}} />);
+      const chipRow = screen.getByTestId('idea-card-chips-idea-1');
+      expect(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Navigate to Moonlit Bridge' })).toBeInTheDocument();
+      expect(chipRow.querySelector('span[title="Lyra Ashveil"]')).toBeNull();
+    });
+
+    it('calls onChipClick with the correct chip when an entity chip is clicked', () => {
+      const onChipClick = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} onChipClick={onChipClick} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+      expect(onChipClick).toHaveBeenCalledWith({
+        id: 'entity-1',
+        name: 'Lyra Ashveil',
+        type: 'character',
+      });
+    });
+
+    it('calls onChipClick with the correct chip when a scene chip is clicked', () => {
+      const onChipClick = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} onChipClick={onChipClick} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Moonlit Bridge' }));
+      expect(onChipClick).toHaveBeenCalledWith({
+        id: 'scene-1',
+        name: 'Moonlit Bridge',
+        type: 'scene',
+      });
+    });
+
+    it('chip click does not trigger onOpenDetail (stopPropagation)', () => {
+      const onOpenDetail = vi.fn();
+      const onChipClick = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={onOpenDetail} onChipClick={onChipClick} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+      expect(onChipClick).toHaveBeenCalledTimes(1);
+      expect(onOpenDetail).not.toHaveBeenCalled();
+    });
+  });
+
   describe('multi-select mode', () => {
     it('shows checkbox when isMultiSelect is true', () => {
       render(

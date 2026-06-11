@@ -104,6 +104,47 @@ describe('IdeaDetailDrawer', () => {
     expect(screen.queryByLabelText('Search entities')).not.toBeInTheDocument();
   });
 
+  describe('entity pill navigation (SKY-1309)', () => {
+    it('renders entity pill name as <span> when onEntityPillClick is not provided', () => {
+      render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={vi.fn()} />);
+      const pills = screen.getByLabelText('Linked entities');
+      expect(within(pills).queryByRole('button', { name: 'Navigate to Aria Voss' })).toBeNull();
+      expect(within(pills).getByText('Aria Voss')).toBeInTheDocument();
+    });
+
+    it('renders entity pill name as <button> when onEntityPillClick is provided', () => {
+      render(
+        <IdeaDetailDrawer
+          idea={baseIdea}
+          onClose={vi.fn()}
+          onSave={vi.fn()}
+          onEntityPillClick={() => {}}
+        />,
+      );
+      expect(
+        screen.getByRole('button', { name: 'Navigate to Aria Voss' }),
+      ).toBeInTheDocument();
+    });
+
+    it('calls onEntityPillClick with the entity chip when clicked', () => {
+      const onEntityPillClick = vi.fn();
+      render(
+        <IdeaDetailDrawer
+          idea={baseIdea}
+          onClose={vi.fn()}
+          onSave={vi.fn()}
+          onEntityPillClick={onEntityPillClick}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Aria Voss' }));
+      expect(onEntityPillClick).toHaveBeenCalledWith({
+        id: 'e1',
+        name: 'Aria Voss',
+        type: 'character',
+      });
+    });
+  });
+
   it('body textarea enforces 8000 char max', () => {
     render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={vi.fn()} />);
     const textarea = screen.getByLabelText('Idea notes');

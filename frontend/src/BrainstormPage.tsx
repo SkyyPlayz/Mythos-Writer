@@ -168,13 +168,6 @@ function stripFactTags(text: string): string {
   return text.replace(/\[FACT:(character|location|item|note)\|[^\]]+\]/gi, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-const FACT_TYPE_LABELS: Record<DetectedFact['type'], string> = {
-  character: 'Character',
-  location: 'Location',
-  item: 'Item',
-  note: 'Note',
-};
-
 const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item', 'note'];
 
 export type IdeaSortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status';
@@ -1604,60 +1597,51 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   }
                 }}
               >
-              {FACT_TYPE_ORDER.map((type) => {
-                const group = facts.filter((f) => f.type === type);
-                if (group.length === 0) return null;
-                return (
-                  <div key={type} className="bs-fact-group">
-                    <div className="bs-fact-group-header">{FACT_TYPE_LABELS[type]}s</div>
-                    {group.map((fact) => (
-                      <IdeaCard
-                        key={fact.id}
-                        idea={{
-                          id: fact.id,
-                          title: fact.content || fact.name,
-                          type: fact.type,
-                          linkedEntities: [
-                            { id: `${fact.id}-entity`, name: fact.name, type: fact.type },
-                          ],
-                          savedPath: fact.savedPath,
-                          updatedAt: fact.updatedAt,
-                          savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
-                          body: fact.body,
-                        }}
-                        metaAction={
-                          fact.savedStatus === 'saving' ? (
-                            <span className="bs-fact-saving">Saving…</span>
-                          ) : fact.savedStatus === 'saved' ? (
-                            <span className="bs-fact-saved-label">Saved ✓</span>
-                          ) : fact.savedStatus === 'pending_review' ? (
-                            <span className="bs-fact-pending-review">Pending review →</span>
-                          ) : fact.savedStatus === 'error' ? (
-                            <span className="bs-fact-save-error">
-                              Failed —{' '}
-                              <button
-                                className="bs-fact-retry-btn"
-                                onClick={() => saveFactToVault(fact.id)}
-                                type="button"
-                              >
-                                retry
-                              </button>
-                            </span>
-                          ) : undefined
-                        }
-                        onOpenDetail={openIdeaDetail}
-                        onMenuAction={handleIdeaMenuAction}
-                        isMultiSelect={isMultiSelectMode}
-                        isSelected={selectedIds.has(fact.id)}
-                        onToggleSelect={handleToggleSelect}
-                        isExpanded={expandedIdeaIds.has(fact.id)}
-                        onToggleExpand={handleToggleExpand}
-                        onChipClick={(onNavigateEntity || onNavigateScene) ? (chip) => void handleChipNavigate(chip) : undefined}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
+              {displayedFacts.map((fact) => (
+                <IdeaCard
+                  key={fact.id}
+                  idea={{
+                    id: fact.id,
+                    title: fact.content || fact.name,
+                    type: fact.type,
+                    linkedEntities: [
+                      { id: `${fact.id}-entity`, name: fact.name, type: fact.type },
+                    ],
+                    savedPath: fact.savedPath,
+                    updatedAt: fact.updatedAt,
+                    savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+                    body: fact.body,
+                  }}
+                  metaAction={
+                    fact.savedStatus === 'saving' ? (
+                      <span className="bs-fact-saving">Saving…</span>
+                    ) : fact.savedStatus === 'saved' ? (
+                      <span className="bs-fact-saved-label">Saved ✓</span>
+                    ) : fact.savedStatus === 'pending_review' ? (
+                      <span className="bs-fact-pending-review">Pending review →</span>
+                    ) : fact.savedStatus === 'error' ? (
+                      <span className="bs-fact-save-error">
+                        Failed —{' '}
+                        <button
+                          className="bs-fact-retry-btn"
+                          onClick={() => saveFactToVault(fact.id)}
+                          type="button"
+                        >
+                          retry
+                        </button>
+                      </span>
+                    ) : undefined
+                  }
+                  onOpenDetail={openIdeaDetail}
+                  onMenuAction={handleIdeaMenuAction}
+                  isMultiSelect={isMultiSelectMode}
+                  isSelected={selectedIds.has(fact.id)}
+                  onToggleSelect={handleToggleSelect}
+                  isExpanded={expandedIdeaIds.has(fact.id)}
+                  onToggleExpand={handleToggleExpand}
+                  onChipClick={(onNavigateEntity || onNavigateScene) ? (chip) => void handleChipNavigate(chip) : undefined}
+                />
+              ))}
               </div>
             )}
           </div>
