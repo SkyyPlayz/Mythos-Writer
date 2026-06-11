@@ -272,6 +272,28 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(screen.getByTestId('template-empty-hint')).toHaveTextContent('No saved templates yet');
   });
 
+  // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
+  it('template grid has role="radiogroup" labelled by the heading', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    const heading = screen.getByRole('heading', { name: 'Choose a template' });
+    expect(heading).toHaveAttribute('id', 'template-picker-heading');
+    const group = screen.getByRole('radiogroup', { name: 'Choose a template' });
+    expect(group).toBeInTheDocument();
+  });
+
+  it('each template card has role="radio" with aria-checked=false before selection', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    const radios = screen.getAllByRole('radio');
+    expect(radios.length).toBe(4);
+    radios.forEach((radio) => {
+      expect(radio).toHaveAttribute('aria-checked', 'false');
+    });
+  });
+
   it('hides empty hint once a user template is present', async () => {
     const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
     mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
@@ -279,6 +301,56 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => expect(screen.getByTestId('template-card-user:my-template')).toBeInTheDocument());
     expect(screen.queryByTestId('template-empty-hint')).not.toBeInTheDocument();
+  });
+
+  // SKY-1358: user-template grid gets its own radiogroup role
+  it('user-template radiogroup is labelled by "Your Templates" heading', async () => {
+    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByText('Your Templates'));
+    const groups = screen.getAllByRole('radiogroup');
+    expect(groups.length).toBe(2);
+    expect(groups[1]).toHaveAttribute('aria-labelledby', 'template-picker-user-heading');
+  });
+
+  // SKY-1360: F-06 — loading indicator with aria-live while templateList() is in flight
+  it('shows loading status with role=status and aria-live=polite while fetching', async () => {
+    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
+    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    const status = await waitFor(() => screen.getByRole('status'));
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status.textContent).toMatch(/Loading templates/);
+    // resolve the fetch so the test cleans up without act() warnings
+    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
+  });
+
+  // SKY-1360: F-05 — empty-state message with role=status when list resolves to 0 items
+  it('shows empty-state status with role=status and aria-live=polite when list is empty', async () => {
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [] });
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    const status = await waitFor(() => {
+      const el = screen.getByRole('status');
+      expect(el.textContent).toMatch(/No templates available/);
+      return el;
+    });
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  });
+
+  // SKY-1360: no empty-grid flash — grid is not shown before fetch completes
+  it('does not render the radiogroup while loading is in progress', async () => {
+    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
+    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByRole('status'));
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
   });
 });
 

@@ -43,16 +43,6 @@ type Api = {
   vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
 };
 
-interface TemplateItem {
-  id: string;
-  name: string;
-  description: string;
-  story: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
-  notes: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
-  isUserTemplate?: boolean;
-  savedAt?: string;
-}
-
 function api(): Api {
   return (window as unknown as { api: Api }).api;
 }
@@ -109,15 +99,20 @@ interface TemplateCardProps {
   template: TemplateItem;
   onSelect: () => void;
   testId: string;
+  isChecked: boolean;
+  tabIndex: number;
 }
 
-function TemplateCard({ template, onSelect, testId }: TemplateCardProps) {
+function TemplateCard({ template, onSelect, testId, isChecked, tabIndex }: TemplateCardProps) {
   return (
     <button
+      role="radio"
+      aria-checked={isChecked}
       className="gs-template-card"
       onClick={onSelect}
       data-testid={testId}
       type="button"
+      tabIndex={tabIndex}
     >
       {template.isUserTemplate && <span className="gs-template-card__badge">Saved</span>}
       <span className="gs-template-card__name">{template.name}</span>
@@ -178,6 +173,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateLoadError, setTemplateLoadError] = useState('');
+  const [loadingTemplates, setLoadingTemplates] = useState(true);
 
   // Step 2 form state
   const [storyTitle, setStoryTitle] = useState('');
@@ -212,13 +208,28 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // Load templates when step1b mounts
   useEffect(() => {
     if (step === 'step1b' && templates.length === 0) {
+      setLoadingTemplates(true);
       api().templateList().then((res) => {
         if ('templates' in res) setTemplates(res.templates);
       }).catch(() => {
         setTemplateLoadError("Bundled templates couldn't be loaded. You can still create a blank story.");
-      });
+      }).finally(() => setLoadingTemplates(false));
+    } else if (step === 'step1b') {
+      setLoadingTemplates(false);
     }
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Keyboard helpers ───────────────────────────────────────────────────────
+
+  function handleGridArrowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
+    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const idx = cards.indexOf(document.activeElement as HTMLElement);
+    if (idx === -1) return;
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % cards.length;
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   next = (idx - 1 + cards.length) % cards.length;
+    if (next !== -1) { e.preventDefault(); cards[next].focus(); }
+  }
 
   // ─── Validation helpers ─────────────────────────────────────────────────────
 
@@ -453,6 +464,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
+  const bundledTemplates = templates.filter((t) => !t.isUserTemplate);
+  const userTemplates = templates.filter((t) => t.isUserTemplate);
+  const hasBundledSelection = bundledTemplates.some((t) => t.id === selectedTemplateId);
+  const hasUserSelection = userTemplates.some((t) => t.id === selectedTemplateId);
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -562,9 +578,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <h2 className="gs-modal__title">Choose a template</h2>
+          <h2 id="template-picker-heading" className="gs-modal__title">Choose a template</h2>
 
-          {templateLoadError ? (
+          {loadingTemplates ? (
+            <p className="gs-loading" role="status" aria-live="polite">Loading templates&#x2026;</p>
+          ) : templateLoadError ? (
             <div className="gs-template-load-error" role="alert" data-testid="template-load-error">
               <p>{templateLoadError}</p>
               <button
@@ -577,29 +595,35 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               </button>
             </div>
           ) : templates.length === 0 ? (
-            <p className="gs-loading">Loading templates&#x2026;</p>
+            <p className="gs-loading" role="status" aria-live="polite">
+              No templates available. You can start blank or import a vault instead.
+            </p>
           ) : (
             <>
-              <div className="gs-template-grid">
-                {templates.filter((t) => !t.isUserTemplate).map((tmpl) => (
+              <div role="radiogroup" aria-labelledby="template-picker-heading" className="gs-template-grid" onKeyDown={handleGridArrowKeys}>
+                {bundledTemplates.map((tmpl, i) => (
                   <TemplateCard
                     key={tmpl.id}
                     template={tmpl}
                     onSelect={() => goToStep2FromMode('template', tmpl.id)}
                     testId={`template-card-${tmpl.id}`}
+                    isChecked={selectedTemplateId === tmpl.id}
+                    tabIndex={selectedTemplateId === tmpl.id || (!hasBundledSelection && i === 0) ? 0 : -1}
                   />
                 ))}
               </div>
               <>
-                <p className="gs-section-divider">Your Templates</p>
-                {templates.some((t) => t.isUserTemplate) ? (
-                  <div className="gs-template-grid">
-                    {templates.filter((t) => t.isUserTemplate).map((tmpl) => (
+                <p id="template-picker-user-heading" className="gs-section-divider">Your Templates</p>
+                {userTemplates.length > 0 ? (
+                  <div role="radiogroup" aria-labelledby="template-picker-user-heading" className="gs-template-grid" onKeyDown={handleGridArrowKeys}>
+                    {userTemplates.map((tmpl, i) => (
                       <TemplateCard
                         key={tmpl.id}
                         template={tmpl}
                         onSelect={() => goToStep2FromMode('template', tmpl.id)}
                         testId={`template-card-${tmpl.id}`}
+                        isChecked={selectedTemplateId === tmpl.id}
+                        tabIndex={selectedTemplateId === tmpl.id || (!hasUserSelection && i === 0) ? 0 : -1}
                       />
                     ))}
                   </div>
