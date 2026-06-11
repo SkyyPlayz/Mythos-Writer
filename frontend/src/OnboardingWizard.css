@@ -1081,6 +1081,50 @@
   margin-top: auto;
 }
 
+/* SKY-1304: delete user template (AC-6) */
+.gs-template-card-item {
+  position: relative;
+  display: flex;
+}
+.gs-template-card-item > .gs-template-card {
+  flex: 1;
+}
+.gs-template-card__delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: var(--color-error, #f38ba8);
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.gs-template-card-item:hover .gs-template-card__delete,
+.gs-template-card-item:focus-within .gs-template-card__delete {
+  opacity: 1;
+}
+.gs-template-card__delete:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--color-error, #f38ba8);
+  outline-offset: 2px;
+}
+
+.gs-error-msg {
+  color: var(--color-error, #f38ba8);
+  font-size: 0.8rem;
+  margin: 0.25rem 0;
+}
+
 .gs-section-divider {
   font-size: 0.75rem;
   font-weight: 600;

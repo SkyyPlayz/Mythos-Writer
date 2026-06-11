@@ -675,6 +675,8 @@ interface Window {
     // SKY-780: parentToken must come from vault:pick-folder; handler derives story/notes paths from it
     templateScaffold: (templateId: string, parentToken: string) => Promise<{ ok: true; storyVaultPath: string; notesVaultPath: string; storyVaultToken: string; notesVaultToken: string } | { error: string }>;
     templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
+    // SKY-1304: delete user template (AC-6)
+    templateDelete: (templateId: string) => Promise<{ ok: true } | { error: string }>;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
     validatePath: (path: string) => Promise<{ valid?: boolean; exists: boolean; isEmpty: boolean; writable: boolean; error?: string }>;
     appQuit?: () => Promise<void>;

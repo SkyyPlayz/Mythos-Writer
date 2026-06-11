@@ -40,6 +40,8 @@ type Api = {
     vaultName?: string;
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
+  // SKY-1304: delete user template (AC-6)
+  templateDelete: (templateId: string) => Promise<{ ok: true } | { error: string }>;
   vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
 };
 
@@ -109,21 +111,36 @@ interface TemplateCardProps {
   template: TemplateItem;
   onSelect: () => void;
   testId: string;
+  onDelete?: () => void;
 }
 
-function TemplateCard({ template, onSelect, testId }: TemplateCardProps) {
+function TemplateCard({ template, onSelect, testId, onDelete }: TemplateCardProps) {
   return (
-    <button
-      className="gs-template-card"
-      onClick={onSelect}
-      data-testid={testId}
-      type="button"
-    >
-      {template.isUserTemplate && <span className="gs-template-card__badge">Saved</span>}
-      <span className="gs-template-card__name">{template.name}</span>
-      <span className="gs-template-card__desc">{template.description}</span>
-      <span className="gs-template-card__cta" aria-hidden="true">Use this &#x2192;</span>
-    </button>
+    <div className="gs-template-card-item">
+      <button
+        className="gs-template-card"
+        onClick={onSelect}
+        data-testid={testId}
+        type="button"
+      >
+        {template.isUserTemplate && <span className="gs-template-card__badge">Saved</span>}
+        <span className="gs-template-card__name">{template.name}</span>
+        <span className="gs-template-card__desc">{template.description}</span>
+        <span className="gs-template-card__cta" aria-hidden="true">Use this &#x2192;</span>
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          className="gs-template-card__delete"
+          data-testid={`template-delete-${template.id}`}
+          aria-label={`Delete template "${template.name}"`}
+          title="Delete this template"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        >
+          &#x2715;
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -194,6 +211,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [titleError, setTitleError] = useState('');
   const [savePathError, setSavePathError] = useState('');
   const [scaffoldError, setScaffoldError] = useState('');
+  const [deleteTemplateError, setDeleteTemplateError] = useState('');
 
   // UI state
   const [scaffolding, setScaffolding] = useState(false);
@@ -236,6 +254,17 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setSavePathError('');
     setScaffoldError('');
     setStep('step2');
+  }
+
+  async function handleDeleteTemplate(templateId: string) {
+    setDeleteTemplateError('');
+    try {
+      const res = await api().templateDelete(templateId);
+      if ('error' in res) { setDeleteTemplateError(res.error); return; }
+      setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+    } catch {
+      setDeleteTemplateError('Failed to delete template');
+    }
   }
 
   function goBackFromStep2() {
@@ -578,6 +607,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               {templates.some((t) => t.isUserTemplate) && (
                 <>
                   <p className="gs-section-divider">Your Templates</p>
+                  {deleteTemplateError && (
+                    <p className="gs-error-msg" role="alert" data-testid="delete-template-error">{deleteTemplateError}</p>
+                  )}
                   <div className="gs-template-grid">
                     {templates.filter((t) => t.isUserTemplate).map((tmpl) => (
                       <TemplateCard
@@ -585,6 +617,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                         template={tmpl}
                         onSelect={() => goToStep2FromMode('template', tmpl.id)}
                         testId={`template-card-${tmpl.id}`}
+                        onDelete={() => handleDeleteTemplate(tmpl.id)}
                       />
                     ))}
                   </div>
