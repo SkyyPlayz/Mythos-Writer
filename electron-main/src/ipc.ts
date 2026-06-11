@@ -2547,6 +2547,8 @@ export interface AgentBudgetUsageResponse {
 export interface VaultGetPathsResponse {
   storyVaultPath: string;
   notesVaultPath: string;
+  homeDir: string;
+  pathSeparator: '/' | '\\';
 }
 
 export type VaultSeedMode = 'default' | 'blank';
