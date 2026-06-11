@@ -170,6 +170,73 @@ describe('IdeaCard', () => {
     });
   });
 
+  describe('chip-click navigation (SKY-1264)', () => {
+    it('calls onChipClick with the chip when a chip button is clicked', () => {
+      const onChipClick = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} onChipClick={onChipClick} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+      expect(onChipClick).toHaveBeenCalledWith({ id: 'entity-1', name: 'Lyra Ashveil', type: 'character' });
+    });
+
+    it('calls onChipClick with scene chip when clicked', () => {
+      const onChipClick = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} onChipClick={onChipClick} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Moonlit Bridge' }));
+
+      expect(onChipClick).toHaveBeenCalledWith({ id: 'scene-1', name: 'Moonlit Bridge', type: 'scene' });
+    });
+
+    it('chips have role=button and are Tab-reachable', () => {
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} onChipClick={() => {}} />);
+
+      const chip = screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' });
+      expect(chip.tagName.toLowerCase()).toBe('button');
+    });
+
+    it('chip click does not open detail drawer in normal mode', () => {
+      const onOpenDetail = vi.fn();
+      render(<IdeaCard idea={baseIdea} onOpenDetail={onOpenDetail} onChipClick={() => {}} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+      expect(onOpenDetail).not.toHaveBeenCalled();
+    });
+
+    it('chip click does not toggle selection in multi-select mode', () => {
+      const onToggleSelect = vi.fn();
+      render(
+        <IdeaCard
+          idea={baseIdea}
+          onOpenDetail={() => {}}
+          onChipClick={() => {}}
+          isMultiSelect
+          isSelected={false}
+          onToggleSelect={onToggleSelect}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+      expect(onToggleSelect).not.toHaveBeenCalled();
+    });
+
+    it('chips without onChipClick still render as buttons with no clickable class', () => {
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} />);
+
+      const chip = screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' });
+      expect(chip).not.toHaveClass('idea-card-chip--clickable');
+    });
+
+    it('chips with onChipClick have the clickable modifier class', () => {
+      render(<IdeaCard idea={baseIdea} onOpenDetail={() => {}} onChipClick={() => {}} />);
+
+      expect(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' })).toHaveClass('idea-card-chip--clickable');
+    });
+  });
+
   describe('multi-select mode', () => {
     it('shows checkbox when isMultiSelect is true', () => {
       render(

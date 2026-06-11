@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { IdeaCardIdea, IdeaCardType } from './IdeaCard';
+import type { IdeaCardIdea, IdeaCardChip, IdeaCardType } from './IdeaCard';
 import './IdeaDetailDrawer.css';
 
 interface EntityPickerItem {
@@ -117,9 +117,10 @@ export interface IdeaDetailDrawerProps {
   idea: IdeaCardIdea;
   onClose: () => void;
   onSave: (updated: IdeaCardIdea) => void;
+  onChipClick?: (chip: IdeaCardChip) => void;
 }
 
-export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProps) {
+export function IdeaDetailDrawer({ idea, onClose, onSave, onChipClick }: IdeaDetailDrawerProps) {
   const [title, setTitle] = useState(idea.title);
   const [body, setBody] = useState('');
   const [linkedEntities, setLinkedEntities] = useState(idea.linkedEntities ?? []);
@@ -285,7 +286,18 @@ export function IdeaDetailDrawer({ idea, onClose, onSave }: IdeaDetailDrawerProp
             <div className="idd-entity-pills" aria-label="Linked entities">
               {linkedEntities.map((e) => (
                 <span key={e.id} className={`idd-entity-pill idd-badge-${e.type}`}>
-                  {e.name}
+                  {onChipClick ? (
+                    <button
+                      type="button"
+                      className="idd-pill-name-btn"
+                      aria-label={`Navigate to ${e.name}`}
+                      onClick={() => onChipClick(e)}
+                    >
+                      {e.name}
+                    </button>
+                  ) : (
+                    <span className="idd-pill-name">{e.name}</span>
+                  )}
                   <button
                     type="button"
                     className="idd-pill-remove"
