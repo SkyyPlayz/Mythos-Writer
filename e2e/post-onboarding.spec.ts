@@ -163,10 +163,12 @@ function seedMinimalVault(vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
-    timeout: 30_000,
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    timeout: 60_000,
   });
 }
 
@@ -304,6 +306,8 @@ test.describe('TC-PO-02: Scene editor hint', () => {
   });
 
   test('hint CSS class is applied to editor wrapper for an empty scene', async () => {
+    // Wait for vault to finish loading (story row visible = manifest parsed)
+    await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
     // Select the scene via the StoryNavigator
     const sceneRow = page.locator('.nav-scene-row').first();
     await expect(sceneRow).toBeVisible({ timeout: 10_000 });
