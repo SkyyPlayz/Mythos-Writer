@@ -143,10 +143,8 @@ import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot } from './validatePathUtil.js';
 import {
   buildAgentSystemPrompt,
-  loadPersonaFile,
-  resetPersonaFile,
-  validatePersonaPayload,
 } from './agentPersona.js';
+import { registerAgentPersonaHandlers } from './agentPersonaIpc.js';
 import {
   buildVaultSummary,
   truncateContext,
@@ -5911,30 +5909,9 @@ function registerContinuityHandler(): void {
 }
 
 // ─── Agent persona IPC handlers (MYT-816) ────────────────────────────────────
-function registerAgentPersonaHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_READ, (event, payload) => {
-    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
-    const validation = validatePersonaPayload(payload?.agentName, payload?.key);
-    if (!validation.ok) return { error: validation.error };
-    try {
-      const file = loadPersonaFile(app.getPath('userData'), validation.agentName, validation.key);
-      return { content: file.content, isCustom: file.isCustom };
-    } catch (err) {
-      return sanitizeIpcError(IPC_CHANNELS.AGENT_PERSONA_READ, err);
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.AGENT_PERSONA_RESET, (event, payload) => {
-    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
-    const validation = validatePersonaPayload(payload?.agentName, payload?.key);
-    if (!validation.ok) return { error: validation.error };
-    try {
-      resetPersonaFile(app.getPath('userData'), validation.agentName, validation.key);
-      return { success: true };
-    } catch (err) {
-      return sanitizeIpcError(IPC_CHANNELS.AGENT_PERSONA_RESET, err);
-    }
-  });
+// Handlers live in agentPersonaIpc.ts for testability (same pattern as voice.ts/streaming.ts).
+function setupAgentPersonaIpc(): void {
+  registerAgentPersonaHandlers(() => app.getPath('userData'));
 }
 
 // ─── App lifecycle ───
@@ -5991,7 +5968,7 @@ app.whenReady().then(async () => {
   registerBrainstormHandler();
   registerBrainstormEnrichHandler();
   registerWritingAssistantHandler();
-  registerAgentPersonaHandlers();
+  setupAgentPersonaIpc();
   registerVaultAgentHandlers();
   registerContinuityHandler();
   registerWritingScanHandler();
