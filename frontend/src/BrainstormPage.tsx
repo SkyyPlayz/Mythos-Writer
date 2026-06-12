@@ -914,32 +914,41 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     const fact = facts.find((f) => f.id === ideaId);
     if (!fact) return;
 
+    // Read manifest once — needed for scene title lookup and no-scenes guard.
+    type SceneEntry = { id: string; title: string };
+    type ManifestShape = { stories?: Array<{ chapters?: Array<{ scenes?: SceneEntry[] }> }> };
+    let sceneMap: Map<string, string>;
+    try {
+      const manifest = (await window.api.readManifest()) as ManifestShape;
+      sceneMap = new Map(
+        (manifest.stories ?? []).flatMap((s) =>
+          (s.chapters ?? []).flatMap((c) =>
+            (c.scenes ?? []).map((sc): [string, string] => [sc.id, sc.title]),
+          ),
+        ),
+      );
+    } catch {
+      showToast('No scenes found. Create a scene first.');
+      return;
+    }
+
+    if (sceneMap.size === 0) {
+      showToast('No scenes found. Create a scene first.');
+      return;
+    }
+
     // Fast-path: idea already linked to a scene — skip the picker.
     if (fact.linkedSceneId) {
+      const sceneTitle = sceneMap.get(fact.linkedSceneId) ?? 'scene';
       try {
         const result = await window.api.sceneAppendBrainstormNote?.(fact.linkedSceneId, fact.content);
         if (result?.appended) {
           await onNavigateToScene?.(fact.linkedSceneId);
-          showToast('Opened in scene.');
+          showToast(`Opened in ${sceneTitle}.`);
         }
       } catch {
         showToast('Failed to open in writing panel.');
       }
-      return;
-    }
-
-    // Check whether any scenes exist before showing the picker.
-    try {
-      const manifest = (await window.api.readManifest()) as { stories?: Array<{ chapters?: Array<{ scenes?: unknown[] }> }> };
-      const hasScenes = (manifest.stories ?? []).some((s) =>
-        (s.chapters ?? []).some((c) => (c.scenes ?? []).length > 0),
-      );
-      if (!hasScenes) {
-        showToast('No scenes found. Create a scene first.');
-        return;
-      }
-    } catch {
-      showToast('No scenes found. Create a scene first.');
       return;
     }
 
@@ -955,12 +964,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
 
     try {
       await window.api.sceneAppendBrainstormNote?.(sceneId, fact.content);
+      // Persist linkedSceneId so repeat "open in writing panel" uses the fast path.
+      setFacts((prev) => prev.map((f) => f.id === ideaId ? { ...f, linkedSceneId: sceneId } : f));
       await onNavigateToScene?.(sceneId);
       showToast(`Opened in ${sceneTitle}.`);
     } catch {
       showToast('Failed to open in writing panel.');
     }
-  }, [scenePickerIdeaId, facts, onNavigateToScene, showToast]);
+  }, [scenePickerIdeaId, facts, onNavigateToScene, setFacts, showToast]);
 
   const handleIdeaMenuAction = useCallback((ideaId: string, action: string) => {
     const fact = facts.find((f) => f.id === ideaId);

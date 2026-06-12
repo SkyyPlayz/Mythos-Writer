@@ -1543,6 +1543,7 @@ describe('BrainstormPage — open-in-writing-panel (SKY-1393)', () => {
     await waitFor(() => {
       expect(onNavigateToScene).toHaveBeenCalledWith('scene-1');
       expect(screen.queryByTestId('scene-picker')).not.toBeInTheDocument();
+      expect(screen.getByText('Opened in Opening Scene.')).toBeInTheDocument();
     });
   });
 });
