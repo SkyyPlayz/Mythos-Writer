@@ -294,6 +294,10 @@ interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+  versions?: {
+    maxPerScene: number;
+    maxAgeDays: number;
+  };
   onboardingComplete?: boolean;
   /** SKY-1188: post-onboarding checklist state. */
   gettingStartedProgress?: {
