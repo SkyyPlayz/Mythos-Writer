@@ -321,8 +321,13 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
-    expect(screen.getByTestId('user-templates-empty')).toBeInTheDocument();
-    expect(screen.getByTestId('user-templates-empty')).toHaveTextContent('No custom templates yet');
+    const hint = screen.getByTestId('template-empty-hint');
+    expect(hint).toBeInTheDocument();
+    expect(hint).toHaveTextContent('No saved templates yet.');
+    expect(hint).not.toHaveStyle('font-style: italic');
+    const sub = screen.getByTestId('template-empty-hint-sub');
+    expect(sub).toHaveTextContent('Settings');
+    expect(sub).toHaveTextContent('Templates');
   });
 
   // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
@@ -918,10 +923,11 @@ describe('OnboardingWizard — Template counter (SKY-1397)', () => {
     await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
   });
 
-  it('shows "No custom templates yet" empty state when no user templates exist', async () => {
+  it('shows "No saved templates yet" empty state when no user templates exist', async () => {
     await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId('user-templates-empty')).toBeInTheDocument());
-    expect(screen.getByTestId('user-templates-empty').textContent).toMatch(/No custom templates yet/);
+    await waitFor(() => expect(screen.getByTestId('template-empty-hint')).toBeInTheDocument());
+    expect(screen.getByTestId('template-empty-hint').textContent).toMatch(/No saved templates yet/);
+    expect(screen.getByTestId('template-empty-hint-sub').textContent).toMatch(/Settings/);
   });
 
   it('does not show count badge when there are no user templates', async () => {
