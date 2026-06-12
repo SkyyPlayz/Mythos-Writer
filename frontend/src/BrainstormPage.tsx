@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'react';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
+import { ScenePicker } from './components/BrainstormCard/ScenePicker';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import PresetSelector from './components/PresetSelector';
 import PresetEditor from './components/PresetEditor';
@@ -71,6 +72,8 @@ interface BrainstormDraft {
   prompt: string;
   messages: Message[];
   facts: DetectedFact[];
+  sortMode?: SortOrder;
+  customOrder?: string[];
 }
 
 interface Message {
@@ -86,11 +89,13 @@ interface DetectedFact {
   content: string;
   savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review' | 'needs_routing';
   savedPath?: string;
+  /** SKY-1393: scene this idea is directly linked to (fast-path — skips picker). */
+  linkedSceneId?: string;
   updatedAt?: string;
   createdAt?: number;
 }
 
-type SortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status';
+type SortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status' | 'custom';
 type FilterType = 'all' | 'character' | 'location' | 'item' | 'note';
 
 const SORT_LABELS: Record<SortOrder, string> = {
@@ -98,6 +103,7 @@ const SORT_LABELS: Record<SortOrder, string> = {
   oldest: 'Oldest first',
   'by-type': 'By type',
   'by-status': 'By status (saved first)',
+  custom: 'Custom order',
 };
 
 const FILTER_LABELS: Record<FilterType, string> = {
@@ -118,6 +124,7 @@ const SAVED_STATUS_RANK: Record<DetectedFact['savedStatus'], number> = {
 };
 
 function sortFacts(facts: DetectedFact[], sortOrder: SortOrder): DetectedFact[] {
+  if (sortOrder === 'custom') return [...facts];
   return [...facts].sort((a, b) => {
     switch (sortOrder) {
       case 'newest':
@@ -266,8 +273,16 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Custom sort order: persisted list of fact IDs (empty = not yet initialized)
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
+  // Drag-and-drop ephemeral state
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dropBelow, setDropBelow] = useState(false);
   // Tracks the id of a brand-new idea created via Ctrl+N that hasn't been saved yet
   const [pendingNewIdeaId, setPendingNewIdeaId] = useState<string | null>(null);
+  // SKY-1393: scene picker — id of the idea waiting for a scene selection
+  const [scenePickerIdeaId, setScenePickerIdeaId] = useState<string | null>(null);
   // Tracks which element opened the detail drawer so focus can be restored on close
   const triggerElementRef = useRef<HTMLElement | null>(null);
 
@@ -280,6 +295,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const cleanupStreamRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Refs for drag state values needed inside closures without stale captures
+  const dragSourceIdRef = useRef<string | null>(null);
+  const dropBelowRef = useRef(false);
   const lastTokenAtRef = useRef<number>(0);
   const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   // Holds the system prompt augmented with vault context for the current/last request.
@@ -290,10 +308,18 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     [presetId, presetOverrides],
   );
 
-  const displayedFacts = useMemo(
-    () => sortFacts(filterType === 'all' ? facts : facts.filter((f) => f.type === filterType), sortOrder),
-    [facts, sortOrder, filterType],
-  );
+  const displayedFacts = useMemo(() => {
+    const filtered = filterType === 'all' ? facts : facts.filter((f) => f.type === filterType);
+    if (sortOrder === 'custom' && customOrder.length > 0) {
+      const orderMap = new Map(customOrder.map((id, i) => [id, i]));
+      return [...filtered].sort((a, b) => {
+        const ai = orderMap.has(a.id) ? (orderMap.get(a.id) as number) : Infinity;
+        const bi = orderMap.has(b.id) ? (orderMap.get(b.id) as number) : Infinity;
+        return ai - bi;
+      });
+    }
+    return sortFacts(filtered, sortOrder);
+  }, [facts, sortOrder, filterType, customOrder]);
 
   const visibleTypes = useMemo(
     () => (filterType === 'all' ? FACT_TYPE_ORDER : ([filterType] as DetectedFact['type'][])),
@@ -319,7 +345,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
-        const draft: { v?: number; messages?: Message[]; facts?: DetectedFact[]; prompt?: string } = JSON.parse(raw);
+        const draft: { v?: number; messages?: Message[]; facts?: DetectedFact[]; prompt?: string; sortMode?: string; customOrder?: string[] } = JSON.parse(raw);
         const draftMessages = Array.isArray(draft.messages)
           ? draft.messages.map((m) => ({ ...m, streaming: false }))
           : [];
@@ -331,6 +357,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           setFacts(draftFacts);
           setExpandedFactIds(new Set(draftFacts.map((f) => f.id)));
           setPrompt(draftPrompt);
+          if (draft.sortMode === 'custom') {
+            setSortOrder('custom');
+            if (Array.isArray(draft.customOrder)) setCustomOrder(draft.customOrder);
+          }
           setShowRecoveryBanner(true);
         }
       }
@@ -338,7 +368,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist draft whenever prompt, messages, or facts change.
+  // Persist draft whenever prompt, messages, facts, sort mode, or custom order change.
   useEffect(() => {
     if (!prompt.trim() && messages.length === 0 && facts.length === 0) {
       localStorage.removeItem(DRAFT_KEY);
@@ -351,6 +381,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       prompt,
       messages: messages.map((m) => ({ ...m, streaming: false })),
       facts,
+      ...(sortOrder === 'custom' ? { sortMode: 'custom', customOrder } : {}),
     };
     const serialized = JSON.stringify(draft);
     if (serialized.length > MAX_DRAFT_BYTES) {
@@ -360,8 +391,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     setDraftSizeWarning(false);
     try {
       localStorage.setItem(DRAFT_KEY, serialized);
-    } catch { /* quota exceeded — silently skip */ }
-  }, [prompt, messages, facts]);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+        showToast('Order not saved — storage full.');
+      }
+    }
+  // showToast is stable (no deps) — including it satisfies exhaustive-deps without churn
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, messages, facts, sortOrder, customOrder]);
 
   // Warn before window close when there is an active session
   useEffect(() => {
@@ -473,6 +510,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     setRoutingPrompts([]);
     setContextResult(null);
     setContextOpen(false);
+    setCustomOrder([]);
+    setSortOrder('newest');
+    setDraggingId(null);
+    setDragOverId(null);
+    dragSourceIdRef.current = null;
     contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
   }, []);
@@ -868,6 +910,58 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     }
   }, [onNavigateToEntity, onNavigateToScene, showToast]);
 
+  const handleOpenInWritingPanel = useCallback(async (ideaId: string) => {
+    const fact = facts.find((f) => f.id === ideaId);
+    if (!fact) return;
+
+    // Fast-path: idea already linked to a scene — skip the picker.
+    if (fact.linkedSceneId) {
+      try {
+        const result = await window.api.sceneAppendBrainstormNote?.(fact.linkedSceneId, fact.content);
+        if (result?.appended) {
+          await onNavigateToScene?.(fact.linkedSceneId);
+          showToast('Opened in scene.');
+        }
+      } catch {
+        showToast('Failed to open in writing panel.');
+      }
+      return;
+    }
+
+    // Check whether any scenes exist before showing the picker.
+    try {
+      const manifest = (await window.api.readManifest()) as { stories?: Array<{ chapters?: Array<{ scenes?: unknown[] }> }> };
+      const hasScenes = (manifest.stories ?? []).some((s) =>
+        (s.chapters ?? []).some((c) => (c.scenes ?? []).length > 0),
+      );
+      if (!hasScenes) {
+        showToast('No scenes found. Create a scene first.');
+        return;
+      }
+    } catch {
+      showToast('No scenes found. Create a scene first.');
+      return;
+    }
+
+    setScenePickerIdeaId(ideaId);
+  }, [facts, onNavigateToScene, showToast]);
+
+  const handleScenePickerSelect = useCallback(async (sceneId: string, sceneTitle: string) => {
+    const ideaId = scenePickerIdeaId;
+    setScenePickerIdeaId(null);
+    if (!ideaId) return;
+    const fact = facts.find((f) => f.id === ideaId);
+    if (!fact) return;
+
+    try {
+      await window.api.sceneAppendBrainstormNote?.(sceneId, fact.content);
+      await onNavigateToScene?.(sceneId);
+      showToast(`Opened in ${sceneTitle}.`);
+    } catch {
+      showToast('Failed to open in writing panel.');
+    }
+  }, [scenePickerIdeaId, facts, onNavigateToScene, showToast]);
+
   const handleIdeaMenuAction = useCallback((ideaId: string, action: string) => {
     const fact = facts.find((f) => f.id === ideaId);
     if (!fact) return;
@@ -882,9 +976,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       void navigator.clipboard.writeText(md).then(() => showToast('Copied to clipboard'));
     } else if (action === 'copy-vault-path' && fact.savedPath) {
       void navigator.clipboard.writeText(fact.savedPath).then(() => showToast('Copied to clipboard'));
+    } else if (action === 'open-in-writing-panel') {
+      void handleOpenInWritingPanel(ideaId);
     }
     // link-entity + add-to-scene deferred to v2
-  }, [facts, announce, showToast]);
+  }, [facts, announce, showToast, handleOpenInWritingPanel]);
 
   const handleBulkDelete = useCallback(() => {
     setPendingDeleteIds([...selectedIds]);
@@ -958,13 +1054,37 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     setTimeout(() => el?.focus(), 0);
   }, [pendingNewIdeaId]);
 
+  // Move focused card one position up/down in custom order (Alt+Up / Alt+Down)
+  const moveFact = useCallback((id: string, direction: 'up' | 'down') => {
+    setCustomOrder((prev) => {
+      if (prev.length === 0) return prev;
+      const idx = prev.indexOf(id);
+      if (idx < 0) return prev;
+      const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
+  }, []);
+
   // Keyboard shortcuts: Ctrl/Cmd+N (new idea), Ctrl/Cmd+D (delete focused),
-  // Ctrl/Cmd+Shift+A (toggle multi-select), Escape (exit multi-select)
+  // Ctrl/Cmd+Shift+A (toggle multi-select), Escape (exit multi-select),
+  // Alt+Up / Alt+Down (reorder in custom sort mode)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
       const target = e.target as HTMLElement;
       const inInput = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT';
+
+      // Alt+Up / Alt+Down: move focused card in custom sort mode
+      if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && sortOrder === 'custom' && !isMultiSelectMode && !loading && !inInput) {
+        e.preventDefault();
+        const card = (document.activeElement as HTMLElement)?.closest('[data-testid^="idea-card-"]');
+        const ideaId = card?.getAttribute('data-testid')?.replace('idea-card-', '');
+        if (ideaId) moveFact(ideaId, e.key === 'ArrowUp' ? 'up' : 'down');
+        return;
+      }
 
       if (meta && !e.shiftKey && e.key === 'n' && !inInput) {
         e.preventDefault();
@@ -986,7 +1106,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isMultiSelectMode, showDeleteConfirm, toggleMultiSelectMode, createNewIdea, handleDeleteFocused]);
+  }, [isMultiSelectMode, showDeleteConfirm, sortOrder, loading, toggleMultiSelectMode, createNewIdea, handleDeleteFocused, moveFact]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1053,6 +1173,61 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
 
   const handleCollapseAll = useCallback(() => {
     setExpandedFactIds(new Set());
+  }, []);
+
+  const handleDragStart = useCallback((e: React.DragEvent, factId: string) => {
+    dragSourceIdRef.current = factId;
+    setDraggingId(factId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, factId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const below = e.clientY > rect.top + rect.height / 2;
+    setDragOverId(factId);
+    setDropBelow(below);
+    dropBelowRef.current = below;
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragSourceIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+    setDropBelow(false);
+    dropBelowRef.current = false;
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const sourceId = dragSourceIdRef.current;
+    if (!sourceId || sourceId === targetId) {
+      dragSourceIdRef.current = null;
+      setDraggingId(null);
+      setDragOverId(null);
+      setDropBelow(false);
+      return;
+    }
+    const below = dropBelowRef.current;
+    setCustomOrder((prev) => {
+      if (prev.length === 0) return prev;
+      const fromIdx = prev.indexOf(sourceId);
+      const toIdx = prev.indexOf(targetId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const next = [...prev];
+      next.splice(fromIdx, 1);
+      // After removing fromIdx, toIdx shifts if fromIdx was before toIdx
+      const adjustedTo = fromIdx < toIdx ? toIdx - 1 : toIdx;
+      const insertAt = below ? adjustedTo + 1 : adjustedTo;
+      next.splice(Math.max(0, Math.min(next.length, insertAt)), 0, sourceId);
+      return next;
+    });
+    dragSourceIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+    setDropBelow(false);
+    dropBelowRef.current = false;
   }, []);
 
   const toggleIssue = useCallback((id: string) => {
@@ -1573,7 +1748,13 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               <select
                 className="bs-facts-select"
                 value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                onChange={(e) => {
+                  const newSort = e.target.value as SortOrder;
+                  setSortOrder(newSort);
+                  if (newSort === 'custom') {
+                    setCustomOrder((prev) => prev.length > 0 ? prev : displayedFacts.map((f) => f.id));
+                  }
+                }}
                 aria-label="Sort ideas"
                 data-testid="bs-sort-select"
               >
@@ -1592,24 +1773,28 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   <option key={key} value={key}>{FILTER_LABELS[key]}</option>
                 ))}
               </select>
-              <button
-                className="bs-expand-collapse-btn"
-                type="button"
-                onClick={expandAllGroups}
-                aria-label="Expand all groups"
-                data-testid="bs-expand-all"
-              >
-                ↕ Expand all
-              </button>
-              <button
-                className="bs-expand-collapse-btn"
-                type="button"
-                onClick={collapseAllGroups}
-                aria-label="Collapse all groups"
-                data-testid="bs-collapse-all"
-              >
-                ↕ Collapse all
-              </button>
+              {sortOrder !== 'custom' && (
+                <>
+                  <button
+                    className="bs-expand-collapse-btn"
+                    type="button"
+                    onClick={expandAllGroups}
+                    aria-label="Expand all groups"
+                    data-testid="bs-expand-all"
+                  >
+                    ↕ Expand all
+                  </button>
+                  <button
+                    className="bs-expand-collapse-btn"
+                    type="button"
+                    onClick={collapseAllGroups}
+                    aria-label="Collapse all groups"
+                    data-testid="bs-collapse-all"
+                  >
+                    ↕ Collapse all
+                  </button>
+                </>
+              )}
             </div>
           )}
           {isMultiSelectMode && selectedIds.size > 0 && (
@@ -1639,7 +1824,92 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 </svg>
                 <span>Facts appear here as you chat.</span>
               </div>
+            ) : sortOrder === 'custom' ? (
+              /* Custom order: flat list with drag handles */
+              <div
+                role="list"
+                aria-label="Brainstorm ideas (custom order)"
+                onDragOver={(e) => e.preventDefault()}
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                  const cards = Array.from(
+                    e.currentTarget.querySelectorAll<HTMLElement>('[data-testid^="idea-card-"]'),
+                  );
+                  if (cards.length === 0) return;
+                  const idx = cards.findIndex((c) => c === document.activeElement || c.contains(document.activeElement));
+                  const next = e.key === 'ArrowDown'
+                    ? Math.min(idx + 1, cards.length - 1)
+                    : Math.max(idx - 1, 0);
+                  if (next !== idx && next >= 0) {
+                    e.preventDefault();
+                    cards[next].focus();
+                  }
+                }}
+              >
+                {displayedFacts.map((fact) => {
+                  const canDrag = !isMultiSelectMode && !loading;
+                  return (
+                    <Fragment key={fact.id}>
+                      {dragOverId === fact.id && !dropBelow && (
+                        <div className="bs-drop-indicator" role="separator" aria-hidden="true" />
+                      )}
+                      <IdeaCard
+                        idea={{
+                          id: fact.id,
+                          title: fact.name,
+                          type: fact.type,
+                          linkedEntities: [
+                            { id: `${fact.id}-entity`, name: fact.name, type: fact.type },
+                          ],
+                          savedPath: fact.savedPath,
+                          updatedAt: fact.updatedAt,
+                          savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+                        }}
+                        body={fact.content || undefined}
+                        isExpanded={expandedFactIds.has(fact.id)}
+                        onToggleExpand={() => toggleFactExpanded(fact.id)}
+                        showDragHandle={canDrag}
+                        isDragging={draggingId === fact.id}
+                        onDragStart={(e) => handleDragStart(e, fact.id)}
+                        onDragOver={(e) => handleDragOver(e, fact.id)}
+                        onDragEnd={handleDragEnd}
+                        onDrop={(e) => handleDrop(e, fact.id)}
+                        metaAction={
+                          fact.savedStatus === 'saving' ? (
+                            <span className="bs-fact-saving">Saving…</span>
+                          ) : fact.savedStatus === 'saved' ? (
+                            <span className="bs-fact-saved-label">Saved ✓</span>
+                          ) : fact.savedStatus === 'pending_review' ? (
+                            <span className="bs-fact-pending-review">Pending review →</span>
+                          ) : fact.savedStatus === 'error' ? (
+                            <span className="bs-fact-save-error">
+                              Failed —{' '}
+                              <button
+                                className="bs-fact-retry-btn"
+                                onClick={() => saveFactToVault(fact.id)}
+                                type="button"
+                              >
+                                retry
+                              </button>
+                            </span>
+                          ) : undefined
+                        }
+                        onOpenDetail={openIdeaDetail}
+                        onChipClick={handleChipClick}
+                        onMenuAction={handleIdeaMenuAction}
+                        isMultiSelect={isMultiSelectMode}
+                        isSelected={selectedIds.has(fact.id)}
+                        onToggleSelect={handleToggleSelect}
+                      />
+                      {dragOverId === fact.id && dropBelow && (
+                        <div className="bs-drop-indicator" role="separator" aria-hidden="true" />
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </div>
             ) : (
+              /* Grouped view for all other sort orders */
               <div
                 role="list"
                 aria-label="Brainstorm ideas"
@@ -1793,6 +2063,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           onClose={handleDetailDrawerClose}
           onSave={handleSaveIdea}
           onChipClick={handleChipClick}
+          onOpenInWritingPanel={detailIdea ? () => void handleOpenInWritingPanel(detailIdea.id) : undefined}
+        />
+      )}
+
+      {scenePickerIdeaId && (
+        <ScenePicker
+          onSelect={(sceneId, sceneTitle) => void handleScenePickerSelect(sceneId, sceneTitle)}
+          onClose={() => setScenePickerIdeaId(null)}
         />
       )}
     </div>

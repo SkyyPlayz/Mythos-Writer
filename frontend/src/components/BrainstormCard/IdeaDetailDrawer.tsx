@@ -118,9 +118,11 @@ export interface IdeaDetailDrawerProps {
   onClose: () => void;
   onSave: (updated: IdeaCardIdea) => void;
   onChipClick?: (chip: IdeaCardChip) => void;
+  /** SKY-1393: triggered when the user wants to open this idea in the writing panel. */
+  onOpenInWritingPanel?: () => void;
 }
 
-export function IdeaDetailDrawer({ idea, onClose, onSave, onChipClick }: IdeaDetailDrawerProps) {
+export function IdeaDetailDrawer({ idea, onClose, onSave, onChipClick, onOpenInWritingPanel }: IdeaDetailDrawerProps) {
   const [title, setTitle] = useState(idea.title);
   const [body, setBody] = useState('');
   const [linkedEntities, setLinkedEntities] = useState(idea.linkedEntities ?? []);
@@ -348,23 +350,37 @@ export function IdeaDetailDrawer({ idea, onClose, onSave, onChipClick }: IdeaDet
           </details>
         </div>
 
-        {/* Footer — only when dirty */}
-        {isDirty && !showDiscard && (
+        {/* Footer — always shown when writing panel CTA is available, or when dirty */}
+        {!showDiscard && (isDirty || !!onOpenInWritingPanel) && (
           <div className="idd-footer">
-            <button
-              type="button"
-              className="idd-btn-secondary"
-              onClick={() => {
-                setTitle(idea.title);
-                setBody('');
-                setLinkedEntities(idea.linkedEntities ?? []);
-              }}
-            >
-              Discard
-            </button>
-            <button type="button" className="idd-btn-accent" onClick={handleSave}>
-              Save
-            </button>
+            {onOpenInWritingPanel && (
+              <button
+                type="button"
+                className="idd-btn-secondary idd-btn-open-writing"
+                data-testid="idd-open-in-writing-panel"
+                onClick={onOpenInWritingPanel}
+              >
+                Open in writing panel
+              </button>
+            )}
+            {isDirty && (
+              <>
+                <button
+                  type="button"
+                  className="idd-btn-secondary"
+                  onClick={() => {
+                    setTitle(idea.title);
+                    setBody('');
+                    setLinkedEntities(idea.linkedEntities ?? []);
+                  }}
+                >
+                  Discard
+                </button>
+                <button type="button" className="idd-btn-accent" onClick={handleSave}>
+                  Save
+                </button>
+              </>
+            )}
           </div>
         )}
       </aside>

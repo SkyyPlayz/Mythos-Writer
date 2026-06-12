@@ -16,6 +16,8 @@ export interface IdeaCardIdea {
   type: Exclude<IdeaCardType, 'scene'>;
   linkedEntities?: IdeaCardChip[];
   savedPath?: string;
+  /** Scene ID this idea is directly linked to (SKY-1393 fast-path). */
+  linkedSceneId?: string;
   updatedAt?: string;
   savedLabel?: string;
 }
@@ -35,6 +37,15 @@ interface IdeaCardProps {
   isExpanded?: boolean;
   /** Called when the chevron is clicked to toggle the preview. */
   onToggleExpand?: () => void;
+  /** Shows a ≡ drag handle and makes the card draggable (custom sort mode only). */
+  showDragHandle?: boolean;
+  /** Wired to the <li> when showDragHandle is true. */
+  onDragStart?: (e: React.DragEvent<HTMLLIElement>) => void;
+  onDragOver?: (e: React.DragEvent<HTMLLIElement>) => void;
+  onDragEnd?: (e: React.DragEvent<HTMLLIElement>) => void;
+  onDrop?: (e: React.DragEvent<HTMLLIElement>) => void;
+  /** Visually dims the card while it is being dragged. */
+  isDragging?: boolean;
 }
 
 const TYPE_LABELS: Record<IdeaCardIdea['type'], string> = {
@@ -110,6 +121,12 @@ export function IdeaCard({
   body,
   isExpanded = false,
   onToggleExpand,
+  showDragHandle = false,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onDrop,
+  isDragging = false,
 }: IdeaCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -181,17 +198,34 @@ export function IdeaCard({
 
   return (
     <li
-      className={`idea-card${!(body && isExpanded) ? ' idea-card-compact' : ''}${isMultiSelect ? ' idea-card-multiselect' : ''}${isSelected ? ' idea-card-selected' : ''}`}
+      className={`idea-card${!(body && isExpanded) ? ' idea-card-compact' : ''}${isMultiSelect ? ' idea-card-multiselect' : ''}${isSelected ? ' idea-card-selected' : ''}${showDragHandle ? ' idea-card--draggable' : ''}${isDragging ? ' idea-card--dragging' : ''}`}
       data-testid={`idea-card-${idea.id}`}
       style={{ ...CARD_STYLE, ...(body && isExpanded ? { height: undefined } : {}) }}
       aria-label={`${idea.title}, ${TYPE_LABELS[idea.type]}`}
+      draggable={showDragHandle}
       onClick={handleCardClick}
       onKeyDown={handleCardKeyDown}
       onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDrop={onDrop}
       tabIndex={0}
     >
+      {showDragHandle && (
+        <button
+          className="idea-card-drag-handle"
+          type="button"
+          aria-label="Drag to reorder"
+          aria-roledescription="drag handle"
+          tabIndex={-1}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          ≡
+        </button>
+      )}
       {isMultiSelect && (
         <input
           type="checkbox"

@@ -261,14 +261,20 @@
 
 /* ── Footer ────────────────────────────────────────────────────────── */
 .idd-footer {
-  height: 48px;
   min-height: 48px;
   border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 var(--space-4, 16px);
+  justify-content: space-between;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
   gap: var(--space-3, 12px);
+  flex-wrap: wrap;
+}
+
+.idd-btn-open-writing {
+  margin-right: auto;
+  font-size: var(--text-xs, 12px);
+  padding: 4px 10px;
 }
 
 /* ── Buttons ────────────────────────────────────────────────────────── */
@@ -416,4 +422,14 @@
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 11px;
+}
+
+/* ── Scene picker ─────────────────────────────────────────────────── */
+.scene-picker-meta {
+  color: var(--text-muted, #a0aec0);
+  font-size: var(--text-xs, 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }

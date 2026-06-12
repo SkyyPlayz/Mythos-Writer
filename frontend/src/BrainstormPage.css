@@ -1334,3 +1334,13 @@
 .bs-delete-confirm-ok:hover {
   opacity: 0.9;
 }
+
+/* Custom-order drag-and-drop indicator */
+.bs-drop-indicator {
+  height: 2px;
+  margin: 2px 4px;
+  background: var(--accent, var(--neon-cyan));
+  border-radius: 1px;
+  pointer-events: none;
+  flex-shrink: 0;
+}

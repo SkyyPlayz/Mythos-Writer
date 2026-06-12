@@ -1251,11 +1251,11 @@ describe('BrainstormPage — sort + filter controls (Wave 3.2)', () => {
     expect(screen.getByTestId('bs-filter-select')).toHaveValue('all');
   });
 
-  it('sort dropdown has all four options', async () => {
+  it('sort dropdown includes core sort options', async () => {
     await renderWithFacts();
     const select = screen.getByTestId('bs-sort-select');
     const options = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
-    expect(options).toEqual(['newest', 'oldest', 'by-type', 'by-status']);
+    expect(options).toEqual(expect.arrayContaining(['newest', 'oldest', 'by-type', 'by-status']));
   });
 
   it('filter dropdown has all five options', async () => {
@@ -1381,5 +1381,168 @@ describe('BrainstormPage — chip-click entity navigation (SKY-1264)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
 
     await waitFor(() => expect(screen.getByText('Entity not found in vault')).toBeInTheDocument());
+  });
+});
+
+describe('BrainstormPage — open-in-writing-panel (SKY-1393)', () => {
+  const MANIFEST_WITH_SCENE = {
+    stories: [{ title: 'My Story', chapters: [{ title: 'Ch 1', scenes: [{ id: 'scene-1', title: 'Opening Scene' }] }] }],
+  };
+  const MANIFEST_EMPTY = { stories: [] };
+
+  function buildApiWithScenes(overrides: Record<string, unknown> = {}) {
+    return buildApi({
+      readManifest: vi.fn().mockResolvedValue(MANIFEST_WITH_SCENE),
+      sceneAppendBrainstormNote: vi.fn().mockResolvedValue({ appended: true }),
+      ...overrides,
+    });
+  }
+
+  async function renderWithFact(
+    props: { onNavigateToScene?: (id: string) => Promise<boolean> } = {},
+    apiOverrides: Record<string, unknown> = {},
+  ) {
+    (window as unknown as { api: unknown }).api = buildApiWithScenes(apiOverrides);
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'written',
+      path: 'Characters/Lyra.md',
+      suggestionId: 'sug-1',
+      reason: 'default-layout',
+    });
+    render(<BrainstormPage onClose={() => {}} {...props} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'tell me about the hero' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Lyra Ashveil|A young mage]']);
+    await waitFor(() => expect(screen.getAllByText('Lyra Ashveil').length).toBeGreaterThan(0));
+  }
+
+  it('context menu shows "Open in writing panel" item', async () => {
+    await renderWithFact();
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    expect(screen.getByTestId('menu-item-open-in-writing-panel')).toBeInTheDocument();
+  });
+
+  it('opens scene picker when no linkedSceneId and scenes exist', async () => {
+    await renderWithFact();
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() => expect(screen.getByTestId('scene-picker')).toBeInTheDocument());
+  });
+
+  it('picker selection calls sceneAppendBrainstormNote + navigate + toast', async () => {
+    const onNavigateToScene = vi.fn().mockResolvedValue(true);
+    await renderWithFact({ onNavigateToScene });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() => expect(screen.getByTestId('scene-picker')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('scene-picker-item-scene-1'));
+    });
+
+    await waitFor(() => {
+      expect((window as unknown as { api: { sceneAppendBrainstormNote: ReturnType<typeof vi.fn> } }).api.sceneAppendBrainstormNote)
+        .toHaveBeenCalledWith('scene-1', expect.any(String));
+      expect(onNavigateToScene).toHaveBeenCalledWith('scene-1');
+      expect(screen.getByText('Opened in Opening Scene.')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "No scenes found" toast when manifest has no scenes', async () => {
+    await renderWithFact({}, {
+      readManifest: vi.fn().mockResolvedValue(MANIFEST_EMPTY),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() =>
+      expect(screen.getByText('No scenes found. Create a scene first.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('scene-picker')).not.toBeInTheDocument();
+  });
+
+  it('shows "No scenes found" toast when readManifest throws', async () => {
+    await renderWithFact({}, {
+      readManifest: vi.fn().mockRejectedValue(new Error('IPC error')),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() =>
+      expect(screen.getByText('No scenes found. Create a scene first.')).toBeInTheDocument(),
+    );
+  });
+
+  it('shows error toast when sceneAppendBrainstormNote throws after picker selection', async () => {
+    const onNavigateToScene = vi.fn().mockResolvedValue(true);
+    await renderWithFact({ onNavigateToScene }, {
+      sceneAppendBrainstormNote: vi.fn().mockRejectedValue(new Error('IPC error')),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() => expect(screen.getByTestId('scene-picker')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('scene-picker-item-scene-1'));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText('Failed to open in writing panel.')).toBeInTheDocument(),
+    );
+  });
+
+  it('IdeaDetailDrawer shows "Open in writing panel" CTA', async () => {
+    await renderWithFact();
+    // Open the detail drawer via card title click
+    fireEvent.click(screen.getByRole('button', { name: 'Open idea detail for Lyra Ashveil' }));
+    await waitFor(() => expect(screen.getByTestId('idea-detail-drawer')).toBeInTheDocument());
+    expect(screen.getByTestId('idd-open-in-writing-panel')).toBeInTheDocument();
+  });
+
+  it('fast-path: linkedSceneId skips picker and navigates directly', async () => {
+    const DRAFT_KEY = 'brainstorm:draft';
+    const onNavigateToScene = vi.fn().mockResolvedValue(true);
+    (window as unknown as { api: unknown }).api = buildApiWithScenes();
+    // Seed a fact with linkedSceneId via draft recovery
+    const draft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [{ role: 'assistant', text: 'Here is a fact.' }],
+      facts: [{
+        id: 'fact-linked-1',
+        type: 'character',
+        name: 'Zara',
+        content: 'A bold warrior',
+        savedStatus: 'saved',
+        savedPath: 'Characters/Zara.md',
+        linkedSceneId: 'scene-1',
+        createdAt: Date.now(),
+      }],
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    render(<BrainstormPage onClose={() => {}} onNavigateToScene={onNavigateToScene} />);
+
+    await waitFor(() => expect(screen.getAllByText('Zara').length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Zara' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+
+    await waitFor(() => {
+      expect(onNavigateToScene).toHaveBeenCalledWith('scene-1');
+      expect(screen.queryByTestId('scene-picker')).not.toBeInTheDocument();
+    });
   });
 });

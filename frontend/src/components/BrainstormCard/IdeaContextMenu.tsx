@@ -16,6 +16,7 @@ interface Props {
 
 const BASE_ITEMS: MenuItem[] = [
   { id: 'edit', label: 'Edit' },
+  { id: 'open-in-writing-panel', label: 'Open in writing panel' },
   { id: 'delete', label: 'Delete' },
   { id: 'link-entity', label: 'Link entity' },
   { id: 'add-to-scene', label: 'Add to scene draft' },
