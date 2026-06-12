@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
 import './OnboardingWizard.css';
 
@@ -40,6 +40,9 @@ type Api = {
     vaultName?: string;
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
+  templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
+  templateDelete: (id: string) => Promise<{ ok: true } | { error: string }>;
+  templateDuplicate: (id: string) => Promise<{ ok: true; id: string } | { error: string }>;
   vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
 };
 
@@ -174,6 +177,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateLoadError, setTemplateLoadError] = useState('');
   const [loadingTemplates, setLoadingTemplates] = useState(true);
+  // SKY-1399: template management state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Step 2 form state
   const [storyTitle, setStoryTitle] = useState('');
@@ -206,18 +213,25 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }, [step]);
 
+  // SKY-1397: reload templates every time step1b is shown (not just first visit)
+  const reloadTemplates = useCallback(() => {
+    setLoadingTemplates(true);
+    api().templateList().then((res) => {
+      if ('templates' in res) {
+        setTemplates(res.templates);
+        // Keep selection stable if the selected template still exists
+        setSelectedTemplateId((prev) =>
+          prev && res.templates.some((t) => t.id === prev) ? prev : null,
+        );
+      }
+    }).catch(() => {
+      setTemplateLoadError("Bundled templates couldn't be loaded. You can still create a blank story.");
+    }).finally(() => setLoadingTemplates(false));
+  }, []);
+
   // Load templates when step1b mounts
   useEffect(() => {
-    if (step === 'step1b' && templates.length === 0) {
-      setLoadingTemplates(true);
-      api().templateList().then((res) => {
-        if ('templates' in res) setTemplates(res.templates);
-      }).catch(() => {
-        setTemplateLoadError("Bundled templates couldn't be loaded. You can still create a blank story.");
-      }).finally(() => setLoadingTemplates(false));
-    } else if (step === 'step1b') {
-      setLoadingTemplates(false);
-    }
+    if (step === 'step1b') reloadTemplates();
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Keyboard helpers ───────────────────────────────────────────────────────
@@ -495,6 +509,50 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         />
       )}
 
+      {/* SKY-1399: Delete template confirm */}
+      {deletingId && (() => {
+        const tmpl = templates.find((t) => t.id === deletingId);
+        return (
+          <div
+            className="gs-confirm-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gs-template-delete-title"
+            data-testid="template-delete-confirm-dialog"
+          >
+            <div className="gs-confirm">
+              <h3 className="gs-confirm__title" id="gs-template-delete-title">Delete template?</h3>
+              <p className="gs-confirm__body">
+                &ldquo;{tmpl?.name ?? 'This template'}&rdquo; will be permanently removed. This cannot be undone.
+              </p>
+              <div className="gs-confirm__actions">
+                <button
+                  className="btn-primary"
+                  type="button"
+                  onClick={() => setDeletingId(null)}
+                  data-testid="template-delete-cancel"
+                >
+                  Keep it
+                </button>
+                <button
+                  className="btn-ghost btn-destructive"
+                  type="button"
+                  data-testid="template-delete-confirm"
+                  onClick={async () => {
+                    await api().templateDelete(deletingId);
+                    if (selectedTemplateId === deletingId) setSelectedTemplateId(null);
+                    setDeletingId(null);
+                    reloadTemplates();
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Step 1: Choose your starting point ── */}
       {step === 'step1' && (
         <div className="gs-modal" data-testid="screen-step1">
@@ -635,23 +693,98 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 ))}
               </div>
               <>
-                <p id="template-picker-user-heading" className="gs-section-divider">Your Templates</p>
+                <p id="template-picker-user-heading" className="gs-section-divider" data-testid="user-templates-heading">
+                  Your Templates
+                  {userTemplates.length > 0 && (
+                    <span className="gs-section-divider__count" data-testid="user-template-count">
+                      {' '}({userTemplates.length})
+                    </span>
+                  )}
+                </p>
                 {userTemplates.length > 0 ? (
                   <div role="radiogroup" aria-labelledby="template-picker-user-heading" className="gs-template-grid" onKeyDown={handleGridArrowKeys}>
                     {userTemplates.map((tmpl, i) => (
-                      <TemplateCard
+                      <div
                         key={tmpl.id}
-                        template={tmpl}
-                        onSelect={() => setSelectedTemplateId(tmpl.id)}
-                        testId={`template-card-${tmpl.id}`}
-                        isChecked={selectedTemplateId === tmpl.id}
+                        role="radio"
                         tabIndex={selectedTemplateId === tmpl.id || (!hasUserSelection && i === 0) ? 0 : -1}
-                      />
+                        className={`gs-template-card gs-template-card--user${selectedTemplateId === tmpl.id ? ' gs-template-card--selected' : ''}`}
+                        onClick={() => { if (renamingId !== tmpl.id) setSelectedTemplateId(tmpl.id); }}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && renamingId !== tmpl.id) {
+                            e.preventDefault();
+                            setSelectedTemplateId(tmpl.id);
+                          }
+                        }}
+                        aria-checked={selectedTemplateId === tmpl.id}
+                        data-testid={`template-card-${tmpl.id}`}
+                      >
+                        {renamingId === tmpl.id ? (
+                          <input
+                            autoFocus
+                            className="gs-template-card__rename-input"
+                            value={renameValue}
+                            maxLength={80}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Escape') { setRenamingId(null); return; }
+                              if (e.key === 'Enter') {
+                                const v = renameValue.trim();
+                                if (!v) { setRenamingId(null); return; }
+                                await api().templateRename(tmpl.id, v);
+                                setRenamingId(null);
+                                reloadTemplates();
+                              }
+                            }}
+                            onBlur={async () => {
+                              const v = renameValue.trim();
+                              if (v && v !== tmpl.name) await api().templateRename(tmpl.id, v);
+                              setRenamingId(null);
+                              reloadTemplates();
+                            }}
+                            data-testid={`template-rename-input-${tmpl.id}`}
+                            aria-label={`Rename template ${tmpl.name}`}
+                          />
+                        ) : (
+                          <span className="gs-template-card__name">{tmpl.name}</span>
+                        )}
+                        <span className="gs-template-card__desc">{tmpl.description}</span>
+                        <div className="gs-template-card__actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="gs-template-card__action-btn"
+                            title="Rename"
+                            aria-label={`Rename ${tmpl.name}`}
+                            data-testid={`template-rename-btn-${tmpl.id}`}
+                            onClick={() => { setRenamingId(tmpl.id); setRenameValue(tmpl.name); }}
+                          >&#x270E;</button>
+                          <button
+                            type="button"
+                            className="gs-template-card__action-btn"
+                            title="Duplicate"
+                            aria-label={`Duplicate ${tmpl.name}`}
+                            data-testid={`template-duplicate-btn-${tmpl.id}`}
+                            onClick={async () => {
+                              await api().templateDuplicate(tmpl.id);
+                              reloadTemplates();
+                            }}
+                          >&#x29C9;</button>
+                          <button
+                            type="button"
+                            className="gs-template-card__action-btn gs-template-card__action-btn--destructive"
+                            title="Delete"
+                            aria-label={`Delete ${tmpl.name}`}
+                            data-testid={`template-delete-btn-${tmpl.id}`}
+                            onClick={() => setDeletingId(tmpl.id)}
+                          >&#x1F5D1;</button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="gs-template-empty-hint" data-testid="template-empty-hint">
-                    No saved templates yet &#x2014; use &#x2018;Save as template&#x2019; from the vault menu after you scaffold a story.
+                  <p className="gs-template-empty-hint" data-testid="user-templates-empty">
+                    No custom templates yet &#x2014; use &#x2018;Save as template&#x2019; from the vault menu after you scaffold a story.
                   </p>
                 )}
               </>
