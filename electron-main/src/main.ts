@@ -212,7 +212,7 @@ import {
 } from './voiceGate.js';
 import { buildVoiceProviderSwitchEvents } from './voiceTelemetry.js';
 import { saveSnapshot, listSnapshots, getSnapshot, deleteSnapshot, deleteAllSnapshotsForScene, deleteAllSnapshotsVault } from './snapshots.js';
-import { saveVersion, listVersions, getVersion, rollbackVersion } from './versions.js';
+import { saveVersion, listVersions, getVersion, rollbackVersion, pruneAllVersions } from './versions.js';
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
 import {
   readVaultFile,
@@ -578,6 +578,15 @@ function ensureVaultDir() {
       }
     }
   }
+
+  // SKY-1464: run version-draft pruner on every vault open.
+  // Non-fatal: a pruning failure must not block vault access.
+  try {
+    const { versions: vRetention } = loadAppSettings();
+    if (vRetention) {
+      pruneAllVersions(vaultRoot, vRetention);
+    }
+  } catch { /* non-fatal */ }
 }
 
 // SKY-20: helpers used by the brainstorm routing IPC handlers below. Kept
@@ -2202,9 +2211,11 @@ const handlers: IpcHandlers = {
     } catch { /* new file — nothing to snapshot or preserve */ }
     if (priorProse !== null) {
       try {
+        const versionRetention = loadAppSettings().versions;
         saveVersion(getVaultRoot(), found.id, priorProse, {
           chapterRelPath,
           intent: payload.intent ?? 'save',
+          retention: versionRetention,
         });
       } catch { /* snapshot failure is non-fatal — save still proceeds */ }
     }
