@@ -665,7 +665,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_DUPLICATE]: (payload: TemplateDuplicatePayload) => TemplateDuplicateResponse | { error: string };
   // SKY-1403: export / import .mythostemplate files
   [IPC_CHANNELS.TEMPLATE_EXPORT]: (payload: TemplateExportPayload) => Promise<TemplateExportResponse>;
-  [IPC_CHANNELS.TEMPLATE_IMPORT]: (payload: never) => Promise<TemplateImportResponse>;
+  // SKY-1405: payload.filePath allows drag-drop to bypass the open dialog
+  [IPC_CHANNELS.TEMPLATE_IMPORT]: (payload: TemplateImportPayload | undefined) => Promise<TemplateImportResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -3256,6 +3257,11 @@ export interface TemplateExportPayload {
 export type TemplateExportResponse =
   | { ok: true; cancelled?: boolean }
   | { error: string };
+
+// SKY-1405: optional filePath lets drag-drop bypass the open-file dialog
+export interface TemplateImportPayload {
+  filePath?: string;
+}
 
 export type TemplateImportResponse =
   | { ok: true; template?: TemplateDefinition; cancelled?: boolean }

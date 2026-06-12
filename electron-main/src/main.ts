@@ -4590,7 +4590,11 @@ const handlers: IpcHandlers = {
     return exportTemplate(app.getPath('userData'), id, res.filePath);
   },
 
-  [IPC_CHANNELS.TEMPLATE_IMPORT]: async (_payload: never): Promise<import('./ipc.js').TemplateImportResponse> => {
+  [IPC_CHANNELS.TEMPLATE_IMPORT]: async (payload: import('./ipc.js').TemplateImportPayload | undefined): Promise<import('./ipc.js').TemplateImportResponse> => {
+    // SKY-1405: drag-drop passes filePath directly; file-picker button passes undefined
+    if (payload?.filePath) {
+      return importTemplate(app.getPath('userData'), payload.filePath);
+    }
     const res = await dialog.showOpenDialog({
       title: 'Import Template',
       filters: [{ name: 'Mythos Template', extensions: ['mythostemplate'] }],
