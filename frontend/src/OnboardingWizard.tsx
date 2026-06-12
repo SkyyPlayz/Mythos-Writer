@@ -181,6 +181,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Guard: prevents onBlur from calling templateRename a second time after Enter already committed it
+  const templateRenamedRef = useRef(false);
   // SKY-1403: export / import toast feedback
   const [templateToast, setTemplateToast] = useState<string | null>(null);
   const templateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -747,12 +749,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                               if (e.key === 'Enter') {
                                 const v = renameValue.trim();
                                 if (!v) { setRenamingId(null); return; }
+                                templateRenamedRef.current = true;
                                 await api().templateRename(tmpl.id, v);
                                 setRenamingId(null);
                                 reloadTemplates();
                               }
                             }}
                             onBlur={async () => {
+                              if (templateRenamedRef.current) { templateRenamedRef.current = false; return; }
                               const v = renameValue.trim();
                               if (v && v !== tmpl.name) await api().templateRename(tmpl.id, v);
                               setRenamingId(null);
