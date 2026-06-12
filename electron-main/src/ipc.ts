@@ -299,7 +299,6 @@ export const IPC_CHANNELS = {
   TEMPLATE_LIST: 'template:list',
   TEMPLATE_SCAFFOLD: 'template:scaffold',
   TEMPLATE_SAVE_AS: 'template:saveAs',
-  TEMPLATE_DELETE: 'template:delete',
   // SKY-190: Note Templates — per-note variable/prompt/pick templates
   NOTE_TEMPLATE_LIST: 'note-template:list',
 
@@ -579,8 +578,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_LIST]: (payload: never) => TemplateListResponse;
   [IPC_CHANNELS.TEMPLATE_SCAFFOLD]: (payload: TemplateScaffoldPayload) => Promise<TemplateScaffoldResponse | { error: string }>;
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: TemplateSaveAsPayload) => TemplateSaveAsResponse | { error: string };
-  // SKY-1304: delete user template (AC-6)
-  [IPC_CHANNELS.TEMPLATE_DELETE]: (payload: TemplateDeletePayload) => TemplateDeleteResponse | { error: string };
   // SKY-190: Note Templates
   [IPC_CHANNELS.NOTE_TEMPLATE_LIST]: (payload: NoteTemplateListPayload) => NoteTemplateListResponse;
   // SKY-204: Daily Notes
@@ -2842,14 +2839,6 @@ export interface TemplateSaveAsPayload {
 export type TemplateSaveAsResponse =
   | { ok: true; id: string }
   | { error: string };
-
-export interface TemplateDeletePayload {
-  templateId: string;
-}
-
-export interface TemplateDeleteResponse {
-  ok: true;
-}
 
 // ─── SKY-190: Note Templates ──────────────────────────────────────────────────
 

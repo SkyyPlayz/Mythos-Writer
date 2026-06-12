@@ -536,9 +536,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('template:scaffold', { templateId, parentToken }),
   templateSaveAs: (name: string) =>
     ipcRenderer.invoke('template:saveAs', { name }),
-  // SKY-1304: delete user template (AC-6)
-  templateDelete: (templateId: string) =>
-    ipcRenderer.invoke('template:delete', { templateId }),
   // SKY-190: Note Templates
   noteTemplateList: (kind?: string) =>
     ipcRenderer.invoke('note-template:list', { kind }),
