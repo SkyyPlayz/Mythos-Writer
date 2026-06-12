@@ -19,10 +19,13 @@ import {
 import {
   openDb,
   closeDb,
+  getDb,
   upsertSuggestion,
   getSuggestion,
   listSuggestions,
+  insertProposalTelemetry,
   type DbSuggestion,
+  type DbProposalTelemetry,
 } from './db.js';
 import { parseFrontmatter } from './vault.js';
 
@@ -817,5 +820,115 @@ describe('DB migration v12 — NoteProposal columns survive on existing rows', (
     expect(row!.source_turn_id).toBe('turn-abc');
     expect(row!.destination_path).toBe('characters/aria.md');
     expect(row!.note_kind).toBe('character');
+  });
+});
+
+// ─── DB migration v13 — proposal_telemetry ───
+
+describe('DB migration v13 — proposal_telemetry table', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts and round-trips a confirm telemetry entry', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-confirm-1',
+      proposal_id: 'prop-abc',
+      kind: 'character',
+      extraction_confidence: 0.92,
+      decision: 'confirm',
+      time_to_decide_ms: 1500,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+
+    const row = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .get('tel-confirm-1') as DbProposalTelemetry | undefined;
+    expect(row).not.toBeUndefined();
+    expect(row!.proposal_id).toBe('prop-abc');
+    expect(row!.kind).toBe('character');
+    expect(row!.extraction_confidence).toBeCloseTo(0.92);
+    expect(row!.decision).toBe('confirm');
+    expect(row!.time_to_decide_ms).toBe(1500);
+  });
+
+  it('inserts an edit_and_confirm entry', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-edit-1',
+      proposal_id: 'prop-edit',
+      kind: 'location',
+      extraction_confidence: 0.75,
+      decision: 'edit_and_confirm',
+      time_to_decide_ms: 8200,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+
+    const row = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .get('tel-edit-1') as DbProposalTelemetry | undefined;
+    expect(row!.decision).toBe('edit_and_confirm');
+    expect(row!.kind).toBe('location');
+  });
+
+  it('inserts a reject entry', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-reject-1',
+      proposal_id: 'prop-rej',
+      kind: 'faction',
+      extraction_confidence: 0.61,
+      decision: 'reject',
+      time_to_decide_ms: 500,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+
+    const row = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .get('tel-reject-1') as DbProposalTelemetry | undefined;
+    expect(row!.decision).toBe('reject');
+    expect(row!.time_to_decide_ms).toBe(500);
+  });
+
+  it('INSERT OR IGNORE — duplicate id does not throw', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-dup',
+      proposal_id: 'prop-dup',
+      kind: 'inbox',
+      extraction_confidence: 0.7,
+      decision: 'confirm',
+      time_to_decide_ms: 1000,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+    expect(() => insertProposalTelemetry(entry)).not.toThrow();
+    const rows = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .all('tel-dup') as DbProposalTelemetry[];
+    expect(rows).toHaveLength(1);
+  });
+
+  it('pre-v13 DB state (no proposal_telemetry table) is safe after migration', () => {
+    // Re-opening the same dir should handle the migration idempotently
+    closeDb();
+    openDb(tmpDir);
+    expect(() => insertProposalTelemetry({
+      id: 'tel-reopen',
+      proposal_id: 'prop-reopen',
+      kind: 'scene_card',
+      extraction_confidence: 0.88,
+      decision: 'confirm',
+      time_to_decide_ms: 300,
+      created_at: new Date().toISOString(),
+    })).not.toThrow();
   });
 });

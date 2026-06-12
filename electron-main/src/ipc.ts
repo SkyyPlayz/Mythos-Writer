@@ -3336,17 +3336,27 @@ export interface BrainstormGetSessionRejectionsResponse {
 export type ProposalDecision = 'confirm' | 'edit_and_confirm' | 'reject';
 
 export interface BrainstormProposalConfirmPayload {
+  /** Stable UUID of the NoteProposal being confirmed. */
   proposalId: string;
+  /** The kind, used for telemetry. */
   kind: BrainstormFactType;
+  /** Confidence at extraction time. */
   extractionConfidence: number;
+  /** ms from card appearance to user action (measured by the renderer). */
   timeToDecideMs: number;
+  /** 'confirm' for an unedited accept; 'edit_and_confirm' when body/title was changed. */
   decision: 'confirm' | 'edit_and_confirm';
 }
 
 export interface BrainstormProposalRejectPayload {
+  /** Stable UUID of the NoteProposal being rejected. */
   proposalId: string;
+  /** Entity title — added to the session rejection log to suppress re-extraction. */
   title: string;
+  /** The kind, used for telemetry. */
   kind: BrainstormFactType;
+  /** Confidence at extraction time. */
   extractionConfidence: number;
+  /** ms from card appearance to user action (measured by the renderer). */
   timeToDecideMs: number;
 }

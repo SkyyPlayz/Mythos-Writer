@@ -200,6 +200,7 @@ import {
   listLinkedSceneIds,
   deleteStaleSceneMentionLinks,
   insertContinuityDriftLog,
+  insertProposalTelemetry,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -5267,14 +5268,20 @@ Rules:
     ),
   );
 
+  // brainstorm:proposals:confirm — renderer confirms (or edit-confirms) a proposal.
+  // Updates the suggestion status and logs decision telemetry.
   ipcMain.handle(
     IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM,
     wrapIpcHandler(
       IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM,
       (event, payload: import('./ipc.js').BrainstormProposalConfirmPayload) => {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+
         const status = payload.decision === 'edit_and_confirm' ? 'applied' : 'accepted';
-        try { updateSuggestionStatus(payload.proposalId, status, new Date().toISOString()); } catch { /* non-fatal */ }
+        try {
+          updateSuggestionStatus(payload.proposalId, status, new Date().toISOString());
+        } catch { /* non-fatal if row doesn't exist yet */ }
+
         try {
           insertProposalTelemetry({
             id: crypto.randomUUID(),
@@ -5286,19 +5293,27 @@ Rules:
             created_at: new Date().toISOString(),
           });
         } catch { /* non-fatal */ }
+
         return { ok: true };
       },
     ),
   );
 
+  // brainstorm:proposals:reject — renderer rejects a proposal.
+  // Adds the entity title to the session rejection log and logs decision telemetry.
   ipcMain.handle(
     IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT,
     wrapIpcHandler(
       IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT,
       (event, payload: import('./ipc.js').BrainstormProposalRejectPayload) => {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+
         if (payload.title) sessionRejectionLog.add(payload.title);
-        try { updateSuggestionStatus(payload.proposalId, 'rejected'); } catch { /* non-fatal */ }
+
+        try {
+          updateSuggestionStatus(payload.proposalId, 'rejected');
+        } catch { /* non-fatal if row doesn't exist yet */ }
+
         try {
           insertProposalTelemetry({
             id: crypto.randomUUID(),
@@ -5310,6 +5325,7 @@ Rules:
             created_at: new Date().toISOString(),
           });
         } catch { /* non-fatal */ }
+
         return { ok: true };
       },
     ),

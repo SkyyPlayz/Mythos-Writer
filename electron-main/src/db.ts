@@ -483,6 +483,21 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 19');
   }
+
+  if (currentVersion < 13) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS proposal_telemetry (
+        id                   TEXT PRIMARY KEY,
+        proposal_id          TEXT NOT NULL,
+        kind                 TEXT NOT NULL,
+        extraction_confidence REAL NOT NULL,
+        decision             TEXT NOT NULL,
+        time_to_decide_ms    INTEGER NOT NULL,
+        created_at           TEXT NOT NULL
+      );
+    `);
+    db.exec('PRAGMA user_version = 13');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -826,6 +841,31 @@ export function insertManifestMigrationLog(entry: DbManifestMigrationLog): void 
          (id, manifest_path, from_version, to_version, backup_path, created_at)
        VALUES
          (@id, @manifest_path, @from_version, @to_version, @backup_path, @created_at)`
+    )
+    .run(entry as unknown as Record<string, SQLInputValue>);
+}
+
+// ─── Proposal telemetry (SKY-1483 v13) ───
+
+export type ProposalDecision = 'confirm' | 'edit_and_confirm' | 'reject';
+
+export interface DbProposalTelemetry {
+  id: string;
+  proposal_id: string;
+  kind: string;
+  extraction_confidence: number;
+  decision: ProposalDecision;
+  time_to_decide_ms: number;
+  created_at: string;
+}
+
+export function insertProposalTelemetry(entry: DbProposalTelemetry): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO proposal_telemetry
+         (id, proposal_id, kind, extraction_confidence, decision, time_to_decide_ms, created_at)
+       VALUES
+         (@id, @proposal_id, @kind, @extraction_confidence, @decision, @time_to_decide_ms, @created_at)`
     )
     .run(entry as unknown as Record<string, SQLInputValue>);
 }
