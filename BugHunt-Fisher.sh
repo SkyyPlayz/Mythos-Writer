@@ -203,17 +203,6 @@ if [[ -d .git ]]; then
   done < <(git diff --name-only HEAD~1 2>/dev/null | head -n 3 || true)
 fi
 
-# Probe 3: always keep one concrete edge-case issue for the day if available.
-if (( ${#findings[@]} < 3 )); then
-  add_finding \
-    "Validate empty-state handling in critical flows" \
-    "Add regression coverage for empty, null, and malformed payloads in recent high-traffic UI/runtime paths." \
-    "Exercise an empty vault/project, null optional metadata, and malformed markdown/frontmatter through the nearest critical flow." \
-    "The app presents a stable empty state, preserves valid data, and rejects malformed input with a recoverable error." \
-    "Daily intake did not find explicit regression evidence covering these edge cases." \
-    "Add focused tests for empty, null, and malformed payload handling in the selected flow."
-fi
-
 if (( ${#findings[@]} == 0 )); then
   echo "✅ No findings generated from this lightweight pass."
 else

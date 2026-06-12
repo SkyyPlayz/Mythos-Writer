@@ -23,4 +23,5 @@ Produce 1 to 3 evidence-backed issue candidates per run with enough context for 
 
 - Emit findings in `daily_bug_hunt_<YYYYMMDD>.md`.
 - Keep finding count capped at 3.
+- 0 findings is a valid outcome; do not pad.
 - Append a machine-readable JSON artifact for downstream automation.
