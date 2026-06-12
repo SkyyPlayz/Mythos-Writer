@@ -845,3 +845,130 @@ describe('deleteUserTemplate', () => {
     expect(listTemplates(appData).length).toBe(BUNDLED_TEMPLATES.length);
   });
 });
+
+// ─── SKY-1462: Regression tests for custom template lifecycle ───────────────
+
+describe('renameTemplate — regression: persistence across restart', () => {
+  it('renamed template survives JSON round-trip and file reload', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'Original Name');
+
+    // Rename the template
+    renameTemplate(appData, id, 'New Name');
+
+    // Simulate restart by reloading from disk
+    const reloaded = loadUserTemplates(appData);
+    const found = reloaded.find((t) => t.id === id);
+    expect(found?.name).toBe('New Name');
+  });
+
+  it('only the name field changes; structure, id, and timestamps preserved', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'My Template');
+    const before = loadUserTemplates(appData).find((t) => t.id === id)!;
+
+    renameTemplate(appData, id, 'Renamed');
+    const after = loadUserTemplates(appData).find((t) => t.id === id)!;
+
+    expect(after.id).toBe(before.id);
+    expect(after.story).toEqual(before.story);
+    expect(after.notes).toEqual(before.notes);
+    expect(after.savedAt).toBe(before.savedAt);
+    expect(after.name).not.toBe(before.name);
+  });
+});
+
+describe('deleteTemplate — regression: persistence across restart', () => {
+  it('deleted template does not reappear after reload from disk', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'To Delete');
+    expect(loadUserTemplates(appData).some((t) => t.id === id)).toBe(true);
+
+    deleteTemplate(appData, id);
+
+    // Simulate restart
+    const reloaded = loadUserTemplates(appData);
+    expect(reloaded.some((t) => t.id === id)).toBe(false);
+  });
+
+  it('bundled templates cannot be deleted (guard via id prefix check)', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const bundledTemplate = BUNDLED_TEMPLATES[0];
+
+    // Bundled templates have id starting with 'bundled:'
+    // Attempting to delete by id should fail because they're never in user templates dir
+    expect(() => deleteTemplate(appData, bundledTemplate.id)).toThrow('Template not found');
+  });
+});
+
+describe('duplicateTemplate — regression: " copy" suffix collision', () => {
+  it('when " copy" already exists, next duplicate gets " copy 2"', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    // Manually seed two templates: "Base" and "Base copy"
+    const storyRoot = path.join(appData, 'story');
+    const notesRoot = path.join(appData, 'notes');
+    fs.mkdirSync(path.join(storyRoot, 'M'), { recursive: true });
+    fs.mkdirSync(notesRoot, { recursive: true });
+    const id1 = saveAsTemplate(storyRoot, notesRoot, 'Base', appData);
+    const id2 = saveAsTemplate(storyRoot, notesRoot, 'Base copy', appData);
+
+    // Now duplicate the original "Base" template
+    const id3 = duplicateTemplate(appData, id1);
+
+    const templates = loadUserTemplates(appData);
+    const dup = templates.find((t) => t.id === id3);
+    // Should be "Base copy 2" or similar (the next available suffix)
+    expect(dup?.name).toMatch(/Base copy/);
+    expect(dup?.name).not.toBe('Base copy');
+  });
+
+  it('persists correctly after multiple duplicate operations', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'Template');
+    const copy1Id = duplicateTemplate(appData, id);
+    const copy2Id = duplicateTemplate(appData, copy1Id);
+
+    // Reload and verify all three exist
+    const reloaded = loadUserTemplates(appData);
+    expect(reloaded.some((t) => t.id === id && t.name === 'Template')).toBe(true);
+    expect(reloaded.some((t) => t.id === copy1Id && t.name === 'Template copy')).toBe(true);
+    expect(reloaded.some((t) => t.id === copy2Id && t.name === 'Template copy copy')).toBe(true);
+  });
+});
+
+describe('Template lifecycle — invariant: count consistency', () => {
+  it('listTemplates count equals bundled + user templates', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id1 = seedTemplate(appData, 'User 1');
+    const id2 = seedTemplate(appData, 'User 2');
+
+    const all = listTemplates(appData);
+    const userCount = all.filter((t) => t.isUserTemplate).length;
+    const bundledCount = all.filter((t) => !t.isUserTemplate).length;
+
+    expect(userCount).toBe(2);
+    expect(bundledCount).toBe(BUNDLED_TEMPLATES.length);
+    expect(all.length).toBe(2 + BUNDLED_TEMPLATES.length);
+  });
+
+  it('count remains consistent after rename, delete, duplicate', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id1 = seedTemplate(appData, 'A');
+    const id2 = seedTemplate(appData, 'B');
+
+    // Initial: 2 user templates
+    expect(listTemplates(appData).filter((t) => t.isUserTemplate).length).toBe(2);
+
+    // Delete one
+    deleteTemplate(appData, id1);
+    expect(listTemplates(appData).filter((t) => t.isUserTemplate).length).toBe(1);
+
+    // Duplicate the remaining one
+    duplicateTemplate(appData, id2);
+    expect(listTemplates(appData).filter((t) => t.isUserTemplate).length).toBe(2);
+
+    // Rename one (count should not change)
+    renameTemplate(appData, id2, 'B Renamed');
+    expect(listTemplates(appData).filter((t) => t.isUserTemplate).length).toBe(2);
+  });
+});

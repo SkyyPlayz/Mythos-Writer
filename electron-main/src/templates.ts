@@ -347,7 +347,16 @@ export function duplicateTemplate(appDataPath: string, id: string): string {
   const filePath = findUserTemplateFile(appDataPath, id);
   if (!filePath) throw new Error(`Template not found: ${id}`);
   const source = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TemplateDefinition;
-  const newName = `${source.name} copy`;
+
+  // Find a unique name by checking for collisions with existing templates
+  let newName = `${source.name} copy`;
+  const existingNames = new Set(listTemplates(appDataPath).map((t) => t.name));
+  let suffix = 2;
+  while (existingNames.has(newName)) {
+    newName = `${source.name} copy ${suffix}`;
+    suffix++;
+  }
+
   const slug = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template';
   const newId = `user:${slug}-${crypto.randomBytes(4).toString('hex')}`;
   const savedAt = new Date().toISOString();
