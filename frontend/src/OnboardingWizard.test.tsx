@@ -66,6 +66,9 @@ function makeApi(overrides: Partial<{
 
 let mockApi: ReturnType<typeof makeApi>;
 
+const BUNDLED_TEMPLATE = { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Three-act novel', story: [{ name: 'Manuscript' }], notes: [{ name: 'Characters' }] };
+const USER_TEMPLATE    = { id: 'user:my-template',  name: 'My Template',   description: 'My saved template', story: [], notes: [], isUserTemplate: true, savedAt: '2026-06-01' };
+
 beforeEach(() => {
   mockApi = makeApi();
   (window as unknown as { api: unknown }).api = mockApi;
