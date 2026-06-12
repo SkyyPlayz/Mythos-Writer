@@ -53,6 +53,9 @@ function makeApi(overrides: Partial<{
   validatePath: ReturnType<typeof vi.fn>;
   chooseVaultFolder: ReturnType<typeof vi.fn>;
   templateList: ReturnType<typeof vi.fn>;
+  templateRename: ReturnType<typeof vi.fn>;
+  templateDelete: ReturnType<typeof vi.fn>;
+  templateDuplicate: ReturnType<typeof vi.fn>;
   vaultGetPaths: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
@@ -60,11 +63,17 @@ function makeApi(overrides: Partial<{
     validatePath: overrides.validatePath ?? vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
     chooseVaultFolder: overrides.chooseVaultFolder ?? vi.fn().mockResolvedValue({ path: '/home/user/Stories', cancelled: false }),
     templateList: overrides.templateList ?? vi.fn().mockResolvedValue({ templates: BUNDLED_TEMPLATES }),
+    templateRename: overrides.templateRename ?? vi.fn().mockResolvedValue({ ok: true }),
+    templateDelete: overrides.templateDelete ?? vi.fn().mockResolvedValue({ ok: true }),
+    templateDuplicate: overrides.templateDuplicate ?? vi.fn().mockResolvedValue({ ok: true, id: 'user:copy' }),
     vaultGetPaths: overrides.vaultGetPaths ?? vi.fn().mockResolvedValue({ homeDir: '/home/user', pathSeparator: '/' }),
   };
 }
 
 let mockApi: ReturnType<typeof makeApi>;
+
+const BUNDLED_TEMPLATE = { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Three-act novel', story: [{ name: 'Manuscript' }], notes: [{ name: 'Characters' }] };
+const USER_TEMPLATE    = { id: 'user:my-template',  name: 'My Template',   description: 'My saved template', story: [], notes: [], isUserTemplate: true, savedAt: '2026-06-01' };
 
 beforeEach(() => {
   mockApi = makeApi();
@@ -312,8 +321,8 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-template'));
     await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
-    expect(screen.getByTestId('template-empty-hint')).toBeInTheDocument();
-    expect(screen.getByTestId('template-empty-hint')).toHaveTextContent('No saved templates yet');
+    expect(screen.getByTestId('user-templates-empty')).toBeInTheDocument();
+    expect(screen.getByTestId('user-templates-empty')).toHaveTextContent('No custom templates yet');
   });
 
   // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
@@ -886,5 +895,135 @@ describe('OnboardingWizard — AC coverage', () => {
     fireEvent.click(screen.getByTestId('card-blank'));
     expect(screen.getByText("What's your story called?")).toBeInTheDocument();
     expect(screen.getByText('Create Story →', { exact: false })).toBeInTheDocument();
+  });
+});
+
+// ─── SKY-1397: template counter ───────────────────────────────────────────────
+
+describe('OnboardingWizard — Template counter (SKY-1397)', () => {
+  async function goToTemplatePicker() {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(screen.getByTestId('screen-step1b')).toBeInTheDocument());
+  }
+
+  it('reloads templateList every time step1b is shown', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    // First visit
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(1));
+    // Navigate back and visit again
+    fireEvent.click(screen.getByTestId('gs-back-step1b'));
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows "No custom templates yet" empty state when no user templates exist', async () => {
+    await goToTemplatePicker();
+    await waitFor(() => expect(screen.getByTestId('user-templates-empty')).toBeInTheDocument());
+    expect(screen.getByTestId('user-templates-empty').textContent).toMatch(/No custom templates yet/);
+  });
+
+  it('does not show count badge when there are no user templates', async () => {
+    await goToTemplatePicker();
+    await waitFor(() => screen.getByTestId('user-templates-heading'));
+    expect(screen.queryByTestId('user-template-count')).not.toBeInTheDocument();
+  });
+
+  it('shows count "(1)" in heading when one user template is present', async () => {
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
+    await goToTemplatePicker();
+    await waitFor(() => expect(screen.getByTestId('user-template-count')).toBeInTheDocument());
+    expect(screen.getByTestId('user-template-count').textContent).toContain('1');
+  });
+
+  it('shows count "(2)" and excludes bundled templates from count', async () => {
+    const user2 = { ...USER_TEMPLATE, id: 'user:second', name: 'Second Template' };
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE, user2] });
+    await goToTemplatePicker();
+    await waitFor(() => expect(screen.getByTestId('user-template-count')).toBeInTheDocument());
+    expect(screen.getByTestId('user-template-count').textContent).toContain('2');
+  });
+
+  it('user template cards appear in the Your Templates section', async () => {
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
+    await goToTemplatePicker();
+    await waitFor(() => expect(screen.getByTestId(`template-card-${USER_TEMPLATE.id}`)).toBeInTheDocument());
+    expect(screen.getByTestId(`template-card-${BUNDLED_TEMPLATE.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId('user-templates-heading').textContent).toContain('Your Templates');
+  });
+});
+
+// ─── SKY-1399: rename / delete / duplicate ────────────────────────────────────
+
+describe('OnboardingWizard — Template management (SKY-1399)', () => {
+  async function goToPickerWithUserTemplate() {
+    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => expect(screen.getByTestId(`template-card-${USER_TEMPLATE.id}`)).toBeInTheDocument());
+  }
+
+  it('shows rename/delete/duplicate action buttons for user templates', async () => {
+    await goToPickerWithUserTemplate();
+    expect(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`template-duplicate-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
+  });
+
+  it('clicking rename shows inline input pre-filled with current name', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
+    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
+    expect(input).toBeInTheDocument();
+    expect((input as HTMLInputElement).value).toBe(USER_TEMPLATE.name);
+  });
+
+  it('confirms rename on Enter and reloads templates', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
+    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
+    fireEvent.change(input, { target: { value: 'Renamed Template' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(mockApi.templateRename).toHaveBeenCalledWith(USER_TEMPLATE.id, 'Renamed Template'));
+    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
+  });
+
+  it('cancels rename on Escape', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
+    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByTestId(`template-rename-input-${USER_TEMPLATE.id}`)).not.toBeInTheDocument();
+    expect(mockApi.templateRename).not.toHaveBeenCalled();
+  });
+
+  it('clicking duplicate calls templateDuplicate and reloads', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-duplicate-btn-${USER_TEMPLATE.id}`));
+    await waitFor(() => expect(mockApi.templateDuplicate).toHaveBeenCalledWith(USER_TEMPLATE.id));
+    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
+  });
+
+  it('clicking delete shows confirm dialog', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
+    expect(screen.getByTestId('template-delete-confirm-dialog')).toBeInTheDocument();
+  });
+
+  it('confirming delete calls templateDelete and reloads', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
+    fireEvent.click(screen.getByTestId('template-delete-confirm'));
+    await waitFor(() => expect(mockApi.templateDelete).toHaveBeenCalledWith(USER_TEMPLATE.id));
+    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
+  });
+
+  it('cancelling delete does not call templateDelete', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
+    fireEvent.click(screen.getByTestId('template-delete-cancel'));
+    expect(screen.queryByTestId('template-delete-confirm-dialog')).not.toBeInTheDocument();
+    expect(mockApi.templateDelete).not.toHaveBeenCalled();
   });
 });

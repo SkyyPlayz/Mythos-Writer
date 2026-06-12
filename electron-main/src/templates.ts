@@ -305,6 +305,69 @@ function buildTree(dirPath: string): TemplateNode[] {
   return nodes;
 }
 
+// ─── Manage user templates ─────────────────────────────────────────────────
+
+function findUserTemplateFile(appDataPath: string, id: string): string | null {
+  const dir = userTemplatesDir(appDataPath);
+  if (!fs.existsSync(dir)) return null;
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  } catch {
+    return null;
+  }
+  for (const f of files) {
+    const filePath = path.join(dir, f);
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as { id?: string };
+      if (parsed.id === id) return filePath;
+    } catch {
+      // skip malformed
+    }
+  }
+  return null;
+}
+
+export function renameTemplate(appDataPath: string, id: string, newName: string): void {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TemplateDefinition;
+  parsed.name = newName;
+  fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
+}
+
+export function deleteTemplate(appDataPath: string, id: string): void {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  fs.unlinkSync(filePath);
+}
+
+export function duplicateTemplate(appDataPath: string, id: string): string {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  const source = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TemplateDefinition;
+  const newName = `${source.name} copy`;
+  const slug = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template';
+  const newId = `user:${slug}-${crypto.randomBytes(4).toString('hex')}`;
+  const savedAt = new Date().toISOString();
+  const copy: TemplateDefinition = {
+    id: newId,
+    name: newName,
+    description: source.description,
+    story: source.story,
+    notes: source.notes,
+    isUserTemplate: true,
+    savedAt,
+  };
+  const dir = userTemplatesDir(appDataPath);
+  const fileName = `${slug}-${newId.slice(-8)}.json`;
+  fs.writeFileSync(path.join(dir, fileName), JSON.stringify(copy, null, 2), 'utf-8');
+  return newId;
+}
+
+// ─── Save as template ─────────────────────────────────────────────────────────
+
 /**
  * Snapshot the current Story Vault + Notes Vault directory structure (no content)
  * as a user template and persist it as a JSON file under appDataPath/templates/.
@@ -334,6 +397,134 @@ export function saveAsTemplate(
   const fileName = `${slug}-${id.slice(-8)}.json`;
   fs.writeFileSync(path.join(dir, fileName), JSON.stringify(template, null, 2), 'utf-8');
   return id;
+}
+
+// ─── Export / Import ─────────────────────────────────────────────────────────
+
+/**
+ * Returns false when the name string contains path-traversal or separator
+ * characters that could escape the vault root when used in path.join().
+ */
+function isValidNodeName(name: unknown): boolean {
+  if (typeof name !== 'string' || !name || name.length > 255) return false;
+  // Reject separators, traversal sequences, and null bytes.
+  // eslint-disable-next-line no-control-regex
+  if (/[/\\]|\.\.|\x00/.test(name)) return false;
+  return true;
+}
+
+function validateNodes(nodes: unknown): string | null {
+  if (!Array.isArray(nodes)) return 'Expected an array of nodes';
+  for (const node of nodes) {
+    if (typeof node !== 'object' || node === null) return 'Each node must be an object';
+    const n = node as Record<string, unknown>;
+    if (!isValidNodeName(n.name)) return `Invalid node name: ${JSON.stringify(n.name)}`;
+    if (n.starterNote !== undefined && !isValidNodeName(n.starterNote)) {
+      return `Invalid starterNote: ${JSON.stringify(n.starterNote)}`;
+    }
+    if (n.children !== undefined) {
+      const err = validateNodes(n.children);
+      if (err) return err;
+    }
+  }
+  return null;
+}
+
+/**
+ * Write a user template to a caller-supplied destination path (path obtained
+ * from a main-process dialog — never renderer-supplied).
+ */
+export function exportTemplate(
+  appDataPath: string,
+  id: string,
+  destinationPath: string,
+): { ok: true } | { error: string } {
+  const templates = loadUserTemplates(appDataPath);
+  const template = templates.find((t) => t.id === id);
+  if (!template) return { error: `Template not found: ${id}` };
+  try {
+    fs.writeFileSync(destinationPath, JSON.stringify(template, null, 2), 'utf-8');
+    return { ok: true };
+  } catch {
+    return { error: 'Could not write file.' };
+  }
+}
+
+/**
+ * Validate, sanitize, and persist an imported .mythostemplate file.
+ * sourcePath must come from a main-process dialog — never from the renderer.
+ * Returns the saved TemplateDefinition on success.
+ */
+export function importTemplate(
+  appDataPath: string,
+  sourcePath: string,
+): { ok: true; template: TemplateDefinition } | { error: string } {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(sourcePath, 'utf-8');
+  } catch {
+    return { error: 'Could not read file.' };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: 'File is not a valid Mythos template.' };
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { error: 'File is not a valid Mythos template.' };
+  }
+
+  const t = parsed as Record<string, unknown>;
+
+  if (typeof t.id !== 'string' || !t.id) return { error: 'File is not a valid Mythos template.' };
+  if (typeof t.name !== 'string' || !t.name.trim()) return { error: 'File is not a valid Mythos template.' };
+  if (!Array.isArray(t.story)) return { error: 'File is not a valid Mythos template.' };
+  if (!Array.isArray(t.notes)) return { error: 'File is not a valid Mythos template.' };
+
+  const importedName = t.name.trim();
+  if (importedName.length > 255) return { error: 'File is not a valid Mythos template.' };
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f]/.test(importedName)) return { error: 'File is not a valid Mythos template.' };
+
+  const storyErr = validateNodes(t.story);
+  if (storyErr) return { error: 'File is not a valid Mythos template.' };
+  const notesErr = validateNodes(t.notes);
+  if (notesErr) return { error: 'File is not a valid Mythos template.' };
+
+  // Name collision: append " (2)", " (3)", etc. to the display name.
+  const existing = loadUserTemplates(appDataPath);
+  let finalName = importedName;
+  let suffix = 2;
+  while (existing.some((tmpl) => tmpl.name === finalName)) {
+    finalName = `${importedName} (${suffix})`;
+    suffix++;
+  }
+
+  // Always generate a fresh id — never trust the imported one.
+  const slug = finalName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template';
+  const newId = `user:${slug}-${crypto.randomBytes(4).toString('hex')}`;
+  const savedAt = new Date().toISOString();
+
+  const template: TemplateDefinition = {
+    id: newId,
+    name: finalName,
+    description: typeof t.description === 'string' ? t.description.slice(0, 500) : '',
+    story: t.story as TemplateNode[],
+    notes: t.notes as TemplateNode[],
+    isUserTemplate: true,
+    savedAt,
+  };
+
+  const dir = userTemplatesDir(appDataPath);
+  fs.mkdirSync(dir, { recursive: true });
+  // Filename uses slug + random suffix — safe regardless of imported name.
+  const fileName = `${slug}-${newId.slice(-8)}.json`;
+  fs.writeFileSync(path.join(dir, fileName), JSON.stringify(template, null, 2), 'utf-8');
+
+  return { ok: true, template };
 }
 
 // ─── Note Templates — per-note body templates with variable grammar ───────────
