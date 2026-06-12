@@ -35,6 +35,13 @@ export interface DbSuggestion {
   /** SKY-908: high-level category for granular auto-apply gating.
    *  Nullable in the DB for back-compat with rows written before v18. */
   category: SuggestionCategory | null;
+  // v19 — NoteProposal columns (null for pre-extraction suggestions)
+  extraction_confidence?: number | null;
+  source_turn_id?: string | null;
+  destination_path?: string | null;
+  /** JSON-serialised frontmatter Record<string, unknown> */
+  frontmatter?: string | null;
+  note_kind?: string | null;
 }
 
 export interface DbAuditLog {
@@ -465,6 +472,17 @@ function runMigrations(db: DatabaseSync): void {
     }
     db.exec('PRAGMA user_version = 18');
   }
+
+  if (currentVersion < 19) {
+    db.exec(`
+      ALTER TABLE suggestions ADD COLUMN extraction_confidence REAL;
+      ALTER TABLE suggestions ADD COLUMN source_turn_id TEXT;
+      ALTER TABLE suggestions ADD COLUMN destination_path TEXT;
+      ALTER TABLE suggestions ADD COLUMN frontmatter TEXT;
+      ALTER TABLE suggestions ADD COLUMN note_kind TEXT;
+    `);
+    db.exec('PRAGMA user_version = 19');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -489,12 +507,22 @@ export function upsertSuggestion(s: DbSuggestion): void {
     .prepare(
       `INSERT OR REPLACE INTO suggestions
          (id, source_agent, confidence, rationale, target_kind, target_path, target_anchor,
-          payload_json, status, created_at, applied_at, applied_run_id, budget_exceeded, category)
+          payload_json, status, created_at, applied_at, applied_run_id, budget_exceeded, category,
+          extraction_confidence, source_turn_id, destination_path, frontmatter, note_kind)
        VALUES
          (@id, @source_agent, @confidence, @rationale, @target_kind, @target_path, @target_anchor,
-          @payload_json, @status, @created_at, @applied_at, @applied_run_id, @budget_exceeded, @category)`
+          @payload_json, @status, @created_at, @applied_at, @applied_run_id, @budget_exceeded, @category,
+          @extraction_confidence, @source_turn_id, @destination_path, @frontmatter, @note_kind)`
     )
-    .run(s as unknown as Record<string, SQLInputValue>);
+    .run({
+      category: null,
+      extraction_confidence: null,
+      source_turn_id: null,
+      destination_path: null,
+      frontmatter: null,
+      note_kind: null,
+      ...s,
+    } as unknown as Record<string, SQLInputValue>);
 }
 
 export function updateSuggestionBudgetExceeded(id: string, exceeded: boolean): void {

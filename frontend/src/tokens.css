@@ -293,6 +293,12 @@
   --entity-item-text: #fcd34d;
   --entity-concept-bg: rgba(139, 92, 246, 0.18);
   --entity-concept-text: #d8b4fe;
+  --entity-faction-bg: rgba(6, 182, 212, 0.18);
+  --entity-faction-text: #67e8f9;
+  --entity-scene-bg: rgba(244, 63, 94, 0.18);
+  --entity-scene-text: #fda4af;
+  --entity-inbox-bg: rgba(148, 163, 184, 0.15);
+  --entity-inbox-text: #94a3b8;
 }
 
 /* =============================================================================
@@ -356,6 +362,12 @@
   --entity-item-text: #fde68a;
   --entity-concept-bg: rgba(139, 92, 246, 0.30);
   --entity-concept-text: #ede9fe;
+  --entity-faction-bg: rgba(6, 182, 212, 0.30);
+  --entity-faction-text: #a5f3fb;
+  --entity-scene-bg: rgba(244, 63, 94, 0.30);
+  --entity-scene-text: #fecdd3;
+  --entity-inbox-bg: rgba(148, 163, 184, 0.25);
+  --entity-inbox-text: #cbd5e1;
 }
 
 /* OS-level increased-contrast request → clamp toward the high-contrast theme. */

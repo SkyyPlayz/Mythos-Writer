@@ -6,7 +6,7 @@ import type { DbSuggestion } from './db.js';
 
 // ─── Public types ───
 
-export type FactType = 'character' | 'location' | 'item' | 'note';
+export type FactType = 'character' | 'location' | 'item' | 'faction' | 'scene_card' | 'inbox';
 
 export interface ParsedFact {
   type: FactType;
@@ -26,6 +26,27 @@ export interface BrainstormAgentDeps {
   persistSuggestion: (s: DbSuggestion) => void;
 }
 
+export type NoteProposalStatus = 'pending' | 'confirmed' | 'rejected' | 'edited_and_confirmed';
+
+export interface NoteProposal {
+  id: string;
+  kind: FactType;
+  title: string;
+  destinationPath: string;
+  body: string;
+  frontmatter: Record<string, unknown>;
+  sourceConversationTurnId: string;
+  extractionConfidence: number;
+  status: NoteProposalStatus;
+}
+
+export interface ExtractionCallDeps {
+  /** Calls the LLM with a user prompt and returns raw response text. System prompt is internal. */
+  callLlm: (userPrompt: string) => Promise<string>;
+  /** Override UUID generation for deterministic tests. */
+  generateId?: () => string;
+}
+
 // ─── Tag parser ───
 
 const FACT_NAME_MAX_LEN = 200;
@@ -38,7 +59,7 @@ const FACT_NAME_MAX_LEN = 200;
  * bytes that could break YAML frontmatter or filesystem paths).
  */
 export function parseFacts(text: string): ParsedFact[] {
-  const pattern = /\[FACT:(character|location|item|note)\|([^|\]]+)\|([^\]]+)\]/g;
+  const pattern = /\[FACT:(character|location|item|faction|scene_card|inbox)\|([^|\]]+)\|([^\]]+)\]/g;
   const results: ParsedFact[] = [];
   let m: RegExpExecArray | null;
   while ((m = pattern.exec(text)) !== null) {
@@ -249,4 +270,124 @@ export function writeFacts(
   }
 
   return written;
+}
+
+// ─── Extraction side-call ───
+
+const EXTRACTION_SYSTEM_PROMPT = `You are a structured entity extractor for creative writing sessions.
+Extract named story entities from the conversation turn provided.
+
+Return ONLY a valid JSON array. Each element must have this exact shape:
+{
+  "kind": "character" | "location" | "item" | "faction" | "scene_card" | "inbox",
+  "title": "<entity name>",
+  "destinationPath": "<suggested/vault/relative/path>",
+  "body": "<description or prose>",
+  "frontmatter": {},
+  "extractionConfidence": <0.0–1.0>
+}
+
+Rules:
+- character: named persons, beings, or creatures with story significance
+- location: named places, regions, settings, or environments
+- item: named objects, artifacts, tools, or props with story significance
+- faction: named organizations, groups, guilds, or factions
+- scene_card: a discrete scene, event, or plot beat worth capturing
+- inbox: general notes, themes, concepts, world-rules, or anything that does not fit above
+- extractionConfidence: how clearly and unambiguously the entity appears in the text (0.0–1.0)
+- One entry per distinct named entity; do not duplicate
+- destinationPath: suggest a vault-relative path using lowercase with hyphens, e.g. "characters/aria.md"
+- Return [] if the text contains no clearly named story entities worth capturing
+- Do NOT include markdown code fences in your response — raw JSON array only`;
+
+interface RawExtractionItem {
+  kind: string;
+  title: string;
+  destinationPath: string;
+  body: string;
+  frontmatter: Record<string, unknown>;
+  extractionConfidence: number;
+}
+
+const VALID_FACT_KINDS: Set<string> = new Set([
+  'character', 'location', 'item', 'faction', 'scene_card', 'inbox',
+]);
+
+function parseExtractionResponse(raw: string): RawExtractionItem[] {
+  const trimmed = raw.trim();
+  // Strip markdown code fences if the model included them despite instructions
+  const cleaned = trimmed.startsWith('```')
+    ? trimmed.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim()
+    : trimmed;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (item): item is RawExtractionItem =>
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).kind === 'string' &&
+      typeof (item as Record<string, unknown>).title === 'string' &&
+      typeof (item as Record<string, unknown>).extractionConfidence === 'number',
+  );
+}
+
+/**
+ * Fires an LLM extraction side-call after a brainstorm response turn.
+ * Returns filtered NoteProposal[] for the renderer to display.
+ *
+ * Filtering rules (any match → suppress):
+ *   - extractionConfidence < 0.6
+ *   - title is already in existingEntityNames (manifest dedup)
+ *   - title is in sessionRejectionLog (session rejection dedup)
+ *   - kind is not a valid FactType
+ *
+ * Never throws — errors from callLlm are caught and return [].
+ */
+export async function runExtractionSideCall(
+  turnText: string,
+  existingEntityNames: Set<string>,
+  sessionRejectionLog: Set<string>,
+  turnId: string,
+  deps: ExtractionCallDeps,
+): Promise<NoteProposal[]> {
+  const generateId = deps.generateId ?? (() => crypto.randomUUID());
+  const userPrompt = `Extract entities from this brainstorm conversation turn:\n\n${turnText}`;
+
+  let rawResponse: string;
+  try {
+    rawResponse = await deps.callLlm(userPrompt);
+  } catch {
+    return [];
+  }
+
+  const items = parseExtractionResponse(rawResponse);
+  const proposals: NoteProposal[] = [];
+
+  for (const item of items) {
+    if (!VALID_FACT_KINDS.has(item.kind)) continue;
+    if (item.extractionConfidence < 0.6) continue;
+    const normalizedTitle = item.title.trim();
+    if (!normalizedTitle) continue;
+    if (existingEntityNames.has(normalizedTitle)) continue;
+    if (sessionRejectionLog.has(normalizedTitle)) continue;
+
+    proposals.push({
+      id: generateId(),
+      kind: item.kind as FactType,
+      title: normalizedTitle,
+      destinationPath: item.destinationPath ?? '',
+      body: item.body ?? '',
+      frontmatter: item.frontmatter && typeof item.frontmatter === 'object' ? item.frontmatter : {},
+      sourceConversationTurnId: turnId,
+      extractionConfidence: item.extractionConfidence,
+      status: 'pending',
+    });
+  }
+
+  return proposals;
 }

@@ -107,13 +107,25 @@ describe('resolveDestination', () => {
     expect(r.kind === 'resolved' && r.relativeDir).toMatch(/Characters$/);
   });
 
-  it('default-mode notes land in Inbox/', () => {
-    const r = resolveDestination('note', 'default', {});
+  it('default-mode inbox items land in Inbox/', () => {
+    const r = resolveDestination('inbox', 'default', {});
     expect(r).toEqual({
       kind: 'resolved',
       relativeDir: 'Inbox',
       reason: 'default-layout',
     });
+  });
+
+  it('default-mode factions land in the Factions folder', () => {
+    const r = resolveDestination('faction', 'default', {});
+    expect(r.kind).toBe('resolved');
+    expect(r.kind === 'resolved' && r.relativeDir).toMatch(/Factions$/);
+  });
+
+  it('default-mode scene_cards land in the Scenes folder', () => {
+    const r = resolveDestination('scene_card', 'default', {});
+    expect(r.kind).toBe('resolved');
+    expect(r.kind === 'resolved' && r.relativeDir).toMatch(/Scenes$/);
   });
 
   it('default mode ignores any per-category memory the user may have set', () => {

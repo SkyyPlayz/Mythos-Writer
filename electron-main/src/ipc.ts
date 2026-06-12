@@ -387,6 +387,14 @@ export const IPC_CHANNELS = {
   TEMPLATE_IMPORT: 'template:import',
   // SKY-1499/SKY-1501: list available models from a provider endpoint
   PROVIDER_LIST_MODELS: 'provider:listModels',
+
+  // SKY-1483: Wave 3.4 — extraction side-call + NoteProposal IPC
+  BRAINSTORM_EXTRACT_PROPOSALS: 'brainstorm:extractProposals',
+  BRAINSTORM_PROPOSAL_QUEUED: 'brainstorm:proposalQueued',
+  BRAINSTORM_GET_SESSION_REJECTIONS: 'brainstorm:getSessionRejections',
+  // SKY-1483 v2: confirm/reject handlers with day-one telemetry logging
+  BRAINSTORM_PROPOSALS_CONFIRM: 'brainstorm:proposals:confirm',
+  BRAINSTORM_PROPOSALS_REJECT: 'brainstorm:proposals:reject',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -671,6 +679,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_IMPORT]: (payload: TemplateImportPayload | undefined) => Promise<TemplateImportResponse>;
   // SKY-1499/SKY-1501: provider model listing
   [IPC_CHANNELS.PROVIDER_LIST_MODELS]: (payload: ProviderListModelsPayload) => Promise<ProviderListModelsResult>;
+  // SKY-1483: Wave 3.4 extraction side-call
+  [IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS]: (payload: BrainstormExtractProposalsPayload) => Promise<BrainstormExtractProposalsResponse>;
+  [IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS]: (payload: never) => BrainstormGetSessionRejectionsResponse;
+  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM]: (payload: BrainstormProposalConfirmPayload) => { ok: true };
+  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT]: (payload: BrainstormProposalRejectPayload) => { ok: true };
+  // BRAINSTORM_PROPOSAL_QUEUED is a push channel (webContents.send) — no handler entry needed
 }
 
 // ─── Payload / Response types ───
@@ -2691,7 +2705,7 @@ export interface RestoreAppDataResponse {
 
 // ─── Brainstorm Agent routing (SKY-20) ───
 
-export type BrainstormFactType = 'character' | 'location' | 'item' | 'note';
+export type BrainstormFactType = 'character' | 'location' | 'item' | 'faction' | 'scene_card' | 'inbox';
 
 export interface BrainstormGetSettingsResponse {
   /** Vault layout mode the user picked at onboarding. */
@@ -3288,3 +3302,51 @@ export interface TemplateImportPayload {
 export type TemplateImportResponse =
   | { ok: true; template?: TemplateDefinition; cancelled?: boolean }
   | { error: string };
+
+// ─── SKY-1483: Wave 3.4 — NoteProposal + extraction IPC types ───
+
+export type NoteProposalStatus = 'pending' | 'confirmed' | 'rejected' | 'edited_and_confirmed';
+
+export interface NoteProposal {
+  id: string;
+  kind: BrainstormFactType;
+  title: string;
+  destinationPath: string;
+  body: string;
+  frontmatter: Record<string, unknown>;
+  sourceConversationTurnId: string;
+  extractionConfidence: number;
+  status: NoteProposalStatus;
+}
+
+export interface BrainstormExtractProposalsPayload {
+  turnText: string;
+  turnId: string;
+  existingEntityNames?: string[];
+}
+
+export interface BrainstormExtractProposalsResponse {
+  proposals: NoteProposal[];
+}
+
+export interface BrainstormGetSessionRejectionsResponse {
+  rejectedNames: string[];
+}
+
+export type ProposalDecision = 'confirm' | 'edit_and_confirm' | 'reject';
+
+export interface BrainstormProposalConfirmPayload {
+  proposalId: string;
+  kind: BrainstormFactType;
+  extractionConfidence: number;
+  timeToDecideMs: number;
+  decision: 'confirm' | 'edit_and_confirm';
+}
+
+export interface BrainstormProposalRejectPayload {
+  proposalId: string;
+  title: string;
+  kind: BrainstormFactType;
+  extractionConfidence: number;
+  timeToDecideMs: number;
+}

@@ -149,7 +149,11 @@ export function defaultLayoutDirFor(category: FactType): string {
       return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Locations`;
     case 'item':
       return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Items`;
-    case 'note':
+    case 'faction':
+      return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Factions`;
+    case 'scene_card':
+      return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Scenes`;
+    case 'inbox':
       return 'Inbox';
   }
 }

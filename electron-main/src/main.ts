@@ -339,6 +339,7 @@ import {
   parseFacts,
   entityTypeToFactType,
   buildEnrichmentSystemPrompt,
+  runExtractionSideCall,
 } from './brainstormAgent.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
@@ -374,6 +375,11 @@ let mainWindow: BrowserWindow | null = null;
 // Maps requestId → AbortController for in-flight streaming agent calls.
 // Populated on invoke, cleaned up in finally block or on cancel.
 const agentControllers = new Map<string, AbortController>();
+
+// SKY-1483: in-session rejection log for extraction dedup.
+// Cleared when the vault changes or the app restarts.
+// Stores entity titles that the user rejected in the current session.
+const sessionRejectionLog = new Set<string>();
 
 function registerAgentCancelHandlers(): void {
   for (const channel of [
@@ -601,7 +607,7 @@ function joinNotesPath(...segments: string[]): string {
 }
 
 function renderBrainstormNote(args: {
-  category: 'character' | 'location' | 'item' | 'note';
+  category: 'character' | 'location' | 'item' | 'faction' | 'scene_card' | 'inbox';
   name: string;
   content: string;
   suggestionId: string;
@@ -5158,6 +5164,157 @@ const MAX_AGENT_HISTORY_TURNS = 50;
 const MAX_AGENT_PROMPT_LENGTH = 32_000;
 const VALID_AGENT_ROLES = new Set<string>(['user', 'assistant']);
 
+// ─── Brainstorm extraction IPC handlers (SKY-1483) ───
+
+function registerBrainstormExtractionHandlers(): void {
+  ipcMain.handle(
+    IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS,
+    wrapIpcHandler(
+      IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS,
+      async (event, payload: import('./ipc.js').BrainstormExtractProposalsPayload) => {
+        if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+
+        const agentSettings = loadAppSettings().agents.brainstorm;
+        if (!agentSettings.enabled) return { proposals: [] };
+
+        const apiKey = (() => {
+          const settings = loadAppSettings();
+          return settings.apiKey || process.env.ANTHROPIC_API_KEY || '';
+        })();
+        if (!apiKey) return { proposals: [] };
+
+        const existingEntityNames = new Set<string>(payload.existingEntityNames ?? []);
+        const turnId = payload.turnId;
+
+        const callLlm = async (userPrompt: string): Promise<string> => {
+          const client = new Anthropic({ apiKey });
+          const model = agentSettings.model || 'claude-haiku-4-5-20251001';
+          const response = await client.messages.create({
+            model,
+            max_tokens: 512,
+            system: `You are a structured entity extractor for creative writing sessions.
+Extract named story entities from the conversation turn provided.
+
+Return ONLY a valid JSON array. Each element must have this exact shape:
+{"kind":"character"|"location"|"item"|"faction"|"scene_card"|"inbox","title":"<name>","destinationPath":"<suggested/path>","body":"<description>","frontmatter":{},"extractionConfidence":<0.0-1.0>}
+
+Rules:
+- character: named persons or beings. location: named places. item: named objects/artifacts.
+- faction: organizations or groups. scene_card: a discrete scene or plot beat.
+- inbox: general notes, themes, world-rules, or unclassified concepts.
+- extractionConfidence: clarity with which the entity appears in the text (0.0–1.0).
+- One entry per distinct named entity. No duplicates.
+- Return [] if the text contains no clearly named story entities worth capturing.
+- Raw JSON array only — no markdown fences.`,
+            messages: [{ role: 'user', content: userPrompt }],
+          });
+          const block = response.content[0];
+          return block?.type === 'text' ? block.text : '';
+        };
+
+        const proposals = await runExtractionSideCall(
+          payload.turnText,
+          existingEntityNames,
+          sessionRejectionLog,
+          turnId,
+          { callLlm },
+        );
+
+        const now = new Date().toISOString();
+        for (const proposal of proposals) {
+          try {
+            upsertSuggestion({
+              id: proposal.id,
+              source_agent: 'brainstorm',
+              confidence: proposal.extractionConfidence,
+              rationale: `${proposal.kind}: ${proposal.title}`,
+              target_kind: 'vault',
+              target_path: proposal.destinationPath || null,
+              target_anchor: null,
+              payload_json: JSON.stringify({ kind: proposal.kind, title: proposal.title, body: proposal.body }),
+              status: 'proposed',
+              created_at: now,
+              applied_at: null,
+              applied_run_id: null,
+              budget_exceeded: 0,
+              category: null,
+              extraction_confidence: proposal.extractionConfidence,
+              source_turn_id: proposal.sourceConversationTurnId,
+              destination_path: proposal.destinationPath || null,
+              frontmatter: JSON.stringify(proposal.frontmatter),
+              note_kind: proposal.kind,
+            });
+          } catch { /* non-fatal */ }
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed() && proposals.length > 0) {
+          mainWindow.webContents.send(IPC_CHANNELS.BRAINSTORM_PROPOSAL_QUEUED, { proposals });
+        }
+
+        return { proposals };
+      },
+    ),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS,
+    wrapIpcHandler(
+      IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS,
+      (event) => {
+        if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        return { rejectedNames: Array.from(sessionRejectionLog) };
+      },
+    ),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM,
+    wrapIpcHandler(
+      IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM,
+      (event, payload: import('./ipc.js').BrainstormProposalConfirmPayload) => {
+        if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        const status = payload.decision === 'edit_and_confirm' ? 'applied' : 'accepted';
+        try { updateSuggestionStatus(payload.proposalId, status, new Date().toISOString()); } catch { /* non-fatal */ }
+        try {
+          insertProposalTelemetry({
+            id: crypto.randomUUID(),
+            proposal_id: payload.proposalId,
+            kind: payload.kind,
+            extraction_confidence: payload.extractionConfidence,
+            decision: payload.decision,
+            time_to_decide_ms: payload.timeToDecideMs,
+            created_at: new Date().toISOString(),
+          });
+        } catch { /* non-fatal */ }
+        return { ok: true };
+      },
+    ),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT,
+    wrapIpcHandler(
+      IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT,
+      (event, payload: import('./ipc.js').BrainstormProposalRejectPayload) => {
+        if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        if (payload.title) sessionRejectionLog.add(payload.title);
+        try { updateSuggestionStatus(payload.proposalId, 'rejected'); } catch { /* non-fatal */ }
+        try {
+          insertProposalTelemetry({
+            id: crypto.randomUUID(),
+            proposal_id: payload.proposalId,
+            kind: payload.kind,
+            extraction_confidence: payload.extractionConfidence,
+            decision: 'reject',
+            time_to_decide_ms: payload.timeToDecideMs,
+            created_at: new Date().toISOString(),
+          });
+        } catch { /* non-fatal */ }
+        return { ok: true };
+      },
+    ),
+  );
+}
 
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {
@@ -6055,6 +6212,7 @@ app.whenReady().then(async () => {
     event.returnValue = null;
   });
   registerAgentCancelHandlers();
+  registerBrainstormExtractionHandlers();
   registerBrainstormHandler();
   registerBrainstormEnrichHandler();
   registerWritingAssistantHandler();
