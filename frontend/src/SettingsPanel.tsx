@@ -849,11 +849,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }, []);
 
   const handleMoveVault = useCallback(() => {
-    // TODO(SKY-861): wire wizard IPC
-    if (window.api.openMoveVaultWizard) {
-      void window.api.openMoveVaultWizard();
-      return;
-    }
     setShowMoveWizard(true);
   }, []);
 
