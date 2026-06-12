@@ -1617,3 +1617,27 @@
   gap: 0.75rem;
   justify-content: center;
 }
+
+/* ─── Template picker: forced-colors support (AC-9) ── */
+@media (forced-colors: active) {
+  .gs-template-card {
+    border-color: ButtonText;
+    color: ButtonText;
+    background: ButtonFace;
+    forced-color-adjust: auto;
+  }
+  .gs-template-card:focus-visible {
+    outline-color: Highlight;
+    border-color: Highlight;
+  }
+  .gs-template-card[aria-checked="true"],
+  .gs-template-card--selected {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+    box-shadow: none;
+  }
+  .gs-template-card__action-btn:focus-visible {
+    outline-color: Highlight;
+  }
+}
