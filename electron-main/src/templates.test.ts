@@ -17,6 +17,7 @@ import {
   resolveNoteTemplate,
   renameTemplate,
   deleteTemplate,
+  deleteUserTemplate,
   duplicateTemplate,
   importTemplate,
   exportTemplate,
@@ -780,5 +781,67 @@ describe('exportTemplate', () => {
     const dest = path.join(tmpDir, 'exported.mythostemplate');
     const res = exportTemplate(appData, 'user:nonexistent-id', dest);
     expect('error' in res).toBe(true);
+  });
+});
+
+// ─── SKY-1304: deleteUserTemplate ────────────────────────────────────────────
+
+describe('deleteUserTemplate', () => {
+  it('removes the JSON file matching the given id', () => {
+    const storyRoot = path.join(tmpDir, 'story');
+    const notesRoot = path.join(tmpDir, 'notes');
+    const appData = path.join(tmpDir, 'appdata');
+    fs.mkdirSync(storyRoot, { recursive: true });
+    fs.mkdirSync(notesRoot, { recursive: true });
+
+    const id = saveAsTemplate(storyRoot, notesRoot, 'To Delete', appData);
+    const dir = userTemplatesDir(appData);
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith('.json'))).toHaveLength(1);
+
+    deleteUserTemplate(appData, id);
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith('.json'))).toHaveLength(0);
+  });
+
+  it('does not remove other user templates with different ids', () => {
+    const storyRoot = path.join(tmpDir, 'story');
+    const notesRoot = path.join(tmpDir, 'notes');
+    const appData = path.join(tmpDir, 'appdata');
+    fs.mkdirSync(storyRoot, { recursive: true });
+    fs.mkdirSync(notesRoot, { recursive: true });
+
+    const idA = saveAsTemplate(storyRoot, notesRoot, 'Keep Me', appData);
+    const idB = saveAsTemplate(storyRoot, notesRoot, 'Delete Me', appData);
+
+    deleteUserTemplate(appData, idB);
+
+    const remaining = loadUserTemplates(appData);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(idA);
+  });
+
+  it('throws when template id does not exist', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    fs.mkdirSync(userTemplatesDir(appData), { recursive: true });
+    expect(() => deleteUserTemplate(appData, 'user:nonexistent')).toThrow('Template not found');
+  });
+
+  it('throws when the templates directory does not exist', () => {
+    const appData = path.join(tmpDir, 'no-appdata');
+    expect(() => deleteUserTemplate(appData, 'user:x')).toThrow('Template not found');
+  });
+
+  it('listTemplates no longer includes the deleted template', () => {
+    const storyRoot = path.join(tmpDir, 'story');
+    const notesRoot = path.join(tmpDir, 'notes');
+    const appData = path.join(tmpDir, 'appdata');
+    fs.mkdirSync(storyRoot, { recursive: true });
+    fs.mkdirSync(notesRoot, { recursive: true });
+
+    const id = saveAsTemplate(storyRoot, notesRoot, 'Gone', appData);
+    expect(listTemplates(appData).some((t) => t.id === id)).toBe(true);
+
+    deleteUserTemplate(appData, id);
+    expect(listTemplates(appData).some((t) => t.id === id)).toBe(false);
+    expect(listTemplates(appData).length).toBe(BUNDLED_TEMPLATES.length);
   });
 });
