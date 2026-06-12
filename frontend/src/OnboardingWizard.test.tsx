@@ -423,6 +423,28 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(arrowSpan!.textContent).toBe('\u2190');
   });
 
+  // SKY-1412 AC-6: Esc with a selection clears it; a second Esc shows the cancel confirm
+  it('Escape with a template selected clears the selection and stays on step1b', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
+    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'true');
+    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
+    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
+  });
+
+  it('Escape with no template selected shows cancel confirm on step1b', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-template'));
+    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
+    // no card selected — Escape should show cancel confirm
+    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
+    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
+  });
+
   // SKY-1362: F-14 — Back from template-picker restores focus to the "From Template" card
   it('Back from template-picker restores focus to the card that triggered navigation', async () => {
     // Capture the rAF callback; fire it after React commits step1 DOM so step1 elements exist.

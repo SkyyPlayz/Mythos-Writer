@@ -486,6 +486,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setShowCancelConfirm(false);
         return;
       }
+      // AC-6: first Esc on the template picker clears the selection; a second Esc shows cancel confirm.
+      if (step === 'step1b' && selectedTemplateId !== null) {
+        setSelectedTemplateId(null);
+        return;
+      }
       if (step === 'step1' || step === 'step1b' || step === 'step2') {
         setShowCancelConfirm(true);
       }
