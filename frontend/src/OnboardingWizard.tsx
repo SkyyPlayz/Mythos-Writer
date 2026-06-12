@@ -184,6 +184,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // SKY-1403: export / import toast feedback
   const [templateToast, setTemplateToast] = useState<string | null>(null);
   const templateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // SKY-1405: drag-drop visual feedback state
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Step 2 form state
   const [storyTitle, setStoryTitle] = useState('');
@@ -243,6 +245,38 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     if (templateToastTimerRef.current) clearTimeout(templateToastTimerRef.current);
     templateToastTimerRef.current = setTimeout(() => setTemplateToast(null), 3000);
   }, []);
+
+  // SKY-1405: drag-drop handlers for .mythostemplate import
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!file.name.endsWith('.mythostemplate')) {
+      showTemplateToast('Drop a .mythostemplate file to import.');
+      return;
+    }
+    const filePath = (file as File & { path?: string }).path;
+    if (!filePath) return;
+    const res = await (window.api as any).templateImportFromPath(filePath);
+    if (res && 'error' in res) {
+      showTemplateToast("This file doesn't appear to be a valid Mythos template.");
+    } else if (res && !res.cancelled) {
+      reloadTemplates();
+      showTemplateToast(`Template imported: ${res.template?.name ?? 'Unknown'}`);
+    }
+  }, [showTemplateToast, reloadTemplates]);
 
   // ─── Keyboard helpers ───────────────────────────────────────────────────────
 
@@ -634,7 +668,13 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       {/* ── Step 1b: Template sub-picker ── */}
       {step === 'step1b' && (
-        <div className="gs-modal gs-modal--wide" data-testid="screen-step1b">
+        <div
+          className={`gs-modal gs-modal--wide${isDragOver ? ' gs-modal--drag-over' : ''}`}
+          data-testid="screen-step1b"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           <div className="gs-modal__header">
             <button
               className="btn-ghost btn-back"

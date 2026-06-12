@@ -571,6 +571,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('template:export', { id }),
   templateImport: () =>
     ipcRenderer.invoke('template:import', undefined),
+  // SKY-1405: drag-drop import — passes filePath to bypass the open-file dialog
+  templateImportFromPath: (filePath: string) =>
+    ipcRenderer.invoke('template:import', { filePath }),
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
   goalsLogWords: (date: string, wordsAdded: number) =>

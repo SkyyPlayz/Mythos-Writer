@@ -1411,6 +1411,12 @@
   font-size: 0.8125rem;
 }
 
+/* SKY-1405: drag-over visual feedback for .mythostemplate drop target */
+.gs-modal--wide.gs-modal--drag-over {
+  outline: 2px dashed var(--color-accent, #89b4fa);
+  outline-offset: -4px;
+}
+
 .gs-template-toast {
   font-size: 0.8125rem;
   color: var(--accent, #89b4fa);
