@@ -165,6 +165,9 @@ jobs:
       - name: E2E — Entries quick-capture create and promote-to-note (SKY-898)
         run: xvfb-run --auto-servernum npm run test:e2e:entries
 
+      - name: E2E — Project templates bundled selection + scaffolding (SKY-156/SKY-1314)
+        run: xvfb-run --auto-servernum npm run test:e2e:templates
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
