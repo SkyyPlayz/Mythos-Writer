@@ -572,6 +572,9 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-55: per-scene notes
   notesGet: (sceneId: string) => ipcRenderer.invoke('notes:get', { sceneId }),
   notesSet: (sceneId: string, content: string) => ipcRenderer.invoke('notes:set', { sceneId, content }),
+  // SKY-1391/SKY-1393: brainstorm → writing-panel bridge
+  sceneAppendBrainstormNote: (sceneId: string, content: string) =>
+    ipcRenderer.invoke('scene:appendBrainstormNote', { sceneId, content }),
 
   // SKY-158: Tags
   tagsList: () => ipcRenderer.invoke('tags:list', undefined),

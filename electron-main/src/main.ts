@@ -126,6 +126,7 @@ import {
   type SceneSetTagsPayload,
   type NotesGetPayload,
   type NotesSetPayload,
+  type SceneAppendBrainstormNotePayload,
   type TagEntry,
   type GoalsLogWordsPayload,
   type GoalsSetGoalPayload,
@@ -346,6 +347,7 @@ import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
 import type { SmartFolderEntry, CustomFieldDef } from './ipc.js';
 import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
+import { appendBrainstormNote } from './sceneAppendBrainstormNote.js';
 import {
   DEFAULT_MYTHOS_VAULT_NAME,
   scaffoldDefaultMythosVault,
@@ -1431,6 +1433,13 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     upsertNote(payload.sceneId, payload.content);
     return { saved: true };
+  },
+
+  // SKY-1391: brainstorm → writing-panel bridge
+  [IPC_CHANNELS.SCENE_APPEND_BRAINSTORM_NOTE]: (payload: SceneAppendBrainstormNotePayload) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return appendBrainstormNote(manifest, payload.sceneId, payload.content);
   },
 
   // SKY-158: Tag system

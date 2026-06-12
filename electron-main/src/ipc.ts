@@ -130,6 +130,8 @@ export const IPC_CHANNELS = {
   SCENE_SAVE: 'scene:save',
   // Inline rename (SKY-115) — title-only update, does not touch prose
   SCENE_RENAME: 'scene:rename',
+  // SKY-1391: brainstorm→writing-panel bridge — appends to scene note field
+  SCENE_APPEND_BRAINSTORM_NOTE: 'scene:appendBrainstormNote',
 
   // Auto-updater (MYT-245) — feature-flagged; only active when MYTHOS_AUTO_UPDATE=1
   UPDATE_CHECK: 'update:check',
@@ -506,6 +508,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_GET]: (payload: SceneGetPayload) => SceneGetResponse;
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => SceneSaveResponse;
   [IPC_CHANNELS.SCENE_RENAME]: (payload: SceneRenamePayload) => SceneRenameResponse;
+  [IPC_CHANNELS.SCENE_APPEND_BRAINSTORM_NOTE]: (payload: SceneAppendBrainstormNotePayload) => SceneAppendBrainstormNoteResponse;
   [IPC_CHANNELS.SEARCH_QUERY]: (payload: SearchQueryPayload) => SearchQueryResponse;
   [IPC_CHANNELS.BETA_READ_CREATE]: (payload: BetaReadCreatePayload) => BetaReadCreateResponse;
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
@@ -2902,6 +2905,19 @@ export interface NotesGetPayload { sceneId: string }
 export interface NotesGetResponse { content: string }
 export interface NotesSetPayload { sceneId: string; content: string }
 export interface NotesSetResponse { saved: boolean }
+
+// ─── SKY-1391: brainstorm → writing-panel bridge ───
+// Appends `content` to the scene's note field (stored in SQLite notes table).
+// Empty content is a no-op success. Multiple appends are separated by "\n---\n".
+// sceneId is the scene UUID from SceneEntry.id / the manifest.
+export interface SceneAppendBrainstormNotePayload {
+  sceneId: string;
+  content: string;
+}
+export interface SceneAppendBrainstormNoteResponse {
+  /** true when content was appended; false when content was empty (no-op). */
+  appended: boolean;
+}
 // ─── Tag types (SKY-158) ───
 export interface TagEntry {
   id: string;
