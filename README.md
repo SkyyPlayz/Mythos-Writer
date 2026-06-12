@@ -222,6 +222,8 @@ Once you have a vault structure you like, snapshot it for reuse:
 
 The template is stored immediately and appears in the gallery the next time you start a project from a template.
 
+> Saving your own template is landing in the same release as this guide. If **File → Save as Template…** does not appear in the menu, update to the latest version.
+
 **What gets captured:**
 - The **folder tree** of both your Story Vault and Notes Vault, to any depth
 - Folder names only — **no scene text, note content, or settings are included**
