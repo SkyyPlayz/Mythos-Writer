@@ -59,6 +59,7 @@ Templates are available when you create a new story (click **+** next to *Story 
 
 - **Story Vault** — organise your manuscript as Stories → Chapters → Scenes; each scene is a Markdown file you own
 - **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference; its storage location (local or cloud-synced) is shown by the vault status badge in Settings
+- **Project templates** — four bundled vault structures (Novel, Short Story, World-building Bible, Series Bible); save your own from any project and reuse them at onboarding
 - **Rich scene editor** — TipTap-powered editor with WikiLinks (`[[Character Name]]`), draft states (In Progress / Review / Final), and word count
 - **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
 - **Brainstorm AI** — conversational story development; automatically extracts facts into your vault entities
@@ -183,6 +184,82 @@ Each agent (Writing Assistant, Brainstorm, Archive) can use a different model or
 3. For a **completely different provider**: toggle **Use a different provider for this agent**, then configure the provider, model, and credentials
 4. Click **Test connection** to verify the per-agent configuration
 5. **Save** — that agent will now use its own provider for all AI requests
+
+## Custom Templates
+
+Project templates give you a pre-built folder structure for your Story Vault and Notes Vault. Start a new project in seconds, or snapshot your own vault layout and reuse it across projects.
+
+### Bundled templates
+
+Mythos Writer ships with four ready-to-use templates:
+
+| Template | Best for |
+|----------|----------|
+| **Novel (3-Act)** | Full-length novel with per-act chapter folders in Story Vault; Characters, Locations, Themes, and Research sections in Notes Vault |
+| **Short Story** | Minimal layout for a single short story — one Manuscript folder and a compact Notes section |
+| **World-building Bible** | World-first projects — Notes Vault organised by Geography, Politics & Power, Magic & Systems, Cultures & Peoples, and History |
+| **Series Bible** | Multi-book series planning with per-book chapter folders plus Series Overview, Characters, World, and Timeline in Notes Vault |
+
+### Starting from a template (onboarding)
+
+When you first open Mythos Writer, choose **Start from template** on the welcome screen.
+
+1. The **template gallery** opens, listing all four bundled templates. Any templates you have previously saved appear below them with a **Saved** badge.
+2. Click a template card to select it. A **structure preview** panel shows the top-level folders that will be created in your Story Vault and Notes Vault.
+3. Enter or browse to a **Parent folder**. Mythos Writer will create `Story Vault/` and `Notes Vault/` side-by-side inside it.
+4. Click **Apply "[Template Name]"** to scaffold the vault and open the app.
+
+> Each template includes starter note files inside its folders (for example, `Chapter 1/Scene 1 — Opening Hook.md` in the Novel template), so your vault is never empty on first open.
+
+<!-- screenshot: docs/screenshots/template-picker-gallery.png — template gallery in onboarding, Novel (3-Act) selected, structure preview visible -->
+
+### Saving your own template
+
+Once you have a vault structure you like, snapshot it for reuse:
+
+1. Open **File → Save as Template…** from the menu bar.
+2. Enter a name for the template and click **Save**.
+
+The template is stored immediately and appears in the gallery the next time you start a project from a template.
+
+**What gets captured:**
+- The **folder tree** of both your Story Vault and Notes Vault, to any depth
+- Folder names only — **no scene text, note content, or settings are included**
+
+Templates are stored as JSON files in Mythos Writer's application data folder:
+
+| Platform | Path |
+|----------|------|
+| Windows | `%AppData%\Mythos Writer\templates\` |
+| macOS | `~/Library/Application Support/Mythos Writer/templates/` |
+| Linux | `~/.config/Mythos Writer/templates/` |
+
+<!-- screenshot: docs/screenshots/save-as-template-dialog.png — the "Save as Template" name-entry dialog -->
+
+### Managing your saved templates
+
+From **Settings → Templates** you can rename, duplicate, or delete any template you have saved. Bundled templates cannot be deleted.
+
+- **Rename** — edit the template name in place
+- **Duplicate** — copy a template as a starting point for a variant
+- **Delete** — remove a saved template permanently
+
+> Managing templates (rename / delete / duplicate) is landing in the same release as this guide. If the **Settings → Templates** panel is not yet visible, update to the latest version.
+
+<!-- screenshot: docs/screenshots/template-management-panel.png — Settings → Templates panel with rename / delete / duplicate controls -->
+
+### Import and export
+
+Share templates between machines or with other writers using the `.mythostemplate` file format.
+
+- **Export:** **File → Export Template…** → select a saved template → choose a save location. Produces a `.mythostemplate` file you can share freely.
+- **Import:** **File → Import Template…** → select a `.mythostemplate` file. The template is added to your gallery with a **Saved** badge and is available immediately.
+
+> Import / export is landing in the same release as this guide. If these menu items are not yet visible, update to the latest version.
+
+<!-- screenshot: docs/screenshots/template-import-export.png — import flow showing a .mythostemplate file being selected -->
+
+---
 
 ## Contributing
 
