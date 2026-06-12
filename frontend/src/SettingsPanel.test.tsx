@@ -22,7 +22,6 @@ const mockSettingsSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockVaultSetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
-const mockOpenMoveVaultWizard = vi.fn();
 const mockAgentPersonaRead = vi.fn();
 const mockAgentPersonaReset = vi.fn();
 const mockTemplateSaveAs = vi.fn();
@@ -54,7 +53,6 @@ beforeEach(() => {
     vaultGetPaths: mockVaultGetPaths,
     vaultSetPaths: mockVaultSetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
-    openMoveVaultWizard: mockOpenMoveVaultWizard,
     agentPersonaRead: mockAgentPersonaRead,
     agentPersonaReset: mockAgentPersonaReset,
     templateSaveAs: mockTemplateSaveAs,
@@ -71,7 +69,7 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
   });
 
-  it('shows Account vault card with cloud status badge and guarded move action', async () => {
+  it('shows Account vault card with cloud status badge and opens inline move wizard', async () => {
     mockVaultGetPaths.mockResolvedValueOnce({
       storyVaultPath: '/Users/test/Dropbox/Mythos/Story Vault',
       notesVaultPath: '/Users/test/Mythos/Notes Vault',
@@ -84,7 +82,7 @@ describe('SettingsPanel', () => {
     expect(screen.getByLabelText('Vault sync status: Synced via Dropbox')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /move to a different folder/i }));
-    expect(mockOpenMoveVaultWizard).toHaveBeenCalledTimes(1);
+    await screen.findByRole('dialog', { name: /move vault to cloud sync/i });
   });
 
   it('truncates long Account vault paths with an ellipsis', async () => {
