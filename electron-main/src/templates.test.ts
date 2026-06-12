@@ -15,7 +15,9 @@ import {
   getNoteTemplate,
   parseNoteTemplateFields,
   resolveNoteTemplate,
-  type TemplateDefinition,
+  renameTemplate,
+  deleteTemplate,
+  duplicateTemplate,  type TemplateDefinition,
   type TemplateNode,
   type NoteTemplate,
 } from './templates.js';
@@ -492,3 +494,107 @@ describe('template:saveAs IPC handler — name length cap (SEC-11)', () => {
   });
 });
 
+// ─── SKY-1399: rename / delete / duplicate ───────────────────────────────────
+
+function seedTemplate(appData: string, name: string): string {
+  const storyRoot = path.join(appData, 'story');
+  const notesRoot = path.join(appData, 'notes');
+  fs.mkdirSync(path.join(storyRoot, 'Manuscript'), { recursive: true });
+  fs.mkdirSync(notesRoot, { recursive: true });
+  return saveAsTemplate(storyRoot, notesRoot, name, appData);
+}
+
+describe('renameTemplate', () => {
+  it('updates the name field in the JSON file', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'My Template');
+    renameTemplate(appData, id, 'Renamed Template');
+    const updated = loadUserTemplates(appData).find((t) => t.id === id)!;
+    expect(updated.name).toBe('Renamed Template');
+  });
+
+  it('preserves all other fields when renaming', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'My Template');
+    const before = loadUserTemplates(appData).find((t) => t.id === id)!;
+    renameTemplate(appData, id, 'New Name');
+    const after = loadUserTemplates(appData).find((t) => t.id === id)!;
+    expect(after.id).toBe(before.id);
+    expect(after.description).toBe(before.description);
+    expect(after.story).toEqual(before.story);
+    expect(after.notes).toEqual(before.notes);
+  });
+
+  it('throws when the template id does not exist', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    fs.mkdirSync(path.join(appData, 'templates'), { recursive: true });
+    expect(() => renameTemplate(appData, 'user:nonexistent-xxxxxxxx', 'X')).toThrow('Template not found');
+  });
+});
+
+describe('deleteTemplate', () => {
+  it('removes the template JSON file', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'To Delete');
+    expect(loadUserTemplates(appData).some((t) => t.id === id)).toBe(true);
+    deleteTemplate(appData, id);
+    expect(loadUserTemplates(appData).some((t) => t.id === id)).toBe(false);
+  });
+
+  it('leaves other templates untouched', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id1 = seedTemplate(appData, 'Keep');
+    const id2 = seedTemplate(appData, 'Delete Me');
+    deleteTemplate(appData, id2);
+    const remaining = loadUserTemplates(appData);
+    expect(remaining.some((t) => t.id === id1)).toBe(true);
+    expect(remaining.some((t) => t.id === id2)).toBe(false);
+  });
+
+  it('throws when the template id does not exist', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    fs.mkdirSync(path.join(appData, 'templates'), { recursive: true });
+    expect(() => deleteTemplate(appData, 'user:nonexistent-xxxxxxxx')).toThrow('Template not found');
+  });
+});
+
+describe('duplicateTemplate', () => {
+  it('creates a new template with " copy" appended to the name', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'My Template');
+    const newId = duplicateTemplate(appData, id);
+    const copy = loadUserTemplates(appData).find((t) => t.id === newId)!;
+    expect(copy.name).toBe('My Template copy');
+  });
+
+  it('assigns a fresh unique id to the duplicate', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'Original');
+    const newId = duplicateTemplate(appData, id);
+    expect(newId).not.toBe(id);
+    expect(newId).toMatch(/^user:/);
+  });
+
+  it('copies story and notes trees from the original', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'Original');
+    const source = loadUserTemplates(appData).find((t) => t.id === id)!;
+    const newId = duplicateTemplate(appData, id);
+    const copy = loadUserTemplates(appData).find((t) => t.id === newId)!;
+    expect(copy.story).toEqual(source.story);
+    expect(copy.notes).toEqual(source.notes);
+  });
+
+  it('leaves the original template intact', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    const id = seedTemplate(appData, 'Original');
+    duplicateTemplate(appData, id);
+    expect(loadUserTemplates(appData).some((t) => t.id === id)).toBe(true);
+  });
+
+  it('throws when the template id does not exist', () => {
+    const appData = path.join(tmpDir, 'appdata');
+    fs.mkdirSync(path.join(appData, 'templates'), { recursive: true });
+    expect(() => duplicateTemplate(appData, 'user:nonexistent-xxxxxxxx')).toThrow('Template not found');
+  });
+});

@@ -376,6 +376,10 @@ export const IPC_CHANNELS = {
   // SKY-863: Cloud-sync conflict detection + lockfile
   VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
   VAULT_DISMISS_SYNC_WARNING: 'vault:dismiss-sync-warning',
+  // SKY-1399: manage custom templates
+  TEMPLATE_RENAME: 'template:rename',
+  TEMPLATE_DELETE: 'template:delete',
+  TEMPLATE_DUPLICATE: 'template:duplicate',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -649,6 +653,10 @@ export interface IpcHandlers {
   // SKY-863: Cloud-sync conflict detection + lockfile
   [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: (payload: never) => Promise<VaultCheckConflictsResponse>;
   [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (payload: never) => { ok: true };
+  // SKY-1399: manage custom templates
+  [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: TemplateRenamePayload) => TemplateRenameResponse;
+  [IPC_CHANNELS.TEMPLATE_DELETE]: (payload: TemplateDeletePayload) => TemplateDeleteResponse;
+  [IPC_CHANNELS.TEMPLATE_DUPLICATE]: (payload: TemplateDuplicatePayload) => TemplateDuplicateResponse;
 }
 
 // ─── Payload / Response types ───
@@ -3190,4 +3198,30 @@ export interface VaultCheckConflictsResponse {
   lockfileConflict: LockfileConflictInfo | null;
   /** True when the user has previously dismissed warnings for this vault. */
   dismissed: boolean;
+}
+
+export interface TemplateRenamePayload {
+  id: string;
+  name: string;
+}
+
+export interface TemplateRenameResponse {
+  ok: true;
+}
+
+export interface TemplateDeletePayload {
+  id: string;
+}
+
+export interface TemplateDeleteResponse {
+  ok: true;
+}
+
+export interface TemplateDuplicatePayload {
+  id: string;
+}
+
+export interface TemplateDuplicateResponse {
+  ok: true;
+  id: string;
 }

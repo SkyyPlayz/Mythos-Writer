@@ -338,7 +338,7 @@ import {
   entityTypeToFactType,
   buildEnrichmentSystemPrompt,
 } from './brainstormAgent.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate } from './templates.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
@@ -363,7 +363,6 @@ import {
   isForeignHostLock,
   appendSyncEvent,
 } from './cloudSync.js';
-
 const require = createRequire(import.meta.url);
 
 // ─── State ───
@@ -4541,7 +4540,28 @@ const handlers: IpcHandlers = {
     const current = loadVaultSettings().syncWarningDismissed ?? {};
     saveVaultSettings({ syncWarningDismissed: { ...current, [vaultRoot]: true } });
     return { ok: true };
+  [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: import('./ipc.js').TemplateRenamePayload): import('./ipc.js').TemplateRenameResponse | { error: string } => {
+    const { id, name } = payload ?? {};
+    const trimmed = (name ?? '').trim();
+    if (!trimmed || trimmed.length > 80) return { error: 'Name must be 1–80 characters' };
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f]/.test(trimmed)) return { error: 'Name contains invalid characters' };
+    renameTemplate(app.getPath('userData'), id, trimmed);
+    return { ok: true as const };
   },
+
+  [IPC_CHANNELS.TEMPLATE_DELETE]: (payload: import('./ipc.js').TemplateDeletePayload): import('./ipc.js').TemplateDeleteResponse | { error: string } => {
+    const { id } = payload ?? {};
+    if (!id) return { error: 'Template id is required' };
+    deleteTemplate(app.getPath('userData'), id);
+    return { ok: true as const };
+  },
+
+  [IPC_CHANNELS.TEMPLATE_DUPLICATE]: (payload: import('./ipc.js').TemplateDuplicatePayload): import('./ipc.js').TemplateDuplicateResponse | { error: string } => {
+    const { id } = payload ?? {};
+    if (!id) return { error: 'Template id is required' };
+    const newId = duplicateTemplate(app.getPath('userData'), id);
+    return { ok: true as const, id: newId };  },
 
 };
 

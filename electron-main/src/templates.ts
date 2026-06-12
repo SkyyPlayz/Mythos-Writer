@@ -305,6 +305,69 @@ function buildTree(dirPath: string): TemplateNode[] {
   return nodes;
 }
 
+// ─── Manage user templates ─────────────────────────────────────────────────
+
+function findUserTemplateFile(appDataPath: string, id: string): string | null {
+  const dir = userTemplatesDir(appDataPath);
+  if (!fs.existsSync(dir)) return null;
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  } catch {
+    return null;
+  }
+  for (const f of files) {
+    const filePath = path.join(dir, f);
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as { id?: string };
+      if (parsed.id === id) return filePath;
+    } catch {
+      // skip malformed
+    }
+  }
+  return null;
+}
+
+export function renameTemplate(appDataPath: string, id: string, newName: string): void {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TemplateDefinition;
+  parsed.name = newName;
+  fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
+}
+
+export function deleteTemplate(appDataPath: string, id: string): void {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  fs.unlinkSync(filePath);
+}
+
+export function duplicateTemplate(appDataPath: string, id: string): string {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  const source = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TemplateDefinition;
+  const newName = `${source.name} copy`;
+  const slug = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template';
+  const newId = `user:${slug}-${crypto.randomBytes(4).toString('hex')}`;
+  const savedAt = new Date().toISOString();
+  const copy: TemplateDefinition = {
+    id: newId,
+    name: newName,
+    description: source.description,
+    story: source.story,
+    notes: source.notes,
+    isUserTemplate: true,
+    savedAt,
+  };
+  const dir = userTemplatesDir(appDataPath);
+  const fileName = `${slug}-${newId.slice(-8)}.json`;
+  fs.writeFileSync(path.join(dir, fileName), JSON.stringify(copy, null, 2), 'utf-8');
+  return newId;
+}
+
+// ─── Save as template ─────────────────────────────────────────────────────────
+
 /**
  * Snapshot the current Story Vault + Notes Vault directory structure (no content)
  * as a user template and persist it as a JSON file under appDataPath/templates/.

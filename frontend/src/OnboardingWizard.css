@@ -262,6 +262,83 @@
   line-height: 1.4;
 }
 
+/* user template card: div-based so it can contain action buttons */
+.template-card--user {
+  cursor: pointer;
+}
+
+.template-card--user:focus-visible {
+  outline: 2px solid var(--color-accent, #89b4fa);
+  outline-offset: 2px;
+  border-color: var(--color-accent, #89b4fa);
+}
+
+/* Action toolbar — shown on hover / always visible on touch devices */
+.template-card__actions {
+  display: flex;
+  gap: 0.2rem;
+  margin-top: 0.375rem;
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+}
+
+.template-card--user:hover .template-card__actions,
+.template-card--user:focus-within .template-card__actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .template-card__actions {
+    opacity: 1;
+  }
+}
+
+.template-card__action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: inherit;
+  opacity: 0.7;
+  font-family: inherit;
+  transition: opacity 80ms ease-out, background 80ms ease-out;
+}
+
+.template-card__action-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.template-card__action-btn:focus-visible {
+  outline: 2px solid var(--color-accent, #89b4fa);
+  outline-offset: 1px;
+}
+
+.template-card__action-btn--destructive:hover {
+  color: var(--color-error, #f38ba8);
+  background: rgba(243, 139, 168, 0.1);
+}
+
+.template-card__rename-input {
+  width: 100%;
+  background: var(--color-surface, #1e1e2e);
+  border: 1px solid var(--color-accent, #89b4fa);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  color: var(--color-text, #cdd6f4);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  outline: none;
+}
+
 /* ─── Template structure preview ───────────────────────────────────────────── */
 
 .template-preview {

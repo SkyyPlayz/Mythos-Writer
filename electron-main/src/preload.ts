@@ -559,7 +559,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:check-conflicts', undefined),
   dismissSyncWarning: () =>
     ipcRenderer.invoke('vault:dismiss-sync-warning', undefined),
-
+  // SKY-1399: manage custom templates
+  templateRename: (id: string, name: string) =>
+    ipcRenderer.invoke('template:rename', { id, name }),
+  templateDelete: (id: string) =>
+    ipcRenderer.invoke('template:delete', { id }),
+  templateDuplicate: (id: string) =>
+    ipcRenderer.invoke('template:duplicate', { id }),
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
   goalsLogWords: (date: string, wordsAdded: number) =>
