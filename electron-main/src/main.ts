@@ -338,7 +338,7 @@ import {
   entityTypeToFactType,
   buildEnrichmentSystemPrompt,
 } from './brainstormAgent.js';
-import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate } from './templates.js';
+import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
@@ -4540,6 +4540,7 @@ const handlers: IpcHandlers = {
     const current = loadVaultSettings().syncWarningDismissed ?? {};
     saveVaultSettings({ syncWarningDismissed: { ...current, [vaultRoot]: true } });
     return { ok: true };
+  },
   [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: import('./ipc.js').TemplateRenamePayload): import('./ipc.js').TemplateRenameResponse | { error: string } => {
     const { id, name } = payload ?? {};
     const trimmed = (name ?? '').trim();
@@ -4562,6 +4563,33 @@ const handlers: IpcHandlers = {
     if (!id) return { error: 'Template id is required' };
     const newId = duplicateTemplate(app.getPath('userData'), id);
     return { ok: true as const, id: newId };  },
+
+  // SKY-1403: Dialog called in main process — renderer never supplies FS paths.
+  [IPC_CHANNELS.TEMPLATE_EXPORT]: async (payload: import('./ipc.js').TemplateExportPayload): Promise<import('./ipc.js').TemplateExportResponse> => {
+    const { id } = payload ?? {};
+    if (!id) return { error: 'Template id is required' };
+    const templates = loadUserTemplates(app.getPath('userData'));
+    const template = templates.find((t) => t.id === id);
+    if (!template) return { error: 'Template not found' };
+    const slug = template.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template';
+    const res = await dialog.showSaveDialog({
+      title: 'Export Template',
+      defaultPath: `${slug}.mythostemplate`,
+      filters: [{ name: 'Mythos Template', extensions: ['mythostemplate'] }],
+    });
+    if (res.canceled || !res.filePath) return { ok: true as const, cancelled: true };
+    return exportTemplate(app.getPath('userData'), id, res.filePath);
+  },
+
+  [IPC_CHANNELS.TEMPLATE_IMPORT]: async (_payload: never): Promise<import('./ipc.js').TemplateImportResponse> => {
+    const res = await dialog.showOpenDialog({
+      title: 'Import Template',
+      filters: [{ name: 'Mythos Template', extensions: ['mythostemplate'] }],
+      properties: ['openFile'],
+    });
+    if (res.canceled || !res.filePaths[0]) return { ok: true as const, cancelled: true };
+    return importTemplate(app.getPath('userData'), res.filePaths[0]);
+  },
 
 };
 

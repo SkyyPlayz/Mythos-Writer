@@ -181,6 +181,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // SKY-1403: export / import toast feedback
+  const [templateToast, setTemplateToast] = useState<string | null>(null);
+  const templateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 2 form state
   const [storyTitle, setStoryTitle] = useState('');
@@ -233,6 +236,13 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   useEffect(() => {
     if (step === 'step1b') reloadTemplates();
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SKY-1403: show a brief toast message in the template picker
+  const showTemplateToast = useCallback((msg: string) => {
+    setTemplateToast(msg);
+    if (templateToastTimerRef.current) clearTimeout(templateToastTimerRef.current);
+    templateToastTimerRef.current = setTimeout(() => setTemplateToast(null), 3000);
+  }, []);
 
   // ─── Keyboard helpers ───────────────────────────────────────────────────────
 
@@ -762,6 +772,21 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                           <button
                             type="button"
                             className="gs-template-card__action-btn"
+                            title="Export"
+                            aria-label={`Export ${tmpl.name}`}
+                            data-testid={`template-export-btn-${tmpl.id}`}
+                            onClick={async () => {
+                              const res = await (window.api as any).templateExport(tmpl.id);
+                              if (res && 'error' in res) {
+                                showTemplateToast(res.error);
+                              } else if (res && !res.cancelled) {
+                                showTemplateToast(`Exported "${tmpl.name}"`);
+                              }
+                            }}
+                          >&#x2B07;</button>
+                          <button
+                            type="button"
+                            className="gs-template-card__action-btn"
                             title="Duplicate"
                             aria-label={`Duplicate ${tmpl.name}`}
                             data-testid={`template-duplicate-btn-${tmpl.id}`}
@@ -785,6 +810,34 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 ) : (
                   <p className="gs-template-empty-hint" data-testid="user-templates-empty">
                     No custom templates yet &#x2014; use &#x2018;Save as template&#x2019; from the vault menu after you scaffold a story.
+                  </p>
+                )}
+                <div className="gs-template-import-row">
+                  <button
+                    type="button"
+                    className="btn-secondary gs-template-import-btn"
+                    data-testid="template-import-btn"
+                    onClick={async () => {
+                      const res = await (window.api as any).templateImport();
+                      if (res && 'error' in res) {
+                        showTemplateToast("This file doesn't appear to be a valid Mythos template.");
+                      } else if (res && !res.cancelled) {
+                        reloadTemplates();
+                        showTemplateToast(`Template imported: ${res.template?.name ?? 'Unknown'}`);
+                      }
+                    }}
+                  >
+                    &#x2B06; Import template
+                  </button>
+                </div>
+                {templateToast && (
+                  <p
+                    className="gs-template-toast"
+                    role="status"
+                    aria-live="polite"
+                    data-testid="template-toast"
+                  >
+                    {templateToast}
                   </p>
                 )}
               </>

@@ -380,6 +380,9 @@ export const IPC_CHANNELS = {
   TEMPLATE_RENAME: 'template:rename',
   TEMPLATE_DELETE: 'template:delete',
   TEMPLATE_DUPLICATE: 'template:duplicate',
+  // SKY-1403: export / import .mythostemplate files
+  TEMPLATE_EXPORT: 'template:export',
+  TEMPLATE_IMPORT: 'template:import',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -654,9 +657,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: (payload: never) => Promise<VaultCheckConflictsResponse>;
   [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (payload: never) => { ok: true };
   // SKY-1399: manage custom templates
-  [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: TemplateRenamePayload) => TemplateRenameResponse;
-  [IPC_CHANNELS.TEMPLATE_DELETE]: (payload: TemplateDeletePayload) => TemplateDeleteResponse;
-  [IPC_CHANNELS.TEMPLATE_DUPLICATE]: (payload: TemplateDuplicatePayload) => TemplateDuplicateResponse;
+  [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: TemplateRenamePayload) => TemplateRenameResponse | { error: string };
+  [IPC_CHANNELS.TEMPLATE_DELETE]: (payload: TemplateDeletePayload) => TemplateDeleteResponse | { error: string };
+  [IPC_CHANNELS.TEMPLATE_DUPLICATE]: (payload: TemplateDuplicatePayload) => TemplateDuplicateResponse | { error: string };
+  // SKY-1403: export / import .mythostemplate files
+  [IPC_CHANNELS.TEMPLATE_EXPORT]: (payload: TemplateExportPayload) => Promise<TemplateExportResponse>;
+  [IPC_CHANNELS.TEMPLATE_IMPORT]: (payload: never) => Promise<TemplateImportResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -3225,3 +3231,16 @@ export interface TemplateDuplicateResponse {
   ok: true;
   id: string;
 }
+
+// SKY-1403: export / import .mythostemplate files
+export interface TemplateExportPayload {
+  id: string;
+}
+
+export type TemplateExportResponse =
+  | { ok: true; cancelled?: boolean }
+  | { error: string };
+
+export type TemplateImportResponse =
+  | { ok: true; template?: TemplateDefinition; cancelled?: boolean }
+  | { error: string };
