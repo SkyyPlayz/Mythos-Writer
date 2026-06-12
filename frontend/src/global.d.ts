@@ -804,6 +804,8 @@ interface Window {
     // SKY-55: per-scene notes
     notesGet?: (sceneId: string) => Promise<{ content: string }>;
     notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
+    // SKY-1391: brainstorm → writing-panel bridge
+    sceneAppendBrainstormNote?: (sceneId: string, content: string) => Promise<{ appended: boolean }>;
 
     // SKY-158: Tags
     tagsList?: () => Promise<{ tags: Array<{ id: string; name: string; color?: string | null; createdAt: string }> }>;

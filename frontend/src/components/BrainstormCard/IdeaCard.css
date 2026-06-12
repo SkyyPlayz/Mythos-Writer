@@ -175,3 +175,52 @@
   max-height: 4.5em;
   overflow: hidden;
 }
+
+/* Drag-reorder handle (custom sort mode) */
+.idea-card--draggable {
+  padding-left: calc(var(--space-3) + 22px);
+}
+
+.idea-card-drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 28px;
+  background: none;
+  border: none;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  opacity: 0;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  padding: 0;
+  line-height: 1;
+  user-select: none;
+  touch-action: none;
+}
+
+.idea-card:hover .idea-card-drag-handle,
+.idea-card:focus-within .idea-card-drag-handle {
+  opacity: 0.45;
+}
+
+.idea-card-drag-handle:hover {
+  opacity: 1 !important;
+  background: var(--bg-hover);
+}
+
+@media (pointer: coarse) {
+  .idea-card-drag-handle {
+    opacity: 0.45;
+  }
+}
+
+.idea-card--dragging {
+  opacity: 0.4;
+  box-shadow: 0 0 0 2px var(--accent, var(--neon-cyan));
+}
