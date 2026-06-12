@@ -202,12 +202,12 @@ Mythos Writer ships with four ready-to-use templates:
 
 ### Starting from a template (onboarding)
 
-When you first open Mythos Writer, choose **Start from template** on the welcome screen.
+When you first open Mythos Writer, click **From Template** on the welcome screen.
 
 1. The **template gallery** opens, listing all four bundled templates. Any templates you have previously saved appear below them with a **Saved** badge.
-2. Click a template card to select it. A **structure preview** panel shows the top-level folders that will be created in your Story Vault and Notes Vault.
-3. Enter or browse to a **Parent folder**. Mythos Writer will create `Story Vault/` and `Notes Vault/` side-by-side inside it.
-4. Click **Apply "[Template Name]"** to scaffold the vault and open the app.
+2. Click a template card to select it. A **structure preview** panel shows the top-level folders that will be created in your Story Vault and Notes Vault. Click **Use this template →** to continue.
+3. Enter a story title and set a **save location**. Mythos Writer will create a `[Story title]/` folder there, with `Story Vault/` and `Notes Vault/` inside it.
+4. Click **Create Story →** to scaffold the vault and open the app.
 
 > Each template includes starter note files inside its folders (for example, `Chapter 1/Scene 1 — Opening Hook.md` in the Novel template), so your vault is never empty on first open.
 
