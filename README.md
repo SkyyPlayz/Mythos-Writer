@@ -2,6 +2,31 @@
 
 Mythos Writer is a local-first desktop writing app for fiction authors. It gives you a structured vault for your stories and notes, a distraction-free scene editor, and an AI brainstorm assistant powered by Claude — all running on your own machine with your files stored as plain Markdown. No subscription, no cloud, no lock-in.
 
+## Screenshots
+
+<table>
+<tr>
+  <td align="center" width="50%">
+    <strong>First launch — onboarding wizard</strong><br/>
+    <img src="docs/screenshots/onboarding-wizard.png" alt="Onboarding wizard — choose a vault path" width="100%"/>
+  </td>
+  <td align="center" width="50%">
+    <strong>Writing shell with Getting Started checklist</strong><br/>
+    <img src="docs/screenshots/getting-started-panel.png" alt="Post-onboarding shell with Getting Started panel" width="100%"/>
+  </td>
+</tr>
+<tr>
+  <td align="center" width="50%">
+    <strong>Brainstorm AI — conversational story development</strong><br/>
+    <img src="docs/screenshots/brainstorm-panel.png" alt="Brainstorm AI panel" width="100%"/>
+  </td>
+  <td align="center" width="50%">
+    <strong>Settings — vault sync status badge</strong><br/>
+    <img src="docs/screenshots/settings-vault-badge.png" alt="Settings panel showing vault sync status" width="100%"/>
+  </td>
+</tr>
+</table>
+
 ## Installation
 
 Download the latest release from the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases):
@@ -16,7 +41,7 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 
 ## Quickstart (5 minutes)
 
-1. **First launch** — the onboarding wizard appears. Pick a folder for your vault (or accept the default `~/Mythos`). Click **Create vault**.
+1. **First launch** — the onboarding wizard appears. Pick a folder for your vault (or accept the default `~/Mythos`). Click **Create vault**. A **Getting Started** checklist appears in the right sidebar to guide you through the app's core features — dismiss it whenever you're ready.
 2. **Create a story** — in the left rail, click **+** next to *Story Vault*, enter a title, press Enter.
 3. **Add a chapter and scene** — expand your story, click **+** to add a chapter, then **+** inside the chapter to create your first scene.
 4. **Write** — click the scene to open the editor. Start typing. Your work is saved automatically.
@@ -24,20 +49,219 @@ Run the installer or AppImage, then launch **Mythos Writer**.
 
 > **API key required for AI features.** Open **Settings** (⚙ icon in the top bar) → enter your [Anthropic API key](https://console.anthropic.com/). The key is stored locally — it never leaves your machine.
 
+## Project Templates
+
+Start a new project from a ready-made vault structure instead of a blank canvas. Mythos Writer ships with bundled templates — **Novel (3-Act)**, **Short Story**, **World-building Bible**, and **Series Bible** — that pre-populate your vault with a sensible chapter/scene hierarchy and notes folders for that story type.
+
+Templates are available when you create a new story (click **+** next to *Story Vault* in the left rail and pick a template from the dialog).
+
 ## Key features
 
 - **Story Vault** — organise your manuscript as Stories → Chapters → Scenes; each scene is a Markdown file you own
-- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference
+- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference; its storage location (local or cloud-synced) is shown by the vault status badge in Settings
+- **Project templates** — four bundled vault structures (Novel, Short Story, World-building Bible, Series Bible); save your own from any project and reuse them at onboarding
 - **Rich scene editor** — TipTap-powered editor with WikiLinks (`[[Character Name]]`), draft states (In Progress / Review / Final), and word count
 - **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
 - **Brainstorm AI** — conversational story development; automatically extracts facts into your vault entities
 - **Writing Assistant** — proactive inline suggestions as you write (Edit mode)
-- **Entity browser** — characters, locations, and items extracted from brainstorm sessions
+- **Entity browser** — characters, locations, factions, items, events, and concepts; wiki-link any entity from your scenes
 - **Kanban board** — scene cards in a drag-and-drop board view
 - **Graph view** — visual map of WikiLink connections across your vault
 - **Export** — one-click EPUB and DOCX export (File → Export…)
 - **Snapshot history** — automatic per-scene version snapshots; right-click the editor to restore
 - **Auto-updater** — Stable and Beta release channels; updates install in the background
+- **Vault status badge** — at-a-glance indicator in Settings showing whether your vault is stored locally or synced via a cloud provider (Google Drive, Dropbox, iCloud Drive, OneDrive)
+- **Getting Started checklist** — a guided panel walks new users through writing their first scene, adding a character, trying Brainstorm, and exploring the Notes Vault; dismissible once you're ready to fly solo
+
+## Documentation
+
+| Guide | Contents |
+|-------|----------|
+| [User Guide](docs/user-guide.md) | Vault management, scene editor, Brainstorm AI, settings |
+| [Entity System](docs/user-guide/entities.md) | Characters, locations, factions, items, events, concepts — wiki-links, connections, search |
+| [Keyboard Shortcuts](docs/keyboard-shortcuts.md) | Full shortcut reference |
+| [AI Providers Guide](#ai-providers) | Local models (Ollama, LM Studio), BYO provider, per-agent config |
+| [Voice Guide](#voice-stt--tts) | STT/TTS setup, provider capabilities, backward compat |
+
+## AI Providers
+
+Mythos Writer ships with Anthropic Claude as the default AI provider. You can also run local models or use any OpenAI-compatible endpoint.
+
+### Quick reference
+
+| Provider | API key | Base URL required | Notes |
+|----------|---------|-------------------|-------|
+| **Anthropic** (default) | ✅ Required | — | Use your Anthropic API key at console.anthropic.com |
+| **OpenAI / compatible** | ✅ Required | ✅ Required | `https://api.openai.com/v1` or your own endpoint |
+| **Ollama** (local) | — | ✅ (auto-filled) | Default `http://127.0.0.1:11434/v1` |
+| **LM Studio** (local) | — | ✅ (auto-filled) | Default `http://127.0.0.1:1234/v1` |
+| **Custom** | Optional | ✅ Required | Any OpenAI-compatible endpoint |
+
+### Using a local model (Ollama)
+
+1. [Install Ollama](https://ollama.com) and pull a model: `ollama pull llama3`
+2. Verify Ollama is running: `curl http://127.0.0.1:11434/v1/models`
+3. In Mythos Writer: **Settings → AI Provider → Provider → Ollama (local)**
+4. The Base URL is pre-filled as `http://127.0.0.1:11434/v1`
+5. Enter the model name you pulled (e.g. `llama3`, `mistral`, `llama3-70b`)
+6. Click **Test connection** — you should see ✓ Connection successful
+7. Click **Save**
+
+All three agents (Writing Assistant, Brainstorm, Archive) will use this model by default. Each agent can also be configured with a different provider — see [Per-agent configuration](#per-agent-configuration) below.
+
+### Using LM Studio (local)
+
+1. [Install LM Studio](https://lmstudio.ai) and start the local server (default port 1234)
+2. Load a model in LM Studio's chat or server view
+3. In Mythos Writer: **Settings → AI Provider → Provider → LM Studio (local)**
+4. The Base URL is pre-filled as `http://127.0.0.1:1234/v1`
+5. Enter the model name shown in LM Studio
+6. Click **Test connection**, then **Save**
+
+### BYO provider (OpenAI-compatible endpoint)
+
+Any OpenAI Chat Completions-compatible API works, including:
+- OpenAI (`https://api.openai.com/v1`)
+- Groq (`https://api.groq.com/openai/v1`)
+- Together AI, Perplexity, Mistral AI, and others
+
+1. In Mythos Writer: **Settings → AI Provider → Provider → OpenAI** (or **Custom endpoint**)
+2. Paste your API key
+3. For custom/non-OpenAI endpoints, enter the Base URL
+4. Enter the model name (e.g. `gpt-4o-mini`, `mixtral-8x7b-32768`)
+5. Click **Test connection**, then **Save**
+
+> **Security note:** When using a remote endpoint (non-localhost), your text is sent to that server. Only use endpoints you own or fully trust. Localhost endpoints (Ollama, LM Studio) never send data over the network.
+
+### Voice
+
+Mythos Writer supports local-first voice input, with optional cloud speech-to-text (STT) and text-to-speech (TTS) through the same provider settings used for AI text.
+
+#### Enable voice
+
+1. Open **Settings → Voice**.
+2. Turn on **Enable voice input**.
+3. Choose **Toggle** or **Push-to-talk** capture mode.
+4. Pick a microphone, or leave **System default** selected.
+5. For cloud STT or TTS, set the STT/TTS provider mode to cloud/auto and choose a **Voice Provider**.
+6. Click **Save**.
+
+Local STT/TTS paths keep using the configured local binaries and never require a cloud provider. When local mode is active, voice stays on your device.
+
+#### Providers that support voice
+
+| Provider | Voice support | Notes |
+|----------|---------------|-------|
+| **OpenAI** | ✅ STT + TTS | Uses OpenAI-compatible `/audio/transcriptions` and `/audio/speech` endpoints |
+| **Custom OpenAI-compatible endpoint** | ✅ STT + TTS when a Base URL is set | Use for providers that implement OpenAI-compatible audio endpoints |
+| **Anthropic** | — | Text AI only; does not provide STT/TTS endpoints |
+| **Ollama / LM Studio** | Local text provider only by default | Local voice still works through the separate local STT/TTS settings |
+
+#### What `capabilities` means
+
+Provider configs can declare `capabilities` to tell Mythos Writer which non-text features are available:
+
+```json
+{
+  "kind": "openai",
+  "model": "gpt-4o-mini",
+  "capabilities": { "transcribe": true, "speak": true }
+}
+```
+
+`transcribe` means the provider can turn audio into text. `speak` means it can synthesize speech. The Voice Provider selector only lists providers that declare one of those capabilities, or known OpenAI-compatible voice providers.
+
+### Backward compatibility
+
+Older installs may still have `stt.cloudApiKey` or `tts.cloudApiKey` saved. Those keys continue to work as a fallback when no voice-capable provider is configured. New setups should prefer the unified provider configuration so text AI, STT, and TTS are managed from one place.
+
+### Per-agent configuration
+
+Each agent (Writing Assistant, Brainstorm, Archive) can use a different model or provider:
+
+1. In **Settings → Agents**, expand any agent card
+2. For the **global model** (same provider, different model): change the Model field — use the dropdown for Anthropic, or type a model name for other providers (e.g. `llama3-70b`)
+3. For a **completely different provider**: toggle **Use a different provider for this agent**, then configure the provider, model, and credentials
+4. Click **Test connection** to verify the per-agent configuration
+5. **Save** — that agent will now use its own provider for all AI requests
+
+## Custom Templates
+
+Project templates give you a pre-built folder structure for your Story Vault and Notes Vault. Start a new project in seconds, or snapshot your own vault layout and reuse it across projects.
+
+### Bundled templates
+
+Mythos Writer ships with four ready-to-use templates:
+
+| Template | Best for |
+|----------|----------|
+| **Novel (3-Act)** | Full-length novel with per-act chapter folders in Story Vault; Characters, Locations, Themes, and Research sections in Notes Vault |
+| **Short Story** | Minimal layout for a single short story — one Manuscript folder and a compact Notes section |
+| **World-building Bible** | World-first projects — Notes Vault organised by Geography, Politics & Power, Magic & Systems, Cultures & Peoples, and History |
+| **Series Bible** | Multi-book series planning with per-book chapter folders plus Series Overview, Characters, World, and Timeline in Notes Vault |
+
+### Starting from a template (onboarding)
+
+When you first open Mythos Writer, click **From Template** on the welcome screen.
+
+1. The **template gallery** opens, listing all four bundled templates. Any templates you have previously saved appear below them with a **Saved** badge.
+2. Click a template card to select it. A **structure preview** panel shows the top-level folders that will be created in your Story Vault and Notes Vault. Click **Use this template →** to continue.
+3. Enter a story title and set a **save location**. Mythos Writer will create a `[Story title]/` folder there, with `Story Vault/` and `Notes Vault/` inside it.
+4. Click **Create Story →** to scaffold the vault and open the app.
+
+> Each template includes starter note files inside its folders (for example, `Chapter 1/Scene 1 — Opening Hook.md` in the Novel template), so your vault is never empty on first open.
+
+![Template gallery in onboarding, Novel (3-Act) selected with structure preview visible](docs/screenshots/template-picker-gallery.png)
+
+### Saving your own template
+
+Once you have a vault structure you like, snapshot it for reuse:
+
+1. Open **File → Save as Template…** from the menu bar.
+2. Enter a name for the template and click **Save**.
+
+The template is stored immediately and appears in the gallery the next time you start a project from a template.
+
+> Saving your own template is landing in the same release as this guide. If **File → Save as Template…** does not appear in the menu, update to the latest version.
+
+**What gets captured:**
+- The **folder tree** of both your Story Vault and Notes Vault, to any depth
+- Folder names only — **no scene text, note content, or settings are included**
+
+Templates are stored as JSON files in Mythos Writer's application data folder:
+
+| Platform | Path |
+|----------|------|
+| Windows | `%AppData%\Mythos Writer\templates\` |
+| macOS | `~/Library/Application Support/Mythos Writer/templates/` |
+| Linux | `~/.config/Mythos Writer/templates/` |
+
+![The "Save as Template" name-entry dialog](docs/screenshots/save-as-template-dialog.png)
+
+### Managing your saved templates
+
+From **Settings → Templates** you can rename, duplicate, or delete any template you have saved. Bundled templates cannot be deleted.
+
+- **Rename** — edit the template name in place
+- **Duplicate** — copy a template as a starting point for a variant
+- **Delete** — remove a saved template permanently
+
+> Managing templates (rename / delete / duplicate) is landing in the same release as this guide. If the **Settings → Templates** panel is not yet visible, update to the latest version.
+
+<!-- screenshot: docs/screenshots/template-management-panel.png — Settings → Templates panel with rename / delete / duplicate controls -->
+
+### Import and export
+
+Share templates between machines or with other writers using the `.mythostemplate` file format.
+
+- **Export:** **File → Export Template…** → select a saved template → choose a save location. Produces a `.mythostemplate` file you can share freely.
+- **Import:** **File → Import Template…** → select a `.mythostemplate` file. The template is added to your gallery with a **Saved** badge and is available immediately.
+
+> Import / export is landing in the same release as this guide. If these menu items are not yet visible, update to the latest version.
+
+<!-- screenshot: docs/screenshots/template-import-export.png — import flow showing a .mythostemplate file being selected -->
+
+---
 
 ## Contributing
 

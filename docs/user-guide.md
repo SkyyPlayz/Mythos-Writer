@@ -8,9 +8,12 @@ This guide covers the main feature surfaces of Mythos Writer. For installation a
 
 1. [Vault management](#vault-management)
 2. [Scene editor](#scene-editor)
-3. [Brainstorm AI](#brainstorm-ai)
-4. [Settings and appearance](#settings-and-appearance)
-5. [Backup and portability](#backup-and-portability)
+3. [Manuscript Structure View](#manuscript-structure-view)
+4. [Brainstorm AI](#brainstorm-ai)
+5. [Settings and appearance](#settings-and-appearance)
+6. [Backup and portability](#backup-and-portability)
+7. [Entity system](user-guide/entities.md) *(separate guide)*
+8. [Cloud Sync](user-guide/cloud-sync.md) *(separate guide)*
 
 ---
 
@@ -69,6 +72,26 @@ Story
 The Notes Vault tab (left rail → **Vault**) shows the full folder tree of your vault, excluding manuscript files and internal metadata. Click any `.md` file to open it. Click **+** in the section header to create a new note.
 
 Notes support WikiLinks — type `[[Note name]]` to link to another file by title.
+
+### Vault — Graph View
+
+Click **Graph** in the top navigation bar to open the interactive node graph.
+
+The graph visualises every WikiLink connection across your Notes Vault:
+
+- **Nodes** — one node per Markdown file; the label is the note's title (`frontmatter.title`) or the filename stem.
+- **Edges** — one edge per `[[wiki-link]]` reference from one note to another.
+
+**Filtering** — two dropdowns appear in the toolbar when your vault contains multiple folders or frontmatter tags:
+
+| Filter | Behaviour |
+|--------|-----------|
+| Folder | Show only notes inside the selected folder |
+| Tag | Show only notes whose `tags` frontmatter array includes the selected tag |
+
+Both filters compose: selecting a folder and a tag shows only notes that satisfy both conditions.
+
+**Opening a note** — click any node to open that note in the editor.
 
 ---
 
@@ -133,6 +156,68 @@ To export a story to EPUB or DOCX:
 4. Pick a save location
 
 The export includes all scenes in order across all chapters.
+
+---
+
+## Manuscript Structure View
+
+### Opening the view
+
+Click **Structure** in the top navigation bar. The view shows all chapters and scenes in your currently active story.
+
+### Card and List modes
+
+Two display modes are available — toggle between them using the **List** / **Card** buttons at the top-right of the view:
+
+| Mode | Shortcut | Description |
+|------|----------|-------------|
+| Card | `Ctrl+2` | Grid of scene cards grouped by chapter (default) |
+| List | `Ctrl+1` | Outline — chapters with nested scene rows |
+
+### Scene cards
+
+In Card mode each scene appears as a square card:
+
+| Element | Description |
+|---------|-------------|
+| ⠿ Drag handle | Upper-left corner; click and hold to start dragging |
+| Title | Scene name (up to two lines; clipped with ellipsis if longer) |
+| Word count | Live count at the card bottom |
+| Status badge | Colour-coded circle in the upper-right corner |
+
+### Drag-and-drop reorder
+
+1. Hover over a card — the drag handle (⠿) appears in the upper-left.
+2. Click and hold the handle for 200 ms — the card dims to 60% opacity.
+3. Drag to a new position within the same chapter, or into a different chapter's section.
+4. Release to drop. The order updates immediately.
+
+Press **Ctrl+Z** to undo the last reorder.
+
+### Beat-sheet sidebar
+
+The beat-sheet sidebar runs to the right of the scene grid or list. It maps the **Save the Cat 3-Act** framework to your manuscript:
+
+| Act | Beats |
+|-----|-------|
+| **Setup** | Opening Image · Theme Stated · Setup · Catalyst · Debate |
+| **Confrontation** | Break Into 2 · B Story · Fun & Games · Midpoint · Bad Guys Close In · All Is Lost · Dark Night of the Soul |
+| **Resolution** | Break Into 3 · Finale · Final Image |
+
+Click an act header to collapse or expand its beats.
+
+To assign a scene to a beat, right-click a scene card and choose **Assign to beat**, then pick a beat from the sub-menu.
+
+### Status badge meanings
+
+| Badge | Colour | Meaning |
+|-------|--------|---------|
+| **Draft** | Cyan | Scene is in progress — new scenes start here |
+| **In Review** | Amber | Ready for a second pass |
+| **Final** | Green | Complete and locked |
+| **Cut** | Red | Scene has been cut from the manuscript |
+
+To change a scene's status, open the scene in the editor and click the status badge in the bottom bar.
 
 ---
 

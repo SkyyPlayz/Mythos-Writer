@@ -1,0 +1,130 @@
+/* SKY-795: Timeline filter bar — Liquid Neon tokens only */
+
+.tlf-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border, #3a3a5c);
+  background: var(--color-surface, #1e1e2e);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #888);
+}
+
+.tlf-tabs {
+  display: flex;
+  gap: 0.15rem;
+  background: color-mix(in srgb, var(--color-bg, #0e1116) 70%, transparent);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.tlf-tab {
+  padding: 0.2rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted, #888);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.tlf-tab:hover {
+  color: var(--color-text, #eee);
+}
+
+.tlf-tab:focus-visible {
+  outline: 2px solid var(--color-accent, #7c6af7);
+  outline-offset: 1px;
+}
+
+.tlf-tab--active {
+  background: color-mix(in srgb, var(--color-accent, #7c6af7) 18%, transparent);
+  border-color: var(--color-accent, #7c6af7);
+  color: var(--color-accent, #7c6af7);
+}
+
+.tlf-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--color-border, #3a3a5c);
+  opacity: 0.6;
+}
+
+.tlf-label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #888);
+}
+
+.tlf-entity-select,
+.tlf-arc-select,
+.tlf-date-input {
+  padding: 0.18rem 0.45rem;
+  background: var(--color-bg, #0e1116);
+  border: 1px solid var(--color-border, #3a3a5c);
+  border-radius: 5px;
+  color: var(--color-text, #eee);
+  font-size: 0.72rem;
+  font-family: inherit;
+}
+
+.tlf-entity-select:focus,
+.tlf-arc-select:focus,
+.tlf-date-input:focus {
+  outline: 2px solid var(--color-accent, #7c6af7);
+  outline-offset: 1px;
+  border-color: var(--color-accent, #7c6af7);
+}
+
+.tlf-arc-focus,
+.tlf-date-range {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.tlf-arc-focus-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--color-text, #eee) 25%, transparent);
+}
+
+.tlf-clear-btn {
+  padding: 0.18rem 0.5rem;
+  border-radius: 5px;
+  border: 1px solid var(--color-border, #3a3a5c);
+  background: transparent;
+  color: var(--color-text-muted, #888);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.tlf-clear-btn:hover {
+  border-color: var(--color-danger, #f87171);
+  color: var(--color-danger, #f87171);
+}
+
+.tlf-clear-btn:focus-visible {
+  outline: 2px solid var(--color-accent, #7c6af7);
+  outline-offset: 1px;
+}
+
+/* ─── Row opacity classes (spec §2.4 / §3.3) ─── */
+
+.tls-row[data-opacity="0.3"] {
+  opacity: 0.3;
+}
+
+.tls-row[data-opacity="0.2"] {
+  opacity: 0.2;
+}
+
+.tls-row--keyboard-focused {
+  outline: 2px solid var(--color-accent, #7c6af7);
+  outline-offset: -2px;
+}

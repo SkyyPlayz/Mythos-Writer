@@ -4,7 +4,7 @@
  * Settings panel, Editor toolbar (BlockEditor draft-state), Vault browser (EntityBrowser).
  * Each describe block renders the component in isolation and asserts axe passes.
  */
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import { configureAxe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 import type { AxeMatchers } from 'vitest-axe/matchers';
@@ -74,6 +74,13 @@ function stubApi(overrides: Record<string, unknown> = {}) {
       saved: true,
     }),
     chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }),
+    listNotesVault: vi.fn().mockResolvedValue({ items: [] }),
+    notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+    notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
+    notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+    vaultReadIcons: vi.fn().mockResolvedValue({}),
+    iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
     ...overrides,
   };
 }
@@ -124,7 +131,6 @@ describe('Accessibility — WritingAssistantPanel (Writing Assistant sidebar)', 
 // Surface 3 — Settings panel
 // ══════════════════════════════════════════════════════════════════════════════
 import SettingsPanel from './components/SettingsPanel';
-import { waitFor } from '@testing-library/react';
 
 describe('Accessibility — SettingsPanel (Settings)', () => {
   beforeEach(() => { stubApi(); vi.clearAllMocks(); });
@@ -172,10 +178,15 @@ describe('Accessibility — EntityBrowser (Vault browser / Entities)', () => {
   });
 
   it('CreateDialog open state has no axe violations', async () => {
+    // Pre-populate so the toolbar "+ New Entity" button is visible (toolbar hidden in empty state)
+    (window as unknown as { api: { entityList: ReturnType<typeof vi.fn> } }).api.entityList =
+      vi.fn().mockResolvedValue({
+        entities: [{ id: 'c1', name: 'Aria Voss', type: 'character', aliases: [], tags: [], prose: '', createdAt: '', updatedAt: '' }],
+      });
     const { container, getByRole } = render(
       <EntityBrowser onSelectEntity={() => {}} selectedEntityId={null} />,
     );
-    await waitFor(() => expect(container.querySelector('.entity-browser')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('.entity-group')).not.toBeNull());
     fireEvent.click(getByRole('button', { name: /new entity/i }));
     await waitFor(() => expect(container.querySelector('[role="dialog"]')).not.toBeNull());
     const results = await axe(container);
@@ -268,6 +279,8 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
         onReorderScenes={() => {}}
       />,
     );
+    // Flush EntityBrowser's async entityList call so its state update lands inside act()
+    await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
@@ -288,11 +301,13 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
         onReorderScenes={() => {}}
       />,
     );
+    // Flush EntityBrowser's async entityList call so its state update lands inside act()
+    await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('tab elements carry correct ARIA roles and attributes', () => {
+  it('tab elements carry correct ARIA roles and attributes', async () => {
     const { container } = render(
       <LeftRail
         activeTab="vault"
@@ -308,11 +323,13 @@ describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
         onReorderScenes={() => {}}
       />,
     );
+    // Flush VaultBrowser's async listVault/listNotesVault calls so state updates land inside act()
+    await act(async () => {});
     const tablist = container.querySelector('[role="tablist"]');
     expect(tablist).not.toBeNull();
 
     const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
 
     const activeTab = container.querySelector('[aria-selected="true"]');
     expect(activeTab?.id).toBe('leftrail-tab-vault');
@@ -389,7 +406,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
     expect(tablist?.getAttribute('aria-label')).toBe('Sidebar panels');
 
     const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(4); // notes, properties, ai, outline
 
     const activeTab = container.querySelector('[aria-selected="true"]');
     expect(activeTab?.id).toBe('rightsidebar-tab-properties');
@@ -483,6 +500,237 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
 
     const notesTab = container.querySelector('#rightsidebar-tab-notes') as HTMLElement;
     fireEvent.keyDown(notesTab, { key: 'ArrowLeft' });
-    expect(onTabChange).toHaveBeenCalledWith('ai');
+    expect(onTabChange).toHaveBeenCalledWith('outline'); // wraps to last tab
+  });
+
+  it('outline tab active — no axe violations', async () => {
+    const story = {
+      id: 's1', title: 'My Story', path: '/s', order: 0,
+      chapters: [{
+        id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, createdAt: '', updatedAt: '',
+        scenes: [
+          { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
+          { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
+        ],
+      }],
+    };
+    const { container } = render(
+      <RightSidebar
+        activeTab="outline"
+        onTabChange={() => {}}
+        selectedScene={{ id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' }}
+        selectedChapter={{ id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: story.chapters[0].scenes, createdAt: '', updatedAt: '' }}
+        selectedStory={story as any}
+      />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('outline tab — active scene has aria-current="true"', () => {
+    const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
+    const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
+
+    const { container } = render(
+      <RightSidebar
+        activeTab="outline"
+        onTabChange={() => {}}
+        selectedScene={scene1}
+        selectedChapter={chapter}
+        selectedStory={story as any}
+      />,
+    );
+
+    const activeNode = container.querySelector('[aria-current="true"]');
+    expect(activeNode).not.toBeNull();
+    expect(activeNode?.textContent).toBe('Scene 1');
+
+    const inactiveNode = container.querySelector('.outline-sidebar-scene:not(.active-scene)');
+    expect(inactiveNode?.getAttribute('aria-current')).toBeNull();
+  });
+
+  it('outline tab — clicking a scene calls onSelectScene', () => {
+    const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
+    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
+    const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
+    const onSelectScene = vi.fn();
+
+    const { container } = render(
+      <RightSidebar
+        activeTab="outline"
+        onTabChange={() => {}}
+        selectedScene={scene1}
+        selectedChapter={chapter}
+        selectedStory={story as any}
+        onSelectScene={onSelectScene}
+      />,
+    );
+
+    const scene2Node = container.querySelector('.outline-sidebar-scene:not(.active-scene)') as HTMLElement;
+    fireEvent.click(scene2Node);
+    expect(onSelectScene).toHaveBeenCalledWith(scene2, chapter);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Surface 8 — SyncConflictModal
+// ══════════════════════════════════════════════════════════════════════════════
+import SyncConflictModal, {
+  type LockfileConflictInfo,
+  type ResolvedConflictInfo,
+} from './SyncConflictModal';
+
+const SYNC_CONFLICT_RESOLVED: ResolvedConflictInfo[] = [
+  {
+    conflictPath: 'Manuscript/Ch01/scene (conflicted copy).md',
+    originalPath: 'Manuscript/Ch01/scene.md',
+    provider: 'dropbox',
+    keptPath: 'Manuscript/Ch01/scene.md',
+    archivedPath: '.mythos/.archive/scene (conflicted copy).md',
+    resolvedAt: '2024-01-15T12:00:00.000Z',
+  },
+];
+
+const SYNC_LOCKFILE_CONFLICT: LockfileConflictInfo = {
+  hostname: 'other-machine.local',
+  pid: 12345,
+  timestamp: '2024-01-15T12:00:00.000Z',
+};
+
+describe('Accessibility — SyncConflictModal', () => {
+  it('resolved-conflicts state has no axe violations', async () => {
+    const { container } = render(
+      <SyncConflictModal
+        resolved={SYNC_CONFLICT_RESOLVED}
+        lockfileConflict={null}
+        onContinue={() => {}}
+      />,
+    );
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('lockfile-warning state has no axe violations', async () => {
+    const { container } = render(
+      <SyncConflictModal
+        resolved={[]}
+        lockfileConflict={SYNC_LOCKFILE_CONFLICT}
+        onContinue={() => {}}
+      />,
+    );
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Surface 9 — IdeaCard (SKY-1196 a11y)
+// ══════════════════════════════════════════════════════════════════════════════
+import { IdeaCard } from './components/BrainstormCard/IdeaCard';
+import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
+
+const SAMPLE_IDEA = {
+  id: 'a11y-1',
+  title: 'Aria Voss',
+  type: 'character' as const,
+  linkedEntities: [{ id: 'e1', name: 'Aria Voss', type: 'character' as const }],
+  savedPath: 'Characters/Aria Voss.md',
+  updatedAt: '2026-06-11T00:00:00.000Z',
+};
+
+describe('Accessibility — IdeaCard (SKY-1196)', () => {
+  it('default state has no axe violations', async () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard idea={SAMPLE_IDEA} onOpenDetail={() => {}} />
+      </div>,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('multi-select state has no axe violations', async () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard
+          idea={SAMPLE_IDEA}
+          onOpenDetail={() => {}}
+          isMultiSelect
+          isSelected={false}
+          onToggleSelect={() => {}}
+        />
+      </div>,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('renders as <li> (implicit listitem role)', () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard idea={SAMPLE_IDEA} onOpenDetail={() => {}} />
+      </div>,
+    );
+    const card = container.querySelector('[data-testid="idea-card-a11y-1"]');
+    expect(card?.tagName.toLowerCase()).toBe('li');
+  });
+
+  it('card is always keyboard-focusable (tabIndex=0)', () => {
+    const { container } = render(
+      <div role="list">
+        <IdeaCard idea={SAMPLE_IDEA} onOpenDetail={() => {}} />
+      </div>,
+    );
+    const card = container.querySelector('[data-testid="idea-card-a11y-1"]') as HTMLElement;
+    expect(card?.tabIndex).toBe(0);
+  });
+});
+
+describe('Accessibility — IdeaDetailDrawer (SKY-1196)', () => {
+  beforeEach(() => { stubApi(); vi.clearAllMocks(); });
+
+  it('default state has no axe violations', async () => {
+    const { container } = render(
+      <IdeaDetailDrawer idea={SAMPLE_IDEA} onClose={() => {}} onSave={() => {}} />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// Surface 10 — WritingApp (vault loading / error states)
+// ══════════════════════════════════════════════════════════════════════════════
+import WritingApp from './WritingApp';
+
+describe('Accessibility — WritingApp loading/error states (SKY-938)', () => {
+  it('loading state has role="status"', () => {
+    (window as unknown as { api: unknown }).api = {
+      readManifest: () => new Promise(() => {}), // never resolves — stays in loading
+    };
+    const { container } = render(<WritingApp />);
+    const loadingEl = container.querySelector('.writing-loading');
+    expect(loadingEl).not.toBeNull();
+    expect(loadingEl?.getAttribute('role')).toBe('status');
+  });
+
+  it('error state has role="alert"', async () => {
+    (window as unknown as { api: unknown }).api = {
+      readManifest: () => Promise.reject(new Error('disk read error')),
+    };
+    const { container } = render(<WritingApp />);
+    const errorEl = await waitFor(() => {
+      const el = container.querySelector('.writing-error');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(errorEl.getAttribute('role')).toBe('alert');
   });
 });

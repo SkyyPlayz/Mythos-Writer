@@ -137,10 +137,12 @@ function seedBudgetUserData(userData: string, vaultDir: string): void {
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
+    ? ['--headless']
+    : [];
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -169,7 +171,7 @@ async function waitUntil(
 test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
   let userData: string;
   let vaultDir: string;
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -182,7 +184,7 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(vaultDir, { recursive: true, force: true });
   });
@@ -450,7 +452,7 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
 test.describe('Budget cap enforcement (TC-S-04)', () => {
   let userData: string;
   let vaultDir: string;
-  let app: ElectronApplication;
+  let app: ElectronApplication | undefined;
   let page: Page;
 
   test.beforeAll(async () => {
@@ -463,7 +465,7 @@ test.describe('Budget cap enforcement (TC-S-04)', () => {
   });
 
   test.afterAll(async () => {
-    await app.close().catch(() => {});
+    await app?.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(vaultDir, { recursive: true, force: true });
   });
@@ -515,5 +517,122 @@ test.describe('Budget cap enforcement (TC-S-04)', () => {
       fs.existsSync(targetFullPath),
       'Vault file must not be written when suggestion is over budget',
     ).toBe(false);
+  });
+});
+
+// ─── TC-S-05: Typed entity relation — accept writes reciprocal frontmatter ────
+//
+// This test covers the SKY-195 feature end-to-end:
+//  1. Two entities are created via IPC (Elara + Dorian).
+//  2. A typed-relation suggestion is injected (kind=typed-relation, relationType="married to").
+//  3. The suggestion is accepted via IPC (simulating the Entity Detail "Accept" button).
+//  4. Both entity files are verified to contain the relation (forward + reciprocal).
+
+test.describe('Typed-relation suggestion accept (TC-S-05)', () => {
+  let userData: string;
+  let vaultDir: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rel-'));
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rel-vault-'));
+    seedUserData(userData, vaultDir);
+    app = await launchApp(userData);
+    page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test('TC-S-05: accept typed-relation → forward + reciprocal written to both entity files', async () => {
+    // 1. Create two entities via IPC. entityCreate generates the id internally
+    //    (crypto.randomUUID) and returns the resolved EntityEntry, so the test
+    //    must use the returned id + path — passing a custom `id` is silently
+    //    ignored by the IPC contract (EntityCreatePayload has no id field).
+    const { sourceId, targetId, sourcePath, targetPath } = await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      const sEntry = await api.entityCreate({ name: 'Elara', type: 'character' });
+      const tEntry = await api.entityCreate({ name: 'Dorian', type: 'character' });
+      return {
+        sourceId: sEntry.id as string,
+        targetId: tEntry.id as string,
+        sourcePath: sEntry.path as string,
+        targetPath: tEntry.path as string,
+      };
+    });
+
+    // 2. Inject a typed-relation suggestion via IPC.
+    const sugId = `tc-s-05-rel-${Date.now()}`;
+    await page.evaluate(
+      ({ id, sId, sPath, tId, tPath }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (window as any).api.suggestionsUpsert({
+          id,
+          source_agent: 'archive',
+          confidence: 0.80,
+          rationale: 'TC-S-05 transcript implies Elara and Dorian are married',
+          target_kind: 'vault',
+          target_path: sPath,
+          target_anchor: null,
+          payload_json: JSON.stringify({
+            kind: 'typed-relation',
+            relationType: 'married to',
+            sourceEntityId: sId,
+            sourceEntityPath: sPath,
+            targetEntityId: tId,
+            targetEntityPath: tPath,
+            sourceEntityName: 'Elara',
+            targetEntityName: 'Dorian',
+          }),
+          status: 'proposed',
+          created_at: new Date().toISOString(),
+          applied_at: null,
+          applied_run_id: null,
+          budget_exceeded: 0,
+        });
+      },
+      { id: sugId, sId: sourceId, sPath: sourcePath, tId: targetId, tPath: targetPath },
+    );
+
+    // 3. Accept the suggestion via IPC (same call the Entity Detail Accept button makes).
+    const acceptResult = await page.evaluate((id) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).api.suggestionsAccept(id);
+    }, sugId) as { id: string; status: string };
+
+    expect(acceptResult.id).toBe(sugId);
+    expect(['accepted', 'applied']).toContain(acceptResult.status);
+
+    // 4. Wait for both entity files to contain the relation frontmatter.
+    const sourceFullPath = path.join(vaultDir, sourcePath);
+    const targetFullPath = path.join(vaultDir, targetPath);
+
+    // Forward relation: Elara → married to → Dorian
+    const forwardWritten = await waitUntil(() => {
+      try {
+        const content = fs.readFileSync(sourceFullPath, 'utf-8');
+        return content.includes('relations:') && content.includes('married to');
+      } catch { return false; }
+    }, 8_000);
+    expect(forwardWritten, 'Source entity should have relations: married to in frontmatter').toBe(true);
+
+    // Reciprocal relation: Dorian → married to → Elara (symmetric)
+    const reciprocalWritten = await waitUntil(() => {
+      try {
+        const content = fs.readFileSync(targetFullPath, 'utf-8');
+        return content.includes('relations:') && content.includes('married to');
+      } catch { return false; }
+    }, 8_000);
+    expect(reciprocalWritten, 'Target entity should have reciprocal relations: married to in frontmatter').toBe(true);
+
+    // 5. Verify the source entity ID appears in the target's relations block.
+    const targetContent = fs.readFileSync(targetFullPath, 'utf-8');
+    expect(targetContent).toContain(sourceId);
   });
 });

@@ -11,6 +11,43 @@
 }
 
 /* Header */
+.brainstorm-detail-drawer-stub {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 20;
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  max-width: 280px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--elev-2);
+}
+
+.brainstorm-detail-drawer-stub p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.brainstorm-detail-drawer-close {
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.brainstorm-detail-drawer-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Header */
 .brainstorm-header {
   display: flex;
   align-items: center;
@@ -37,6 +74,11 @@
   background: var(--bg-surface);
   color: var(--text-primary);
   border-color: var(--border-strong);
+}
+
+.brainstorm-back-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
 }
 
 .brainstorm-header-text {
@@ -86,13 +128,35 @@
 }
 
 .brainstorm-empty {
-  color: var(--text-muted);
-  font-size: 0.87rem;
-  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   padding: 40px 20px;
   text-align: center;
   max-width: 480px;
   margin: auto;
+  gap: 6px;
+}
+
+.brainstorm-empty-icon {
+  color: var(--text-faint);
+  opacity: 0.6;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.brainstorm-empty-headline {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.brainstorm-empty-desc {
+  font-size: 0.87rem;
+  color: var(--text-faint);
+  line-height: 1.6;
+  max-width: 360px;
 }
 
 /* Messages */
@@ -196,6 +260,43 @@
   cursor: not-allowed;
 }
 
+.brainstorm-input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brainstorm-input-wrapper .brainstorm-input {
+  flex: unset;
+}
+
+.brainstorm-char-counter {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  text-align: right;
+  user-select: none;
+  line-height: 1.2;
+}
+
+.brainstorm-char-counter--warning {
+  color: var(--color-warning-text, #92400e);
+}
+
+.brainstorm-char-counter--error {
+  color: var(--state-error, #dc2626);
+  font-weight: 600;
+}
+
+.brainstorm-paste-warning {
+  font-size: 0.8rem;
+  color: var(--color-warning-text, #92400e);
+  background: var(--color-warning-bg, #fffbeb);
+  border: 1px solid var(--color-warning-border, #fde68a);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
 .brainstorm-send-btn {
   background: var(--accent);
   border: none;
@@ -217,6 +318,24 @@
 .brainstorm-send-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.brainstorm-send-btn:focus-visible,
+.brainstorm-cancel-btn:focus-visible,
+.brainstorm-new-session-btn:focus-visible,
+.brainstorm-download-btn:focus-visible,
+.brainstorm-mic-btn:focus-visible,
+.brainstorm-recovery-dismiss-btn:focus-visible,
+.bs-routing-save-btn:focus-visible,
+.bs-routing-once-btn:focus-visible,
+.bs-stalled-retry-btn:focus-visible,
+.bs-stalled-cancel-btn:focus-visible,
+.bs-cont-kind-btn:focus-visible,
+.bs-cont-submit-btn:focus-visible,
+.bs-cont-label-btn:focus-visible,
+.bs-fact-retry-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
 }
 
 /* Facts column */
@@ -266,11 +385,66 @@
 }
 
 .brainstorm-facts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   color: var(--text-faint);
-  font-size: 0.81rem;
-  line-height: 1.6;
+  font-size: 0.78rem;
+  line-height: 1.5;
   text-align: center;
   padding: 24px 12px;
+}
+
+.brainstorm-facts-empty--type {
+  padding: 10px 4px;
+  font-size: 0.75rem;
+}
+
+/* Sort + filter controls row */
+.bs-facts-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 36px;
+}
+
+.bs-facts-select {
+  font-size: 0.72rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  padding: 2px 5px;
+  height: 24px;
+  flex: 1 1 80px;
+  min-width: 60px;
+  max-width: 130px;
+  cursor: pointer;
+}
+
+.bs-facts-select:focus {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 1px;
+}
+
+.bs-expand-collapse-btn {
+  font-size: 0.68rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bs-expand-collapse-btn:hover {
+  color: var(--text-secondary);
 }
 
 /* Fact cards */
@@ -310,6 +484,44 @@
   padding: 2px 0;
 }
 
+.bs-fact-group-header-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bs-fact-group-header-btn:hover {
+  color: var(--text-secondary);
+}
+
+.bs-fact-group-header-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.bs-group-count {
+  background: var(--border-default);
+  border-radius: 8px;
+  font-size: 0.62rem;
+  padding: 0 5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bs-group-chevron {
+  margin-left: auto;
+  font-size: 0.6rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 /* Type badge (kept for backwards compatibility) */
 .bs-fact-type {
   font-size: 0.67rem;
@@ -327,9 +539,34 @@
 .bs-fact-type-concept   { background: var(--entity-concept-bg); color: var(--entity-concept-text); }
 .bs-fact-type-other     { background: var(--border-subtle); color: var(--text-muted); }
 
+/* Fact card header row: name + chevron toggle */
+.bs-fact-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .bs-fact-name {
+  flex: 1;
   font-size: 0.87rem;
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Chevron toggle button — compact, no visual chrome */
+.bs-fact-chevron {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: color 0.1s;
+}
+
+.bs-fact-chevron:hover {
   color: var(--text-primary);
 }
 
@@ -337,6 +574,37 @@
   font-size: 0.78rem;
   color: var(--text-secondary);
   line-height: 1.5;
+  max-height: 4.5em;
+  overflow: hidden;
+}
+
+/* Expand all / Collapse all buttons in the Detected Facts header */
+.bs-fact-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.bs-fact-all-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.67rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--border-default);
+  text-underline-offset: 2px;
+}
+
+.bs-fact-all-btn:hover {
+  color: var(--text-primary);
+}
+
+.bs-fact-all-sep {
+  font-size: 0.67rem;
+  color: var(--border-default);
 }
 
 .bs-fact-save-btn {
@@ -589,7 +857,14 @@
 }
 
 .bs-continuity-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 12px 0;
+  color: var(--color-success, var(--text-faint));
+  font-size: 0.78rem;
+  list-style: none;
 }
 
 .bs-cont-item {
@@ -723,6 +998,110 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+/* SKY-196: Context used section */
+.bs-context-section {
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bs-context-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bs-context-header:hover {
+  background: var(--bg-hover);
+}
+
+.bs-context-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.bs-context-counts {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.bs-context-chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.bs-context-body {
+  padding: 0 12px 10px;
+}
+
+.bs-context-budget {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.bs-context-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.bs-context-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bs-context-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.bs-context-item-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.bs-context-item-type {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.bs-context-type-character { background: var(--entity-char-bg);    color: var(--entity-char-text); }
+.bs-context-type-location  { background: var(--entity-loc-bg);     color: var(--entity-loc-text); }
+.bs-context-type-item      { background: var(--entity-item-bg);    color: var(--entity-item-text); }
+
+.bs-context-item-why {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.bs-context-excluded {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .brainstorm-disabled {
   display: flex;
   align-items: center;
@@ -793,4 +1172,175 @@
 .bs-stalled-cancel-btn:hover {
   background: var(--bg-surface);
   color: var(--text-primary);
+}
+
+
+/* ─── Preset Row in Brainstorm (SKY-507) ───────────────────────── */
+
+.brainstorm-header-preset {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px 0;
+  flex-shrink: 0;
+}
+
+/* Multi-select toggle */
+.bs-multiselect-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+  transition: background var(--dur-hover-in), color var(--dur-hover-in);
+}
+
+.bs-multiselect-toggle:hover,
+.bs-multiselect-toggle.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Bulk action toolbar */
+.bs-bulk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border-default);
+  animation: bs-bulk-in var(--dur-hover-in) var(--ease-out);
+}
+
+@keyframes bs-bulk-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bs-bulk-count {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.bs-bulk-deselect-btn,
+.bs-bulk-delete-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+}
+
+.bs-bulk-deselect-btn {
+  color: var(--text-secondary);
+}
+
+.bs-bulk-deselect-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.bs-bulk-delete-btn {
+  color: var(--state-danger, #e05252);
+  border-color: var(--state-danger, #e05252);
+}
+
+.bs-bulk-delete-btn:hover {
+  background: color-mix(in srgb, var(--state-danger, #e05252) 12%, transparent);
+}
+
+/* Multi-select checkbox on IdeaCard */
+.idea-card-checkbox {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #7c6ff7);
+  pointer-events: none;
+}
+
+.idea-card-multiselect {
+  position: relative;
+  cursor: pointer;
+}
+
+.idea-card-selected {
+  border-color: var(--accent, #7c6ff7);
+  background: color-mix(in srgb, var(--accent, #7c6ff7) 8%, var(--bg-surface));
+}
+
+/* Delete confirmation overlay */
+.bs-delete-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.bs-delete-confirm-dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  min-width: 240px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.bs-delete-confirm-message {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-heading);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3);
+}
+
+.bs-delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.bs-delete-confirm-cancel,
+.bs-delete-confirm-ok {
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.bs-delete-confirm-cancel {
+  background: none;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.bs-delete-confirm-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.bs-delete-confirm-ok {
+  background: var(--state-danger, #e05252);
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+.bs-delete-confirm-ok:hover {
+  opacity: 0.9;
+}
+
+/* Custom-order drag-and-drop indicator */
+.bs-drop-indicator {
+  height: 2px;
+  margin: 2px 4px;
+  background: var(--accent, var(--neon-cyan));
+  border-radius: 1px;
+  pointer-events: none;
+  flex-shrink: 0;
 }

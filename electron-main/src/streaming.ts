@@ -1,8 +1,8 @@
 // Token-streaming IPC channel with cancellation and backpressure.
 import { ipcMain, WebContents } from 'electron';
-import Anthropic from '@anthropic-ai/sdk';
 import crypto from 'crypto';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
+import { streamFromProvider, isModelValid, ANTHROPIC_MODEL_ALLOWLIST, type ProviderConfig } from './provider.js';
 
 export const STREAM_CHANNELS = {
   STREAM_START: 'stream:start',
@@ -24,11 +24,9 @@ export const MAX_TOKENS_CAP = 2048;
 export const MAX_SYSTEM_LENGTH = 16 * 1024; // 16 KB
 export const MAX_PAYLOAD_BYTES = 256 * 1024; // 256 KB
 
-export const MODEL_ALLOWLIST = new Set([
-  'claude-haiku-4-5-20251001',
-  'claude-sonnet-4-6',
-  'claude-opus-4-7',
-]);
+// Backward-compat alias: tests and call sites that import MODEL_ALLOWLIST from this module
+// continue to work; the Anthropic allowlist now lives in provider.ts.
+export const MODEL_ALLOWLIST = ANTHROPIC_MODEL_ALLOWLIST;
 
 export const STREAM_ERRORS = {
   TOO_MANY_STREAMS: 'TOO_MANY_STREAMS',
@@ -62,9 +60,14 @@ export function categorizeStreamError(err: unknown): StreamErrorCategory {
   }
   // Non-HTTP errors: classify by name / message patterns
   const name = (err as Error)?.name;
-  if (name === 'AbortError') return STREAM_ERROR_CATEGORIES.NETWORK;
-  if (name === 'TypeError' || name === 'SyntaxError') return STREAM_ERROR_CATEGORIES.INVALID_REQUEST;
   const msg = (err as Error)?.message?.toLowerCase() ?? '';
+  if (name === 'AbortError') return STREAM_ERROR_CATEGORIES.NETWORK;
+  // fetch() connection failure (local server not running) throws TypeError('fetch failed') —
+  // must check message before the generic TypeError → INVALID_REQUEST branch.
+  if (name === 'TypeError' && (msg.includes('fetch failed') || msg.includes('econnrefused'))) {
+    return STREAM_ERROR_CATEGORIES.NETWORK;
+  }
+  if (name === 'TypeError' || name === 'SyntaxError') return STREAM_ERROR_CATEGORIES.INVALID_REQUEST;
   if (msg.includes('rate') || msg.includes('limit') || msg.includes('429')) return STREAM_ERROR_CATEGORIES.RATE_LIMITED;
   if (msg.includes('auth') || msg.includes('key') || msg.includes('permission')) return STREAM_ERROR_CATEGORIES.AUTH;
   if (msg.includes('network') || msg.includes('connect') || msg.includes('timeout') || msg.includes('dns')) return STREAM_ERROR_CATEGORIES.NETWORK;
@@ -216,39 +219,35 @@ async function runStream(
   streamId: string,
   payload: StreamStartPayload,
   controller: AbortController,
-  getApiKey: () => string,
+  providerConfig: ProviderConfig,
   reg: StreamRegistry,
 ): Promise<void> {
   try {
-    const apiKey = getApiKey();
-    const client = new Anthropic({ apiKey });
-    const sdkStream = client.messages.stream(
-      {
-        model: payload.model ?? 'claude-haiku-4-5-20251001',
-        max_tokens: payload.maxTokens ?? 1024,
-        ...(payload.system !== undefined ? { system: payload.system } : {}),
-        messages: payload.messages,
-      },
-      { signal: controller.signal },
-    );
+    // payload.model (if present and valid) overrides the provider's default model.
+    const config: ProviderConfig = payload.model
+      ? { ...providerConfig, model: payload.model }
+      : providerConfig;
 
-    for await (const chunk of sdkStream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        const entry = reg.get(streamId);
-        if (!entry) continue;
+    for await (const token of streamFromProvider(config, {
+      messages: payload.messages,
+      system: payload.system,
+      maxTokens: payload.maxTokens,
+      signal: controller.signal,
+    })) {
+      const entry = reg.get(streamId);
+      if (!entry) continue;
 
-        if (entry.pendingTokens >= MAX_PENDING_TOKENS) {
-          await reg.waitForDrain(streamId);
-          // Exit cleanly on cancel or destroyed renderer — AbortError follows from the SDK on next tick.
-          if (controller.signal.aborted || sender.isDestroyed()) break;
-        }
-
-        const current = reg.get(streamId);
-        if (!current || sender.isDestroyed()) continue;
-
-        current.pendingTokens++;
-        sender.send(STREAM_CHANNELS.STREAM_TOKEN, { streamId, token: chunk.delta.text });
+      if (entry.pendingTokens >= MAX_PENDING_TOKENS) {
+        await reg.waitForDrain(streamId);
+        // Exit cleanly on cancel or destroyed renderer.
+        if (controller.signal.aborted || sender.isDestroyed()) break;
       }
+
+      const current = reg.get(streamId);
+      if (!current || sender.isDestroyed()) continue;
+
+      current.pendingTokens++;
+      sender.send(STREAM_CHANNELS.STREAM_TOKEN, { streamId, token });
     }
 
     if (!sender.isDestroyed()) {
@@ -260,7 +259,7 @@ async function runStream(
       if (isAbort) {
         sender.send(STREAM_CHANNELS.STREAM_END, { streamId });
       } else {
-        // Log the raw SDK error in main process only — never forward to renderer.
+        // Log the raw provider error in main process only — never forward to renderer.
         console.error(`[stream:error] streamId=${streamId} error=${(err as Error)?.message ?? 'Unknown'}`);
         const category = categorizeStreamError(err);
         sender.send(STREAM_CHANNELS.STREAM_ERROR, {
@@ -276,7 +275,7 @@ async function runStream(
 }
 
 export function registerStreamingHandlers(
-  getApiKey: () => string,
+  getProviderConfig: () => ProviderConfig,
   reg: StreamRegistry = defaultRegistry,
 ): void {
   ipcMain.handle(STREAM_CHANNELS.STREAM_START, async (event, payload: StreamStartPayload) => {
@@ -286,7 +285,9 @@ export function registerStreamingHandlers(
       return { error: STREAM_ERRORS.TOO_MANY_STREAMS };
     }
 
-    // F19: validate payload before touching the SDK
+    const baseConfig = getProviderConfig();
+
+    // F19: validate payload before touching the provider
     if (
       !payload ||
       Buffer.byteLength(JSON.stringify(payload)) > MAX_PAYLOAD_BYTES ||
@@ -295,7 +296,7 @@ export function registerStreamingHandlers(
       payload.messages.some(
         (m) => !m || typeof m !== 'object' || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string',
       ) ||
-      (payload.model !== undefined && !MODEL_ALLOWLIST.has(payload.model)) ||
+      (payload.model !== undefined && !isModelValid(payload.model, baseConfig.kind)) ||
       (payload.maxTokens !== undefined &&
         (!Number.isInteger(payload.maxTokens) || payload.maxTokens < 1 || payload.maxTokens > MAX_TOKENS_CAP)) ||
       (payload.system !== undefined && (typeof payload.system !== 'string' || payload.system.length > MAX_SYSTEM_LENGTH))
@@ -307,7 +308,7 @@ export function registerStreamingHandlers(
     const controller = new AbortController();
     reg.start(streamId, controller, event.sender);
 
-    void runStream(event.sender, streamId, payload, controller, getApiKey, reg);
+    void runStream(event.sender, streamId, payload, controller, baseConfig, reg);
 
     return { streamId };
   });

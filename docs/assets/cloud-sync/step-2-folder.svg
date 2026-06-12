@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-label="Step 2 — Pick folder">
+  <rect width="960" height="540" fill="#0e1116"/>
+  <rect x="96" y="56" width="768" height="428" rx="24" fill="#161c26" stroke="#00f0ff" stroke-opacity="0.45"/>
+  <text x="128" y="112" fill="#00f0ff" font-family="Inter,Segoe UI,sans-serif" font-size="32" font-weight="700">Move vault to cloud sync</text>
+  <text x="128" y="158" fill="#9babc2" font-family="Inter,Segoe UI,sans-serif" font-size="18">Step 2 — Pick folder</text>
+  <rect x="128" y="190" width="704" height="214" rx="16" fill="#0f141c" stroke="#2b3648"/>
+  <text x="48" y="135" fill="#d8e6f3" font-family="Inter,Segoe UI,sans-serif" font-size="22">Browse…</text><text x="48" y="173" fill="#d8e6f3" font-family="Inter,Segoe UI,sans-serif" font-size="22">~/Dropbox/Mythos Story Vault</text><text x="48" y="211" fill="#d8e6f3" font-family="Inter,Segoe UI,sans-serif" font-size="22">Next</text>
+  <rect x="680" y="426" width="152" height="40" rx="10" fill="#00f0ff" fill-opacity="0.18" stroke="#00f0ff"/>
+  <text x="720" y="452" fill="#d8fbff" font-family="Inter,Segoe UI,sans-serif" font-size="18">Next</text>
+</svg>

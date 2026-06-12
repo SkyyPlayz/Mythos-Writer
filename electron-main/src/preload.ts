@@ -24,15 +24,17 @@ contextBridge.exposeInMainWorld('api', {
   vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
   // SKY-12.2: opts.seedMode = 'default' | 'blank' controls scaffold behavior.
   // Defaults to 'default' (full SKY-15 layout) when absent — backwards-compatible.
-  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank' }) =>
-    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode }),
+  // SKY-270 / MYT-789: storyVaultToken / notesVaultToken come from vault:pick-folder.
+  vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) =>
+    ipcRenderer.invoke('vault:setPaths', { storyVaultPath, notesVaultPath, seedMode: opts?.seedMode, storyVaultToken: opts?.storyVaultToken, notesVaultToken: opts?.notesVaultToken }),
   // SKY-12.2: pure filesystem check for the onboarding wizard path-picker.
   validatePath: (p: string) => ipcRenderer.invoke('vault:validate-path', { path: p }),
   // SKY-12.3: copy the bundled sample project into a two-vault layout.
   loadSampleTwoVault: (parentPath: string) =>
     ipcRenderer.invoke('vault:load-sample-twovault', { parentPath }),
-  // SKY-12.4: mark onboarding as complete — persists flag without full settings roundtrip.
-  onboardingComplete: () => ipcRenderer.invoke('onboarding:complete', undefined),
+  // SKY-627: extended onboarding orchestration — creates vault + first scene.
+  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string }) =>
+    ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
   onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
 
@@ -52,6 +54,8 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
   moveVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),
+  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
+    ipcRenderer.invoke('vault:guidedFolderMove', payload),
   // SKY-9: generic folder picker for the Settings panel (decoupled from the
   // Obsidian-import token flow). Returns { path, cancelled }.
   chooseVaultFolder: (title?: string, defaultPath?: string) =>
@@ -61,8 +65,8 @@ contextBridge.exposeInMainWorld('api', {
   pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
   obsidianDryRun: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath, registrationToken }),
   obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
-  loadSampleProject: (targetPath?: string) => ipcRenderer.invoke('vault:load-sample', { targetPath }),
-  createBlankVault: (targetPath: string) => ipcRenderer.invoke('vault:create-blank', { targetPath }),
+  loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', {}),
+  createBlankVault: (targetPath: string, registrationToken?: string) => ipcRenderer.invoke('vault:create-blank', { targetPath, registrationToken }),
   obsidianPickFolderByPath: (sourcePath: string) => ipcRenderer.invoke('vault:pick-folder-by-path', { sourcePath }),
   onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => {
     const handler = (_: unknown, data: { current: number; total: number; lastAction: string }) => cb(data);
@@ -114,10 +118,11 @@ contextBridge.exposeInMainWorld('api', {
   // System
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
+  appQuit: () => ipcRenderer.invoke('app:quit', undefined),
 
   // Versioning — per-scene snapshots
-  snapshotSave: (sceneId: string, content: string) =>
-    ipcRenderer.invoke('snapshot:save', { sceneId, content }),
+  snapshotSave: (sceneId: string, content: string, label?: string) =>
+    ipcRenderer.invoke('snapshot:save', { sceneId, content, label }),
   snapshotSaveSync: (sceneId: string, content: string) =>
     ipcRenderer.sendSync('snapshot:save-sync', { sceneId, content }),
   snapshotList: (sceneId: string) =>
@@ -126,6 +131,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('snapshot:get', { sceneId, snapshotId }),
   snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) =>
     ipcRenderer.invoke('snapshot:restore', { sceneId, snapshotId, scenePath }),
+  snapshotDelete: (sceneId: string, snapshotId: string) =>
+    ipcRenderer.invoke('snapshot:delete', { sceneId, snapshotId }),
+  snapshotDeleteAll: (sceneId?: string) =>
+    ipcRenderer.invoke('snapshot:delete-all', { sceneId }),
 
   // SKY-10 — Per-scene versioned drafts (history pane + rollback)
   versionList: (sceneId: string) =>
@@ -154,6 +163,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:list', { type }),
   entityBacklinks: (entityId: string) =>
     ipcRenderer.invoke('entity:backlinks', { entityId }),
+  entityLinkedScenes: (entityId: string) =>
+    ipcRenderer.invoke('entity:linkedScenes', { entityId }),
+  entityRelationshipsList: (entityId: string) =>
+    ipcRenderer.invoke('entity:relationships:list', { entityId }),
+  entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) =>
+    ipcRenderer.invoke('entity:relationships:create', { fromEntityId, toEntityId, label }),
+  entityRelationshipsDelete: (relationshipId: string) =>
+    ipcRenderer.invoke('entity:relationships:delete', { relationshipId }),
 
   // App settings
   settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
@@ -308,8 +325,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('scene:save', payload),
 
   // Search (MYT-251)
-  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number) =>
-    ipcRenderer.invoke('search:query', { query, scope, limit }),
+  searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) =>
+    ipcRenderer.invoke('search:query', { query, scope, limit, filterTags }),
 
   // Writing Assistant scheduled scan (MYT-233)
   writingScan: (sceneId: string, prose: string, scenePath: string) =>
@@ -417,18 +434,46 @@ contextBridge.exposeInMainWorld('api', {
   timelineInfer: (storyId: string) =>
     ipcRenderer.invoke('timeline:infer', { storyId }),
 
+  // SKY-791/SKY-794: Timeline data model + spreadsheet view
+  timelineGetSettings: (storyId?: string) =>
+    ipcRenderer.invoke('timeline:getSettings', { storyId }),
+  timelineSaveSettings: (settings: unknown, storyId?: string) =>
+    ipcRenderer.invoke('timeline:saveSettings', { settings, storyId }),
+  timelineGetScenes: (storyId: string) =>
+    ipcRenderer.invoke('timeline:getScenes', { storyId }),
+  timelineUpdateScene: (payload: unknown) =>
+    ipcRenderer.invoke('timeline:updateScene', payload),
+  timelineUpdateArcColor: (arcId: string, color: string, colorIsCustom: boolean) =>
+    ipcRenderer.invoke('timeline:updateArcColor', { arcId, color, colorIsCustom }),
+  timelineListArcs: () =>
+    ipcRenderer.invoke('timeline:listArcs', {}),
+
+  // SKY-796: Timeline AI auto-population proposals
+  timelineProposalsGenerate: (storyId: string) =>
+    ipcRenderer.invoke('timeline:proposals:generate', { storyId }),
+  timelineProposalsList: (storyId: string) =>
+    ipcRenderer.invoke('timeline:proposals:list', { storyId }),
+  timelineProposalResolve: (proposalId: string, decision: 'accept' | 'reject') =>
+    ipcRenderer.invoke('timeline:proposal:resolve', { proposalId, decision }),
+
   // Telemetry (MYT-344) — opt-in, off by default
   telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) =>
     ipcRenderer.invoke('telemetry:report', { type, meta }),
 
-  // Multi-project switcher (MYT-374)
+  // Multi-project switcher (MYT-374, extended SKY-320)
   projectList: () => ipcRenderer.invoke('project:list', undefined),
-  projectSwitch: (vaultRoot: string) => ipcRenderer.invoke('project:switch', { vaultRoot }),
-  onProjectSwitched: (cb: (data: { vaultRoot: string }) => void) => {
-    const handler = (_: unknown, data: { vaultRoot: string }) => cb(data);
+  projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
+    ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
+  onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
+    const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);
     return () => ipcRenderer.removeListener('project:switched', handler);
   },
+
+  // One-click Mythos Vault create (SKY-320). The default flow passes no
+  // parentPath — main creates the bundle under ~/Mythos/Vaults/.
+  vaultCreateDefaultMythos: (opts?: { parentPath?: string; vaultName?: string; seedMode?: 'default' | 'blank' }) =>
+    ipcRenderer.invoke('vault:createDefaultMythos', opts ?? {}),
 
   // Archive confirmation dialog (MYT-376)
   archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>
@@ -450,10 +495,11 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // App data backup / restore (MYT-346)
-  backupAppData: (outputPath?: string) =>
-    ipcRenderer.invoke('app:backupAppData', outputPath ? { outputPath } : {}),
-  restoreAppData: (archivePath?: string, confirmed?: boolean) =>
-    ipcRenderer.invoke('app:restoreAppData', { archivePath, confirmed }),
+  // SKY-699: outputPath removed — dialog is always required in main process.
+  backupAppData: () =>
+    ipcRenderer.invoke('app:backupAppData', {}),
+  restoreAppData: (confirmed?: boolean) =>
+    ipcRenderer.invoke('app:restoreAppData', { confirmed }),
 
   // Agent persona files (MYT-816) — view/reset per-agent AGENTS/HEARTBEAT/SOUL/TOOLS files
   agentPersonaRead: (agentName: string, key: string) =>
@@ -472,17 +518,62 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('brainstorm:resetCategoryRouting', { category }),
   brainstormListNotesFolders: () =>
     ipcRenderer.invoke('brainstorm:listNotesFolders', undefined),
+  // SKY-196: token-budgeted vault context selection for Brainstorm AI requests
+  brainstormSelectContext: (payload: { userMessage: string; conversationText: string; tokenBudget?: number }) =>
+    ipcRenderer.invoke('brainstorm:selectContext', payload),
+  // SKY-324: one-shot entry enrichment — generate + write a description for a
+  // newly created entity without requiring the user to open the Brainstorm panel.
+  brainstormEnrichEntry: (payload: { name: string; type: string }) =>
+    ipcRenderer.invoke('brainstorm:enrichEntry', payload),
 
   // SKY-130: persist last-opened scene + cursor position for cross-restart restore.
   sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) =>
     ipcRenderer.invoke('session:saveScene', payload),
   // SKY-156: Project Templates
   templateList: () => ipcRenderer.invoke('template:list', undefined),
-  templateScaffold: (templateId: string, storyVaultPath: string, notesVaultPath: string) =>
-    ipcRenderer.invoke('template:scaffold', { templateId, storyVaultPath, notesVaultPath }),
+  // SKY-780: parentToken must come from a prior vault:pick-folder dialog call.
+  templateScaffold: (templateId: string, parentToken: string) =>
+    ipcRenderer.invoke('template:scaffold', { templateId, parentToken }),
   templateSaveAs: (name: string) =>
     ipcRenderer.invoke('template:saveAs', { name }),
+  // SKY-190: Note Templates
+  noteTemplateList: (kind?: string) =>
+    ipcRenderer.invoke('note-template:list', { kind }),
 
+  // SKY-204: Daily Notes
+  dailyNoteOpenToday: () =>
+    ipcRenderer.invoke('dailyNote:openToday', undefined),
+  dailyNoteGetStreak: () =>
+    ipcRenderer.invoke('dailyNote:getStreak', undefined),
+
+  // SKY-193: Tag Wrangler
+  notesTagList: () =>
+    ipcRenderer.invoke('notesVault:tag:list', undefined),
+  notesTagRename: (oldTag: string, newTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:rename', { oldTag, newTag }),
+  notesTagMerge: (sourceTag: string, targetTag: string) =>
+    ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
+
+  // SKY-863: Cloud-sync conflict detection + lockfile
+  checkVaultConflicts: () =>
+    ipcRenderer.invoke('vault:check-conflicts', undefined),
+  dismissSyncWarning: () =>
+    ipcRenderer.invoke('vault:dismiss-sync-warning', undefined),
+  // SKY-1399: manage custom templates
+  templateRename: (id: string, name: string) =>
+    ipcRenderer.invoke('template:rename', { id, name }),
+  templateDelete: (id: string) =>
+    ipcRenderer.invoke('template:delete', { id }),
+  templateDuplicate: (id: string) =>
+    ipcRenderer.invoke('template:duplicate', { id }),
+  // SKY-1403: export / import .mythostemplate files
+  templateExport: (id: string) =>
+    ipcRenderer.invoke('template:export', { id }),
+  templateImport: () =>
+    ipcRenderer.invoke('template:import', undefined),
+  // SKY-1405: drag-drop import — passes filePath to bypass the open-file dialog
+  templateImportFromPath: (filePath: string) =>
+    ipcRenderer.invoke('template:import', { filePath }),
   // SKY-154: Writing Goals & Progress Dashboard
   goalsGetStats: () => ipcRenderer.invoke('goals:getStats', undefined),
   goalsLogWords: (date: string, wordsAdded: number) =>
@@ -490,6 +581,89 @@ contextBridge.exposeInMainWorld('api', {
   goalsSetGoal: (dailyGoal: number) =>
     ipcRenderer.invoke('goals:setGoal', { dailyGoal }),
   goalsResetStreak: () => ipcRenderer.invoke('goals:resetStreak', undefined),
+
+
+  // SKY-55: per-scene notes
+  notesGet: (sceneId: string) => ipcRenderer.invoke('notes:get', { sceneId }),
+  notesSet: (sceneId: string, content: string) => ipcRenderer.invoke('notes:set', { sceneId, content }),
+  // SKY-1391/SKY-1393: brainstorm → writing-panel bridge
+  sceneAppendBrainstormNote: (sceneId: string, content: string) =>
+    ipcRenderer.invoke('scene:appendBrainstormNote', { sceneId, content }),
+
+  // SKY-158: Tags
+  tagsList: () => ipcRenderer.invoke('tags:list', undefined),
+  tagsUpsert: (name: string, color?: string | null) => ipcRenderer.invoke('tags:upsert', { name, color }),
+  tagsDelete: (id: string) => ipcRenderer.invoke('tags:delete', { id }),
+  tagsRename: (id: string, name: string) => ipcRenderer.invoke('tags:rename', { id, name }),
+  tagsForItem: (itemId: string, itemKind: 'scene' | 'entity') => ipcRenderer.invoke('tags:forItem', { itemId, itemKind }),
+  tagsSetForItem: (itemId: string, itemKind: 'scene' | 'entity', tags: string[]) => ipcRenderer.invoke('tags:setForItem', { itemId, itemKind, tags }),
+  tagsItemsForTag: (tagName: string) => ipcRenderer.invoke('tags:itemsForTag', { tagName }),
+  tagsBulkApply: (itemIds: string[], itemKind: 'scene' | 'entity', addTags?: string[], removeTags?: string[]) =>
+    ipcRenderer.invoke('tags:bulkApply', { itemIds, itemKind, addTags, removeTags }),
+  sceneSetTags: (payload: { sceneId: string; tags: string[] }) => ipcRenderer.invoke('scene:setTags', payload),
+  // SKY-203: Note-level backlinks
+  noteBacklinks: (notePath: string) =>
+    ipcRenderer.invoke('notesVault:backlinks', { notePath }),
+
+  // SKY-194: Iconize — per-node icon IPC
+  notesVaultReadIcons: () =>
+    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  vaultReadIcons: () =>
+    ipcRenderer.invoke('vault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  iconListUserPacks: () =>
+    ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
+  iconReadSvg: (packName: string, iconName: string) =>
+    ipcRenderer.invoke('icons:readSvg', { packName, iconName }) as unknown as Promise<{ svg: string | null }>,
+
+  // SKY-205: Smart Folders — frontmatter-backed persistent queries
+  smartFolderList: () =>
+    ipcRenderer.invoke('smartFolder:list', undefined),
+  smartFolderCreate: (name: string, query: string) =>
+    ipcRenderer.invoke('smartFolder:create', { name, query }),
+  smartFolderUpdate: (id: string, updates: { name?: string; query?: string }) =>
+    ipcRenderer.invoke('smartFolder:update', { id, ...updates }),
+  smartFolderDelete: (id: string) =>
+    ipcRenderer.invoke('smartFolder:delete', { id }),
+  smartFolderQuery: (query: string) =>
+    ipcRenderer.invoke('smartFolder:query', { query }),
+
+  // SKY-207: Per-scene custom frontmatter fields
+  customFieldsList: () =>
+    ipcRenderer.invoke('customFields:list', undefined),
+  customFieldsSet: (fields: unknown[]) =>
+    ipcRenderer.invoke('customFields:set', { fields }),
+  scenePropsGet: (sceneId: string) =>
+    ipcRenderer.invoke('scene:propsGet', { sceneId }),
+  scenePropsSet: (sceneId: string, customFields: Record<string, unknown>) =>
+    ipcRenderer.invoke('scene:propsSet', { sceneId, customFields }),
+
+  // SKY-456: Creative quality controls — spec §5.2 IPC additions
+  getPresets: () => ipcRenderer.invoke('preset:getAll', undefined),
+  getQualityRubric: () => ipcRenderer.invoke('preset:getRubric', undefined),
+  // getRefinementSuggestions wraps stream:start so callers can subscribe to
+  // the same onStreamToken / onStreamEnd channels as regular chat streams.
+  getRefinementSuggestions: (options: {
+    original_text: string;
+    refinement_action: string;
+    active_preset_id: string;
+    additional_instruction?: string;
+  }) => {
+    const system =
+      'You are a creative writing refinement assistant. Apply the requested refinement to the suggestion below, maintaining prose quality. Return only the refined suggestion text — no preamble.';
+    const content = [
+      `Action: ${options.refinement_action}`,
+      options.additional_instruction ? `Additional instruction: ${options.additional_instruction}` : null,
+      `Active preset: ${options.active_preset_id}`,
+      '',
+      `Original suggestion:\n${options.original_text}`,
+    ].filter(Boolean).join('\n');
+    return ipcRenderer.invoke('stream:start', {
+      messages: [{ role: 'user', content }],
+      system,
+    });
+  },
+
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

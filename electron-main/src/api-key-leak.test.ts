@@ -25,6 +25,25 @@ import { persistSecretsAndStripSettings } from './secrets/migration.js';
 const FAKE_API_KEY = 'sk-ant-test-FakeKeyForTestingOnly000000000000000000000000000000';
 const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), '../../../../..');
 
+// Reusable test helpers for secrets store.
+function makeSafeStorage(): SafeStorageLike {
+  return {
+    isEncryptionAvailable: () => true,
+    encryptString: (s: string) => Buffer.from(`enc:${s}`, 'utf-8'),
+    decryptString: (buf: Buffer) => buf.toString('utf-8').replace(/^enc:/, ''),
+  };
+}
+
+function mkStore(): { store: SecretsStore; settingsPath: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-leak-disk-'));
+  const settingsPath = path.join(dir, 'app-settings.json');
+  const secretsPath = path.join(dir, 'secrets.json');
+  return {
+    store: new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage() }),
+    settingsPath,
+  };
+}
+
 // ── Generation log payload_digest ──────────────────────────────────────────
 
 describe('generation_log payload_digest — SHA-256, not raw text', () => {
@@ -214,23 +233,6 @@ describe('reconcileSettingsFromRenderer — preserve stored keys on echo (MYT-42
 // ── app-settings.json — no plaintext API keys on disk after save (MYT-777) ─
 
 describe('app-settings.json on-disk payload — no plaintext keys (MYT-777)', () => {
-  function makeSafeStorage(): SafeStorageLike {
-    return {
-      isEncryptionAvailable: () => true,
-      encryptString: (s: string) => Buffer.from(`enc:${s}`, 'utf-8'),
-      decryptString: (buf: Buffer) => buf.toString('utf-8').replace(/^enc:/, ''),
-    };
-  }
-
-  function mkStore(): { store: SecretsStore; settingsPath: string } {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-leak-disk-'));
-    const settingsPath = path.join(dir, 'app-settings.json');
-    const secretsPath = path.join(dir, 'secrets.json');
-    return {
-      store: new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage() }),
-      settingsPath,
-    };
-  }
 
   it('saveAppSettings-equivalent flow leaves no key material in the JSON file', () => {
     const { store, settingsPath } = mkStore();
@@ -248,6 +250,312 @@ describe('app-settings.json on-disk payload — no plaintext keys (MYT-777)', ()
     expect(onDisk).not.toContain('sk-ant-test');
     expect(onDisk).not.toContain(FAKE_OPENAI_KEY);
     expect(onDisk).not.toContain('sk-proj-TestOnly');
+  });
+
+  // Regression test for SKY-740: archive agent API key must not be written plaintext.
+  it('archive agent provider.apiKey is not written plaintext to app-settings.json (SKY-740)', () => {
+    const { store, settingsPath } = mkStore();
+    const incoming = settingsFixture({
+      agents: {
+        writingAssistant: {
+          enabled: false, model: 'claude', scanIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+        brainstorm: {
+          enabled: false, model: 'claude',
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+        archive: {
+          enabled: false, model: 'claude', continuityCheckIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+          provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_ARCHIVE_KEY },
+        },
+      },
+    });
+    const stripped = persistSecretsAndStripSettings(incoming, store);
+    fs.writeFileSync(settingsPath, JSON.stringify(stripped, null, 2), 'utf-8');
+
+    const onDisk = fs.readFileSync(settingsPath, 'utf-8');
+    expect(onDisk).not.toContain(FAKE_ARCHIVE_KEY);
+    expect(onDisk).not.toContain('ArchiveKey');
+    // The secret must be in the store, not on disk.
+    expect(store.get('provider.archive.apiKey')).toBe(FAKE_ARCHIVE_KEY);
+    expect(stripped.agents.archive.provider?.apiKey).toBe('');
+  });
+});
+
+// ── Per-agent provider.apiKey masking (SKY-738) ───────────────────────────
+
+const FAKE_BRAINSTORM_KEY = 'sk-ant-test-BrainstormKeyForTestingOnly0000000000000000';
+const FAKE_WRITING_KEY = 'sk-ant-test-WritingKeyForTestingOnly00000000000000000';
+const FAKE_ARCHIVE_KEY = 'sk-ant-test-ArchiveKeyForTestingOnly000000000000000000';
+
+function agentKeysFixture(): AppSettings {
+  return settingsFixture({
+    agents: {
+      writingAssistant: {
+        enabled: false,
+        model: 'claude',
+        scanIntervalSeconds: 0,
+        autoApply: false,
+        confidenceThreshold: 0.8,
+        maxTokensPerHour: 0,
+        maxSuggestionsPerHour: 0,
+        heartbeatIntervalMinutes: 0,
+        maxTokensPerDay: 0,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_WRITING_KEY },
+      },
+      brainstorm: {
+        enabled: false,
+        model: 'claude',
+        autoApply: false,
+        confidenceThreshold: 0.8,
+        maxTokensPerHour: 0,
+        maxSuggestionsPerHour: 0,
+        heartbeatIntervalMinutes: 0,
+        maxTokensPerDay: 0,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_BRAINSTORM_KEY },
+      },
+      archive: {
+        enabled: false,
+        model: 'claude',
+        continuityCheckIntervalSeconds: 0,
+        autoApply: false,
+        confidenceThreshold: 0.8,
+        maxTokensPerHour: 0,
+        maxSuggestionsPerHour: 0,
+        heartbeatIntervalMinutes: 0,
+        maxTokensPerDay: 0,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_ARCHIVE_KEY },
+      },
+    },
+  });
+}
+
+describe('maskSettingsForRenderer — per-agent provider.apiKey fields (SKY-738)', () => {
+  it('masks brainstorm provider.apiKey before returning to the renderer', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    expect(masked.agents.brainstorm.provider?.apiKey).not.toBe(FAKE_BRAINSTORM_KEY);
+    expect(masked.agents.brainstorm.provider?.apiKey).toMatch(MASKED_PATTERN);
+  });
+
+  it('masks writingAssistant provider.apiKey before returning to the renderer', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    expect(masked.agents.writingAssistant.provider?.apiKey).not.toBe(FAKE_WRITING_KEY);
+    expect(masked.agents.writingAssistant.provider?.apiKey).toMatch(MASKED_PATTERN);
+  });
+
+  it('masks archive provider.apiKey before returning to the renderer', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    expect(masked.agents.archive.provider?.apiKey).not.toBe(FAKE_ARCHIVE_KEY);
+    expect(masked.agents.archive.provider?.apiKey).toMatch(MASKED_PATTERN);
+  });
+
+  it('full JSON serialization contains no raw per-agent key material', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    const json = JSON.stringify(masked);
+    expect(json).not.toContain(FAKE_BRAINSTORM_KEY);
+    expect(json).not.toContain(FAKE_WRITING_KEY);
+    expect(json).not.toContain(FAKE_ARCHIVE_KEY);
+  });
+
+  it('does not mutate the source agents object', () => {
+    const original = agentKeysFixture();
+    maskSettingsForRenderer(original);
+    expect(original.agents.brainstorm.provider?.apiKey).toBe(FAKE_BRAINSTORM_KEY);
+    expect(original.agents.writingAssistant.provider?.apiKey).toBe(FAKE_WRITING_KEY);
+    expect(original.agents.archive.provider?.apiKey).toBe(FAKE_ARCHIVE_KEY);
+  });
+
+  it('leaves agent provider unchanged when no apiKey is configured', () => {
+    const base = settingsFixture({
+      agents: {
+        writingAssistant: {
+          enabled: false, model: 'claude', scanIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+          provider: { kind: 'ollama', model: 'llama3.2' },
+        },
+        brainstorm: {
+          enabled: false, model: 'claude',
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+        archive: {
+          enabled: false, model: 'claude', continuityCheckIntervalSeconds: 0,
+          autoApply: false, confidenceThreshold: 0.8, maxTokensPerHour: 0,
+          maxSuggestionsPerHour: 0, heartbeatIntervalMinutes: 0, maxTokensPerDay: 0,
+        },
+      },
+    });
+    const masked = maskSettingsForRenderer(base);
+    expect(masked.agents.writingAssistant.provider?.apiKey).toBeUndefined();
+    expect(masked.agents.brainstorm.provider).toBeUndefined();
+    expect(masked.agents.archive.provider).toBeUndefined();
+  });
+});
+
+describe('reconcileSettingsFromRenderer — per-agent provider keys (SKY-738)', () => {
+  it('restores all three stored per-agent keys when the renderer echoes the masked previews back', () => {
+    const stored = agentKeysFixture();
+    const incoming: AppSettings = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      agents: {
+        writingAssistant: { ...stored.agents.writingAssistant, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: maskApiKey(FAKE_WRITING_KEY) } },
+        brainstorm: { ...stored.agents.brainstorm, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: maskApiKey(FAKE_BRAINSTORM_KEY) } },
+        archive: { ...stored.agents.archive, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: maskApiKey(FAKE_ARCHIVE_KEY) } },
+      },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.agents.writingAssistant.provider?.apiKey).toBe(FAKE_WRITING_KEY);
+    expect(reconciled.agents.brainstorm.provider?.apiKey).toBe(FAKE_BRAINSTORM_KEY);
+    expect(reconciled.agents.archive.provider?.apiKey).toBe(FAKE_ARCHIVE_KEY);
+  });
+
+  it('saves a freshly entered per-agent key verbatim without restoring the stored key', () => {
+    const stored = agentKeysFixture();
+    const newKey = 'sk-ant-test-NewBrainstormKeyEntered0000000000000000000';
+    const incoming: AppSettings = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      agents: {
+        ...stored.agents,
+        brainstorm: { ...stored.agents.brainstorm, provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: newKey } },
+      },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.agents.brainstorm.provider?.apiKey).toBe(newKey);
+  });
+});
+
+// ── STT / TTS cloud API key masking (SKY-816 / SKY-817) ────────────────────
+
+const FAKE_STT_CLOUD_KEY = 'sk-proj-TestSttCloudKey00000000000000000000000000';
+const FAKE_TTS_CLOUD_KEY = 'sk-proj-TestTtsCloudKey00000000000000000000000000';
+
+describe('maskSettingsForRenderer — stt.cloudApiKey and tts.cloudApiKey (SKY-816/817)', () => {
+  it('masks stt.cloudApiKey before returning it to the renderer', () => {
+    const masked = maskSettingsForRenderer(
+      settingsFixture({
+        stt: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://stt.example.com', cloudApiKey: FAKE_STT_CLOUD_KEY },
+      }),
+    );
+    expect(masked.stt?.cloudApiKey).toBeDefined();
+    expect(masked.stt?.cloudApiKey).not.toBe(FAKE_STT_CLOUD_KEY);
+    expect(masked.stt?.cloudApiKey).toMatch(MASKED_PATTERN);
+    expect(JSON.stringify(masked)).not.toContain(FAKE_STT_CLOUD_KEY);
+  });
+
+  it('masks tts.cloudApiKey before returning it to the renderer', () => {
+    const masked = maskSettingsForRenderer(
+      settingsFixture({
+        tts: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://tts.example.com', cloudApiKey: FAKE_TTS_CLOUD_KEY },
+      }),
+    );
+    expect(masked.tts?.cloudApiKey).toBeDefined();
+    expect(masked.tts?.cloudApiKey).not.toBe(FAKE_TTS_CLOUD_KEY);
+    expect(masked.tts?.cloudApiKey).toMatch(MASKED_PATTERN);
+    expect(JSON.stringify(masked)).not.toContain(FAKE_TTS_CLOUD_KEY);
+  });
+
+  it('does not mutate the source stt/tts settings', () => {
+    const original = settingsFixture({
+      stt: { enabled: true, provider: 'cloud', cloudApiKey: FAKE_STT_CLOUD_KEY },
+      tts: { enabled: true, provider: 'cloud', cloudApiKey: FAKE_TTS_CLOUD_KEY },
+    });
+    maskSettingsForRenderer(original);
+    expect(original.stt?.cloudApiKey).toBe(FAKE_STT_CLOUD_KEY);
+    expect(original.tts?.cloudApiKey).toBe(FAKE_TTS_CLOUD_KEY);
+  });
+
+  it('leaves stt/tts blocks unmasked when no cloudApiKey is configured', () => {
+    const masked = maskSettingsForRenderer(
+      settingsFixture({
+        stt: { enabled: true, provider: 'local' },
+        tts: { enabled: true, provider: 'local' },
+      }),
+    );
+    expect(masked.stt?.cloudApiKey).toBeUndefined();
+    expect(masked.tts?.cloudApiKey).toBeUndefined();
+  });
+});
+
+describe('reconcileSettingsFromRenderer — preserve stored STT/TTS keys on echo (SKY-816/817)', () => {
+  it('keeps the stored stt.cloudApiKey when the renderer echoes the mask back unchanged', () => {
+    const stored = settingsFixture({
+      stt: { enabled: true, provider: 'cloud', cloudApiKey: FAKE_STT_CLOUD_KEY },
+    });
+    const incoming: AppSettings = {
+      ...stored,
+      stt: { ...stored.stt!, cloudApiKey: maskApiKey(FAKE_STT_CLOUD_KEY) },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.stt?.cloudApiKey).toBe(FAKE_STT_CLOUD_KEY);
+  });
+
+  it('keeps the stored tts.cloudApiKey when the renderer echoes the mask back unchanged', () => {
+    const stored = settingsFixture({
+      tts: { enabled: true, provider: 'cloud', cloudApiKey: FAKE_TTS_CLOUD_KEY },
+    });
+    const incoming: AppSettings = {
+      ...stored,
+      tts: { ...stored.tts!, cloudApiKey: maskApiKey(FAKE_TTS_CLOUD_KEY) },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.tts?.cloudApiKey).toBe(FAKE_TTS_CLOUD_KEY);
+  });
+
+  it('saves a freshly entered stt.cloudApiKey verbatim', () => {
+    const stored = settingsFixture({
+      stt: { enabled: true, provider: 'cloud', cloudApiKey: FAKE_STT_CLOUD_KEY },
+    });
+    const newKey = 'sk-proj-NewSttKeyEntered000000000000000000000000';
+    const incoming: AppSettings = {
+      ...stored,
+      stt: { ...stored.stt!, cloudApiKey: newKey },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.stt?.cloudApiKey).toBe(newKey);
+  });
+
+  it('saves a freshly entered tts.cloudApiKey verbatim', () => {
+    const stored = settingsFixture({
+      tts: { enabled: true, provider: 'cloud', cloudApiKey: FAKE_TTS_CLOUD_KEY },
+    });
+    const newKey = 'sk-proj-NewTtsKeyEntered000000000000000000000000';
+    const incoming: AppSettings = {
+      ...stored,
+      tts: { ...stored.tts!, cloudApiKey: newKey },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.tts?.cloudApiKey).toBe(newKey);
+  });
+});
+
+describe('app-settings.json — STT/TTS cloudApiKey not plaintext (SKY-816/817)', () => {
+  it('stt.cloudApiKey and tts.cloudApiKey are not written plaintext to app-settings.json', () => {
+    const { store, settingsPath } = mkStore();
+    const incoming = settingsFixture({
+      stt: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://stt.example.com', cloudApiKey: FAKE_STT_CLOUD_KEY },
+      tts: { enabled: true, provider: 'cloud', cloudEndpoint: 'https://tts.example.com', cloudApiKey: FAKE_TTS_CLOUD_KEY },
+    });
+    const stripped = persistSecretsAndStripSettings(incoming, store);
+    fs.writeFileSync(settingsPath, JSON.stringify(stripped, null, 2), 'utf-8');
+
+    const onDisk = fs.readFileSync(settingsPath, 'utf-8');
+    expect(onDisk).not.toContain(FAKE_STT_CLOUD_KEY);
+    expect(onDisk).not.toContain(FAKE_TTS_CLOUD_KEY);
+    expect(onDisk).not.toContain('sk-proj-TestStt');
+    expect(onDisk).not.toContain('sk-proj-TestTts');
+    // The secrets must be in the store, not on disk.
+    expect(store.get('stt.cloudApiKey')).toBe(FAKE_STT_CLOUD_KEY);
+    expect(store.get('tts.cloudApiKey')).toBe(FAKE_TTS_CLOUD_KEY);
+    expect(stripped.stt?.cloudApiKey).toBe('');
+    expect(stripped.tts?.cloudApiKey).toBe('');
   });
 });
 

@@ -1,5 +1,20 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'react';
+import { IdeaCard } from './components/BrainstormCard/IdeaCard';
+import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
+import { ScenePicker } from './components/BrainstormCard/ScenePicker';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import PresetSelector from './components/PresetSelector';
+import PresetEditor from './components/PresetEditor';
+import RefinementChips from './components/RefinementChips';
+import {
+  loadSessionPreset,
+  saveSessionPreset,
+  getEffectiveAxes,
+  buildPresetContext,
+} from './presets';
+import type { PresetAxes, RefinementChip } from './presets';
+import EntriesQuickAdd from './EntriesQuickAdd';
+import { PROMPT_MAX_CHARS } from './promptConstants';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -45,12 +60,20 @@ export const HARD_TIMEOUT_MS = 90_000;
 const DRAFT_KEY = 'brainstorm:draft';
 const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
 
+// Sentinel value used when the user explicitly picks "Vault root" in the
+// routing-prompt select. Empty string is reserved for "nothing selected yet"
+// (the disabled placeholder), so vault-root needs its own distinct token.
+// resolveRoutingPrompt translates this back to '' before calling the API.
+export const VAULT_ROOT_SENTINEL = '__vault_root__';
+
 interface BrainstormDraft {
   v: 2;
   savedAt: string;
   prompt: string;
   messages: Message[];
   facts: DetectedFact[];
+  sortMode?: SortOrder;
+  customOrder?: string[];
 }
 
 interface Message {
@@ -65,6 +88,95 @@ interface DetectedFact {
   name: string;
   content: string;
   savedStatus: 'unsaved' | 'saving' | 'saved' | 'error' | 'pending_review' | 'needs_routing';
+  savedPath?: string;
+  /** SKY-1393: scene this idea is directly linked to (fast-path — skips picker). */
+  linkedSceneId?: string;
+  updatedAt?: string;
+  createdAt?: number;
+}
+
+type SortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status' | 'custom';
+type FilterType = 'all' | 'character' | 'location' | 'item' | 'note';
+
+const SORT_LABELS: Record<SortOrder, string> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+  'by-type': 'By type',
+  'by-status': 'By status (saved first)',
+  custom: 'Custom order',
+};
+
+const FILTER_LABELS: Record<FilterType, string> = {
+  all: 'All types',
+  character: 'Characters',
+  location: 'Locations',
+  item: 'Items',
+  note: 'Concept notes',
+};
+
+const SAVED_STATUS_RANK: Record<DetectedFact['savedStatus'], number> = {
+  saved: 0,
+  saving: 1,
+  unsaved: 2,
+  pending_review: 3,
+  needs_routing: 4,
+  error: 5,
+};
+
+function sortFacts(facts: DetectedFact[], sortOrder: SortOrder): DetectedFact[] {
+  if (sortOrder === 'custom') return [...facts];
+  return [...facts].sort((a, b) => {
+    switch (sortOrder) {
+      case 'newest':
+        return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      case 'oldest':
+        return (a.createdAt ?? 0) - (b.createdAt ?? 0);
+      case 'by-type': {
+        const ai = FACT_TYPE_ORDER.indexOf(a.type);
+        const bi = FACT_TYPE_ORDER.indexOf(b.type);
+        return ai !== bi ? ai - bi : (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      }
+      case 'by-status': {
+        const diff = SAVED_STATUS_RANK[a.savedStatus] - SAVED_STATUS_RANK[b.savedStatus];
+        return diff !== 0 ? diff : (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      }
+    }
+  });
+}
+
+// SKY-196: context selection result surfaced in the "Context used" panel.
+interface ContextResultItem {
+  path: string;
+  name: string;
+  type: 'character' | 'location' | 'item' | 'note';
+  content: string;
+  estimatedTokens: number;
+  whyIncluded: string;
+}
+
+interface ContextResult {
+  included: ContextResultItem[];
+  excluded: ContextResultItem[];
+  usedTokens: number;
+  budgetTokens: number;
+}
+
+function buildContextBlock(items: ContextResultItem[]): string {
+  const lines = [
+    '',
+    '---',
+    '## Story Vault Context',
+    "The following entities are in the user's story vault and may be relevant:",
+    '',
+  ];
+  for (const item of items) {
+    lines.push(`**${item.name}** (${item.type})`);
+    if (item.content.trim()) {
+      lines.push(item.content.trim().slice(0, 400));
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
 }
 
 // SKY-20: a pending routing prompt rendered as a chat bubble. When the
@@ -120,9 +232,12 @@ const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item'
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  onFirstSubmit?: () => void;
+  onNavigateToEntity?: (entityId: string) => void;
+  onNavigateToScene?: (sceneId: string) => Promise<boolean>;
 }
 
-export default function BrainstormPage({ onClose, enabled = true }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -130,32 +245,107 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pasteWarning, setPasteWarning] = useState(false);
+  const [detailDrawerIdeaId, setDetailDrawerIdeaId] = useState<string | null>(null);
   const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
+  // Per-card body preview toggle: set of fact IDs that are currently expanded.
+  // New facts start expanded so the user sees the extracted content immediately.
+  const [expandedFactIds, setExpandedFactIds] = useState<Set<string>>(new Set());
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
   const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
+  const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
+  const [presetOverrides, setPresetOverrides] = useState<Partial<PresetAxes>>(
+    () => loadSessionPreset().overrides,
+  );
+  const [showPresetEditor, setShowPresetEditor] = useState(false);
+  const [activeRefinementId, setActiveRefinementId] = useState<string | null>(null);
   // SKY-20: routing state — list of pending prompts plus the folder catalog
   // pulled from the Notes Vault. Both are populated lazily on first need.
   const [routingPrompts, setRoutingPrompts] = useState<RoutingPrompt[]>([]);
   const [notesFolders, setNotesFolders] = useState<Array<{ path: string; label: string }>>([]);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Custom sort order: persisted list of fact IDs (empty = not yet initialized)
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
+  // Drag-and-drop ephemeral state
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dropBelow, setDropBelow] = useState(false);
+  // Tracks the id of a brand-new idea created via Ctrl+N that hasn't been saved yet
+  const [pendingNewIdeaId, setPendingNewIdeaId] = useState<string | null>(null);
+  // SKY-1393: scene picker — id of the idea waiting for a scene selection
+  const [scenePickerIdeaId, setScenePickerIdeaId] = useState<string | null>(null);
+  // Tracks which element opened the detail drawer so focus can be restored on close
+  const triggerElementRef = useRef<HTMLElement | null>(null);
+
+  // SKY-196: vault context surfaced in the "Context used" panel
+  const [contextResult, setContextResult] = useState<ContextResult | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
 
   const streamIdRef = useRef<string | null>(null);
   const streamingTextRef = useRef<string>('');
   const cleanupStreamRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Refs for drag state values needed inside closures without stale captures
+  const dragSourceIdRef = useRef<string | null>(null);
+  const dropBelowRef = useRef(false);
   const lastTokenAtRef = useRef<number>(0);
   const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  // Holds the system prompt augmented with vault context for the current/last request.
+  const contextSystemRef = useRef<string>(BRAINSTORM_SYSTEM_PROMPT);
   const { announce, liveText } = useLiveAnnounce();
+  const effectiveAxes = useMemo(
+    () => getEffectiveAxes(presetId, presetOverrides),
+    [presetId, presetOverrides],
+  );
+
+  const displayedFacts = useMemo(() => {
+    const filtered = filterType === 'all' ? facts : facts.filter((f) => f.type === filterType);
+    if (sortOrder === 'custom' && customOrder.length > 0) {
+      const orderMap = new Map(customOrder.map((id, i) => [id, i]));
+      return [...filtered].sort((a, b) => {
+        const ai = orderMap.has(a.id) ? (orderMap.get(a.id) as number) : Infinity;
+        const bi = orderMap.has(b.id) ? (orderMap.get(b.id) as number) : Infinity;
+        return ai - bi;
+      });
+    }
+    return sortFacts(filtered, sortOrder);
+  }, [facts, sortOrder, filterType, customOrder]);
+
+  const visibleTypes = useMemo(
+    () => (filterType === 'all' ? FACT_TYPE_ORDER : ([filterType] as DetectedFact['type'][])),
+    [filterType],
+  );
+
+  const toggleGroup = useCallback((type: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      return next;
+    });
+  }, []);
+
+  const expandAllGroups = useCallback(() => setCollapsedGroups(new Set()), []);
+  const collapseAllGroups = useCallback(
+    () => setCollapsedGroups(new Set(visibleTypes)),
+    [visibleTypes],
+  );
 
   // Restore draft from localStorage on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
-        const draft: { v?: number; messages?: Message[]; facts?: DetectedFact[]; prompt?: string } = JSON.parse(raw);
+        const draft: { v?: number; messages?: Message[]; facts?: DetectedFact[]; prompt?: string; sortMode?: string; customOrder?: string[] } = JSON.parse(raw);
         const draftMessages = Array.isArray(draft.messages)
           ? draft.messages.map((m) => ({ ...m, streaming: false }))
           : [];
@@ -165,7 +355,12 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
         if ((draft.v === 1 || draft.v === 2) && (draftMessages.length > 0 || draftFacts.length > 0 || draftPrompt.trim())) {
           setMessages(draftMessages);
           setFacts(draftFacts);
+          setExpandedFactIds(new Set(draftFacts.map((f) => f.id)));
           setPrompt(draftPrompt);
+          if (draft.sortMode === 'custom') {
+            setSortOrder('custom');
+            if (Array.isArray(draft.customOrder)) setCustomOrder(draft.customOrder);
+          }
           setShowRecoveryBanner(true);
         }
       }
@@ -173,7 +368,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist draft whenever prompt, messages, or facts change.
+  // Persist draft whenever prompt, messages, facts, sort mode, or custom order change.
   useEffect(() => {
     if (!prompt.trim() && messages.length === 0 && facts.length === 0) {
       localStorage.removeItem(DRAFT_KEY);
@@ -186,6 +381,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       prompt,
       messages: messages.map((m) => ({ ...m, streaming: false })),
       facts,
+      ...(sortOrder === 'custom' ? { sortMode: 'custom', customOrder } : {}),
     };
     const serialized = JSON.stringify(draft);
     if (serialized.length > MAX_DRAFT_BYTES) {
@@ -195,8 +391,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setDraftSizeWarning(false);
     try {
       localStorage.setItem(DRAFT_KEY, serialized);
-    } catch { /* quota exceeded — silently skip */ }
-  }, [prompt, messages, facts]);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+        showToast('Order not saved — storage full.');
+      }
+    }
+  // showToast is stable (no deps) — including it satisfies exhaustive-deps without churn
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, messages, facts, sortOrder, customOrder]);
 
   // Warn before window close when there is an active session
   useEffect(() => {
@@ -208,6 +410,23 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [messages.length, facts.length, prompt]);
+
+  // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
+  // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Drawer / confirm / preset editor handle ESC themselves
+      if (detailDrawerIdeaId || showDeleteConfirm || showPresetEditor || pendingNewIdeaId) return;
+      // Context menus: focus is inside a [role="menu"] element
+      const focused = document.activeElement;
+      if (focused && (focused as HTMLElement).closest('[role="menu"]')) return;
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [onClose, detailDrawerIdeaId, showDeleteConfirm, showPresetEditor, pendingNewIdeaId]);
 
   useEffect(() => {
     const el = messagesEndRef.current;
@@ -282,12 +501,21 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     cleanupStreamRef.current?.();
     setMessages([]);
     setFacts([]);
+    setExpandedFactIds(new Set());
     setPrompt('');
     setError(null);
     setLoading(false);
     setDraftSizeWarning(false);
     setShowRecoveryBanner(false);
     setRoutingPrompts([]);
+    setContextResult(null);
+    setContextOpen(false);
+    setCustomOrder([]);
+    setSortOrder('newest');
+    setDraggingId(null);
+    setDragOverId(null);
+    dragSourceIdRef.current = null;
+    contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
   }, []);
 
@@ -306,6 +534,10 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     a.click();
     URL.revokeObjectURL(url);
   }, [messages]);
+
+  // Ref holds the latest persistFactWithRouting to avoid a forward-reference
+  // circular dep between _runStream and persistFactWithRouting.
+  const persistFactWithRoutingRef = useRef<((fact: DetectedFact) => Promise<void>) | null>(null);
 
   const _runStream = useCallback(async (apiMessages: Array<{ role: 'user' | 'assistant'; content: string }>) => {
     lastApiMessagesRef.current = apiMessages;
@@ -351,14 +583,21 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       });
 
       if (extracted.length > 0) {
-        const newFacts: DetectedFact[] = extracted.map((f) => ({
+        const nowMs = Date.now();
+        const newFacts: DetectedFact[] = extracted.map((f, i) => ({
           ...f,
-          id: `fact-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          id: `fact-${nowMs}-${Math.random().toString(36).slice(2)}`,
           savedStatus: 'saving' as const,
+          createdAt: nowMs + i,
         }));
         setFacts((prev) => [...prev, ...newFacts]);
+        setExpandedFactIds((prev) => {
+          const next = new Set(prev);
+          for (const f of newFacts) next.add(f.id);
+          return next;
+        });
         for (const fact of newFacts) {
-          void persistFactWithRouting(fact);
+          void persistFactWithRoutingRef.current?.(fact);
         }
       }
 
@@ -394,7 +633,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     try {
       const { streamId: sid } = await window.api.streamStart({
         messages: apiMessages,
-        system: BRAINSTORM_SYSTEM_PROMPT,
+        system: contextSystemRef.current,
       });
       streamIdRef.current = sid;
     } catch (err) {
@@ -428,6 +667,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     const trimmed = prompt.trim();
     if (!trimmed || loading) return;
 
+    onFirstSubmit?.();
     setLoading(true);
     setError(null);
     setPrompt('');
@@ -442,8 +682,58 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       content: m.text,
     }));
 
+    // SKY-196: fetch vault context before streaming so relevant entities are
+    // visible to Claude. Non-critical — proceed without context on any error.
+    const presetGuide = buildPresetContext(effectiveAxes);
+    let systemPrompt = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
+    try {
+      const convText = messages.map((m) => m.text).join('\n');
+      const ctx = await window.api.brainstormSelectContext?.({
+        userMessage: trimmed,
+        conversationText: convText,
+      });
+      if (ctx) {
+        setContextResult(ctx);
+        if (ctx.included.length > 0) {
+          // Preserve preset context alongside vault context
+          systemPrompt = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT + buildContextBlock(ctx.included);
+        }
+      }
+    } catch { /* vault context is non-critical */ }
+    contextSystemRef.current = systemPrompt;
+
     await _runStream(apiMessages);
-  }, [prompt, loading, messages, announce, _runStream]);
+  }, [prompt, loading, messages, announce, _runStream, effectiveAxes, onFirstSubmit]);
+
+  const handleRefine = useCallback((chip: RefinementChip) => {
+    if (loading) return;
+    const adjusted = chip.adjustAxes(effectiveAxes);
+    const newOverrides = { ...presetOverrides, ...adjusted };
+    setPresetOverrides(newOverrides);
+    saveSessionPreset(presetId, newOverrides);
+    setActiveRefinementId(chip.id);
+
+    const refinementText = `Please rewrite your previous response with a ${chip.description} style.`;
+    const userMsg: Message = { role: 'user', text: refinementText };
+    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
+    setLoading(true);
+    setError(null);
+    announce('Refining…');
+
+    const presetGuide = buildPresetContext({ ...effectiveAxes, ...adjusted });
+    contextSystemRef.current = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
+
+    const apiMessages = [...messages, userMsg].map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.text,
+    }));
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    void _runStream(apiMessages);
+  }, [announce, effectiveAxes, loading, messages, presetId, presetOverrides, _runStream]);
+
+  useEffect(() => {
+    if (!loading) setActiveRefinementId(null);
+  }, [loading]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -490,7 +780,11 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
         });
         if (result.status === 'written') {
           setFacts((prev) =>
-            prev.map((f) => (f.id === fact.id ? { ...f, savedStatus: 'saved' } : f)),
+            prev.map((f) => (
+              f.id === fact.id
+                ? { ...f, savedStatus: 'saved', savedPath: result.path, updatedAt: new Date().toISOString() }
+                : f
+            )),
           );
           return;
         }
@@ -519,6 +813,7 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     },
     [announce, ensureNotesFolders],
   );
+  persistFactWithRoutingRef.current = persistFactWithRouting;
 
   // SKY-20: commit the user's pick — main moves the staged file and (when
   // `remember` is true) persists the choice as the new default for this
@@ -527,24 +822,31 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     async (factId: string, remember: boolean) => {
       const prompt = routingPrompts.find((p) => p.factId === factId);
       if (!prompt) return;
-      const chosen = (prompt.customFolder.trim() || prompt.destination || '').trim();
-      // Empty string is a legitimate choice — it pins the note at the vault root.
-      // We just need an explicit selection (any of the two inputs touched).
-      if (prompt.destination === '' && prompt.customFolder.trim() === '' && prompt.destination !== '') {
+      // Block when neither the select nor the custom-folder input has been touched.
+      // VAULT_ROOT_SENTINEL in destination means the user explicitly chose vault root;
+      // translate that sentinel to '' (empty path) before passing it to the API.
+      if (prompt.destination === '' && prompt.customFolder.trim() === '') {
         return;
       }
+      const chosen = prompt.customFolder.trim()
+        ? prompt.customFolder.trim()
+        : prompt.destination === VAULT_ROOT_SENTINEL ? '' : prompt.destination;
       setFacts((prev) =>
         prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saving' } : f)),
       );
       try {
-        await window.api.brainstormResolveRouting({
+        const result = await window.api.brainstormResolveRouting({
           stagedPath: prompt.stagedPath,
           category: prompt.category,
           destination: chosen,
           remember,
         });
         setFacts((prev) =>
-          prev.map((f) => (f.id === factId ? { ...f, savedStatus: 'saved' } : f)),
+          prev.map((f) => (
+            f.id === factId
+              ? { ...f, savedStatus: 'saved', savedPath: result.path, updatedAt: new Date().toISOString() }
+              : f
+          )),
         );
         setRoutingPrompts((prev) => prev.filter((p) => p.factId !== factId));
         // Folder list may have grown if the user typed a new path — refresh.
@@ -580,6 +882,242 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     },
     [facts, persistFactWithRouting],
   );
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  const handleChipClick = useCallback(async (chip: import('./components/BrainstormCard/IdeaCard').IdeaCardChip) => {
+    if (chip.type === 'scene') {
+      if (onNavigateToScene) {
+        const found = await onNavigateToScene(chip.id);
+        if (!found) showToast('Entity not found in vault');
+      }
+      return;
+    }
+    try {
+      const { entities } = await window.api.entityList();
+      const match = entities.find((e) => e.name.toLowerCase() === chip.name.toLowerCase());
+      if (match && onNavigateToEntity) {
+        onNavigateToEntity(match.id);
+      } else {
+        showToast('Entity not found in vault');
+      }
+    } catch {
+      showToast('Entity not found in vault');
+    }
+  }, [onNavigateToEntity, onNavigateToScene, showToast]);
+
+  const handleOpenInWritingPanel = useCallback(async (ideaId: string) => {
+    const fact = facts.find((f) => f.id === ideaId);
+    if (!fact) return;
+
+    // Read manifest once — needed for scene title lookup and no-scenes guard.
+    type SceneEntry = { id: string; title: string };
+    type ManifestShape = { stories?: Array<{ chapters?: Array<{ scenes?: SceneEntry[] }> }> };
+    let sceneMap: Map<string, string>;
+    try {
+      const manifest = (await window.api.readManifest()) as ManifestShape;
+      sceneMap = new Map(
+        (manifest.stories ?? []).flatMap((s) =>
+          (s.chapters ?? []).flatMap((c) =>
+            (c.scenes ?? []).map((sc): [string, string] => [sc.id, sc.title]),
+          ),
+        ),
+      );
+    } catch {
+      showToast('No scenes found. Create a scene first.');
+      return;
+    }
+
+    if (sceneMap.size === 0) {
+      showToast('No scenes found. Create a scene first.');
+      return;
+    }
+
+    // Fast-path: idea already linked to a scene — skip the picker.
+    if (fact.linkedSceneId) {
+      const sceneTitle = sceneMap.get(fact.linkedSceneId) ?? 'scene';
+      try {
+        const result = await window.api.sceneAppendBrainstormNote?.(fact.linkedSceneId, fact.content);
+        if (result?.appended) {
+          await onNavigateToScene?.(fact.linkedSceneId);
+          showToast(`Opened in ${sceneTitle}.`);
+        }
+      } catch {
+        showToast('Failed to open in writing panel.');
+      }
+      return;
+    }
+
+    setScenePickerIdeaId(ideaId);
+  }, [facts, onNavigateToScene, showToast]);
+
+  const handleScenePickerSelect = useCallback(async (sceneId: string, sceneTitle: string) => {
+    const ideaId = scenePickerIdeaId;
+    setScenePickerIdeaId(null);
+    if (!ideaId) return;
+    const fact = facts.find((f) => f.id === ideaId);
+    if (!fact) return;
+
+    try {
+      await window.api.sceneAppendBrainstormNote?.(sceneId, fact.content);
+      // Persist linkedSceneId so repeat "open in writing panel" uses the fast path.
+      setFacts((prev) => prev.map((f) => f.id === ideaId ? { ...f, linkedSceneId: sceneId } : f));
+      await onNavigateToScene?.(sceneId);
+      showToast(`Opened in ${sceneTitle}.`);
+    } catch {
+      showToast('Failed to open in writing panel.');
+    }
+  }, [scenePickerIdeaId, facts, onNavigateToScene, setFacts, showToast]);
+
+  const handleIdeaMenuAction = useCallback((ideaId: string, action: string) => {
+    const fact = facts.find((f) => f.id === ideaId);
+    if (!fact) return;
+    if (action === 'edit') {
+      setDetailDrawerIdeaId(ideaId);
+      announce('Idea detail drawer opened.');
+    } else if (action === 'delete') {
+      setPendingDeleteIds([ideaId]);
+      setShowDeleteConfirm(true);
+    } else if (action === 'copy-markdown') {
+      const md = `# ${fact.name}\n\n${fact.content}`;
+      void navigator.clipboard.writeText(md).then(() => showToast('Copied to clipboard'));
+    } else if (action === 'copy-vault-path' && fact.savedPath) {
+      void navigator.clipboard.writeText(fact.savedPath).then(() => showToast('Copied to clipboard'));
+    } else if (action === 'open-in-writing-panel') {
+      void handleOpenInWritingPanel(ideaId);
+    }
+    // link-entity + add-to-scene deferred to v2
+  }, [facts, announce, showToast, handleOpenInWritingPanel]);
+
+  const handleBulkDelete = useCallback(() => {
+    setPendingDeleteIds([...selectedIds]);
+    setShowDeleteConfirm(true);
+  }, [selectedIds]);
+
+  const confirmDelete = useCallback(() => {
+    const toDelete = new Set(pendingDeleteIds);
+    setFacts((prev) => prev.filter((f) => !toDelete.has(f.id)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      toDelete.forEach((id) => next.delete(id));
+      return next;
+    });
+    setShowDeleteConfirm(false);
+    setPendingDeleteIds([]);
+    if (pendingDeleteIds.length > 1) setIsMultiSelectMode(false);
+  }, [pendingDeleteIds]);
+
+  const handleToggleSelect = useCallback((ideaId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ideaId)) {
+        next.delete(ideaId);
+      } else {
+        next.add(ideaId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleMultiSelectMode = useCallback(() => {
+    setIsMultiSelectMode((prev) => {
+      if (prev) setSelectedIds(new Set());
+      return !prev;
+    });
+  }, []);
+
+  const createNewIdea = useCallback(() => {
+    const id = `idea-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const newFact: DetectedFact = { id, type: 'note', name: 'New idea', content: '', savedStatus: 'unsaved', createdAt: Date.now() };
+    triggerElementRef.current = document.activeElement as HTMLElement;
+    setFacts((prev) => [...prev, newFact]);
+    setDetailDrawerIdeaId(id);
+    setPendingNewIdeaId(id);
+    announce('New idea — edit details in the drawer.');
+  }, [announce]);
+
+  const handleDeleteFocused = useCallback(() => {
+    const focused = document.activeElement;
+    if (!focused) return;
+    const card = (focused as HTMLElement).closest('[data-testid^="idea-card-"]');
+    if (!card) return;
+    const testId = card.getAttribute('data-testid');
+    const ideaId = testId?.replace('idea-card-', '');
+    if (ideaId && facts.some((f) => f.id === ideaId)) {
+      setPendingDeleteIds([ideaId]);
+      setShowDeleteConfirm(true);
+    }
+  }, [facts]);
+
+  const handleDetailDrawerClose = useCallback(() => {
+    if (pendingNewIdeaId) {
+      setFacts((prev) => prev.filter((f) => f.id !== pendingNewIdeaId));
+      setPendingNewIdeaId(null);
+    }
+    setDetailDrawerIdeaId(null);
+    const el = triggerElementRef.current;
+    triggerElementRef.current = null;
+    // Restore focus to the card that opened the drawer
+    setTimeout(() => el?.focus(), 0);
+  }, [pendingNewIdeaId]);
+
+  // Move focused card one position up/down in custom order (Alt+Up / Alt+Down)
+  const moveFact = useCallback((id: string, direction: 'up' | 'down') => {
+    setCustomOrder((prev) => {
+      if (prev.length === 0) return prev;
+      const idx = prev.indexOf(id);
+      if (idx < 0) return prev;
+      const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcuts: Ctrl/Cmd+N (new idea), Ctrl/Cmd+D (delete focused),
+  // Ctrl/Cmd+Shift+A (toggle multi-select), Escape (exit multi-select),
+  // Alt+Up / Alt+Down (reorder in custom sort mode)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT';
+
+      // Alt+Up / Alt+Down: move focused card in custom sort mode
+      if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && sortOrder === 'custom' && !isMultiSelectMode && !loading && !inInput) {
+        e.preventDefault();
+        const card = (document.activeElement as HTMLElement)?.closest('[data-testid^="idea-card-"]');
+        const ideaId = card?.getAttribute('data-testid')?.replace('idea-card-', '');
+        if (ideaId) moveFact(ideaId, e.key === 'ArrowUp' ? 'up' : 'down');
+        return;
+      }
+
+      if (meta && !e.shiftKey && e.key === 'n' && !inInput) {
+        e.preventDefault();
+        createNewIdea();
+        return;
+      }
+      if (meta && !e.shiftKey && e.key === 'd' && !inInput) {
+        e.preventDefault();
+        handleDeleteFocused();
+        return;
+      }
+      if (meta && e.shiftKey && e.key === 'A') {
+        e.preventDefault();
+        toggleMultiSelectMode();
+      } else if (e.key === 'Escape' && isMultiSelectMode && !showDeleteConfirm) {
+        setIsMultiSelectMode(false);
+        setSelectedIds(new Set());
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isMultiSelectMode, showDeleteConfirm, sortOrder, loading, toggleMultiSelectMode, createNewIdea, handleDeleteFocused, moveFact]);
 
   useEffect(() => {
     let cancelled = false;
@@ -628,9 +1166,90 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
     setPrompt(msgText);
   }, [continuityIssues, answerDrafts]);
 
+  const toggleFactExpanded = useCallback((id: string) => {
+    setExpandedFactIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleExpandAll = useCallback(() => {
+    setExpandedFactIds(new Set(facts.map((f) => f.id)));
+  }, [facts]);
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedFactIds(new Set());
+  }, []);
+
+  const handleDragStart = useCallback((e: React.DragEvent, factId: string) => {
+    dragSourceIdRef.current = factId;
+    setDraggingId(factId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, factId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const below = e.clientY > rect.top + rect.height / 2;
+    setDragOverId(factId);
+    setDropBelow(below);
+    dropBelowRef.current = below;
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragSourceIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+    setDropBelow(false);
+    dropBelowRef.current = false;
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const sourceId = dragSourceIdRef.current;
+    if (!sourceId || sourceId === targetId) {
+      dragSourceIdRef.current = null;
+      setDraggingId(null);
+      setDragOverId(null);
+      setDropBelow(false);
+      return;
+    }
+    const below = dropBelowRef.current;
+    setCustomOrder((prev) => {
+      if (prev.length === 0) return prev;
+      const fromIdx = prev.indexOf(sourceId);
+      const toIdx = prev.indexOf(targetId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const next = [...prev];
+      next.splice(fromIdx, 1);
+      // After removing fromIdx, toIdx shifts if fromIdx was before toIdx
+      const adjustedTo = fromIdx < toIdx ? toIdx - 1 : toIdx;
+      const insertAt = below ? adjustedTo + 1 : adjustedTo;
+      next.splice(Math.max(0, Math.min(next.length, insertAt)), 0, sourceId);
+      return next;
+    });
+    dragSourceIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+    setDropBelow(false);
+    dropBelowRef.current = false;
+  }, []);
+
   const toggleIssue = useCallback((id: string) => {
     setExpandedIssueId((prev) => (prev === id ? null : id));
   }, []);
+
+  const openIdeaDetail = useCallback((ideaId: string) => {
+    triggerElementRef.current = document.activeElement as HTMLElement;
+    setDetailDrawerIdeaId(ideaId);
+    announce('Idea detail drawer opened.');
+  }, [announce]);
 
   const setDraftKind = useCallback((issueId: string, kind: AnswerKind) => {
     setAnswerDrafts((prev) => ({
@@ -645,6 +1264,24 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
       [issueId]: { kind: prev[issueId]?.kind ?? 'free-text', text },
     }));
   }, []);
+
+  const detailIdea = detailDrawerIdeaId ? facts.find((fact) => fact.id === detailDrawerIdeaId) : null;
+
+  const handleSaveIdea = useCallback((updated: import('./components/BrainstormCard/IdeaCard').IdeaCardIdea) => {
+    setFacts((prev) =>
+      prev.map((f) =>
+        f.id === updated.id
+          ? { ...f, name: updated.title, content: updated.title }
+          : f,
+      ),
+    );
+    setPendingNewIdeaId(null);
+    setDetailDrawerIdeaId(null);
+    const el = triggerElementRef.current;
+    triggerElementRef.current = null;
+    announce('Idea saved.');
+    setTimeout(() => el?.focus(), 0);
+  }, [announce]);
 
   if (!enabled) {
     return (
@@ -676,6 +1313,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
         <div className="brainstorm-header-text">
           <div className="brainstorm-title">Brainstorm Agent</div>
           <div className="brainstorm-subtitle">Talk through your story — facts auto-extract to your vault</div>
+        </div>
+        <div className="brainstorm-header-preset">
+          <PresetSelector
+            activePresetId={presetId}
+            onSelect={(id) => { setPresetId(id); setPresetOverrides({}); saveSessionPreset(id, {}); }}
+            onCustomize={() => setShowPresetEditor(true)}
+            compact
+          />
         </div>
         <div className="brainstorm-header-actions">
           {messages.length > 0 && (
@@ -722,8 +1367,13 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
           <div className="brainstorm-messages">
             {messages.length === 0 && (
               <div className="brainstorm-empty">
-                <p>Tell me about your story. Who are the main characters? What world is it set in? What&apos;s the central conflict?</p>
-                <p>Named characters, locations, and world-building notes will appear in the Facts panel — save them to your vault with one click.</p>
+                <svg className="brainstorm-empty-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3L13.09 8.26L18 9L13.09 9.74L12 15L10.91 9.74L6 9L10.91 8.26L12 3Z"/>
+                  <path d="M5 15.5L5.55 17.95L8 18.5L5.55 19.05L5 21.5L4.45 19.05L2 18.5L4.45 17.95L5 15.5Z"/>
+                  <path d="M18 2L18.4 3.6L20 4L18.4 4.4L18 6L17.6 4.4L16 4L17.6 3.6L18 2Z"/>
+                </svg>
+                <span className="brainstorm-empty-headline">Start your brainstorm</span>
+                <span className="brainstorm-empty-desc">Ask anything about your story &mdash; characters, plot, world-building. Named facts auto-save to your vault.</span>
               </div>
             )}
             {messages.map((msg, i) => (
@@ -736,6 +1386,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                       {msg.text}
                       {msg.streaming && <span className="bs-cursor" aria-hidden="true">▍</span>}
                     </div>
+                    {!msg.streaming && i === messages.length - 1 && (
+                      <RefinementChips
+                        effectiveAxes={effectiveAxes}
+                        onRefine={handleRefine}
+                        disabled={loading}
+                        activeChipId={activeRefinementId}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -770,11 +1428,14 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
                       <option value="" disabled>
                         Choose a folder…
                       </option>
-                      {notesFolders.map((f) => (
-                        <option key={f.path} value={f.path}>
-                          {f.label}
-                        </option>
-                      ))}
+                      <option value={VAULT_ROOT_SENTINEL}>/ (vault root)</option>
+                      {notesFolders
+                        .filter((f) => f.path !== '')
+                        .map((f) => (
+                          <option key={f.path} value={f.path}>
+                            {f.label}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <label className="bs-routing-row">
@@ -859,16 +1520,49 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             >
               🎤
             </button>
-            <textarea
-              className="brainstorm-input"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Tell me about your story world, characters, or plot ideas…"
-              rows={3}
-              disabled={loading}
-              aria-label="Brainstorm prompt"
-            />
+            <div className="brainstorm-input-wrapper">
+              <textarea
+                className="brainstorm-input"
+                value={prompt}
+                onChange={(e) => {
+                  const next = e.target.value.slice(0, PROMPT_MAX_CHARS);
+                  setPrompt(next);
+                }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  const available = PROMPT_MAX_CHARS - prompt.length;
+                  if (pasted.length > available) {
+                    setPasteWarning(true);
+                    setTimeout(() => setPasteWarning(false), 5000);
+                  }
+                }}
+                onKeyDown={handleKey}
+                placeholder="Ask about your story — characters, plot, world-building…"
+                rows={3}
+                maxLength={PROMPT_MAX_CHARS}
+                disabled={loading}
+                aria-label="Brainstorm prompt"
+              />
+              <span
+                className={
+                  'brainstorm-char-counter' +
+                  (prompt.length >= PROMPT_MAX_CHARS
+                    ? ' brainstorm-char-counter--error'
+                    : prompt.length >= PROMPT_MAX_CHARS * 0.9
+                      ? ' brainstorm-char-counter--warning'
+                      : '')
+                }
+                aria-live="polite"
+              >
+                {prompt.length.toLocaleString()} / {PROMPT_MAX_CHARS.toLocaleString()}
+              </span>
+              {pasteWarning && (
+                <div className="brainstorm-paste-warning" role="alert">
+                  Pasted text exceeded {PROMPT_MAX_CHARS.toLocaleString()} chars and was
+                  trimmed—please shorten or split your prompt.
+                </div>
+              )}
+            </div>
             {loading ? (
               <button
                 className="brainstorm-cancel-btn"
@@ -904,7 +1598,13 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             </div>
             <ul className="bs-continuity-list" aria-label="Continuity issues">
               {continuityIssues.length === 0 && (
-                <li className="brainstorm-facts-empty bs-continuity-empty">No continuity issues flagged.</li>
+                <li className="brainstorm-facts-empty bs-continuity-empty">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  <span>No continuity issues.</span>
+                </li>
               )}
               {continuityIssues.map((issue) => {
                 const draft = answerDrafts[issue.id] ?? { kind: 'free-text' as AnswerKind, text: '' };
@@ -971,62 +1671,419 @@ export default function BrainstormPage({ onClose, enabled = true }: Props) {
             </ul>
           </div>
 
+          {/* SKY-196: collapsible "Context used" panel */}
+          {contextResult && (
+            <div className="bs-context-section" data-testid="brainstorm-context-section">
+              <button
+                className="bs-context-header"
+                onClick={() => setContextOpen((o) => !o)}
+                aria-expanded={contextOpen}
+                aria-controls="bs-context-body"
+                type="button"
+              >
+                <span className="bs-context-title">Context sent</span>
+                <span className="bs-context-counts">
+                  {contextResult.included.length} item{contextResult.included.length !== 1 ? 's' : ''}
+                  {contextResult.excluded.length > 0 && `, ${contextResult.excluded.length} excluded`}
+                </span>
+                <span className="bs-context-chevron" aria-hidden="true">{contextOpen ? '▲' : '▼'}</span>
+              </button>
+              {contextOpen && (
+                <div id="bs-context-body" className="bs-context-body">
+                  <div className="bs-context-budget">
+                    {contextResult.usedTokens.toLocaleString()} / {contextResult.budgetTokens.toLocaleString()} tokens
+                  </div>
+                  {contextResult.included.length === 0 ? (
+                    <div className="bs-context-empty">No vault items sent.</div>
+                  ) : (
+                    <ul className="bs-context-list" aria-label="Context items sent to AI">
+                      {contextResult.included.map((item) => (
+                        <li key={item.path} className="bs-context-item">
+                          <span className="bs-context-item-name">{item.name}</span>
+                          <span className={`bs-context-item-type bs-context-type-${item.type}`}>{item.type}</span>
+                          <span className="bs-context-item-why">{item.whyIncluded}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {contextResult.excluded.length > 0 && (
+                    <div className="bs-context-excluded">
+                      {contextResult.excluded.length} item{contextResult.excluded.length !== 1 ? 's' : ''} excluded — token budget reached
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="brainstorm-facts-header brainstorm-facts-header-divider">
             <span className="brainstorm-facts-title">Detected Facts</span>
             {facts.length > 0 && (
-              <span className="brainstorm-facts-count">{facts.length}</span>
+              <span className="brainstorm-facts-count" data-testid="bs-facts-count">{facts.length}</span>
+            )}
+            {facts.length > 0 && (
+              <button
+                className={`bs-multiselect-toggle${isMultiSelectMode ? ' active' : ''}`}
+                type="button"
+                onClick={toggleMultiSelectMode}
+                aria-pressed={isMultiSelectMode}
+                data-testid="bs-multiselect-toggle"
+              >
+                {isMultiSelectMode ? 'Done selecting' : 'Select multiple'}
+              </button>
+            )}
+            {facts.length > 0 && (
+              <div className="bs-fact-header-actions">
+                <button
+                  className="bs-fact-all-btn"
+                  type="button"
+                  onClick={handleExpandAll}
+                  aria-label="Expand all fact cards"
+                >
+                  Expand all
+                </button>
+                <span className="bs-fact-all-sep" aria-hidden="true">/</span>
+                <button
+                  className="bs-fact-all-btn"
+                  type="button"
+                  onClick={handleCollapseAll}
+                  aria-label="Collapse all fact cards"
+                >
+                  Collapse all
+                </button>
+              </div>
             )}
           </div>
+          {facts.length > 0 && (
+            <div className="bs-facts-controls" data-testid="bs-facts-controls">
+              <select
+                className="bs-facts-select"
+                value={sortOrder}
+                onChange={(e) => {
+                  const newSort = e.target.value as SortOrder;
+                  setSortOrder(newSort);
+                  if (newSort === 'custom') {
+                    setCustomOrder((prev) => prev.length > 0 ? prev : displayedFacts.map((f) => f.id));
+                  }
+                }}
+                aria-label="Sort ideas"
+                data-testid="bs-sort-select"
+              >
+                {(Object.keys(SORT_LABELS) as SortOrder[]).map((key) => (
+                  <option key={key} value={key}>{SORT_LABELS[key]}</option>
+                ))}
+              </select>
+              <select
+                className="bs-facts-select"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as FilterType)}
+                aria-label="Filter by type"
+                data-testid="bs-filter-select"
+              >
+                {(Object.keys(FILTER_LABELS) as FilterType[]).map((key) => (
+                  <option key={key} value={key}>{FILTER_LABELS[key]}</option>
+                ))}
+              </select>
+              {sortOrder !== 'custom' && (
+                <>
+                  <button
+                    className="bs-expand-collapse-btn"
+                    type="button"
+                    onClick={expandAllGroups}
+                    aria-label="Expand all groups"
+                    data-testid="bs-expand-all"
+                  >
+                    ↕ Expand all
+                  </button>
+                  <button
+                    className="bs-expand-collapse-btn"
+                    type="button"
+                    onClick={collapseAllGroups}
+                    aria-label="Collapse all groups"
+                    data-testid="bs-collapse-all"
+                  >
+                    ↕ Collapse all
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {isMultiSelectMode && selectedIds.size > 0 && (
+            <div className="bs-bulk-toolbar" role="toolbar" aria-label="Bulk actions">
+              <span className="bs-bulk-count">{selectedIds.size} selected</span>
+              <button
+                className="bs-bulk-deselect-btn"
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Deselect all
+              </button>
+              <button
+                className="bs-bulk-delete-btn"
+                type="button"
+                onClick={handleBulkDelete}
+              >
+                Delete
+              </button>
+            </div>
+          )}
           <div className="brainstorm-facts-list">
             {facts.length === 0 ? (
               <div className="brainstorm-facts-empty">
-                Named facts will appear here as Claude identifies them.
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span>Facts appear here as you chat.</span>
               </div>
-            ) : (
-              FACT_TYPE_ORDER.map((type) => {
-                const group = facts.filter((f) => f.type === type);
-                if (group.length === 0) return null;
-                return (
-                  <div key={type} className="bs-fact-group">
-                    <div className="bs-fact-group-header">{FACT_TYPE_LABELS[type]}s</div>
-                    {group.map((fact) => (
-                      <div
-                        key={fact.id}
-                        className={`bs-fact${fact.savedStatus === 'saved' ? ' bs-fact-saved' : ''}`}
-                      >
-                        <div className="bs-fact-name">{fact.name}</div>
-                        <p className="bs-fact-desc">{fact.content}</p>
-                        <div className="bs-fact-actions">
-                          {fact.savedStatus === 'saving' && (
+            ) : sortOrder === 'custom' ? (
+              /* Custom order: flat list with drag handles */
+              <div
+                role="list"
+                aria-label="Brainstorm ideas (custom order)"
+                onDragOver={(e) => e.preventDefault()}
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                  const cards = Array.from(
+                    e.currentTarget.querySelectorAll<HTMLElement>('[data-testid^="idea-card-"]'),
+                  );
+                  if (cards.length === 0) return;
+                  const idx = cards.findIndex((c) => c === document.activeElement || c.contains(document.activeElement));
+                  const next = e.key === 'ArrowDown'
+                    ? Math.min(idx + 1, cards.length - 1)
+                    : Math.max(idx - 1, 0);
+                  if (next !== idx && next >= 0) {
+                    e.preventDefault();
+                    cards[next].focus();
+                  }
+                }}
+              >
+                {displayedFacts.map((fact) => {
+                  const canDrag = !isMultiSelectMode && !loading;
+                  return (
+                    <Fragment key={fact.id}>
+                      {dragOverId === fact.id && !dropBelow && (
+                        <div className="bs-drop-indicator" role="separator" aria-hidden="true" />
+                      )}
+                      <IdeaCard
+                        idea={{
+                          id: fact.id,
+                          title: fact.name,
+                          type: fact.type,
+                          linkedEntities: [
+                            { id: `${fact.id}-entity`, name: fact.name, type: fact.type },
+                          ],
+                          savedPath: fact.savedPath,
+                          updatedAt: fact.updatedAt,
+                          savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+                        }}
+                        body={fact.content || undefined}
+                        isExpanded={expandedFactIds.has(fact.id)}
+                        onToggleExpand={() => toggleFactExpanded(fact.id)}
+                        showDragHandle={canDrag}
+                        isDragging={draggingId === fact.id}
+                        onDragStart={(e) => handleDragStart(e, fact.id)}
+                        onDragOver={(e) => handleDragOver(e, fact.id)}
+                        onDragEnd={handleDragEnd}
+                        onDrop={(e) => handleDrop(e, fact.id)}
+                        metaAction={
+                          fact.savedStatus === 'saving' ? (
                             <span className="bs-fact-saving">Saving…</span>
-                          )}
-                          {fact.savedStatus === 'saved' && (
+                          ) : fact.savedStatus === 'saved' ? (
                             <span className="bs-fact-saved-label">Saved ✓</span>
-                          )}
-                          {fact.savedStatus === 'pending_review' && (
+                          ) : fact.savedStatus === 'pending_review' ? (
                             <span className="bs-fact-pending-review">Pending review →</span>
-                          )}
-                          {fact.savedStatus === 'error' && (
+                          ) : fact.savedStatus === 'error' ? (
                             <span className="bs-fact-save-error">
                               Failed —{' '}
                               <button
                                 className="bs-fact-retry-btn"
                                 onClick={() => saveFactToVault(fact.id)}
+                                type="button"
                               >
                                 retry
                               </button>
                             </span>
-                          )}
-                        </div>
+                          ) : undefined
+                        }
+                        onOpenDetail={openIdeaDetail}
+                        onChipClick={handleChipClick}
+                        onMenuAction={handleIdeaMenuAction}
+                        isMultiSelect={isMultiSelectMode}
+                        isSelected={selectedIds.has(fact.id)}
+                        onToggleSelect={handleToggleSelect}
+                      />
+                      {dragOverId === fact.id && dropBelow && (
+                        <div className="bs-drop-indicator" role="separator" aria-hidden="true" />
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Grouped view for all other sort orders */
+              <div
+                role="list"
+                aria-label="Brainstorm ideas"
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                  const cards = Array.from(
+                    e.currentTarget.querySelectorAll<HTMLElement>('[data-testid^="idea-card-"]'),
+                  );
+                  if (cards.length === 0) return;
+                  const idx = cards.findIndex((c) => c === document.activeElement || c.contains(document.activeElement));
+                  const next = e.key === 'ArrowDown'
+                    ? Math.min(idx + 1, cards.length - 1)
+                    : Math.max(idx - 1, 0);
+                  if (next !== idx && next >= 0) {
+                    e.preventDefault();
+                    cards[next].focus();
+                  }
+                }}
+              >
+              {visibleTypes.map((type) => {
+                const group = displayedFacts.filter((f) => f.type === type);
+                const isCollapsed = collapsedGroups.has(type);
+                return (
+                  <div key={type} className="bs-fact-group">
+                    <button
+                      className="bs-fact-group-header bs-fact-group-header-btn"
+                      type="button"
+                      onClick={() => toggleGroup(type)}
+                      aria-expanded={!isCollapsed}
+                      data-testid={`bs-group-toggle-${type}`}
+                    >
+                      <span>{FACT_TYPE_LABELS[type]}s</span>
+                      <span className="bs-group-count">{group.length}</span>
+                      <span className="bs-group-chevron">{isCollapsed ? '▶' : '▼'}</span>
+                    </button>
+                    {!isCollapsed && group.length === 0 && (
+                      <div className="brainstorm-facts-empty brainstorm-facts-empty--type" data-testid={`bs-empty-type-${type}`}>
+                        No {FILTER_LABELS[type].toLowerCase()} ideas yet
                       </div>
+                    )}
+                    {!isCollapsed && group.map((fact) => (
+                      <IdeaCard
+                        key={fact.id}
+                        idea={{
+                          id: fact.id,
+                          title: fact.name,
+                          type: fact.type,
+                          linkedEntities: [
+                            { id: `${fact.id}-entity`, name: fact.name, type: fact.type },
+                          ],
+                          savedPath: fact.savedPath,
+                          updatedAt: fact.updatedAt,
+                          savedLabel: fact.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+                        }}
+                        body={fact.content || undefined}
+                        isExpanded={expandedFactIds.has(fact.id)}
+                        onToggleExpand={() => toggleFactExpanded(fact.id)}
+                        metaAction={
+                          fact.savedStatus === 'saving' ? (
+                            <span className="bs-fact-saving">Saving…</span>
+                          ) : fact.savedStatus === 'saved' ? (
+                            <span className="bs-fact-saved-label">Saved ✓</span>
+                          ) : fact.savedStatus === 'pending_review' ? (
+                            <span className="bs-fact-pending-review">Pending review →</span>
+                          ) : fact.savedStatus === 'error' ? (
+                            <span className="bs-fact-save-error">
+                              Failed —{' '}
+                              <button
+                                className="bs-fact-retry-btn"
+                                onClick={() => saveFactToVault(fact.id)}
+                                type="button"
+                              >
+                                retry
+                              </button>
+                            </span>
+                          ) : undefined
+                        }
+                        onOpenDetail={openIdeaDetail}
+                        onChipClick={handleChipClick}
+                        onMenuAction={handleIdeaMenuAction}
+                        isMultiSelect={isMultiSelectMode}
+                        isSelected={selectedIds.has(fact.id)}
+                        onToggleSelect={handleToggleSelect}
+                      />
                     ))}
                   </div>
                 );
-              })
+              })}
+              </div>
             )}
           </div>
+
+          <EntriesQuickAdd />
         </div>
       </div>
+
+      {showPresetEditor && (
+        <PresetEditor
+          activePresetId={presetId}
+          overrides={presetOverrides}
+          onApply={(overrides) => {
+            setPresetOverrides(overrides);
+            saveSessionPreset(presetId, overrides);
+          }}
+          onClose={() => setShowPresetEditor(false)}
+        />
+      )}
+
+      {showDeleteConfirm && (
+        <div
+          className="bs-delete-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete idea"
+          data-testid="bs-delete-confirm"
+        >
+          <div className="bs-delete-confirm-dialog">
+            <p className="bs-delete-confirm-message">Delete idea?</p>
+            <div className="bs-delete-confirm-actions">
+              <button
+                className="bs-delete-confirm-cancel"
+                type="button"
+                onClick={() => { setShowDeleteConfirm(false); setPendingDeleteIds([]); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="bs-delete-confirm-ok"
+                type="button"
+                onClick={confirmDelete}
+                data-testid="bs-delete-confirm-ok"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailIdea && (
+        <IdeaDetailDrawer
+          idea={{
+            id: detailIdea.id,
+            title: detailIdea.content || detailIdea.name,
+            type: detailIdea.type,
+            linkedEntities: [{ id: `${detailIdea.id}-entity`, name: detailIdea.name, type: detailIdea.type }],
+            savedPath: detailIdea.savedPath,
+            updatedAt: detailIdea.updatedAt,
+            savedLabel: detailIdea.savedStatus === 'saved' ? 'Saved ✓' : undefined,
+          }}
+          onClose={handleDetailDrawerClose}
+          onSave={handleSaveIdea}
+          onChipClick={handleChipClick}
+          onOpenInWritingPanel={detailIdea ? () => void handleOpenInWritingPanel(detailIdea.id) : undefined}
+        />
+      )}
+
+      {scenePickerIdeaId && (
+        <ScenePicker
+          onSelect={(sceneId, sceneTitle) => void handleScenePickerSelect(sceneId, sceneTitle)}
+          onClose={() => setScenePickerIdeaId(null)}
+        />
+      )}
     </div>
   );
 }

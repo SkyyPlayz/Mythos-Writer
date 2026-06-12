@@ -36,6 +36,7 @@ function makeSuggestion(overrides: Partial<{
     applied_at: null,
     applied_run_id: null,
     budget_exceeded: 0,
+    category: null,
   };
 }
 
@@ -137,6 +138,104 @@ describe('evaluateAutoApply', () => {
     const result = evaluateAutoApply(0.95, 'writing-assistant', BASE_SETTINGS, db);
     expect(result.shouldAutoApply).toBe(true);
     expect(result.budgetExceeded).toBe(false);
+  });
+
+  // ─── SKY-908 — per-category gating ───
+
+  it('auto-applies every category when autoApplyCategories is undefined (back-compat)', () => {
+    for (const category of ['punctuation', 'spelling', 'grammar', 'sentence-structure', 'style-tone', 'other'] as const) {
+      const result = evaluateAutoApply(0.9, 'writing-assistant', BASE_SETTINGS, db, category);
+      expect(result.shouldAutoApply).toBe(true);
+    }
+  });
+
+  it('blocks auto-apply when the suggestion category is disabled in the map', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        'punctuation': true,
+        'spelling': false,
+        'grammar': true,
+        'sentence-structure': true,
+        'style-tone': true,
+        'other': true,
+      },
+    };
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'spelling');
+    expect(result.shouldAutoApply).toBe(false);
+    expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('still auto-applies an enabled category when other categories are disabled', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        'punctuation': true,
+        'spelling': false,
+        'grammar': false,
+        'sentence-structure': false,
+        'style-tone': false,
+        'other': false,
+      },
+    };
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'punctuation');
+    expect(result.shouldAutoApply).toBe(true);
+  });
+
+  it('honours the master autoApply kill-switch even when every category is enabled', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApply: false,
+      autoApplyCategories: {
+        'punctuation': true, 'spelling': true, 'grammar': true,
+        'sentence-structure': true, 'style-tone': true, 'other': true,
+      },
+    };
+    const result = evaluateAutoApply(0.99, 'writing-assistant', settings, db, 'punctuation');
+    expect(result.shouldAutoApply).toBe(false);
+  });
+
+  it('treats missing keys in an explicit map as enabled (forward-compat)', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        'punctuation': true,
+        'spelling': true,
+        'grammar': true,
+        'sentence-structure': true,
+        // 'style-tone' omitted
+        'other': true,
+      },
+    };
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'style-tone');
+    expect(result.shouldAutoApply).toBe(true);
+  });
+
+  it('coerces null/undefined category to "other" and honours the "other" toggle', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        'punctuation': true, 'spelling': true, 'grammar': true,
+        'sentence-structure': true, 'style-tone': true,
+        'other': false,
+      },
+    };
+    expect(evaluateAutoApply(0.95, 'writing-assistant', settings, db, null).shouldAutoApply).toBe(false);
+    expect(evaluateAutoApply(0.95, 'writing-assistant', settings, db).shouldAutoApply).toBe(false);
+  });
+
+  it('coerces an unknown category string to "other"', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        'punctuation': true, 'spelling': true, 'grammar': true,
+        'sentence-structure': true, 'style-tone': true,
+        'other': false,
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'no-such-cat' as any);
+    expect(result.shouldAutoApply).toBe(false);
   });
 });
 

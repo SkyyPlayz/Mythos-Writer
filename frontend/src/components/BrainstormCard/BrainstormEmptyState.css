@@ -1,0 +1,59 @@
+.bs-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  gap: 16px;
+  flex: 1;
+}
+
+.bs-empty-heading {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-header);
+  margin: 0;
+}
+
+.bs-empty-sub {
+  font-size: 0.87rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 380px;
+  margin: 0;
+}
+
+.bs-empty-ctas {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.bs-empty-cta-btn {
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: transparent;
+  color: var(--accent, #7c6ff7);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: left;
+}
+
+.bs-empty-cta-btn:hover {
+  background: var(--accent-border);
+}
+
+.bs-empty-cta-btn:focus-visible {
+  outline: 2px solid var(--accent, #7c6ff7);
+  outline-offset: 2px;
+}

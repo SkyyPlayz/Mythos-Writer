@@ -1,0 +1,78 @@
+.refine-btns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin-top: var(--space-2, 6px);
+}
+
+.refine-btns-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 4px);
+}
+
+.refine-btn {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: var(--radius-full, 999px);
+  color: var(--text-muted, rgba(255 255 255 / 0.65));
+  font-size: var(--text-xs, 11px);
+  padding: 3px var(--space-2, 8px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.refine-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 15%, transparent);
+  color: var(--accent-soft, #00f0ff);
+  border-color: color-mix(in srgb, var(--accent-soft, #00f0ff) 30%, transparent);
+}
+.refine-btn:focus-visible {
+  outline: 2px solid var(--accent-soft, #00f0ff);
+  outline-offset: 1px;
+}
+.refine-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.refine-btn-reject {
+  color: var(--text-muted, rgba(255 255 255 / 0.5));
+}
+.refine-btn-reject:hover:not(:disabled) {
+  background: color-mix(in srgb, #ff5555 15%, transparent);
+  color: #ff8888;
+  border-color: color-mix(in srgb, #ff5555 30%, transparent);
+}
+
+.refine-btn-dynamic {
+  color: color-mix(in srgb, var(--accent-soft, #00f0ff) 80%, rgba(255 255 255 / 0.6));
+  border-style: dashed;
+}
+
+.refine-btn-apply {
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 20%, transparent);
+  color: var(--accent-soft, #00f0ff);
+  border-color: color-mix(in srgb, var(--accent-soft, #00f0ff) 40%, transparent);
+}
+
+.refine-constraint-row {
+  display: flex;
+  gap: var(--space-1, 4px);
+  align-items: center;
+}
+
+.refine-constraint-input {
+  flex: 1;
+  min-width: 0;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  color: inherit;
+  font-size: var(--text-xs, 11px);
+  padding: 3px var(--space-2, 8px);
+}
+.refine-constraint-input:focus {
+  outline: 2px solid var(--accent-soft, #00f0ff);
+  outline-offset: 1px;
+}

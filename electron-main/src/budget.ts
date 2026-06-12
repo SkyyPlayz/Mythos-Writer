@@ -3,6 +3,10 @@
 
 import type { DatabaseSync } from 'node:sqlite';
 import { countSuggestionsInWindow, countTokensInWindow } from './db.js';
+import {
+  coerceSuggestionCategory,
+  type SuggestionCategory,
+} from './suggestionCategory.js';
 
 export interface AgentBudgetSettings {
   autoApply: boolean;
@@ -10,6 +14,16 @@ export interface AgentBudgetSettings {
   maxTokensPerHour: number;
   maxSuggestionsPerHour: number;
   maxTokensPerDay: number;
+  /**
+   * SKY-908 — Per-category auto-apply allow-list. Undefined means
+   * "honour the master autoApply boolean for every category" (the pre-SKY-908
+   * default, and what users see after upgrading from a single-checkbox
+   * setting). When defined, a category whose value is `false` short-circuits
+   * to no-auto-apply regardless of confidence/budget; categories that are
+   * absent from the map fall back to `true` so a forward-compat schema does
+   * not silently disable a newly-added category.
+   */
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
 }
 
 export interface AutoApplyResult {
@@ -25,19 +39,33 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  *
  * Rules (in evaluation order):
  * 1. autoApply must be true — otherwise stay proposed, no budget check.
- * 2. confidence must be >= confidenceThreshold — otherwise stay proposed.
- * 3. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
+ * 2. SKY-908 — if autoApplyCategories is defined, the suggestion's category
+ *    must be enabled. Missing keys default to enabled so forward-compat
+ *    schemas do not silently disable new categories.
+ * 3. confidence must be >= confidenceThreshold — otherwise stay proposed.
+ * 4. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
  *    Checks: hourly suggestion count, hourly token count, daily token count.
- * 4. All checks pass → auto-apply.
+ * 5. All checks pass → auto-apply.
  */
 export function evaluateAutoApply(
   confidence: number,
   sourceAgent: string,
   settings: AgentBudgetSettings,
   db: DatabaseSync,
+  category?: SuggestionCategory | null,
 ): AutoApplyResult {
   if (!settings.autoApply) {
     return { shouldAutoApply: false, budgetExceeded: false };
+  }
+
+  if (settings.autoApplyCategories) {
+    const effectiveCategory = coerceSuggestionCategory(category);
+    const enabled = settings.autoApplyCategories[effectiveCategory];
+    // Absent keys default to enabled (forward-compat); only an explicit
+    // `false` disables auto-apply for that category.
+    if (enabled === false) {
+      return { shouldAutoApply: false, budgetExceeded: false };
+    }
   }
 
   if (confidence < settings.confidenceThreshold) {

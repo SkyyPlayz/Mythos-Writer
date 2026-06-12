@@ -185,15 +185,15 @@ export function pruneOrphanScenes(manifest: Manifest, vaultRoot: string): PruneR
 
   const cleanedScenes = filterScenes(manifest.scenes);
 
-  const cleanedStories = manifest.stories.map((story) => ({
+  const cleanedStories = (manifest.stories ?? []).map((story) => ({
     ...story,
-    chapters: story.chapters.map((ch) => ({
+    chapters: (story.chapters ?? []).map((ch) => ({
       ...ch,
       scenes: filterScenes(ch.scenes),
     })),
   }));
 
-  const cleanedChapters = manifest.chapters.map((ch) => ({
+  const cleanedChapters = (manifest.chapters ?? []).map((ch) => ({
     ...ch,
     scenes: filterScenes(ch.scenes),
   }));

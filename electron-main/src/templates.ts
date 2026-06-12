@@ -305,6 +305,69 @@ function buildTree(dirPath: string): TemplateNode[] {
   return nodes;
 }
 
+// ─── Manage user templates ─────────────────────────────────────────────────
+
+function findUserTemplateFile(appDataPath: string, id: string): string | null {
+  const dir = userTemplatesDir(appDataPath);
+  if (!fs.existsSync(dir)) return null;
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  } catch {
+    return null;
+  }
+  for (const f of files) {
+    const filePath = path.join(dir, f);
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as { id?: string };
+      if (parsed.id === id) return filePath;
+    } catch {
+      // skip malformed
+    }
+  }
+  return null;
+}
+
+export function renameTemplate(appDataPath: string, id: string, newName: string): void {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TemplateDefinition;
+  parsed.name = newName;
+  fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
+}
+
+export function deleteTemplate(appDataPath: string, id: string): void {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  fs.unlinkSync(filePath);
+}
+
+export function duplicateTemplate(appDataPath: string, id: string): string {
+  const filePath = findUserTemplateFile(appDataPath, id);
+  if (!filePath) throw new Error(`Template not found: ${id}`);
+  const source = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TemplateDefinition;
+  const newName = `${source.name} copy`;
+  const slug = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template';
+  const newId = `user:${slug}-${crypto.randomBytes(4).toString('hex')}`;
+  const savedAt = new Date().toISOString();
+  const copy: TemplateDefinition = {
+    id: newId,
+    name: newName,
+    description: source.description,
+    story: source.story,
+    notes: source.notes,
+    isUserTemplate: true,
+    savedAt,
+  };
+  const dir = userTemplatesDir(appDataPath);
+  const fileName = `${slug}-${newId.slice(-8)}.json`;
+  fs.writeFileSync(path.join(dir, fileName), JSON.stringify(copy, null, 2), 'utf-8');
+  return newId;
+}
+
+// ─── Save as template ─────────────────────────────────────────────────────────
+
 /**
  * Snapshot the current Story Vault + Notes Vault directory structure (no content)
  * as a user template and persist it as a JSON file under appDataPath/templates/.
@@ -335,3 +398,475 @@ export function saveAsTemplate(
   fs.writeFileSync(path.join(dir, fileName), JSON.stringify(template, null, 2), 'utf-8');
   return id;
 }
+
+// ─── Export / Import ─────────────────────────────────────────────────────────
+
+/**
+ * Returns false when the name string contains path-traversal or separator
+ * characters that could escape the vault root when used in path.join().
+ */
+function isValidNodeName(name: unknown): boolean {
+  if (typeof name !== 'string' || !name || name.length > 255) return false;
+  // Reject separators, traversal sequences, and null bytes.
+  // eslint-disable-next-line no-control-regex
+  if (/[/\\]|\.\.|\x00/.test(name)) return false;
+  return true;
+}
+
+function validateNodes(nodes: unknown): string | null {
+  if (!Array.isArray(nodes)) return 'Expected an array of nodes';
+  for (const node of nodes) {
+    if (typeof node !== 'object' || node === null) return 'Each node must be an object';
+    const n = node as Record<string, unknown>;
+    if (!isValidNodeName(n.name)) return `Invalid node name: ${JSON.stringify(n.name)}`;
+    if (n.starterNote !== undefined && !isValidNodeName(n.starterNote)) {
+      return `Invalid starterNote: ${JSON.stringify(n.starterNote)}`;
+    }
+    if (n.children !== undefined) {
+      const err = validateNodes(n.children);
+      if (err) return err;
+    }
+  }
+  return null;
+}
+
+/**
+ * Write a user template to a caller-supplied destination path (path obtained
+ * from a main-process dialog — never renderer-supplied).
+ */
+export function exportTemplate(
+  appDataPath: string,
+  id: string,
+  destinationPath: string,
+): { ok: true } | { error: string } {
+  const templates = loadUserTemplates(appDataPath);
+  const template = templates.find((t) => t.id === id);
+  if (!template) return { error: `Template not found: ${id}` };
+  try {
+    fs.writeFileSync(destinationPath, JSON.stringify(template, null, 2), 'utf-8');
+    return { ok: true };
+  } catch {
+    return { error: 'Could not write file.' };
+  }
+}
+
+/**
+ * Validate, sanitize, and persist an imported .mythostemplate file.
+ * sourcePath must come from a main-process dialog — never from the renderer.
+ * Returns the saved TemplateDefinition on success.
+ */
+export function importTemplate(
+  appDataPath: string,
+  sourcePath: string,
+): { ok: true; template: TemplateDefinition } | { error: string } {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(sourcePath, 'utf-8');
+  } catch {
+    return { error: 'Could not read file.' };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: 'File is not a valid Mythos template.' };
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { error: 'File is not a valid Mythos template.' };
+  }
+
+  const t = parsed as Record<string, unknown>;
+
+  if (typeof t.id !== 'string' || !t.id) return { error: 'File is not a valid Mythos template.' };
+  if (typeof t.name !== 'string' || !t.name.trim()) return { error: 'File is not a valid Mythos template.' };
+  if (!Array.isArray(t.story)) return { error: 'File is not a valid Mythos template.' };
+  if (!Array.isArray(t.notes)) return { error: 'File is not a valid Mythos template.' };
+
+  const importedName = t.name.trim();
+  if (importedName.length > 255) return { error: 'File is not a valid Mythos template.' };
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f]/.test(importedName)) return { error: 'File is not a valid Mythos template.' };
+
+  const storyErr = validateNodes(t.story);
+  if (storyErr) return { error: 'File is not a valid Mythos template.' };
+  const notesErr = validateNodes(t.notes);
+  if (notesErr) return { error: 'File is not a valid Mythos template.' };
+
+  // Name collision: append " (2)", " (3)", etc. to the display name.
+  const existing = loadUserTemplates(appDataPath);
+  let finalName = importedName;
+  let suffix = 2;
+  while (existing.some((tmpl) => tmpl.name === finalName)) {
+    finalName = `${importedName} (${suffix})`;
+    suffix++;
+  }
+
+  // Always generate a fresh id — never trust the imported one.
+  const slug = finalName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template';
+  const newId = `user:${slug}-${crypto.randomBytes(4).toString('hex')}`;
+  const savedAt = new Date().toISOString();
+
+  const template: TemplateDefinition = {
+    id: newId,
+    name: finalName,
+    description: typeof t.description === 'string' ? t.description.slice(0, 500) : '',
+    story: t.story as TemplateNode[],
+    notes: t.notes as TemplateNode[],
+    isUserTemplate: true,
+    savedAt,
+  };
+
+  const dir = userTemplatesDir(appDataPath);
+  fs.mkdirSync(dir, { recursive: true });
+  // Filename uses slug + random suffix — safe regardless of imported name.
+  const fileName = `${slug}-${newId.slice(-8)}.json`;
+  fs.writeFileSync(path.join(dir, fileName), JSON.stringify(template, null, 2), 'utf-8');
+
+  return { ok: true, template };
+}
+
+// ─── Note Templates — per-note body templates with variable grammar ───────────
+//
+// Grammar (static; no JS execution):
+//   {{key}}                  — literal interpolation (resolved from vars map)
+//   {{key | prompt(label)}}  — user is prompted for a value at creation time
+//   {{key | pick(Type)}}     — user picks from existing vault entities of that type
+//
+// Type aliases accepted by pick(): Characters → character, Locations → location,
+// Items → item (singular also accepted). Multiple types separated by | are NOT
+// supported in this version — only the first is used.
+
+export type NoteTemplateFieldKind = 'literal' | 'prompt' | 'pick';
+
+export interface NoteTemplateField {
+  key: string;
+  kind: NoteTemplateFieldKind;
+  /** Display label for prompt/pick fields (falls back to key when absent) */
+  label: string;
+  /** Vault entity type for pick fields */
+  entityType?: 'character' | 'location' | 'item';
+  defaultValue?: string;
+}
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  /** Which note kind this template targets */
+  kind: 'scene' | 'chapter' | 'character' | 'location' | 'item' | 'note' | 'daily-note';
+  /** Markdown body containing {{var}}, {{var | prompt(label)}}, {{var | pick(Type)}} */
+  body: string;
+  /** Parsed fields derived from body */
+  fields: NoteTemplateField[];
+}
+
+// ─── Grammar ─────────────────────────────────────────────────────────────────
+
+const EXPR_RE = /\{\{([^}]+)\}\}/g;
+
+export function parseNoteTemplateFields(body: string): NoteTemplateField[] {
+  const seen = new Set<string>();
+  const fields: NoteTemplateField[] = [];
+
+  for (const match of body.matchAll(EXPR_RE)) {
+    const expr = match[1].trim();
+    const pipeIdx = expr.indexOf('|');
+
+    if (pipeIdx === -1) {
+      const key = expr;
+      if (!seen.has(key)) {
+        seen.add(key);
+        fields.push({ key, kind: 'literal', label: key });
+      }
+      continue;
+    }
+
+    const key = expr.slice(0, pipeIdx).trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const modifier = expr.slice(pipeIdx + 1).trim();
+
+    const promptM = modifier.match(/^prompt\(([^)]*)\)$/);
+    if (promptM) {
+      fields.push({ key, kind: 'prompt', label: promptM[1].trim() || key });
+      continue;
+    }
+
+    const pickM = modifier.match(/^pick\(([^)]+)\)$/);
+    if (pickM) {
+      const rawType = pickM[1].trim().split('|')[0].trim().toLowerCase();
+      // Normalise plural → singular: 'characters' → 'character', etc.
+      const entityType = (rawType.endsWith('s') ? rawType.slice(0, -1) : rawType) as
+        | 'character'
+        | 'location'
+        | 'item';
+      fields.push({ key, kind: 'pick', label: key, entityType });
+      continue;
+    }
+
+    // Unknown modifier — fall back to prompt
+    fields.push({ key, kind: 'prompt', label: key });
+  }
+
+  return fields;
+}
+
+/** Replace all {{var}} / {{var | modifier(...)}} expressions with resolved values. */
+export function resolveNoteTemplate(body: string, vars: Record<string, string>): string {
+  return body.replace(EXPR_RE, (_, expr) => {
+    const key = expr.split('|')[0].trim();
+    return vars[key] ?? '';
+  });
+}
+
+// ─── Bundled Note Templates ───────────────────────────────────────────────────
+
+function makeNote(
+  id: string,
+  name: string,
+  description: string,
+  kind: NoteTemplate['kind'],
+  body: string,
+): NoteTemplate {
+  return { id, name, description, kind, body, fields: parseNoteTemplateFields(body) };
+}
+
+const DEFAULT_SCENE_BODY = `---
+title: "{{title | prompt(Scene Title)}}"
+pov: "{{pov | prompt(POV Character)}}"
+location: "{{location | pick(Locations)}}"
+time_of_day: "{{time_of_day | prompt(Time of Day)}}"
+---
+
+# {{title}}
+
+**POV:** {{pov}}
+**Location:** {{location}}
+**Time of Day:** {{time_of_day}}
+
+<!-- Beat: What changes for the POV character in this scene? -->
+
+`;
+
+const DEFAULT_CHARACTER_BODY = `---
+title: "{{name | prompt(Character Name)}}"
+aliases: []
+archetype: "{{archetype | pick(Characters)}}"
+age: "{{age | prompt(Age)}}"
+goal: "{{goal | prompt(Core Goal)}}"
+fear: "{{fear | prompt(Core Fear)}}"
+---
+
+# {{name}}
+
+**Age:** {{age}}
+**Archetype inspired by:** {{archetype}}
+
+## Goal
+
+{{goal}}
+
+## Fear
+
+{{fear}}
+`;
+
+const DEFAULT_LOCATION_BODY = `---
+title: "{{name | prompt(Location Name)}}"
+region: "{{region | prompt(Region)}}"
+atmosphere: "{{atmosphere | prompt(Atmosphere)}}"
+---
+
+# {{name}}
+
+**Region:** {{region}}
+**Atmosphere:** {{atmosphere}}
+
+## Description
+
+
+
+## Notable Features
+
+
+`;
+
+const DEFAULT_ITEM_BODY = `---
+title: "{{name | prompt(Item Name)}}"
+owner: "{{owner | pick(Characters)}}"
+origin: "{{origin | prompt(Origin)}}"
+---
+
+# {{name}}
+
+**Owner:** {{owner}}
+**Origin:** {{origin}}
+
+## Description
+
+
+
+## Significance
+
+
+`;
+
+const SAVE_THE_CAT_BODY = `---
+title: "{{title | prompt(Chapter Title)}}"
+beat: "{{beat | prompt(Beat Name)}}"
+---
+
+# {{title}}
+
+**Beat:** {{beat}}
+
+## Opening Image
+
+
+## Theme Stated
+
+
+## Set-Up
+
+
+## Catalyst
+
+
+## Debate
+
+
+## Break into Two
+
+
+## B Story
+
+
+## Fun and Games
+
+
+## Midpoint
+
+
+## Bad Guys Close In
+
+
+## All Is Lost
+
+
+## Dark Night of the Soul
+
+
+## Break into Three
+
+
+## Finale
+
+
+## Final Image
+
+`;
+
+// SKY-204: Daily note template body — {{date}} is auto-resolved to today's date.
+const DAILY_NOTE_BODY = `---
+date: "{{date}}"
+---
+
+# {{date}}
+
+## Today's focus
+
+
+
+## Notes
+
+
+
+## Words written today
+
+`;
+
+export const BUNDLED_NOTE_TEMPLATES: NoteTemplate[] = [
+  makeNote(
+    'note:daily-note',
+    'Daily Note',
+    'Default daily journal entry with date, focus, and notes sections.',
+    'daily-note',
+    DAILY_NOTE_BODY,
+  ),
+  makeNote(
+    'note:default-scene',
+    'Default Scene',
+    'Scene note with POV, location, and time-of-day fields.',
+    'scene',
+    DEFAULT_SCENE_BODY,
+  ),
+  makeNote(
+    'note:default-character',
+    'Default Character',
+    'Character note with name, archetype, age, goal, and fear.',
+    'character',
+    DEFAULT_CHARACTER_BODY,
+  ),
+  makeNote(
+    'note:default-location',
+    'Default Location',
+    'Location note with region and atmosphere.',
+    'location',
+    DEFAULT_LOCATION_BODY,
+  ),
+  makeNote(
+    'note:default-item',
+    'Default Item',
+    'Item note with owner entity-pick and origin.',
+    'item',
+    DEFAULT_ITEM_BODY,
+  ),
+  makeNote(
+    'note:save-the-cat',
+    'Save-the-Cat Chapter',
+    'Beat sheet following the Save the Cat structure.',
+    'chapter',
+    SAVE_THE_CAT_BODY,
+  ),
+];
+
+export function listNoteTemplates(kind?: string): NoteTemplate[] {
+  if (!kind) return BUNDLED_NOTE_TEMPLATES;
+  return BUNDLED_NOTE_TEMPLATES.filter((t) => t.kind === kind);
+}
+
+export function getNoteTemplate(id: string): NoteTemplate | undefined {
+  return BUNDLED_NOTE_TEMPLATES.find((t) => t.id === id);
+}
+
+// ─── Delete user template ─────────────────────────────────────────────────────
+
+/**
+ * Delete a user-saved template by id. Scans the templates directory for a
+ * JSON file whose parsed `id` field matches, then removes it. Throws if no
+ * matching template is found.
+ */
+export function deleteUserTemplate(appDataPath: string, templateId: string): void {
+  const dir = userTemplatesDir(appDataPath);
+  if (!fs.existsSync(dir)) {
+    throw new Error(`Template not found: ${templateId}`);
+  }
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(dir, f), 'utf-8');
+      const parsed = JSON.parse(raw) as TemplateDefinition;
+      if (parsed.id === templateId) {
+        fs.unlinkSync(path.join(dir, f));
+        return;
+      }
+    } catch {
+      // Skip malformed files
+    }
+  }
+  throw new Error(`Template not found: ${templateId}`);
+}
+

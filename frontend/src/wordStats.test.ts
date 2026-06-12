@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countWords, readingTimeMinutes } from './wordStats';
+import { countWords, readingTimeMinutes, stripFrontmatter } from './wordStats';
 
 describe('countWords', () => {
   it('returns 0 for empty string', () => {
@@ -67,6 +67,40 @@ describe('countWords', () => {
 
   it('strips blockquote markers', () => {
     expect(countWords('> quoted text here')).toBe(3);
+  });
+
+  it('strips YAML frontmatter, counts only body words', () => {
+    const text = '---\ntitle: "My Scene"\ndraftState: in-progress\n---\n\nTwo body words.';
+    expect(countWords(text)).toBe(3);
+  });
+
+  it('returns 0 for frontmatter-only document', () => {
+    expect(countWords('---\ntitle: "Ghost"\n---\n')).toBe(0);
+  });
+
+  it('does not strip mid-document triple-dash as frontmatter', () => {
+    // A horizontal rule (---) in the body must NOT be treated as frontmatter close
+    expect(countWords('Start here.\n\n---\n\nAfter rule.')).toBe(4);
+  });
+
+  it('strips HTML comments (author notes)', () => {
+    expect(countWords('Real prose. <!-- editor note --> More prose.')).toBe(4);
+  });
+});
+
+describe('stripFrontmatter', () => {
+  it('removes a YAML front-matter block', () => {
+    const result = stripFrontmatter('---\ntitle: Test\n---\nHello world');
+    expect(result).toBe('Hello world');
+  });
+
+  it('is a no-op when there is no frontmatter', () => {
+    expect(stripFrontmatter('Just text.')).toBe('Just text.');
+  });
+
+  it('does not strip --- that appears mid-document', () => {
+    const text = 'Before\n---\nAfter';
+    expect(stripFrontmatter(text)).toBe('Before\n---\nAfter');
   });
 });
 

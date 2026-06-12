@@ -1,0 +1,87 @@
+.preset-sel-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 6px);
+  padding: var(--space-2, 6px) var(--space-3, 10px);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  background: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.preset-sel-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 6px);
+  padding: var(--space-2, 6px) var(--space-3, 10px);
+  border-radius: var(--radius-md, 6px);
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 10%, transparent);
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, rgba(255 255 255 / 0.6));
+}
+
+.preset-sel-tip-icon {
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.preset-sel-tip-text {
+  flex: 1;
+  line-height: 1.5;
+}
+
+.preset-sel-tip-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: var(--text-xs, 11px);
+  opacity: 0.7;
+  padding: 0 var(--space-1, 2px);
+  line-height: 1.4;
+}
+.preset-sel-tip-dismiss:hover {
+  opacity: 1;
+}
+
+.preset-sel-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 6px);
+}
+
+.preset-sel-label {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, rgba(255 255 255 / 0.6));
+  white-space: nowrap;
+}
+
+.preset-sel-select-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.preset-sel-select {
+  width: 100%;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1, 2px) var(--space-2, 6px);
+  font-size: var(--text-xs, 11px);
+  cursor: pointer;
+}
+.preset-sel-select:focus {
+  outline: 2px solid var(--accent-soft, #00f0ff);
+  outline-offset: 1px;
+}
+
+.preset-sel-badge {
+  flex-shrink: 0;
+  font-size: var(--text-xs, 11px);
+  padding: 2px var(--space-2, 6px);
+  border-radius: var(--radius-full, 999px);
+  background: color-mix(in srgb, var(--accent-soft, #00f0ff) 18%, transparent);
+  color: var(--accent-soft, #00f0ff);
+  border: 1px solid color-mix(in srgb, var(--accent-soft, #00f0ff) 30%, transparent);
+  text-transform: capitalize;
+}

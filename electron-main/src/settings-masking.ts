@@ -12,7 +12,7 @@
 // AppSettings via loadAppSettings() directly and so continue to receive the
 // raw key — masking only applies to values that cross the IPC boundary.
 
-import type { AppSettings } from './ipc.js';
+import type { AppSettings, ProviderSettings } from './ipc.js';
 
 // Returns a masked preview (sk-ant-...XXXX) so the raw key never leaves the
 // main process. Empty / undefined keys collapse to '' to match the historical
@@ -21,9 +21,16 @@ export function maskApiKey(key: string | undefined | null): string {
   return key ? `sk-ant-...${key.slice(-4)}` : '';
 }
 
+// Mask provider.apiKey in a single agent config object (SKY-738).
+function maskAgentProvider<T extends { provider?: ProviderSettings }>(agent: T): T {
+  if (!agent.provider?.apiKey) return agent;
+  return { ...agent, provider: { ...agent.provider, apiKey: maskApiKey(agent.provider.apiKey) } } as T;
+}
+
 // Mask every API-key-shaped field on AppSettings before it crosses the IPC
 // boundary to the renderer. Currently: apiKey (Anthropic legacy field),
-// provider.apiKey (active provider), and voice.openaiApiKey.
+// provider.apiKey (active provider), voice.openaiApiKey, stt.cloudApiKey, tts.cloudApiKey,
+// and all three per-agent provider.apiKey overrides (SKY-738).
 export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
   const masked: AppSettings = { ...settings, apiKey: maskApiKey(settings.apiKey) };
   if (settings.provider?.apiKey) {
@@ -32,7 +39,35 @@ export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
   if (settings.voice && settings.voice.openaiApiKey) {
     masked.voice = { ...settings.voice, openaiApiKey: maskApiKey(settings.voice.openaiApiKey) };
   }
+  // STT cloud API key (SKY-816).
+  if (settings.stt && settings.stt.cloudApiKey) {
+    masked.stt = { ...settings.stt, cloudApiKey: maskApiKey(settings.stt.cloudApiKey) };
+  }
+  // TTS cloud API key (SKY-817).
+  if (settings.tts && settings.tts.cloudApiKey) {
+    masked.tts = { ...settings.tts, cloudApiKey: maskApiKey(settings.tts.cloudApiKey) };
+  }
+  // Mask per-agent provider.apiKey overrides (SKY-738).
+  masked.agents = {
+    writingAssistant: maskAgentProvider(settings.agents.writingAssistant),
+    brainstorm: maskAgentProvider(settings.agents.brainstorm),
+    archive: maskAgentProvider(settings.agents.archive),
+  };
   return masked;
+}
+
+// Restore provider.apiKey in a single agent config object when the renderer
+// echoes back the masked preview (SKY-738).
+function reconcileAgentProvider<T extends { provider?: ProviderSettings }>(
+  incoming: T,
+  stored: T,
+): T {
+  if (incoming.provider && stored.provider?.apiKey) {
+    if (incoming.provider.apiKey === maskApiKey(stored.provider.apiKey)) {
+      return { ...incoming, provider: { ...incoming.provider, apiKey: stored.provider.apiKey } } as T;
+    }
+  }
+  return incoming;
 }
 
 // Inverse of maskSettingsForRenderer for the SETTINGS_SET path: when the
@@ -66,5 +101,19 @@ export function reconcileSettingsFromRenderer(
       reconciled.provider = { ...incoming.provider, apiKey: stored.provider.apiKey };
     }
   }
+  // Reconcile STT cloud API key (SKY-816).
+  if (stored.stt?.cloudApiKey && incoming.stt && incoming.stt.cloudApiKey === maskApiKey(stored.stt.cloudApiKey)) {
+    reconciled.stt = { ...incoming.stt, cloudApiKey: stored.stt.cloudApiKey };
+  }
+  // Reconcile TTS cloud API key (SKY-817).
+  if (stored.tts?.cloudApiKey && incoming.tts && incoming.tts.cloudApiKey === maskApiKey(stored.tts.cloudApiKey)) {
+    reconciled.tts = { ...incoming.tts, cloudApiKey: stored.tts.cloudApiKey };
+  }
+  // Reconcile per-agent provider.apiKey overrides (SKY-738).
+  reconciled.agents = {
+    writingAssistant: reconcileAgentProvider(incoming.agents.writingAssistant, stored.agents.writingAssistant),
+    brainstorm: reconcileAgentProvider(incoming.agents.brainstorm, stored.agents.brainstorm),
+    archive: reconcileAgentProvider(incoming.agents.archive, stored.agents.archive),
+  };
   return reconciled;
 }

@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS } from './BrainstormPage';
+import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -19,6 +19,8 @@ const mockEntityList = vi.fn();
 const mockBrainstormWriteNote = vi.fn();
 const mockBrainstormResolveRouting = vi.fn();
 const mockBrainstormListNotesFolders = vi.fn();
+// SKY-196: context selection mock — empty vault by default so tests stay fast.
+const mockBrainstormSelectContext = vi.fn();
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +32,7 @@ function buildApi(overrides: Record<string, unknown> = {}) {
     brainstormWriteNote: mockBrainstormWriteNote,
     brainstormResolveRouting: mockBrainstormResolveRouting,
     brainstormListNotesFolders: mockBrainstormListNotesFolders,
+    brainstormSelectContext: mockBrainstormSelectContext,
     onStreamToken: (cb: TokenHandler) => {
       tokenCb = cb;
       return () => {
@@ -58,7 +61,10 @@ function buildApi(overrides: Record<string, unknown> = {}) {
 
 async function simulateStream(tokens: string[], errorMessage?: string) {
   await waitFor(() => expect(tokenCb).not.toBeNull());
-  act(() => {
+  // Use async act so the act() boundary stays open while microtasks from
+  // persistFactWithRouting (which awaits brainstormWriteNote) drain, ensuring
+  // the resulting setFacts() state update is wrapped in act().
+  await act(async () => {
     for (const t of tokens) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
@@ -71,6 +77,12 @@ async function simulateStream(tokens: string[], errorMessage?: string) {
 }
 
 beforeEach(() => {
+  // useLiveAnnounce calls requestAnimationFrame to avoid re-announcing the same string.
+  // In jsdom rAF is a macrotask (setTimeout 0) which fires outside act() and causes
+  // act() warnings. Make it synchronous so the setLiveText call lands inside act().
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+
   vi.resetAllMocks();
   tokenCb = null;
   endCb = null;
@@ -96,8 +108,16 @@ beforeEach(() => {
     ],
     notesVaultRoot: '/tmp/notes',
   });
+  // SKY-196: empty vault context by default so context fetch resolves fast.
+  mockBrainstormSelectContext.mockResolvedValue({
+    included: [], excluded: [], usedTokens: 0, budgetTokens: 4000,
+  });
   (window as unknown as { api: unknown }).api = buildApi();
   localStorage.clear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('BrainstormPage', () => {
@@ -141,11 +161,15 @@ describe('BrainstormPage', () => {
       'Great character! [FACT:character|Lyra Ashveil|A young mage with silver hair and a troubled past]',
     ]);
 
-    await waitFor(() =>
-      expect(screen.getByText('Lyra Ashveil')).toBeInTheDocument(),
-    );
-    expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
+    // Wait for brainstormWriteNote to resolve and final 'Saved ✓' state to settle.
+    // A single waitFor ensures all state updates from persistFactWithRouting land
+    // inside the same act() boundary (avoiding the race where 'Lyra Ashveil' becomes
+    // visible from the initial 'saving' state before brainstormWriteNote resolves).
+    await waitFor(() => {
+      expect(screen.getAllByText('Lyra Ashveil').length).toBeGreaterThan(0);
+      expect(screen.getByText('A young mage with silver hair and a troubled past')).toBeInTheDocument();
+      expect(screen.getByText(/saved ✓/i)).toBeInTheDocument();
+    });
     expect(mockBrainstormWriteNote).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Lyra Ashveil', category: 'character' }),
     );
@@ -178,11 +202,15 @@ describe('BrainstormPage', () => {
     expect(prompt).toBeInTheDocument();
     expect(prompt).toHaveTextContent('Aria Voss');
     // Folder picker is populated from the Notes Vault catalog.
+    // Vault root is shown as an explicit sentinel option; the disabled placeholder '' is separate.
     await waitFor(() => expect(mockBrainstormListNotesFolders).toHaveBeenCalled());
     const select = screen.getByTestId('brainstorm-routing-select-character') as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.value)).toEqual(
-      expect.arrayContaining(['', 'Universes', 'Worldbuilding/People']),
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    expect(optionValues).toEqual(
+      expect.arrayContaining([VAULT_ROOT_SENTINEL, 'Universes', 'Worldbuilding/People']),
     );
+    // The path:'' vault-root folder from the API must NOT appear as a duplicate '' option.
+    expect(optionValues.filter((v) => v === '').length).toBe(1); // only the disabled placeholder
   });
 
   it('SKY-20: picking "Save here & remember" calls resolveRouting and clears the prompt', async () => {
@@ -222,6 +250,80 @@ describe('BrainstormPage', () => {
     await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
   });
 
+  it('SKY-441: save buttons are disabled and resolveRouting is NOT called when nothing is selected', async () => {
+    // Regression: the old guard (destination==='' && ... && destination!=='') could never fire,
+    // so a user could submit with nothing selected. This test proves the guard works.
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'needs_routing',
+      stagedPath: '.brainstorm-staging/uuid__Aria Voss.md',
+      category: 'character',
+      name: 'Aria Voss',
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'tell me about the hero' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Aria Voss|A young sorceress]']);
+
+    await screen.findByTestId('brainstorm-routing-prompt-character');
+
+    // Neither destination nor customFolder has been touched — both buttons must be disabled.
+    const saveBtn = screen.getByTestId('brainstorm-routing-save-character');
+    const onceBtn = screen.getByRole('button', { name: /just this once/i });
+    expect(saveBtn).toBeDisabled();
+    expect(onceBtn).toBeDisabled();
+
+    // Simulate a direct click attempt (e.g. via keyboard shortcut bypass) — resolveRouting must NOT be called.
+    fireEvent.click(saveBtn);
+    expect(mockBrainstormResolveRouting).not.toHaveBeenCalled();
+  });
+
+  it('SKY-441: picking "Vault root" calls resolveRouting with destination="" (empty string)', async () => {
+    // Vault root is a distinct sentinel in the select — resolving it must send '' to the API,
+    // not the sentinel string, so the backend writes directly to the vault root.
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'needs_routing',
+      stagedPath: '.brainstorm-staging/uuid__Aria Voss.md',
+      category: 'character',
+      name: 'Aria Voss',
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'tell me about the hero' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Aria Voss|A young sorceress]']);
+
+    await screen.findByTestId('brainstorm-routing-prompt-character');
+    const select = screen.getByTestId('brainstorm-routing-select-character') as HTMLSelectElement;
+    await waitFor(() => expect(select.options.length).toBeGreaterThan(1));
+
+    // Select the vault root sentinel.
+    fireEvent.change(select, { target: { value: VAULT_ROOT_SENTINEL } });
+
+    // Both save buttons must now be enabled.
+    const saveBtn = screen.getByTestId('brainstorm-routing-save-character');
+    expect(saveBtn).not.toBeDisabled();
+
+    fireEvent.click(saveBtn);
+
+    await waitFor(() =>
+      expect(mockBrainstormResolveRouting).toHaveBeenCalledWith({
+        stagedPath: '.brainstorm-staging/uuid__Aria Voss.md',
+        category: 'character',
+        destination: '',  // sentinel translated → empty string (vault root)
+        remember: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('brainstorm-routing-prompt-character')).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(screen.getByText(/saved ✓/i)).toBeInTheDocument());
+  });
+
   it('SKY-20: second same-category fact routes silently when main returns "written"', async () => {
     // First fact triggers the prompt — main stages and asks.
     mockBrainstormWriteNote
@@ -248,9 +350,12 @@ describe('BrainstormPage', () => {
       '[FACT:character|Aria|Hero 1][FACT:character|Kael|Hero 2]',
     ]);
 
-    // Only the first fact's prompt is shown — main routed the second silently.
-    await screen.findByTestId('brainstorm-routing-prompt-character');
+    // Wait for both the routing prompt (Aria) AND the silent save (Kael) to settle in
+    // a single waitFor so all state updates from persistFactWithRouting land inside
+    // the same act() boundary — avoiding a race where the routing prompt appears before
+    // brainstormWriteNote resolves for the second fact.
     await waitFor(() => {
+      expect(screen.getByTestId('brainstorm-routing-prompt-character')).toBeInTheDocument();
       const saved = screen.getAllByText(/saved ✓/i);
       expect(saved.length).toBeGreaterThanOrEqual(1);
     });
@@ -645,8 +750,9 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush the brainstormSelectContext microtask so _runStream (and onStreamToken) run
+    await act(async () => {});
 
-    // tokenCb is set synchronously before _runStream's first await
     expect(tokenCb).not.toBeNull();
 
     // Use async act to flush React 18 batched updates triggered by timer callbacks
@@ -664,6 +770,8 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush the brainstormSelectContext microtask so _runStream (and onStreamToken) run
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -681,6 +789,7 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});  // flush brainstormSelectContext microtask
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -700,6 +809,7 @@ describe('Stalled-stream UX', () => {
       target: { value: 'retry-me' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});  // flush brainstormSelectContext microtask
 
     expect(tokenCb).not.toBeNull();
     await act(async () => { vi.advanceTimersByTime(STALL_TIMEOUT_MS + 1000); });
@@ -724,10 +834,11 @@ describe('Stalled-stream UX', () => {
       target: { value: 'slow request' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush brainstormSelectContext microtask, then the streamStart() microtask
+    await act(async () => {});
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
-    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
-    await act(async () => {});
 
     await act(async () => { vi.advanceTimersByTime(HARD_TIMEOUT_MS + 1000); });
 
@@ -742,10 +853,11 @@ describe('Stalled-stream UX', () => {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    // Flush brainstormSelectContext microtask, then streamStart() microtask
+    await act(async () => {});
+    await act(async () => {});
 
     expect(tokenCb).not.toBeNull();
-    // Flush the streamStart() resolved-Promise microtask so streamIdRef.current is set
-    await act(async () => {});
     expect(screen.getByRole('button', { name: /cancel streaming/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /cancel streaming/i }));
@@ -875,7 +987,7 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     render(<BrainstormPage onClose={() => {}} />);
 
     await waitFor(() =>
-      expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
+      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
     );
   });
 
@@ -941,8 +1053,732 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     render(<BrainstormPage onClose={() => {}} />);
 
     await waitFor(() =>
-      expect(screen.getByText(/no continuity issues flagged/i)).toBeInTheDocument(),
+      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
+  });
+
+  // ─── SKY-1263: Inline body preview toggle ───────────────────────────────────
+
+  describe('inline body preview toggle', () => {
+    async function renderWithFact(content: string) {
+      render(<BrainstormPage onClose={() => {}} />);
+      fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+        target: { value: 'test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+      await simulateStream([
+        `[FACT:character|Hero|${content}]`,
+      ]);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Hero' })).toBeInTheDocument());
+    }
+
+    it('fact card starts expanded with body preview visible', async () => {
+      await renderWithFact('A brave warrior');
+      expect(screen.getByText('A brave warrior')).toBeInTheDocument();
+      // When expanded the chevron label reads "Collapse <name>"
+      const chevron = screen.getByRole('button', { name: /collapse hero/i });
+      expect(chevron).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('chevron collapses the card body on first click', async () => {
+      await renderWithFact('A brave warrior');
+      const chevron = screen.getByRole('button', { name: /collapse hero/i });
+      fireEvent.click(chevron);
+      expect(screen.queryByText('A brave warrior')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /expand hero/i })).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('chevron re-expands the card body on second click', async () => {
+      await renderWithFact('A brave warrior');
+      const chevron = screen.getByRole('button', { name: /collapse hero/i });
+      fireEvent.click(chevron);
+      fireEvent.click(screen.getByRole('button', { name: /expand hero/i }));
+      expect(screen.getByText('A brave warrior')).toBeInTheDocument();
+    });
+
+    it('truncates body to 120 chars with ellipsis when longer', async () => {
+      const longContent = 'A'.repeat(130);
+      await renderWithFact(longContent);
+      const desc = screen.getByText(`${'A'.repeat(120)}…`);
+      expect(desc).toBeInTheDocument();
+      expect(desc).not.toHaveTextContent('A'.repeat(121));
+    });
+
+    it('shows full body when content is exactly 120 chars', async () => {
+      const exact = 'B'.repeat(120);
+      await renderWithFact(exact);
+      expect(screen.getByText(exact)).toBeInTheDocument();
+    });
+
+    it('Collapse all hides all card bodies', async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+      fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+        target: { value: 'test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+      await simulateStream([
+        '[FACT:character|Alice|Desc A][FACT:character|Bob|Desc B]',
+      ]);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Alice' })).toBeInTheDocument());
+
+      // Both descriptions visible initially
+      expect(screen.getByText('Desc A')).toBeInTheDocument();
+      expect(screen.getByText('Desc B')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all fact cards' }));
+
+      expect(screen.queryByText('Desc A')).not.toBeInTheDocument();
+      expect(screen.queryByText('Desc B')).not.toBeInTheDocument();
+    });
+
+    it('Expand all shows all card bodies after collapse', async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+      fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+        target: { value: 'test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+      await simulateStream([
+        '[FACT:character|Alice|Desc A][FACT:character|Bob|Desc B]',
+      ]);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open idea detail for Alice' })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all fact cards' }));
+      expect(screen.queryByText('Desc A')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand all fact cards' }));
+      expect(screen.getByText('Desc A')).toBeInTheDocument();
+      expect(screen.getByText('Desc B')).toBeInTheDocument();
+    });
+
+    it('Expand all / Collapse all buttons are absent when no facts exist', () => {
+      render(<BrainstormPage onClose={() => {}} />);
+      expect(screen.queryByRole('button', { name: 'Expand all fact cards' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Collapse all fact cards' })).not.toBeInTheDocument();
+    });
+
+    it('title click does not interfere with chevron toggle', async () => {
+      await renderWithFact('A brave warrior');
+      // Clicking the title button opens the drawer but does not collapse the body preview
+      const nameEl = screen.getByRole('button', { name: 'Open idea detail for Hero' });
+      fireEvent.click(nameEl);
+      // Body preview still in the card — title click doesn't change expand state.
+      // getAllByText handles the case where the drawer also shows the same text.
+      const matches = screen.getAllByText('A brave warrior');
+      expect(matches.some((el) => el.classList.contains('idea-card-body'))).toBe(true);
+    });
+  });
+});
+
+describe('BrainstormPage — prompt char counter', () => {
+  it('shows 0 / 2,000 counter when textarea is empty', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByText('0 / 2,000')).toBeInTheDocument();
+  });
+
+  it('updates counter as the user types', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    expect(screen.getByText('5 / 2,000')).toBeInTheDocument();
+  });
+
+  it('counter shows warning style at >=90% of cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1800) } });
+    const counter = screen.getByText('1,800 / 2,000');
+    expect(counter.className).toContain('brainstorm-char-counter--warning');
+  });
+
+  it('counter shows error style at cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(2000) } });
+    const counter = screen.getByText('2,000 / 2,000');
+    expect(counter.className).toContain('brainstorm-char-counter--error');
+  });
+
+  it('shows paste-truncation warning when pasted text would exceed cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1990) } });
+    fireEvent.paste(textarea, {
+      clipboardData: { getData: () => 'b'.repeat(20) },
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(/pasted text exceeded/i);
+  });
+
+  it('does not show paste warning when paste fits within cap', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const textarea = screen.getByLabelText(/brainstorm prompt/i);
+    fireEvent.change(textarea, { target: { value: 'hello' } });
+    fireEvent.paste(textarea, {
+      clipboardData: { getData: () => ' world' },
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('BrainstormPage — sort + filter controls (Wave 3.2)', () => {
+  async function renderWithFacts() {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream([
+      '[FACT:character|Alice|A hero]',
+      '[FACT:location|Forest|Dark woods]',
+      '[FACT:item|Sword|Magic blade]',
+    ]);
+    await waitFor(() => expect(screen.getByTestId('bs-facts-controls')).toBeInTheDocument());
+  }
+
+  it('shows sort and filter dropdowns when facts exist', async () => {
+    await renderWithFacts();
+    expect(screen.getByTestId('bs-sort-select')).toBeInTheDocument();
+    expect(screen.getByTestId('bs-filter-select')).toBeInTheDocument();
+  });
+
+  it('sort select defaults to Newest first', async () => {
+    await renderWithFacts();
+    expect(screen.getByTestId('bs-sort-select')).toHaveValue('newest');
+  });
+
+  it('filter select defaults to All types', async () => {
+    await renderWithFacts();
+    expect(screen.getByTestId('bs-filter-select')).toHaveValue('all');
+  });
+
+  it('sort dropdown includes core sort options', async () => {
+    await renderWithFacts();
+    const select = screen.getByTestId('bs-sort-select');
+    const options = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toEqual(expect.arrayContaining(['newest', 'oldest', 'by-type', 'by-status']));
+  });
+
+  it('filter dropdown has all five options', async () => {
+    await renderWithFacts();
+    const select = screen.getByTestId('bs-filter-select');
+    const options = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toEqual(['all', 'character', 'location', 'item', 'note']);
+  });
+
+  it('filtering to Characters hides location and item groups', async () => {
+    await renderWithFacts();
+    fireEvent.change(screen.getByTestId('bs-filter-select'), {
+      target: { value: 'character' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('bs-group-toggle-character')).toBeInTheDocument();
+      expect(screen.queryByTestId('bs-group-toggle-location')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('bs-group-toggle-item')).not.toBeInTheDocument();
+    });
+  });
+
+  it('filtering to a type with no matching ideas shows empty message', async () => {
+    await renderWithFacts();
+    fireEvent.change(screen.getByTestId('bs-filter-select'), {
+      target: { value: 'note' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('bs-empty-type-note')).toBeInTheDocument();
+      expect(screen.getByTestId('bs-empty-type-note')).toHaveTextContent(/no concept notes ideas yet/i);
+    });
+  });
+
+  it('changing sort order does not cause IPC or disk calls', async () => {
+    await renderWithFacts();
+    const callsBefore = mockBrainstormWriteNote.mock.calls.length;
+    fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'oldest' } });
+    fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'by-type' } });
+    fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'by-status' } });
+    expect(mockBrainstormWriteNote.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('changing filter does not cause IPC or disk calls', async () => {
+    await renderWithFacts();
+    const callsBefore = mockBrainstormWriteNote.mock.calls.length;
+    fireEvent.change(screen.getByTestId('bs-filter-select'), { target: { value: 'character' } });
+    fireEvent.change(screen.getByTestId('bs-filter-select'), { target: { value: 'all' } });
+    expect(mockBrainstormWriteNote.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('Collapse all hides fact cards within all groups', async () => {
+    await renderWithFacts();
+    fireEvent.click(screen.getByTestId('bs-collapse-all'));
+    await waitFor(() => {
+      // idea-card-{id} cards should not be present (only group headers remain)
+      expect(screen.queryAllByRole('listitem').filter((el) =>
+        el.getAttribute('data-testid')?.match(/^idea-card-[^c]/)
+      )).toHaveLength(0);
+    });
+  });
+
+  it('Expand all after Collapse all restores all visible cards', async () => {
+    await renderWithFacts();
+    fireEvent.click(screen.getByTestId('bs-collapse-all'));
+    fireEvent.click(screen.getByTestId('bs-expand-all'));
+    await waitFor(() => {
+      // each IdeaCard renders as a <li> with data-testid="idea-card-{id}" (not chips)
+      const cards = screen.getAllByRole('listitem').filter((el) =>
+        /^idea-card-(?!chips-)/.test(el.getAttribute('data-testid') ?? ''),
+      );
+      expect(cards.length).toBe(3);
+    });
+  });
+
+  it('sort and filter controls are not shown when there are no facts', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.queryByTestId('bs-facts-controls')).not.toBeInTheDocument();
+  });
+});
+
+describe('BrainstormPage — chip-click entity navigation (SKY-1264)', () => {
+  async function renderWithFact(props: { onNavigateToEntity?: (id: string) => void; onNavigateToScene?: (id: string) => Promise<boolean> } = {}) {
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'written',
+      path: 'Universes/World/Characters/Lyra Ashveil.md',
+      suggestionId: 'sug-1',
+      reason: 'default-layout',
+    });
+    render(<BrainstormPage onClose={() => {}} {...props} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'tell me about the hero' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Lyra Ashveil|A young mage]']);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' })).toBeInTheDocument());
+  }
+
+  it('navigates to entity when chip is clicked and entity exists in vault', async () => {
+    const onNavigateToEntity = vi.fn();
+    mockEntityList.mockResolvedValue({
+      entities: [{ id: 'real-entity-id', name: 'Lyra Ashveil', type: 'character' }],
+    });
+
+    await renderWithFact({ onNavigateToEntity });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+    await waitFor(() => expect(onNavigateToEntity).toHaveBeenCalledWith('real-entity-id'));
+  });
+
+  it('shows "Entity not found in vault" toast when entity is missing from vault', async () => {
+    mockEntityList.mockResolvedValue({ entities: [] });
+
+    await renderWithFact();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+    await waitFor(() => expect(screen.getByText('Entity not found in vault')).toBeInTheDocument());
+  });
+
+  it('shows "Entity not found in vault" toast on entityList API failure', async () => {
+    mockEntityList.mockRejectedValue(new Error('network error'));
+
+    await renderWithFact();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to Lyra Ashveil' }));
+
+    await waitFor(() => expect(screen.getByText('Entity not found in vault')).toBeInTheDocument());
+  });
+});
+
+describe('BrainstormPage — open-in-writing-panel (SKY-1393)', () => {
+  const MANIFEST_WITH_SCENE = {
+    stories: [{ title: 'My Story', chapters: [{ title: 'Ch 1', scenes: [{ id: 'scene-1', title: 'Opening Scene' }] }] }],
+  };
+  const MANIFEST_EMPTY = { stories: [] };
+
+  function buildApiWithScenes(overrides: Record<string, unknown> = {}) {
+    return buildApi({
+      readManifest: vi.fn().mockResolvedValue(MANIFEST_WITH_SCENE),
+      sceneAppendBrainstormNote: vi.fn().mockResolvedValue({ appended: true }),
+      ...overrides,
+    });
+  }
+
+  async function renderWithFact(
+    props: { onNavigateToScene?: (id: string) => Promise<boolean> } = {},
+    apiOverrides: Record<string, unknown> = {},
+  ) {
+    (window as unknown as { api: unknown }).api = buildApiWithScenes(apiOverrides);
+    mockBrainstormWriteNote.mockResolvedValue({
+      status: 'written',
+      path: 'Characters/Lyra.md',
+      suggestionId: 'sug-1',
+      reason: 'default-layout',
+    });
+    render(<BrainstormPage onClose={() => {}} {...props} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'tell me about the hero' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Lyra Ashveil|A young mage]']);
+    await waitFor(() => expect(screen.getAllByText('Lyra Ashveil').length).toBeGreaterThan(0));
+  }
+
+  it('context menu shows "Open in writing panel" item', async () => {
+    await renderWithFact();
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    expect(screen.getByTestId('menu-item-open-in-writing-panel')).toBeInTheDocument();
+  });
+
+  it('opens scene picker when no linkedSceneId and scenes exist', async () => {
+    await renderWithFact();
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() => expect(screen.getByTestId('scene-picker')).toBeInTheDocument());
+  });
+
+  it('picker selection calls sceneAppendBrainstormNote + navigate + toast', async () => {
+    const onNavigateToScene = vi.fn().mockResolvedValue(true);
+    await renderWithFact({ onNavigateToScene });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() => expect(screen.getByTestId('scene-picker')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('scene-picker-item-scene-1'));
+    });
+
+    await waitFor(() => {
+      expect((window as unknown as { api: { sceneAppendBrainstormNote: ReturnType<typeof vi.fn> } }).api.sceneAppendBrainstormNote)
+        .toHaveBeenCalledWith('scene-1', expect.any(String));
+      expect(onNavigateToScene).toHaveBeenCalledWith('scene-1');
+      expect(screen.getByText('Opened in Opening Scene.')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "No scenes found" toast when manifest has no scenes', async () => {
+    await renderWithFact({}, {
+      readManifest: vi.fn().mockResolvedValue(MANIFEST_EMPTY),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() =>
+      expect(screen.getByText('No scenes found. Create a scene first.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('scene-picker')).not.toBeInTheDocument();
+  });
+
+  it('shows "No scenes found" toast when readManifest throws', async () => {
+    await renderWithFact({}, {
+      readManifest: vi.fn().mockRejectedValue(new Error('IPC error')),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() =>
+      expect(screen.getByText('No scenes found. Create a scene first.')).toBeInTheDocument(),
+    );
+  });
+
+  it('shows error toast when sceneAppendBrainstormNote throws after picker selection', async () => {
+    const onNavigateToScene = vi.fn().mockResolvedValue(true);
+    await renderWithFact({ onNavigateToScene }, {
+      sceneAppendBrainstormNote: vi.fn().mockRejectedValue(new Error('IPC error')),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Lyra Ashveil' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+    await waitFor(() => expect(screen.getByTestId('scene-picker')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('scene-picker-item-scene-1'));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText('Failed to open in writing panel.')).toBeInTheDocument(),
+    );
+  });
+
+  it('IdeaDetailDrawer shows "Open in writing panel" CTA', async () => {
+    await renderWithFact();
+    // Open the detail drawer via card title click
+    fireEvent.click(screen.getByRole('button', { name: 'Open idea detail for Lyra Ashveil' }));
+    await waitFor(() => expect(screen.getByTestId('idea-detail-drawer')).toBeInTheDocument());
+    expect(screen.getByTestId('idd-open-in-writing-panel')).toBeInTheDocument();
+  });
+
+  it('fast-path: linkedSceneId skips picker and navigates directly', async () => {
+    const DRAFT_KEY = 'brainstorm:draft';
+    const onNavigateToScene = vi.fn().mockResolvedValue(true);
+    (window as unknown as { api: unknown }).api = buildApiWithScenes();
+    // Seed a fact with linkedSceneId via draft recovery
+    const draft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [{ role: 'assistant', text: 'Here is a fact.' }],
+      facts: [{
+        id: 'fact-linked-1',
+        type: 'character',
+        name: 'Zara',
+        content: 'A bold warrior',
+        savedStatus: 'saved',
+        savedPath: 'Characters/Zara.md',
+        linkedSceneId: 'scene-1',
+        createdAt: Date.now(),
+      }],
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    render(<BrainstormPage onClose={() => {}} onNavigateToScene={onNavigateToScene} />);
+
+    await waitFor(() => expect(screen.getAllByText('Zara').length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Idea actions for Zara' }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('menu-item-open-in-writing-panel'));
+    });
+
+    await waitFor(() => {
+      expect(onNavigateToScene).toHaveBeenCalledWith('scene-1');
+      expect(screen.queryByTestId('scene-picker')).not.toBeInTheDocument();
+      expect(screen.getByText('Opened in Opening Scene.')).toBeInTheDocument();
+    });
+  });
+});
+
+// ─── SKY-1392: drag-and-drop reorder + Alt+Arrow + localStorage persistence ───
+
+async function seedTwoFacts() {
+  render(<BrainstormPage onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'go' } });
+  fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+  await simulateStream([
+    '[FACT:character|Alpha|First character][FACT:character|Beta|Second character]',
+  ]);
+  await waitFor(() => expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0));
+}
+
+describe('BrainstormPage — custom order (SKY-1392)', () => {
+  it('sort select includes Custom order option', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'hi' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Solo|A lone figure]']);
+    await waitFor(() => expect(screen.getAllByText('Solo').length).toBeGreaterThan(0));
+
+    const sortSelect = screen.getByTestId('bs-sort-select');
+    expect(sortSelect).toHaveTextContent('Custom order');
+  });
+
+  it('drag handles are hidden when sort is not "custom"', async () => {
+    await seedTwoFacts();
+    // Default sort is 'newest' — no drag handles
+    expect(document.querySelectorAll('.idea-card-drag-handle')).toHaveLength(0);
+  });
+
+  it('drag handles appear when switching to custom sort', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+  });
+
+  it('drag handles hidden in multi-select mode even with custom sort active', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+    fireEvent.click(screen.getByTestId('bs-multiselect-toggle'));
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle')).toHaveLength(0),
+    );
+  });
+
+  it('drag handles hidden while streaming (loading state)', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    // Seed one fact first
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'seed' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:note|SomeFact|detail]']);
+    await waitFor(() => expect(screen.getAllByText('SomeFact').length).toBeGreaterThan(0));
+    // Switch to custom sort
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+    // Start a second stream (loading = true)
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'more' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle')).toHaveLength(0),
+    );
+    // Clean up stream
+    await act(async () => { endCb?.({ streamId: 'test-stream-1' }); });
+  });
+
+  it('drag reorders cards: drop second card above first', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+    expect(cards.length).toBeGreaterThanOrEqual(2);
+    const firstCard = cards[0] as HTMLElement;
+    const secondCard = cards[1] as HTMLElement;
+
+    // Drag second card over first (above mid-point) → second should land before first
+    await act(async () => {
+      fireEvent.dragStart(secondCard, { dataTransfer: { effectAllowed: '', setData: () => {} } });
+      // Mock getBoundingClientRect so mid-point check works
+      vi.spyOn(firstCard, 'getBoundingClientRect').mockReturnValue(
+        { top: 100, height: 72, left: 0, right: 200, bottom: 172, width: 200, x: 0, y: 100, toJSON: () => ({}) }
+      );
+      fireEvent.dragOver(firstCard, { clientY: 110, dataTransfer: { dropEffect: '' } }); // above mid
+      fireEvent.drop(firstCard, { dataTransfer: {} });
+      fireEvent.dragEnd(secondCard);
+    });
+
+    await waitFor(() => {
+      const updatedCards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+      const names = Array.from(updatedCards).map(
+        (c) => c.querySelector('.idea-card-title')?.textContent?.trim(),
+      );
+      // secondCard (Alpha, originally at index 1) was dragged above firstCard (Beta, index 0).
+      expect(names[0]).toBe('Alpha');
+      expect(names[1]).toBe('Beta');
+    });
+  });
+
+  it('Alt+Up moves card up in custom sort', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    // Focus the second card
+    const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+    const secondCard = cards[1] as HTMLElement;
+    secondCard.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true });
+    });
+
+    await waitFor(() => {
+      const updatedCards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+      const names = Array.from(updatedCards).map(
+        (c) => c.querySelector('.idea-card-title')?.textContent?.trim(),
+      );
+      // secondCard (Alpha, at index 1) was moved up with Alt+Up — it lands before Beta.
+      expect(names[0]).toBe('Alpha');
+      expect(names[1]).toBe('Beta');
+    });
+  });
+
+  it('persists custom order to localStorage after reorder', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+    const secondCard = cards[1] as HTMLElement;
+    secondCard.focus();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true });
+    });
+
+    await waitFor(() => {
+      const raw = localStorage.getItem('brainstorm:draft');
+      expect(raw).not.toBeNull();
+      const draft = JSON.parse(raw!);
+      expect(draft.sortMode).toBe('custom');
+      expect(Array.isArray(draft.customOrder)).toBe(true);
+      expect(draft.customOrder.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('restores custom order and sort mode from localStorage on mount', async () => {
+    // Pre-seed localStorage with custom order [betaId, alphaId]
+    const fakeDraft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [],
+      facts: [
+        { id: 'id-alpha', type: 'character', name: 'Alpha', content: 'First', savedStatus: 'unsaved', createdAt: 1000 },
+        { id: 'id-beta', type: 'character', name: 'Beta', content: 'Second', savedStatus: 'unsaved', createdAt: 2000 },
+      ],
+      sortMode: 'custom',
+      customOrder: ['id-beta', 'id-alpha'],
+    };
+    localStorage.setItem('brainstorm:draft', JSON.stringify(fakeDraft));
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() => {
+      // Sort select should show 'custom'
+      expect(screen.getByTestId('bs-sort-select')).toHaveValue('custom');
+      // Cards should be in beta-first order
+      const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+      const names = Array.from(cards).map(
+        (c) => c.querySelector('.idea-card-title')?.textContent?.trim(),
+      );
+      expect(names[0]).toBe('Beta');
+      expect(names[1]).toBe('Alpha');
+    });
+  });
+
+  it('shows "Order not saved — storage full." toast on QuotaExceededError', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    // Make localStorage.setItem throw QuotaExceededError.
+    // vitest's jsdom exposes setItem as an own property on localStorage (not on
+    // Storage.prototype), so vi.spyOn is the correct intercept point.
+    const setItemSpy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+
+    const secondCard = document.querySelectorAll('li[data-testid^="idea-card-"]')[1] as HTMLElement;
+    secondCard.focus();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText(/order not saved — storage full/i)).toBeInTheDocument(),
+    );
+
+    setItemSpy.mockRestore();
   });
 });

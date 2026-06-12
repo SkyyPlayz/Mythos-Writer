@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import {
+  parseEntryFrontmatter,
+  buildSceneCrafterPayload,
+  type EntrySourcePayload,
+} from './EntriesPanel';
 import './KanbanBoard.css';
+
+export { buildSceneCrafterPayload, type EntrySourcePayload };
 
 export interface KanbanCard {
   notePath: string;
@@ -52,6 +59,154 @@ export function serializeBoard(columns: KanbanColumn[]): string {
 
 const DEFAULT_COLUMN_NAMES = ['Idea', 'Drafted', 'Written', 'Cut'];
 
+interface EntryPoolItem {
+  path: string;
+  title: string;
+}
+
+function titleFromEntryPath(filePath: string): string {
+  const name = filePath.split('/').pop() ?? filePath;
+  const withoutExt = name.replace(/\.md$/, '');
+  // Strip leading timestamp prefix like "20240601-123456-" if present
+  const withoutTs = withoutExt.replace(/^\d{8}-\d{6}-/, '');
+  return withoutTs
+    .replace(/-+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim() || withoutExt;
+}
+
+// ─── Entry source picker ───
+
+interface EntryItem {
+  id: string;
+  body: string;
+  tags: string[];
+}
+
+interface EntrySourcePickerProps {
+  selectedIds: string[];
+  onSelectionChange: (ids: string[]) => void;
+}
+
+function EntrySourcePicker({ selectedIds, onSelectionChange }: EntrySourcePickerProps) {
+  const [entries, setEntries] = useState<EntryItem[]>([]);
+  const [tagFilter, setTagFilter] = useState('');
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    void (async () => {
+      try {
+        const listResult = await window.api.listNotesVault('Entries');
+        if ('error' in listResult) { setEntries([]); return; }
+        const mdFiles = listResult.items.filter(
+          (item) => !item.isDirectory && item.name.endsWith('.md'),
+        );
+        const items: EntryItem[] = [];
+        await Promise.all(
+          mdFiles.map(async (item) => {
+            try {
+              const readResult = await window.api.readNotesVault(item.path);
+              if ('error' in readResult) return;
+              const parsed = parseEntryFrontmatter(readResult.content);
+              if (!parsed) return;
+              items.push({ id: item.path, body: parsed.body, tags: parsed.tags });
+            } catch {
+              // skip unreadable files
+            }
+          }),
+        );
+        items.sort((a, b) => a.id.localeCompare(b.id));
+        setEntries(items);
+      } catch {
+        setEntries([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [open]);
+
+  const filteredEntries = tagFilter.trim()
+    ? entries.filter((e) =>
+        e.tags.some((t) => t.toLowerCase().includes(tagFilter.toLowerCase())),
+      )
+    : entries;
+
+  const toggle = (id: string) => {
+    if (selectedIds.includes(id)) {
+      onSelectionChange(selectedIds.filter((s) => s !== id));
+    } else {
+      onSelectionChange([...selectedIds, id]);
+    }
+  };
+
+  const payload = buildSceneCrafterPayload(
+    entries.filter((e) => selectedIds.includes(e.id)),
+  );
+
+  return (
+    <div className="kanban-entry-picker" data-testid="kanban-entry-picker">
+      <button
+        className="kanban-entry-picker-toggle"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label="Toggle Entry Sources picker"
+        data-testid="kanban-entry-picker-toggle"
+      >
+        Entry Sources{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+      </button>
+      {open && (
+        <div className="kanban-entry-picker-panel" data-testid="kanban-entry-picker-panel">
+          <input
+            className="kanban-entry-tag-filter"
+            placeholder="Filter by tag…"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            aria-label="Filter entries by tag"
+            data-testid="kanban-entry-tag-filter"
+          />
+          {loading && <div className="kanban-entry-loading">Loading entries…</div>}
+          {!loading && filteredEntries.length === 0 && (
+            <div className="kanban-entry-empty">No entries found.</div>
+          )}
+          <ul className="kanban-entry-list" role="listbox" aria-multiselectable="true">
+            {filteredEntries.map((e) => {
+              const checked = selectedIds.includes(e.id);
+              return (
+                <li
+                  key={e.id}
+                  role="option"
+                  aria-selected={checked}
+                  className={`kanban-entry-option${checked ? ' selected' : ''}`}
+                  onClick={() => toggle(e.id)}
+                  data-testid={`kanban-entry-option-${e.id}`}
+                >
+                  <span className="kanban-entry-option-check">{checked ? '✓' : '○'}</span>
+                  <span className="kanban-entry-option-body">
+                    {e.body.slice(0, 80)}{e.body.length > 80 ? '…' : ''}
+                  </span>
+                  {e.tags.length > 0 && (
+                    <span className="kanban-entry-option-tags">
+                      {e.tags.join(', ')}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {selectedIds.length > 0 && (
+            <div className="kanban-entry-payload-hint" data-testid="kanban-entry-payload">
+              {payload.length} entr{payload.length === 1 ? 'y' : 'ies'} selected as scene context
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   boardPath: string;
   storyTitle: string;
@@ -65,6 +220,7 @@ interface Props {
 export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, onOpenNote }: Props) {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [dragCard, setDragCard] = useState<{ colIdx: number; cardIdx: number } | null>(null);
   const [dragOverCol, setDragOverCol] = useState<number | null>(null);
   const [editingColIdx, setEditingColIdx] = useState<number | null>(null);
@@ -72,6 +228,11 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
   const [customBoardPath, setCustomBoardPath] = useState(boardPath);
   const [editingPath, setEditingPath] = useState(false);
   const [pendingPath, setPendingPath] = useState(boardPath);
+
+  // SKY-324: Entries quick-grab pool — files from Entries/ in the Notes Vault
+  const [entriesPool, setEntriesPool] = useState<EntryPoolItem[]>([]);
+  const [entriesPoolOpen, setEntriesPoolOpen] = useState(false);
+  const [entriesPoolLoading, setEntriesPoolLoading] = useState(false);
 
   const saveBoard = useCallback(
     async (cols: KanbanColumn[], path = customBoardPath) => {
@@ -196,12 +357,61 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
     saveBoard(columns, trimmed);
   }, [pendingPath, columns, saveBoard, onBoardPathChange]);
 
+  // SKY-324: Load entries from Notes Vault Entries/ folder when pool is opened
+  const loadEntriesPool = useCallback(async () => {
+    setEntriesPoolLoading(true);
+    try {
+      const { items } = await (window as any).api.listNotesVault('Entries');
+      const entries: EntryPoolItem[] = items
+        .filter((item: { isDirectory: boolean; path: string }) => !item.isDirectory && item.path.endsWith('.md'))
+        .map((item: { path: string }) => ({
+          path: item.path,
+          title: titleFromEntryPath(item.path),
+        }))
+        .sort((a: EntryPoolItem, b: EntryPoolItem) => b.path.localeCompare(a.path));
+      setEntriesPool(entries);
+    } catch {
+      setEntriesPool([]);
+    } finally {
+      setEntriesPoolLoading(false);
+    }
+  }, []);
+
+  const toggleEntriesPool = useCallback(() => {
+    setEntriesPoolOpen((prev) => {
+      const next = !prev;
+      if (next) void loadEntriesPool();
+      return next;
+    });
+  }, [loadEntriesPool]);
+
+  // SKY-324: Add an entry from the pool to the first "Idea" lane (or first lane)
+  const addEntryToIdeaLane = useCallback(
+    async (entryPath: string) => {
+      const ideaIdx = columns.findIndex((c) => c.name.toLowerCase() === 'idea');
+      const targetIdx = ideaIdx >= 0 ? ideaIdx : 0;
+      if (columns.length === 0) return;
+      const alreadyInBoard = columns.some((c) => c.cards.some((card) => card.notePath === entryPath));
+      if (alreadyInBoard) return;
+      const updated = columns.map((c, i) =>
+        i === targetIdx ? { ...c, cards: [...c.cards, { notePath: entryPath, checked: false }] } : c,
+      );
+      setColumns(updated);
+      await saveBoard(updated);
+    },
+    [columns, saveBoard],
+  );
+
   if (loading) return <div className="kanban-loading" role="status">Loading board…</div>;
 
   return (
     <div className="kanban-board" data-testid="kanban-board">
       <div className="kanban-header">
         <h2 className="kanban-title">{storyTitle} — Scene Board</h2>
+        <EntrySourcePicker
+          selectedIds={selectedEntryIds}
+          onSelectionChange={setSelectedEntryIds}
+        />
         <div className="kanban-path-row">
           {editingPath ? (
             <>
@@ -331,6 +541,55 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
         >
           + Add Column
         </button>
+      </div>
+
+      {/* SKY-324: Entries quick-grab pool */}
+      <div className="kanban-entries-pool">
+        <button
+          className="kanban-entries-pool-toggle"
+          onClick={toggleEntriesPool}
+          aria-expanded={entriesPoolOpen}
+          type="button"
+        >
+          <span className="kanban-entries-pool-arrow">{entriesPoolOpen ? '▾' : '▸'}</span>
+          Entries Pool
+        </button>
+        {entriesPoolOpen && (
+          <div className="kanban-entries-pool-body" data-testid="kanban-entries-pool-body">
+            {entriesPoolLoading && (
+              <div className="kanban-entries-pool-empty" role="status">Loading…</div>
+            )}
+            {!entriesPoolLoading && entriesPool.length === 0 && (
+              <div className="kanban-entries-pool-empty">
+                No entries yet. Add quick notes in the Brainstorm panel.
+              </div>
+            )}
+            {!entriesPoolLoading && entriesPool.map((entry) => (
+              <div
+                key={entry.path}
+                className="kanban-entry-item"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', entry.path);
+                }}
+                data-testid={`kanban-entry-item-${entry.path}`}
+              >
+                <span className="kanban-entry-title" title={entry.path}>
+                  {entry.title}
+                </span>
+                <button
+                  className="kanban-entry-add-btn"
+                  onClick={() => void addEntryToIdeaLane(entry.path)}
+                  type="button"
+                  title="Add to Idea lane"
+                  aria-label={`Add "${entry.title}" to Idea lane`}
+                >
+                  + Idea
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

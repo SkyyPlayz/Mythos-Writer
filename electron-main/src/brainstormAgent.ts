@@ -28,9 +28,14 @@ export interface BrainstormAgentDeps {
 
 // ─── Tag parser ───
 
+const FACT_NAME_MAX_LEN = 200;
+
 /**
  * Extracts [FACT:type|name|description] tags from Claude brainstorm output.
  * The system prompt instructs the model to emit one tag per named story fact.
+ *
+ * Names are validated: max 200 chars, no control characters (incl. newlines/null
+ * bytes that could break YAML frontmatter or filesystem paths).
  */
 export function parseFacts(text: string): ParsedFact[] {
   const pattern = /\[FACT:(character|location|item|note)\|([^|\]]+)\|([^\]]+)\]/g;
@@ -40,9 +45,106 @@ export function parseFacts(text: string): ParsedFact[] {
     const type = m[1] as FactType;
     const name = m[2].trim();
     const description = m[3].trim();
-    if (name) results.push({ type, name, description });
+    if (!name || name.length > FACT_NAME_MAX_LEN || /[\x00-\x1f\x7f]/.test(name)) continue;
+    results.push({ type, name, description });
   }
   return results;
+}
+
+// ─── Alias hint extraction (SKY-191) ───
+
+export interface AliasHint {
+  entityName: string;
+  alias: string;
+}
+
+/**
+ * Scans free-form text (user messages or agent output) for common English
+ * alias-introduction patterns and returns (entityName, alias) pairs.
+ *
+ * Recognised patterns:
+ *   "Name, also known as Alias"
+ *   "Name (aka Alias)"
+ *   "Name, called Alias"
+ *   "Name, named Alias"
+ *
+ * Entity names must begin with a capital letter (proper nouns).
+ * Results are deduplicated case-insensitively.
+ */
+export function parseAliasHints(text: string): AliasHint[] {
+  const results: AliasHint[] = [];
+  const seen = new Set<string>();
+
+  function add(rawEntity: string, rawAlias: string): void {
+    const e = rawEntity.trim().replace(/^["']|["']$/g, '');
+    const a = rawAlias.trim()
+      .replace(/^["']|["']$/g, '')
+      .replace(/[.,;!?]+$/, '');
+    if (!e || !a) return;
+    if (e.toLowerCase() === a.toLowerCase()) return;
+    const key = `${e.toLowerCase()}|${a.toLowerCase()}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push({ entityName: e, alias: a });
+    }
+  }
+
+  // Each pattern captures (entityName, alias).
+  // Entity name: capitalized word + up to 3 additional words (lazy so the
+  // engine prefers shorter names and doesn't swallow keywords like "also").
+  // Alias: up to 7 words after the keyword.
+  const NAME = String.raw`([A-Z][a-zA-Z]+(?:\s+[A-Za-z]+){0,3}?)`;
+  const ALIAS = String.raw`((?:[A-Za-z]+\s+){0,6}[A-Za-z]+)`;
+
+  const patterns = [
+    new RegExp(`\\b${NAME},?\\s+(?:also\\s+)?known\\s+as\\s+${ALIAS}`, 'g'),
+    new RegExp(`\\b${NAME},?\\s+\\(?aka\\.?\\s+${ALIAS}\\)?`, 'gi'),
+    new RegExp(`\\b${NAME},?\\s+(?:also\\s+)?called\\s+${ALIAS}`, 'g'),
+    new RegExp(`\\b${NAME},?\\s+(?:also\\s+)?named\\s+${ALIAS}`, 'g'),
+  ];
+
+  for (const pattern of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(text)) !== null) {
+      add(m[1], m[2]);
+    }
+  }
+
+  return results;
+}
+
+// ─── Entity type → FactType mapping ───
+
+/**
+ * Maps EntityType values (including 'concept' and 'other') to the brainstorm
+ * FactType set, which only has character/location/item/note.
+ * Used by the quick-enrich entry flow so that concept/other entries route to
+ * the 'note' category in the Notes Vault.
+ */
+export function entityTypeToFactType(entityType: string): FactType {
+  if (entityType === 'character' || entityType === 'location' || entityType === 'item') {
+    return entityType;
+  }
+  return 'note';
+}
+
+/**
+ * Builds the system prompt for the one-shot entry enrichment call.
+ * The prompt instructs Claude to emit exactly one [FACT:...] tag so
+ * parseFacts can extract the generated description reliably.
+ */
+export function buildEnrichmentSystemPrompt(name: string, factType: FactType): string {
+  const typeLabel =
+    factType === 'note' ? 'concept or worldbuilding element' : factType;
+  return [
+    `You are a creative writing assistant helping an author develop their story world.`,
+    `The author has just added a new ${typeLabel} named "${name}".`,
+    `Write a brief 2-3 sentence description that would help them develop this entry.`,
+    `Focus on concrete, story-relevant details.`,
+    ``,
+    `End your response with exactly one structured fact tag:`,
+    `[FACT:${factType}|${name}|your description here]`,
+  ].join('\n');
 }
 
 // ─── vaultPath validator (MYT-185 / F10) ───
@@ -139,6 +241,7 @@ export function writeFacts(
       applied_at: null,
       applied_run_id: runId,
       budget_exceeded: 0,
+      category: 'other',
     };
 
     deps.persistSuggestion(suggestion);

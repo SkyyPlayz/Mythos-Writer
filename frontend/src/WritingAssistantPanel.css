@@ -8,6 +8,51 @@
 .writing-assistant-header {
   padding: 10px 12px 4px;
   flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.writing-assistant-header .writing-assistant-hint {
+  flex: 1;
+  margin: 0;
+}
+
+/* ─── Preset row ─── */
+
+.wa-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 6px;
+  flex-shrink: 0;
+}
+
+.wa-rubric-help-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  background: none;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.12s, color 0.12s;
+  line-height: 1;
+}
+
+.wa-rubric-help-btn:hover {
+  border-color: var(--accent, #00f0ff);
+  color: var(--accent, #00f0ff);
+}
+
+.wa-rubric-help-btn:focus-visible {
+  outline: 2px solid var(--accent, #00f0ff);
+  outline-offset: 1px;
 }
 
 .writing-assistant-hint {
@@ -418,4 +463,87 @@
 
 .wa-copy-btn:hover {
   background: var(--bg-hover, #f0f0f0);
+}
+
+
+/* ─── Preset Row (SKY-507) ──────────────────────────────────────── */
+
+.wa-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 6px;
+  flex-shrink: 0;
+}
+
+.wa-rubric-help-btn {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.wa-rubric-help-btn:hover {
+  border-color: var(--accent, #0ff);
+  color: var(--accent, #0ff);
+}
+
+.wa-rubric-help-btn:focus-visible {
+  outline: 2px solid var(--accent, #0ff);
+  outline-offset: 2px;
+}
+
+/* First-visit preset tip in the empty state */
+.wa-first-visit-tip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent, #0ff) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #0ff) 18%, transparent);
+}
+
+.wa-tip-icon {
+  font-size: 1rem;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.wa-tip-body {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.wa-tip-browse-btn {
+  background: color-mix(in srgb, var(--accent, #0ff) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #0ff) 30%, transparent);
+  border-radius: 999px;
+  color: var(--accent, #0ff);
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.wa-tip-browse-btn:hover {
+  background: color-mix(in srgb, var(--accent, #0ff) 25%, transparent);
+}
+.wa-tip-browse-btn:focus-visible {
+  outline: 2px solid var(--accent, #0ff);
+  outline-offset: 2px;
 }

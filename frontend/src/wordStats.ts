@@ -1,3 +1,8 @@
+export function stripFrontmatter(text: string): string {
+  // YAML frontmatter: --- block at the very start of the document
+  return text.replace(/^---\r?\n[\s\S]*?\n---\r?\n?/, '');
+}
+
 function stripMarkdown(text: string): string {
   return (
     text
@@ -5,6 +10,8 @@ function stripMarkdown(text: string): string {
       .replace(/```[^\n]*\n([\s\S]*?)```/g, '$1')
       // Inline code — strip backticks, keep content
       .replace(/`([^`\n]+)`/g, '$1')
+      // HTML comments (author notes)
+      .replace(/<!--[\s\S]*?-->/g, '')
       // Images (no readable text)
       .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
       // Links — keep display text, drop URL
@@ -30,7 +37,7 @@ function stripMarkdown(text: string): string {
 
 export function countWords(text: string): number {
   if (!text.trim()) return 0;
-  return stripMarkdown(text)
+  return stripMarkdown(stripFrontmatter(text))
     .split(/\s+/)
     .filter(Boolean).length;
 }

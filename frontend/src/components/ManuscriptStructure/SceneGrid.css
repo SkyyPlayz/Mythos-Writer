@@ -1,0 +1,292 @@
+/* ─── Scene grid (card view) ─── */
+
+.scene-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.scene-grid--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.scene-grid__empty-msg {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* ─── Chapter section ─── */
+
+.chapter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chapter-section--drop-target .chapter-section__header {
+  border-color: var(--accent, var(--neon-cyan));
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 6%, transparent);
+}
+
+.chapter-section__header {
+  align-items: center;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.chapter-section__collapse-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+
+.chapter-section__collapse-btn:hover {
+  color: var(--text-body);
+}
+
+.chapter-section__collapse-btn:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+.chapter-section__title {
+  color: var(--text-header);
+  flex: 1;
+  font-size: 14px;
+  font-weight: var(--weight-heading);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-section__meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.chapter-section__add-btn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.chapter-section__add-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent, var(--neon-cyan));
+  color: var(--accent, var(--neon-cyan));
+}
+
+.chapter-section__add-btn:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+/* ─── Card grid ─── */
+
+.chapter-section__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-content: flex-start;
+}
+
+@media (max-width: 1023px) {
+  .chapter-section__grid {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 767px) {
+  .chapter-section__grid {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+}
+
+.scene-grid__cell {
+  position: relative;
+}
+
+/* Drop-before indicator: left border glow on the cell */
+.scene-grid__cell--drop-before::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent, var(--neon-cyan));
+  border-radius: 1px;
+  box-shadow: 0 0 6px var(--accent, var(--neon-cyan));
+}
+
+/* ─── Empty chapter state ─── */
+
+.chapter-section__empty {
+  align-items: center;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 80px;
+  padding: 20px;
+  text-align: center;
+  transition: border-color 0.12s, background 0.12s;
+  width: 100%;
+}
+
+.chapter-section__empty:hover,
+.chapter-section__empty:focus-within {
+  border-color: var(--border-default);
+  background: var(--bg-inset);
+}
+
+.chapter-section__empty p {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin: 0;
+}
+
+.chapter-section__create-first {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--accent, var(--neon-cyan));
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 12px;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.chapter-section__create-first:hover {
+  background: color-mix(in srgb, var(--accent, var(--neon-cyan)) 8%, transparent);
+  border-color: var(--accent, var(--neon-cyan));
+}
+
+.chapter-section__create-first:focus-visible {
+  outline: 2px solid var(--accent, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+/* ─── Context menu ─── */
+
+.context-menu-backdrop {
+  bottom: 0;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 100;
+}
+
+.context-menu {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  min-width: 200px;
+  overflow: hidden;
+  padding: 4px 0;
+  position: fixed;
+  z-index: 101;
+}
+
+.context-menu__header {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: var(--weight-heading);
+  letter-spacing: 0.06em;
+  padding: 6px 12px 4px;
+  text-transform: uppercase;
+}
+
+.context-menu__item {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--text-body);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 6px 12px;
+  text-align: left;
+  transition: background 0.1s;
+  width: 100%;
+}
+
+.context-menu__item:hover,
+.context-menu__item:focus-visible {
+  background: var(--bg-inset);
+}
+
+.context-menu__item--active {
+  color: var(--accent, var(--neon-cyan));
+}
+
+.context-menu__item--danger {
+  color: var(--state-danger, #ff4d4f);
+}
+
+.context-menu__separator {
+  border-top: 1px solid var(--border-subtle);
+  margin: 4px 0;
+}
+
+.context-menu__act-dot {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 8px;
+  width: 8px;
+}
+
+.context-menu__act-dot--setup {
+  background: var(--neon-cyan, #00f0ff);
+}
+
+.context-menu__act-dot--confrontation {
+  background: var(--state-warning, #e8a030);
+}
+
+.context-menu__act-dot--resolution {
+  background: var(--state-success, #39d353);
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  .chapter-section__header,
+  .chapter-section__add-btn,
+  .chapter-section__empty,
+  .context-menu__item {
+    transition: none;
+  }
+}

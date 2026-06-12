@@ -19,6 +19,9 @@ function makeEntry(overrides: Partial<GenerationLogRow> = {}): GenerationLogRow 
     payload_digest: 'abc123',
     prompt_text: 'Improve this scene.',
     response_text: 'Try adding more tension.',
+    entity_count: null,
+    context_chars: null,
+    truncated: null,
     ...overrides,
   };
 }
@@ -34,6 +37,8 @@ describe('PromptHistoryPanel', () => {
   it('renders all four agent tabs', async () => {
     mockGenerationLogRecent.mockResolvedValue({ entries: [], total: 0 });
     render(<PromptHistoryPanel onClose={mockOnClose} />);
+    // Wait for the initial data fetch to settle so its state updates are inside act()
+    await waitFor(() => expect(mockGenerationLogRecent).toHaveBeenCalled());
     expect(screen.getByRole('tab', { name: /^All$/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /writing assistant/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /brainstorm/i })).toBeInTheDocument();
@@ -43,6 +48,8 @@ describe('PromptHistoryPanel', () => {
   it('renders search input and date range filters', async () => {
     mockGenerationLogRecent.mockResolvedValue({ entries: [], total: 0 });
     render(<PromptHistoryPanel onClose={mockOnClose} />);
+    // Wait for the initial data fetch to settle so its state updates are inside act()
+    await waitFor(() => expect(mockGenerationLogRecent).toHaveBeenCalled());
     expect(screen.getByRole('searchbox', { name: /search prompt history/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/filter from date/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/filter to date/i)).toBeInTheDocument();
@@ -88,6 +95,8 @@ describe('PromptHistoryPanel', () => {
   it('calls onClose when close button is clicked', async () => {
     mockGenerationLogRecent.mockResolvedValue({ entries: [], total: 0 });
     render(<PromptHistoryPanel onClose={mockOnClose} />);
+    // Wait for initial data fetch so its state updates are inside act()
+    await waitFor(() => expect(mockGenerationLogRecent).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /close prompt history/i }));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });

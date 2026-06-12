@@ -3,6 +3,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { EventEmitter } from 'events';
+
+/** Emits 'snapshot-saved' (payload: SceneSnapshot) after each successful write. */
+export const snapshotEvents = new EventEmitter();
 
 export interface SceneSnapshot {
   id: string;
@@ -11,6 +15,8 @@ export interface SceneSnapshot {
   contentHash: string;
   wordCount: number;
   createdAt: string;
+  /** Human-readable name; set on manual saves and special triggers like exports. */
+  label?: string;
 }
 
 export interface SnapshotRetention {
@@ -49,6 +55,7 @@ export function saveSnapshot(
   sceneId: string,
   content: string,
   retention?: Partial<SnapshotRetention>,
+  label?: string,
 ): SceneSnapshot {
   const dir = safeSnapshotDir(vaultRoot, sceneId);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -61,6 +68,7 @@ export function saveSnapshot(
     contentHash,
     wordCount: countWords(content),
     createdAt: new Date().toISOString(),
+    ...(label ? { label } : {}),
   };
 
   // Filename sortable by creation time; seq suffix breaks ties within the same millisecond
@@ -70,6 +78,7 @@ export function saveSnapshot(
   fs.writeFileSync(path.join(dir, filename), JSON.stringify(snapshot), 'utf-8');
 
   pruneOldSnapshots(dir, { ...DEFAULT_RETENTION, ...retention });
+  snapshotEvents.emit('snapshot-saved', snapshot);
   return snapshot;
 }
 
@@ -94,6 +103,55 @@ export function listSnapshots(vaultRoot: string, sceneId: string): SceneSnapshot
 
 export function getSnapshot(vaultRoot: string, sceneId: string, snapshotId: string): SceneSnapshot | null {
   return listSnapshots(vaultRoot, sceneId).find((s) => s.id === snapshotId) ?? null;
+}
+
+/**
+ * Deletes a specific snapshot by ID. Uses the filename suffix `_<id>.json`
+ * to locate the file without parsing every JSON entry.
+ * Returns true if the file was deleted, false if it was not found.
+ */
+export function deleteSnapshot(vaultRoot: string, sceneId: string, snapshotId: string): boolean {
+  if (!SAFE_ID_RE.test(snapshotId)) throw new Error(`Invalid snapshotId: ${snapshotId}`);
+  const dir = safeSnapshotDir(vaultRoot, sceneId);
+  if (!fs.existsSync(dir)) return false;
+  const suffix = `_${snapshotId}.json`;
+  const matched = fs.readdirSync(dir).filter((f) => f.endsWith(suffix));
+  if (matched.length === 0) return false;
+  try {
+    fs.unlinkSync(path.join(dir, matched[0]));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Deletes all snapshots for a single scene. Returns count deleted. */
+export function deleteAllSnapshotsForScene(vaultRoot: string, sceneId: string): number {
+  const dir = safeSnapshotDir(vaultRoot, sceneId);
+  if (!fs.existsSync(dir)) return 0;
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  let count = 0;
+  for (const f of files) {
+    try { fs.unlinkSync(path.join(dir, f)); count++; } catch { /* ignore */ }
+  }
+  return count;
+}
+
+/** Deletes all snapshots across every scene in the vault. Returns total count deleted. */
+export function deleteAllSnapshotsVault(vaultRoot: string): number {
+  const snapshotsRoot = path.resolve(vaultRoot, '.snapshots');
+  if (!fs.existsSync(snapshotsRoot)) return 0;
+  let total = 0;
+  for (const entry of fs.readdirSync(snapshotsRoot)) {
+    const sceneDir = path.join(snapshotsRoot, entry);
+    try {
+      if (!fs.statSync(sceneDir).isDirectory()) continue;
+    } catch { continue; }
+    for (const f of fs.readdirSync(sceneDir).filter((f) => f.endsWith('.json'))) {
+      try { fs.unlinkSync(path.join(sceneDir, f)); total++; } catch { /* ignore */ }
+    }
+  }
+  return total;
 }
 
 function pruneOldSnapshots(dir: string, retention: SnapshotRetention): void {
