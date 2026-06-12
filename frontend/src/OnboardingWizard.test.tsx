@@ -1017,6 +1017,16 @@ describe('OnboardingWizard — Template management (SKY-1399)', () => {
     await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
   });
 
+  it('Enter rename does not call templateRename a second time when input blurs on unmount', async () => {
+    await goToPickerWithUserTemplate();
+    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
+    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
+    fireEvent.change(input, { target: { value: 'Renamed Template' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input);
+    await waitFor(() => expect(mockApi.templateRename).toHaveBeenCalledTimes(1));
+  });
+
   it('cancels rename on Escape', async () => {
     await goToPickerWithUserTemplate();
     fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));

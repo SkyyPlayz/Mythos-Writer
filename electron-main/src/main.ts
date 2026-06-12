@@ -4552,6 +4552,7 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: import('./ipc.js').TemplateRenamePayload): import('./ipc.js').TemplateRenameResponse | { error: string } => {
     const { id, name } = payload ?? {};
+    if (!id) return { error: 'Template id is required' };
     const trimmed = (name ?? '').trim();
     if (!trimmed || trimmed.length > 80) return { error: 'Name must be 1–80 characters' };
     // eslint-disable-next-line no-control-regex
