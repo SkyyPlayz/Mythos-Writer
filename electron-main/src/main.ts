@@ -3836,6 +3836,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.TEMPLATE_SAVE_AS]: (payload: import('./ipc.js').TemplateSaveAsPayload): import('./ipc.js').TemplateSaveAsResponse => {
     const name = (payload?.name ?? '').trim();
     if (!name) throw new Error('Template name is required');
+    if (name.length > 255) throw new Error('Template name must be 255 characters or less');
     const id = saveAsTemplate(getVaultRoot(), getNotesVaultRoot(), name, app.getPath('userData'));
     return { ok: true as const, id };
   },
