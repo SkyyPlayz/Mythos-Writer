@@ -1546,3 +1546,238 @@ describe('BrainstormPage — open-in-writing-panel (SKY-1393)', () => {
     });
   });
 });
+
+// ─── SKY-1392: drag-and-drop reorder + Alt+Arrow + localStorage persistence ───
+
+async function seedTwoFacts() {
+  render(<BrainstormPage onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'go' } });
+  fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+  await simulateStream([
+    '[FACT:character|Alpha|First character][FACT:character|Beta|Second character]',
+  ]);
+  await waitFor(() => expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0));
+}
+
+describe('BrainstormPage — custom order (SKY-1392)', () => {
+  it('sort select includes Custom order option', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'hi' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:character|Solo|A lone figure]']);
+    await waitFor(() => expect(screen.getAllByText('Solo').length).toBeGreaterThan(0));
+
+    const sortSelect = screen.getByTestId('bs-sort-select');
+    expect(sortSelect).toHaveTextContent('Custom order');
+  });
+
+  it('drag handles are hidden when sort is not "custom"', async () => {
+    await seedTwoFacts();
+    // Default sort is 'newest' — no drag handles
+    expect(document.querySelectorAll('.idea-card-drag-handle')).toHaveLength(0);
+  });
+
+  it('drag handles appear when switching to custom sort', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+  });
+
+  it('drag handles hidden in multi-select mode even with custom sort active', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+    fireEvent.click(screen.getByTestId('bs-multiselect-toggle'));
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle')).toHaveLength(0),
+    );
+  });
+
+  it('drag handles hidden while streaming (loading state)', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    // Seed one fact first
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'seed' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['[FACT:note|SomeFact|detail]']);
+    await waitFor(() => expect(screen.getAllByText('SomeFact').length).toBeGreaterThan(0));
+    // Switch to custom sort
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+    // Start a second stream (loading = true)
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), { target: { value: 'more' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle')).toHaveLength(0),
+    );
+    // Clean up stream
+    await act(async () => { endCb?.({ streamId: 'test-stream-1' }); });
+  });
+
+  it('drag reorders cards: drop second card above first', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+    expect(cards.length).toBeGreaterThanOrEqual(2);
+    const firstCard = cards[0] as HTMLElement;
+    const secondCard = cards[1] as HTMLElement;
+
+    // Drag second card over first (above mid-point) → second should land before first
+    await act(async () => {
+      fireEvent.dragStart(secondCard, { dataTransfer: { effectAllowed: '', setData: () => {} } });
+      // Mock getBoundingClientRect so mid-point check works
+      vi.spyOn(firstCard, 'getBoundingClientRect').mockReturnValue(
+        { top: 100, height: 72, left: 0, right: 200, bottom: 172, width: 200, x: 0, y: 100, toJSON: () => ({}) }
+      );
+      fireEvent.dragOver(firstCard, { clientY: 110, dataTransfer: { dropEffect: '' } }); // above mid
+      fireEvent.drop(firstCard, { dataTransfer: {} });
+      fireEvent.dragEnd(secondCard);
+    });
+
+    await waitFor(() => {
+      const updatedCards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+      const names = Array.from(updatedCards).map(
+        (c) => c.querySelector('.idea-card-title')?.textContent?.trim(),
+      );
+      // secondCard (Alpha, originally at index 1) was dragged above firstCard (Beta, index 0).
+      expect(names[0]).toBe('Alpha');
+      expect(names[1]).toBe('Beta');
+    });
+  });
+
+  it('Alt+Up moves card up in custom sort', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    // Focus the second card
+    const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+    const secondCard = cards[1] as HTMLElement;
+    secondCard.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true });
+    });
+
+    await waitFor(() => {
+      const updatedCards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+      const names = Array.from(updatedCards).map(
+        (c) => c.querySelector('.idea-card-title')?.textContent?.trim(),
+      );
+      // secondCard (Alpha, at index 1) was moved up with Alt+Up — it lands before Beta.
+      expect(names[0]).toBe('Alpha');
+      expect(names[1]).toBe('Beta');
+    });
+  });
+
+  it('persists custom order to localStorage after reorder', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+    const secondCard = cards[1] as HTMLElement;
+    secondCard.focus();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true });
+    });
+
+    await waitFor(() => {
+      const raw = localStorage.getItem('brainstorm:draft');
+      expect(raw).not.toBeNull();
+      const draft = JSON.parse(raw!);
+      expect(draft.sortMode).toBe('custom');
+      expect(Array.isArray(draft.customOrder)).toBe(true);
+      expect(draft.customOrder.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('restores custom order and sort mode from localStorage on mount', async () => {
+    // Pre-seed localStorage with custom order [betaId, alphaId]
+    const fakeDraft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [],
+      facts: [
+        { id: 'id-alpha', type: 'character', name: 'Alpha', content: 'First', savedStatus: 'unsaved', createdAt: 1000 },
+        { id: 'id-beta', type: 'character', name: 'Beta', content: 'Second', savedStatus: 'unsaved', createdAt: 2000 },
+      ],
+      sortMode: 'custom',
+      customOrder: ['id-beta', 'id-alpha'],
+    };
+    localStorage.setItem('brainstorm:draft', JSON.stringify(fakeDraft));
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() => {
+      // Sort select should show 'custom'
+      expect(screen.getByTestId('bs-sort-select')).toHaveValue('custom');
+      // Cards should be in beta-first order
+      const cards = document.querySelectorAll('li[data-testid^="idea-card-"]');
+      const names = Array.from(cards).map(
+        (c) => c.querySelector('.idea-card-title')?.textContent?.trim(),
+      );
+      expect(names[0]).toBe('Beta');
+      expect(names[1]).toBe('Alpha');
+    });
+  });
+
+  it('shows "Order not saved — storage full." toast on QuotaExceededError', async () => {
+    await seedTwoFacts();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('bs-sort-select'), { target: { value: 'custom' } });
+    });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.idea-card-drag-handle').length).toBeGreaterThan(0),
+    );
+
+    // Make localStorage.setItem throw QuotaExceededError.
+    // vitest's jsdom exposes setItem as an own property on localStorage (not on
+    // Storage.prototype), so vi.spyOn is the correct intercept point.
+    const setItemSpy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+
+    const secondCard = document.querySelectorAll('li[data-testid^="idea-card-"]')[1] as HTMLElement;
+    secondCard.focus();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText(/order not saved — storage full/i)).toBeInTheDocument(),
+    );
+
+    setItemSpy.mockRestore();
+  });
+});
