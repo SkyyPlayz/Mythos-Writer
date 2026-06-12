@@ -454,3 +454,41 @@ describe('getNoteTemplate', () => {
   });
 });
 
+
+// ─── template:saveAs IPC handler — name length validation (SEC-11) ───────────
+// Inline replicas of the guard conditions from the main.ts TEMPLATE_SAVE_AS
+// handler. No Electron or real vault required.
+
+const TEMPLATE_NAME_MAX_LENGTH = 255;
+
+function validateTemplateSaveAsName(rawName: unknown): string {
+  const name = (typeof rawName === 'string' ? rawName : '').trim();
+  if (!name) throw new Error('Template name is required');
+  if (name.length > TEMPLATE_NAME_MAX_LENGTH)
+    throw new Error(`Template name must be ${TEMPLATE_NAME_MAX_LENGTH} characters or less`);
+  return name;
+}
+
+describe('template:saveAs IPC handler — name length cap (SEC-11)', () => {
+  it('rejects names longer than 255 chars', () => {
+    expect(() => validateTemplateSaveAsName('a'.repeat(256))).toThrow(
+      'Template name must be 255 characters or less',
+    );
+  });
+
+  it('accepts names at exactly 255 chars (boundary)', () => {
+    const atLimit = 'a'.repeat(255);
+    expect(() => validateTemplateSaveAsName(atLimit)).not.toThrow();
+    expect(validateTemplateSaveAsName(atLimit)).toBe(atLimit);
+  });
+
+  it('accepts ordinary names', () => {
+    expect(validateTemplateSaveAsName('My Template')).toBe('My Template');
+  });
+
+  it('rejects empty and whitespace-only names', () => {
+    expect(() => validateTemplateSaveAsName('')).toThrow('Template name is required');
+    expect(() => validateTemplateSaveAsName('   ')).toThrow('Template name is required');
+  });
+});
+
