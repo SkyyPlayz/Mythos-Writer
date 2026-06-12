@@ -1399,6 +1399,24 @@
   margin: 0.25rem 0 0;
 }
 
+/* ─── SKY-1403: Import CTA + toast ── */
+
+.gs-template-import-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.75rem;
+}
+
+.gs-template-import-btn {
+  font-size: 0.8125rem;
+}
+
+.gs-template-toast {
+  font-size: 0.8125rem;
+  color: var(--accent, #89b4fa);
+  margin: 0.25rem 0 0;
+}
+
 /* ─── Template preview panel (step 1b, F-13) ── */
 
 .template-preview {
