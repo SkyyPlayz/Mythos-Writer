@@ -808,9 +808,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     ))}
                   </div>
                 ) : (
-                  <p className="gs-template-empty-hint" data-testid="user-templates-empty">
-                    No custom templates yet &#x2014; use &#x2018;Save as template&#x2019; from the vault menu after you scaffold a story.
-                  </p>
+                  <>
+                    <p className="gs-template-empty-hint" data-testid="template-empty-hint">
+                      No saved templates yet.
+                    </p>
+                    <p className="gs-template-empty-hint-sub" data-testid="template-empty-hint-sub">
+                      Save your vault structure from Settings &rarr; Templates after you create a story.
+                    </p>
+                  </>
                 )}
                 <div className="gs-template-import-row">
                   <button
