@@ -608,9 +608,9 @@ export function reindexVault(
 
   // Build lookup maps for quick access
   const sceneById = new Map<string, SceneEntry>();
-  for (const story of manifest.stories) {
-    for (const chapter of story.chapters) {
-      for (const scene of chapter.scenes) {
+  for (const story of manifest.stories ?? []) {
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) {
         sceneById.set(scene.id, scene);
       }
     }

@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "vaultRoot": ".",
+  "scenes": [
+    {
+      "id": "scene-001",
+      "path": "stories/story-1/chapters/chapter-1/scenes/Opening.md",
+      "title": "Opening",
+      "order": 0,
+      "createdAt": "2025-01-01T12:00:00Z",
+      "updatedAt": "2025-01-01T12:00:00Z",
+      "blocks": [
+        {
+          "id": "block-001",
+          "type": "prose",
+          "order": 0,
+          "content": "The vault doors groaned open, revealing decades of carefully preserved secrets. The air was thick with dust and memory.\n\nOur hero stood at the threshold, hand trembling as they reached toward the first manuscript.",
+          "updatedAt": "2025-01-01T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "scene-002",
+      "path": "stories/story-1/chapters/chapter-1/scenes/Climax.md",
+      "title": "Climax",
+      "order": 1,
+      "createdAt": "2025-01-01T12:05:00Z",
+      "updatedAt": "2025-01-01T12:05:00Z",
+      "blocks": [
+        {
+          "id": "block-002",
+          "type": "prose",
+          "order": 0,
+          "content": "The truth lay bare before them. Every secret, every hidden letter, every whispered confession — all of it now exposed in the pale light.\n\nThis was the moment everything would change.",
+          "updatedAt": "2025-01-01T12:05:00Z"
+        }
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "id": "entity-001",
+      "name": "Hero",
+      "type": "character",
+      "path": "entities/characters/Hero.md",
+      "createdAt": "2025-01-01T12:00:00Z",
+      "updatedAt": "2025-01-01T12:00:00Z"
+    },
+    {
+      "id": "entity-002",
+      "name": "Ancient Realm",
+      "type": "location",
+      "path": "entities/locations/Ancient Realm.md",
+      "createdAt": "2025-01-01T12:00:00Z",
+      "updatedAt": "2025-01-01T12:00:00Z"
+    }
+  ],
+  "suggestions": [],
+  "provenance": [],
+  "boards": [],
+  "stories": [
+    {
+      "id": "story-1",
+      "title": "The Vault Chronicles",
+      "path": "stories/story-1",
+      "createdAt": "2025-01-01T12:00:00Z",
+      "updatedAt": "2025-01-01T12:00:00Z",
+      "chapters": [
+        {
+          "id": "chapter-1",
+          "title": "The First Chamber",
+          "path": "stories/story-1/chapters/chapter-1",
+          "order": 0,
+          "createdAt": "2025-01-01T12:00:00Z",
+          "updatedAt": "2025-01-01T12:00:00Z",
+          "scenes": [
+            {
+              "id": "scene-001",
+              "path": "stories/story-1/chapters/chapter-1/scenes/Opening.md",
+              "title": "Opening",
+              "order": 0,
+              "createdAt": "2025-01-01T12:00:00Z",
+              "updatedAt": "2025-01-01T12:00:00Z",
+              "blocks": [
+                {
+                  "id": "block-001",
+                  "type": "prose",
+                  "order": 0,
+                  "content": "The vault doors groaned open, revealing decades of carefully preserved secrets. The air was thick with dust and memory.\n\nOur hero stood at the threshold, hand trembling as they reached toward the first manuscript.",
+                  "updatedAt": "2025-01-01T12:00:00Z"
+                }
+              ]
+            },
+            {
+              "id": "scene-002",
+              "path": "stories/story-1/chapters/chapter-1/scenes/Climax.md",
+              "title": "Climax",
+              "order": 1,
+              "createdAt": "2025-01-01T12:05:00Z",
+              "updatedAt": "2025-01-01T12:05:00Z",
+              "blocks": [
+                {
+                  "id": "block-002",
+                  "type": "prose",
+                  "order": 0,
+                  "content": "The truth lay bare before them. Every secret, every hidden letter, every whispered confession — all of it now exposed in the pale light.\n\nThis was the moment everything would change.",
+                  "updatedAt": "2025-01-01T12:05:00Z"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
