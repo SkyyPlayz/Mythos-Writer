@@ -27,6 +27,8 @@ Mythos Writer is a local-first desktop writing app for fiction authors. It gives
 </tr>
 </table>
 
+> **What's new in June 2026 (Wave 3.3):** Brainstorm Panel drag-reorder + Open in Writing Panel, custom template save / rename / duplicate / delete / import-export, and the Getting Started guided panel are all live in the current release.
+
 ## Installation
 
 Download the latest release from the [Releases page](https://github.com/SkyyPlayz/Mythos-Writer/releases):
@@ -62,7 +64,7 @@ Templates are available when you create a new story (click **+** next to *Story 
 - **Project templates** — four bundled vault structures (Novel, Short Story, World-building Bible, Series Bible); save your own from any project and reuse them at onboarding
 - **Rich scene editor** — TipTap-powered editor with WikiLinks (`[[Character Name]]`), draft states (In Progress / Review / Final), and word count
 - **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
-- **Brainstorm AI** — conversational story development; automatically extracts facts into your vault entities
+- **Brainstorm AI** — conversational story development; auto-extracts facts into vault entities; drag-reorder ideas in Custom sort mode; **Open in Writing Panel** sends any idea directly to the linked scene
 - **Writing Assistant** — proactive inline suggestions as you write (Edit mode)
 - **Entity browser** — characters, locations, factions, items, events, and concepts; wiki-link any entity from your scenes
 - **Kanban board** — scene cards in a drag-and-drop board view
@@ -222,8 +224,6 @@ Once you have a vault structure you like, snapshot it for reuse:
 
 The template is stored immediately and appears in the gallery the next time you start a project from a template.
 
-> Saving your own template is landing in the same release as this guide. If **File → Save as Template…** does not appear in the menu, update to the latest version.
-
 **What gets captured:**
 - The **folder tree** of both your Story Vault and Notes Vault, to any depth
 - Folder names only — **no scene text, note content, or settings are included**
@@ -246,8 +246,6 @@ From **Settings → Templates** you can rename, duplicate, or delete any templat
 - **Duplicate** — copy a template as a starting point for a variant
 - **Delete** — remove a saved template permanently
 
-> Managing templates (rename / delete / duplicate) is landing in the same release as this guide. If the **Settings → Templates** panel is not yet visible, update to the latest version.
-
 <!-- screenshot: docs/screenshots/template-management-panel.png — Settings → Templates panel with rename / delete / duplicate controls -->
 
 ### Import and export
@@ -256,10 +254,45 @@ Share templates between machines or with other writers using the `.mythostemplat
 
 - **Export:** **File → Export Template…** → select a saved template → choose a save location. Produces a `.mythostemplate` file you can share freely.
 - **Import:** **File → Import Template…** → select a `.mythostemplate` file. The template is added to your gallery with a **Saved** badge and is available immediately.
-
-> Import / export is landing in the same release as this guide. If these menu items are not yet visible, update to the latest version.
+- **Drag-and-drop import:** drag a `.mythostemplate` file directly onto the app window to import it without opening the file picker.
 
 <!-- screenshot: docs/screenshots/template-import-export.png — import flow showing a .mythostemplate file being selected -->
+
+---
+
+## Brainstorm Panel
+
+Click **Brainstorm** in the top navigation bar to open the AI brainstorm panel.
+
+### Sort modes
+
+Use the **Sort** dropdown (top-right of the panel) to change how brainstorm ideas are ordered:
+
+| Mode | Behaviour |
+|------|-----------|
+| **Latest** | Newest ideas first (default) |
+| **Oldest** | Oldest ideas first |
+| **Custom** | Manual order — drag or use the keyboard to reorder |
+
+### Drag-reorder ideas
+
+Switch to **Custom** sort to unlock drag handles on every idea card.
+
+1. Hover over a card — the drag handle (⠿) appears on the left.
+2. Click and drag to a new position.
+3. The new order is saved automatically.
+
+**Keyboard shortcut:** focus a card and press **Alt+↑ / Alt+↓** to move it up or down without touching the mouse. Reordering is disabled while an AI response is streaming or while multi-select mode is active.
+
+### Open in Writing Panel
+
+Every brainstorm idea card has an **Open in writing panel** button (visible in the idea detail drawer). Clicking it:
+
+1. **Linked scene** — if the card already has a linked scene, navigates directly to that scene in the editor and appends the idea as a scene note.
+2. **No linked scene** — opens a scene picker; select a scene to link and navigate to it.
+3. **No scenes in vault** — shows a toast notification prompting you to create a scene first.
+
+This is the fastest way to carry a brainstorm insight directly into your manuscript.
 
 ---
 
