@@ -211,7 +211,7 @@ When you first open Mythos Writer, choose **Start from template** on the welcome
 
 > Each template includes starter note files inside its folders (for example, `Chapter 1/Scene 1 — Opening Hook.md` in the Novel template), so your vault is never empty on first open.
 
-<!-- screenshot: docs/screenshots/template-picker-gallery.png — template gallery in onboarding, Novel (3-Act) selected, structure preview visible -->
+![Template gallery in onboarding, Novel (3-Act) selected with structure preview visible](docs/screenshots/template-picker-gallery.png)
 
 ### Saving your own template
 
@@ -236,7 +236,7 @@ Templates are stored as JSON files in Mythos Writer's application data folder:
 | macOS | `~/Library/Application Support/Mythos Writer/templates/` |
 | Linux | `~/.config/Mythos Writer/templates/` |
 
-<!-- screenshot: docs/screenshots/save-as-template-dialog.png — the "Save as Template" name-entry dialog -->
+![The "Save as Template" name-entry dialog](docs/screenshots/save-as-template-dialog.png)
 
 ### Managing your saved templates
 
