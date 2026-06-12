@@ -50,16 +50,23 @@ export interface SceneVersion {
   contentHash: string;
 }
 
+export interface VersionRetention {
+  /** Maximum versions to keep per scene. 0 = unlimited. */
+  maxPerScene: number;
+  /** Delete versions older than this many days. 0 = disabled. */
+  maxAgeDays: number;
+}
+
 export interface SaveVersionOptions {
   /** Required: chapter folder relative path inside the vault (e.g. "Manuscript/My Story/01 - Opening"). */
   chapterRelPath: string;
   /** Defaults to 'save'. */
   intent?: VersionIntent;
-  /** Override retention cap (default 100). */
-  retention?: number;
+  /** Override retention policy. Accepts a full policy object or a plain count (count-only, no age limit). */
+  retention?: VersionRetention | number;
 }
 
-const DEFAULT_RETENTION = 100;
+const DEFAULT_RETENTION: VersionRetention = { maxPerScene: 100, maxAgeDays: 0 };
 
 const SAFE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const SAFE_TS_RE = /^[A-Za-z0-9_.\-]+$/;
@@ -202,7 +209,7 @@ export function saveVersion(
 ): SceneVersion {
   const intent: VersionIntent = options.intent ?? 'save';
   assertValidIntent(intent);
-  const retention = options.retention ?? DEFAULT_RETENTION;
+  const retention = normalizeRetention(options.retention ?? DEFAULT_RETENTION);
 
   const dir = safeVersionsDir(vaultRoot, options.chapterRelPath, sceneId);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -248,17 +255,56 @@ function listSnapshotFiles(dir: string): SnapshotFileMeta[] {
     .filter((m): m is SnapshotFileMeta => m !== null);
 }
 
-function pruneByRetention(dir: string, retention: number): void {
-  if (retention <= 0) return;
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort();
-  if (files.length <= retention) return;
-  for (const f of files.slice(0, files.length - retention)) {
-    try {
-      fs.unlinkSync(path.join(dir, f));
-    } catch {
-      /* ignore */
+function normalizeRetention(r: VersionRetention | number): VersionRetention {
+  if (typeof r === 'number') return { maxPerScene: r, maxAgeDays: 0 };
+  return r;
+}
+
+function pruneByRetention(dir: string, retention: VersionRetention): void {
+  const cutoff = retention.maxAgeDays > 0
+    ? new Date(Date.now() - retention.maxAgeDays * 24 * 60 * 60 * 1000)
+    : null;
+
+  // Age-based: read header createdAt from filename timestamp prefix.
+  // Filename format: <isoStamp>_<seq>-<hash8>.md
+  // isoStamp is the ISO date with `:` and `.` replaced by `-`, e.g.
+  //   2026-06-12T14-30-00-000Z   → 2026-06-12T14:30:00.000Z
+  if (cutoff) {
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
+    for (const f of files) {
+      const ts = parseTsFromFilename(f);
+      if (ts && ts < cutoff) {
+        try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore */ }
+      }
     }
   }
+
+  // Count-based: keep newest maxPerScene files (ascending sort → oldest first).
+  if (retention.maxPerScene > 0) {
+    const remaining = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort();
+    if (remaining.length > retention.maxPerScene) {
+      for (const f of remaining.slice(0, remaining.length - retention.maxPerScene)) {
+        try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore */ }
+      }
+    }
+  }
+}
+
+/**
+ * Parse the creation timestamp embedded in a version filename.
+ * Filename prefix format: YYYY-MM-DDTHH-MM-SS-mmmZ (colons/dots replaced by dashes).
+ * Returns null for filenames that don't match the expected prefix.
+ */
+function parseTsFromFilename(filename: string): Date | null {
+  // Match the leading ISO-like segment before the first `_` separator.
+  // e.g. "2026-06-12T14-30-00-000Z_00000001-abcd1234.md"
+  const m = filename.match(/^(\d{4}-\d{2}-\d{2}T[\d-]+Z)/);
+  if (!m) return null;
+  // Restore colons and the millisecond dot: T14-30-00-000Z → T14:30:00.000Z
+  const iso = m[1]
+    .replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/, 'T$1:$2:$3.$4Z');
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 /** List snapshots for a scene/chapter, newest first. Returns metadata + content. */
@@ -342,6 +388,41 @@ export function rollbackVersion(
   return { restoredVersion: target, preRollbackVersion };
 }
 
+/**
+ * Scan the entire vault for version directories and prune each by the given
+ * retention policy.  Designed for on-start garbage collection.
+ *
+ * Walk strategy: recursively descend directories, skip dotfiles, stop
+ * recursing when a directory named `versions` is found (its children are
+ * scene-id subdirectories, not more `versions` trees).
+ */
+export function pruneAllVersions(vaultRoot: string, retention: VersionRetention): void {
+  walkVersionsDirs(vaultRoot, (versionsDir) => {
+    try {
+      const entries = fs.readdirSync(versionsDir, { withFileTypes: true });
+      for (const e of entries) {
+        if (!e.isDirectory() || !SAFE_ID_RE.test(e.name)) continue;
+        pruneByRetention(path.join(versionsDir, e.name), retention);
+      }
+    } catch { /* skip unreadable dirs */ }
+  });
+}
+
+function walkVersionsDirs(dir: string, cb: (versionsDir: string) => void): void {
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith('.')) continue;
+      const full = path.join(dir, e.name);
+      if (e.name === 'versions') {
+        cb(full);
+      } else {
+        walkVersionsDirs(full, cb);
+      }
+    }
+  } catch { /* skip unreadable dirs */ }
+}
+
 // Exported for tests.
 export const _internal = {
   VERSION_FENCE,
@@ -349,4 +430,6 @@ export const _internal = {
   serializeSnapshotFile,
   parseSnapshotFile,
   sha256Hex,
+  parseTsFromFilename,
+  normalizeRetention,
 };

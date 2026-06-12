@@ -1591,6 +1591,11 @@ export interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+  /** SKY-1464: retention policy for per-scene versioned drafts (versions/ folders). */
+  versions?: {
+    maxPerScene: number;
+    maxAgeDays: number;
+  };
   onboardingComplete?: boolean;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
   onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
