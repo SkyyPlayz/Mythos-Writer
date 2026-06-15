@@ -8,7 +8,7 @@
 #
 # Required env vars (set by the workflow):
 #   PR_NUMBER, PR_TITLE, PR_URL, REPO, BRANCH, RUN_URL,
-#   CI_RESULT, BUILD_LINUX_RESULT, BUILD_MACOS_RESULT,
+#   CI_RESULT, BUILD_LINUX_RESULT, BUILD_MACOS_RESULT, LINT_AND_TEST_RESULT,
 #   PAPERCLIP_COMPANY_ID, PAPERCLIP_PROJECT_ID, PAPERCLIP_ASSIGNEE
 
 set -euo pipefail
@@ -19,6 +19,7 @@ set -euo pipefail
 : "${CI_RESULT:?missing CI_RESULT}"
 : "${BUILD_LINUX_RESULT:?missing BUILD_LINUX_RESULT}"
 : "${BUILD_MACOS_RESULT:?missing BUILD_MACOS_RESULT}"
+: "${LINT_AND_TEST_RESULT:?missing LINT_AND_TEST_RESULT}"
 : "${PAPERCLIP_COMPANY_ID:?missing PAPERCLIP_COMPANY_ID}"
 : "${PAPERCLIP_PROJECT_ID:?missing PAPERCLIP_PROJECT_ID}"
 : "${PAPERCLIP_ASSIGNEE:?missing PAPERCLIP_ASSIGNEE}"
@@ -28,13 +29,13 @@ if ! command -v paperclipai >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "$CI_RESULT" == "success" && "$BUILD_LINUX_RESULT" == "success" && "$BUILD_MACOS_RESULT" == "success" ]]; then
+if [[ "$CI_RESULT" == "success" && "$BUILD_LINUX_RESULT" == "success" && "$BUILD_MACOS_RESULT" == "success" && "$LINT_AND_TEST_RESULT" == "success" ]]; then
   CONCLUSION=success
 else
   CONCLUSION=failure
 fi
 
-echo "PR #${PR_NUMBER} conclusion=${CONCLUSION} (ci=${CI_RESULT}, build-linux=${BUILD_LINUX_RESULT}, build-macos=${BUILD_MACOS_RESULT})"
+echo "PR #${PR_NUMBER} conclusion=${CONCLUSION} (lint-and-test=${LINT_AND_TEST_RESULT}, ci=${CI_RESULT}, build-linux=${BUILD_LINUX_RESULT}, build-macos=${BUILD_MACOS_RESULT})"
 
 TITLE="PR #${PR_NUMBER} CI ${CONCLUSION} — evaluate merge gate"
 DESC_FILE=$(mktemp)
@@ -51,6 +52,7 @@ cat >"$DESC_FILE" <<EOF
 - Conclusion: **${CONCLUSION}**
 
 Per-job results:
+- \`lint-and-test\`: ${LINT_AND_TEST_RESULT}
 - \`ci\`: ${CI_RESULT}
 - \`build-linux\`: ${BUILD_LINUX_RESULT}
 - \`build-macos\`: ${BUILD_MACOS_RESULT}

@@ -18,9 +18,11 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  ci:
-    runs-on: self-hosted
-    timeout-minutes: 60
+  # SKY-1591: lint, type-check, and unit tests run on GitHub-hosted runners to free
+  # self-hosted capacity for build/fuzz/E2E jobs that require the local environment.
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +60,24 @@ jobs:
             electron-main/coverage/
             frontend/coverage/
           retention-days: 3
+
+  ci:
+    # SKY-1591: fuzz-only — lint/type/test moved to lint-and-test (ubuntu-latest).
+    # SKY-361: fuzz must stay on self-hosted for security/isolation.
+    runs-on: self-hosted
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       # SKY-361: coverage-guided fuzz run on every PR — 60 s per harness.
       # Fuzzes parseFrontmatter (Obsidian import path) and the DOCX/EPUB inline
@@ -101,91 +121,6 @@ jobs:
           name: fuzz-crashes
           path: electron-main/fuzz/crashes/
           retention-days: 30
-
-      - name: Build (electron-vite)
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run build:electron
-
-      - name: Install Xvfb (virtual display for Electron E2E)
-        run: |
-          if command -v Xvfb >/dev/null 2>&1; then
-            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
-          else
-            sudo apt-get update -q
-            sudo apt-get install -y xvfb
-          fi
-
-      - name: E2E — vault CRUD (headless)
-        run: xvfb-run --auto-servernum npm run test:e2e:crud
-
-      - name: E2E — Brainstorm Agent streaming and vault note creation (headless)
-        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm
-
-      - name: e2e visual-capture (MYT-531 §9.2/§9.3)
-        run: xvfb-run --auto-servernum npm run test:e2e:visual-capture
-
-      - name: Upload visual-capture artifacts
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-capture-artifacts
-          path: e2e-visual-artifacts/visual-capture/
-          retention-days: 1
-
-      - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
-        run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
-
-      - name: E2E — Two-vault layout Story + Notes CRUD (MYT-769)
-        run: xvfb-run --auto-servernum npm run test:e2e:two-vault
-
-      - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
-        run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
-
-      - name: E2E — Visual regression baseline comparison (MYT-771)
-        run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
-
-      - name: Upload visual-regression diffs on failure
-        if: failure()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-regression-diffs
-          path: e2e-visual-artifacts/visual-regression/
-          retention-days: 3
-
-      - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
-        run: xvfb-run --auto-servernum npm run test:e2e:a11y
-
-      - name: E2E — Entity system regression create/alias/browse (SKY-220)
-        run: xvfb-run --auto-servernum npm run test:e2e:entity
-
-      - name: E2E — Entity creation edge cases (SKY-619)
-        run: xvfb-run --auto-servernum npm run test:e2e:entity-creation
-
-      - name: E2E — Vault Graph View Liquid Neon styling (SKY-217)
-        run: xvfb-run --auto-servernum npm run test:e2e:vault-graph
-
-      - name: E2E — Entity @-mention autocomplete (SKY-616)
-        run: xvfb-run --auto-servernum npm run test:e2e:entity-mention
-
-      - name: E2E — Timeline subway view (SKY-514)
-        run: xvfb-run --auto-servernum npm run test:e2e:timeline
-
-      - name: E2E — Entries quick-capture create and promote-to-note (SKY-898)
-        run: xvfb-run --auto-servernum npm run test:e2e:entries
-
-      - name: E2E — Post-onboarding polish panel, scene hint, template CTA (SKY-1188)
-        run: xvfb-run --auto-servernum npm run test:e2e:post-onboarding
-
-      - name: Upload E2E report on failure
-        if: failure()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-report
-          path: e2e-report/
-          retention-days: 3
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
@@ -320,12 +255,12 @@ jobs:
           retention-days: 3
 
   report:
-    # Event-driven board ping. Runs after all three required jobs (ci /
-    # build-linux / build-macos) complete on a PR. The merge gate (GitHubManager
+    # Event-driven board ping. Runs after all four required jobs (lint-and-test /
+    # ci / build-linux / build-macos) complete on a PR. The merge gate (GitHubManager
     # routine f1bd9b01) keeps an hourly backstop sweep for missed pings.
     # PR-only — plain pushes to main get no ping. Self-hosted only (no
     # public/fork PR exposure on the public Obsidian repo per SKY-849).
-    needs: [ci, build-macos, build-linux]
+    needs: [lint-and-test, ci, build-macos, build-linux]
     runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
     permissions:
@@ -345,6 +280,7 @@ jobs:
           CI_RESULT: ${{ needs.ci.result }}
           BUILD_LINUX_RESULT: ${{ needs.build-linux.result }}
           BUILD_MACOS_RESULT: ${{ needs.build-macos.result }}
+          LINT_AND_TEST_RESULT: ${{ needs.lint-and-test.result }}
           PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
           PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
           PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
