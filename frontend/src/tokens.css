@@ -184,7 +184,7 @@
   --focus-ring: var(--neon-cyan);
 
   /* State colors (kept at today's values; ≥ 4.5:1 as text on dark surfaces) */
-  --state-danger: #f87171;
+  --state-danger: #f88585;  /* SKY-1597: was #f87171 — 4.41:1 on danger-bg; brightened to 4.5:1+ */
   --state-danger-hover: var(--neon-magenta);   /* destructive-hover, §2.2     */
   --state-success: #4ade80;
   --state-warning: #fbbf24;
@@ -298,7 +298,7 @@
   --entity-scene-bg: rgba(244, 63, 94, 0.18);
   --entity-scene-text: #fda4af;
   --entity-inbox-bg: rgba(148, 163, 184, 0.15);
-  --entity-inbox-text: #94a3b8;
+  --entity-inbox-text: #b4c2ce;  /* SKY-1597: was #94a3b8 (4.34:1); brightened to ≈5.5:1 */
 }
 
 /* =============================================================================
@@ -367,7 +367,7 @@
   --entity-scene-bg: rgba(244, 63, 94, 0.30);
   --entity-scene-text: #fecdd3;
   --entity-inbox-bg: rgba(148, 163, 184, 0.25);
-  --entity-inbox-text: #cbd5e1;
+  --entity-inbox-text: #dde6ee;  /* SKY-1597: was #cbd5e1 (6.7:1); brightened to ≈7.9:1 (AAA) */
 }
 
 /* OS-level increased-contrast request → clamp toward the high-contrast theme. */
