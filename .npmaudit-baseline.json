@@ -1,0 +1,73 @@
+{
+  "version": "1.0.0",
+  "description": "NPM Audit Baseline - Accepted dev-only vulnerabilities as of 2026-06-15",
+  "acceptedFindings": [
+    {
+      "advisory": "GHSA-gv7w-rqvm-qjhr",
+      "package": "esbuild",
+      "severity": "high",
+      "affectedRange": ">=0.17.0 <0.28.1",
+      "title": "esbuild: Missing binary integrity verification in Deno module enables remote code execution via NPM_CONFIG_REGISTRY",
+      "classification": "DEV-ONLY",
+      "reasoning": "esbuild is a build-time tool only. The vulnerability affects the binary download integrity check during `npm ci`, but the packaged Electron application contains only the built output (JavaScript/CSS), not esbuild itself. Zero runtime exposure for end users.",
+      "requirements": "Attacker must control npm registry OR set NPM_CONFIG_REGISTRY env var",
+      "acceptedAt": "2026-06-15",
+      "planToUpgrade": "Blocked by electron-vite support - vite 8.x uses rolldown instead of esbuild. Revisit when electron-vite releases v6.x+ with vite 8.x support."
+    },
+    {
+      "advisory": "GHSA-g7r4-m6w7-qqqr",
+      "package": "esbuild",
+      "severity": "low",
+      "affectedRange": ">=0.27.3 <0.28.1",
+      "title": "esbuild allows arbitrary file read when running the development server on Windows",
+      "classification": "DEV-ONLY",
+      "reasoning": "Only affects esbuild serve() API on Windows during `npm run dev`. The packaged Electron application does not include the dev server. Zero runtime exposure for end users. Risk limited to Windows developers in development environment.",
+      "requirements": "Developer on Windows running dev server + attacker crafts specific request",
+      "acceptedAt": "2026-06-15",
+      "planToUpgrade": "Same as GHSA-gv7w-rqvm-qjhr - blocked by electron-vite v6.x"
+    }
+  ],
+  "transitiveDependencies": {
+    "vite": {
+      "version": "6.4.2",
+      "vulnerable": true,
+      "vulnerableRange": "4.2.0-beta.0 - 8.0.3",
+      "rootCause": "esbuild >=0.17.0 <0.28.1",
+      "classification": "DEV-ONLY"
+    },
+    "electron-vite": {
+      "version": "5.0.0",
+      "vulnerable": true,
+      "vulnerableRange": ">=1.0.21",
+      "rootCause": "esbuild via vite",
+      "classification": "DEV-ONLY"
+    },
+    "@vitejs/plugin-react": {
+      "version": "4.7.0",
+      "vulnerable": true,
+      "vulnerableRange": "4.0.0-beta.0 - 5.1.4",
+      "rootCause": "esbuild via vite",
+      "classification": "DEV-ONLY"
+    },
+    "vitest": {
+      "version": "4.1.8",
+      "vulnerable": true,
+      "vulnerableRange": "1.0.0-beta.0 - 4.1.0-beta.6 || 4.1.8",
+      "rootCause": "esbuild via vite",
+      "classification": "DEV-ONLY"
+    }
+  },
+  "riskAssessment": {
+    "runtimeExposure": "NONE - All vulnerable packages are build/dev tools only",
+    "shippedCodeExposure": "NONE - Packaged Electron app contains only built output",
+    "userImpact": "NONE for packaged application",
+    "developerImpact": "LOW - Requires compromised npm registry or Windows dev environment",
+    "buildIntegrityRisk": "MEDIUM - Developers running npm ci could get poisoned build tools"
+  },
+  "nextSteps": [
+    "Monitor electron-vite releases for v6.x with vite 8.x support",
+    "When electron-vite v6.x is available, upgrade: vite->8.0.16+, electron-vite->6.0.0+, @vitejs/plugin-react->6.0.2+",
+    "Verify all three CI checks pass: `ci`, `build-linux`, `build-macos`",
+    "Update this baseline to reflect the upgrade"
+  ]
+}
