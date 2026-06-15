@@ -140,6 +140,12 @@ import {
   type OnboardingCompletePayload,
   type OnboardingCompleteResponse,
   type ProviderListModelsPayload,
+  type DraftsCreatePayload,
+  type DraftsListPayload,
+  type DraftsPreviewPayload,
+  type DraftsRestorePayload,
+  type DraftsLabelPayload,
+  type DraftsDeletePayload,
 } from './ipc.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
@@ -202,6 +208,11 @@ import {
   deleteStaleSceneMentionLinks,
   insertContinuityDriftLog,
   insertProposalTelemetry,
+  createDraftSnapshot,
+  listDraftSnapshots,
+  getDraftSnapshotContent,
+  updateDraftSnapshotLabel,
+  deleteDraftSnapshot,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -1291,6 +1302,42 @@ const handlers: IpcHandlers = {
     return { deleted };
   },
 
+  // ─── SQLite-backed versioned draft snapshots (SKY-1611) ───
+  [IPC_CHANNELS.DRAFTS_CREATE]: (payload: DraftsCreatePayload) => {
+    const snap = createDraftSnapshot(payload.sceneId, payload.content, payload.label);
+    return {
+      snapshot: { id: snap.id, sceneId: snap.scene_id, createdAt: snap.created_at, label: snap.label },
+    };
+  },
+
+  [IPC_CHANNELS.DRAFTS_LIST]: (payload: DraftsListPayload) => {
+    const rows = listDraftSnapshots(payload.sceneId);
+    return {
+      snapshots: rows.map((r) => ({ id: r.id, sceneId: r.scene_id, createdAt: r.created_at, label: r.label })),
+    };
+  },
+
+  [IPC_CHANNELS.DRAFTS_PREVIEW]: (payload: DraftsPreviewPayload) => {
+    const content = getDraftSnapshotContent(payload.snapshotId);
+    if (content === null) throw new Error('Snapshot not found');
+    return { content };
+  },
+
+  [IPC_CHANNELS.DRAFTS_RESTORE]: (payload: DraftsRestorePayload) => {
+    const preRestore = createDraftSnapshot(payload.sceneId, payload.currentContent, 'Pre-restore');
+    const content = getDraftSnapshotContent(payload.snapshotId);
+    if (content === null) throw new Error('Snapshot not found');
+    return { content, preRestoreSnapshotId: preRestore.id };
+  },
+
+  [IPC_CHANNELS.DRAFTS_LABEL]: (payload: DraftsLabelPayload) => {
+    updateDraftSnapshotLabel(payload.snapshotId, payload.label);
+  },
+
+  [IPC_CHANNELS.DRAFTS_DELETE]: (payload: DraftsDeletePayload) => {
+    deleteDraftSnapshot(payload.snapshotId);
+  },
+
   // ─── Versioned drafts (SKY-10 upgrade of MYT-198) ───
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => {
     ensureVaultDir();
@@ -2257,6 +2304,13 @@ const handlers: IpcHandlers = {
     });
 
     writeManifest(getManifestPath(), manifest);
+
+    // SKY-1611: Create a SQLite draft snapshot on manual save (not autosave)
+    if ((payload.intent ?? 'save') !== 'auto') {
+      try {
+        createDraftSnapshot(found.id, payload.prose);
+      } catch { /* non-fatal */ }
+    }
 
     // SKY-170: parse @mentions and sync scene_entity_links rows
     try {

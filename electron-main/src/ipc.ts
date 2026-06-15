@@ -401,6 +401,14 @@ export const IPC_CHANNELS = {
   // SKY-1483 v2: confirm/reject handlers with day-one telemetry logging
   BRAINSTORM_PROPOSALS_CONFIRM: 'brainstorm:proposals:confirm',
   BRAINSTORM_PROPOSALS_REJECT: 'brainstorm:proposals:reject',
+
+  // SKY-1611: SQLite-backed versioned draft snapshots
+  DRAFTS_CREATE: 'drafts:create',
+  DRAFTS_LIST: 'drafts:list',
+  DRAFTS_PREVIEW: 'drafts:preview',
+  DRAFTS_RESTORE: 'drafts:restore',
+  DRAFTS_LABEL: 'drafts:label',
+  DRAFTS_DELETE: 'drafts:delete',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -695,6 +703,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM]?: (payload: BrainstormProposalConfirmPayload) => { ok: true };
   [IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT]?: (payload: BrainstormProposalRejectPayload) => { ok: true };
   // BRAINSTORM_PROPOSAL_QUEUED is a push channel (webContents.send) — no handler entry needed
+
+  // SKY-1611: SQLite-backed versioned draft snapshots
+  [IPC_CHANNELS.DRAFTS_CREATE]: (payload: DraftsCreatePayload) => DraftsCreateResponse;
+  [IPC_CHANNELS.DRAFTS_LIST]: (payload: DraftsListPayload) => DraftsListResponse;
+  [IPC_CHANNELS.DRAFTS_PREVIEW]: (payload: DraftsPreviewPayload) => DraftsPreviewResponse;
+  [IPC_CHANNELS.DRAFTS_RESTORE]: (payload: DraftsRestorePayload) => DraftsRestoreResponse;
+  [IPC_CHANNELS.DRAFTS_LABEL]: (payload: DraftsLabelPayload) => void;
+  [IPC_CHANNELS.DRAFTS_DELETE]: (payload: DraftsDeletePayload) => void;
 }
 
 // ─── Payload / Response types ───
@@ -3434,4 +3450,59 @@ export interface BrainstormProposalRejectPayload {
   extractionConfidence: number;
   /** ms from card appearance to user action (measured by the renderer). */
   timeToDecideMs: number;
+}
+
+// ─── SQLite-backed versioned draft snapshots (SKY-1611) ───
+
+export interface DraftSnapshot {
+  id: string;
+  sceneId: string;
+  createdAt: number;
+  label: string | null;
+}
+
+export interface DraftsCreatePayload {
+  sceneId: string;
+  content: string;
+  label?: string;
+}
+
+export interface DraftsCreateResponse {
+  snapshot: DraftSnapshot;
+}
+
+export interface DraftsListPayload {
+  sceneId: string;
+}
+
+export interface DraftsListResponse {
+  snapshots: DraftSnapshot[];
+}
+
+export interface DraftsPreviewPayload {
+  snapshotId: string;
+}
+
+export interface DraftsPreviewResponse {
+  content: string;
+}
+
+export interface DraftsRestorePayload {
+  snapshotId: string;
+  sceneId: string;
+  currentContent: string;
+}
+
+export interface DraftsRestoreResponse {
+  content: string;
+  preRestoreSnapshotId: string;
+}
+
+export interface DraftsLabelPayload {
+  snapshotId: string;
+  label: string;
+}
+
+export interface DraftsDeletePayload {
+  snapshotId: string;
 }

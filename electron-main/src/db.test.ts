@@ -8,6 +8,11 @@ import crypto from 'crypto';
 import {
   openDb,
   closeDb,
+  createDraftSnapshot,
+  listDraftSnapshots,
+  getDraftSnapshotContent,
+  updateDraftSnapshotLabel,
+  deleteDraftSnapshot,
   upsertSuggestion,
   updateSuggestionStatus,
   updateSuggestionBudgetExceeded,
@@ -630,10 +635,10 @@ describe('world DB migration — entity tables', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('sets user_version to 21 on fresh vault', () => {
+  it('sets user_version to 22 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(21);
+    expect(row.user_version).toBe(22);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -675,12 +680,12 @@ describe('world DB migration — entity tables', () => {
     expect(row?.name).toBe('entity_fts');
   });
 
-  it('migration is idempotent — close/reopen keeps user_version at 21', () => {
+  it('migration is idempotent — close/reopen keeps user_version at 22', () => {
     openDb(tmpDir);
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(21);
+    expect(row.user_version).toBe(22);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -699,7 +704,7 @@ describe('world DB migration — entity tables', () => {
     expect(names).toContain('scene_text_hash');
   });
 
-  it('upgrading from v13 reaches v21 with all entity tables and writing_log', () => {
+  it('upgrading from v13 reaches v22 with all entity tables and writing_log', () => {
     const mythosDir = path.join(tmpDir, '.mythos');
     fs.mkdirSync(mythosDir, { recursive: true });
     const dbPath = path.join(mythosDir, 'state.db');
@@ -715,7 +720,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(21);
+    expect(row.user_version).toBe(22);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -895,5 +900,98 @@ describe('entity_fts', () => {
     upsertEntityFts('ent-1', 'Aria Voss', null, 'new notes about magic', null);
     expect(searchEntityFts('magic').map((r) => r.entity_id)).toContain('ent-1');
     expect(searchEntityFts('old').map((r) => r.entity_id)).not.toContain('ent-1');
+  });
+});
+
+// ─── Scene draft snapshots (SKY-1611) ───
+
+describe('scene_snapshots / SKY-1611', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-drafts-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates a snapshot and lists it (no content in list)', () => {
+    const snap = createDraftSnapshot('scene-1', 'hello world');
+    expect(snap.id).toBeTruthy();
+    expect(snap.scene_id).toBe('scene-1');
+    expect(snap.content).toBe('hello world');
+    expect(snap.label).toBeNull();
+    const list = listDraftSnapshots('scene-1');
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(snap.id);
+    expect((list[0] as { content?: string }).content).toBeUndefined();
+  });
+
+  it('creates snapshot with optional label', () => {
+    const snap = createDraftSnapshot('scene-2', 'content', 'My label');
+    expect(snap.label).toBe('My label');
+    expect(listDraftSnapshots('scene-2')[0].label).toBe('My label');
+  });
+
+  it('getDraftSnapshotContent returns content for known id', () => {
+    const snap = createDraftSnapshot('scene-3', 'scene content');
+    expect(getDraftSnapshotContent(snap.id)).toBe('scene content');
+  });
+
+  it('getDraftSnapshotContent returns null for unknown id', () => {
+    expect(getDraftSnapshotContent('not-a-real-id')).toBeNull();
+  });
+
+  it('updateDraftSnapshotLabel updates the label', () => {
+    const snap = createDraftSnapshot('scene-4', 'content');
+    updateDraftSnapshotLabel(snap.id, 'Updated Label');
+    expect(listDraftSnapshots('scene-4')[0].label).toBe('Updated Label');
+  });
+
+  it('deleteDraftSnapshot removes the row', () => {
+    const snap = createDraftSnapshot('scene-5', 'content');
+    deleteDraftSnapshot(snap.id);
+    expect(listDraftSnapshots('scene-5')).toHaveLength(0);
+    expect(getDraftSnapshotContent(snap.id)).toBeNull();
+  });
+
+  it('list returns newest-first order', () => {
+    createDraftSnapshot('scene-6', 'first');
+    createDraftSnapshot('scene-6', 'second');
+    createDraftSnapshot('scene-6', 'third');
+    const list = listDraftSnapshots('scene-6');
+    expect(list).toHaveLength(3);
+    expect(getDraftSnapshotContent(list[0].id)).toBe('third');
+    expect(getDraftSnapshotContent(list[2].id)).toBe('first');
+  });
+
+  it('FIFO eviction trims to 50 when 51st is inserted', () => {
+    for (let i = 0; i < 51; i++) {
+      createDraftSnapshot('scene-evict', `content-${i}`);
+    }
+    const list = listDraftSnapshots('scene-evict');
+    expect(list).toHaveLength(50);
+    // Newest 50 survived; oldest (content-0) was dropped
+    expect(getDraftSnapshotContent(list[0].id)).toBe('content-50');
+    const allContents = list.map((s) => getDraftSnapshotContent(s.id));
+    expect(allContents).not.toContain('content-0');
+  });
+
+  it('snapshots are scoped per scene — different sceneIds do not interfere', () => {
+    createDraftSnapshot('scene-A', 'content for A');
+    createDraftSnapshot('scene-B', 'content for B');
+    expect(listDraftSnapshots('scene-A')).toHaveLength(1);
+    expect(listDraftSnapshots('scene-B')).toHaveLength(1);
+    expect(getDraftSnapshotContent(listDraftSnapshots('scene-A')[0].id)).toBe('content for A');
+  });
+
+  it('migration is idempotent — reopening DB keeps user_version at 22', () => {
+    closeDb();
+    const db2 = openDb(tmpDir);
+    const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
+    expect(row.user_version).toBe(22);
   });
 });

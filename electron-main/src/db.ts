@@ -543,6 +543,20 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 21');
   }
+
+  if (currentVersion < 22) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scene_snapshots (
+        id         TEXT NOT NULL PRIMARY KEY,
+        scene_id   TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        label      TEXT,
+        content    TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_scene_snapshots_scene ON scene_snapshots (scene_id, created_at DESC);
+    `);
+    db.exec('PRAGMA user_version = 22');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -1335,4 +1349,65 @@ export function clearWikiLinkRejection(sceneId: string, entityId: string): void 
        WHERE scene_id = ? AND entity_id = ? AND status = 'rejected'`
     )
     .run(sceneId, entityId);
+}
+
+// ─── Scene draft snapshots (SKY-1611) ───
+
+export interface DbSceneSnapshot {
+  id: string;
+  scene_id: string;
+  created_at: number;
+  label: string | null;
+  content: string;
+}
+
+const DRAFT_SNAPSHOTS_MAX = 50;
+
+export function createDraftSnapshot(sceneId: string, content: string, label?: string): DbSceneSnapshot {
+  const db = getDb();
+  const id = randomUUID();
+  const created_at = Date.now();
+  const row: DbSceneSnapshot = { id, scene_id: sceneId, created_at, label: label ?? null, content };
+  db
+    .prepare(
+      `INSERT INTO scene_snapshots (id, scene_id, created_at, label, content)
+       VALUES (@id, @scene_id, @created_at, @label, @content)`
+    )
+    .run(row as unknown as Record<string, SQLInputValue>);
+  const countRow = db
+    .prepare('SELECT COUNT(*) as cnt FROM scene_snapshots WHERE scene_id = ?')
+    .get(sceneId) as { cnt: number };
+  if (countRow.cnt > DRAFT_SNAPSHOTS_MAX) {
+    db
+      .prepare(
+        `DELETE FROM scene_snapshots WHERE scene_id = ? AND rowid NOT IN (
+           SELECT rowid FROM scene_snapshots WHERE scene_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
+         )`
+      )
+      .run(sceneId, sceneId, DRAFT_SNAPSHOTS_MAX);
+  }
+  return row;
+}
+
+export function listDraftSnapshots(sceneId: string): Omit<DbSceneSnapshot, 'content'>[] {
+  return getDb()
+    .prepare(
+      'SELECT id, scene_id, created_at, label FROM scene_snapshots WHERE scene_id = ? ORDER BY created_at DESC, rowid DESC'
+    )
+    .all(sceneId) as unknown as Omit<DbSceneSnapshot, 'content'>[];
+}
+
+export function getDraftSnapshotContent(snapshotId: string): string | null {
+  const row = getDb()
+    .prepare('SELECT content FROM scene_snapshots WHERE id = ?')
+    .get(snapshotId) as { content: string } | undefined;
+  return row?.content ?? null;
+}
+
+export function updateDraftSnapshotLabel(snapshotId: string, label: string): void {
+  getDb().prepare('UPDATE scene_snapshots SET label = ? WHERE id = ?').run(label, snapshotId);
+}
+
+export function deleteDraftSnapshot(snapshotId: string): void {
+  getDb().prepare('DELETE FROM scene_snapshots WHERE id = ?').run(snapshotId);
 }

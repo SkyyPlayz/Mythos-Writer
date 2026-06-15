@@ -136,6 +136,20 @@ contextBridge.exposeInMainWorld('api', {
   snapshotDeleteAll: (sceneId?: string) =>
     ipcRenderer.invoke('snapshot:delete-all', { sceneId }),
 
+  // SKY-1611 — SQLite-backed versioned draft snapshots
+  draftsCreate: (sceneId: string, content: string, label?: string) =>
+    ipcRenderer.invoke('drafts:create', { sceneId, content, ...(label ? { label } : {}) }),
+  draftsList: (sceneId: string) =>
+    ipcRenderer.invoke('drafts:list', { sceneId }),
+  draftsPreview: (snapshotId: string) =>
+    ipcRenderer.invoke('drafts:preview', { snapshotId }),
+  draftsRestore: (snapshotId: string, sceneId: string, currentContent: string) =>
+    ipcRenderer.invoke('drafts:restore', { snapshotId, sceneId, currentContent }),
+  draftsLabel: (snapshotId: string, label: string) =>
+    ipcRenderer.invoke('drafts:label', { snapshotId, label }),
+  draftsDelete: (snapshotId: string) =>
+    ipcRenderer.invoke('drafts:delete', { snapshotId }),
+
   // SKY-10 — Per-scene versioned drafts (history pane + rollback)
   versionList: (sceneId: string) =>
     ipcRenderer.invoke('version:list', { sceneId }),
