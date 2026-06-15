@@ -238,7 +238,7 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
     async (cols: KanbanColumn[], path = customBoardPath) => {
       const content = serializeBoard(cols);
       try {
-        await (window as any).api.writeVault(path, content);
+        await window.api.writeVault(path, content);
       } catch (e) {
         console.error('Failed to save kanban board:', e);
       }
@@ -252,7 +252,7 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
     setPendingPath(boardPath);
     (async () => {
       try {
-        const result = await (window as any).api.readVault(boardPath);
+        const result = await window.api.readVault(boardPath);
         if (result?.content) {
           const parsed = parseBoard(result.content);
           setColumns(
@@ -361,7 +361,8 @@ export default function KanbanBoard({ boardPath, storyTitle, onBoardPathChange, 
   const loadEntriesPool = useCallback(async () => {
     setEntriesPoolLoading(true);
     try {
-      const { items } = await (window as any).api.listNotesVault('Entries');
+      const listRes = await window.api.listNotesVault('Entries');
+      const items = 'error' in listRes ? [] : listRes.items;
       const entries: EntryPoolItem[] = items
         .filter((item: { isDirectory: boolean; path: string }) => !item.isDirectory && item.path.endsWith('.md'))
         .map((item: { path: string }) => ({

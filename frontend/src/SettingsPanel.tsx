@@ -51,7 +51,7 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
   const loadFile = useCallback(async (key: PersonaKey) => {
     setFiles((prev) => ({ ...prev, [key]: { ...prev[key], loading: true, error: null } }));
     try {
-      const res = await (window.api as any).agentPersonaRead(agentName, key) as { content: string; isCustom: boolean };
+      const res = await window.api.agentPersonaRead(agentName, key) as { content: string; isCustom: boolean };
       setFiles((prev) => ({ ...prev, [key]: { content: res.content, isCustom: res.isCustom, loading: false, error: null } }));
     } catch (err) {
       setFiles((prev) => ({ ...prev, [key]: { ...prev[key], loading: false, error: (err as Error).message } }));
@@ -66,7 +66,7 @@ function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainst
   const handleReset = async (key: PersonaKey) => {
     setResetBusy(true);
     try {
-      await (window.api as any).agentPersonaReset(agentName, key);
+      await window.api.agentPersonaReset(agentName, key);
       await loadFile(key);
     } finally {
       setResetBusy(false);
@@ -809,7 +809,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         setLg({ ...LG_DEFAULTS, ...s.liquidNeon });
         const bg = s.liquidNeon.background;
         if (bg && bg !== 'default') {
-          (window.api as any).loadBgImage?.(bg)
+          window.api.loadBgImage?.(bg)
             .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
             .catch(() => {});
         }
@@ -905,7 +905,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   // SKY-207: load custom field definitions
   useEffect(() => {
-    (window.api as any).customFieldsList?.()
+    window.api.customFieldsList?.()
       .then((res: { fields: CustomFieldDef[] }) => {
         if (res?.fields) setCustomFields(res.fields);
       })
@@ -1080,7 +1080,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setCustomFieldsError(null);
     setCustomFieldsSavedOk(false);
     try {
-      const res = await (window.api as any).customFieldsSet?.(customFields) as { fields: CustomFieldDef[] };
+      const res = await window.api.customFieldsSet?.(customFields) as { fields: CustomFieldDef[] };
       if (res?.fields) {
         setCustomFields(res.fields);
         setCustomFieldsDirty(false);
@@ -1261,9 +1261,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     if (bgPickBusy) return;
     setBgPickBusy(true);
     try {
-      const res = await (window.api as any).pickBgImage?.();
+      const res = await window.api.pickBgImage?.();
       if (res?.filePath && !res.cancelled) {
-        const loadRes = await (window.api as any).loadBgImage?.(res.filePath);
+        const loadRes = await window.api.loadBgImage?.(res.filePath);
         const dataUrl: string | null = loadRes?.dataUrl ?? null;
         setBgPreviewUrl(dataUrl);
         setLg((prev) => {

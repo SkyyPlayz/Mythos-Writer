@@ -20,7 +20,7 @@ export default function TemplatePicker({ onApplied, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    (window.api as any).templateList?.()
+    window.api.templateList?.()
       .then((res: { templates: TemplateItem[] }) => setTemplates(res.templates ?? []))
       .catch(() => {});
   }, []);
@@ -46,7 +46,7 @@ export default function TemplatePicker({ onApplied, onClose }: Props) {
         setBusy(false);
         return;
       }
-      const res = await (window.api as any).templateScaffold(selected.id, folderRes.registrationToken);
+      const res = await window.api.templateScaffold(selected.id, folderRes.registrationToken);
       if (res && 'error' in res) throw new Error(res.error);
       onApplied();
     } catch (e) {

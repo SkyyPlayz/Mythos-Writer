@@ -46,7 +46,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestTe
 
   const loadProjects = useCallback(async () => {
     try {
-      const result = await (window as any).api?.projectList?.();
+      const result = await window.api?.projectList?.();
       if (result?.projects) setProjects(result.projects);
       if (typeof result?.activeNotesVaultRoot === 'string') {
         setActiveNotesVaultRoot(result.activeNotesVaultRoot);
@@ -104,7 +104,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestTe
       // SKY-320: pass the paired Notes Vault so main switches both halves
       // atomically. Falls back to the legacy single-arg behavior on entries
       // written before pairing.
-      const result = await (window as any).api?.projectSwitch?.(entry.vaultRoot, entry.notesVaultRoot);
+      const result = await window.api?.projectSwitch?.(entry.vaultRoot, entry.notesVaultRoot);
       if (result?.switched) {
         if (typeof result?.notesVaultRoot === 'string') {
           setActiveNotesVaultRoot(result.notesVaultRoot);
@@ -121,7 +121,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestTe
   const handleOpenOther = useCallback(async () => {
     setOpen(false);
     try {
-      const result = await (window as any).api?.openVaultFolder?.();
+      const result = await window.api?.openVaultFolder?.();
       if (!result?.cancelled && result?.vaultRoot) {
         onSwitched(result.vaultRoot);
       }
@@ -144,7 +144,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestTe
     }
     setCreating(true);
     try {
-      const result = await (window as any).api?.vaultCreateDefaultMythos?.({
+      const result = await window.api?.vaultCreateDefaultMythos?.({
         vaultName: trimmed || undefined,
         seedMode: 'default',
       });

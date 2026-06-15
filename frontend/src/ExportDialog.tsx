@@ -35,7 +35,7 @@ export default function ExportDialog({ scope, stories, onClose }: Props) {
   const doExport = async () => {
     setBusy(true);
     try {
-      const api = (window as any).api;
+      const api = window.api;
       let res: { path: string | null; cancelled: boolean };
       if (format === 'markdown') res = await api.exportMarkdown(scope);
       else if (format === 'plaintext') res = await api.exportPlaintext(scope);

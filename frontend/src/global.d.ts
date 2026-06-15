@@ -598,13 +598,17 @@ interface Window {
     onBudgetCapHit: (cb: (event: { agent: string; agentLabel: string; reason: 'hourly_token_cap' | 'daily_token_cap' }) => void) => () => void;
 
     // Search (MYT-251)
-    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<unknown>;
+    searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<{ results: Array<{ docId: string; vault: 'story' | 'notes'; kind: string; title: string; snippet: string; rank: number }> }>;
 
     // EPUB export (MYT-342)
-    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) => Promise<unknown>;
+    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // DOCX export (MYT-252)
-    exportDocx: (storyId: string) => Promise<unknown>;
+    exportDocx: (storyId?: string, scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
+
+    // Markdown / plaintext export
+    exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
+    exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Vault Graph View (MYT-249)
     vaultGraphData: () => Promise<unknown>;
@@ -640,8 +644,8 @@ interface Window {
     telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) => Promise<unknown>;
 
     // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
-    projectList: () => Promise<unknown>;
-    projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<unknown>;
+    projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
+    projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
     onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 
     // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
@@ -683,6 +687,11 @@ interface Window {
     templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-1304: delete user template (AC-6)
     templateDelete: (templateId: string) => Promise<{ ok: true } | { error: string }>;
+    // SKY-1403: export / import .mythostemplate files
+    templateExport: (id: string) => Promise<{ cancelled: boolean } | { error: string }>;
+    templateImport: () => Promise<{ cancelled: boolean; template?: { id: string; name: string } } | { error: string }>;
+    // SKY-1405: drag-drop import — passes filePath to bypass the open-file dialog
+    templateImportFromPath: (filePath: string) => Promise<{ cancelled: boolean; template?: { id: string; name: string } } | { error: string }>;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
     validatePath: (path: string) => Promise<{ valid?: boolean; exists: boolean; isEmpty: boolean; writable: boolean; error?: string }>;
     appQuit?: () => Promise<void>;
@@ -878,7 +887,25 @@ interface Window {
     }>;
     dismissSyncWarning: () => Promise<{ ok: true }>;
 
+    // SKY-207: Per-scene custom frontmatter fields (typed here to avoid renderer-side any-casts)
+    customFieldsList: () => Promise<{ fields: Array<{ id: string; name: string; type: 'text' | 'number' | 'select'; options?: string[] }> }>;
+    customFieldsSet: (fields: Array<{ id: string; name: string; type: 'text' | 'number' | 'select'; options?: string[] }>) => Promise<{ fields: Array<{ id: string; name: string; type: 'text' | 'number' | 'select'; options?: string[] }> }>;
+    scenePropsGet: (sceneId: string) => Promise<{ customFields: Record<string, unknown> }>;
+    scenePropsSet: (sceneId: string, customFields: Record<string, unknown>) => Promise<unknown>;
+
+    // Agent persona files (typed here to avoid renderer-side any-casts)
+    agentPersonaRead: (agentName: string, key: string) => Promise<{ content: string; isCustom: boolean }>;
+    agentPersonaReset: (agentName: string, key: string) => Promise<unknown>;
+
+    // Optional / feature-gated entry points (may not be registered in all builds)
+    newStory?: () => Promise<void>;
+    openVault?: () => Promise<void>;
+
   };
+
+  // Non-standard browser speech recognition (Chromium only)
+  SpeechRecognition?: new () => SpeechRecognition;
+  webkitSpeechRecognition?: new () => SpeechRecognition;
 
   /** Legacy IPC bridge — kept for backward compat, prefer window.api. */
   mythosIPC: {
