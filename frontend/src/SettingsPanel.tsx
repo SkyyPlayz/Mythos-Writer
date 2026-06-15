@@ -1449,7 +1449,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     {modelListStatus === 'loading' && (
                       <p className="settings-hint" data-testid="model-list-loading">Loading models…</p>
                     )}
-                    {modelListStatus === 'error' && modelListError && (
+                    {modelListStatus === 'error' && providerKind === 'ollama' && (
+                      <p className="settings-hint settings-hint-warn" data-testid="ollama-not-running-hint">
+                        Ollama is not running. Start it with <code>ollama serve</code>.
+                      </p>
+                    )}
+                    {modelListStatus === 'error' && providerKind !== 'ollama' && modelListError && (
                       <p className="settings-hint settings-hint-warn" data-testid="model-list-error">
                         {modelListError}
                       </p>
