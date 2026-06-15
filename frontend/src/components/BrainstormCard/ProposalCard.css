@@ -167,22 +167,27 @@
   background: var(--accent);
   border: none;
   border-radius: var(--radius-sm);
-  color: #000;
+  color: var(--text-on-accent);
   font-size: var(--text-sm, 14px);
   font-weight: 600;
   padding: 5px 14px;
   cursor: pointer;
-  transition: opacity var(--dur-press);
+  transition: background var(--dur-press);
+}
+
+.pc-btn-confirm {
+  flex: 1;
+  min-height: 36px;
 }
 
 .pc-btn-confirm:hover,
 .pc-btn-save:hover {
-  opacity: 0.88;
+  background: var(--accent-hover);
 }
 
 .pc-btn-confirm:active,
 .pc-btn-save:active {
-  opacity: 0.72;
+  background: var(--accent-dim);
   transform: scale(0.97);
 }
 
@@ -194,7 +199,7 @@
 
 .pc-btn-confirm:disabled,
 .pc-btn-save:disabled {
-  opacity: 0.38;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -207,15 +212,17 @@
   font-weight: 500;
   padding: 4px 12px;
   cursor: pointer;
-  transition: opacity var(--dur-press);
+  flex: 1;
+  min-height: 36px;
+  transition: background var(--dur-press);
 }
 
 .pc-btn-reject:hover {
-  opacity: 0.8;
+  background: color-mix(in srgb, var(--state-danger) 20%, transparent);
 }
 
 .pc-btn-reject:active {
-  opacity: 0.6;
+  background: color-mix(in srgb, var(--state-danger) 28%, transparent);
   transform: scale(0.97);
 }
 
@@ -225,7 +232,7 @@
 }
 
 .pc-btn-reject:disabled {
-  opacity: 0.38;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
