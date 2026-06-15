@@ -215,6 +215,11 @@ export const IPC_CHANNELS = {
   ARCHIVE_CONFIRM: 'archive:confirm',
   ARCHIVE_IGNORE_LIST: 'archive:ignore-list',
 
+  // Wiki-link suggestion pipeline (SKY-1613)
+  ARCHIVE_SCAN_LINKS: 'archive:scan-links',
+  ARCHIVE_ACCEPT_LINK: 'archive:accept-link',
+  ARCHIVE_REJECT_LINK: 'archive:reject-link',
+
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
@@ -554,6 +559,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
+  [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
+  [IPC_CHANNELS.ARCHIVE_ACCEPT_LINK]: (payload: ArchiveAcceptLinkPayload) => ArchiveAcceptLinkResponse;
+  [IPC_CHANNELS.ARCHIVE_REJECT_LINK]: (payload: ArchiveRejectLinkPayload) => ArchiveRejectLinkResponse;
   [IPC_CHANNELS.BG_PICK]: (payload: never) => Promise<BgPickResponse>;
   [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
@@ -2096,6 +2104,46 @@ export interface ArchiveStatusResponse {
   count: number;
   total: number;
   builtAt: string | null;
+}
+
+// ─── Wiki-link suggestion pipeline (SKY-1613) ───
+
+export interface WikiLinkSuggestion {
+  id: string;
+  sceneId: string;
+  position: number;
+  entityName: string;
+  entityId: string;
+  proposedLink: string;
+  confidence: number;
+  status: 'proposed' | 'accepted' | 'rejected';
+}
+
+export interface ArchiveScanLinksPayload {
+  sceneId: string;
+  text: string;
+}
+
+export interface ArchiveScanLinksResponse {
+  suggestions: WikiLinkSuggestion[];
+}
+
+export interface ArchiveAcceptLinkPayload {
+  suggestionId: string;
+}
+
+export interface ArchiveAcceptLinkResponse {
+  ok: boolean;
+}
+
+export interface ArchiveRejectLinkPayload {
+  suggestionId: string;
+  /** Current scene text — used to compute the suppression hash. */
+  sceneText: string;
+}
+
+export interface ArchiveRejectLinkResponse {
+  ok: boolean;
 }
 
 // ─── Chapter / Scene creation (Phase 2 — MYT-195) ───
