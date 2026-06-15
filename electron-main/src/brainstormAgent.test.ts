@@ -772,6 +772,7 @@ describe('DB migration v12 — NoteProposal columns survive on existing rows', (
       applied_at: null,
       applied_run_id: null,
       budget_exceeded: 0,
+      category: null,
     };
     upsertSuggestion(suggestion);
 
@@ -806,6 +807,7 @@ describe('DB migration v12 — NoteProposal columns survive on existing rows', (
       applied_at: null,
       applied_run_id: null,
       budget_exceeded: 0,
+      category: null,
       extraction_confidence: 0.85,
       source_turn_id: 'turn-abc',
       destination_path: 'characters/aria.md',

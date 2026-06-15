@@ -46,8 +46,8 @@ describe('buildEnrichmentSystemPrompt', () => {
     expect(prompt).toContain('[FACT:location|The Iron Gate|');
   });
 
-  it('uses "concept or worldbuilding element" label for note type', () => {
-    const prompt = buildEnrichmentSystemPrompt('Magic System', 'note');
+  it('uses "concept or worldbuilding element" label for inbox type', () => {
+    const prompt = buildEnrichmentSystemPrompt('Magic System', 'inbox');
     expect(prompt).toContain('concept or worldbuilding element');
   });
 

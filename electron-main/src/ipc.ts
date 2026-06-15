@@ -679,11 +679,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_IMPORT]: (payload: TemplateImportPayload | undefined) => Promise<TemplateImportResponse>;
   // SKY-1499/SKY-1501: provider model listing
   [IPC_CHANNELS.PROVIDER_LIST_MODELS]: (payload: ProviderListModelsPayload) => Promise<ProviderListModelsResult>;
-  // SKY-1483: Wave 3.4 extraction side-call
-  [IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS]: (payload: BrainstormExtractProposalsPayload) => Promise<BrainstormExtractProposalsResponse>;
-  [IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS]: (payload: never) => BrainstormGetSessionRejectionsResponse;
-  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM]: (payload: BrainstormProposalConfirmPayload) => { ok: true };
-  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT]: (payload: BrainstormProposalRejectPayload) => { ok: true };
+  // SKY-1483: Wave 3.4 extraction side-call — registered via registerBrainstormExtractionHandlers(), not setupIpcMain
+  [IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS]?: (payload: BrainstormExtractProposalsPayload) => Promise<BrainstormExtractProposalsResponse>;
+  [IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS]?: (payload: never) => BrainstormGetSessionRejectionsResponse;
+  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM]?: (payload: BrainstormProposalConfirmPayload) => { ok: true };
+  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT]?: (payload: BrainstormProposalRejectPayload) => { ok: true };
   // BRAINSTORM_PROPOSAL_QUEUED is a push channel (webContents.send) — no handler entry needed
 }
 

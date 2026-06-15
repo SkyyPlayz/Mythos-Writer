@@ -530,7 +530,6 @@ export function upsertSuggestion(s: DbSuggestion): void {
           @extraction_confidence, @source_turn_id, @destination_path, @frontmatter, @note_kind)`
     )
     .run({
-      category: null,
       extraction_confidence: null,
       source_turn_id: null,
       destination_path: null,

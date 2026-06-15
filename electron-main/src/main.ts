@@ -8,7 +8,8 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { autoUpdater } from 'electron-updater';
-// Anthropic SDK removed: all LLM calls now go through streamFromProvider (SKY-683).
+// Anthropic SDK used directly for extraction side-calls (non-streaming). All streaming calls use streamFromProvider.
+import Anthropic from '@anthropic-ai/sdk';
 import {
   setupIpcMain,
   IPC_CHANNELS,
@@ -3749,7 +3750,7 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     const { items } = listVaultFiles(root);
-    const FACT_TYPES = new Set(['character', 'location', 'item', 'note']);
+    const FACT_TYPES = new Set(['character', 'location', 'item', 'faction', 'scene_card', 'inbox']);
     const MAX_CANDIDATES = 100;
     const candidates: ContextCandidate[] = [];
     for (const item of items) {
@@ -3764,7 +3765,7 @@ const handlers: IpcHandlers = {
         const rawType = frontmatter.type as string | undefined;
         const type = rawType && FACT_TYPES.has(rawType)
           ? (rawType as ContextCandidate['type'])
-          : 'note';
+          : 'inbox';
         const name = (frontmatter.name as string | undefined) || item.name.replace(/\.md$/, '');
         candidates.push({ path: item.path, name, type, content: prose.trim() });
       } catch { /* skip unreadable or corrupt files */ }

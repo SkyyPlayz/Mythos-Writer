@@ -138,15 +138,15 @@ export function parseAliasHints(text: string): AliasHint[] {
 
 /**
  * Maps EntityType values (including 'concept' and 'other') to the brainstorm
- * FactType set, which only has character/location/item/note.
+ * FactType set, which only has character/location/item/faction/scene_card/inbox.
  * Used by the quick-enrich entry flow so that concept/other entries route to
- * the 'note' category in the Notes Vault.
+ * the 'inbox' category in the Notes Vault.
  */
 export function entityTypeToFactType(entityType: string): FactType {
   if (entityType === 'character' || entityType === 'location' || entityType === 'item') {
     return entityType;
   }
-  return 'note';
+  return 'inbox';
 }
 
 /**
@@ -156,7 +156,7 @@ export function entityTypeToFactType(entityType: string): FactType {
  */
 export function buildEnrichmentSystemPrompt(name: string, factType: FactType): string {
   const typeLabel =
-    factType === 'note' ? 'concept or worldbuilding element' : factType;
+    factType === 'inbox' ? 'concept or worldbuilding element' : factType;
   return [
     `You are a creative writing assistant helping an author develop their story world.`,
     `The author has just added a new ${typeLabel} named "${name}".`,
