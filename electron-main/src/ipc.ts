@@ -385,6 +385,8 @@ export const IPC_CHANNELS = {
   // SKY-1403: export / import .mythostemplate files
   TEMPLATE_EXPORT: 'template:export',
   TEMPLATE_IMPORT: 'template:import',
+  // SKY-1499/SKY-1501: list available models from a provider endpoint
+  PROVIDER_LIST_MODELS: 'provider:listModels',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -667,6 +669,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_EXPORT]: (payload: TemplateExportPayload) => Promise<TemplateExportResponse>;
   // SKY-1405: payload.filePath allows drag-drop to bypass the open dialog
   [IPC_CHANNELS.TEMPLATE_IMPORT]: (payload: TemplateImportPayload | undefined) => Promise<TemplateImportResponse>;
+  // SKY-1499/SKY-1501: provider model listing
+  [IPC_CHANNELS.PROVIDER_LIST_MODELS]: (payload: ProviderListModelsPayload) => Promise<ProviderListModelsResult>;
 }
 
 // ─── Payload / Response types ───
@@ -1546,6 +1550,19 @@ export interface ProviderSettings {
   /** Optional STT/TTS capability hints — mirrors ProviderConfig.capabilities in provider.ts */
   capabilities?: { transcribe?: boolean; speak?: boolean };
 }
+
+// ─── Provider model listing (SKY-1499/SKY-1501) ───
+export interface ProviderListModelsPayload {
+  kind: ProviderKind;
+  /** Base URL override; uses provider default when omitted. */
+  baseUrl?: string;
+  /** API key forwarded as Bearer token when present. Omit to use the persisted key. */
+  apiKey?: string;
+}
+
+export type ProviderListModelsResult =
+  | { ok: true; models: string[] }
+  | { ok: false; error: string };
 
 /** Liquid Neon advanced theme customization (MYT-613 / MYT-716). All values optional;
  *  absent fields fall back to LIQUID_NEON_DEFAULTS in theme.ts. */

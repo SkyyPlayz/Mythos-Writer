@@ -138,6 +138,7 @@ import {
   type ContinuityCheckPayload,
   type OnboardingCompletePayload,
   type OnboardingCompleteResponse,
+  type ProviderListModelsPayload,
 } from './ipc.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
@@ -308,7 +309,7 @@ import {
 } from './exportFormatters.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage, MAX_PAYLOAD_BYTES } from './streaming.js';
 import { buildLoreFixture, checkMultiChapterContinuity } from './continuityEngine.js';
-import { streamFromProvider, validateBaseUrl, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -1953,6 +1954,13 @@ const handlers: IpcHandlers = {
       const category = categorizeStreamError(e);
       return { ok: false, latencyMs: Date.now() - t0, error: streamErrorUserMessage(category) };
     }
+  },
+
+  // SKY-1501: list models from provider endpoint; uses stored API key to avoid masked-key leakage
+  [IPC_CHANNELS.PROVIDER_LIST_MODELS]: async (payload: ProviderListModelsPayload) => {
+    const stored = loadAppSettings();
+    const apiKey = stored.provider?.apiKey ?? stored.apiKey;
+    return listModels({ kind: payload.kind, apiKey, baseUrl: payload.baseUrl });
   },
 
   // MYT-343: per-agent config get/set
@@ -5128,26 +5136,28 @@ function buildGlobalProviderConfig(settings: AppSettings): ProviderConfig {
 /**
  * Build a ProviderConfig for a named agent slot.
  * Uses the per-agent provider override when set; falls back to the global provider.
- * API keys for per-agent providers are resolved from the SecretsStore via loadAppSettings().
+ * Key-inheritance: same kind + no agent API key → inherit the global API key (SKY-1511).
  */
 function getProviderConfigForAgent(agentName: 'brainstorm' | 'writingAssistant' | 'archive'): ProviderConfig {
   const settings = loadAppSettings();
   const agentSettings = settings.agents[agentName];
-  if (agentSettings.provider) {
-    return {
-      kind: agentSettings.provider.kind,
-      model: agentSettings.provider.model,
-      baseUrl: agentSettings.provider.baseUrl ?? undefined,
-      apiKey: agentSettings.provider.apiKey ?? undefined,
-    };
-  }
-  return buildGlobalProviderConfig(settings);
+  const global = buildGlobalProviderConfig(settings);
+  const agentProvider = agentSettings.provider
+    ? {
+        kind: agentSettings.provider.kind,
+        model: agentSettings.provider.model,
+        baseUrl: agentSettings.provider.baseUrl ?? undefined,
+        apiKey: agentSettings.provider.apiKey ?? undefined,
+      }
+    : undefined;
+  return providerConfigForAgent(global, agentSettings.model || undefined, agentProvider);
 }
 
 // ─── Agent payload validation limits (RISK-4 / SKY-701) ───
 const MAX_AGENT_HISTORY_TURNS = 50;
 const MAX_AGENT_PROMPT_LENGTH = 32_000;
 const VALID_AGENT_ROLES = new Set<string>(['user', 'assistant']);
+
 
 // ─── Brainstorm Agent streaming handler ───
 function registerBrainstormHandler() {

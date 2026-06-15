@@ -169,6 +169,9 @@ const PROVIDER_OPTIONS: { value: ProviderKind; label: string; needsKey: boolean;
   { value: 'custom', label: 'Custom endpoint', needsKey: true, needsUrl: true },
 ];
 
+// Providers that support model listing via provider:listModels (SKY-1501)
+const LISTABLE_PROVIDERS = new Set<ProviderKind>(['ollama', 'lmstudio', 'openai', 'custom']);
+
 const TELEMETRY_DATA_LIST = [
   'App version and platform (OS / Electron version)',
   'Session start and end timestamps',
@@ -752,6 +755,42 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   });
   // Security warning: non-localhost endpoint confirmation
   const [remoteWarning, setRemoteWarning] = useState<{ agent: AgentName | 'global' | null; url: string; onConfirm: () => void } | null>(null);
+  // Model listing state (SKY-1501)
+  type ModelListStatus = 'idle' | 'loading' | 'ok' | 'error';
+  const [modelList, setModelList] = useState<string[]>([]);
+  const [modelListStatus, setModelListStatus] = useState<ModelListStatus>('idle');
+  const [modelListError, setModelListError] = useState<string | null>(null);
+  const [useCustomInput, setUseCustomInput] = useState(false);
+
+  // SKY-1501: fetch available models from the selected provider endpoint.
+  // Defined before the settings useEffect that calls it to avoid TDZ errors.
+  const fetchModels = useCallback(async (kind: ProviderKind, baseUrl: string) => {
+    if (!LISTABLE_PROVIDERS.has(kind)) {
+      setModelList([]);
+      setModelListStatus('idle');
+      setModelListError(null);
+      return;
+    }
+    setModelListStatus('loading');
+    setModelListError(null);
+    try {
+      const result = await window.api.providerListModels({ kind, baseUrl: baseUrl || undefined });
+      if (result.ok) {
+        setModelList(result.models);
+        // Empty list is not an error — fall back to free-text silently (spec §5)
+        setModelListStatus(result.models.length > 0 ? 'ok' : 'idle');
+        setUseCustomInput(false);
+      } else {
+        setModelList([]);
+        setModelListStatus('error');
+        setModelListError(result.error);
+      }
+    } catch {
+      setModelList([]);
+      setModelListStatus('error');
+      setModelListError('Could not reach the endpoint — check the URL and try again.');
+    }
+  }, []);
 
   // Telemetry state (MYT-344 / MYT-779)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
@@ -779,6 +818,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         setProviderKind(s.provider.kind as ProviderKind);
         setProviderBaseUrl(s.provider.baseUrl ?? '');
         setProviderModel(s.provider.model ?? '');
+        // SKY-1501: auto-fetch models on settings open
+        fetchModels(s.provider.kind as ProviderKind, s.provider.baseUrl ?? '');
       }
       // Load per-agent provider overrides
       const loadAgentOverride = (agentCfg: { provider?: ProviderConfig }): AgentOverrideState => {
@@ -803,7 +844,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }).catch(() => {
       setLoading(false);
     });
-  }, []);
+  }, [fetchModels]);
 
   // Close popover on Escape
   useEffect(() => {
@@ -1308,10 +1349,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 value={providerKind}
                 aria-label="AI provider"
                 onChange={(e) => {
-                  setProviderKind(e.target.value as ProviderKind);
+                  const next = e.target.value as ProviderKind;
+                  setProviderKind(next);
                   setProviderApiKeyDirty(false);
                   setTestConnectionStatus('idle');
                   setSavedOk(false);
+                  // SKY-1501: reset model list and auto-fetch for new provider
+                  setModelList([]);
+                  setModelListStatus('idle');
+                  setModelListError(null);
+                  setUseCustomInput(false);
+                  fetchModels(next, providerBaseUrl);
                 }}
               >
                 {PROVIDER_OPTIONS.map((o) => (
@@ -1361,16 +1409,68 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   )}
                   <div className="settings-field">
                     <label className="settings-label" htmlFor="provider-model">Default model</label>
-                    <input
-                      id="provider-model"
-                      className="settings-input"
-                      type="text"
-                      value={providerModel}
-                      placeholder={providerKind === 'anthropic' ? 'claude-sonnet-4-6' : 'model name'}
-                      spellCheck={false}
-                      aria-label="Default model for this provider"
-                      onChange={(e) => { setProviderModel(e.target.value); setSavedOk(false); }}
-                    />
+                    {LISTABLE_PROVIDERS.has(providerKind) && modelListStatus === 'ok' && modelList.length > 0 && !useCustomInput ? (
+                      <select
+                        id="provider-model"
+                        className="settings-input settings-select"
+                        value={modelList.includes(providerModel) ? providerModel : ''}
+                        aria-label="Default model for this provider"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__custom__') {
+                            setUseCustomInput(true);
+                            setProviderModel('');
+                          } else {
+                            setProviderModel(val);
+                          }
+                          setSavedOk(false);
+                        }}
+                      >
+                        {!modelList.includes(providerModel) && providerModel && (
+                          <option value={providerModel}>{providerModel}</option>
+                        )}
+                        {modelList.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                        <option value="__custom__">Custom…</option>
+                      </select>
+                    ) : (
+                      <input
+                        id="provider-model"
+                        className="settings-input"
+                        type="text"
+                        value={providerModel}
+                        placeholder={providerKind === 'anthropic' ? 'claude-sonnet-4-6' : 'model name'}
+                        spellCheck={false}
+                        aria-label="Default model for this provider"
+                        onChange={(e) => { setProviderModel(e.target.value); setSavedOk(false); }}
+                      />
+                    )}
+                    {modelListStatus === 'loading' && (
+                      <p className="settings-hint" data-testid="model-list-loading">Loading models…</p>
+                    )}
+                    {modelListStatus === 'error' && providerKind === 'ollama' && (
+                      <p className="settings-hint settings-hint-warn" data-testid="ollama-not-running-hint">
+                        Ollama is not running. Start it with <code>ollama serve</code>.
+                      </p>
+                    )}
+                    {modelListStatus === 'error' && providerKind !== 'ollama' && modelListError && (
+                      <p className="settings-hint settings-hint-warn" data-testid="model-list-error">
+                        {modelListError}
+                      </p>
+                    )}
+                    {LISTABLE_PROVIDERS.has(providerKind) && (
+                      <button
+                        type="button"
+                        className="settings-btn settings-btn-secondary"
+                        disabled={modelListStatus === 'loading'}
+                        aria-label="Refresh model list"
+                        data-testid="refresh-models-btn"
+                        onClick={() => fetchModels(providerKind, providerBaseUrl)}
+                      >
+                        {modelListStatus === 'loading' ? 'Loading…' : 'Refresh models'}
+                      </button>
+                    )}
                   </div>
                   <div className="settings-field">
                     <div className="settings-input-row">

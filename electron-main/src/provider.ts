@@ -38,6 +38,174 @@ export const DEFAULT_BASE_URLS: Record<ProviderKind, string | undefined> = {
   custom: undefined,
 };
 
+// ─── SSRF guard (SKY-739) ─────────────────────────────────────────────────────
+
+/**
+ * Validates that a base URL is safe for outbound HTTP fetch calls (SSRF prevention).
+ * Returns null if the URL is acceptable, or an error string if it should be rejected.
+ *
+ * Allow: http/https schemes; loopback (127.0.0.0/8, ::1, localhost).
+ * Block: non-http(s) schemes; link-local/APIPA (169.254.x.x, fe80::); 0.0.0.0;
+ *        RFC-1918 private ranges (10.x, 172.16-31.x, 192.168.x).
+ */
+export function validateBaseUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'Invalid URL: cannot parse.';
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return `URL scheme "${parsed.protocol.replace(':', '')}" is not allowed — only http and https are permitted.`;
+  }
+
+  // WHATWG URL API includes brackets for IPv6 hosts (e.g. "[::1]") — strip them before matching.
+  const raw = parsed.hostname.toLowerCase();
+  const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
+
+  // IPv4-mapped IPv6: WHATWG URL normalizes e.g. ::ffff:192.168.1.1 → ::ffff:c0a8:101.
+  // Decode the embedded IPv4 and re-run all guards (SKY-752).
+  const v4mapped = host.match(/^::ffff:([0-9a-f]+):([0-9a-f]+)$/i);
+  if (v4mapped) {
+    const hi = parseInt(v4mapped[1], 16);
+    const lo = parseInt(v4mapped[2], 16);
+    const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return validateBaseUrl(`http://${ipv4}`);
+  }
+
+  // Allow loopback — Ollama (127.0.0.1:11434) and LM Studio (127.0.0.1:1234) live here.
+  if (host === 'localhost' || host === '::1') return null;
+  if (/^127\./.test(host)) return null;
+
+  // Block link-local / APIPA (AWS/GCP/Azure IMDS lives at 169.254.169.254).
+  if (/^169\.254\./.test(host) || /^fe80:/i.test(host)) {
+    return 'URL targets a link-local address — not allowed.';
+  }
+
+  // Block unspecified address.
+  if (host === '0.0.0.0') {
+    return 'URL targets 0.0.0.0 — not allowed.';
+  }
+
+  // Block RFC-1918 private ranges.
+  if (/^10\./.test(host)) {
+    return 'URL targets an RFC-1918 private address (10.0.0.0/8) — not allowed.';
+  }
+  if (/^192\.168\./.test(host)) {
+    return 'URL targets an RFC-1918 private address (192.168.0.0/16) — not allowed.';
+  }
+  const m172 = host.match(/^172\.(\d+)\./);
+  if (m172) {
+    const second = parseInt(m172[1], 10);
+    if (second >= 16 && second <= 31) {
+      return 'URL targets an RFC-1918 private address (172.16.0.0/12) — not allowed.';
+    }
+  }
+
+  return null;
+}
+
+// ─── Model listing (SKY-1499) ─────────────────────────────────────────────────
+
+export interface ListModelsPayload {
+  kind: ProviderKind;
+  /** Provider base URL. Falls back to DEFAULT_BASE_URLS[kind] when absent. */
+  baseUrl?: string;
+  /** API key — forwarded as Bearer token when present. */
+  apiKey?: string;
+}
+
+export type ListModelsResult =
+  | { ok: true; models: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Fetch the model list from a provider endpoint.
+ *
+ * Routing:
+ *   - ollama  → GET {origin}/api/tags   → models[].name
+ *   - others  → GET {baseUrl}/models    → data[].id
+ *
+ * The 5 s timeout is enforced via AbortController. validateBaseUrl is called
+ * before any fetch to block SSRF targets.
+ */
+export async function listModels(payload: ListModelsPayload): Promise<ListModelsResult> {
+  const { kind, baseUrl, apiKey } = payload;
+
+  let resolvedBase: string;
+  if (kind === 'ollama') {
+    // Native Ollama /api/tags lives at the origin, not under /v1.
+    // We extract just the origin so a /v1 suffix in the user's config doesn't break the path.
+    const configured = baseUrl ?? 'http://127.0.0.1:11434';
+    try {
+      resolvedBase = new URL(configured).origin;
+    } catch {
+      return { ok: false, error: 'Invalid Ollama base URL.' };
+    }
+  } else {
+    const fallback = DEFAULT_BASE_URLS[kind];
+    resolvedBase = (baseUrl ?? fallback ?? '').replace(/\/$/, '');
+    if (!resolvedBase) {
+      return { ok: false, error: `Provider kind "${kind}" requires a baseUrl.` };
+    }
+  }
+
+  const guardError = validateBaseUrl(resolvedBase);
+  if (guardError) {
+    return { ok: false, error: guardError };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+
+  try {
+    const url = kind === 'ollama'
+      ? `${resolvedBase}/api/tags`
+      : `${resolvedBase}/models`;
+
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const res = await fetch(url, { headers, signal: controller.signal });
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `Provider returned HTTP ${res.status}. Check the endpoint and try again.`,
+      };
+    }
+
+    const json: unknown = await res.json();
+
+    let models: string[];
+    if (kind === 'ollama') {
+      const resp = json as { models?: Array<{ name?: string }> };
+      models = (resp.models ?? []).map((m) => m.name ?? '').filter(Boolean);
+    } else {
+      const resp = json as { data?: Array<{ id?: string }> };
+      models = (resp.data ?? []).map((m) => m.id ?? '').filter(Boolean);
+    }
+
+    return { ok: true, models };
+  } catch (err) {
+    if ((err as { name?: string }).name === 'AbortError') {
+      return {
+        ok: false,
+        error: 'Request timed out after 5 s — check that the provider is running and reachable.',
+      };
+    }
+    const msg = ((err as Error).message ?? '').toLowerCase();
+    if (msg.includes('fetch failed') || msg.includes('econnrefused') || msg.includes('network')) {
+      return { ok: false, error: 'Network error — check that the provider is running and reachable.' };
+    }
+    return { ok: false, error: 'Failed to list models — check the provider configuration.' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ─── Token stream interface ───────────────────────────────────────────────────
 
 export interface StreamRequest {
@@ -289,71 +457,6 @@ export const ANTHROPIC_MODEL_ALLOWLIST = new Set([
   'claude-opus-4-7',
 ]);
 
-/**
- * Validates that a base URL is safe for outbound HTTP fetch calls (SSRF prevention, SKY-739).
- * Returns null if the URL is acceptable, or an error string if it should be rejected.
- *
- * Allow: http/https schemes; loopback (127.0.0.0/8, ::1, localhost).
- * Block: non-http(s) schemes; link-local/APIPA (169.254.x.x, fe80::); 0.0.0.0;
- *        RFC-1918 private ranges (10.x, 172.16-31.x, 192.168.x).
- */
-export function validateBaseUrl(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return 'Invalid URL: cannot parse.';
-  }
-
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return `URL scheme "${parsed.protocol.replace(':', '')}" is not allowed — only http and https are permitted.`;
-  }
-
-  // WHATWG URL API includes brackets for IPv6 hosts (e.g. "[::1]") — strip them before matching.
-  const raw = parsed.hostname.toLowerCase();
-  const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
-
-  // IPv4-mapped IPv6: WHATWG URL normalizes e.g. ::ffff:192.168.1.1 → ::ffff:c0a8:101.
-  // Decode the embedded IPv4 and re-run all guards (SKY-752).
-  const v4mapped = host.match(/^::ffff:([0-9a-f]+):([0-9a-f]+)$/i);
-  if (v4mapped) {
-    const hi = parseInt(v4mapped[1], 16);
-    const lo = parseInt(v4mapped[2], 16);
-    const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
-    return validateBaseUrl(`http://${ipv4}`);
-  }
-
-  // Allow loopback — Ollama (127.0.0.1:11434) and LM Studio (127.0.0.1:1234) live here.
-  if (host === 'localhost' || host === '::1') return null;
-  if (/^127\./.test(host)) return null;
-
-  // Block link-local / APIPA (AWS/GCP/Azure IMDS lives at 169.254.169.254).
-  if (/^169\.254\./.test(host) || /^fe80:/i.test(host)) {
-    return 'URL targets a link-local address — not allowed.';
-  }
-
-  // Block unspecified address.
-  if (host === '0.0.0.0') {
-    return 'URL targets 0.0.0.0 — not allowed.';
-  }
-
-  // Block RFC-1918 private ranges.
-  if (/^10\./.test(host)) {
-    return 'URL targets an RFC-1918 private address (10.0.0.0/8) — not allowed.';
-  }
-  if (/^192\.168\./.test(host)) {
-    return 'URL targets an RFC-1918 private address (192.168.0.0/16) — not allowed.';
-  }
-  const m172 = host.match(/^172\.(\d+)\./);
-  if (m172) {
-    const second = parseInt(m172[1], 10);
-    if (second >= 16 && second <= 31) {
-      return 'URL targets an RFC-1918 private address (172.16.0.0/12) — not allowed.';
-    }
-  }
-
-  return null;
-}
 
 /**
  * Validates a model name for a given provider kind.
@@ -443,3 +546,4 @@ export function providerConfigForAgent(
   if (!agentModelOverride) return globalProvider;
   return { ...globalProvider, model: agentModelOverride };
 }
+
