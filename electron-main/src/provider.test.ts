@@ -849,3 +849,189 @@ describe('listModels (§6)', () => {
     expect(url).toContain('127.0.0.1:11434');
   });
 });
+
+// ─── validateBaseUrl (§5) ─────────────────────────────────────────────────────
+
+describe('validateBaseUrl (§5)', () => {
+  it('returns null for localhost', () => {
+    expect(validateBaseUrl('http://localhost:11434')).toBeNull();
+  });
+
+  it('returns null for 127.0.0.1', () => {
+    expect(validateBaseUrl('http://127.0.0.1:1234')).toBeNull();
+  });
+
+  it('returns null for 127.x.x.x subnet', () => {
+    expect(validateBaseUrl('http://127.0.0.99')).toBeNull();
+  });
+
+  it('returns null for ::1 (IPv6 loopback)', () => {
+    expect(validateBaseUrl('http://[::1]:8080')).toBeNull();
+  });
+
+  it('blocks 10.x.x.x (RFC-1918 /8)', () => {
+    expect(validateBaseUrl('http://10.0.0.1')).toMatch(/RFC-1918/);
+  });
+
+  it('blocks 192.168.x.x (RFC-1918 /16)', () => {
+    expect(validateBaseUrl('http://192.168.1.1')).toMatch(/RFC-1918/);
+  });
+
+  it('blocks 172.16.x.x (RFC-1918 /12 lower bound)', () => {
+    expect(validateBaseUrl('http://172.16.0.1')).toMatch(/RFC-1918/);
+  });
+
+  it('blocks 172.31.x.x (RFC-1918 /12 upper bound)', () => {
+    expect(validateBaseUrl('http://172.31.255.255')).toMatch(/RFC-1918/);
+  });
+
+  it('allows 172.15.x.x (just outside RFC-1918 /12)', () => {
+    expect(validateBaseUrl('http://172.15.0.1')).toBeNull();
+  });
+
+  it('blocks 169.254.x.x (link-local / APIPA)', () => {
+    expect(validateBaseUrl('http://169.254.169.254')).toMatch(/link-local/);
+  });
+
+  it('blocks fe80:: (IPv6 link-local)', () => {
+    expect(validateBaseUrl('http://[fe80::1]')).toMatch(/link-local/);
+  });
+
+  it('blocks 0.0.0.0', () => {
+    expect(validateBaseUrl('http://0.0.0.0')).toMatch(/0\.0\.0\.0/);
+  });
+
+  it('blocks file:// scheme', () => {
+    expect(validateBaseUrl('file:///etc/passwd')).toMatch(/scheme/i);
+  });
+
+  it('blocks ftp:// scheme', () => {
+    expect(validateBaseUrl('ftp://example.com')).toMatch(/scheme/i);
+  });
+
+  it('returns error for unparseable URL', () => {
+    expect(validateBaseUrl('not-a-url')).toMatch(/invalid url/i);
+  });
+
+  it('blocks IPv4-mapped IPv6 for RFC-1918 address (::ffff:c0a8:101 → 192.168.1.1)', () => {
+    expect(validateBaseUrl('http://[::ffff:c0a8:101]')).toMatch(/RFC-1918/);
+  });
+
+  it('blocks IPv4-mapped IPv6 for 10.x (::ffff:0a00:0001 → 10.0.0.1)', () => {
+    expect(validateBaseUrl('http://[::ffff:0a00:0001]')).toMatch(/RFC-1918/);
+  });
+});
+
+// ─── listModels (§6) ─────────────────────────────────────────────────────────
+
+describe('listModels (§6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function makeJsonResponse(body: unknown, status = 200) {
+    return Promise.resolve({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(body),
+    } as unknown as Response);
+  }
+
+  it('returns { ok: false } when SSRF guard blocks the URL (no fetch called)', async () => {
+    const result = await listModels({ kind: 'custom', baseUrl: 'http://192.168.1.1/v1' });
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toMatch(/RFC-1918/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('returns { ok: false } with timeout copy on AbortError', async () => {
+    const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(abortErr);
+    const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toMatch(/timed out/i);
+  });
+
+  it('parses Ollama /api/tags response (models[].name)', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+      makeJsonResponse({ models: [{ name: 'llama3' }, { name: 'phi3' }] }),
+    );
+    const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
+    expect(result).toEqual({ ok: true, models: ['llama3', 'phi3'] });
+  });
+
+  it('fetches Ollama at {origin}/api/tags, stripping any /v1 suffix', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434/v1' });
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toBe('http://localhost:11434/api/tags');
+  });
+
+  it('parses OpenAI /models response (data[].id)', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+      makeJsonResponse({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] }),
+    );
+    const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1' });
+    expect(result).toEqual({ ok: true, models: ['gpt-4o', 'gpt-4o-mini'] });
+  });
+
+  it('parses LM Studio /models response (data[].id)', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+      makeJsonResponse({ data: [{ id: 'local-model' }] }),
+    );
+    const result = await listModels({ kind: 'lmstudio', baseUrl: 'http://localhost:1234/v1' });
+    expect(result).toEqual({ ok: true, models: ['local-model'] });
+  });
+
+  it('parses custom endpoint /models response (data[].id)', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+      makeJsonResponse({ data: [{ id: 'custom-model' }] }),
+    );
+    const result = await listModels({ kind: 'custom', baseUrl: 'http://localhost:9999/v1' });
+    expect(result).toEqual({ ok: true, models: ['custom-model'] });
+  });
+
+  it('returns { ok: false } on HTTP error response', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({}, 401));
+    const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1' });
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toMatch(/HTTP 401/);
+  });
+
+  it('returns { ok: false } on network error', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new TypeError('fetch failed'));
+    const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
+    expect(result.ok).toBe(false);
+  });
+
+  it('forwards Bearer token when apiKey is provided', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ data: [] }));
+    await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test' });
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect((opts.headers as Record<string, string>)['Authorization']).toBe('Bearer sk-test');
+  });
+
+  it('omits Authorization header when no apiKey', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect((opts.headers as Record<string, string>)['Authorization']).toBeUndefined();
+  });
+
+  it('returns { ok: false } when custom kind has no baseUrl', async () => {
+    const result = await listModels({ kind: 'custom' });
+    expect(result.ok).toBe(false);
+  });
+
+  it('uses DEFAULT_BASE_URLS.ollama when no baseUrl given', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    await listModels({ kind: 'ollama' });
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toContain('127.0.0.1:11434');
+  });
+});
