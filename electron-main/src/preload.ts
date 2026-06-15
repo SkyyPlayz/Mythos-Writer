@@ -180,6 +180,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('settings:set', { settings, ...(tokens ?? {}) }),
   // MYT-779: test connection to an AI provider.
   settingsTestConnection: (provider: unknown) => ipcRenderer.invoke('settings:testConnection', { provider }),
+  // SKY-1499/SKY-1501: list available models from a provider endpoint.
+  providerListModels: (payload: unknown) => ipcRenderer.invoke('provider:listModels', payload),
   // MYT-788: main-process file picker for local voice binary / model selection.
   voicePickBinary: (kind: 'stt-binary' | 'tts-binary' | 'tts-model') =>
     ipcRenderer.invoke('voice:pickBinary', { kind }),
