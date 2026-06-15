@@ -757,6 +757,74 @@
   50% { box-shadow: 0 0 0 4px transparent; }
 }
 
+.brainstorm-mic-btn--listening {
+  background: color-mix(in srgb, var(--state-danger) 15%, transparent);
+  border-color: var(--state-danger);
+  color: var(--state-danger);
+  animation: bs-mic-pulse 1.2s ease-in-out infinite;
+}
+.brainstorm-mic-btn--processing {
+  background: color-mix(in srgb, var(--neon-cyan) 12%, transparent);
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  cursor: not-allowed;
+  animation: none;
+}
+.brainstorm-mic-btn--error {
+  background: color-mix(in srgb, var(--state-danger) 12%, transparent);
+  border-color: var(--state-danger);
+  color: var(--text-header, #edecf6);
+}
+.brainstorm-mic-container {
+  position: relative;
+  flex-shrink: 0;
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.voice-countdown-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.voice-countdown-text {
+  display: none;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.voice-transcript-strip {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--dur-panel, 0.25s) var(--ease-out, ease-out);
+  border-top: 1px solid transparent;
+}
+.voice-transcript-strip--visible {
+  max-height: 80px;
+  border-top-color: var(--border-subtle);
+}
+.voice-transcript-strip-inner {
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-transcript-confirmed { color: var(--text-body); }
+.voice-transcript-interim { color: var(--text-muted); font-style: italic; }
+.voice-transcript-hint { color: var(--text-muted); font-style: italic; }
+@media (prefers-reduced-motion: reduce) {
+  .brainstorm-mic-btn-recording,
+  .brainstorm-mic-btn--listening { animation: none !important; }
+  .voice-transcript-strip { transition: none !important; }
+  .voice-countdown-ring { display: none; }
+  .voice-countdown-text { display: block; }
+}
+
 /* Cancel button */
 .brainstorm-cancel-btn {
   background: var(--color-danger-bg);

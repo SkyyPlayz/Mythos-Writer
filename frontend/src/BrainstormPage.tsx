@@ -239,13 +239,48 @@ interface Props {
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
 }
 
+type VoiceState = 'idle' | 'listening' | 'processing' | 'error';
+
+const MIC_ARIA_LABELS: Record<VoiceState, string> = {
+  idle: 'Start voice input',
+  listening: 'Stop voice input — listening',
+  processing: 'Processing speech…',
+  error: 'Voice error — click to retry',
+};
+
+const MIC_ICONS: Record<VoiceState, string> = {
+  idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
+};
+
+const COUNTDOWN_RING_R = 15;
+const COUNTDOWN_RING_C = 2 * Math.PI * COUNTDOWN_RING_R;
+
+function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
+  if (typeof window === 'undefined') return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = window as any;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
 export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
+  const [voiceState, _setVoiceStateRaw] = useState<VoiceState>('idle');
+  const voiceStateRef = useRef<VoiceState>('idle');
+  const [voiceTranscript, setVoiceTranscript] = useState({ confirmed: '', interim: '' });
+  const [silenceSecondsLeft, setSilenceSecondsLeft] = useState<number | null>(null);
+  const [alertText, setAlertText] = useState('');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const silenceStartRef = useRef<number>(0);
+  const confirmedTextRef = useRef('');
+  const setVoiceState = useCallback((s: VoiceState) => {
+    voiceStateRef.current = s;
+    _setVoiceStateRaw(s);
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
   const [pasteWarning, setPasteWarning] = useState(false);
   const [detailDrawerIdeaId, setDetailDrawerIdeaId] = useState<string | null>(null);
@@ -428,6 +463,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // Voice input active: the voice ESC handler (registered below after cancelVoice is
+      // defined) intercepts this event in capture phase before this handler runs, so
+      // we will never reach here while voice is active.
       // Drawer / confirm / preset editor handle ESC themselves
       if (detailDrawerIdeaId || showDeleteConfirm || showPresetEditor || pendingNewIdeaId) return;
       // Context menus: focus is inside a [role="menu"] element
@@ -449,11 +487,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
 
   useEffect(() => {
     const unsub = window.api.onSttResult?.((text: string) => {
-      setPrompt((prev) => (prev ? prev + ' ' + text : text));
-      setIsRecording(false);
+      setPrompt((prev) => (prev ? `${prev} ${text}` : text));
+      setVoiceState('idle');
     });
     return () => { unsub?.(); };
-  }, []);
+  }, [setVoiceState]);
 
   useEffect(() => {
     const unsub = window.api.onVaultNotesUpdated?.((data: { count: number }) => {
@@ -469,6 +507,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     return () => {
       cleanupStreamRef.current?.();
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+      const rec = recognitionRef.current;
+      if (rec) try { rec.abort(); } catch { /* non-fatal */ }
     };
   }, []);
 
@@ -759,15 +800,135 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     }
   };
 
-  const handleMic = useCallback(() => {
-    if (isRecording) {
-      window.api.sttStop?.();
-      setIsRecording(false);
-    } else {
-      window.api.sttStart?.();
-      setIsRecording(true);
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearInterval(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
-  }, [isRecording]);
+    setSilenceSecondsLeft(null);
+  }, []);
+
+  const commitTranscript = useCallback(() => {
+    const text = confirmedTextRef.current.trim();
+    if (text) {
+      setPrompt((prev) => (prev ? `${prev} ${text}` : text));
+      announce(`Transcribed: ${text}`);
+    }
+    confirmedTextRef.current = '';
+    setVoiceTranscript({ confirmed: '', interim: '' });
+  }, [announce]);
+
+  const stopRecognition = useCallback((mode: 'cancel' | 'commit') => {
+    clearSilenceTimer();
+    const rec = recognitionRef.current;
+    recognitionRef.current = null;
+    if (rec) try { rec.abort(); } catch { /* non-fatal */ }
+    if (mode === 'cancel') {
+      confirmedTextRef.current = '';
+      setVoiceTranscript({ confirmed: '', interim: '' });
+    }
+  }, [clearSilenceTimer]);
+
+  const startVoice = useCallback(() => {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) {
+      window.api.sttStart?.();
+      setVoiceState('listening');
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new Ctor() as any;
+    recognitionRef.current = rec;
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    rec.onstart = () => {
+      setVoiceState('listening');
+      silenceStartRef.current = Date.now();
+      silenceTimerRef.current = setInterval(() => {
+        const elapsed = (Date.now() - silenceStartRef.current) / 1000;
+        const left = Math.max(0, 3 - elapsed);
+        setSilenceSecondsLeft(left);
+        if (elapsed >= 3) {
+          clearSilenceTimer();
+          const r = recognitionRef.current;
+          recognitionRef.current = null;
+          if (r) try { r.abort(); } catch { /* non-fatal */ }
+          setVoiceState('processing');
+          setTimeout(() => {
+            commitTranscript();
+            setVoiceState('idle');
+          }, 400);
+        }
+      }, 100);
+    };
+
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      silenceStartRef.current = Date.now();
+      let confirmed = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const r = event.results[i];
+        const t = r[0]?.transcript ?? '';
+        if (r.isFinal) confirmed += t;
+        else interim += t;
+      }
+      if (confirmed) {
+        confirmedTextRef.current += confirmed;
+        setVoiceTranscript((prev) => ({ confirmed: prev.confirmed + confirmed, interim }));
+      } else {
+        setVoiceTranscript((prev) => ({ confirmed: prev.confirmed, interim }));
+      }
+    };
+
+    rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') return;
+      clearSilenceTimer();
+      recognitionRef.current = null;
+      setVoiceState('error');
+      setAlertText(`Voice error: ${event.error}`);
+    };
+
+    rec.onend = () => {
+      if (voiceStateRef.current === 'listening') {
+        clearSilenceTimer();
+        recognitionRef.current = null;
+        setVoiceState('idle');
+      }
+    };
+
+    try { rec.start(); } catch { setVoiceState('error'); }
+  }, [setVoiceState, clearSilenceTimer, commitTranscript]);
+
+  const cancelVoice = useCallback(() => {
+    stopRecognition('cancel');
+    window.api.sttStop?.();
+    setVoiceState('idle');
+    announce('Voice input cancelled.');
+    setAlertText('Voice input cancelled.');
+  }, [stopRecognition, setVoiceState, announce]);
+
+  const handleMicToggle = useCallback(() => {
+    const state = voiceStateRef.current;
+    if (state === 'idle') startVoice();
+    else if (state === 'listening') cancelVoice();
+    else if (state === 'error') setVoiceState('idle');
+    // processing: ignore
+  }, [startVoice, cancelVoice, setVoiceState]);
+
+  // Voice Escape: registered on window in capture phase so it fires before the
+  // page-close ESC handler (which uses document capture). When voice is active,
+  // cancel it and swallow the event so the page does not close.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && voiceStateRef.current !== 'idle') {
+        e.stopPropagation();
+        cancelVoice();
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [cancelVoice]);
 
   // SKY-20: load the Notes Vault folder catalog the first time we need it for
   // a routing prompt. Cached for the session so the picker is instant on the
@@ -1481,6 +1642,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {liveText}
       </span>
+      <span aria-live="assertive" aria-atomic="true" className="sr-only" data-testid="voice-alert">
+        {alertText}
+      </span>
 
       {toast && (
         <div className="brainstorm-toast" role="status" aria-live="polite">
@@ -1692,16 +1856,49 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             </div>
           )}
 
+          <div
+            className={`voice-transcript-strip${voiceState === 'listening' || voiceState === 'processing' ? ' voice-transcript-strip--visible' : ''}`}
+            aria-hidden="true"
+            data-testid="voice-transcript-strip"
+          >
+            <div className="voice-transcript-strip-inner">
+              {voiceTranscript.confirmed && <span className="voice-transcript-confirmed">{voiceTranscript.confirmed}</span>}
+              {voiceTranscript.interim && <span className="voice-transcript-interim"> {voiceTranscript.interim}</span>}
+              {voiceState === 'listening' && !voiceTranscript.confirmed && !voiceTranscript.interim && (
+                <span className="voice-transcript-hint">Listening…</span>
+              )}
+            </div>
+          </div>
           <div className="brainstorm-input-area">
-            <button
-              className={`brainstorm-mic-btn${isRecording ? ' brainstorm-mic-btn-recording' : ''}`}
-              onClick={handleMic}
-              aria-label={isRecording ? 'Stop recording' : 'Start recording'}
-              title={isRecording ? 'Stop recording' : 'Voice input'}
-              type="button"
-            >
-              🎤
-            </button>
+            <div className="brainstorm-mic-container">
+              <button
+                className={`brainstorm-mic-btn brainstorm-mic-btn--${voiceState}${voiceState === 'listening' ? ' brainstorm-mic-btn-recording' : ''}`}
+                onClick={handleMicToggle}
+                aria-label={MIC_ARIA_LABELS[voiceState]}
+                aria-pressed={voiceState !== 'idle'}
+                type="button"
+                disabled={voiceState === 'processing'}
+                title={MIC_ARIA_LABELS[voiceState]}
+                data-testid="brainstorm-mic-btn"
+              >
+                {MIC_ICONS[voiceState]}
+              </button>
+              {voiceState === 'listening' && silenceSecondsLeft !== null && (
+                <>
+                  <svg className="voice-countdown-ring" aria-hidden="true" width="38" height="38" viewBox="0 0 38 38">
+                    <circle
+                      cx="19" cy="19" r={COUNTDOWN_RING_R}
+                      fill="none" stroke="var(--state-danger)"
+                      strokeWidth="2.5"
+                      strokeDasharray={COUNTDOWN_RING_C}
+                      strokeDashoffset={COUNTDOWN_RING_C * (silenceSecondsLeft / 3)}
+                      style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+                    />
+                  </svg>
+                  <span className="voice-countdown-text" aria-hidden="true">Sending soon…</span>
+                </>
+              )}
+            </div>
             <div className="brainstorm-input-wrapper">
               <textarea
                 className="brainstorm-input"
