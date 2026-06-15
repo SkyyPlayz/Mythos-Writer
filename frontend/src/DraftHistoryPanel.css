@@ -1,0 +1,231 @@
+.draft-history-panel {
+  border-top: 1px solid var(--border-default);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.draft-history-toggle {
+  background: none;
+  border: none;
+  color: var(--text-default);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+}
+
+.draft-history-toggle::before {
+  content: '▶';
+  font-size: 0.7em;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.draft-history-toggle.open::before {
+  transform: rotate(90deg);
+}
+
+.draft-history-body {
+  margin-top: 6px;
+}
+
+.draft-history-empty {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 4px 0;
+}
+
+.draft-history-row {
+  border-left: 2px solid transparent;
+  padding: 3px 0 3px 6px;
+  margin-bottom: 2px;
+}
+
+.draft-history-row.is-previewed {
+  border-left-color: var(--color-accent);
+}
+
+.draft-history-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.draft-history-date {
+  background: none;
+  border: none;
+  color: var(--text-default);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-history-date:hover {
+  text-decoration: underline;
+}
+
+.draft-history-label {
+  font-weight: 600;
+}
+
+.draft-history-ts {
+  color: var(--text-muted);
+}
+
+.draft-history-row-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.draft-history-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.draft-history-btn:hover {
+  background: var(--bg-elevated, var(--background-secondary));
+}
+
+.draft-history-btn--restore:hover {
+  color: var(--color-accent);
+}
+
+.draft-history-btn--label:hover {
+  color: var(--text-default);
+}
+
+.draft-history-btn--delete:hover {
+  color: #e05050;
+}
+
+.draft-history-label-edit {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  align-items: center;
+}
+
+.draft-history-label-edit input {
+  flex: 1;
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  background: var(--bg-elevated, var(--background-secondary));
+  color: var(--text-default);
+  min-width: 0;
+}
+
+.draft-history-label-edit button {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-default);
+  flex-shrink: 0;
+}
+
+.draft-history-label-edit button:hover {
+  background: var(--bg-elevated, var(--background-secondary));
+}
+
+.draft-history-preview {
+  margin-top: 6px;
+  background: var(--bg-elevated, var(--background-secondary));
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 6px 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.draft-history-preview-text {
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  color: var(--text-default);
+  font-family: inherit;
+}
+
+.draft-history-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.draft-history-confirm {
+  background: var(--background-primary, #1e1e2e);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 20px 24px;
+  max-width: 380px;
+  width: 90%;
+  text-align: center;
+}
+
+.draft-history-confirm p {
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.draft-history-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.draft-history-confirm-actions button {
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-default);
+  font-size: 0.875rem;
+}
+
+.draft-history-confirm-actions button:hover {
+  background: var(--bg-elevated, var(--background-secondary));
+}
+
+.draft-history-confirm-actions button.primary {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.draft-history-confirm-actions button.primary:hover {
+  opacity: 0.9;
+}
+
+.draft-history-confirm-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

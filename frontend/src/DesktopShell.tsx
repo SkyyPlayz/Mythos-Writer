@@ -655,6 +655,25 @@ export default function DesktopShell() {
     } catch {
       // non-fatal
     }
+    // SKY-1611: also save a SQLite draft snapshot on manual save
+    try {
+      await window.api.draftsCreate?.(selectedScene.id, content);
+    } catch {
+      // non-fatal
+    }
+  }, [selectedScene]);
+
+  const handleDraftRestore = useCallback((content: string) => {
+    if (!selectedScene) return;
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
+    setRestoreKey(k => k + 1);
   }, [selectedScene]);
 
   const handleSceneRestore = useCallback((content: string) => {
@@ -1149,6 +1168,12 @@ export default function DesktopShell() {
         setGlobalSearchOpen(true);
         return;
       }
+      // Ctrl/Cmd+S — manual save (creates a draft snapshot) — SKY-1611
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        void handleManualSnapshot();
+        return;
+      }
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
@@ -1163,7 +1188,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot]);
 
   // ─── Panel resize drag handlers ───
 
@@ -2212,6 +2237,8 @@ export default function DesktopShell() {
                 setViewDepth('scene');
               }
             }}
+            currentSceneContent={selectedScene?.blocks.map(b => b.content).join('\n\n') ?? ''}
+            onDraftRestore={handleDraftRestore}
           />
         </div>
       )}

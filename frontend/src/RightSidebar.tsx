@@ -4,6 +4,7 @@ import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
 import ArchivePanel from './ArchivePanel';
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
+import DraftHistoryPanel from './DraftHistoryPanel';
 import { isGettingStartedVisible, type GettingStartedItemId, type GettingStartedProgress } from './gettingStartedReducer';
 import './RightSidebar.css';
 
@@ -27,6 +28,8 @@ interface Props {
   onGettingStartedAction?: (itemId: GettingStartedItemId) => void;
   onDismissGettingStarted?: () => void;
   onToggleGsCollapsed?: () => void;
+  currentSceneContent?: string;
+  onDraftRestore?: (content: string) => void;
 }
 
 const SIDEBAR_TABS: { id: Tab; label: string }[] = [
@@ -374,6 +377,8 @@ export default function RightSidebar({
   onGettingStartedAction,
   onDismissGettingStarted,
   onToggleGsCollapsed,
+  currentSceneContent,
+  onDraftRestore,
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -428,7 +433,16 @@ export default function RightSidebar({
       >
         {activeTab === 'notes' && <NotesPanel scene={selectedScene} />}
         {activeTab === 'properties' && (
-          <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
+          <>
+            <PropertiesPanel scene={selectedScene} chapter={selectedChapter} story={selectedStory} />
+            {selectedScene && currentSceneContent !== undefined && onDraftRestore && (
+              <DraftHistoryPanel
+                sceneId={selectedScene.id}
+                currentContent={currentSceneContent}
+                onRestore={onDraftRestore}
+              />
+            )}
+          </>
         )}
         {activeTab === 'ai' && (
           <AiPanel

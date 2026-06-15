@@ -26,6 +26,14 @@ interface SceneVersion {
   contentHash: string;
 }
 
+// SKY-1611 — SQLite-backed versioned draft snapshots
+interface DraftSnapshot {
+  id: string;
+  sceneId: string;
+  createdAt: number;
+  label: string | null;
+}
+
 // SKY-10 — Legacy migration plan
 interface MigrationPlanChange {
   kind: 'create-dir' | 'write-file' | 'snapshot-legacy' | 'unlink-file';
@@ -475,6 +483,14 @@ interface Window {
     snapshotRestore: (sceneId: string, snapshotId: string, scenePath: string) => Promise<{ restored: SceneSnapshot; preRestoreSnapshot: SceneSnapshot }>;
     snapshotDelete: (sceneId: string, snapshotId: string) => Promise<{ deleted: boolean }>;
     snapshotDeleteAll: (sceneId?: string) => Promise<{ deleted: number }>;
+
+    // SKY-1611 — SQLite-backed versioned draft snapshots
+    draftsCreate: (sceneId: string, content: string, label?: string) => Promise<{ snapshot: DraftSnapshot }>;
+    draftsList: (sceneId: string) => Promise<{ snapshots: DraftSnapshot[] }>;
+    draftsPreview: (snapshotId: string) => Promise<{ content: string }>;
+    draftsRestore: (snapshotId: string, sceneId: string, currentContent: string) => Promise<{ content: string; preRestoreSnapshotId: string }>;
+    draftsLabel: (snapshotId: string, label: string) => Promise<void>;
+    draftsDelete: (snapshotId: string) => Promise<void>;
 
     // SKY-10 — Per-scene versioned drafts
     versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
