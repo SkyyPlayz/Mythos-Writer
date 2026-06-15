@@ -604,6 +604,57 @@ describe('SettingsPanel', () => {
 
   // ── SKY-1512: model-list dropdown (AC-2, AC-3) ──
 
+  it('AC-2: shows per-agent model <select> when provider:listModels returns a non-empty list', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          provider: { kind: 'ollama', baseUrl: 'http://localhost:11434/v1', model: 'llama3' },
+        },
+      },
+    });
+    mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['llama3', 'mistral', 'phi3'] });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: /model for writingAssistant/i })).toBeInTheDocument()
+    );
+    const select = screen.getByRole('combobox', { name: /model for writingAssistant/i }) as HTMLSelectElement;
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    expect(optionValues).toContain('llama3');
+    expect(optionValues).toContain('mistral');
+    expect(optionValues).toContain('phi3');
+    expect(optionValues).toContain('__custom__');
+  });
+
+  it('AC-3: shows per-agent Ollama-specific hint when provider:listModels fails', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          provider: { kind: 'ollama', baseUrl: 'http://localhost:11434/v1', model: '' },
+        },
+      },
+    });
+    mockProviderListModels.mockResolvedValueOnce({
+      ok: false,
+      error: 'Ollama is not running. Start it with ollama serve.',
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('wa-model-list-error')).toHaveTextContent(/ollama is not running/i)
+    );
+    expect(screen.getByTestId('wa-model-list-error')).toHaveTextContent(/ollama serve/i);
+    expect(screen.getByRole('textbox', { name: /model for writingAssistant/i })).toBeInTheDocument();
+  });
+
   it('AC-2: shows model <select> when provider:listModels returns a non-empty list', async () => {
     mockSettingsGet.mockResolvedValueOnce({
       ...defaultSettings,

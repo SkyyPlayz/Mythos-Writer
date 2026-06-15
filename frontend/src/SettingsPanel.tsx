@@ -180,6 +180,31 @@ const TELEMETRY_DATA_LIST = [
 ];
 
 type TestConnectionStatus = 'idle' | 'testing' | 'ok' | 'error';
+type ModelListStatus = 'idle' | 'loading' | 'ok' | 'error';
+
+const OLLAMA_NOT_RUNNING_COPY = 'Ollama is not running. Start it with ollama serve.';
+const MODEL_LIST_TIMEOUT_COPY = 'Endpoint did not respond within 5 seconds — check the URL and try again.';
+const MODEL_LIST_NETWORK_COPY = 'Could not reach the endpoint — check the URL and try again.';
+
+function modelListErrorCopy(kind: ProviderKind, error?: string): string {
+  const normalized = (error ?? '').toLowerCase();
+  if (normalized.includes('5 second') || normalized.includes('timeout') || normalized.includes('timed out')) {
+    return MODEL_LIST_TIMEOUT_COPY;
+  }
+  if (kind === 'ollama' && (
+    !error ||
+    normalized.includes('ollama') ||
+    normalized.includes('network') ||
+    normalized.includes('econnrefused') ||
+    normalized.includes('fetch')
+  )) {
+    return OLLAMA_NOT_RUNNING_COPY;
+  }
+  if (normalized.includes('network') || normalized.includes('econn') || normalized.includes('fetch')) {
+    return MODEL_LIST_NETWORK_COPY;
+  }
+  return error || MODEL_LIST_NETWORK_COPY;
+}
 
 const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
   { value: 'dark', label: 'Liquid Neon' },
@@ -467,6 +492,50 @@ function AgentProviderSection({
   const activeKind = override.enabled ? override.kind : globalProviderKind;
   const activeDef = PROVIDER_OPTIONS.find((p) => p.value === activeKind)!;
   const overrideDef = PROVIDER_OPTIONS.find((p) => p.value === override.kind)!;
+  const [modelList, setModelList] = useState<string[]>([]);
+  const [modelListStatus, setModelListStatus] = useState<ModelListStatus>('idle');
+  const [modelListError, setModelListError] = useState<string | null>(null);
+  const [useCustomInput, setUseCustomInput] = useState(false);
+
+  const fetchModels = useCallback(async (kind: ProviderKind, baseUrl: string) => {
+    if (!LISTABLE_PROVIDERS.has(kind)) {
+      setModelList([]);
+      setModelListStatus('idle');
+      setModelListError(null);
+      setUseCustomInput(false);
+      return;
+    }
+    setModelListStatus('loading');
+    setModelListError(null);
+    try {
+      const result = await window.api.providerListModels({ kind, baseUrl: baseUrl || undefined });
+      if (result.ok) {
+        setModelList(result.models);
+        setModelListStatus(result.models.length > 0 ? 'ok' : 'idle');
+        setModelListError(null);
+        setUseCustomInput(false);
+      } else {
+        setModelList([]);
+        setModelListStatus('error');
+        setModelListError(modelListErrorCopy(kind, result.error));
+      }
+    } catch {
+      setModelList([]);
+      setModelListStatus('error');
+      setModelListError(modelListErrorCopy(kind));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!override.enabled) {
+      setModelList([]);
+      setModelListStatus('idle');
+      setModelListError(null);
+      setUseCustomInput(false);
+      return;
+    }
+    void fetchModels(override.kind, override.baseUrl);
+  }, [override.enabled, override.kind, override.baseUrl, fetchModels]);
 
   return (
     <>
@@ -569,6 +638,30 @@ function AgentProviderSection({
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+            ) : LISTABLE_PROVIDERS.has(override.kind) && modelListStatus === 'ok' && modelList.length > 0 && !useCustomInput ? (
+              <select
+                id={`${idPrefix}-model`}
+                className="settings-input settings-select settings-input-sm"
+                value={modelList.includes(override.model) ? override.model : ''}
+                aria-label={`Model for ${agentName}`}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '__custom__') {
+                    setUseCustomInput(true);
+                    onChange('model', '');
+                  } else {
+                    onChange('model', value);
+                  }
+                }}
+              >
+                {!modelList.includes(override.model) && override.model && (
+                  <option value={override.model}>{override.model}</option>
+                )}
+                {modelList.map((model) => (
+                  <option key={model} value={model}>{model}</option>
+                ))}
+                <option value="__custom__">Custom…</option>
+              </select>
             ) : (
               <input
                 id={`${idPrefix}-model`}
@@ -580,6 +673,25 @@ function AgentProviderSection({
                 maxLength={128}
                 onChange={(e) => onChange('model', e.target.value)}
               />
+            )}
+            {LISTABLE_PROVIDERS.has(override.kind) && modelListStatus === 'loading' && (
+              <p className="settings-hint" data-testid={`${idPrefix}-model-list-loading`}>Loading models…</p>
+            )}
+            {LISTABLE_PROVIDERS.has(override.kind) && modelListStatus === 'error' && modelListError && (
+              <p className="settings-hint settings-hint-warn" data-testid={`${idPrefix}-model-list-error`}>
+                {modelListError}
+              </p>
+            )}
+            {LISTABLE_PROVIDERS.has(override.kind) && (
+              <button
+                type="button"
+                className="settings-btn settings-btn-secondary"
+                disabled={modelListStatus === 'loading'}
+                aria-label={`Refresh models for ${agentName}`}
+                onClick={() => fetchModels(override.kind, override.baseUrl)}
+              >
+                {modelListStatus === 'loading' ? 'Loading…' : 'Refresh models'}
+              </button>
             )}
           </div>
 
@@ -756,7 +868,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   // Security warning: non-localhost endpoint confirmation
   const [remoteWarning, setRemoteWarning] = useState<{ agent: AgentName | 'global' | null; url: string; onConfirm: () => void } | null>(null);
   // Model listing state (SKY-1501)
-  type ModelListStatus = 'idle' | 'loading' | 'ok' | 'error';
   const [modelList, setModelList] = useState<string[]>([]);
   const [modelListStatus, setModelListStatus] = useState<ModelListStatus>('idle');
   const [modelListError, setModelListError] = useState<string | null>(null);
@@ -783,12 +894,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       } else {
         setModelList([]);
         setModelListStatus('error');
-        setModelListError(result.error);
+        setModelListError(modelListErrorCopy(kind, result.error));
       }
     } catch {
       setModelList([]);
       setModelListStatus('error');
-      setModelListError('Could not reach the endpoint — check the URL and try again.');
+      setModelListError(modelListErrorCopy(kind));
     }
   }, []);
 
@@ -1449,13 +1560,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     {modelListStatus === 'loading' && (
                       <p className="settings-hint" data-testid="model-list-loading">Loading models…</p>
                     )}
-                    {modelListStatus === 'error' && providerKind === 'ollama' && (
-                      <p className="settings-hint settings-hint-warn" data-testid="ollama-not-running-hint">
-                        Ollama is not running. Start it with <code>ollama serve</code>.
-                      </p>
-                    )}
-                    {modelListStatus === 'error' && providerKind !== 'ollama' && modelListError && (
-                      <p className="settings-hint settings-hint-warn" data-testid="model-list-error">
+                    {modelListStatus === 'error' && modelListError && (
+                      <p className="settings-hint settings-hint-warn" data-testid={providerKind === 'ollama' ? 'ollama-not-running-hint' : 'model-list-error'}>
                         {modelListError}
                       </p>
                     )}
