@@ -499,7 +499,8 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
 
   it('AC-V-07: onVoiceSpeakDone event resets button back to Hear', async () => {
     let fireDone!: (evt: { speakId: string }) => void;
-    mockOnVoiceSpeakDone.mockImplementationOnce((cb: (evt: { speakId: string }) => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockOnVoiceSpeakDone as any).mockImplementationOnce((cb: (evt: { speakId: string }) => void) => {
       fireDone = cb;
       return () => {};
     });
