@@ -474,17 +474,22 @@ function runMigrations(db: DatabaseSync): void {
   }
 
   if (currentVersion < 19) {
-    db.exec(`
-      ALTER TABLE suggestions ADD COLUMN extraction_confidence REAL;
-      ALTER TABLE suggestions ADD COLUMN source_turn_id TEXT;
-      ALTER TABLE suggestions ADD COLUMN destination_path TEXT;
-      ALTER TABLE suggestions ADD COLUMN frontmatter TEXT;
-      ALTER TABLE suggestions ADD COLUMN note_kind TEXT;
-    `);
+    const hasSuggestions19 = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions'"
+    ).get();
+    if (hasSuggestions19) {
+      db.exec(`
+        ALTER TABLE suggestions ADD COLUMN extraction_confidence REAL;
+        ALTER TABLE suggestions ADD COLUMN source_turn_id TEXT;
+        ALTER TABLE suggestions ADD COLUMN destination_path TEXT;
+        ALTER TABLE suggestions ADD COLUMN frontmatter TEXT;
+        ALTER TABLE suggestions ADD COLUMN note_kind TEXT;
+      `);
+    }
     db.exec('PRAGMA user_version = 19');
   }
 
-  if (currentVersion < 13) {
+  if (currentVersion < 20) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS proposal_telemetry (
         id                   TEXT PRIMARY KEY,
@@ -496,7 +501,7 @@ function runMigrations(db: DatabaseSync): void {
         created_at           TEXT NOT NULL
       );
     `);
-    db.exec('PRAGMA user_version = 13');
+    db.exec('PRAGMA user_version = 20');
   }
 }
 
