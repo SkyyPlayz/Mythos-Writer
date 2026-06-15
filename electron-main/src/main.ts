@@ -138,6 +138,7 @@ import {
   type ContinuityCheckPayload,
   type OnboardingCompletePayload,
   type OnboardingCompleteResponse,
+  type ProviderListModelsPayload,
 } from './ipc.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
@@ -308,7 +309,7 @@ import {
 } from './exportFormatters.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage, MAX_PAYLOAD_BYTES } from './streaming.js';
 import { buildLoreFixture, checkMultiChapterContinuity } from './continuityEngine.js';
-import { streamFromProvider, validateBaseUrl, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, listModels, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -1953,6 +1954,13 @@ const handlers: IpcHandlers = {
       const category = categorizeStreamError(e);
       return { ok: false, latencyMs: Date.now() - t0, error: streamErrorUserMessage(category) };
     }
+  },
+
+  // SKY-1501: list models from provider endpoint; uses stored API key to avoid masked-key leakage
+  [IPC_CHANNELS.PROVIDER_LIST_MODELS]: async (payload: ProviderListModelsPayload) => {
+    const stored = loadAppSettings();
+    const apiKey = stored.provider?.apiKey ?? stored.apiKey;
+    return listModels({ kind: payload.kind, apiKey, baseUrl: payload.baseUrl });
   },
 
   // MYT-343: per-agent config get/set
