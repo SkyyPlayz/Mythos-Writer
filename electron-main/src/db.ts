@@ -550,6 +550,20 @@ export function updateSuggestionBudgetExceeded(id: string, exceeded: boolean): v
     .run({ id, exceeded: exceeded ? 1 : 0 });
 }
 
+/** Bulk-reject all pending NoteProposal suggestions (SKY-1484 brainstorm:dismissAll).
+ *  Only touches rows with `note_kind IS NOT NULL` (i.e. Wave 3.4 proposals) and
+ *  `status = 'proposed'` to leave confirmed/rejected rows untouched.
+ *  Returns the number of rows updated. */
+export function rejectAllPendingProposals(): number {
+  const result = getDb()
+    .prepare(
+      `UPDATE suggestions SET status = 'rejected'
+        WHERE status = 'proposed' AND note_kind IS NOT NULL`,
+    )
+    .run();
+  return result.changes;
+}
+
 export function updateSuggestionStatus(
   id: string,
   status: SuggestionStatus,

@@ -395,6 +395,8 @@ export const IPC_CHANNELS = {
   // SKY-1483 v2: confirm/reject handlers with day-one telemetry logging
   BRAINSTORM_PROPOSALS_CONFIRM: 'brainstorm:proposals:confirm',
   BRAINSTORM_PROPOSALS_REJECT: 'brainstorm:proposals:reject',
+  // SKY-1484: dismiss-all pending proposals in one shot
+  BRAINSTORM_DISMISS_ALL: 'brainstorm:dismissAll',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -684,6 +686,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS]?: (payload: never) => BrainstormGetSessionRejectionsResponse;
   [IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM]?: (payload: BrainstormProposalConfirmPayload) => { ok: true };
   [IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT]?: (payload: BrainstormProposalRejectPayload) => { ok: true };
+  // SKY-1484: dismiss all pending proposals
+  [IPC_CHANNELS.BRAINSTORM_DISMISS_ALL]?: (payload: never) => BrainstormDismissAllResponse;
   // BRAINSTORM_PROPOSAL_QUEUED is a push channel (webContents.send) — no handler entry needed
 }
 
@@ -2718,6 +2722,14 @@ export interface BrainstormWriteNotePayload {
   category: BrainstormFactType;
   name: string;
   content: string;
+  /** SKY-1484: when present, write via the proposal-path instead of the legacy
+   *  category/name/content path. `destinationPath` on the proposal is the
+   *  vault-relative path to write to (already resolved by the routing layer). */
+  proposal?: NoteProposal;
+  /** SKY-1484: active universe name for faction routing cascade (optional). */
+  activeUniverse?: string;
+  /** SKY-1484: active story name for scene_card routing cascade (optional). */
+  activeStory?: string;
 }
 
 export type BrainstormWriteNoteResponse =
@@ -2736,7 +2748,26 @@ export type BrainstormWriteNoteResponse =
       stagedPath: string;
       category: BrainstormFactType;
       name: string;
+    }
+  | {
+      /** SKY-1484: proposal-path write succeeded. */
+      status: 'proposal_written';
+      path: string;
+    }
+  | {
+      /** SKY-1484: active universe/story could not be determined from the
+       *  vault and the renderer did not provide one. The options array
+       *  lists vault-relative folder candidates the renderer can present
+       *  for the user to pick from. */
+      status: 'disambiguation_needed';
+      options: string[];
     };
+
+/** SKY-1484: response for brainstorm:dismissAll */
+export interface BrainstormDismissAllResponse {
+  /** Number of pending proposals that were rejected. */
+  rejectedCount: number;
+}
 
 export interface BrainstormResolveRoutingPayload {
   /** Path returned by WRITE_NOTE when status was needs_routing. */

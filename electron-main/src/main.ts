@@ -202,6 +202,7 @@ import {
   deleteStaleSceneMentionLinks,
   insertContinuityDriftLog,
   insertProposalTelemetry,
+  rejectAllPendingProposals,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -335,6 +336,10 @@ import {
   listNotesVaultFolders,
   BLANK_MODE_STAGING_DIR,
   selectContext,
+  resolveActiveDir,
+  buildFrontmatter,
+  assertNotInStoryVault,
+  STORY_VAULT_GUARD_ERROR,
   type ContextCandidate,
 } from './brainstormRouting.js';
 import {
@@ -3664,13 +3669,76 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: import('./ipc.js').BrainstormWriteNotePayload) => {
     ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const now = new Date().toISOString();
+
+    // SKY-1484: proposal-path write (NoteProposal confirmed by user).
+    if (payload.proposal) {
+      const proposal = payload.proposal;
+      const safeName = proposal.title.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
+      const fileName = `${safeName}.md`;
+
+      // Resolve the destination directory for kinds that need active universe/story.
+      let relDir: string;
+      if (proposal.destinationPath) {
+        // Use the path supplied by the routing layer (already resolved).
+        relDir = path.posix.dirname(proposal.destinationPath);
+      } else if (proposal.kind === 'faction') {
+        const resolved = resolveActiveDir('Universes', 'Factions', root, payload.activeUniverse);
+        if (resolved.kind === 'disambiguation_needed') {
+          return { status: 'disambiguation_needed' as const, options: resolved.options };
+        }
+        relDir = resolved.relativeDir;
+      } else if (proposal.kind === 'scene_card') {
+        const resolved = resolveActiveDir('Stories', '', root, payload.activeStory);
+        if (resolved.kind === 'disambiguation_needed') {
+          return { status: 'disambiguation_needed' as const, options: resolved.options };
+        }
+        relDir = resolved.relativeDir;
+      } else if (proposal.kind === 'inbox') {
+        relDir = 'Inbox';
+      } else {
+        // character/location/item: use defaultLayoutDirFor as the fallback.
+        const userData = app.getPath('userData');
+        const layoutMode = loadVaultSettings().layoutMode ?? 'default';
+        const { notesRouting } = loadBrainstormSettings(userData);
+        const resolution = resolveDestination(proposal.kind, layoutMode, notesRouting);
+        if (resolution.kind === 'needs_user_choice') {
+          return {
+            status: 'needs_routing' as const,
+            stagedPath: '',
+            category: proposal.kind,
+            name: proposal.title,
+          };
+        }
+        relDir = resolution.relativeDir;
+      }
+
+      const relPath = joinNotesPath(relDir, fileName);
+      const absPath = path.join(root, relPath);
+
+      // Story Vault guard — reject if the resolved path escapes into the Story Vault.
+      assertNotInStoryVault(absPath, getVaultRoot());
+
+      safeVaultIpcJoin(root, relPath, true);
+      const fm = buildFrontmatter(proposal, now);
+      const fileContent = serializeFrontmatter(fm, proposal.body);
+      writeVaultFileAtomic(root, relPath, fileContent);
+
+      try {
+        updateSuggestionStatus(proposal.id, 'applied', now);
+      } catch { /* non-fatal if row was not seeded yet */ }
+
+      return { status: 'proposal_written' as const, path: relPath };
+    }
+
+    // Legacy path: category + name + content.
     const userData = app.getPath('userData');
     const layoutMode = loadVaultSettings().layoutMode ?? 'default';
     const { notesRouting } = loadBrainstormSettings(userData);
     const resolution = resolveDestination(payload.category, layoutMode, notesRouting);
 
     const suggestionId = crypto.randomUUID();
-    const now = new Date().toISOString();
     const safeName = payload.name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
     const fileName = `${safeName}.md`;
     const body = renderBrainstormNote({
@@ -3681,7 +3749,6 @@ const handlers: IpcHandlers = {
       now,
     });
 
-    const root = getNotesVaultRoot();
     if (resolution.kind === 'resolved') {
       const relPath = joinNotesPath(resolution.relativeDir, fileName);
       safeVaultIpcJoin(root, relPath, true);
@@ -5328,6 +5395,20 @@ Rules:
         } catch { /* non-fatal */ }
 
         return { ok: true };
+      },
+    ),
+  );
+
+  // brainstorm:dismissAll — bulk-reject every pending proposal in the DB.
+  // Used by the "Dismiss All" button in the proposal inbox.
+  ipcMain.handle(
+    IPC_CHANNELS.BRAINSTORM_DISMISS_ALL,
+    wrapIpcHandler(
+      IPC_CHANNELS.BRAINSTORM_DISMISS_ALL,
+      (event) => {
+        if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        const rejectedCount = rejectAllPendingProposals();
+        return { rejectedCount };
       },
     ),
   );

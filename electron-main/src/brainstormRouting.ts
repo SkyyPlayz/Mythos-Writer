@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import type { FactType } from './brainstormAgent.js';
+import type { FactType, NoteProposal } from './brainstormAgent.js';
 import {
   NOTES_VAULT_EXAMPLE_UNIVERSE,
   type VaultLayoutMode,
@@ -315,5 +315,116 @@ function walkDir(
     const childRel = relSoFar ? `${relSoFar}/${entry.name}` : entry.name;
     out.push({ path: childRel, label: childRel });
     walkDir(rootAbs, childRel, depth + 1, maxDepth, out);
+  }
+}
+
+// ─── Active universe/story resolution (SKY-1484) ─────────────────────────────
+
+export type ActiveDirResolution =
+  | { kind: 'resolved'; relativeDir: string }
+  | { kind: 'disambiguation_needed'; options: string[] };
+
+/**
+ * Resolve the active subfolder within a Notes Vault parent directory using a
+ * three-level cascade (PRD §5):
+ *
+ *   1. `activeItem` supplied by the renderer (app-state selection) → use directly.
+ *   2. Exactly one visible subfolder under `parentFolder` → auto-resolve to it.
+ *   3. Zero or multiple subfolders → return `disambiguation_needed` with the options.
+ *
+ * `subFolder` is appended after the resolved item (e.g. `'Factions'` for faction
+ * routing). Pass `''` when the active item itself is the leaf (e.g. scene_card
+ * under `Stories/`).
+ */
+export function resolveActiveDir(
+  parentFolder: string,
+  subFolder: string,
+  notesVaultRoot: string,
+  activeItem?: string,
+): ActiveDirResolution {
+  const buildDir = (item: string): string =>
+    subFolder ? `${parentFolder}/${item}/${subFolder}` : `${parentFolder}/${item}`;
+
+  if (activeItem) {
+    return { kind: 'resolved', relativeDir: buildDir(activeItem) };
+  }
+
+  const parentAbs = path.join(notesVaultRoot, parentFolder);
+  let subDirs: string[] = [];
+  if (fs.existsSync(parentAbs)) {
+    try {
+      subDirs = fs
+        .readdirSync(parentAbs, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .map((e) => e.name)
+        .sort();
+    } catch {
+      subDirs = [];
+    }
+  }
+
+  if (subDirs.length === 1) {
+    return { kind: 'resolved', relativeDir: buildDir(subDirs[0]) };
+  }
+
+  return { kind: 'disambiguation_needed', options: subDirs.map(buildDir) };
+}
+
+// ─── Frontmatter builder (SKY-1484) ──────────────────────────────────────────
+
+/**
+ * Build the YAML frontmatter record for a NoteProposal.
+ *
+ * Universal fields (all kinds): `created_by`, `created_at`, `source_turn_id`.
+ * Per-kind required fields (PRD §6):
+ *   character  — name, aliases (empty array)
+ *   location   — name
+ *   item       — name
+ *   faction    — name, faction_type (blank if unknown)
+ *   scene_card — title, act (blank if unknown)
+ *   inbox      — (no extra required fields beyond universal)
+ *
+ * `now` is the caller-supplied ISO 8601 timestamp so tests stay deterministic.
+ * Empty optional fields are omitted by the caller (the per-kind shape above
+ * only includes required fields).
+ */
+export function buildFrontmatter(proposal: NoteProposal, now: string): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    created_by: 'brainstorm_agent',
+    created_at: now,
+    source_turn_id: proposal.sourceConversationTurnId,
+  };
+
+  switch (proposal.kind) {
+    case 'character':
+      return { ...base, name: proposal.title, aliases: [] };
+    case 'location':
+      return { ...base, name: proposal.title };
+    case 'item':
+      return { ...base, name: proposal.title };
+    case 'faction':
+      return { ...base, name: proposal.title, faction_type: '' };
+    case 'scene_card':
+      return { ...base, title: proposal.title, act: '' };
+    case 'inbox':
+      return { ...base };
+  }
+}
+
+// ─── Story Vault guard (SKY-1484) ────────────────────────────────────────────
+
+export const STORY_VAULT_GUARD_ERROR = 'STORY_VAULT_GUARD_ERROR';
+
+/**
+ * Throws `STORY_VAULT_GUARD_ERROR` if `absoluteDestPath` is inside or equal to
+ * `storyVaultRoot`. Path-separator aware to prevent prefix collisions between
+ * `/vault` and `/vault-extra`.
+ */
+export function assertNotInStoryVault(absoluteDestPath: string, storyVaultRoot: string): void {
+  const guardRoot = storyVaultRoot.endsWith(path.sep)
+    ? storyVaultRoot
+    : storyVaultRoot + path.sep;
+  if (absoluteDestPath === storyVaultRoot || absoluteDestPath.startsWith(guardRoot)) {
+    throw new Error(STORY_VAULT_GUARD_ERROR);
   }
 }
