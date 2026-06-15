@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
@@ -383,7 +383,7 @@ describe('BlockEditor empty-scene entry', () => {
     });
   });
 
-  it('uses the post-onboarding prompt when provided', () => {
+  it('uses the post-onboarding prompt when provided', async () => {
     render(
       <BlockEditor
         scene={makeBlankScene()}
@@ -394,5 +394,6 @@ describe('BlockEditor empty-scene entry', () => {
     );
 
     expect(screen.getByText(/start with a sentence/i)).toBeInTheDocument();
+    await act(async () => {});
   });
 });

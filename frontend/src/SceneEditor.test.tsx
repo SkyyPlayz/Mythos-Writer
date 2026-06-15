@@ -285,12 +285,13 @@ describe('SceneEditor save status indicator', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/Saved/);
   });
 
-  it('save status indicator has aria-live="polite" wrapper', () => {
+  it('save status indicator has aria-live="polite" wrapper', async () => {
     render(<SceneEditor sceneId="scene-1" scenePath="story/ch1/scene1.md" />);
     const saved = screen.getByRole('status');
     const wrapper = saved.parentElement!;
     expect(wrapper).toHaveAttribute('aria-live', 'polite');
     expect(wrapper).toHaveAttribute('aria-atomic', 'true');
+    await act(async () => {});
   });
 
   it('stays Unsaved if user types during an in-flight save', async () => {
