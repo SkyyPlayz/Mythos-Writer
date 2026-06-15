@@ -343,6 +343,11 @@ import {
   buildEnrichmentSystemPrompt,
   runExtractionSideCall,
 } from './brainstormAgent.js';
+import {
+  dismissPendingBrainstormProposals,
+  resolveProposalDestination,
+  writeNoteProposal,
+} from './brainstormNoteWriter.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
@@ -3664,13 +3669,44 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: import('./ipc.js').BrainstormWriteNotePayload) => {
     ensureNotesVaultDir();
+    const now = new Date().toISOString();
+    const root = getNotesVaultRoot();
+
+    if (payload.proposal) {
+      const resolved = payload.proposal.destinationPath
+        ? { status: 'resolved' as const, destinationPath: payload.proposal.destinationPath, suggestedDestination: undefined }
+        : resolveProposalDestination({
+            kind: payload.proposal.kind,
+            title: payload.proposal.title,
+            notesVaultRoot: root,
+            activeUniverse: payload.activeUniverse,
+            activeStory: payload.activeStory,
+          });
+      if (resolved.status === 'disambiguation_needed') return resolved;
+
+      const proposal = { ...payload.proposal, destinationPath: resolved.destinationPath };
+      const result = writeNoteProposal({
+        proposal,
+        notesVaultRoot: root,
+        storyVaultRoot: getVaultRoot(),
+        now,
+        suggestedDestination: resolved.suggestedDestination,
+      });
+      try { updateSuggestionStatus(proposal.id, 'accepted', now); } catch { /* non-fatal if row does not exist */ }
+      return {
+        status: 'written' as const,
+        path: result.path,
+        suggestionId: proposal.id,
+        reason: 'proposal' as const,
+      };
+    }
+
     const userData = app.getPath('userData');
     const layoutMode = loadVaultSettings().layoutMode ?? 'default';
     const { notesRouting } = loadBrainstormSettings(userData);
     const resolution = resolveDestination(payload.category, layoutMode, notesRouting);
 
     const suggestionId = crypto.randomUUID();
-    const now = new Date().toISOString();
     const safeName = payload.name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
     const fileName = `${safeName}.md`;
     const body = renderBrainstormNote({
@@ -3681,7 +3717,6 @@ const handlers: IpcHandlers = {
       now,
     });
 
-    const root = getNotesVaultRoot();
     if (resolution.kind === 'resolved') {
       const relPath = joinNotesPath(resolution.relativeDir, fileName);
       safeVaultIpcJoin(root, relPath, true);
@@ -5265,6 +5300,17 @@ Rules:
       (event) => {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
         return { rejectedNames: Array.from(sessionRejectionLog) };
+      },
+    ),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.BRAINSTORM_DISMISS_ALL,
+    wrapIpcHandler(
+      IPC_CHANNELS.BRAINSTORM_DISMISS_ALL,
+      (event) => {
+        if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        return dismissPendingBrainstormProposals(new Date().toISOString());
       },
     ),
   );

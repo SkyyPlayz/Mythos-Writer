@@ -392,6 +392,7 @@ export const IPC_CHANNELS = {
   BRAINSTORM_EXTRACT_PROPOSALS: 'brainstorm:extractProposals',
   BRAINSTORM_PROPOSAL_QUEUED: 'brainstorm:proposalQueued',
   BRAINSTORM_GET_SESSION_REJECTIONS: 'brainstorm:getSessionRejections',
+  BRAINSTORM_DISMISS_ALL: 'brainstorm:dismissAll',
   // SKY-1483 v2: confirm/reject handlers with day-one telemetry logging
   BRAINSTORM_PROPOSALS_CONFIRM: 'brainstorm:proposals:confirm',
   BRAINSTORM_PROPOSALS_REJECT: 'brainstorm:proposals:reject',
@@ -682,6 +683,7 @@ export interface IpcHandlers {
   // SKY-1483: Wave 3.4 extraction side-call — registered via registerBrainstormExtractionHandlers(), not setupIpcMain
   [IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS]?: (payload: BrainstormExtractProposalsPayload) => Promise<BrainstormExtractProposalsResponse>;
   [IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS]?: (payload: never) => BrainstormGetSessionRejectionsResponse;
+  [IPC_CHANNELS.BRAINSTORM_DISMISS_ALL]?: (payload: never) => BrainstormDismissAllResponse;
   [IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM]?: (payload: BrainstormProposalConfirmPayload) => { ok: true };
   [IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT]?: (payload: BrainstormProposalRejectPayload) => { ok: true };
   // BRAINSTORM_PROPOSAL_QUEUED is a push channel (webContents.send) — no handler entry needed
@@ -2718,6 +2720,12 @@ export interface BrainstormWriteNotePayload {
   category: BrainstormFactType;
   name: string;
   content: string;
+  /** Wave 3.4 proposal path: confirm writes a prebuilt NoteProposal. */
+  proposal?: NoteProposal;
+  /** Renderer app-state selection used when proposal.destinationPath is not already resolved. */
+  activeUniverse?: string | null;
+  /** Renderer app-state selection used when proposal.destinationPath is not already resolved. */
+  activeStory?: string | null;
 }
 
 export type BrainstormWriteNoteResponse =
@@ -2727,7 +2735,7 @@ export type BrainstormWriteNoteResponse =
       path: string;
       suggestionId: string;
       /** How the destination was resolved — for telemetry/tests. */
-      reason: 'default-layout' | 'remembered';
+      reason: 'default-layout' | 'remembered' | 'proposal';
     }
   | {
       status: 'needs_routing';
@@ -2736,6 +2744,11 @@ export type BrainstormWriteNoteResponse =
       stagedPath: string;
       category: BrainstormFactType;
       name: string;
+    }
+  | {
+      status: 'disambiguation_needed';
+      context: 'universe';
+      options: string[];
     };
 
 export interface BrainstormResolveRoutingPayload {
@@ -3331,6 +3344,10 @@ export interface BrainstormExtractProposalsResponse {
 
 export interface BrainstormGetSessionRejectionsResponse {
   rejectedNames: string[];
+}
+
+export interface BrainstormDismissAllResponse {
+  rejectedCount: number;
 }
 
 export type ProposalDecision = 'confirm' | 'edit_and_confirm' | 'reject';
