@@ -84,32 +84,36 @@ beforeEach(() => {
 // ─── Step 1 ───────────────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — Step 1', () => {
-  it('renders Step 1 with correct heading and subtitle', () => {
+  it('renders Step 1 with correct heading and subtitle', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('shows step indicator "Step 1 of 3"', () => {
+  it('shows step indicator "Step 1 of 3"', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('shows four starting-point cards (default-mythos-vault is the first/primary)', () => {
+  it('shows four starting-point cards (default-mythos-vault is the first/primary)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-default-mythos-vault')).toBeInTheDocument();
     expect(screen.getByTestId('card-blank')).toBeInTheDocument();
     expect(screen.getByTestId('card-sample')).toBeInTheDocument();
     expect(screen.getByTestId('card-template')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('card labels match spec copy exactly', () => {
+  it('card labels match spec copy exactly', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-default-mythos-vault')).toHaveTextContent('Create default Mythos Vault');
     expect(screen.getByTestId('card-blank')).toHaveTextContent('Blank Story');
     expect(screen.getByTestId('card-sample')).toHaveTextContent('Sample Novel');
     expect(screen.getByTestId('card-template')).toHaveTextContent('From Template');
+    await act(async () => {});
   });
 
   // SKY-906: one-click first-run path bypasses step2 (no title, no save path picker).
@@ -145,22 +149,25 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
   });
 
-  it('shows Skip link on Step 1', () => {
+  it('shows Skip link on Step 1', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('gs-skip')).toBeInTheDocument();
     expect(screen.getByTestId('gs-skip').textContent).toMatch(/Skip/);
+    await act(async () => {});
   });
 
-  it('clicking Blank Story advances to Step 2', () => {
+  it('clicking Blank Story advances to Step 2', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('clicking Sample Novel advances to Step 2', () => {
+  it('clicking Sample Novel advances to Step 2', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-sample'));
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
+    await act(async () => {});
   });
 
   it('clicking From Template advances to Step 1b', async () => {
@@ -179,41 +186,45 @@ describe('OnboardingWizard — Step 1', () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 
-  it('Escape on Step 1 shows cancel confirm dialog', () => {
+  it('Escape on Step 1 shows cancel confirm dialog', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('close button on Step 1 shows cancel confirm dialog', () => {
+  it('close button on Step 1 shows cancel confirm dialog', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-close-btn-step1'));
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
+    await act(async () => {});
   });
 });
 
 // ─── Cancel confirm dialog ────────────────────────────────────────────────────
 
 describe('OnboardingWizard — Cancel confirm dialog', () => {
-  it('"Keep Going" dismisses dialog and returns to wizard', () => {
+  it('"Keep Going" dismisses dialog and returns to wizard', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-keep-going'));
     expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('"Cancel Setup" calls onCancel without calling onboardingComplete', () => {
+  it('"Cancel Setup" calls onCancel without calling onboardingComplete', async () => {
     const onCancel = vi.fn();
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     fireEvent.click(screen.getByTestId('gs-cancel-setup'));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
+    await act(async () => {});
   });
 
-  it('dialog copy matches spec exactly', () => {
+  it('dialog copy matches spec exactly', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByText('Cancel setup?')).toBeInTheDocument();
@@ -221,6 +232,7 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
     expect(screen.getByText(/If you close now, you'll start fresh next time/)).toBeInTheDocument();
     expect(screen.getByTestId('gs-keep-going')).toHaveTextContent('Keep Going');
     expect(screen.getByTestId('gs-cancel-setup')).toHaveTextContent('Cancel Setup');
+    await act(async () => {});
   });
 });
 
@@ -473,61 +485,62 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
 // ─── Step 2: Name your story ──────────────────────────────────────────────────
 
 describe('OnboardingWizard — Step 2', () => {
-  function renderAtStep2() {
+  async function renderAtStep2() {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
+    await act(async () => {});
     return screen.getByTestId('screen-step2');
   }
 
-  it('shows "What\'s your story called?" heading', () => {
-    renderAtStep2();
+  it('shows "What\'s your story called?" heading', async () => {
+    await renderAtStep2();
     expect(screen.getByText("What's your story called?")).toBeInTheDocument();
   });
 
-  it('shows step indicator "Step 2 of 3"', () => {
-    renderAtStep2();
+  it('shows step indicator "Step 2 of 3"', async () => {
+    await renderAtStep2();
     expect(screen.getByText('Step 2 of 3')).toBeInTheDocument();
   });
 
   // SKY-1362: F-12 — step2 Back button arrow also wrapped in aria-hidden
-  it('step2 Back button arrow glyph is wrapped in aria-hidden span', () => {
-    renderAtStep2();
+  it('step2 Back button arrow glyph is wrapped in aria-hidden span', async () => {
+    await renderAtStep2();
     const backBtn = screen.getByTestId('gs-back-step2');
     const arrowSpan = backBtn.querySelector('span[aria-hidden="true"]');
     expect(arrowSpan).toBeInTheDocument();
     expect(arrowSpan!.textContent).toBe('\u2190');
   });
 
-  it('shows Story title field as required', () => {
-    renderAtStep2();
+  it('shows Story title field as required', async () => {
+    await renderAtStep2();
     expect(screen.getByTestId('gs-title-input')).toBeInTheDocument();
     expect(screen.getByTestId('gs-title-input')).toHaveAttribute('aria-required', 'true');
   });
 
-  it('shows Author name field (optional)', () => {
-    renderAtStep2();
+  it('shows Author name field (optional)', async () => {
+    await renderAtStep2();
     expect(screen.getByTestId('gs-author-input')).toBeInTheDocument();
     expect(screen.getByText(/optional/i)).toBeInTheDocument();
   });
 
-  it('shows default save path ~/Documents/MythosWriter', () => {
-    renderAtStep2();
+  it('shows default save path ~/Documents/MythosWriter', async () => {
+    await renderAtStep2();
     expect(screen.getByTestId('gs-save-path').textContent).toBe('~/Documents/MythosWriter');
   });
 
-  it('shows "Change…" button for save location', () => {
-    renderAtStep2();
+  it('shows "Change…" button for save location', async () => {
+    await renderAtStep2();
     expect(screen.getByTestId('gs-change-location')).toBeInTheDocument();
     expect(screen.getByTestId('gs-change-location').textContent).toMatch(/Change/);
   });
 
-  it('"Create Story →" button is present', () => {
-    renderAtStep2();
+  it('"Create Story →" button is present', async () => {
+    await renderAtStep2();
     expect(screen.getByTestId('gs-create-story')).toBeInTheDocument();
   });
 
-  it('Back button returns to Step 1', () => {
-    renderAtStep2();
+  it('Back button returns to Step 1', async () => {
+    await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-back-step2'));
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
   });
@@ -542,10 +555,11 @@ describe('OnboardingWizard — Step 2', () => {
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-back-step2'));
     expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('title value is preserved when going back from Step 2', () => {
-    renderAtStep2();
+  it('title value is preserved when going back from Step 2', async () => {
+    await renderAtStep2();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Saga' } });
     fireEvent.click(screen.getByTestId('gs-back-step2'));
     fireEvent.click(screen.getByTestId('card-blank'));
@@ -860,14 +874,16 @@ describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
 // ─── AC coverage ──────────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — AC coverage', () => {
-  it('AC1: wizard shown on first launch (onboardingComplete falsy)', () => {
+  it('AC1: wizard shown on first launch (onboardingComplete falsy)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('AC2: Step 1 shows four selectable cards (SKY-906 added the one-click default vault as the primary)', () => {
+  it('AC2: Step 1 shows four selectable cards (SKY-906 added the one-click default vault as the primary)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(4);
+    await act(async () => {});
   });
 
   it('AC3: From Template shows template sub-picker before Step 2', async () => {
@@ -886,31 +902,34 @@ describe('OnboardingWizard — AC coverage', () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 
-  it('AC17: Back on Step 2 preserves title and card selection', () => {
+  it('AC17: Back on Step 2 preserves title and card selection', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Preserved Title' } });
     fireEvent.click(screen.getByTestId('gs-back-step2'));
     fireEvent.click(screen.getByTestId('card-blank'));
     expect(screen.getByTestId('gs-title-input')).toHaveValue('Preserved Title');
+    await act(async () => {});
   });
 
-  it('AC18: Escape on Step 2 shows cancel confirm', () => {
+  it('AC18: Escape on Step 2 shows cancel confirm', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-blank'));
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('AC19: Cancel Setup does not call onboardingComplete', () => {
+  it('AC19: Cancel Setup does not call onboardingComplete', async () => {
     const onCancel = vi.fn();
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     fireEvent.click(screen.getByTestId('gs-cancel-setup'));
     expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
+    await act(async () => {});
   });
 
-  it('AC22: all user-facing strings match spec copy', () => {
+  it('AC22: all user-facing strings match spec copy', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     // Step 1 copy
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
@@ -922,6 +941,7 @@ describe('OnboardingWizard — AC coverage', () => {
     fireEvent.click(screen.getByTestId('card-blank'));
     expect(screen.getByText("What's your story called?")).toBeInTheDocument();
     expect(screen.getByText('Create Story →', { exact: false })).toBeInTheDocument();
+    await act(async () => {});
   });
 });
 
