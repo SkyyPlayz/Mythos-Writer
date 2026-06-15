@@ -16,6 +16,9 @@ const mockSettingsSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockVaultSetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
+const mockAgentPersonaRead = vi.fn();
+const mockAgentPersonaReset = vi.fn();
+const mockTemplateSaveAs = vi.fn();
 const mockProviderListModels = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
@@ -34,6 +37,11 @@ beforeEach(() => {
     Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
   );
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+  mockAgentPersonaRead.mockImplementation((agentName: string, key: string) =>
+    Promise.resolve({ content: `${agentName} ${key} content`, isCustom: false }),
+  );
+  mockAgentPersonaReset.mockResolvedValue({ reset: true });
+  mockTemplateSaveAs.mockResolvedValue({ ok: true, id: 'tpl-abc' });
   mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
@@ -41,6 +49,9 @@ beforeEach(() => {
     vaultGetPaths: mockVaultGetPaths,
     vaultSetPaths: mockVaultSetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
+    agentPersonaRead: mockAgentPersonaRead,
+    agentPersonaReset: mockAgentPersonaReset,
+    templateSaveAs: mockTemplateSaveAs,
     providerListModels: mockProviderListModels,
   };
 });
