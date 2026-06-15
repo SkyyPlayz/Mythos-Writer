@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
+import { useTtsPlayer } from './hooks/useTtsPlayer';
 import PresetSelector from './components/PresetSelector';
 import PresetEditor from './components/PresetEditor';
 import PresetBrowser from './components/PresetBrowser';
@@ -78,6 +79,8 @@ export default function WritingAssistantPanel({
   const requestIdRef = useRef(0);
   const lastPromptRef = useRef('');
   const { announce, liveText } = useLiveAnnounce();
+
+  const tts = useTtsPlayer();
 
   const { result: scheduledResult } = useWritingScheduler({
     scene,
@@ -305,6 +308,15 @@ export default function WritingAssistantPanel({
             ? <><strong>Writing Assistant</strong> — context: <em>{scene.title}</em></>
             : <><strong>Writing Assistant</strong> — no scene selected, asking freely.</>}
         </p>
+        {/* AC-V-06: session mute toggle */}
+        <button
+          className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
+          onClick={() => tts.toggleMute(announce)}
+          aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
+          aria-pressed={tts.sessionMuted}
+        >
+          {tts.sessionMuted ? 'Unmute' : 'Mute'}
+        </button>
       </div>
 
       <div className="wa-preset-row">
@@ -370,6 +382,27 @@ export default function WritingAssistantPanel({
                       >
                         Dismiss
                       </button>
+                      {/* AC-V-07: per-card TTS button; one card plays at a time */}
+                      {(() => {
+                        const sid = msg.suggestion!.id;
+                        const isPlaying = tts.playingCardId === sid;
+                        return (
+                          <button
+                            className={`wa-hear-btn${isPlaying ? ' wa-hear-btn--playing' : ''}`}
+                            onClick={() => {
+                              if (isPlaying) {
+                                tts.cancelCurrent(announce);
+                              } else {
+                                tts.speakCard(msg.text, sid, announce);
+                              }
+                            }}
+                            aria-label={isPlaying ? 'Stop voice playback' : 'Hear suggestion aloud'}
+                            aria-pressed={isPlaying}
+                          >
+                            {isPlaying ? '■ Stop' : '▶ Hear'}
+                          </button>
+                        );
+                      })()}
                     </div>
                     <RefinementChips
                       effectiveAxes={effectiveAxes}

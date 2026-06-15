@@ -5,15 +5,31 @@ const mockAgentWritingAssistant = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockOnWritingAssistantChunk = vi.fn<any>(() => vi.fn()); // returns unsub fn
 const mockWritingScan = vi.fn();
+const mockVoiceSpeak = vi.fn();
+const mockVoiceSpeakCancel = vi.fn();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnVoiceSpeakDone = vi.fn<any>(() => vi.fn());
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnVoiceSpeakError = vi.fn<any>(() => vi.fn());
+
+function makeApi(overrides: Record<string, unknown> = {}) {
+  return {
+    agentWritingAssistant: mockAgentWritingAssistant,
+    onWritingAssistantChunk: mockOnWritingAssistantChunk,
+    writingScan: mockWritingScan,
+    voiceSpeak: mockVoiceSpeak,
+    voiceSpeakCancel: mockVoiceSpeakCancel,
+    onVoiceSpeakDone: mockOnVoiceSpeakDone,
+    onVoiceSpeakError: mockOnVoiceSpeakError,
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   vi.resetAllMocks();
   mockWritingScan.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
-  (window as unknown as { api: unknown }).api = {
-    agentWritingAssistant: mockAgentWritingAssistant,
-    onWritingAssistantChunk: mockOnWritingAssistantChunk,
-    writingScan: mockWritingScan,
-  };
+  mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
+  (window as unknown as { api: unknown }).api = makeApi();
 });
 
 describe('WritingAssistantPanel', () => {
@@ -124,11 +140,7 @@ describe('WritingAssistantPanel', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'New ideas here.' });
 
     const mockWriteVault = vi.fn();
-    (window as unknown as { api: unknown }).api = {
-      agentWritingAssistant: mockAgentWritingAssistant,
-      onWritingAssistantChunk: mockOnWritingAssistantChunk,
-      writeVault: mockWriteVault,
-    };
+    (window as unknown as { api: unknown }).api = makeApi({ writeVault: mockWriteVault });
 
     render(<WritingAssistantPanel scene={null} />);
     fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
@@ -422,5 +434,119 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     await act(async () => { vi.advanceTimersByTime(10_000); });
     expect(screen.getByText('Second tip.')).toBeInTheDocument();
     expect(screen.queryByText('First tip.')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TTS playback tests (AC-V-06, AC-V-07, AC-V-08, AC-V-10, AC-V-11)
+// ---------------------------------------------------------------------------
+describe('WritingAssistantPanel — TTS voice controls', () => {
+  beforeEach(() => {
+    // rAF-based useLiveAnnounce needs synchronous stub so act() drains it.
+    vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function renderWithSuggestion(text = 'Try shorter sentences.') {
+    mockAgentWritingAssistant.mockResolvedValueOnce({ text });
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'advice?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+    await waitFor(() => screen.getByRole('button', { name: /hear suggestion aloud/i }));
+  }
+
+  it('AC-V-06: mute button is present in the header', () => {
+    render(<WritingAssistantPanel scene={null} />);
+    expect(screen.getByRole('button', { name: /mute voice playback/i })).toBeInTheDocument();
+  });
+
+  it('AC-V-06: mute button toggles its label and aria-pressed', () => {
+    render(<WritingAssistantPanel scene={null} />);
+    const btn = screen.getByRole('button', { name: /mute voice playback/i });
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(btn);
+
+    expect(screen.getByRole('button', { name: /unmute voice playback/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /unmute voice playback/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('AC-V-07: Hear button appears on a completed suggestion card', async () => {
+    await renderWithSuggestion();
+    expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
+  });
+
+  it('AC-V-07: clicking Hear calls voiceSpeak with the card text', async () => {
+    await renderWithSuggestion('Try shorter sentences.');
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    expect(mockVoiceSpeak).toHaveBeenCalledWith('Try shorter sentences.');
+  });
+
+  it('AC-V-07: button switches to Stop while playing', async () => {
+    await renderWithSuggestion();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    // voiceSpeak resolves next tick — button shows stop immediately (optimistic)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /stop voice playback/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /hear suggestion aloud/i })).not.toBeInTheDocument();
+  });
+
+  it('AC-V-07: onVoiceSpeakDone event resets button back to Hear', async () => {
+    let fireDone!: (evt: { speakId: string }) => void;
+    mockOnVoiceSpeakDone.mockImplementationOnce((cb: (evt: { speakId: string }) => void) => {
+      fireDone = cb;
+      return () => {};
+    });
+
+    await renderWithSuggestion();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
+
+    // speakId is 'speak-1' per default mock
+    await act(async () => { fireDone({ speakId: 'speak-1' }); });
+
+    expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /stop voice playback/i })).not.toBeInTheDocument();
+  });
+
+  it('AC-V-07: clicking Stop cancels playback via voiceSpeakCancel', async () => {
+    await renderWithSuggestion();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
+    fireEvent.click(screen.getByRole('button', { name: /stop voice playback/i }));
+    expect(mockVoiceSpeakCancel).toHaveBeenCalledWith('speak-1');
+  });
+
+  it('AC-V-08: clicking Hear while session is muted does NOT call voiceSpeak', async () => {
+    await renderWithSuggestion();
+    // Mute first
+    fireEvent.click(screen.getByRole('button', { name: /mute voice playback/i }));
+    // Then click Hear — should be a no-op
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    expect(mockVoiceSpeak).not.toHaveBeenCalled();
+  });
+
+  it('AC-V-08: muting while playing calls voiceSpeakCancel and resets button', async () => {
+    await renderWithSuggestion();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /mute voice playback/i }));
+
+    expect(mockVoiceSpeakCancel).toHaveBeenCalledWith('speak-1');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('AC-V-10: live region is always in the DOM', () => {
+    render(<WritingAssistantPanel scene={null} />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 });
