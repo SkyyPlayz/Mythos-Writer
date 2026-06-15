@@ -25,6 +25,7 @@ const mockChooseVaultFolder = vi.fn();
 const mockAgentPersonaRead = vi.fn();
 const mockAgentPersonaReset = vi.fn();
 const mockTemplateSaveAs = vi.fn();
+const mockProviderListModels = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
 
@@ -47,6 +48,7 @@ beforeEach(() => {
   );
   mockAgentPersonaReset.mockResolvedValue({ reset: true });
   mockTemplateSaveAs.mockResolvedValue({ ok: true, id: 'tpl-abc' });
+  mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
@@ -56,6 +58,7 @@ beforeEach(() => {
     agentPersonaRead: mockAgentPersonaRead,
     agentPersonaReset: mockAgentPersonaReset,
     templateSaveAs: mockTemplateSaveAs,
+    providerListModels: mockProviderListModels,
   };
 });
 
