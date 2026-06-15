@@ -561,7 +561,7 @@ export function rejectAllPendingProposals(): number {
         WHERE status = 'proposed' AND note_kind IS NOT NULL`,
     )
     .run();
-  return result.changes;
+  return Number(result.changes);
 }
 
 export function updateSuggestionStatus(
