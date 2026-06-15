@@ -308,7 +308,7 @@ import {
 } from './exportFormatters.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage, MAX_PAYLOAD_BYTES } from './streaming.js';
 import { buildLoreFixture, checkMultiChapterContinuity } from './continuityEngine.js';
-import { streamFromProvider, validateBaseUrl, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, providerConfigForAgent, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -5133,15 +5133,16 @@ function buildGlobalProviderConfig(settings: AppSettings): ProviderConfig {
 function getProviderConfigForAgent(agentName: 'brainstorm' | 'writingAssistant' | 'archive'): ProviderConfig {
   const settings = loadAppSettings();
   const agentSettings = settings.agents[agentName];
-  if (agentSettings.provider) {
-    return {
-      kind: agentSettings.provider.kind,
-      model: agentSettings.provider.model,
-      baseUrl: agentSettings.provider.baseUrl ?? undefined,
-      apiKey: agentSettings.provider.apiKey ?? undefined,
-    };
-  }
-  return buildGlobalProviderConfig(settings);
+  const global = buildGlobalProviderConfig(settings);
+  const agentProvider = agentSettings.provider
+    ? {
+        kind: agentSettings.provider.kind,
+        model: agentSettings.provider.model,
+        baseUrl: agentSettings.provider.baseUrl ?? undefined,
+        apiKey: agentSettings.provider.apiKey ?? undefined,
+      }
+    : undefined;
+  return providerConfigForAgent(global, agentSettings.model || undefined, agentProvider);
 }
 
 // ─── Agent payload validation limits (RISK-4 / SKY-701) ───
