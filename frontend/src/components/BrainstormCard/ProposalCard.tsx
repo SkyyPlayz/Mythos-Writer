@@ -336,6 +336,11 @@ export function ProposalCard({
             </div>
           )}
 
+          {/* Separator before action row — view mode only */}
+          {!blankMode && !editMode && (
+            <hr className="pc-separator" aria-hidden="true" />
+          )}
+
           {/* Action row */}
           {!blankMode && (
             <div className="pc-actions-row" role="group" aria-label="Proposal actions">

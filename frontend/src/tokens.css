@@ -249,6 +249,7 @@
   --accent-dark: #007a8a;
   --accent-border: var(--accent);
   --accent-bg: var(--accent-soft);
+  --text-on-accent: #000000;  /* black on neon-cyan --accent; update if accent changes to a dark hue */
 
   /* States (bare names) */
   --danger: var(--state-danger);
