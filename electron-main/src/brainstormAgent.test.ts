@@ -915,7 +915,7 @@ describe('DB migration v13 — proposal_telemetry table', () => {
     expect(() => insertProposalTelemetry(entry)).not.toThrow();
     const rows = getDb()
       .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
-      .all('tel-dup') as DbProposalTelemetry[];
+      .all('tel-dup') as unknown as DbProposalTelemetry[];
     expect(rows).toHaveLength(1);
   });
 
