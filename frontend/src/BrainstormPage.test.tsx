@@ -1782,3 +1782,238 @@ describe('BrainstormPage — custom order (SKY-1392)', () => {
     setItemSpy.mockRestore();
   });
 });
+
+// ─── SKY-1485: Proposal queue ────────────────────────────────────────────────
+
+function makeBrainstormSuggestion(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'prop-1',
+    source_agent: 'brainstorm',
+    confidence: 0.9,
+    rationale: 'character: Lyra Stormwind',
+    target: 'Characters/Heroes/',
+    payload_json: JSON.stringify({
+      kind: 'character',
+      title: 'Lyra Stormwind',
+      body: 'A fierce warrior from the northern mountains.',
+    }),
+    status: 'proposed',
+    created_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function buildApiWithProposals(
+  proposals: unknown[],
+  extraOverrides: Record<string, unknown> = {},
+) {
+  const mockSuggestionsList = vi.fn().mockImplementation(
+    (status?: string, sourceAgent?: string) => {
+      if (sourceAgent === 'brainstorm') {
+        return Promise.resolve({ suggestions: proposals });
+      }
+      return Promise.resolve({ suggestions: [] });
+    },
+  );
+  return buildApi({ suggestionsList: mockSuggestionsList, ...extraOverrides });
+}
+
+describe('BrainstormPage — proposal queue (SKY-1485)', () => {
+  it('calls suggestionsList("proposed", "brainstorm") on mount', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({ suggestions: [] });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(mockSuggestionsList).toHaveBeenCalledWith('proposed', 'brainstorm'),
+    );
+  });
+
+  it('renders ProposalCard when pending proposals are loaded', async () => {
+    (window as unknown as { api: unknown }).api = buildApiWithProposals([makeBrainstormSuggestion()]);
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Proposed notes' })).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Lyra Stormwind')).toBeInTheDocument();
+  });
+
+  it('does not render ProposalCard region when no proposals are queued', async () => {
+    (window as unknown as { api: unknown }).api = buildApiWithProposals([]);
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    // Wait for both suggestionsList calls to settle so proposals state is final
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(screen.queryByRole('region', { name: 'Proposed notes' })).not.toBeInTheDocument();
+  });
+
+  it('appends incoming proposals from onBrainstormProposalQueued push event', async () => {
+    let proposalQueuedCb: ((data: { proposals: unknown[] }) => void) | null = null;
+    (window as unknown as { api: unknown }).api = buildApi({
+      onBrainstormProposalQueued: (cb: (data: { proposals: unknown[] }) => void) => {
+        proposalQueuedCb = cb;
+        return () => { proposalQueuedCb = null; };
+      },
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+    await waitFor(() => expect(proposalQueuedCb).not.toBeNull());
+
+    act(() => {
+      proposalQueuedCb?.({
+        proposals: [{
+          id: 'push-1',
+          kind: 'location',
+          title: 'The Frozen Peak',
+          body: 'A mountain summit covered in eternal ice.',
+          destinationPath: 'Locations/Mountains/',
+          frontmatter: {},
+          sourceConversationTurnId: 'turn-2',
+          extractionConfidence: 0.85,
+        }],
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText('The Frozen Peak')).toBeInTheDocument(),
+    );
+  });
+
+  it('Confirm calls brainstormProposalConfirm + brainstormWriteNote', async () => {
+    const mockProposalConfirm = vi.fn().mockResolvedValue({ ok: true });
+    (window as unknown as { api: unknown }).api = buildApiWithProposals(
+      [makeBrainstormSuggestion()],
+      { brainstormProposalConfirm: mockProposalConfirm },
+    );
+
+    render(<BrainstormPage onClose={() => {}} />);
+    const confirmBtn = await screen.findByTestId('pc-confirm-btn');
+    await act(async () => { fireEvent.click(confirmBtn); });
+
+    await waitFor(() =>
+      expect(mockProposalConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({ proposalId: 'prop-1', decision: 'confirm' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(mockBrainstormWriteNote).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Lyra Stormwind', category: 'character' }),
+      ),
+    );
+  });
+
+  it('Confirm removes proposal from queue', async () => {
+    (window as unknown as { api: unknown }).api = buildApiWithProposals(
+      [makeBrainstormSuggestion()],
+      { brainstormProposalConfirm: vi.fn().mockResolvedValue({ ok: true }) },
+    );
+
+    render(<BrainstormPage onClose={() => {}} />);
+    const confirmBtn = await screen.findByTestId('pc-confirm-btn');
+    await act(async () => { fireEvent.click(confirmBtn); });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Proposed notes' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('Reject calls brainstormProposalReject and removes the proposal', async () => {
+    const mockProposalReject = vi.fn().mockResolvedValue({ ok: true });
+    (window as unknown as { api: unknown }).api = buildApiWithProposals(
+      [makeBrainstormSuggestion()],
+      { brainstormProposalReject: mockProposalReject },
+    );
+
+    render(<BrainstormPage onClose={() => {}} />);
+    const rejectBtn = await screen.findByTestId('pc-reject-btn');
+    fireEvent.click(rejectBtn);
+
+    await waitFor(() =>
+      expect(mockProposalReject).toHaveBeenCalledWith(
+        expect.objectContaining({ proposalId: 'prop-1', title: 'Lyra Stormwind' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Proposed notes' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('Dismiss all calls brainstormProposalReject for every proposal', async () => {
+    const mockProposalReject = vi.fn().mockResolvedValue({ ok: true });
+    (window as unknown as { api: unknown }).api = buildApiWithProposals(
+      [
+        makeBrainstormSuggestion(),
+        makeBrainstormSuggestion({
+          id: 'prop-2',
+          payload_json: JSON.stringify({ kind: 'location', title: 'The Peak', body: 'Cold.' }),
+        }),
+      ],
+      { brainstormProposalReject: mockProposalReject },
+    );
+
+    render(<BrainstormPage onClose={() => {}} />);
+    const dismissBtn = await screen.findByTestId('pc-dismiss-all-btn');
+    fireEvent.click(dismissBtn);
+
+    await waitFor(() => expect(mockProposalReject).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('region', { name: 'Proposed notes' })).not.toBeInTheDocument();
+  });
+
+  it('Blank-mode proposal shows disambiguation prompt, not confirm button', async () => {
+    (window as unknown as { api: unknown }).api = buildApiWithProposals([
+      makeBrainstormSuggestion({ target: '' }),
+    ]);
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('pc-blank-prompt')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('pc-confirm-btn')).not.toBeInTheDocument();
+  });
+
+  it('push event deduplicates proposals already in queue', async () => {
+    let proposalQueuedCb: ((data: { proposals: unknown[] }) => void) | null = null;
+    (window as unknown as { api: unknown }).api = buildApiWithProposals(
+      [makeBrainstormSuggestion()],
+      {
+        onBrainstormProposalQueued: (cb: (data: { proposals: unknown[] }) => void) => {
+          proposalQueuedCb = cb;
+          return () => { proposalQueuedCb = null; };
+        },
+      },
+    );
+
+    render(<BrainstormPage onClose={() => {}} />);
+    // Wait for mount proposal to load
+    await waitFor(() => expect(screen.getByText('Lyra Stormwind')).toBeInTheDocument());
+    await waitFor(() => expect(proposalQueuedCb).not.toBeNull());
+
+    // Push a duplicate — same id as the loaded proposal
+    act(() => {
+      proposalQueuedCb?.({
+        proposals: [{
+          id: 'prop-1',
+          kind: 'character',
+          title: 'Lyra Stormwind',
+          body: 'Duplicate.',
+          destinationPath: 'Characters/Heroes/',
+          frontmatter: {},
+          sourceConversationTurnId: 'turn-1',
+          extractionConfidence: 0.9,
+        }],
+      });
+    });
+
+    await act(async () => {});
+    // Still only 1 proposal in queue — no "1 of N proposals" header
+    expect(screen.queryByText(/1 of/)).not.toBeInTheDocument();
+    expect(screen.getByText('1 proposal')).toBeInTheDocument();
+  });
+});

@@ -775,9 +775,9 @@ interface Window {
       layoutMode: 'default' | 'blank' | 'imported';
       notesRouting: Partial<Record<'character' | 'location' | 'item' | 'note', string>>;
     }>;
-    brainstormWriteNote: (payload: { category: 'character' | 'location' | 'item' | 'note'; name: string; content: string }) => Promise<
+    brainstormWriteNote: (payload: { category: 'character' | 'location' | 'item' | 'note' | 'faction' | 'scene_card' | 'inbox'; name: string; content: string }) => Promise<
       | { status: 'written'; path: string; suggestionId: string; reason: 'default-layout' | 'remembered' }
-      | { status: 'needs_routing'; stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; name: string }
+      | { status: 'needs_routing'; stagedPath: string; category: 'character' | 'location' | 'item' | 'note' | 'faction' | 'scene_card' | 'inbox'; name: string }
     >;
     brainstormResolveRouting: (payload: { stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; destination: string; remember: boolean }) => Promise<{
       status: 'written';
@@ -804,6 +804,27 @@ interface Window {
       | { status: 'ok'; path: string; content: string }
       | { status: 'skipped'; reason: string }
     >;
+    // SKY-1485: Wave 3.4 proposal queue
+    brainstormProposalConfirm: (payload: {
+      proposalId: string;
+      kind: string;
+      extractionConfidence: number;
+      timeToDecideMs: number;
+      decision: 'confirm' | 'edit_and_confirm';
+    }) => Promise<{ ok: true }>;
+    brainstormProposalReject: (payload: {
+      proposalId: string;
+      title: string;
+      kind: string;
+      extractionConfidence: number;
+      timeToDecideMs: number;
+    }) => Promise<{ ok: true }>;
+    brainstormExtractProposals: (payload: {
+      turnText: string;
+      turnId: string;
+      existingEntityNames?: string[];
+    }) => Promise<{ proposals: unknown[] }>;
+    onBrainstormProposalQueued: (cb: (data: { proposals: unknown[] }) => void) => () => void;
 
     // SKY-130: persist last-opened scene + cursor for cross-restart restore
     sessionSaveScene: (payload: { sceneId: string; scenePath: string; scrollTop: number; cursorLine: number }) => Promise<{ saved: boolean }>;
