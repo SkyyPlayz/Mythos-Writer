@@ -514,6 +514,8 @@ interface Window {
     ) => Promise<{ saved: boolean; error?: string }>;
     /** Test connection to an AI provider (MYT-779). */
     settingsTestConnection: (provider: { kind: string; apiKey?: string; baseUrl?: string; model: string }) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
+    /** List available models from a provider endpoint (SKY-1499/SKY-1501). */
+    providerListModels: (payload: { kind: string; baseUrl?: string }) => Promise<{ ok: true; models: string[] } | { ok: false; error: string }>;
     /** Main-process file picker for local voice binary / model selection (MYT-788). */
     voicePickBinary: (
       kind: 'stt-binary' | 'tts-binary' | 'tts-model',
