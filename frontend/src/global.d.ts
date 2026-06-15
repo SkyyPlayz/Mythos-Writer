@@ -777,7 +777,7 @@ interface Window {
     }>;
     brainstormWriteNote: (payload: { category: 'character' | 'location' | 'item' | 'note' | 'faction' | 'scene_card' | 'inbox'; name: string; content: string }) => Promise<
       | { status: 'written'; path: string; suggestionId: string; reason: 'default-layout' | 'remembered' }
-      | { status: 'needs_routing'; stagedPath: string; category: 'character' | 'location' | 'item' | 'note' | 'faction' | 'scene_card' | 'inbox'; name: string }
+      | { status: 'needs_routing'; stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; name: string }
     >;
     brainstormResolveRouting: (payload: { stagedPath: string; category: 'character' | 'location' | 'item' | 'note'; destination: string; remember: boolean }) => Promise<{
       status: 'written';

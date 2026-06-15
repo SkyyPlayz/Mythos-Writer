@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'rea
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
 import { ProposalCard } from './components/BrainstormCard/ProposalCard';
-import type { NoteProposal } from './components/BrainstormCard/ProposalCard';
+import type { NoteProposal, NoteProposalKind } from './components/BrainstormCard/ProposalCard';
 import { ScenePicker } from './components/BrainstormCard/ScenePicker';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import PresetSelector from './components/PresetSelector';

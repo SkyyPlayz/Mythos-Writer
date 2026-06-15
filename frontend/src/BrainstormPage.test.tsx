@@ -1808,7 +1808,7 @@ function buildApiWithProposals(
   extraOverrides: Record<string, unknown> = {},
 ) {
   const mockSuggestionsList = vi.fn().mockImplementation(
-    (status?: string, sourceAgent?: string) => {
+    (_status?: string, sourceAgent?: string) => {
       if (sourceAgent === 'brainstorm') {
         return Promise.resolve({ suggestions: proposals });
       }
