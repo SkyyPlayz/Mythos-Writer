@@ -640,6 +640,8 @@ describe('getVoiceProvider (§6)', () => {
   it('returns provider when both transcribe and speak are explicitly true', () => {
     const p = makeOpenAIConfig({ capabilities: { transcribe: true, speak: true } });
     expect(getVoiceProvider({ provider: p })).toBe(p);
+  });
+
   it('inherits the global api key when an agent provider override uses the same kind without its own key', () => {
     const globalOpenAI = makeOpenAIConfig({ apiKey: 'sk-openai-global', model: 'gpt-4o' });
     const agentOpenAI = makeOpenAIConfig({ apiKey: undefined, model: 'gpt-4o-mini' });
