@@ -19,17 +19,17 @@ describe('entityTypeToFactType', () => {
     expect(entityTypeToFactType('item')).toBe('item');
   });
 
-  it('maps "concept" → "note"', () => {
-    expect(entityTypeToFactType('concept')).toBe('note');
+  it('maps "concept" → "inbox"', () => {
+    expect(entityTypeToFactType('concept')).toBe('inbox');
   });
 
-  it('maps "other" → "note"', () => {
-    expect(entityTypeToFactType('other')).toBe('note');
+  it('maps "other" → "inbox"', () => {
+    expect(entityTypeToFactType('other')).toBe('inbox');
   });
 
-  it('maps unknown types → "note"', () => {
-    expect(entityTypeToFactType('organization')).toBe('note');
-    expect(entityTypeToFactType('')).toBe('note');
+  it('maps unknown types → "inbox"', () => {
+    expect(entityTypeToFactType('organization')).toBe('inbox');
+    expect(entityTypeToFactType('')).toBe('inbox');
   });
 });
 
@@ -46,8 +46,8 @@ describe('buildEnrichmentSystemPrompt', () => {
     expect(prompt).toContain('[FACT:location|The Iron Gate|');
   });
 
-  it('uses "concept or worldbuilding element" label for note type', () => {
-    const prompt = buildEnrichmentSystemPrompt('Magic System', 'note');
+  it('uses "concept or worldbuilding element" label for inbox type', () => {
+    const prompt = buildEnrichmentSystemPrompt('Magic System', 'inbox');
     expect(prompt).toContain('concept or worldbuilding element');
   });
 
@@ -92,11 +92,11 @@ describe('enrichment prompt → parseFacts round-trip', () => {
     expect(facts).toHaveLength(0);
   });
 
-  it('handles the note fact type from a concept entity', () => {
-    const simulatedResponse = 'The magic system works by channelling life force.\n[FACT:note|Magic System|Spells require sacrifice of vitality]';
+  it('handles the inbox fact type from a concept entity', () => {
+    const simulatedResponse = 'The magic system works by channelling life force.\n[FACT:inbox|Magic System|Spells require sacrifice of vitality]';
     const facts = parseFacts(simulatedResponse);
     expect(facts).toHaveLength(1);
-    expect(facts[0].type).toBe('note');
+    expect(facts[0].type).toBe('inbox');
     expect(facts[0].name).toBe('Magic System');
   });
 });

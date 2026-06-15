@@ -34,7 +34,7 @@ function joinPosix(...segs: string[]): string {
 interface StagedResult {
   status: 'needs_routing';
   stagedPath: string;
-  category: 'character' | 'location' | 'item' | 'note';
+  category: 'character' | 'location' | 'item' | 'faction' | 'scene_card' | 'inbox';
   name: string;
 }
 
@@ -49,7 +49,7 @@ function writeNote(args: {
   userData: string;
   notesRoot: string;
   layoutMode: 'default' | 'blank' | 'imported';
-  category: 'character' | 'location' | 'item' | 'note';
+  category: 'character' | 'location' | 'item' | 'faction' | 'scene_card' | 'inbox';
   name: string;
   content: string;
 }): WrittenResult | StagedResult {
@@ -73,7 +73,7 @@ function resolveRouting(args: {
   userData: string;
   notesRoot: string;
   stagedPath: string;
-  category: 'character' | 'location' | 'item' | 'note';
+  category: 'character' | 'location' | 'item' | 'faction' | 'scene_card' | 'inbox';
   destination: string;
   remember: boolean;
 }): { status: 'written'; path: string } {

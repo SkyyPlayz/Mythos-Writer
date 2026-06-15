@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'react';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
+import { ProposalCard } from './components/BrainstormCard/ProposalCard';
+import type { NoteProposal } from './components/BrainstormCard/ProposalCard';
 import { ScenePicker } from './components/BrainstormCard/ScenePicker';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import PresetSelector from './components/PresetSelector';
@@ -247,6 +249,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [toast, setToast] = useState<string | null>(null);
   const [pasteWarning, setPasteWarning] = useState(false);
   const [detailDrawerIdeaId, setDetailDrawerIdeaId] = useState<string | null>(null);
+  const [proposals, setProposals] = useState<NoteProposal[]>([]);
   const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
@@ -992,6 +995,20 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     }
     // link-entity + add-to-scene deferred to v2
   }, [facts, announce, showToast, handleOpenInWritingPanel]);
+
+  const handleProposalConfirm = useCallback((proposal: NoteProposal) => {
+    setProposals((prev) => prev.filter((p) => p.id !== proposal.id));
+    // SKY-1483: forward confirmed proposal to vault-writer IPC once it lands.
+  }, []);
+
+  const handleProposalReject = useCallback((proposalId: string) => {
+    setProposals((prev) => prev.filter((p) => p.id !== proposalId));
+    // SKY-1483: log rejection to session rejection list via IPC once it lands.
+  }, []);
+
+  const handleProposalDismissAll = useCallback(() => {
+    setProposals([]);
+  }, []);
 
   const handleBulkDelete = useCallback(() => {
     setPendingDeleteIds([...selectedIds]);
@@ -1827,6 +1844,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               </button>
             </div>
           )}
+          {proposals.length > 0 ? (
+            <ProposalCard
+              proposals={proposals}
+              onConfirm={handleProposalConfirm}
+              onReject={handleProposalReject}
+              onDismissAll={handleProposalDismissAll}
+            />
+          ) : (
           <div className="brainstorm-facts-list">
             {facts.length === 0 ? (
               <div className="brainstorm-facts-empty">
@@ -2012,6 +2037,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               </div>
             )}
           </div>
+          )}
 
           <EntriesQuickAdd />
         </div>

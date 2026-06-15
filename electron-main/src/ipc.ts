@@ -387,6 +387,14 @@ export const IPC_CHANNELS = {
   TEMPLATE_IMPORT: 'template:import',
   // SKY-1499/SKY-1501: list available models from a provider endpoint
   PROVIDER_LIST_MODELS: 'provider:listModels',
+
+  // SKY-1483: Wave 3.4 — extraction side-call + NoteProposal IPC
+  BRAINSTORM_EXTRACT_PROPOSALS: 'brainstorm:extractProposals',
+  BRAINSTORM_PROPOSAL_QUEUED: 'brainstorm:proposalQueued',
+  BRAINSTORM_GET_SESSION_REJECTIONS: 'brainstorm:getSessionRejections',
+  // SKY-1483 v2: confirm/reject handlers with day-one telemetry logging
+  BRAINSTORM_PROPOSALS_CONFIRM: 'brainstorm:proposals:confirm',
+  BRAINSTORM_PROPOSALS_REJECT: 'brainstorm:proposals:reject',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -671,6 +679,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TEMPLATE_IMPORT]: (payload: TemplateImportPayload | undefined) => Promise<TemplateImportResponse>;
   // SKY-1499/SKY-1501: provider model listing
   [IPC_CHANNELS.PROVIDER_LIST_MODELS]: (payload: ProviderListModelsPayload) => Promise<ProviderListModelsResult>;
+  // SKY-1483: Wave 3.4 extraction side-call — registered via registerBrainstormExtractionHandlers(), not setupIpcMain
+  [IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS]?: (payload: BrainstormExtractProposalsPayload) => Promise<BrainstormExtractProposalsResponse>;
+  [IPC_CHANNELS.BRAINSTORM_GET_SESSION_REJECTIONS]?: (payload: never) => BrainstormGetSessionRejectionsResponse;
+  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM]?: (payload: BrainstormProposalConfirmPayload) => { ok: true };
+  [IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT]?: (payload: BrainstormProposalRejectPayload) => { ok: true };
+  // BRAINSTORM_PROPOSAL_QUEUED is a push channel (webContents.send) — no handler entry needed
 }
 
 // ─── Payload / Response types ───
@@ -2691,7 +2705,7 @@ export interface RestoreAppDataResponse {
 
 // ─── Brainstorm Agent routing (SKY-20) ───
 
-export type BrainstormFactType = 'character' | 'location' | 'item' | 'note';
+export type BrainstormFactType = 'character' | 'location' | 'item' | 'faction' | 'scene_card' | 'inbox';
 
 export interface BrainstormGetSettingsResponse {
   /** Vault layout mode the user picked at onboarding. */
@@ -3288,3 +3302,61 @@ export interface TemplateImportPayload {
 export type TemplateImportResponse =
   | { ok: true; template?: TemplateDefinition; cancelled?: boolean }
   | { error: string };
+
+// ─── SKY-1483: Wave 3.4 — NoteProposal + extraction IPC types ───
+
+export type NoteProposalStatus = 'pending' | 'confirmed' | 'rejected' | 'edited_and_confirmed';
+
+export interface NoteProposal {
+  id: string;
+  kind: BrainstormFactType;
+  title: string;
+  destinationPath: string;
+  body: string;
+  frontmatter: Record<string, unknown>;
+  sourceConversationTurnId: string;
+  extractionConfidence: number;
+  status: NoteProposalStatus;
+}
+
+export interface BrainstormExtractProposalsPayload {
+  turnText: string;
+  turnId: string;
+  existingEntityNames?: string[];
+}
+
+export interface BrainstormExtractProposalsResponse {
+  proposals: NoteProposal[];
+}
+
+export interface BrainstormGetSessionRejectionsResponse {
+  rejectedNames: string[];
+}
+
+export type ProposalDecision = 'confirm' | 'edit_and_confirm' | 'reject';
+
+export interface BrainstormProposalConfirmPayload {
+  /** Stable UUID of the NoteProposal being confirmed. */
+  proposalId: string;
+  /** The kind, used for telemetry. */
+  kind: BrainstormFactType;
+  /** Confidence at extraction time. */
+  extractionConfidence: number;
+  /** ms from card appearance to user action (measured by the renderer). */
+  timeToDecideMs: number;
+  /** 'confirm' for an unedited accept; 'edit_and_confirm' when body/title was changed. */
+  decision: 'confirm' | 'edit_and_confirm';
+}
+
+export interface BrainstormProposalRejectPayload {
+  /** Stable UUID of the NoteProposal being rejected. */
+  proposalId: string;
+  /** Entity title — added to the session rejection log to suppress re-extraction. */
+  title: string;
+  /** The kind, used for telemetry. */
+  kind: BrainstormFactType;
+  /** Confidence at extraction time. */
+  extractionConfidence: number;
+  /** ms from card appearance to user action (measured by the renderer). */
+  timeToDecideMs: number;
+}

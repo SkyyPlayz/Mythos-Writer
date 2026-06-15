@@ -1,0 +1,390 @@
+/* ProposalCard — SKY-1488 */
+
+/* ── Wrapper region ─────────────────────────────────────────── */
+.pc-region {
+  padding: var(--space-3);
+}
+
+/* Empty state: region stays in DOM so aria-live is pre-registered */
+.pc-region:empty {
+  display: none;
+}
+
+/* ── Card ───────────────────────────────────────────────────── */
+.pc-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ── Header row: kind badge + queue depth ───────────────────── */
+.pc-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.pc-kind-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: var(--radius-full, 999px);
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.pc-kind-badge--character { background: var(--entity-char-bg); color: var(--entity-char-text); }
+.pc-kind-badge--location  { background: var(--entity-loc-bg);  color: var(--entity-loc-text);  }
+.pc-kind-badge--item      { background: var(--entity-item-bg); color: var(--entity-item-text); }
+.pc-kind-badge--faction   { background: var(--entity-faction-bg); color: var(--entity-faction-text); }
+.pc-kind-badge--scene_card { background: var(--entity-scene-bg); color: var(--entity-scene-text); }
+.pc-kind-badge--inbox     { background: var(--entity-inbox-bg); color: var(--entity-inbox-text); }
+
+.pc-queue-depth {
+  font-size: var(--text-xs, 12px);
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Title + path rows ──────────────────────────────────────── */
+.pc-title {
+  font-size: var(--text-lg, 18px);
+  font-weight: 600;
+  color: var(--text-header);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+  text-align: left;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pc-path {
+  font-size: var(--text-sm, 14px);
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Separator ──────────────────────────────────────────────── */
+.pc-separator {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+
+/* ── Body preview ───────────────────────────────────────────── */
+.pc-body-preview {
+  font-size: var(--text-sm, 14px);
+  font-weight: 400;
+  color: var(--text-body);
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.pc-body-preview--expanded {
+  -webkit-line-clamp: unset;
+}
+
+.pc-show-more {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+
+.pc-show-more:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Edit fields ────────────────────────────────────────────── */
+.pc-edit-input,
+.pc-edit-textarea {
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
+  font-size: var(--text-sm, 14px);
+  padding: var(--space-1) var(--space-2);
+  box-sizing: border-box;
+  resize: none;
+}
+
+.pc-edit-input:focus,
+.pc-edit-textarea:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.pc-edit-input--title {
+  font-size: var(--text-lg, 18px);
+  font-weight: 600;
+  color: var(--text-header);
+}
+
+.pc-edit-textarea {
+  min-height: 72px;
+}
+
+/* ── Action row ─────────────────────────────────────────────── */
+.pc-actions-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.pc-btn-confirm,
+.pc-btn-save {
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #000;
+  font-size: var(--text-sm, 14px);
+  font-weight: 600;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: opacity var(--dur-press);
+}
+
+.pc-btn-confirm:hover,
+.pc-btn-save:hover {
+  opacity: 0.88;
+}
+
+.pc-btn-confirm:active,
+.pc-btn-save:active {
+  opacity: 0.72;
+  transform: scale(0.97);
+}
+
+.pc-btn-confirm:focus-visible,
+.pc-btn-save:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.pc-btn-confirm:disabled,
+.pc-btn-save:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.pc-btn-reject {
+  background: var(--color-danger-bg, rgba(248, 113, 113, 0.15));
+  border: 1px solid var(--color-danger-border, rgba(248, 113, 113, 0.4));
+  border-radius: var(--radius-sm);
+  color: var(--color-danger-text, #f87171);
+  font-size: var(--text-sm, 14px);
+  font-weight: 500;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: opacity var(--dur-press);
+}
+
+.pc-btn-reject:hover {
+  opacity: 0.8;
+}
+
+.pc-btn-reject:active {
+  opacity: 0.6;
+  transform: scale(0.97);
+}
+
+.pc-btn-reject:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.pc-btn-reject:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.pc-btn-edit {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-sm, 14px);
+  font-weight: 500;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background var(--dur-press);
+}
+
+.pc-btn-edit:hover {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.pc-btn-edit:active {
+  background: var(--bg-active);
+}
+
+.pc-btn-edit:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.pc-btn-cancel {
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-sm, 14px);
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color var(--dur-press);
+}
+
+.pc-btn-cancel:hover {
+  color: var(--text-body);
+}
+
+.pc-btn-cancel:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Dismiss all ────────────────────────────────────────────── */
+.pc-dismiss-all {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-xs, 12px);
+  font-weight: 400;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: left;
+}
+
+.pc-dismiss-all:hover {
+  color: var(--text-body);
+}
+
+.pc-dismiss-all:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Blank-mode disambiguation ──────────────────────────────── */
+.pc-blank-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.pc-blank-label {
+  font-size: var(--text-sm, 14px);
+  font-weight: 500;
+  color: var(--text-body);
+  margin: 0;
+}
+
+.pc-blank-path-row {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.pc-blank-path-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
+  font-size: var(--text-sm, 14px);
+  padding: 4px 8px;
+}
+
+.pc-blank-path-input:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.pc-blank-folder-btn {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-sm, 14px);
+  padding: 4px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.pc-blank-folder-btn:hover {
+  background: var(--bg-active);
+  color: var(--text-body);
+}
+
+.pc-blank-folder-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.pc-blank-session-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pc-blank-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pc-blank-checkbox-label {
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.pc-blank-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}

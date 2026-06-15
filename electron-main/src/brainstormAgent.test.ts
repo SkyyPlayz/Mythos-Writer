@@ -10,17 +10,22 @@ import {
   writeFacts,
   validateVaultPath,
   parseAliasHints,
+  runExtractionSideCall,
   type BrainstormAgentDeps,
   type ParsedFact,
   type WrittenEntity,
+  type NoteProposal,
 } from './brainstormAgent.js';
 import {
   openDb,
   closeDb,
+  getDb,
   upsertSuggestion,
   getSuggestion,
   listSuggestions,
+  insertProposalTelemetry,
   type DbSuggestion,
+  type DbProposalTelemetry,
 } from './db.js';
 import { parseFrontmatter } from './vault.js';
 
@@ -75,10 +80,27 @@ describe('parseFacts', () => {
     expect(facts[0].type).toBe('item');
   });
 
-  it('parses a note fact', () => {
-    const facts = parseFacts('[FACT:note|Magic System|Magic costs life force to cast]');
+  it('parses an inbox fact', () => {
+    const facts = parseFacts('[FACT:inbox|Magic System|Magic costs life force to cast]');
     expect(facts).toHaveLength(1);
-    expect(facts[0].type).toBe('note');
+    expect(facts[0].type).toBe('inbox');
+  });
+
+  it('parses a faction fact', () => {
+    const facts = parseFacts('[FACT:faction|The Iron Brotherhood|A secretive order of smiths]');
+    expect(facts).toHaveLength(1);
+    expect(facts[0].type).toBe('faction');
+  });
+
+  it('parses a scene_card fact', () => {
+    const facts = parseFacts('[FACT:scene_card|The Ambush|Heroes are caught in a mountain pass]');
+    expect(facts).toHaveLength(1);
+    expect(facts[0].type).toBe('scene_card');
+  });
+
+  it('ignores deprecated "note" type (replaced by "inbox")', () => {
+    const facts = parseFacts('[FACT:note|Magic System|Magic costs life force to cast]');
+    expect(facts).toHaveLength(0);
   });
 
   it('extracts multiple facts from a single response', () => {
@@ -183,7 +205,7 @@ describe('writeFacts', () => {
 
   it('uses custom vaultSubPath as the folder', () => {
     const deps = makeDeps(tmpDir);
-    const facts: ParsedFact[] = [{ type: 'note', name: 'Magic Rules', description: 'Magic requires intent' }];
+    const facts: ParsedFact[] = [{ type: 'inbox', name: 'Magic Rules', description: 'Magic requires intent' }];
     writeFacts(facts, 'session_1_notes', 'run-1', deps);
     expect(deps.written[0].path).toBe('session_1_notes/Magic Rules.md');
   });
@@ -249,7 +271,7 @@ describe('writeFacts', () => {
 
   it('persists suggestion with target_kind=vault', () => {
     const deps = makeDeps(tmpDir);
-    const facts: ParsedFact[] = [{ type: 'note', name: 'Prophecy', description: 'The chosen one will arise' }];
+    const facts: ParsedFact[] = [{ type: 'inbox', name: 'Prophecy', description: 'The chosen one will arise' }];
     writeFacts(facts, 'brainstorm', 'run-1', deps);
     expect(deps.persisted[0].target_kind).toBe('vault');
   });
@@ -591,5 +613,324 @@ describe('writeFacts — real DB persistence', () => {
     const rows = listSuggestions(undefined, 'brainstorm');
     expect(rows.length).toBeGreaterThanOrEqual(2);
     expect(rows.every((r) => r.source_agent === 'brainstorm')).toBe(true);
+  });
+});
+
+// ─── runExtractionSideCall ───
+
+describe('runExtractionSideCall — parsing', () => {
+  it('parses a valid multi-entity LLM response', async () => {
+    const response = JSON.stringify([
+      { kind: 'character', title: 'Aria', destinationPath: 'characters/aria.md', body: 'A fierce warrior', frontmatter: {}, extractionConfidence: 0.9 },
+      { kind: 'location', title: 'Iron Gate', destinationPath: 'locations/iron-gate.md', body: 'A massive fortress', frontmatter: {}, extractionConfidence: 0.85 },
+    ]);
+    const callLlm = async () => response;
+    const proposals = await runExtractionSideCall('Some text', new Set(), new Set(), 'turn-1', { callLlm });
+    expect(proposals).toHaveLength(2);
+    expect(proposals[0].kind).toBe('character');
+    expect(proposals[0].title).toBe('Aria');
+    expect(proposals[0].sourceConversationTurnId).toBe('turn-1');
+    expect(proposals[0].status).toBe('pending');
+    expect(proposals[1].kind).toBe('location');
+  });
+
+  it('preserves extraction order from LLM response', async () => {
+    const response = JSON.stringify([
+      { kind: 'faction', title: 'Iron Brotherhood', destinationPath: 'factions/iron-brotherhood.md', body: 'A secretive guild', frontmatter: {}, extractionConfidence: 0.8 },
+      { kind: 'item', title: 'Moonblade', destinationPath: 'items/moonblade.md', body: 'A glowing sword', frontmatter: {}, extractionConfidence: 0.75 },
+      { kind: 'inbox', title: 'Magic costs life force', destinationPath: 'inbox/magic.md', body: 'World rule', frontmatter: {}, extractionConfidence: 0.7 },
+    ]);
+    const callLlm = async () => response;
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-2', { callLlm });
+    expect(proposals.map((p) => p.kind)).toEqual(['faction', 'item', 'inbox']);
+  });
+
+  it('suppresses proposals with confidence < 0.6', async () => {
+    const response = JSON.stringify([
+      { kind: 'character', title: 'LowConf', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.55 },
+      { kind: 'character', title: 'HighConf', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.8 },
+    ]);
+    const callLlm = async () => response;
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-3', { callLlm });
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].title).toBe('HighConf');
+  });
+
+  it('suppresses proposals whose title is in existingEntityNames (manifest dedup)', async () => {
+    const response = JSON.stringify([
+      { kind: 'character', title: 'Aria', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+      { kind: 'location', title: 'Iron Gate', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+    ]);
+    const callLlm = async () => response;
+    const existing = new Set(['Aria']);
+    const proposals = await runExtractionSideCall('', existing, new Set(), 'turn-4', { callLlm });
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].title).toBe('Iron Gate');
+  });
+
+  it('suppresses proposals whose title is in sessionRejectionLog', async () => {
+    const response = JSON.stringify([
+      { kind: 'character', title: 'Villain', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+      { kind: 'character', title: 'Hero', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+    ]);
+    const callLlm = async () => response;
+    const rejected = new Set(['Villain']);
+    const proposals = await runExtractionSideCall('', new Set(), rejected, 'turn-5', { callLlm });
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].title).toBe('Hero');
+  });
+
+  it('suppresses proposals with an unknown kind', async () => {
+    const response = JSON.stringify([
+      { kind: 'organization', title: 'The Guild', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+      { kind: 'character', title: 'Valid', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+    ]);
+    const callLlm = async () => response;
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-6', { callLlm });
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].title).toBe('Valid');
+  });
+
+  it('strips markdown code fences from LLM response if present', async () => {
+    const inner = JSON.stringify([
+      { kind: 'item', title: 'Crystal Orb', destinationPath: 'items/orb.md', body: 'Glows blue', frontmatter: {}, extractionConfidence: 0.8 },
+    ]);
+    const callLlm = async () => `\`\`\`json\n${inner}\n\`\`\``;
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-7', { callLlm });
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].title).toBe('Crystal Orb');
+  });
+
+  it('returns [] when LLM response is not valid JSON', async () => {
+    const callLlm = async () => 'I could not extract anything useful from that text.';
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-8', { callLlm });
+    expect(proposals).toHaveLength(0);
+  });
+
+  it('returns [] when LLM response is an empty array', async () => {
+    const callLlm = async () => '[]';
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-9', { callLlm });
+    expect(proposals).toHaveLength(0);
+  });
+
+  it('returns [] and does not throw when callLlm rejects', async () => {
+    const callLlm = async () => { throw new Error('network error'); };
+    await expect(runExtractionSideCall('', new Set(), new Set(), 'turn-10', { callLlm })).resolves.toEqual([]);
+  });
+
+  it('uses injected generateId for deterministic ids', async () => {
+    const response = JSON.stringify([
+      { kind: 'character', title: 'Zara', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+    ]);
+    const callLlm = async () => response;
+    let counter = 0;
+    const generateId = () => `test-id-${++counter}`;
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-11', { callLlm, generateId });
+    expect(proposals[0].id).toBe('test-id-1');
+  });
+
+  it('each proposal has a unique id', async () => {
+    const response = JSON.stringify([
+      { kind: 'character', title: 'A', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+      { kind: 'character', title: 'B', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+      { kind: 'character', title: 'C', destinationPath: '', body: '', frontmatter: {}, extractionConfidence: 0.9 },
+    ]);
+    const callLlm = async () => response;
+    const proposals = await runExtractionSideCall('', new Set(), new Set(), 'turn-12', { callLlm });
+    const ids = proposals.map((p) => p.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+});
+
+// ─── DB migration — v12 NoteProposal columns ───
+
+describe('DB migration v12 — NoteProposal columns survive on existing rows', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('existing suggestion rows persist with null NoteProposal columns after migration', () => {
+    const suggestion: DbSuggestion = {
+      id: 'migration-v12-test',
+      source_agent: 'brainstorm',
+      confidence: 0.8,
+      rationale: 'Pre-v12 suggestion',
+      target_kind: 'vault',
+      target_path: 'brainstorm/Entity.md',
+      target_anchor: null,
+      payload_json: null,
+      status: 'proposed',
+      created_at: new Date().toISOString(),
+      applied_at: null,
+      applied_run_id: null,
+      budget_exceeded: 0,
+      category: null,
+    };
+    upsertSuggestion(suggestion);
+
+    // Close and reopen — verifies columns exist and row round-trips cleanly
+    closeDb();
+    openDb(tmpDir);
+
+    const row = getSuggestion('migration-v12-test');
+    expect(row).not.toBeNull();
+    expect(row!.source_agent).toBe('brainstorm');
+    expect(row!.status).toBe('proposed');
+    // v12 columns default to null for pre-migration rows
+    expect(row!.extraction_confidence ?? null).toBeNull();
+    expect(row!.source_turn_id ?? null).toBeNull();
+    expect(row!.destination_path ?? null).toBeNull();
+    expect(row!.frontmatter ?? null).toBeNull();
+    expect(row!.note_kind ?? null).toBeNull();
+  });
+
+  it('upsertSuggestion with v12 fields round-trips correctly', () => {
+    const suggestion: DbSuggestion = {
+      id: 'v12-fields-test',
+      source_agent: 'brainstorm',
+      confidence: 0.85,
+      rationale: 'character: Aria',
+      target_kind: 'vault',
+      target_path: 'characters/aria.md',
+      target_anchor: null,
+      payload_json: JSON.stringify({ kind: 'character', title: 'Aria' }),
+      status: 'proposed',
+      created_at: new Date().toISOString(),
+      applied_at: null,
+      applied_run_id: null,
+      budget_exceeded: 0,
+      category: null,
+      extraction_confidence: 0.85,
+      source_turn_id: 'turn-abc',
+      destination_path: 'characters/aria.md',
+      frontmatter: JSON.stringify({ source: 'brainstorm' }),
+      note_kind: 'character',
+    };
+    upsertSuggestion(suggestion);
+
+    const row = getSuggestion('v12-fields-test');
+    expect(row).not.toBeNull();
+    expect(row!.extraction_confidence).toBeCloseTo(0.85);
+    expect(row!.source_turn_id).toBe('turn-abc');
+    expect(row!.destination_path).toBe('characters/aria.md');
+    expect(row!.note_kind).toBe('character');
+  });
+});
+
+// ─── DB migration v13 — proposal_telemetry ───
+
+describe('DB migration v13 — proposal_telemetry table', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts and round-trips a confirm telemetry entry', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-confirm-1',
+      proposal_id: 'prop-abc',
+      kind: 'character',
+      extraction_confidence: 0.92,
+      decision: 'confirm',
+      time_to_decide_ms: 1500,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+
+    const row = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .get('tel-confirm-1') as DbProposalTelemetry | undefined;
+    expect(row).not.toBeUndefined();
+    expect(row!.proposal_id).toBe('prop-abc');
+    expect(row!.kind).toBe('character');
+    expect(row!.extraction_confidence).toBeCloseTo(0.92);
+    expect(row!.decision).toBe('confirm');
+    expect(row!.time_to_decide_ms).toBe(1500);
+  });
+
+  it('inserts an edit_and_confirm entry', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-edit-1',
+      proposal_id: 'prop-edit',
+      kind: 'location',
+      extraction_confidence: 0.75,
+      decision: 'edit_and_confirm',
+      time_to_decide_ms: 8200,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+
+    const row = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .get('tel-edit-1') as DbProposalTelemetry | undefined;
+    expect(row!.decision).toBe('edit_and_confirm');
+    expect(row!.kind).toBe('location');
+  });
+
+  it('inserts a reject entry', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-reject-1',
+      proposal_id: 'prop-rej',
+      kind: 'faction',
+      extraction_confidence: 0.61,
+      decision: 'reject',
+      time_to_decide_ms: 500,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+
+    const row = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .get('tel-reject-1') as DbProposalTelemetry | undefined;
+    expect(row!.decision).toBe('reject');
+    expect(row!.time_to_decide_ms).toBe(500);
+  });
+
+  it('INSERT OR IGNORE — duplicate id does not throw', () => {
+    const entry: DbProposalTelemetry = {
+      id: 'tel-dup',
+      proposal_id: 'prop-dup',
+      kind: 'inbox',
+      extraction_confidence: 0.7,
+      decision: 'confirm',
+      time_to_decide_ms: 1000,
+      created_at: new Date().toISOString(),
+    };
+    insertProposalTelemetry(entry);
+    expect(() => insertProposalTelemetry(entry)).not.toThrow();
+    const rows = getDb()
+      .prepare('SELECT * FROM proposal_telemetry WHERE id = ?')
+      .all('tel-dup') as unknown as DbProposalTelemetry[];
+    expect(rows).toHaveLength(1);
+  });
+
+  it('pre-v13 DB state (no proposal_telemetry table) is safe after migration', () => {
+    // Re-opening the same dir should handle the migration idempotently
+    closeDb();
+    openDb(tmpDir);
+    expect(() => insertProposalTelemetry({
+      id: 'tel-reopen',
+      proposal_id: 'prop-reopen',
+      kind: 'scene_card',
+      extraction_confidence: 0.88,
+      decision: 'confirm',
+      time_to_decide_ms: 300,
+      created_at: new Date().toISOString(),
+    })).not.toThrow();
   });
 });

@@ -149,7 +149,11 @@ export function defaultLayoutDirFor(category: FactType): string {
       return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Locations`;
     case 'item':
       return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Items`;
-    case 'note':
+    case 'faction':
+      return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Factions`;
+    case 'scene_card':
+      return `Universes/${NOTES_VAULT_EXAMPLE_UNIVERSE}/Scenes`;
+    case 'inbox':
       return 'Inbox';
   }
 }
@@ -224,7 +228,7 @@ export function selectContext(args: {
   const userLow = args.userMessage.toLowerCase();
   const convLow = args.conversationText.toLowerCase();
 
-  const TYPE_ORDER: Record<FactType, number> = { character: 0, location: 1, item: 2, note: 3 };
+  const TYPE_ORDER: Record<FactType, number> = { character: 0, location: 1, item: 2, faction: 3, scene_card: 4, inbox: 5 };
 
   type Scored = ContextCandidate & { estimatedTokens: number; whyIncluded: string; _score: number };
 
