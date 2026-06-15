@@ -110,6 +110,45 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  // ── Voice IO AC-V-10: live region structural assertions (SKY-1506) ─────────
+
+  it('AC-V-10: sr-only live region is always present in idle state', () => {
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    const liveRegion = container.querySelector('[role="status"][aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+  });
+
+  it('AC-V-10: axe passes with live region in idle state', async () => {
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  // ── Voice IO AC-V-05: aria-pressed on mic toggle (pending SKY-1503) ────────
+  // These tests define the contract; they will fail until SKY-1503 lands.
+  // Remove `.skip` when SKY-1503 merges.
+
+  it.skip('AC-V-05: mic button has aria-pressed=false in idle state (pending SKY-1503)', () => {
+    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    const micBtn = container.querySelector('.brainstorm-mic-btn');
+    expect(micBtn).not.toBeNull();
+    expect(micBtn?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it.skip('AC-V-05: mic button has aria-pressed=true while recording (pending SKY-1503)', () => {
+    const { getByRole } = render(<BrainstormPage onClose={() => {}} />);
+    const micBtn = getByRole('button', { name: /start recording/i });
+    fireEvent.click(micBtn);
+    expect(micBtn.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it.skip('AC-V-05: axe passes on brainstorm mic in recording state (pending SKY-1503)', async () => {
+    const { container, getByRole } = render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(getByRole('button', { name: /start recording/i }));
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
