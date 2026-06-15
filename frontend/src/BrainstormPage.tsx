@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'rea
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
 import { ProposalCard } from './components/BrainstormCard/ProposalCard';
-import type { NoteProposal } from './components/BrainstormCard/ProposalCard';
+import type { NoteProposal, NoteProposalKind } from './components/BrainstormCard/ProposalCard';
 import { ScenePicker } from './components/BrainstormCard/ScenePicker';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import PresetSelector from './components/PresetSelector';
@@ -305,6 +305,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   // Holds the system prompt augmented with vault context for the current/last request.
   const contextSystemRef = useRef<string>(BRAINSTORM_SYSTEM_PROMPT);
+  // SKY-1485: mirror proposals state for use in async callbacks without stale closure
+  const proposalsRef = useRef<NoteProposal[]>([]);
+  // Tracks when each proposal first appeared so confirm/reject can report timeToDecideMs
+  const proposalAppearAt = useRef<Map<string, number>>(new Map());
   const { announce, liveText } = useLiveAnnounce();
   const effectiveAxes = useMemo(
     () => getEffectiveAxes(presetId, presetOverrides),
@@ -402,6 +406,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // showToast is stable (no deps) — including it satisfies exhaustive-deps without churn
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, messages, facts, sortOrder, customOrder]);
+
+  // SKY-1485: keep proposalsRef in sync so async confirm/reject callbacks read latest state
+  useEffect(() => {
+    proposalsRef.current = proposals;
+  }, [proposals]);
 
   // Warn before window close when there is an active session
   useEffect(() => {
@@ -602,6 +611,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         for (const fact of newFacts) {
           void persistFactWithRoutingRef.current?.(fact);
         }
+      }
+
+      // SKY-1485: fire-and-forget LLM proposal extraction; push event delivers results
+      if (typeof window.api.brainstormExtractProposals === 'function') {
+        void window.api.brainstormExtractProposals({ turnText: fullText, turnId: sid });
       }
 
       const factCount = extracted.length;
@@ -996,18 +1010,79 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     // link-entity + add-to-scene deferred to v2
   }, [facts, announce, showToast, handleOpenInWritingPanel]);
 
-  const handleProposalConfirm = useCallback((proposal: NoteProposal) => {
+  const handleProposalConfirm = useCallback(async (proposal: NoteProposal) => {
     setProposals((prev) => prev.filter((p) => p.id !== proposal.id));
-    // SKY-1483: forward confirmed proposal to vault-writer IPC once it lands.
+    const appearedAt = proposalAppearAt.current.get(proposal.id) ?? Date.now();
+    const timeToDecideMs = Date.now() - appearedAt;
+    proposalAppearAt.current.delete(proposal.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    try {
+      if (typeof api?.brainstormProposalConfirm === 'function') {
+        await api.brainstormProposalConfirm({
+          proposalId: proposal.id,
+          kind: proposal.kind,
+          extractionConfidence: proposal.extractionConfidence,
+          timeToDecideMs,
+          decision: proposal.status === 'edited_and_confirmed' ? 'edit_and_confirm' : 'confirm',
+        });
+      }
+      if (typeof api?.brainstormWriteNote === 'function') {
+        await api.brainstormWriteNote({
+          category: proposal.kind,
+          name: proposal.title,
+          content: proposal.body,
+        });
+      }
+    } catch { /* non-fatal — proposal removed from queue regardless */ }
   }, []);
 
   const handleProposalReject = useCallback((proposalId: string) => {
     setProposals((prev) => prev.filter((p) => p.id !== proposalId));
-    // SKY-1483: log rejection to session rejection list via IPC once it lands.
+    const full = proposalsRef.current.find((p) => p.id === proposalId);
+    const appearedAt = proposalAppearAt.current.get(proposalId) ?? Date.now();
+    proposalAppearAt.current.delete(proposalId);
+    if (!full) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    if (typeof api?.brainstormProposalReject === 'function') {
+      void api.brainstormProposalReject({
+        proposalId,
+        title: full.title,
+        kind: full.kind,
+        extractionConfidence: full.extractionConfidence,
+        timeToDecideMs: Date.now() - appearedAt,
+      });
+    }
   }, []);
 
   const handleProposalDismissAll = useCallback(() => {
+    const current = proposalsRef.current;
     setProposals([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    if (typeof api?.brainstormProposalReject === 'function') {
+      const now = Date.now();
+      for (const p of current) {
+        const appearedAt = proposalAppearAt.current.get(p.id) ?? now;
+        proposalAppearAt.current.delete(p.id);
+        void api.brainstormProposalReject({
+          proposalId: p.id,
+          title: p.title,
+          kind: p.kind,
+          extractionConfidence: p.extractionConfidence,
+          timeToDecideMs: now - appearedAt,
+        });
+      }
+    }
+  }, []);
+
+  const handleBrowseFolder = useCallback(async (): Promise<string | null> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    if (typeof api?.chooseVaultFolder !== 'function') return null;
+    const result = await api.chooseVaultFolder('Choose destination folder') as { path: string | null; cancelled: boolean };
+    return result.path;
   }, []);
 
   const handleBulkDelete = useCallback(() => {
@@ -1151,6 +1226,96 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       } catch { /* non-critical */ }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // SKY-1485: load pending brainstorm proposals from DB on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const api = (window as any).api;
+        if (typeof api?.suggestionsList === 'function') {
+          const result = await api.suggestionsList('proposed', 'brainstorm');
+          if (cancelled) return;
+          const rows: unknown[] = result?.suggestions ?? [];
+          const now = Date.now();
+          const loaded: NoteProposal[] = rows
+            .filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object')
+            .flatMap((r) => {
+              try {
+                const payload = typeof r.payload_json === 'string'
+                  ? (JSON.parse(r.payload_json) as Record<string, unknown>)
+                  : {};
+                const k = payload.kind as string;
+                const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'inbox'].includes(k)
+                  ? (k as NoteProposalKind) : 'inbox';
+                const title = typeof payload.title === 'string' ? payload.title : '';
+                if (!title) return [];
+                const id = typeof r.id === 'string' ? r.id : String(r.id);
+                proposalAppearAt.current.set(id, now);
+                return [{
+                  id,
+                  kind,
+                  title,
+                  body: typeof payload.body === 'string' ? payload.body : '',
+                  destinationPath: typeof r.target === 'string' ? r.target : '',
+                  frontmatter: {},
+                  sourceConversationTurnId: '',
+                  extractionConfidence: typeof r.confidence === 'number' ? r.confidence : 0.8,
+                  status: 'pending' as const,
+                }];
+              } catch { return []; }
+            });
+          setProposals(loaded);
+        }
+      } catch { /* non-critical */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // SKY-1485: subscribe to push events from brainstorm:extractProposals
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    if (typeof api?.onBrainstormProposalQueued !== 'function') return;
+    const unsub: () => void = api.onBrainstormProposalQueued((data: { proposals: unknown[] }) => {
+      const now = Date.now();
+      const incoming: NoteProposal[] = (data.proposals ?? [])
+        .filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object')
+        .flatMap((r) => {
+          const k = r.kind as string;
+          const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'inbox'].includes(k)
+            ? (k as NoteProposalKind) : 'inbox';
+          const title = typeof r.title === 'string' ? r.title : '';
+          if (!title) return [];
+          const id = typeof r.id === 'string' ? r.id : String(r.id);
+          return [{
+            id,
+            kind,
+            title,
+            body: typeof r.body === 'string' ? r.body : '',
+            destinationPath: typeof r.destinationPath === 'string' ? r.destinationPath : '',
+            frontmatter: (r.frontmatter && typeof r.frontmatter === 'object'
+              ? r.frontmatter : {}) as Record<string, unknown>,
+            sourceConversationTurnId: typeof r.sourceConversationTurnId === 'string'
+              ? r.sourceConversationTurnId : '',
+            extractionConfidence: typeof r.extractionConfidence === 'number'
+              ? r.extractionConfidence : 0.8,
+            status: 'pending' as const,
+          }];
+        });
+      if (incoming.length === 0) return;
+      setProposals((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const fresh = incoming.filter((p) => !existingIds.has(p.id));
+        if (fresh.length === 0) return prev;
+        for (const p of fresh) proposalAppearAt.current.set(p.id, now);
+        return [...prev, ...fresh];
+      });
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const submitContinuityAnswer = useCallback(async (issueId: string) => {
@@ -1850,6 +2015,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               onConfirm={handleProposalConfirm}
               onReject={handleProposalReject}
               onDismissAll={handleProposalDismissAll}
+              onBrowseFolder={handleBrowseFolder}
             />
           ) : (
           <div className="brainstorm-facts-list">

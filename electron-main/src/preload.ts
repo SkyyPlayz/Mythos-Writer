@@ -665,6 +665,34 @@ contextBridge.exposeInMainWorld('api', {
     });
   },
 
+  // SKY-1485: Wave 3.4 proposal queue
+  brainstormProposalConfirm: (payload: {
+    proposalId: string;
+    kind: string;
+    extractionConfidence: number;
+    timeToDecideMs: number;
+    decision: 'confirm' | 'edit_and_confirm';
+  }) => ipcRenderer.invoke('brainstorm:proposals:confirm', payload),
+
+  brainstormProposalReject: (payload: {
+    proposalId: string;
+    title: string;
+    kind: string;
+    extractionConfidence: number;
+    timeToDecideMs: number;
+  }) => ipcRenderer.invoke('brainstorm:proposals:reject', payload),
+
+  brainstormExtractProposals: (payload: {
+    turnText: string;
+    turnId: string;
+    existingEntityNames?: string[];
+  }) => ipcRenderer.invoke('brainstorm:extractProposals', payload),
+
+  onBrainstormProposalQueued: (cb: (data: { proposals: unknown[] }) => void) => {
+    const handler = (_: unknown, data: { proposals: unknown[] }) => cb(data);
+    ipcRenderer.on('brainstorm:proposalQueued', handler);
+    return () => ipcRenderer.removeListener('brainstorm:proposalQueued', handler);
+  },
 
 });
 

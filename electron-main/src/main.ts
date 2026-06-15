@@ -5304,6 +5304,8 @@ Rules:
     ),
   );
 
+  // brainstorm:proposals:confirm — renderer confirms (or edit-confirms) a proposal.
+  // Updates the suggestion status and logs decision telemetry.
   ipcMain.handle(
     IPC_CHANNELS.BRAINSTORM_DISMISS_ALL,
     wrapIpcHandler(
