@@ -160,6 +160,16 @@ interface VoiceSettings {
   pttKey?: string;
   /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
   pushToTalkMode?: boolean;
+  /** STT input language code, e.g. 'en-US'. Absent = auto-detect. */
+  inputLanguage?: string;
+  /** TTS voice identifier (Piper model voice or OpenAI voice name, e.g. 'alloy'). */
+  ttsVoiceId?: string;
+  /** TTS output volume, 0–1. Default 1.0. */
+  ttsVolume?: number;
+  /** TTS speech rate, 0.5–2.0. Default 1.0. */
+  ttsRate?: number;
+  /** When true, microphone starts muted until explicitly unmuted. */
+  persistentMute?: boolean;
 }
 
 // Web Speech API — not yet in the TypeScript DOM lib bundled with this project.
@@ -314,7 +324,7 @@ interface AppSettings {
   updateChannel?: 'stable' | 'beta';
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
-  /** Voice IO settings (MYT-205). */
+  /** Voice IO settings (MYT-205 / SKY-1505). */
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
   stt?: {

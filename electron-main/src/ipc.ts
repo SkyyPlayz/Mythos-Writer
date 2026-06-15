@@ -1511,6 +1511,16 @@ export interface VoiceSettings {
   pttKey?: string;
   /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
   pushToTalkMode?: boolean;
+  /** STT input language code, e.g. 'en-US'. Absent = auto-detect. */
+  inputLanguage?: string;
+  /** TTS voice identifier (Piper model voice or OpenAI voice name, e.g. 'alloy'). */
+  ttsVoiceId?: string;
+  /** TTS output volume, 0–1. Default 1.0. */
+  ttsVolume?: number;
+  /** TTS speech rate, 0.5–2.0. Default 1.0. */
+  ttsRate?: number;
+  /** When true, microphone starts muted until explicitly unmuted. */
+  persistentMute?: boolean;
 }
 
 // ─── STT adapter settings (MYT-338) ───

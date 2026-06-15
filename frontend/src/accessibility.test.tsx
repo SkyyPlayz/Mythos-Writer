@@ -60,6 +60,12 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     onVaultNotesUpdated: vi.fn().mockReturnValue(() => {}),
     sttStart: vi.fn(),
     sttStop: vi.fn(),
+    // TTS stubs — required by useTtsPlayer (SKY-1504)
+    voiceSpeak: vi.fn().mockResolvedValue({ speakId: 'stub-speak' }),
+    voiceSpeakCancel: vi.fn(),
+    onVoiceSpeakDone: vi.fn().mockReturnValue(() => {}),
+    onVoiceSpeakError: vi.fn().mockReturnValue(() => {}),
+    onVoiceSpeakChunk: vi.fn().mockReturnValue(() => {}),
     listVault: vi.fn().mockResolvedValue({ items: [] }),
     startVaultWatch: vi.fn().mockResolvedValue({}),
     onVaultFileChanged: vi.fn().mockReturnValue(() => {}),
