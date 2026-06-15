@@ -293,6 +293,7 @@ import {
   runArchiveScan,
   type ArchiveIgnoreKey,
 } from './archiveAgent.js';
+import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
@@ -2544,6 +2545,46 @@ const handlers: IpcHandlers = {
         createdAt: r.created_at,
       })),
     };
+  },
+
+  // ─── Wiki-link suggestion pipeline (SKY-1613) ────
+
+  [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: import('./ipc.js').ArchiveScanLinksPayload) => {
+    ensureVaultDir();
+    const { sceneId, text } = payload ?? {};
+    if (!sceneId) throw new Error('sceneId is required');
+    if (typeof text !== 'string') throw new Error('text must be a string');
+    const manifest = readManifest(getManifestPath());
+    const entities = manifest.entities;
+    const suggestions = scanWikiLinks(sceneId, text, entities);
+    return { suggestions };
+  },
+
+  [IPC_CHANNELS.ARCHIVE_ACCEPT_LINK]: (payload: import('./ipc.js').ArchiveAcceptLinkPayload) => {
+    ensureVaultDir();
+    const { suggestionId } = payload ?? {};
+    if (!suggestionId) throw new Error('suggestionId is required');
+    const manifest = readManifest(getManifestPath());
+    const resolveScenePath = (sid: string): string | null => {
+      for (const story of manifest.stories) {
+        for (const chapter of story.chapters) {
+          const scene = chapter.scenes.find((s) => s.id === sid);
+          if (scene) return scene.path;
+        }
+      }
+      return manifest.scenes.find((s) => s.id === sid)?.path ?? null;
+    };
+    acceptWikiLink(suggestionId, getVaultRoot(), resolveScenePath);
+    return { ok: true };
+  },
+
+  [IPC_CHANNELS.ARCHIVE_REJECT_LINK]: (payload: import('./ipc.js').ArchiveRejectLinkPayload) => {
+    ensureVaultDir();
+    const { suggestionId, sceneText } = payload ?? {};
+    if (!suggestionId) throw new Error('suggestionId is required');
+    if (typeof sceneText !== 'string') throw new Error('sceneText must be a string');
+    rejectWikiLink(suggestionId, sceneText);
+    return { ok: true };
   },
 
   // ─── Liquid Neon background image (MYT-613) ────

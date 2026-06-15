@@ -92,6 +92,24 @@ export interface DbGenerationLog {
   truncated: number | null;
 }
 
+export type WikiLinkStatus = 'proposed' | 'accepted' | 'rejected';
+
+export interface DbWikiLinkSuggestion {
+  id: string;
+  scene_id: string;
+  position: number;
+  /** Exact matched text in scene at suggestion time (for accept replace). */
+  anchor_text: string;
+  entity_name: string;
+  entity_id: string;
+  proposed_link: string;
+  confidence: number;
+  status: WikiLinkStatus;
+  /** SHA-256 of scene text at rejection time — used to lift suppression when text changes. */
+  scene_text_hash: string | null;
+  created_at: string;
+}
+
 export interface DbContinuityDriftLog {
   id: string;
   /** Groups all per-chapter rows from one multi-chapter check call. */
@@ -502,6 +520,28 @@ function runMigrations(db: DatabaseSync): void {
       );
     `);
     db.exec('PRAGMA user_version = 20');
+  }
+
+  if (currentVersion < 21) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS wiki_link_suggestions (
+        id              TEXT PRIMARY KEY,
+        scene_id        TEXT NOT NULL,
+        position        INTEGER NOT NULL,
+        anchor_text     TEXT NOT NULL,
+        entity_name     TEXT NOT NULL,
+        entity_id       TEXT NOT NULL,
+        proposed_link   TEXT NOT NULL,
+        confidence      REAL NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'proposed',
+        scene_text_hash TEXT,
+        created_at      TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_wiki_link_scene ON wiki_link_suggestions (scene_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_link_scene_entity
+        ON wiki_link_suggestions (scene_id, entity_id);
+    `);
+    db.exec('PRAGMA user_version = 21');
   }
 }
 
@@ -1234,4 +1274,65 @@ export function searchEntityFts(query: string): Array<{ entity_id: string }> {
   return getDb()
     .prepare('SELECT entity_id FROM entity_fts WHERE entity_fts MATCH ? ORDER BY rank')
     .all(query) as unknown as Array<{ entity_id: string }>;
+}
+
+// ─── Wiki-link suggestions (SKY-1613) ───
+
+export function upsertWikiLinkSuggestion(s: DbWikiLinkSuggestion): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO wiki_link_suggestions
+         (id, scene_id, position, anchor_text, entity_name, entity_id,
+          proposed_link, confidence, status, scene_text_hash, created_at)
+       VALUES
+         (@id, @scene_id, @position, @anchor_text, @entity_name, @entity_id,
+          @proposed_link, @confidence, @status, @scene_text_hash, @created_at)`
+    )
+    .run(s as unknown as Record<string, SQLInputValue>);
+}
+
+export function getWikiLinkSuggestion(id: string): DbWikiLinkSuggestion | null {
+  return (getDb()
+    .prepare('SELECT * FROM wiki_link_suggestions WHERE id = ?')
+    .get(id) as DbWikiLinkSuggestion | undefined) ?? null;
+}
+
+export function listWikiLinkSuggestionsForScene(sceneId: string): DbWikiLinkSuggestion[] {
+  return getDb()
+    .prepare('SELECT * FROM wiki_link_suggestions WHERE scene_id = ? ORDER BY position ASC')
+    .all(sceneId) as unknown as DbWikiLinkSuggestion[];
+}
+
+export function updateWikiLinkSuggestionStatus(
+  id: string,
+  status: WikiLinkStatus,
+  sceneTextHash?: string | null,
+): void {
+  getDb()
+    .prepare(
+      `UPDATE wiki_link_suggestions SET status = ?, scene_text_hash = ? WHERE id = ?`
+    )
+    .run(status, sceneTextHash ?? null, id);
+}
+
+/** Returns (entityId, sceneTextHash) for all rejected entries in this scene. */
+export function listRejectedWikiLinks(
+  sceneId: string,
+): Array<{ entity_id: string; scene_text_hash: string | null }> {
+  return getDb()
+    .prepare(
+      `SELECT entity_id, scene_text_hash FROM wiki_link_suggestions
+       WHERE scene_id = ? AND status = 'rejected'`
+    )
+    .all(sceneId) as unknown as Array<{ entity_id: string; scene_text_hash: string | null }>;
+}
+
+/** Clear rejection (revert to proposed) when scene text has changed. */
+export function clearWikiLinkRejection(sceneId: string, entityId: string): void {
+  getDb()
+    .prepare(
+      `UPDATE wiki_link_suggestions SET status = 'proposed', scene_text_hash = NULL
+       WHERE scene_id = ? AND entity_id = ? AND status = 'rejected'`
+    )
+    .run(sceneId, entityId);
 }
