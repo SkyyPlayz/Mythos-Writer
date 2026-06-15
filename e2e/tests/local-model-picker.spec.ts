@@ -1,446 +1,374 @@
 /**
  * local-model-picker.spec.ts — SKY-1502 / SKY-1459
  *
- * E2E test plan for the Local Model Picker feature (v0). Covers:
- * - AC-1 (per-agent picker render)
- * - AC-2 (Ollama model list — mocked HTTP)
- * - AC-3 (Ollama-not-running hint)
- * - AC-4 (custom OpenAI-compatible model listing — mocked HTTP)
- * - AC-8 (fresh install defaults)
- * - AC-9 (upgrade preserves model)
- * - AC-10 (test-connection per agent — partial: render only, functional via unit tests)
- *
- * Unit tests for AC-5/6/7 (API-key inheritance, SSRF guard, key masking) are in
- * provider.test.ts and api-key-leak.test.ts; QA verifies via grep in engineering PRs.
+ * E2E coverage for the Local Model Picker v0 acceptance criteria:
+ * - AC-1: per-agent picker render
+ * - AC-2: Ollama model list dropdown (mocked IPC)
+ * - AC-3: Ollama-not-running hint (mocked IPC failure)
+ * - AC-4: Custom OpenAI-compatible model listing (mocked IPC)
+ * - AC-8: fresh install defaults
+ * - AC-9: upgrade preserves existing model settings
+ * - AC-10: per-agent test-connection independence (mocked IPC)
  */
 
-import path from 'path';
-import os from 'os';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import {
   test,
   expect,
   _electron as electron,
   type ElectronApplication,
   type Page,
+  type Locator,
 } from '@playwright/test';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
-function seedUserData(userData: string, vaultDir: string, notesVaultDir: string, appSettings?: any): void {
-  const defaultSettings = {
+type ProviderListResponse = { ok: true; models: string[] } | { ok: false; error: string };
+type ProviderResponses = Record<string, ProviderListResponse>;
+
+type AgentSettings = {
+  enabled: boolean;
+  model: string;
+  scanIntervalSeconds?: number;
+  continuityCheckIntervalSeconds?: number;
+  autoApply: boolean;
+  confidenceThreshold: number;
+  maxTokensPerHour: number;
+  maxSuggestionsPerHour: number;
+  heartbeatIntervalMinutes: number;
+  maxTokensPerDay: number;
+  provider?: {
+    kind: string;
+    apiKey?: string;
+    baseUrl?: string;
+    model: string;
+  };
+};
+
+type AppSettingsSeed = {
+  apiKey: string;
+  onboardingComplete: boolean;
+  provider?: {
+    kind: string;
+    apiKey?: string;
+    baseUrl?: string;
+    model: string;
+  };
+  agents: {
+    writingAssistant: AgentSettings;
+    brainstorm: AgentSettings;
+    archive: AgentSettings;
+  };
+  theme: string;
+  snapshots: { maxPerScene: number; maxAgeDays: number };
+};
+
+const budgets = {
+  autoApply: false,
+  confidenceThreshold: 0.85,
+  maxTokensPerHour: 100_000,
+  maxSuggestionsPerHour: 50,
+  heartbeatIntervalMinutes: 5,
+  maxTokensPerDay: 500_000,
+};
+
+function baseSettings(): AppSettingsSeed {
+  return {
     apiKey: '',
     onboardingComplete: true,
     agents: {
       writingAssistant: {
-        enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30,
-        autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
-        maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
+        enabled: true,
+        model: 'claude-sonnet-4-6',
+        scanIntervalSeconds: 30,
+        ...budgets,
       },
       brainstorm: {
-        enabled: true, model: 'claude-sonnet-4-6', autoApply: false,
-        confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
-        maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
+        enabled: true,
+        model: 'claude-sonnet-4-6',
+        ...budgets,
       },
       archive: {
-        enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60,
-        autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
-        maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
+        enabled: true,
+        model: 'claude-sonnet-4-6',
+        continuityCheckIntervalSeconds: 60,
+        ...budgets,
       },
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   };
-  const vaultSettings = { vaultRoot: vaultDir, notesVaultRoot: notesVaultDir };
-  const settings = appSettings ? { ...defaultSettings, ...appSettings } : defaultSettings;
+}
+
+function seedUserData(
+  userData: string,
+  storyVault: string,
+  notesVault: string,
+  settings: AppSettingsSeed = baseSettings(),
+): void {
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify(settings, null, 2));
-  fs.writeFileSync(path.join(userData, 'vault-settings.json'), JSON.stringify(vaultSettings, null, 2));
+  fs.writeFileSync(
+    path.join(userData, 'vault-settings.json'),
+    JSON.stringify({ vaultRoot: storyVault, notesVaultRoot: notesVault }, null, 2),
+  );
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
-  const app = await electron.launch({
+  const extraArgs = process.platform !== 'darwin' && !process.env.DISPLAY ? ['--headless'] : [];
+  return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 30_000,
+    timeout: 60_000,
   });
-  return app;
+}
+
+async function closeApp(app: ElectronApplication | undefined): Promise<void> {
+  if (!app) return;
+  const proc = app.process();
+  await Promise.race([
+    app.close().catch(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+  ]);
+  try {
+    if (proc && !proc.killed) proc.kill('SIGKILL');
+  } catch {
+    // Already exited.
+  }
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
-  const pg = await app.firstWindow();
-  await pg.waitForLoadState('domcontentloaded');
-  return pg;
+  const page = await app.firstWindow();
+  page.on('dialog', (dialog) => { void dialog.accept().catch(() => undefined); });
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+  return page;
+}
+
+async function installProviderMocks(app: ElectronApplication, responses: ProviderResponses = {}): Promise<void> {
+  await app.evaluate(async ({ ipcMain }, providerResponses: ProviderResponses) => {
+    ipcMain.removeHandler('provider:listModels');
+    ipcMain.handle('provider:listModels', async (_event, payload: { kind?: string }) => {
+      const kind = String(payload?.kind ?? '');
+      return providerResponses[kind] ?? { ok: true, models: [] };
+    });
+
+    ipcMain.removeHandler('settings:testConnection');
+    ipcMain.handle('settings:testConnection', async (_event, payload: { provider?: { kind?: string } }) => {
+      const kind = payload?.provider?.kind;
+      if (kind === 'ollama') return { ok: false, latencyMs: 9, error: 'Mock Ollama connection failed' };
+      return { ok: true, latencyMs: 12 };
+    });
+  }, responses);
 }
 
 async function openSettings(page: Page): Promise<void> {
-  // Click the settings icon in the toolbar (if visible) or use keyboard shortcut
-  // Assuming Settings is accessible via Ctrl+, or a menu button
-  await page.keyboard.press('Control+Comma');
-  // Wait for settings panel to appear; look for the provider section
-  await page.waitForSelector('text=/AI Provider|provider-select/', { timeout: 5000 }).catch(() => {
-    // If selector doesn't appear, the Settings may have opened
-  });
-  await page.waitForLoadState('domcontentloaded');
+  await page.getByLabel('Open settings').click();
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 'Provider Configuration' })).toBeVisible();
+}
+
+function agentCard(page: Page, name: 'Writing Assistant' | 'Brainstorm Agent' | 'Archive Agent'): Locator {
+  return page.locator('.settings-agent-card').filter({ hasText: name });
+}
+
+async function enableAgentOverride(card: Locator, agentName: string): Promise<void> {
+  const toggle = card.getByLabel(`Enable ${agentName} provider override`);
+  // The actual checkbox is visually hidden behind the custom toggle track, so
+  // dispatch the same change event React receives from a real toggle click.
+  await toggle.evaluate((input: HTMLInputElement) => input.click());
+  await expect(toggle).toBeChecked();
 }
 
 let userData: string;
-let vaultDir: string;
-let notesVaultDir: string;
+let storyVault: string;
+let notesVault: string;
+let app: ElectronApplication | undefined;
+let page: Page;
 
 test.beforeEach(() => {
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-lmp-ud-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-lmp-story-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-lmp-notes-'));
+  storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-lmp-story-'));
+  notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-lmp-notes-'));
 });
 
-test.afterEach(() => {
+test.afterEach(async () => {
+  await closeApp(app);
+  app = undefined;
   fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  fs.rmSync(storyVault, { recursive: true, force: true });
+  fs.rmSync(notesVault, { recursive: true, force: true });
 });
 
-// ─── AC-8: Fresh Install Defaults ─────────────────────────────────────────────
+test('TC-LMP-01 / AC-8: fresh install defaults all agents to the global Anthropic provider', async () => {
+  seedUserData(userData, storyVault, notesVault);
+  app = await launchApp(userData);
+  await installProviderMocks(app);
+  page = await firstWindow(app);
 
-test('TC-LMP-01: Fresh install defaults to global Anthropic provider for all agents', async () => {
-  seedUserData(userData, vaultDir, notesVaultDir);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
+  await openSettings(page);
 
-    // Navigate to settings
-    await openSettings(page);
-
-    // Verify provider section with "AI Provider" heading is visible
-    const providerSection = page.locator('text=/AI Provider/');
-    expect(providerSection).toBeTruthy();
-
-    // Check for Anthropic mentions in the settings
-    const pageText = await page.textContent('body');
-    expect(pageText).toContain('Anthropic');
-    expect(pageText).toContain('claude-sonnet-4-6');
-
-    // Verify we can locate the provider select dropdown by its ID
-    const providerSelect = page.locator('#provider-select');
-    const providerValue = await providerSelect.inputValue();
-    expect(providerValue).toBe('anthropic');
-  } finally {
-    await app.close().catch(() => {});
+  await expect(page.getByLabel('AI provider')).toHaveValue('anthropic');
+  for (const [cardName, modelLabel] of [
+    ['Writing Assistant', 'Writing Assistant model'],
+    ['Brainstorm Agent', 'Brainstorm Agent model'],
+    ['Archive Agent', 'Archive Agent model'],
+  ] as const) {
+    const card = agentCard(page, cardName);
+    await expect(card).toContainText('Using global provider (Anthropic (Claude))');
+    await expect(card.getByLabel(modelLabel)).toHaveValue('claude-sonnet-4-6');
+    await expect(card.getByLabel(`Enable ${cardName === 'Writing Assistant' ? 'writingAssistant' : cardName === 'Brainstorm Agent' ? 'brainstorm' : 'archive'} provider override`)).not.toBeChecked();
   }
 });
 
-// ─── AC-1: Per-Agent Provider Picker Render ────────────────────────────────────
+test('TC-LMP-02 / AC-1: per-agent picker renders and global provider changes only non-overridden agents', async () => {
+  seedUserData(userData, storyVault, notesVault);
+  app = await launchApp(userData);
+  await installProviderMocks(app);
+  page = await firstWindow(app);
 
-test('TC-LMP-02: Per-agent provider picker renders when override toggle is enabled', async () => {
-  seedUserData(userData, vaultDir, notesVaultDir);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
-    await openSettings(page);
+  await openSettings(page);
 
-    // Locate Brainstorm agent card and toggle override
-    const brainstormCard = page.locator('[data-testid="agent-section-brainstorm"]');
-    const toggleButton = brainstormCard.locator('[data-testid="agent-provider-override-toggle"]');
-    await toggleButton.click();
-    await page.waitForTimeout(500); // Wait for UI update
+  const brainstorm = agentCard(page, 'Brainstorm Agent');
+  await enableAgentOverride(brainstorm, 'brainstorm');
+  await expect(brainstorm.getByLabel('Provider for brainstorm')).toBeVisible();
+  await expect(brainstorm.getByLabel('Model for brainstorm')).toBeVisible();
+  await expect(brainstorm.getByRole('button', { name: 'Test provider connection for brainstorm' })).toBeVisible();
+  await expect(brainstorm.getByRole('button', { name: 'Refresh models for brainstorm' })).not.toBeVisible();
 
-    // Verify provider dropdown appears
-    const providerDropdown = brainstormCard.locator('[data-testid="agent-provider-select"]');
-    expect(providerDropdown).toBeTruthy();
+  await brainstorm.getByLabel('Provider for brainstorm').selectOption('openai');
+  await expect(brainstorm.getByRole('button', { name: 'Refresh models for brainstorm' })).toBeVisible();
 
-    // Verify model field appears
-    const modelField = brainstormCard.locator('[data-testid="agent-model-field"]');
-    expect(modelField).toBeTruthy();
+  const writing = agentCard(page, 'Writing Assistant');
+  const archive = agentCard(page, 'Archive Agent');
+  await expect(writing).toContainText('Using global provider (Anthropic (Claude))');
+  await expect(archive).toContainText('Using global provider (Anthropic (Claude))');
 
-    // Verify "Refresh models" button is present
-    const refreshButton = brainstormCard.locator('button:has-text("Refresh models")');
-    expect(refreshButton).toBeTruthy();
-
-    // Verify "Test connection" button is present
-    const testConnButton = brainstormCard.locator('button:has-text("Test connection")');
-    expect(testConnButton).toBeTruthy();
-
-    // Writing Assistant should still show "Using global provider"
-    const writingCard = page.locator('[data-testid="agent-section-writingAssistant"]');
-    const writingText = await writingCard.textContent();
-    expect(writingText).toContain('Using global provider');
-  } finally {
-    await app.close().catch(() => {});
-  }
+  await page.getByLabel('AI provider').selectOption('openai');
+  await expect(writing).toContainText('Using global provider (OpenAI)');
+  await expect(archive).toContainText('Using global provider (OpenAI)');
+  await expect(brainstorm.getByLabel('Provider for brainstorm')).toHaveValue('openai');
 });
 
-test('TC-LMP-02b: Changing global provider updates non-overridden agents', async () => {
-  seedUserData(userData, vaultDir, notesVaultDir);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
-    await openSettings(page);
+test('TC-LMP-03 / AC-3: Ollama-not-running shows an inline user-friendly hint', async () => {
+  seedUserData(userData, storyVault, notesVault);
+  app = await launchApp(userData);
+  await installProviderMocks(app, {
+    ollama: { ok: false, error: 'ECONNREFUSED 127.0.0.1:11434' },
+  });
+  page = await firstWindow(app);
 
-    // Get initial provider text for Writing Assistant (should say Anthropic)
-    const writingCard = page.locator('[data-testid="agent-section-writingAssistant"]');
-    let writingText = await writingCard.textContent();
-    expect(writingText).toContain('Anthropic');
+  await openSettings(page);
 
-    // Change global provider to OpenAI
-    const globalProviderSelect = page.locator('[data-testid="provider-select"]');
-    await globalProviderSelect.selectOption('openai');
-    await page.waitForTimeout(500);
+  const writing = agentCard(page, 'Writing Assistant');
+  await enableAgentOverride(writing, 'writingAssistant');
+  await writing.getByLabel('Provider for writingAssistant').selectOption('ollama');
 
-    // Verify Writing Assistant now shows OpenAI (since it's not overridden)
-    writingText = await writingCard.textContent();
-    expect(writingText).toContain('OpenAI');
-  } finally {
-    await app.close().catch(() => {});
-  }
+  await expect(writing.getByLabel('Base URL for writingAssistant')).toHaveValue('http://127.0.0.1:11434/v1');
+  await expect(writing).toContainText('Ollama is not running. Start it with ollama serve.');
+  await expect(writing.getByText(/ECONNREFUSED|fetch failed|network/i)).not.toBeVisible();
 });
 
-// ─── AC-3: Ollama Not Running Hint ──────────────────────────────────────────────
+test('TC-LMP-04 / AC-4: custom OpenAI-compatible endpoint populates model dropdown from mocked IPC', async () => {
+  seedUserData(userData, storyVault, notesVault);
+  app = await launchApp(userData);
+  await installProviderMocks(app, {
+    custom: { ok: true, models: ['gpt-4o', 'gpt-4o-mini'] },
+  });
+  page = await firstWindow(app);
 
-test('TC-LMP-03: Ollama-not-running shows user-friendly hint', async () => {
-  seedUserData(userData, vaultDir, notesVaultDir);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
+  await openSettings(page);
 
-    // Intercept fetch calls to Ollama API and return error
-    await page.route('**/127.0.0.1:11434/**', route => {
-      route.abort('failed');
-    });
+  const archive = agentCard(page, 'Archive Agent');
+  await enableAgentOverride(archive, 'archive');
+  await archive.getByLabel('Provider for archive').selectOption('custom');
+  await archive.getByLabel('Base URL for archive').fill('https://api.custom-provider.local/v1');
+  await archive.getByLabel('API key for archive').fill('test-key-123');
+  await archive.getByRole('button', { name: 'Refresh models for archive' }).click();
 
-    await openSettings(page);
-
-    // Toggle override on Writing Assistant
-    const writingCard = page.locator('[data-testid="agent-section-writingAssistant"]');
-    const toggleButton = writingCard.locator('[data-testid="agent-provider-override-toggle"]');
-    await toggleButton.click();
-    await page.waitForTimeout(500);
-
-    // Select Ollama provider
-    const providerSelect = writingCard.locator('[data-testid="agent-provider-select"]');
-    await providerSelect.selectOption('ollama');
-    await page.waitForTimeout(500);
-
-    // Verify "Ollama is not running" hint appears
-    const hintText = await writingCard.textContent();
-    expect(hintText).toContain('Ollama is not running');
-  } finally {
-    await app.close().catch(() => {});
-  }
+  const model = archive.getByLabel('Model for archive');
+  await expect(model).toHaveJSProperty('tagName', 'SELECT');
+  await expect(model.locator('option')).toHaveText(['gpt-4o', 'gpt-4o-mini', 'Custom…']);
+  await model.selectOption('gpt-4o-mini');
+  await expect(model).toHaveValue('gpt-4o-mini');
 });
 
-// ─── AC-4: Custom OpenAI-Compatible Model Listing ──────────────────────────────
+test('TC-LMP-05 / AC-2: Ollama model list populates a per-agent dropdown from mocked IPC', async () => {
+  seedUserData(userData, storyVault, notesVault);
+  app = await launchApp(userData);
+  await installProviderMocks(app, {
+    ollama: { ok: true, models: ['llama3', 'mistral', 'neural-chat'] },
+  });
+  page = await firstWindow(app);
 
-test('TC-LMP-04: Custom endpoint model listing populates dropdown (mocked)', async () => {
-  seedUserData(userData, vaultDir, notesVaultDir);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
+  await openSettings(page);
 
-    // Mock the /v1/models endpoint
-    await page.route('**/custom-provider.local/v1/models', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: [
-            { id: 'gpt-4o' },
-            { id: 'gpt-4o-mini' },
-            { id: 'claude-sonnet-4-6' },
-          ],
-        }),
-      });
-    });
+  const brainstorm = agentCard(page, 'Brainstorm Agent');
+  await enableAgentOverride(brainstorm, 'brainstorm');
+  await brainstorm.getByLabel('Provider for brainstorm').selectOption('ollama');
+  await brainstorm.getByRole('button', { name: 'Refresh models for brainstorm' }).click();
 
-    await openSettings(page);
-
-    // Toggle override on Archive agent
-    const archiveCard = page.locator('[data-testid="agent-section-archive"]');
-    const toggleButton = archiveCard.locator('[data-testid="agent-provider-override-toggle"]');
-    await toggleButton.click();
-    await page.waitForTimeout(500);
-
-    // Select custom provider
-    const providerSelect = archiveCard.locator('[data-testid="agent-provider-select"]');
-    await providerSelect.selectOption('custom');
-    await page.waitForTimeout(500);
-
-    // Enter custom endpoint URL
-    const urlField = archiveCard.locator('[data-testid="agent-base-url-field"]');
-    await urlField.fill('https://custom-provider.local/v1');
-
-    // Enter API key
-    const keyField = archiveCard.locator('[data-testid="agent-api-key-field"]');
-    await keyField.fill('test-key-123');
-
-    // Click Refresh models
-    const refreshButton = archiveCard.locator('button:has-text("Refresh models")');
-    await refreshButton.click();
-    await page.waitForTimeout(1000);
-
-    // Verify model dropdown now contains mocked models
-    const modelDropdown = archiveCard.locator('[data-testid="agent-model-select"]');
-    const options = await modelDropdown.locator('option').count();
-    expect(options).toBeGreaterThan(0);
-
-    // Select a model and verify it's in the field
-    await modelDropdown.selectOption('gpt-4o');
-    const selectedModel = await modelDropdown.inputValue();
-    expect(selectedModel).toBe('gpt-4o');
-  } finally {
-    await app.close().catch(() => {});
-  }
+  const model = brainstorm.getByLabel('Model for brainstorm');
+  await expect(model).toHaveJSProperty('tagName', 'SELECT');
+  await expect(model.locator('option')).toContainText(['llama3', 'mistral', 'neural-chat', 'Custom…']);
+  await model.selectOption('llama3');
+  await expect(model).toHaveValue('llama3');
 });
 
-// ─── AC-2: Ollama Model List Dropdown (Mocked) ─────────────────────────────────
+test('TC-LMP-06 / AC-9: upgrade preserves old model settings while using global provider', async () => {
+  const settings = baseSettings();
+  settings.agents.writingAssistant.model = 'claude-opus-4-7';
+  settings.agents.brainstorm.model = 'claude-opus-4-7';
+  settings.agents.archive.model = 'claude-opus-4-7';
+  seedUserData(userData, storyVault, notesVault, settings);
+  app = await launchApp(userData);
+  await installProviderMocks(app);
+  page = await firstWindow(app);
 
-test('TC-LMP-05: Ollama model list dropdown (mocked HTTP)', async () => {
-  seedUserData(userData, vaultDir, notesVaultDir);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
+  await openSettings(page);
 
-    // Mock the Ollama /api/tags endpoint
-    await page.route('**/127.0.0.1:11434/api/tags', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          models: [
-            { name: 'llama3' },
-            { name: 'mistral' },
-            { name: 'neural-chat' },
-          ],
-        }),
-      });
-    });
+  const brainstorm = agentCard(page, 'Brainstorm Agent');
+  await expect(brainstorm).toContainText('Using global provider (Anthropic (Claude))');
+  await expect(brainstorm.getByLabel('Brainstorm Agent model')).toHaveValue('claude-opus-4-7');
+  await expect(brainstorm.getByLabel('Enable brainstorm provider override')).not.toBeChecked();
 
-    await openSettings(page);
+  await page.getByLabel('AI provider').selectOption('openai');
+  await expect(brainstorm).toContainText('Using global provider (OpenAI)');
+  await expect(brainstorm.getByLabel('Brainstorm Agent model')).toHaveValue('claude-opus-4-7');
 
-    // Toggle override on Brainstorm agent
-    const brainstormCard = page.locator('[data-testid="agent-section-brainstorm"]');
-    const toggleButton = brainstormCard.locator('[data-testid="agent-provider-override-toggle"]');
-    await toggleButton.click();
-    await page.waitForTimeout(500);
+  await page.getByLabel('Save settings').click();
+  await expect(page.getByLabel('Save settings')).toHaveText('Save');
+  await page.getByLabel('Close settings').click();
 
-    // Select Ollama provider
-    const providerSelect = brainstormCard.locator('[data-testid="agent-provider-select"]');
-    await providerSelect.selectOption('ollama');
-    await page.waitForTimeout(500);
-
-    // Click Refresh models (or wait for auto-fetch if implemented)
-    const refreshButton = brainstormCard.locator('button:has-text("Refresh models")');
-    await refreshButton.click();
-    await page.waitForTimeout(1000);
-
-    // Verify model dropdown is populated with mocked models
-    const modelDropdown = brainstormCard.locator('[data-testid="agent-model-select"]');
-    const options = await modelDropdown.locator('option').count();
-    expect(options).toBeGreaterThan(0);
-
-    // Verify at least one of our mocked models appears
-    const dropdownText = await modelDropdown.textContent();
-    expect(dropdownText).toContain('llama3');
-  } finally {
-    await app.close().catch(() => {});
-  }
+  await openSettings(page);
+  const reopenedBrainstorm = agentCard(page, 'Brainstorm Agent');
+  await expect(page.getByLabel('AI provider')).toHaveValue('openai');
+  await expect(reopenedBrainstorm).toContainText('Using global provider (OpenAI)');
+  await expect(reopenedBrainstorm.getByLabel('Brainstorm Agent model')).toHaveValue('claude-opus-4-7');
 });
 
-// ─── AC-9: Upgrade Preserves Model Settings ────────────────────────────────────
+test('TC-LMP-07 / AC-10: per-agent test-connection results are independent', async () => {
+  seedUserData(userData, storyVault, notesVault);
+  app = await launchApp(userData);
+  await installProviderMocks(app, {
+    ollama: { ok: true, models: ['llama3'] },
+  });
+  page = await firstWindow(app);
 
-test('TC-LMP-06: Upgrade preserves existing model settings', async () => {
-  // Pre-seed with old-style settings (pre-picker, no provider override)
-  const oldSettings = {
-    apiKey: '',
-    onboardingComplete: true,
-    agents: {
-      writingAssistant: {
-        enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30,
-        autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
-        maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
-      },
-      brainstorm: {
-        enabled: true, model: 'claude-sonnet-4-6', autoApply: false,
-        confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
-        maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
-      },
-      archive: {
-        enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60,
-        autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
-        maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
-      },
-    },
-    theme: 'dark',
-    snapshots: { maxPerScene: 100, maxAgeDays: 30 },
-  };
-  seedUserData(userData, vaultDir, notesVaultDir, oldSettings);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
-    await openSettings(page);
+  await openSettings(page);
 
-    // Verify all agents show "Using global provider" (not overridden)
-    const brainstormCard = page.locator('[data-testid="agent-section-brainstorm"]');
-    let text = await brainstormCard.textContent();
-    expect(text).toContain('Using global provider');
+  const brainstorm = agentCard(page, 'Brainstorm Agent');
+  await enableAgentOverride(brainstorm, 'brainstorm');
+  await brainstorm.getByLabel('Provider for brainstorm').selectOption('openai');
+  await brainstorm.getByRole('button', { name: 'Test provider connection for brainstorm' }).click();
+  await expect(brainstorm.getByRole('status')).toHaveText('Connection successful');
 
-    // Verify model is still visible (preserved from old settings)
-    expect(text).toContain('claude-sonnet-4-6');
+  const archive = agentCard(page, 'Archive Agent');
+  await enableAgentOverride(archive, 'archive');
+  await archive.getByLabel('Provider for archive').selectOption('ollama');
+  await archive.getByRole('button', { name: 'Test provider connection for archive' }).click();
+  await expect(archive.getByRole('alert')).toHaveText('Mock Ollama connection failed');
 
-    // Change global provider to OpenAI
-    const globalProviderSelect = page.locator('[data-testid="provider-select"]');
-    await globalProviderSelect.selectOption('openai');
-    await page.waitForTimeout(500);
-
-    // Close and reopen settings to verify persistence
-    // (Simulate closing settings panel)
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
-
-    // Reopen settings
-    await openSettings(page);
-
-    // Verify settings persisted
-    const newText = await brainstormCard.textContent();
-    expect(newText).toContain('OpenAI');
-    expect(newText).toContain('claude-sonnet-4-6');
-  } finally {
-    await app.close().catch(() => {});
-  }
-});
-
-// ─── AC-10: Test Connection Per Agent (Partial) ────────────────────────────────
-
-test('TC-LMP-07: Test connection button renders in per-agent override section', async () => {
-  seedUserData(userData, vaultDir, notesVaultDir);
-  const app = await launchApp(userData);
-  try {
-    const page = await firstWindow(app);
-    await openSettings(page);
-
-    // Toggle override on Brainstorm
-    const brainstormCard = page.locator('[data-testid="agent-section-brainstorm"]');
-    const toggleButton = brainstormCard.locator('[data-testid="agent-provider-override-toggle"]');
-    await toggleButton.click();
-    await page.waitForTimeout(500);
-
-    // Verify Test connection button is present
-    const testConnButton = brainstormCard.locator('button:has-text("Test connection")');
-    expect(testConnButton).toBeTruthy();
-
-    // Toggle override on Archive
-    const archiveCard = page.locator('[data-testid="agent-section-archive"]');
-    const archiveToggle = archiveCard.locator('[data-testid="agent-provider-override-toggle"]');
-    await archiveToggle.click();
-    await page.waitForTimeout(500);
-
-    // Verify Archive also has Test connection button
-    const archiveTestConn = archiveCard.locator('button:has-text("Test connection")');
-    expect(archiveTestConn).toBeTruthy();
-
-    // Verify Writing Assistant (no override) does NOT have Test connection button
-    const writingCard = page.locator('[data-testid="agent-section-writingAssistant"]');
-    const writingTestConn = writingCard.locator('button:has-text("Test connection")');
-    expect(writingTestConn).toBeFalsy();
-  } finally {
-    await app.close().catch(() => {});
-  }
+  await expect(brainstorm.getByRole('status')).toHaveText('Connection successful');
+  await expect(agentCard(page, 'Writing Assistant').getByRole('button', { name: /Test provider connection/ })).not.toBeVisible();
 });
