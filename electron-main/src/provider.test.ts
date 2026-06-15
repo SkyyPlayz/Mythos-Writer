@@ -640,6 +640,25 @@ describe('getVoiceProvider (§6)', () => {
   it('returns provider when both transcribe and speak are explicitly true', () => {
     const p = makeOpenAIConfig({ capabilities: { transcribe: true, speak: true } });
     expect(getVoiceProvider({ provider: p })).toBe(p);
+  it('inherits the global api key when an agent provider override uses the same kind without its own key', () => {
+    const globalOpenAI = makeOpenAIConfig({ apiKey: 'sk-openai-global', model: 'gpt-4o' });
+    const agentOpenAI = makeOpenAIConfig({ apiKey: undefined, model: 'gpt-4o-mini' });
+
+    const result = providerConfigForAgent(globalOpenAI, undefined, agentOpenAI);
+
+    expect(result).toStrictEqual({ ...agentOpenAI, apiKey: 'sk-openai-global' });
+    expect(agentOpenAI.apiKey).toBeUndefined();
+  });
+
+  it('does not inherit the global api key when an agent provider override uses a different kind', () => {
+    const globalAnthropic = makeAnthropicConfig({ apiKey: 'sk-ant-global', model: 'claude-sonnet-4-6' });
+    const agentOllama = makeOllamaConfig({ model: 'llama3.2' });
+
+    const result = providerConfigForAgent(globalAnthropic, undefined, agentOllama);
+
+    expect(result).toStrictEqual(agentOllama);
+    expect(result.kind).toBe('ollama');
+    expect(result.apiKey).toBeUndefined();
   });
 });
 
