@@ -2741,11 +2741,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     aria-label="Enable voice input"
                     checked={settings.voice?.enabled ?? false}
                     onChange={(e) => {
-                      const enabled = e.target.checked;
-                      setSettings((p) => ({
-                        ...p,
-                        voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), enabled },
-                      }));
+                      const checked = e.target.checked;
+                      setSettings((p) => {
+                        const voiceBase = { cloudFallback: false, ...p.voice };
+                        return { ...p, voice: { ...voiceBase, enabled: checked } };
+                      });
                       setSavedOk(false);
                     }}
                   />
@@ -2887,9 +2887,123 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </>
               )}
 
-              <p className="settings-hint settings-hint-privacy">
-                Voice is processed locally on your device when local mode is active; cloud voice uses the selected provider.
-              </p>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-language">Input language</label>
+                <select
+                  id="voice-language"
+                  className="settings-input settings-select"
+                  value={settings.voice?.inputLanguage ?? ''}
+                  aria-label="STT input language"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setSettings((p) => {
+                      const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                      return { ...p, voice: { ...voiceBase, inputLanguage: val } };
+                    });
+                    setSavedOk(false);
+                  }}
+                >
+                  <option value="">Auto-detect</option>
+                  <option value="en-US">English (US)</option>
+                  <option value="en-GB">English (UK)</option>
+                  <option value="es-ES">Spanish (Spain)</option>
+                  <option value="es-MX">Spanish (Mexico)</option>
+                  <option value="fr-FR">French</option>
+                  <option value="de-DE">German</option>
+                  <option value="pt-BR">Portuguese (Brazil)</option>
+                  <option value="ja-JP">Japanese</option>
+                  <option value="zh-CN">Chinese (Simplified)</option>
+                </select>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-tts-voice">TTS voice</label>
+                <input
+                  id="voice-tts-voice"
+                  className="settings-input"
+                  type="text"
+                  value={settings.voice?.ttsVoiceId ?? ''}
+                  placeholder="e.g. alloy, nova, en_US/vctk_low"
+                  spellCheck={false}
+                  aria-label="TTS voice identifier"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setSettings((p) => {
+                      const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                      return { ...p, voice: { ...voiceBase, ttsVoiceId: val } };
+                    });
+                    setSavedOk(false);
+                  }}
+                />
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-tts-volume">TTS volume</label>
+                <div className="settings-slider-row">
+                  <input
+                    id="voice-tts-volume"
+                    className="settings-slider"
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={settings.voice?.ttsVolume ?? 1}
+                    aria-label="TTS volume"
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setSettings((p) => {
+                        const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                        return { ...p, voice: { ...voiceBase, ttsVolume: val } };
+                      });
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-slider-value">{Math.round((settings.voice?.ttsVolume ?? 1) * 100)}%</span>
+                </div>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-tts-rate">TTS rate</label>
+                <div className="settings-slider-row">
+                  <input
+                    id="voice-tts-rate"
+                    className="settings-slider"
+                    type="range"
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={settings.voice?.ttsRate ?? 1}
+                    aria-label="TTS speech rate"
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setSettings((p) => {
+                        const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                        return { ...p, voice: { ...voiceBase, ttsRate: val } };
+                      });
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-slider-value">{(settings.voice?.ttsRate ?? 1).toFixed(1)}×</span>
+                </div>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-toggle" htmlFor="voice-persistent-mute">
+                  <input
+                    id="voice-persistent-mute"
+                    type="checkbox"
+                    aria-label="Start microphone muted"
+                    checked={settings.voice?.persistentMute ?? false}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSettings((p) => {
+                        const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                        return { ...p, voice: { ...voiceBase, persistentMute: checked } };
+                      });
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+                <span className="settings-label">Start microphone muted</span>
+              </div>
+
               <p className="settings-hint">
                 When push-to-talk is on, hold <kbd>Ctrl+Shift+M</kbd> to record and release to stop.
                 When off, <kbd>Ctrl+Shift+M</kbd> toggles recording on/off.

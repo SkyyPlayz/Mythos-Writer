@@ -541,6 +541,157 @@ describe('SettingsPanel', () => {
     expect(saved.voice?.enabled).toBe(true);
   });
 
+  // ── AC-V-09: voice settings panel (SKY-1505) ──
+
+  it('renders input language selector with auto-detect default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/stt input language/i));
+
+    const select = screen.getByLabelText(/stt input language/i) as HTMLSelectElement;
+    expect(select.value).toBe('');
+    const options = Array.from(select.options).map((o) => o.value);
+    expect(options).toContain('');
+    expect(options).toContain('en-US');
+    expect(options).toContain('en-GB');
+  });
+
+  it('input language change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/stt input language/i));
+
+    fireEvent.change(screen.getByLabelText(/stt input language/i), { target: { value: 'fr-FR' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.inputLanguage).toBe('fr-FR');
+  });
+
+  it('input language loaded from persisted settings', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      voice: { enabled: true, cloudFallback: false, inputLanguage: 'de-DE' },
+    });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/stt input language/i));
+
+    const select = screen.getByLabelText(/stt input language/i) as HTMLSelectElement;
+    expect(select.value).toBe('de-DE');
+  });
+
+  it('renders TTS voice identifier input', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/tts voice identifier/i));
+    expect(screen.getByLabelText(/tts voice identifier/i)).toBeInTheDocument();
+  });
+
+  it('TTS voice change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/tts voice identifier/i));
+
+    fireEvent.change(screen.getByLabelText(/tts voice identifier/i), { target: { value: 'alloy' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.ttsVoiceId).toBe('alloy');
+  });
+
+  it('renders TTS volume slider defaulting to 100%', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/tts volume/i));
+
+    const slider = screen.getByLabelText(/tts volume/i) as HTMLInputElement;
+    expect(slider.value).toBe('1');
+  });
+
+  it('TTS volume change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/tts volume/i));
+
+    fireEvent.change(screen.getByLabelText(/tts volume/i), { target: { value: '0.6' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.ttsVolume).toBeCloseTo(0.6);
+  });
+
+  it('renders TTS rate slider defaulting to 1.0×', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/tts speech rate/i));
+
+    const slider = screen.getByLabelText(/tts speech rate/i) as HTMLInputElement;
+    expect(slider.value).toBe('1');
+  });
+
+  it('TTS rate change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/tts speech rate/i));
+
+    fireEvent.change(screen.getByLabelText(/tts speech rate/i), { target: { value: '1.5' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.ttsRate).toBeCloseTo(1.5);
+  });
+
+  it('renders persistent mute toggle unchecked by default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
+
+    const toggle = screen.getByRole('checkbox', { name: /start microphone muted/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('persistent mute toggle reflects persistentMute from loaded settings', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      voice: { enabled: false, cloudFallback: false, persistentMute: true },
+    });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
+
+    const toggle = screen.getByRole('checkbox', { name: /start microphone muted/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+  });
+
+  it('persistent mute toggle change is saved via IPC', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /start microphone muted/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.persistentMute).toBe(true);
+  });
+
+  it('voice settings round-trip — all new fields persist together', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/stt input language/i));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
+    fireEvent.change(screen.getByLabelText(/stt input language/i), { target: { value: 'ja-JP' } });
+    fireEvent.change(screen.getByLabelText(/tts voice identifier/i), { target: { value: 'nova' } });
+    fireEvent.change(screen.getByLabelText(/tts volume/i), { target: { value: '0.8' } });
+    fireEvent.change(screen.getByLabelText(/tts speech rate/i), { target: { value: '1.2' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /start microphone muted/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.voice?.enabled).toBe(true);
+    expect(saved.voice?.inputLanguage).toBe('ja-JP');
+    expect(saved.voice?.ttsVoiceId).toBe('nova');
+    expect(saved.voice?.ttsVolume).toBeCloseTo(0.8);
+    expect(saved.voice?.ttsRate).toBeCloseTo(1.2);
+    expect(saved.voice?.persistentMute).toBe(true);
+  });
+
   // ── MYT-779: AI providers section ──
 
   it('renders AI Provider section with provider selector', async () => {

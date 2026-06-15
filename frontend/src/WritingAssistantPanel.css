@@ -10,7 +10,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
 }
 
 .writing-assistant-header .writing-assistant-hint {
@@ -546,4 +546,93 @@
 .wa-tip-browse-btn:focus-visible {
   outline: 2px solid var(--accent, #0ff);
   outline-offset: 2px;
+}
+
+/* ─── AC-V-06: Session mute toggle ─── */
+
+.wa-mute-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.wa-mute-btn:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.04));
+  color: var(--text-muted);
+}
+
+/* AC-V-11: border + text change signals muted state without relying on color alone */
+.wa-mute-btn--muted {
+  border-color: var(--danger, #f87171);
+  color: var(--danger, #f87171);
+}
+
+.wa-mute-btn--muted:hover {
+  background: rgba(248, 113, 113, 0.08);
+}
+
+/* ─── AC-V-07: Per-card Hear button ─── */
+
+.wa-hear-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.wa-hear-btn:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.04));
+  color: var(--text-dim);
+}
+
+/* AC-V-11: border + icon change signals playing state without relying on color alone */
+.wa-hear-btn--playing {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.wa-hear-btn--playing:hover {
+  background: rgba(124, 58, 237, 0.08);
+}
+
+/* Animated dot indicates active playback — purely decorative, stripped on reduced-motion */
+.wa-hear-btn--playing::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: currentColor;
+  border-radius: 50%;
+  animation: wa-hear-pulse 1s ease-in-out infinite;
+  margin-left: 2px;
+}
+
+@keyframes wa-hear-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.7); }
+}
+
+/* ─── AC-V-12: Reduced-motion stripping ─── */
+@media (prefers-reduced-motion: reduce) {
+  .wa-spinner,
+  .wa-cursor,
+  .wa-hear-btn--playing::after {
+    animation: none;
+  }
 }
