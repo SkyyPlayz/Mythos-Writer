@@ -70,4 +70,26 @@ print(json.dumps(data['findings']))
   || fail "Expected findings=[], got: $findings_array"
 
 pass "0-finding run: exit 0, findings=[]"
+
+# Exclusion regression: seed the sandbox with this smoke-test script (which
+# contains TODO/FIXME/HACK in its own comments) and assert Fisher still emits
+# 0 findings — proving the -g exclusion glob is wired correctly.
+cp "${BASH_SOURCE[0]}" "$SANDBOX/scripts/test-bughunt-fisher-smoke.sh"
+ARTIFACT2="$TMP_DIR/daily_bug_hunt_19700102.json"
+(cd "$SANDBOX" && ./BugHunt-Fisher.sh --run-date 19700102 --output-dir "$TMP_DIR" >/dev/null 2>&1) \
+  || fail "BugHunt-Fisher.sh (exclusion run) exited non-zero"
+
+[[ -f "$ARTIFACT2" ]] || fail "JSON artifact not written for exclusion run"
+
+exclusion_count="$(python3 -c "
+import json
+with open('$ARTIFACT2') as f:
+    data = json.load(f)
+print(len(data['findings']))
+")"
+
+[[ "$exclusion_count" == "0" ]] \
+  || fail "Exclusion regression: smoke-test file seeded in scripts/ but Fisher still returned $exclusion_count finding(s); -g exclusion glob is broken"
+
+pass "exclusion regression: smoke-test markers in scripts/ correctly excluded, findings=[]"
 echo "Smoke test passed."

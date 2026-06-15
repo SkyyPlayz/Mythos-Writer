@@ -184,7 +184,7 @@ if has_command rg; then
       "Actionable TODO/FIXME/HACK markers are either converted into scoped work or removed when stale." \
       "Marker remains in source without a linked disposition from this daily intake run." \
       "Add the smallest regression or cleanup test that proves the marker's intended behavior."
-  done < <(rg -n "TODO|FIXME|HACK" electron-main frontend scripts | head -n 3 || true)
+  done < <(rg -n "TODO|FIXME|HACK" -g '!scripts/test-bughunt-fisher-smoke.sh' electron-main frontend scripts | head -n 3 || true)
 else
   echo "⚠️  Skipping marker scan: ripgrep not available"
 fi
