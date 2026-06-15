@@ -313,7 +313,7 @@ export default function VaultGraphView({ onOpenNote }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const data = await (window as any).api?.vaultGraphData?.() as VaultGraphData | undefined;
+        const data = await window.api?.vaultGraphData?.() as VaultGraphData | undefined;
         if (data) {
           setGraphData(data);
         } else {

@@ -271,7 +271,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
     const filePath = (file as File & { path?: string }).path;
     if (!filePath) return;
-    const res = await (window.api as any).templateImportFromPath(filePath);
+    const res = await window.api.templateImportFromPath(filePath);
     if (res && 'error' in res) {
       showTemplateToast("This file doesn't appear to be a valid Mythos template.");
     } else if (res && !res.cancelled) {
@@ -825,7 +825,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                             aria-label={`Export ${tmpl.name}`}
                             data-testid={`template-export-btn-${tmpl.id}`}
                             onClick={async () => {
-                              const res = await (window.api as any).templateExport(tmpl.id);
+                              const res = await window.api.templateExport(tmpl.id);
                               if (res && 'error' in res) {
                                 showTemplateToast(res.error);
                               } else if (res && !res.cancelled) {
@@ -872,7 +872,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     className="btn-secondary gs-template-import-btn"
                     data-testid="template-import-btn"
                     onClick={async () => {
-                      const res = await (window.api as any).templateImport();
+                      const res = await window.api.templateImport();
                       if (res && 'error' in res) {
                         showTemplateToast("This file doesn't appear to be a valid Mythos template.");
                       } else if (res && !res.cancelled) {
@@ -900,7 +900,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     className="btn-secondary gs-template-import-btn"
                     data-testid="template-import-btn"
                     onClick={async () => {
-                      const res = await (window.api as any).templateImport();
+                      const res = await window.api.templateImport();
                       if (res && 'error' in res) {
                         showTemplateToast("This file doesn't appear to be a valid Mythos template.");
                       } else if (res && !res.cancelled) {

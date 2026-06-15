@@ -26,8 +26,8 @@ export default function ScenePropertiesPanel({ sceneId }: Props) {
   useEffect(() => {
     setLoaded(false);
     Promise.all([
-      (window.api as any).customFieldsList?.() as Promise<{ fields: CustomFieldDef[] }>,
-      (window.api as any).scenePropsGet?.(sceneId) as Promise<{ customFields: Record<string, unknown> }>,
+      window.api.customFieldsList?.() as Promise<{ fields: CustomFieldDef[] }>,
+      window.api.scenePropsGet?.(sceneId) as Promise<{ customFields: Record<string, unknown> }>,
     ])
       .then(([defsRes, propsRes]) => {
         setFieldDefs(defsRes?.fields ?? []);
@@ -42,7 +42,7 @@ export default function ScenePropertiesPanel({ sceneId }: Props) {
     setValues(next);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      (window.api as any).scenePropsSet?.(sceneId, { [name]: value }).catch(() => {});
+      window.api.scenePropsSet?.(sceneId, { [name]: value }).catch(() => {});
     }, SAVE_DEBOUNCE_MS);
   };
 

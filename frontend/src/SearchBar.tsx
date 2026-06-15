@@ -76,7 +76,7 @@ export default function SearchBar({ onNavigate }: Props) {
       return;
     }
     try {
-      const resp = await (window as any).api?.searchVault(q, s, 15);
+      const resp = await window.api?.searchVault(q, s, 15);
       if (resp?.results) {
         setResults(resp.results);
         setOpen(resp.results.length > 0);

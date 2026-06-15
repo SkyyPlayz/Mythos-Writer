@@ -133,7 +133,7 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
       alert('Select a story first to export it as EPUB.');
       return;
     }
-    (window as any).api?.exportEpub?.(selectedStoryId)
+    window.api?.exportEpub?.(selectedStoryId)
       .then((res: { path: string | null; cancelled: boolean }) => {
         if (!res.cancelled && res.path) {
           alert(`EPUB saved to:\n${res.path}`);
@@ -152,7 +152,7 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
       alert('Select a story first to export it as DOCX.');
       return;
     }
-    (window as any).api?.exportDocx?.(selectedStoryId)
+    window.api?.exportDocx?.(selectedStoryId)
       .then((res: { path: string | null; cancelled: boolean }) => {
         if (!res.cancelled && res.path) {
           alert(`DOCX saved to:\n${res.path}`);
@@ -183,8 +183,8 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           </button>
           {fileMenuOpen && (
             <div id="file-menu" className="app-menu-dropdown" role="menu">
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); (window as any).api?.newStory?.(); }}>New Story</button>
-              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); (window as any).api?.openVault?.(); }}>Open Vault…</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); window.api?.newStory?.(); }}>New Story</button>
+              <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); window.api?.openVault?.(); }}>Open Vault…</button>
               <div className="app-menu-separator" role="separator" />
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportEpub(); }}>Export EPUB…</button>
               <button className="app-menu-dropdown-item" role="menuitem" onClick={() => { setFileMenuOpen(false); handleExportDocx(); }}>Export DOCX…</button>
@@ -580,8 +580,7 @@ export default function DesktopShell() {
 
   // ─── Voice session state (SKY-896) ───
   const [voiceListening, setVoiceListening] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const voiceRecognitionRef = useRef<any>(null);
+  const voiceRecognitionRef = useRef<SpeechRecognition | null>(null);
   const voicePttActiveRef = useRef(false);
   const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -651,7 +650,7 @@ export default function DesktopShell() {
     if (!selectedScene) return;
     const content = selectedScene.blocks.map(b => b.content).join('\n\n');
     try {
-      await (window as any).api.snapshotSave?.(selectedScene.id, content);
+      await window.api.snapshotSave?.(selectedScene.id, content);
       setSnapshotSavedAt(new Date().toLocaleTimeString());
     } catch {
       // non-fatal
@@ -696,7 +695,7 @@ export default function DesktopShell() {
 
   const loadBetaReadComments = useCallback(async (sceneId: string) => {
     try {
-      const res = await (window as any).api.betaReadList(sceneId);
+      const res = await window.api.betaReadList(sceneId);
       setBetaReadComments(res.comments ?? []);
     } catch {
       setBetaReadComments([]);
@@ -722,9 +721,9 @@ export default function DesktopShell() {
     setBetaReadLoading(true);
     try {
       const context = `You are a beta reader giving constructive feedback. Highlight strengths, flag anything confusing, and suggest one improvement. Be concise (2–4 sentences).\n\nPassage:\n\n${selectedText}`;
-      const res = await (window as any).api.agentWritingAssistant(selectedText, context);
+      const res = await window.api.agentWritingAssistant(selectedText, context);
       const commentText: string = res?.text ?? 'No feedback generated.';
-      await (window as any).api.betaReadCreate(selectedScene.id, selectedText, commentText);
+      await window.api.betaReadCreate(selectedScene.id, selectedText, commentText);
       await loadBetaReadComments(selectedScene.id);
     } catch {
       // non-fatal
@@ -735,7 +734,7 @@ export default function DesktopShell() {
 
   const handleBetaReadDismiss = useCallback(async (id: string) => {
     try {
-      await (window as any).api.betaReadDismiss(id);
+      await window.api.betaReadDismiss(id);
       setBetaReadComments((prev) => prev.filter((c) => c.id !== id));
     } catch {
       // non-fatal
@@ -798,8 +797,7 @@ export default function DesktopShell() {
     setVoiceActive(true);
     setVoiceListening(true);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SpeechRecognitionCtor) {
       setVoiceToast('Web Speech API not available.');
       if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
@@ -916,9 +914,9 @@ export default function DesktopShell() {
     setError(null);
     try {
       const [m, s, rootResult] = await Promise.all([
-        (window as any).api.readManifest() as Promise<Manifest>,
+        window.api.readManifest() as Promise<Manifest>,
         (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
-        ((window as any).api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
+        (window.api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
       ]);
       setManifest(m);
       setStories(m.stories ?? []);
@@ -938,7 +936,7 @@ export default function DesktopShell() {
         // Load background image data URL if a custom path is stored
         const lg = s.liquidNeon;
         if (lg?.background && lg.background !== 'default') {
-          (window.api as any).loadBgImage?.(lg.background)
+          window.api.loadBgImage?.(lg.background)
             .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
             .catch(() => applyLiquidNeonTokens(lg));
         } else {
@@ -1027,8 +1025,8 @@ export default function DesktopShell() {
 
   // Handle project switches pushed from main process
   useEffect(() => {
-    if (!(window as any).api?.onProjectSwitched) return;
-    const unsub = (window as any).api.onProjectSwitched((data: { vaultRoot: string }) => {
+    if (!window.api?.onProjectSwitched) return;
+    const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
       setActiveVaultRoot(data.vaultRoot);
       // Reset selection state and reload vault content
       setSelectedScene(null);
@@ -1055,7 +1053,7 @@ export default function DesktopShell() {
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
-      await (window as any).api.writeManifest(m);
+      await window.api.writeManifest(m);
     } catch (e) {
       console.error('Failed to persist manifest:', e);
     }
@@ -1217,7 +1215,7 @@ export default function DesktopShell() {
 
   const persistSceneMarkdown = useCallback(async (scene: Scene) => {
     try {
-      await (window as any).api.writeVault(scene.path, blocksToMarkdown(scene));
+      await window.api.writeVault(scene.path, blocksToMarkdown(scene));
     } catch (e) {
       console.error('Failed to write scene markdown:', e);
     }
@@ -1245,7 +1243,7 @@ export default function DesktopShell() {
       checkGettingStartedItem('write-scene');
       setSeenEmptySceneHints((prev) => new Set(prev).add(selectedScene.id));
     }
-    (window as any).api.snapshotSave?.(selectedScene.id, content).catch(() => {});
+    window.api.snapshotSave?.(selectedScene.id, content).catch(() => {});
     // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
     if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
     saveIndicatorTimer.current = setTimeout(() => {
@@ -1347,7 +1345,7 @@ export default function DesktopShell() {
     // Auto-navigate to the newly created scene so the editor opens immediately.
     handleSelectScene(scene, chapter, story);
     setViewDepth('scene');
-    (window as any).api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
+    window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, updateManifest, requestText, handleSelectScene]);
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
@@ -1573,7 +1571,7 @@ export default function DesktopShell() {
       }
     } else {
       // Navigate to entity by docId — look up in manifest entities
-      (window as any).api?.entityRead(result.docId)
+      window.api?.entityRead(result.docId)
         .then((entry: EntityEntry | null) => {
           if (entry) {
             handleSelectEntity(entry);
