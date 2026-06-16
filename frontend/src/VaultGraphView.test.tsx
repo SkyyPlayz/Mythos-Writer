@@ -1,8 +1,9 @@
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import VaultGraphView, {
   buildNeighbourMap,
   computeNodeRadius,
+  computeDepthVisible,
   type VaultGraphData,
 } from './VaultGraphView';
 import { readContrastFloors } from './themeAxis';
@@ -160,6 +161,118 @@ describe('VaultGraphView', () => {
       expect(screen.getByText(/No notes found/i)).toBeInTheDocument();
     });
   });
+
+  // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────
+
+  it('AC-GV-06: renders category filter chips, all active by default', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+
+    const chipsGroup = screen.getByRole('group', { name: /category filters/i });
+    const characterChip = within(chipsGroup).getByRole('button', { name: /characters filter/i });
+
+    expect(characterChip).toHaveAttribute('aria-pressed', 'true');
+    expect(characterChip).toHaveClass('vgv-chip--active');
+  });
+
+  it('AC-GV-06: toggling a category chip off hides nodes in that category', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /open note Ava/i });
+
+    const chipsGroup = screen.getByRole('group', { name: /category filters/i });
+    const characterChip = within(chipsGroup).getByRole('button', { name: /characters filter/i });
+
+    await act(async () => { fireEvent.click(characterChip); });
+
+    expect(screen.queryByRole('button', { name: /open note Ava/i })).not.toBeInTheDocument();
+    expect(characterChip).toHaveAttribute('aria-pressed', 'false');
+    expect(characterChip).toHaveClass('vgv-chip--inactive');
+  });
+
+  it('AC-GV-06: re-enabling a chip restores nodes', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /open note Ava/i });
+
+    const chipsGroup = screen.getByRole('group', { name: /category filters/i });
+    const characterChip = within(chipsGroup).getByRole('button', { name: /characters filter/i });
+
+    await act(async () => { fireEvent.click(characterChip); }); // disable
+    expect(screen.queryByRole('button', { name: /open note Ava/i })).not.toBeInTheDocument();
+
+    await act(async () => { fireEvent.click(characterChip); }); // re-enable
+    expect(await screen.findByRole('button', { name: /open note Ava/i })).toBeInTheDocument();
+  });
+
+  // ─── AC-GV-07: Depth slider ───────────────────────────────────────────────────
+
+  it('AC-GV-07: renders depth slider with default value All', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+
+    const slider = screen.getByLabelText(/depth limit/i);
+    expect(slider).toBeInTheDocument();
+    expect((slider as HTMLInputElement).value).toBe('7');
+    expect(screen.getByText(/Depth: All/)).toBeInTheDocument();
+  });
+
+  it('AC-GV-07: with node selected and depth=1, only direct neighbours visible', async () => {
+    render(<VaultGraphView />);
+
+    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    await act(async () => { fireEvent.click(avaNode); });
+
+    const slider = screen.getByLabelText(/depth limit/i);
+    await act(async () => { fireEvent.change(slider, { target: { value: '1' } }); });
+
+    expect(screen.getByRole('button', { name: /open note Ava/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open note Citadel/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open note Orb/i })).toBeInTheDocument();
+  });
+
+  // ─── AC-GV-08: Search highlight / dim ────────────────────────────────────────
+
+  it('AC-GV-08: search highlights matching nodes and dims non-matching', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /open note Ava/i });
+
+    const searchInput = screen.getByRole('searchbox', { name: /search nodes/i });
+    await act(async () => { fireEvent.change(searchInput, { target: { value: 'Ava' } }); });
+
+    expect(screen.getByTestId('vault-node-characters/ava.md')).toHaveClass('vgv-graph-node--search-match');
+    expect(screen.getByTestId('vault-node-locations/citadel.md')).toHaveClass('vgv-graph-node--search-dimmed');
+    expect(screen.getByTestId('vault-node-items/orb.md')).toHaveClass('vgv-graph-node--search-dimmed');
+  });
+
+  it('AC-GV-08: clearing search restores nodes to rest state', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /open note Ava/i });
+
+    const searchInput = screen.getByRole('searchbox', { name: /search nodes/i });
+    await act(async () => { fireEvent.change(searchInput, { target: { value: 'Ava' } }); });
+    await act(async () => { fireEvent.change(searchInput, { target: { value: '' } }); });
+
+    expect(screen.getByTestId('vault-node-characters/ava.md')).not.toHaveClass('vgv-graph-node--search-match');
+    expect(screen.getByTestId('vault-node-characters/ava.md')).not.toHaveClass('vgv-graph-node--search-dimmed');
+    expect(screen.getByTestId('vault-node-locations/citadel.md')).not.toHaveClass('vgv-graph-node--search-dimmed');
+  });
+
+  it('AC-GV-08: Escape key clears search query', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /open note Ava/i });
+
+    const searchInput = screen.getByRole('searchbox', { name: /search nodes/i });
+    await act(async () => { fireEvent.change(searchInput, { target: { value: 'Ava' } }); });
+    await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
+
+    expect((searchInput as HTMLInputElement).value).toBe('');
+  });
 });
 
 describe('VaultGraphView graph helpers', () => {
@@ -178,9 +291,40 @@ describe('VaultGraphView graph helpers', () => {
   });
 });
 
-// ─── Contrast floor test at Liquid Neon token values (spec §3, acceptance) ───
-// Verifies body text contrast ≥ 4.5:1 at all three slider positions
-// (soft=0, default≈40, sharp=100) using the real design-system token values.
+describe('computeDepthVisible', () => {
+  const allIds = ['a', 'b', 'c', 'd'];
+  const edges = [
+    { source: 'a', target: 'b' },
+    { source: 'b', target: 'c' },
+  ];
+  const neighbours = buildNeighbourMap(edges);
+
+  it('returns null when depth >= 7 (unlimited)', () => {
+    expect(computeDepthVisible('a', allIds, neighbours, 7)).toBeNull();
+  });
+
+  it('with a selected node and depth=1, returns node + direct neighbours', () => {
+    const visible = computeDepthVisible('a', allIds, neighbours, 1);
+    expect(visible).not.toBeNull();
+    expect(visible!.has('a')).toBe(true);
+    expect(visible!.has('b')).toBe(true);
+    expect(visible!.has('c')).toBe(false);
+  });
+
+  it('with a selected node and depth=2, returns node + 2-hop neighbours', () => {
+    const visible = computeDepthVisible('a', allIds, neighbours, 2);
+    expect(visible!.has('a')).toBe(true);
+    expect(visible!.has('b')).toBe(true);
+    expect(visible!.has('c')).toBe(true);
+  });
+
+  it('with no selection, orphans are always visible', () => {
+    const visible = computeDepthVisible(null, allIds, neighbours, 1);
+    expect(visible!.has('d')).toBe(true);
+  });
+});
+
+// ─── Contrast floor test at Liquid Neon token values ─────────────────────────
 
 describe('contrast floors with Liquid Neon token values', () => {
   beforeEach(() => {
