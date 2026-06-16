@@ -993,6 +993,18 @@ export default function DesktopShell() {
           setLeftSidebarLayout(s.activeLayout.leftSidebar);
           leftSidebarLayoutRef.current = s.activeLayout.leftSidebar;
         }
+        // SKY-1697: restore floating panels from persisted AppSettings (AC-F-06).
+        if (Array.isArray(s.activeLayout?.floatingPanels)) {
+          for (const entry of s.activeLayout!.floatingPanels!) {
+            window.api.panelFloat?.(entry.panelId, {
+              sourceSidebar: entry.lastDockSidebar,
+              x: entry.x,
+              y: entry.y,
+              width: entry.width,
+              height: entry.height,
+            }).catch(() => {});
+          }
+        }
         setGettingStartedProgress(
           createInitialGettingStartedProgress(
             undefined,
@@ -1220,6 +1232,93 @@ export default function DesktopShell() {
       persistLeftSidebarLayout({ ...cur, panels: leftPanels });
     }
   }, [grsPanels, persistLeftSidebarLayout, persistGrsSettings]);
+
+  // SKY-1697: Remove a panel from its sidebar and float it in a new window.
+  const persistFloatingPanels = useCallback((panels: FloatingPanelEntry[]) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: panels } };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const handleFloatPanel = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
+    // Remove from source sidebar.
+    if (sourceSidebar === 'left') {
+      const cur = leftSidebarLayoutRef.current;
+      persistLeftSidebarLayout({ ...cur, panels: cur.panels.filter((p) => p.id !== panelId) });
+    } else {
+      const next = grsPanels.filter((p) => p.id !== panelId);
+      setGrsPanels(next);
+      persistGrsSettings({ panels: next });
+    }
+    // Create floating window. Position comes from cursor (main.ts uses getCursorScreenPoint).
+    window.api.panelFloat?.(panelId, { sourceSidebar }).catch(() => {});
+    // Add to floating panels list in settings.
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const existing = prev.activeLayout?.floatingPanels ?? [];
+      if (existing.some((e) => e.panelId === panelId)) return prev;
+      const entry: FloatingPanelEntry = { panelId, x: 0, y: 0, width: 360, height: 600, alwaysOnTop: false, lastDockSidebar: sourceSidebar };
+      const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: [...existing, entry] } };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, [grsPanels, persistLeftSidebarLayout, persistGrsSettings]);
+
+  // SKY-1697: Listen for floating panel closed/docked events.
+  useEffect(() => {
+    if (!window.api.onPanelFloatClosed) return;
+    return window.api.onPanelFloatClosed((data) => {
+      const { panelId, docked, bounds } = data;
+      // Always remove from floatingPanels.
+      setAppSettings((prev) => {
+        if (!prev) return prev;
+        const panels = (prev.activeLayout?.floatingPanels ?? []).filter((e) => e.panelId !== panelId);
+        const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: panels } };
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+      if (docked) {
+        // Dock-back: add to right sidebar (or last known sidebar).
+        const dockSidebar = (appSettings?.activeLayout?.floatingPanels ?? []).find((e) => e.panelId === panelId)?.lastDockSidebar ?? 'right';
+        if (dockSidebar === 'left') {
+          const cur = leftSidebarLayoutRef.current;
+          persistLeftSidebarLayout({ ...cur, panels: [...cur.panels, { id: panelId as SidebarPanelId, collapsed: false }] });
+        } else {
+          setGrsPanels((prev) => {
+            if (prev.some((p) => p.id === panelId)) return prev;
+            return [...prev, { id: panelId as SidebarPanelId, collapsed: false }];
+          });
+          persistGrsSettings({ panels: [...grsPanels, { id: panelId as SidebarPanelId, collapsed: false }] });
+        }
+      }
+      // Update the saved bounds for this panel using the final window position.
+      persistFloatingPanels(
+        (appSettings?.activeLayout?.floatingPanels ?? [])
+          .filter((e) => e.panelId !== panelId)
+          .concat(docked ? [] : [{ panelId, ...bounds, alwaysOnTop: false, lastDockSidebar: 'right' }])
+      );
+    });
+  }, [appSettings?.activeLayout?.floatingPanels, grsPanels, persistLeftSidebarLayout, persistGrsSettings, persistFloatingPanels]);
+
+  // SKY-1697: Update saved bounds on debounced move/resize.
+  useEffect(() => {
+    if (!window.api.onPanelFloatBoundsChanged) return;
+    return window.api.onPanelFloatBoundsChanged((data) => {
+      const { panelId, x, y, width, height } = data;
+      setAppSettings((prev) => {
+        if (!prev) return prev;
+        const panels = (prev.activeLayout?.floatingPanels ?? []).map((e) =>
+          e.panelId === panelId ? { ...e, x, y, width, height } : e
+        );
+        const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: panels } };
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+    });
+  }, []);
 
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
@@ -2073,7 +2172,7 @@ export default function DesktopShell() {
   ].filter(Boolean).join(' ');
 
   return (
-    <PanelDragProvider onDrop={handlePanelDrop}>
+    <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel}>
     <div className={shellClasses}>
       <UpdateBanner />
       {showTitleBar && (
@@ -2228,6 +2327,7 @@ export default function DesktopShell() {
             onLeftSidebarLayoutChange={persistLeftSidebarLayout}
             renderPanelContent={renderSidebarPanel}
             rightPanelCount={grsPanels.length}
+            onFloatPanel={(id) => handleFloatPanel(id, 'left')}
           />
         </div>
       )}
@@ -2489,6 +2589,7 @@ export default function DesktopShell() {
         renderPanelContent={renderSidebarPanel}
         continuityIssueCount={continuityCount}
         leftPanelCount={leftSidebarLayout.panels.length}
+        onFloatPanel={(id) => handleFloatPanel(id, 'right')}
       />}
 
       </div>{/* end shell-main-row */}

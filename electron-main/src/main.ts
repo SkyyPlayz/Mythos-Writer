@@ -5001,6 +5001,142 @@ function registerPanelPopoutHandler(): void {
   }));
 }
 
+// ─── Floating panel windows (SKY-1697 Wave 2c) ───
+
+interface FloatingWindowState {
+  win: BrowserWindow;
+  /** Whether dock-back was requested before close. */
+  dockBack: boolean;
+  boundsDebounce: ReturnType<typeof setTimeout> | null;
+}
+
+const floatingPanelWindows = new Map<string, FloatingWindowState>();
+
+const FLOAT_MIN_WIDTH = 200;
+const FLOAT_MIN_HEIGHT = 150;
+const FLOAT_DEFAULT_WIDTH = 360;
+const FLOAT_DEFAULT_HEIGHT = 600;
+
+function registerFloatingPanelHandlers(): void {
+  const preloadPath = path.join(__dirname, '../preload/preload.js');
+
+  // Create or focus a floating panel window.
+  ipcMain.handle(IPC_CHANNELS.PANEL_FLOAT, wrapIpcHandler(IPC_CHANNELS.PANEL_FLOAT, (event, payload: {
+    panelId: string;
+    sourceSidebar?: 'left' | 'right';
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  }) => {
+    if (!isFromTopFrame(event)) return;
+    const { panelId, sourceSidebar, x, y, width, height } = payload ?? {};
+    if (!panelId || typeof panelId !== 'string') return;
+
+    // If already open, focus it.
+    const existing = floatingPanelWindows.get(panelId);
+    if (existing && !existing.win.isDestroyed()) {
+      existing.win.focus();
+      return;
+    }
+
+    // Position: use supplied coords or cursor position offset.
+    const cursor = screen.getCursorScreenPoint();
+    const winX = typeof x === 'number' ? x : cursor.x + 20;
+    const winY = typeof y === 'number' ? y : cursor.y - 40;
+    const winW = typeof width === 'number' ? Math.max(FLOAT_MIN_WIDTH, width) : FLOAT_DEFAULT_WIDTH;
+    const winH = typeof height === 'number' ? Math.max(FLOAT_MIN_HEIGHT, height) : FLOAT_DEFAULT_HEIGHT;
+
+    // Clamp to the nearest display so it's not off-screen.
+    const displays = screen.getAllDisplays().map((d) => d.bounds);
+    const chosenDisplay = displays.find((d) =>
+      winX >= d.x && winX < d.x + d.width && winY >= d.y && winY < d.y + d.height
+    ) ?? screen.getPrimaryDisplay().bounds;
+    const clampedX = Math.max(chosenDisplay.x, Math.min(winX, chosenDisplay.x + chosenDisplay.width - winW));
+    const clampedY = Math.max(chosenDisplay.y, Math.min(winY, chosenDisplay.y + chosenDisplay.height - winH));
+
+    const title = panelId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const win = new BrowserWindow({
+      x: clampedX,
+      y: clampedY,
+      width: winW,
+      height: winH,
+      minWidth: FLOAT_MIN_WIDTH,
+      minHeight: FLOAT_MIN_HEIGHT,
+      frame: false,
+      resizable: true,
+      title,
+      webPreferences: secureWebPreferences({ preloadPath }),
+    });
+
+    const state: FloatingWindowState = { win, dockBack: false, boundsDebounce: null };
+    floatingPanelWindows.set(panelId, state);
+
+    // Load the floating panel renderer route.
+    const encodedId = encodeURIComponent(panelId);
+    const sidebarParam = sourceSidebar ? `?sidebar=${sourceSidebar}` : '';
+    if (process.env.VITE_DEV_SERVER_URL) {
+      win.loadURL(`${process.env.VITE_DEV_SERVER_URL}#/floating-panel/${encodedId}${sidebarParam}`).catch(() => {});
+    } else {
+      const htmlPath = path.join(__dirname, '../renderer/index.html');
+      win.loadFile(htmlPath, { hash: `/floating-panel/${encodedId}${sidebarParam}` }).catch(() => {});
+    }
+
+    // Debounced bounds-change events to renderer.
+    const onBoundsChange = () => {
+      const s = floatingPanelWindows.get(panelId);
+      if (!s || s.win.isDestroyed()) return;
+      if (s.boundsDebounce) clearTimeout(s.boundsDebounce);
+      s.boundsDebounce = setTimeout(() => {
+        const b = s.win.getBounds();
+        mainWindow?.webContents.send(IPC_CHANNELS.PANEL_FLOAT_BOUNDS, { panelId, x: b.x, y: b.y, width: b.width, height: b.height });
+      }, 500);
+    };
+    win.on('move', onBoundsChange);
+    win.on('resize', onBoundsChange);
+
+    win.on('closed', () => {
+      const s = floatingPanelWindows.get(panelId);
+      if (s?.boundsDebounce) clearTimeout(s.boundsDebounce);
+
+      // Capture final bounds before the window is gone — bounds are still
+      // accessible synchronously before the 'closed' handler returns.
+      // Use a try/catch since on some platforms getBounds() may throw after destroy.
+      let bounds = { x: clampedX, y: clampedY, width: winW, height: winH };
+      try { bounds = win.getBounds(); } catch { /* ignore */ }
+
+      floatingPanelWindows.delete(panelId);
+      mainWindow?.webContents.send(IPC_CHANNELS.PANEL_FLOAT_CLOSED, {
+        panelId,
+        docked: s?.dockBack ?? false,
+        bounds,
+      });
+    });
+  }));
+
+  // Dock-back: called from the floating panel window to return to sidebar.
+  ipcMain.handle(IPC_CHANNELS.PANEL_FLOAT_DOCK_BACK, wrapIpcHandler(IPC_CHANNELS.PANEL_FLOAT_DOCK_BACK, (_event, payload: { panelId: string }) => {
+    const { panelId } = payload ?? {};
+    if (!panelId) return;
+    const s = floatingPanelWindows.get(panelId);
+    if (!s || s.win.isDestroyed()) return;
+    s.dockBack = true;
+    s.win.close();
+  }));
+
+  // Toggle always-on-top pin.
+  ipcMain.handle(IPC_CHANNELS.PANEL_FLOAT_SET_PIN, wrapIpcHandler(IPC_CHANNELS.PANEL_FLOAT_SET_PIN, (event, payload: { panelId: string; alwaysOnTop: boolean }) => {
+    const { panelId, alwaysOnTop } = payload ?? {};
+    if (!panelId) return;
+    const s = floatingPanelWindows.get(panelId);
+    if (!s || s.win.isDestroyed()) return;
+    s.win.setAlwaysOnTop(alwaysOnTop);
+    if (event.sender && !event.sender.isDestroyed()) {
+      event.sender.send('panel:float-pin-changed', { panelId, alwaysOnTop });
+    }
+  }));
+}
+
 // ─── Create BrowserWindow ───
 function createWindow() {
   // electron-vite emits the preload to out/preload/preload.js, while this
@@ -6937,6 +7073,7 @@ app.whenReady().then(async () => {
 
   registerPresetHandlers();
   registerPanelPopoutHandler();
+  registerFloatingPanelHandlers();
 
   if (initializeVaults) startWritingScanScheduler();
   if (initializeVaults) startArchiveContScheduler();

@@ -444,7 +444,20 @@ interface AppSettings {
   /** SKY-1694 (Wave 2a): persisted layout customizations for the panel system. */
   activeLayout?: {
     leftSidebar: LeftSidebarLayout;
+    /** SKY-1697 (Wave 2c): floating panel windows, restored on restart. */
+    floatingPanels?: FloatingPanelEntry[];
   };
+}
+
+/** SKY-1697 (Wave 2c): persisted floating panel window state. */
+interface FloatingPanelEntry {
+  panelId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  alwaysOnTop: boolean;
+  lastDockSidebar: 'left' | 'right';
 }
 
 /** SKY-1695 (Wave 2b): Panel IDs for the right sidebar panel zone. */
@@ -1135,6 +1148,13 @@ interface Window {
     // SKY-1686: Global right-sidebar panel popout window
     panelPopout?: (panelId: string, sceneId: string | null) => Promise<void>;
     onPanelPopoutClosed?: (callback: (panelId: string) => void) => () => void;
+
+    // SKY-1697: Wave 2c — free-floating panel windows
+    panelFloat?: (panelId: string, opts?: { sourceSidebar?: 'left' | 'right'; x?: number; y?: number; width?: number; height?: number }) => Promise<void>;
+    panelFloatDockBack?: (panelId: string) => Promise<void>;
+    panelFloatSetPin?: (panelId: string, alwaysOnTop: boolean) => Promise<void>;
+    onPanelFloatClosed?: (callback: (data: { panelId: string; docked: boolean; bounds: { x: number; y: number; width: number; height: number } }) => void) => () => void;
+    onPanelFloatBoundsChanged?: (callback: (data: { panelId: string; x: number; y: number; width: number; height: number }) => void) => () => void;
 
     // Optional / feature-gated entry points (may not be registered in all builds)
     newStory?: () => Promise<void>;

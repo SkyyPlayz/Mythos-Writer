@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import DesktopShell from './DesktopShell';
 import OnboardingWizard from './OnboardingWizard';
 import VaultNotFoundScreen from './components/VaultNotFoundScreen';
+import FloatingPanelApp from './FloatingPanelApp';
 import './App.css';
 
 type AppView =
@@ -115,4 +116,23 @@ function App() {
   );
 }
 
-export default App;
+// SKY-1697: Top-level router — runs once at module load time before any React rendering.
+// The hash is set by main.ts when creating a floating panel BrowserWindow and never changes
+// while the window is alive, so it's safe to read once here.
+const _floatingHash = window.location.hash;
+const _floatingPanelId = _floatingHash.startsWith('#/floating-panel/')
+  ? decodeURIComponent(_floatingHash.replace('#/floating-panel/', '').split('?')[0])
+  : null;
+
+function AppRoot() {
+  if (_floatingPanelId) {
+    return (
+      <div className="root-layout">
+        <FloatingPanelApp panelId={_floatingPanelId} />
+      </div>
+    );
+  }
+  return <App />;
+}
+
+export default AppRoot;

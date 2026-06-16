@@ -425,6 +425,13 @@ export const IPC_CHANNELS = {
   PANEL_POPOUT: 'panel:popout',
   PANEL_POPOUT_CLOSED: 'panel:popout-closed',
 
+  // SKY-1697: Wave 2c — free-floating panel windows
+  PANEL_FLOAT: 'panel:float',
+  PANEL_FLOAT_CLOSED: 'panel:float-closed',
+  PANEL_FLOAT_DOCK_BACK: 'panel:float-dock-back',
+  PANEL_FLOAT_SET_PIN: 'panel:float-set-pin',
+  PANEL_FLOAT_BOUNDS: 'panel:float-bounds',
+
   // SKY-1684: Archive Agent v1 — continuity scan IPC
   ARCHIVE_SCAN_CONTINUITY: 'archive:scan-continuity',
   ARCHIVE_RESOLVE_CONTINUITY: 'archive:resolve-continuity',
@@ -1786,6 +1793,18 @@ export interface AppSettings {
 export interface RightSidebarPanel {
   id: 'writing-assistant' | 'archive-continuity' | 'scene-preview';
   collapsed: boolean;
+}
+
+/** SKY-1697 (Wave 2c): persisted state for a floating panel window. */
+export interface FloatingPanelEntry {
+  panelId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  alwaysOnTop: boolean;
+  /** Sidebar to return to on dock-back. Defaults to right. */
+  lastDockSidebar: 'left' | 'right';
 }
 
 /** SKY-204: daily notes journal mode configuration. */

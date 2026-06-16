@@ -86,6 +86,7 @@ function PanelSlot({
   isPopout,
   onToggleCollapse,
   onPopout,
+  onFloat,
   onRemove,
   onDragStart,
   onDragEnd,
@@ -98,6 +99,7 @@ function PanelSlot({
   isPopout: boolean;
   onToggleCollapse: () => void;
   onPopout: () => void;
+  onFloat: () => void;
   onRemove: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
@@ -156,6 +158,14 @@ function PanelSlot({
         <span className="grs-panel-controls" onClick={(e) => e.stopPropagation()}>
           <button
             className="grs-panel-btn"
+            aria-label={`Float ${label} to window`}
+            title="Float to window"
+            onClick={onFloat}
+          >
+            ⧉
+          </button>
+          <button
+            className="grs-panel-btn"
             aria-label={`Pop out ${label}`}
             title="Pop out"
             onClick={onPopout}
@@ -208,6 +218,9 @@ export interface GlobalRightSidebarProps {
 
   /** Count of left sidebar panels (needed for keyboard-drag bounds). */
   leftPanelCount: number;
+
+  /** SKY-1697: Float a panel to a free-floating window. */
+  onFloatPanel?: (panelId: SidebarPanelId) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -223,6 +236,7 @@ export default function GlobalRightSidebar({
   renderPanelContent,
   continuityIssueCount = 0,
   leftPanelCount,
+  onFloatPanel,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -236,6 +250,8 @@ export default function GlobalRightSidebar({
     commitDrop,
     endDrag,
     cancelDrag,
+    floatDrop,
+    wasEscapeCancelled,
     kbDrag,
     startKeyboardDrag,
     moveKbTarget,
@@ -325,14 +341,19 @@ export default function GlobalRightSidebar({
   );
 
   const handleDragEnd = useCallback(
-    (e: React.DragEvent) => {
+    (e: React.DragEvent, panelId: PanelId, sourceSidebar: DragSidebar) => {
       if (e.dataTransfer.dropEffect === 'none') {
-        cancelDrag();
+        if (!wasEscapeCancelled()) {
+          // Dropped outside all valid zones — float the panel (AC-F-01).
+          floatDrop(panelId, sourceSidebar);
+        } else {
+          cancelDrag();
+        }
       } else {
         endDrag();
       }
     },
-    [cancelDrag, endDrag],
+    [cancelDrag, endDrag, floatDrop, wasEscapeCancelled],
   );
 
   const handleDropZoneDragOver = useCallback(
@@ -485,9 +506,10 @@ export default function GlobalRightSidebar({
                 isPopout={popoutPanels.has(config.id)}
                 onToggleCollapse={() => toggleCollapse(config.id)}
                 onPopout={() => handlePopout(config.id)}
+                onFloat={() => onFloatPanel?.(config.id)}
                 onRemove={() => removePanel(config.id)}
                 onDragStart={(e) => handleDragStart(e, config.id, i)}
-                onDragEnd={handleDragEnd}
+                onDragEnd={(e) => handleDragEnd(e, config.id, 'right')}
                 onKeyDown={(e) => handleDragHandleKeyDown(e, config.id, i)}
                 isDragging={isDraggingThis}
                 badgeCount={
