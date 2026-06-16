@@ -125,27 +125,28 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  // ── Voice IO AC-V-05: aria-pressed on mic toggle (pending SKY-1503) ────────
-  // These tests define the contract; they will fail until SKY-1503 lands.
-  // Remove `.skip` when SKY-1503 merges.
+  // ── Voice IO AC-V-05: aria-pressed on mic toggle (SKY-1503 merged) ─────────
+  // SKY-1503 landed via PR #457. In jsdom, getSpeechRecognitionCtor() returns null
+  // so startVoice() takes the IPC fallback path → setVoiceState('listening') immediately.
 
-  it.skip('AC-V-05: mic button has aria-pressed=false in idle state (pending SKY-1503)', () => {
+  it('AC-V-05: mic button has aria-pressed=false in idle state', () => {
     const { container } = render(<BrainstormPage onClose={() => {}} />);
     const micBtn = container.querySelector('.brainstorm-mic-btn');
     expect(micBtn).not.toBeNull();
     expect(micBtn?.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it.skip('AC-V-05: mic button has aria-pressed=true while recording (pending SKY-1503)', () => {
+  it('AC-V-05: mic button has aria-pressed=true while recording', () => {
     const { getByRole } = render(<BrainstormPage onClose={() => {}} />);
-    const micBtn = getByRole('button', { name: /start recording/i });
+    // MIC_ARIA_LABELS.idle = "Start voice input" (SKY-1503)
+    const micBtn = getByRole('button', { name: /start voice input/i });
     fireEvent.click(micBtn);
     expect(micBtn.getAttribute('aria-pressed')).toBe('true');
   });
 
-  it.skip('AC-V-05: axe passes on brainstorm mic in recording state (pending SKY-1503)', async () => {
+  it('AC-V-05: axe passes on brainstorm mic in recording state', async () => {
     const { container, getByRole } = render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(getByRole('button', { name: /start recording/i }));
+    fireEvent.click(getByRole('button', { name: /start voice input/i }));
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
