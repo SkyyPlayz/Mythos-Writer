@@ -84,6 +84,18 @@ describe('SettingsPanel', () => {
     expect(mockSettingsGet).toHaveBeenCalledTimes(1);
   });
 
+  // SKY-1902: regression — when the panel mounts in `loading` state the dialog
+  // body (and dialogRef) does not exist yet, so the mount-time focus effect can
+  // never find a focusable element. A follow-up effect must move focus into the
+  // dialog once content has loaded, otherwise keyboard users stay outside the
+  // dialog and Tab walks the underlying app DOM (TC-SKY-814-06 regression).
+  it('moves focus into the dialog after loading completes', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    const closeButton = screen.getByRole('button', { name: /close settings/i });
+    await waitFor(() => expect(document.activeElement).toBe(closeButton));
+  });
+
   it('saves settings to IPC when Save is clicked', async () => {
     render(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
