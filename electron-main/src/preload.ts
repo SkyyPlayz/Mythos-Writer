@@ -365,6 +365,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('betaRead:list', { sceneId }),
   betaReadDismiss: (id: string) =>
     ipcRenderer.invoke('betaRead:dismiss', { id }),
+  betaReadScan: (sceneId: string, prose: string, scenePath: string) =>
+    ipcRenderer.invoke('betaRead:scan', { sceneId, prose, scenePath }),
 
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }

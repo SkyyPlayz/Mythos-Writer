@@ -1,0 +1,130 @@
+.br-panel {
+  border: 1px solid color-mix(in srgb, var(--wa-cat-style, #8b5cf6) 36%, transparent);
+  border-radius: 16px;
+  padding: 12px;
+  margin: 10px 0;
+  background: color-mix(in srgb, #0f172a 86%, transparent);
+  color: inherit;
+}
+
+.br-panel-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.br-summary-card h3,
+.br-summary-card p {
+  margin: 0;
+}
+
+.br-eyebrow,
+.br-anchor-label,
+.br-summary-meta {
+  color: var(--muted-text, #94a3b8);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.br-summary-status {
+  margin-top: 4px;
+  color: var(--muted-text, #cbd5e1);
+  font-size: 0.85rem;
+}
+
+.br-panel-actions,
+.br-comment-actions,
+.br-history-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.br-primary-btn,
+.br-action-btn {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid color-mix(in srgb, var(--focus-ring, #22d3ee) 45%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--focus-ring, #22d3ee) 14%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+
+.br-primary-btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.br-primary-btn:focus-visible,
+.br-action-btn:focus-visible,
+.br-comment-summary:focus-visible {
+  outline: 2px solid var(--focus-ring, #22d3ee);
+  outline-offset: 2px;
+}
+
+.br-comment-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.br-comment-card,
+.br-history-drawer {
+  border: 1px solid color-mix(in srgb, var(--wa-cat-clarity, #22d3ee) 24%, transparent);
+  border-radius: 14px;
+  padding: 10px;
+  background: color-mix(in srgb, #020617 82%, transparent);
+}
+
+.br-anchor-text {
+  margin: 4px 0 8px;
+  border-left: 3px solid var(--wa-cat-clarity, #22d3ee);
+  padding-left: 8px;
+  color: #e2e8f0;
+}
+
+.br-comment-text,
+.br-empty-state,
+.br-loading-state,
+.br-error-state,
+.br-undo-toast {
+  margin: 8px 0;
+}
+
+.br-error-state {
+  color: #fca5a5;
+}
+
+.br-action-btn--danger {
+  border-color: color-mix(in srgb, #f87171 52%, transparent);
+}
+
+.br-comment-summary {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.br-history-drawer {
+  margin-top: 10px;
+}
+
+.br-history-list {
+  padding-left: 18px;
+}
+
+@media (max-width: 220px) {
+  .br-panel-header,
+  .br-panel-actions,
+  .br-comment-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
