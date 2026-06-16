@@ -716,7 +716,9 @@ interface Window {
     exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
     exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
 
-    // Vault Graph View (MYT-249)
+    // Vault Graph View (MYT-249 / SKY-1743)
+    vaultGraphNodes: () => Promise<unknown>;
+    vaultGraphEdges: () => Promise<unknown>;
     vaultGraphData: () => Promise<unknown>;
 
     // Timeline (MYT-319) — Archive-inferred chronology

@@ -462,7 +462,9 @@ contextBridge.exposeInMainWorld('api', {
   exportPlaintext: (scope: unknown) =>
     ipcRenderer.invoke('export:plaintext', { scope }),
 
-  // Vault Graph View (MYT-249)
+  // Vault Graph View (MYT-249 / SKY-1743)
+  vaultGraphNodes: () => ipcRenderer.invoke('vault:graph:nodes', undefined),
+  vaultGraphEdges: () => ipcRenderer.invoke('vault:graph:edges', undefined),
   vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
 
   // Timeline (MYT-319) — Archive-inferred chronology

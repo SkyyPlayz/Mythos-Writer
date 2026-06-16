@@ -114,7 +114,9 @@ export const IPC_CHANNELS = {
   ARCHIVE_SCAN: 'archive:scan',
   ARCHIVE_STATUS: 'archive:status',
 
-  // Vault graph (Phase 5 — MYT-163)
+  // Vault graph (Phase 5 — MYT-163 / SKY-1743)
+  VAULT_GRAPH_NODES: 'vault:graph:nodes',
+  VAULT_GRAPH_EDGES: 'vault:graph:edges',
   VAULT_GRAPH_DATA: 'vault:graph-data',
 
   // Structured chapter / scene creation (Phase 2 — MYT-195)
@@ -551,6 +553,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.WRITING_ASSISTANT_SCAN_NOW]: (payload: WritingScanPayload) => Promise<WritingScanResponse>;
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
+  [IPC_CHANNELS.VAULT_GRAPH_NODES]: (payload: never) => Promise<VaultGraphNodesResponse>;
+  [IPC_CHANNELS.VAULT_GRAPH_EDGES]: (payload: never) => Promise<VaultGraphEdgesResponse>;
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
   [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => ChapterEntry;
   [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => SceneEntry;
@@ -2300,6 +2304,8 @@ export interface VaultGraphNode {
   id: string;
   label: string;
   path: string;
+  category: 'characters' | 'locations' | 'factions' | 'history' | 'systems' | 'items' | 'misc' | 'default';
+  degree: number;
   folder?: string;
   tags?: string[];
 }
@@ -2307,6 +2313,15 @@ export interface VaultGraphNode {
 export interface VaultGraphEdge {
   source: string;
   target: string;
+  weight: number;
+}
+
+export interface VaultGraphNodesResponse {
+  nodes: VaultGraphNode[];
+}
+
+export interface VaultGraphEdgesResponse {
+  edges: VaultGraphEdge[];
 }
 
 export interface VaultGraphDataResponse {
