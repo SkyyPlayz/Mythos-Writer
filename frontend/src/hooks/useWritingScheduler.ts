@@ -1,8 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Scene } from '../types';
 
+export type WritingTipCategory = 'grammar' | 'pacing' | 'clarity' | 'style' | 'tone';
+
+export interface WritingAssistantTip {
+  id: string;
+  text: string;
+  category: WritingTipCategory;
+  sceneAnchor?: string;
+  sceneId?: string;
+  scenePath?: string;
+  sceneUpdatedAt?: string;
+}
+
+export type WritingAssistantTipInput = string | Partial<WritingAssistantTip> & { text: string };
+
 export interface ScheduledScanResult {
-  tips: string[];
+  tips: WritingAssistantTipInput[];
   scannedAt: string;
 }
 
@@ -22,7 +36,7 @@ export function useWritingScheduler({
   enabled: boolean;
   scanIntervalSeconds: number;
   isActive: boolean;
-}): { result: ScheduledScanResult | null; scanning: boolean } {
+}): { result: ScheduledScanResult | null; scanning: boolean; runScan: (useScanNowChannel?: boolean) => Promise<void> } {
   const [result, setResult] = useState<ScheduledScanResult | null>(null);
   const [scanning, setScanning] = useState(false);
 
@@ -34,7 +48,7 @@ export function useWritingScheduler({
     sceneRef.current = scene;
   }, [scene]);
 
-  const runScan = useCallback(async () => {
+  const runScan = useCallback(async (useScanNowChannel = false) => {
     const currentScene = sceneRef.current;
     if (!currentScene || scanningRef.current) return;
 
@@ -44,7 +58,13 @@ export function useWritingScheduler({
     scanningRef.current = true;
     setScanning(true);
     try {
-      const response = await window.api.writingScan(currentScene.id, prose, currentScene.path);
+      const response = useScanNowChannel
+        ? await window.api.writingAssistantScanNow({
+          sceneId: currentScene.id,
+          prose,
+          scenePath: currentScene.path,
+        })
+        : await window.api.writingScan(currentScene.id, prose, currentScene.path);
       setResult({ tips: response.tips, scannedAt: response.scannedAt });
     } catch {
       // Non-fatal — scheduler continues on next tick.
@@ -62,5 +82,5 @@ export function useWritingScheduler({
     return () => clearInterval(id);
   }, [enabled, isActive, scanIntervalSeconds, runScan]);
 
-  return { result, scanning };
+  return { result, scanning, runScan };
 }

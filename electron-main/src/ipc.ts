@@ -152,6 +152,12 @@ export const IPC_CHANNELS = {
 
   // Writing Assistant scheduled scan (MYT-233)
   WRITING_SCAN: 'writing:scan',
+  WRITING_ASSISTANT_CADENCE_CHANGE: 'writing-assistant:cadence-change',
+  WRITING_ASSISTANT_TIP_DECISION: 'writing-assistant:tip-decision',
+  WRITING_ASSISTANT_SCAN_NOW: 'writing-assistant:scan-now',
+  WRITING_ASSISTANT_SCAN_START: 'writing-assistant:scan-start',
+  WRITING_ASSISTANT_SCAN_RESULT: 'writing-assistant:scan-result',
+  WRITING_ASSISTANT_SCAN_ERROR: 'writing-assistant:scan-error',
   // Push channel: backend scheduler → renderer (MYT-236)
   WRITING_SCAN_RESULT: 'writing:scan:result',
 
@@ -527,6 +533,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.GENERATION_LOG_RECENT]: (payload: GenerationLogRecentPayload) => GenerationLogRecentResponse;
   [IPC_CHANNELS.GENERATION_LOG_LIST]: (payload: GenerationLogListPayload) => GenerationLogListResponse;
   [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => GenerationLogGetResponse;
+  [IPC_CHANNELS.WRITING_ASSISTANT_CADENCE_CHANGE]: (payload: WritingAssistantCadenceChangePayload) => WritingAssistantCadenceChangeResponse;
+  [IPC_CHANNELS.WRITING_ASSISTANT_TIP_DECISION]: (payload: WritingAssistantTipDecisionPayload) => WritingAssistantTipDecisionResponse;
+  [IPC_CHANNELS.WRITING_ASSISTANT_SCAN_NOW]: (payload: WritingScanPayload) => Promise<WritingScanResponse>;
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
@@ -1647,6 +1656,8 @@ export interface AppSettings {
   apiKey: string;
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderSettings;
+  /** Sidebar heartbeat cadence: seconds, on-save, or manual. Mirrors agents.writingAssistant.scanIntervalSeconds for numeric values. */
+  waScanInterval?: number | 'on-save' | 'manual';
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). API key stored in SecretsStore under `provider.<agentName>.apiKey`. */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
@@ -2294,6 +2305,30 @@ export interface SearchQueryResponse {
 }
 
 // ─── Writing Assistant scheduled scan (MYT-233) ───
+
+export type WritingAssistantCadence = number | 'on-save' | 'manual';
+export type WritingAssistantTipDecision = 'accepted' | 'session_suppressed' | 'reported';
+
+export interface WritingAssistantCadenceChangePayload {
+  waScanInterval: WritingAssistantCadence;
+}
+
+export interface WritingAssistantCadenceChangeResponse {
+  saved: boolean;
+  waScanInterval: WritingAssistantCadence;
+}
+
+export interface WritingAssistantTipDecisionPayload {
+  tipId: string;
+  decision: WritingAssistantTipDecision;
+  sceneId?: string;
+  scenePath?: string;
+  sceneUpdatedAt?: string;
+}
+
+export interface WritingAssistantTipDecisionResponse {
+  saved: boolean;
+}
 
 export interface WritingScanPayload {
   sceneId: string;

@@ -347,11 +347,32 @@ contextBridge.exposeInMainWorld('api', {
   // Writing Assistant scheduled scan (MYT-233)
   writingScan: (sceneId: string, prose: string, scenePath: string) =>
     ipcRenderer.invoke('writing:scan', { sceneId, prose, scenePath }),
+  writingAssistantCadenceChange: (payload: { waScanInterval: number | 'on-save' | 'manual' }) =>
+    ipcRenderer.invoke('writing-assistant:cadence-change', payload),
+  writingAssistantTipDecision: (payload: { tipId: string; decision: 'accepted' | 'session_suppressed' | 'reported'; sceneId?: string; scenePath?: string; sceneUpdatedAt?: string }) =>
+    ipcRenderer.invoke('writing-assistant:tip-decision', payload),
+  writingAssistantScanNow: (payload: { sceneId: string; prose: string; scenePath: string }) =>
+    ipcRenderer.invoke('writing-assistant:scan-now', payload),
   // Push: backend scheduler broadcasts completed scan results (MYT-236)
   onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => {
     const handler = (_: unknown, data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => cb(data);
     ipcRenderer.on('writing:scan:result', handler);
     return () => ipcRenderer.removeListener('writing:scan:result', handler);
+  },
+  onWritingAssistantScanStart: (cb: (data: { sceneId?: string; scenePath?: string; startedAt: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId?: string; scenePath?: string; startedAt: string }) => cb(data);
+    ipcRenderer.on('writing-assistant:scan-start', handler);
+    return () => ipcRenderer.removeListener('writing-assistant:scan-start', handler);
+  },
+  onWritingAssistantScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => cb(data);
+    ipcRenderer.on('writing-assistant:scan-result', handler);
+    return () => ipcRenderer.removeListener('writing-assistant:scan-result', handler);
+  },
+  onWritingAssistantScanError: (cb: (data: { sceneId?: string; scenePath?: string; error: string; occurredAt: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId?: string; scenePath?: string; error: string; occurredAt: string }) => cb(data);
+    ipcRenderer.on('writing-assistant:scan-error', handler);
+    return () => ipcRenderer.removeListener('writing-assistant:scan-error', handler);
   },
 
   // Archive continuity-check scheduled scan (MYT-234)
