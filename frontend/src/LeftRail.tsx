@@ -4,13 +4,14 @@ import type { DragSidebar } from './PanelDragContext';
 import './LeftRail.css';
 import './PanelDragContext.css';
 
-// SKY-1694: AppView values mirrored here to avoid a circular import with DesktopShell
-type NavView = 'editor' | 'brainstorm' | 'kanban' | 'timeline';
+// SKY-1694/SKY-1760: AppView values mirrored here to avoid a circular import with DesktopShell
+type NavView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'timeline';
 
 const NAV_VIEWS: { id: NavView; label: string; ariaLabel: string }[] = [
   { id: 'editor', label: '✍', ariaLabel: 'Writing' },
   { id: 'brainstorm', label: '💡', ariaLabel: 'Brainstorm' },
   { id: 'kanban', label: '📋', ariaLabel: 'Scene Crafter' },
+  { id: 'graph', label: '◎', ariaLabel: 'Graph' },
   { id: 'timeline', label: '📅', ariaLabel: 'Timeline' },
 ];
 
@@ -19,6 +20,7 @@ const LEFT_PANELS: { id: LeftPanelId; label: string }[] = [
   { id: 'stories', label: 'Story Navigator' },
   { id: 'entities', label: 'Entity Browser' },
   { id: 'vault', label: 'Vault Browser' },
+  { id: 'vault-graph', label: 'Graph' },
   { id: 'review', label: 'Suggestion Review' },
   { id: 'progress', label: 'Writing Goals' },
 ];

@@ -21,6 +21,7 @@ const PANEL_LABELS: Record<string, string> = {
   stories: 'Story Navigator',
   entities: 'Entity Browser',
   vault: 'Vault Browser',
+  'vault-graph': 'Graph',
   review: 'Suggestion Review',
   progress: 'Writing Goals',
 };
