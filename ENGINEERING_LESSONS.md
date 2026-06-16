@@ -39,3 +39,9 @@ await input.blur(); // Trigger onChange handlers
 **Why:** Some UIs handle changes on blur rather than on every keystroke. Without blur(), the test might not trigger persistence logic that makes the change durable.
 
 ---
+
+## SQLite Archive Indexes: Cover hot paths with composite indexes, not individual column indexes (SKY-1745)
+
+Add `(status, created_at DESC)`, `(scene_id, status, created_at DESC)`, and `(item_id, created_at DESC)` covering indexes on archive tables; SQLite uses the rightmost key for ORDER BY elimination, turning full-scan + filesort into index-range scans and cutting p95 from ~500ms to <50ms at 5000 rows.
+
+---
