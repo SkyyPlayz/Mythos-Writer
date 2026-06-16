@@ -100,10 +100,15 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
       entries: [
         { keys: [`${mod}+[`], action: 'Toggle left sidebar' },
         { keys: [`${mod}+]`], action: 'Toggle right sidebar' },
-        { keys: [`${mod}+Shift+L`], action: 'Move focus to left sidebar' },
         { keys: [`${mod}+Shift+R`], action: 'Move focus to right sidebar' },
         { keys: ['→'], action: 'Next right sidebar tab' },
         { keys: ['←'], action: 'Previous right sidebar tab' },
+      ],
+    },
+    {
+      label: 'Layouts',
+      entries: [
+        { keys: [`${mod}+Shift+L`], action: 'Open layout picker' },
       ],
     },
     {

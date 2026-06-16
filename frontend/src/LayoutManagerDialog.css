@@ -1,0 +1,299 @@
+/* SKY-1700: Layout Manager dialog */
+
+.layout-manager-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 400;
+}
+
+.layout-manager-dialog {
+  background: var(--color-surface-elevated, #1a1f2e);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.12));
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  width: 480px;
+  max-width: 96vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.layout-manager-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.08));
+}
+
+.layout-manager-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text, rgba(255,255,255,0.9));
+}
+
+.layout-manager-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, rgba(255,255,255,0.4));
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.layout-manager-close:hover {
+  color: var(--color-text, rgba(255,255,255,0.85));
+  background: var(--color-surface-hover, rgba(255,255,255,0.08));
+}
+
+.layout-manager-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.layout-manager-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, rgba(255,255,255,0.4));
+  padding: 8px 20px 4px;
+}
+
+/* Layout rows */
+.layout-manager-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  transition: background 80ms;
+}
+
+.layout-manager-row:hover {
+  background: var(--color-surface-hover, rgba(255,255,255,0.04));
+}
+
+.layout-manager-row-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text, rgba(255,255,255,0.85));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout-manager-row-name--active {
+  color: var(--color-accent, #00f0ff);
+}
+
+.layout-manager-row-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.layout-manager-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.layout-manager-badge--default {
+  background: var(--color-accent, #00f0ff);
+  color: #000;
+}
+
+.layout-manager-badge--builtin {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.55);
+}
+
+.layout-manager-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.layout-manager-action-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--color-text-muted, rgba(255,255,255,0.45));
+  font-size: 11px;
+  padding: 3px 7px;
+  cursor: pointer;
+  transition: all 80ms;
+  white-space: nowrap;
+}
+
+.layout-manager-action-btn:hover {
+  border-color: var(--color-border, rgba(255,255,255,0.2));
+  color: var(--color-text, rgba(255,255,255,0.85));
+}
+
+.layout-manager-action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.layout-manager-action-btn--danger:hover {
+  border-color: rgba(255,80,80,0.5);
+  color: rgba(255,100,100,0.9);
+}
+
+/* Rename inline editor */
+.layout-manager-rename-input {
+  flex: 1;
+  background: var(--color-surface, rgba(255,255,255,0.06));
+  border: 1px solid var(--color-accent, #00f0ff);
+  border-radius: 4px;
+  color: var(--color-text, rgba(255,255,255,0.9));
+  font-size: 13px;
+  padding: 3px 8px;
+  outline: none;
+}
+
+.layout-manager-rename-input:focus {
+  box-shadow: 0 0 0 2px rgba(0,240,255,0.2);
+}
+
+/* Save as input row */
+.layout-manager-save-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
+}
+
+.layout-manager-save-input {
+  flex: 1;
+  background: var(--color-surface, rgba(255,255,255,0.06));
+  border: 1px solid var(--color-border, rgba(255,255,255,0.15));
+  border-radius: 6px;
+  color: var(--color-text, rgba(255,255,255,0.9));
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 120ms;
+}
+
+.layout-manager-save-input:focus {
+  border-color: var(--color-accent, #00f0ff);
+  box-shadow: 0 0 0 2px rgba(0,240,255,0.15);
+}
+
+.layout-manager-save-btn {
+  background: var(--color-accent, #00f0ff);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.layout-manager-save-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.layout-manager-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  display: flex;
+  justify-content: flex-end;
+}
+
+.layout-manager-done-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.15));
+  border-radius: 6px;
+  color: var(--color-text, rgba(255,255,255,0.85));
+  font-size: 13px;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: background 80ms;
+}
+
+.layout-manager-done-btn:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* Delete confirmation */
+.layout-manager-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+.layout-manager-confirm-box {
+  background: var(--color-surface-elevated, #1a1f2e);
+  border: 1px solid rgba(255,80,80,0.4);
+  border-radius: 10px;
+  padding: 20px 24px;
+  max-width: 340px;
+  text-align: center;
+}
+
+.layout-manager-confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, rgba(255,255,255,0.9));
+  margin-bottom: 8px;
+}
+
+.layout-manager-confirm-body {
+  font-size: 12px;
+  color: var(--color-text-muted, rgba(255,255,255,0.55));
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.layout-manager-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.layout-manager-confirm-cancel {
+  background: none;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.15));
+  border-radius: 6px;
+  color: var(--color-text, rgba(255,255,255,0.75));
+  font-size: 13px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.layout-manager-confirm-delete {
+  background: rgba(255,60,60,0.85);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.layout-manager-divider {
+  height: 1px;
+  background: var(--color-border, rgba(255,255,255,0.08));
+  margin: 4px 0;
+}

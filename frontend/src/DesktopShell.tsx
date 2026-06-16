@@ -44,6 +44,9 @@ import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
 import DockedTabBar from './DockedTabBar';
 import SplitEditorPane from './SplitEditorPane';
+import LayoutPicker from './LayoutPicker';
+import LayoutManagerDialog from './LayoutManagerDialog';
+import { getAllLayouts, mergeWithBuiltins, migrateV1Layout, snapshotCurrentLayout } from './WorkspaceLayoutManager';
 // SKY-1695: Panel content components for the unified sidebar renderer
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -635,6 +638,13 @@ export default function DesktopShell() {
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const splitDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
 
+  // SKY-1700 (Wave 2f): named workspace layouts
+  const [workspaceLayouts, setWorkspaceLayouts] = useState<WorkspaceLayout[]>([]);
+  const [activeLayoutId, setActiveLayoutId] = useState<string | null>(null);
+  const [layoutPickerForceOpen, setLayoutPickerForceOpen] = useState(false);
+  const [layoutManagerOpen, setLayoutManagerOpen] = useState(false);
+  const [layoutHasUnsavedChanges, setLayoutHasUnsavedChanges] = useState(false);
+
   // ─── SKY-863: Sync conflict modal state ───
   const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
   const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
@@ -1048,6 +1058,41 @@ export default function DesktopShell() {
         if (typeof s.activeLayout?.splitWindow?.splitRatio === 'number') {
           setSplitRatio(s.activeLayout.splitWindow.splitRatio);
         }
+        // SKY-1700 (Wave 2f): restore named layouts + run v1→v2 migration.
+        {
+          let settingsToUse = s;
+          if (!s.layoutMigrationDone) {
+            const migrationPatch = migrateV1Layout(s);
+            settingsToUse = { ...s, ...migrationPatch };
+            // Persist migration synchronously (fire-and-forget).
+            window.api.settingsSet(settingsToUse).catch(() => {});
+          }
+          const allLayouts = getAllLayouts(settingsToUse);
+          setWorkspaceLayouts(settingsToUse.workspaceLayouts ?? []);
+          setActiveLayoutId(settingsToUse.activeLayoutId ?? null);
+          // Restore right sidebar state from activeLayout if available (overrides legacy fields).
+          if (settingsToUse.activeLayout?.rightSidebar) {
+            const rs = settingsToUse.activeLayout.rightSidebar;
+            setGrsVisible(rs.visible);
+            setGrsWidth(rs.width);
+            if (rs.panels.length > 0) setGrsPanels(rs.panels as PanelConfig[]);
+          }
+          // On app start, load the default layout if no named layout is active.
+          if (settingsToUse.activeLayoutId == null) {
+            const defaultLayout = allLayouts.find((l) => l.isDefault) ?? allLayouts[0];
+            if (defaultLayout) {
+              // Apply default only if no explicit left sidebar layout was already restored.
+              if (!settingsToUse.activeLayout?.leftSidebar) {
+                const ll: LeftSidebarLayout = {
+                  panels: defaultLayout.leftSidebar.panels,
+                  sidebarCollapsed: !defaultLayout.leftSidebar.visible,
+                };
+                setLeftSidebarLayout(ll);
+                leftSidebarLayoutRef.current = ll;
+              }
+            }
+          }
+        }
         setGettingStartedProgress(
           createInitialGettingStartedProgress(
             undefined,
@@ -1313,6 +1358,132 @@ export default function DesktopShell() {
       return updated;
     });
   }, []);
+
+  // SKY-1700 (Wave 2f): Persist layout library to AppSettings.
+  const persistLayoutLibrary = useCallback((
+    layouts: WorkspaceLayout[],
+    newActiveLayoutId: string | null,
+  ) => {
+    const userLayouts = layouts.filter((l) => !l.isBuiltIn);
+    setWorkspaceLayouts(userLayouts);
+    setActiveLayoutId(newActiveLayoutId);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = {
+        ...prev,
+        workspaceLayouts: userLayouts,
+        activeLayoutId: newActiveLayoutId,
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // Apply a layout snapshot to all live UI state.
+  const applyLayout = useCallback((layout: WorkspaceLayout) => {
+    // Left sidebar
+    const ll: LeftSidebarLayout = {
+      panels: layout.leftSidebar.panels,
+      sidebarCollapsed: !layout.leftSidebar.visible,
+    };
+    setLeftSidebarLayout(ll);
+    leftSidebarLayoutRef.current = ll;
+    persistLeftSidebarLayout(ll);
+    // Right sidebar
+    setGrsVisible(layout.rightSidebar.visible);
+    setGrsWidth(layout.rightSidebar.width);
+    setGrsPanels(layout.rightSidebar.panels as PanelConfig[]);
+    // Split window
+    setSplitWindowEnabled(layout.splitWindow.enabled);
+    setSplitRatio(layout.splitWindow.splitRatio);
+    // Docked tabs
+    setDockedTabs(layout.dockedTabs);
+    // Persist all panel state in one AppSettings write.
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = {
+        ...prev,
+        rightSidebarVisible: layout.rightSidebar.visible,
+        rightSidebarWidth: layout.rightSidebar.width,
+        rightSidebarPanels: layout.rightSidebar.panels,
+        activeLayout: {
+          leftSidebar: ll,
+          floatingPanels: [],
+          dockedTabs: layout.dockedTabs,
+          splitWindow: { splitRatio: layout.splitWindow.splitRatio },
+          rightSidebar: layout.rightSidebar,
+        },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+    setLayoutHasUnsavedChanges(false);
+  }, [persistLeftSidebarLayout]);
+
+  const handleSelectLayout = useCallback((layoutId: string) => {
+    const allLayouts = mergeWithBuiltins(workspaceLayouts);
+    const layout = allLayouts.find((l) => l.id === layoutId);
+    if (!layout) return;
+    applyLayout(layout);
+    persistLayoutLibrary(workspaceLayouts, layoutId);
+  }, [workspaceLayouts, applyLayout, persistLayoutLibrary]);
+
+  const handleSaveCurrentAs = useCallback((name: string) => {
+    const id = crypto.randomUUID();
+    const snapshot = snapshotCurrentLayout({
+      id,
+      name,
+      isDefault: false,
+      leftSidebarLayout: leftSidebarLayoutRef.current,
+      leftSidebarVisible: !leftSidebarLayoutRef.current.sidebarCollapsed,
+      leftSidebarWidth: layout.leftWidth,
+      rightSidebarVisible: grsVisible ?? false,
+      rightSidebarWidth: grsWidth,
+      rightSidebarPanels: grsPanels as unknown as RightSidebarPanel[],
+      floatingPanels: appSettings?.activeLayout?.floatingPanels ?? [],
+      dockedTabs,
+      splitWindowEnabled,
+      splitRatio,
+    });
+    const newLayouts = [...workspaceLayouts, snapshot];
+    persistLayoutLibrary(newLayouts, id);
+    setLayoutHasUnsavedChanges(false);
+  }, [workspaceLayouts, layout.leftWidth, grsVisible, grsWidth, grsPanels, dockedTabs, splitWindowEnabled, splitRatio, appSettings, persistLayoutLibrary]);
+
+  const handleLayoutRename = useCallback((id: string, name: string) => {
+    const allLayouts = mergeWithBuiltins(workspaceLayouts);
+    const newLayouts = allLayouts.map((l) => l.id === id ? { ...l, name } : l);
+    persistLayoutLibrary(newLayouts, activeLayoutId);
+  }, [workspaceLayouts, activeLayoutId, persistLayoutLibrary]);
+
+  const handleLayoutDelete = useCallback((id: string) => {
+    const allLayouts = mergeWithBuiltins(workspaceLayouts);
+    const newLayouts = allLayouts.filter((l) => l.id !== id);
+    const newActiveId = activeLayoutId === id ? null : activeLayoutId;
+    persistLayoutLibrary(newLayouts, newActiveId);
+  }, [workspaceLayouts, activeLayoutId, persistLayoutLibrary]);
+
+  const handleLayoutSetDefault = useCallback((id: string) => {
+    const allLayouts = mergeWithBuiltins(workspaceLayouts);
+    const newLayouts = allLayouts.map((l) => ({ ...l, isDefault: l.id === id }));
+    persistLayoutLibrary(newLayouts, activeLayoutId);
+  }, [workspaceLayouts, activeLayoutId, persistLayoutLibrary]);
+
+  const handleLayoutDuplicate = useCallback((id: string) => {
+    const allLayouts = mergeWithBuiltins(workspaceLayouts);
+    const src = allLayouts.find((l) => l.id === id);
+    if (!src) return;
+    const copy: WorkspaceLayout = {
+      ...src,
+      id: crypto.randomUUID(),
+      name: `${src.name} (copy)`,
+      isDefault: false,
+      isBuiltIn: false,
+      createdAt: Date.now(),
+    };
+    const newLayouts = [...workspaceLayouts, copy];
+    persistLayoutLibrary(newLayouts, activeLayoutId);
+  }, [workspaceLayouts, activeLayoutId, persistLayoutLibrary]);
 
   // SKY-1698: Remove a panel from its source sidebar before docking it as a tab.
   const removePanelFromSource = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
@@ -1589,11 +1760,10 @@ export default function DesktopShell() {
         setRightSidebarUserCollapsed(prev => !prev);
         return;
       }
-      // SKY-1694: Ctrl+Shift+L / Ctrl+Shift+R — move focus to left/right sidebar
+      // SKY-1700: Ctrl+Shift+L — open layout picker (AC-W-09)
       if (mod && e.shiftKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
         e.preventDefault();
-        const el = document.querySelector<HTMLElement>('.lr-nav-zone button:first-child, .lr-panel-content :is(button,input,textarea,[tabindex="0"])');
-        el?.focus();
+        setLayoutPickerForceOpen(true);
         return;
       }
       if (mod && e.shiftKey && !e.altKey && (e.key === 'R' || e.key === 'r')) {
@@ -1633,7 +1803,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen]);
 
   // ─── Panel resize drag handlers ───
 
@@ -2686,7 +2856,7 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {/* SKY-1699: Writing toolbar — DepthSlider + split toggle button */}
+          {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker */}
           <div className="shell-editor-toolbar">
             {selectedStory && showTabBar && !splitWindowEnabled && (
               <DepthSlider
@@ -2711,6 +2881,17 @@ export default function DesktopShell() {
             >
               ⬜⬜
             </button>
+            {/* SKY-1700: Layout picker (AC-W-02, AC-W-09) */}
+            <LayoutPicker
+              layouts={mergeWithBuiltins(workspaceLayouts)}
+              activeLayoutId={activeLayoutId}
+              hasUnsavedChanges={layoutHasUnsavedChanges}
+              forceOpen={layoutPickerForceOpen}
+              onForceOpenConsumed={() => setLayoutPickerForceOpen(false)}
+              onSelectLayout={handleSelectLayout}
+              onSaveCurrentAs={() => setLayoutManagerOpen(true)}
+              onManage={() => setLayoutManagerOpen(true)}
+            />
           </div>
 
           {splitWindowEnabled ? (
@@ -3032,6 +3213,20 @@ export default function DesktopShell() {
           resolved={syncConflictResolved}
           lockfileConflict={syncLockfileConflict}
           onContinue={handleSyncConflictContinue}
+        />
+      )}
+      {/* SKY-1700: Layout Manager dialog (AC-W-03..AC-W-06) */}
+      {layoutManagerOpen && (
+        <LayoutManagerDialog
+          layouts={mergeWithBuiltins(workspaceLayouts)}
+          activeLayoutId={activeLayoutId}
+          onClose={() => setLayoutManagerOpen(false)}
+          onSelectLayout={(id) => { handleSelectLayout(id); setLayoutManagerOpen(false); }}
+          onSaveCurrentAs={handleSaveCurrentAs}
+          onRename={handleLayoutRename}
+          onDelete={handleLayoutDelete}
+          onSetDefault={handleLayoutSetDefault}
+          onDuplicate={handleLayoutDuplicate}
         />
       )}
     </div>
