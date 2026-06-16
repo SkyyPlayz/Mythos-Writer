@@ -18,6 +18,9 @@ const CHARGE_REPULSION = -120;
 const COLLISION_PADDING = 12;
 const CENTER_GRAVITY = 0.05;
 const MAX_INTERACTIVE_NODES = 500;
+const DEPTH_UNLIMITED = 7;
+const LONG_PRESS_MS = 500;
+const MAX_VISIBLE_CHIPS = 8;
 
 const GRAPH_CATEGORIES = [
   'characters',
@@ -42,6 +45,19 @@ const GRAPH_CATEGORY_LABELS: Record<GraphCategory, string> = {
   misc: 'Misc',
   default: 'Default',
 };
+
+// Ordered chip list per spec (bottom toolbar)
+const CHIP_DEFS: { key: GraphCategory; label: string }[] = [
+  { key: 'characters', label: 'Characters' },
+  { key: 'locations', label: 'Locations' },
+  { key: 'factions', label: 'Factions' },
+  { key: 'history', label: 'History' },
+  { key: 'systems', label: 'Systems' },
+  { key: 'items', label: 'Items' },
+  { key: 'misc', label: 'Misc' },
+];
+
+const ALL_CHIP_KEYS = new Set<GraphCategory>(CHIP_DEFS.map((c) => c.key));
 
 export interface GraphNode {
   id: string;
@@ -263,6 +279,56 @@ function prefersReducedMotion(): boolean {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+/** BFS from fromNodeId up to depth hops. Returns null when depth >= DEPTH_UNLIMITED. */
+export function computeDepthVisible(
+  fromNodeId: string | null,
+  allNodeIds: string[],
+  neighbours: Map<string, Set<string>>,
+  depth: number,
+): Set<string> | null {
+  if (depth >= DEPTH_UNLIMITED) return null;
+
+  if (!fromNodeId) {
+    // No selection: show connected nodes within N hops + orphans
+    const connected = new Set<string>();
+    for (const nid of allNodeIds) {
+      if ((neighbours.get(nid)?.size ?? 0) > 0) connected.add(nid);
+    }
+
+    const visible = new Set<string>();
+    for (const nid of allNodeIds) {
+      if (!connected.has(nid)) { visible.add(nid); continue; } // orphan
+      const seen = new Set<string>([nid]);
+      let frontier = [nid];
+      for (let hop = 0; hop < depth; hop++) {
+        const next: string[] = [];
+        for (const cur of frontier) {
+          for (const nb of (neighbours.get(cur) ?? [])) {
+            if (!seen.has(nb)) { seen.add(nb); next.push(nb); }
+          }
+        }
+        frontier = next;
+      }
+      for (const s of seen) visible.add(s);
+    }
+    return visible;
+  }
+
+  // With selection: BFS up to depth
+  const visible = new Set<string>([fromNodeId]);
+  let frontier = [fromNodeId];
+  for (let hop = 0; hop < depth; hop++) {
+    const next: string[] = [];
+    for (const cur of frontier) {
+      for (const nb of (neighbours.get(cur) ?? [])) {
+        if (!visible.has(nb)) { visible.add(nb); next.push(nb); }
+      }
+    }
+    frontier = next;
+  }
+  return visible;
+}
+
 function normalizeNodeResponse(response: unknown): GraphNode[] | null {
   if (Array.isArray(response)) return response as GraphNode[];
   if (response && typeof response === 'object' && Array.isArray((response as { nodes?: unknown }).nodes)) {
@@ -279,6 +345,65 @@ function normalizeEdgeResponse(response: unknown): GraphEdge[] | null {
   return null;
 }
 
+// ─── Category chip ────────────────────────────────────────────────────────────
+
+interface ChipProps {
+  chipKey: GraphCategory;
+  label: string;
+  active: boolean;
+  onToggle: (key: GraphCategory) => void;
+  onShowOnly: (key: GraphCategory) => void;
+  onShowAll: () => void;
+}
+
+function CategoryChip({ chipKey, label, active, onToggle, onShowOnly, onShowAll }: ChipProps) {
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressRef.current !== null) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
+  }, []);
+
+  const handlePointerDown = useCallback(() => {
+    longPressRef.current = setTimeout(() => { onShowOnly(chipKey); }, LONG_PRESS_MS);
+  }, [chipKey, onShowOnly]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (active) { onShowOnly(chipKey); } else { onShowAll(); }
+  }, [active, chipKey, onShowOnly, onShowAll]);
+
+  return (
+    <button
+      type="button"
+      className={`vgv-chip${active ? ' vgv-chip--active' : ' vgv-chip--inactive'}`}
+      data-category={chipKey}
+      onClick={() => onToggle(chipKey)}
+      onPointerDown={handlePointerDown}
+      onPointerUp={clearLongPress}
+      onPointerLeave={clearLongPress}
+      onContextMenu={handleContextMenu}
+      aria-pressed={active}
+      aria-label={`${label} filter`}
+    >
+      <span className="vgv-chip-label">{label}</span>
+      {active && (
+        <span
+          className="vgv-chip-dismiss"
+          aria-hidden="true"
+          onClick={(e) => { e.stopPropagation(); onToggle(chipKey); }}
+        >
+          ×
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function VaultGraphView({ onOpenNote }: Props) {
   const [graphData, setGraphData] = useState<VaultGraphData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -288,11 +413,15 @@ export default function VaultGraphView({ onOpenNote }: Props) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; x: number; y: number } | null>(null);
-  const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [keyboardFocusedNodeId, setKeyboardFocusedNodeId] = useState<string | null>(null);
   const [liveMessage, setLiveMessage] = useState('');
   const [legendOpen, setLegendOpen] = useState(false);
+  const [activeCategories, setActiveCategories] = useState<Set<GraphCategory>>(new Set(ALL_CHIP_KEYS));
+  const [depthLimit, setDepthLimit] = useState(DEPTH_UNLIMITED);
+  const [chipsExpanded, setChipsExpanded] = useState(false);
   const toolbarRef = useRef<HTMLElement | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -321,25 +450,42 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  const filteredData = useMemo(() => {
+  // Category-filtered data (chips)
+  const categoryFilteredData = useMemo(() => {
     if (!graphData) return null;
-    const query = search.trim().toLowerCase();
-    if (!query) return graphData;
-    const nodes = graphData.nodes.filter((node) => (
-      node.label.toLowerCase().includes(query)
-      || node.path.toLowerCase().includes(query)
-      || (node.category ?? '').toLowerCase().includes(query)
-      || (node.folder ?? '').toLowerCase().includes(query)
-    ));
-    const ids = new Set(nodes.map((node) => node.id));
-    const edges = graphData.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
+    // 'default' nodes pass through unless all chip keys are filtered — they aren't in CHIP_DEFS
+    const nodes = graphData.nodes.filter((n) => {
+      const cat = nodeCategory(n);
+      // 'default' is not in CHIP_DEFS, so always show unless ALL categories are off
+      if (cat === 'default') return activeCategories.size > 0;
+      return activeCategories.has(cat);
+    });
+    const ids = new Set(nodes.map((n) => n.id));
+    const edges = graphData.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
     return { nodes, edges };
-  }, [graphData, search]);
+  }, [graphData, activeCategories]);
 
+  // Neighbour map (computed from category-filtered edges)
   const neighbours = useMemo(
-    () => buildNeighbourMap(filteredData?.edges ?? []),
-    [filteredData],
+    () => buildNeighbourMap(categoryFilteredData?.edges ?? []),
+    [categoryFilteredData],
   );
+
+  // Depth-filtered data (applied after category filter)
+  const filteredData = useMemo(() => {
+    if (!categoryFilteredData) return null;
+    const depthVisible = computeDepthVisible(
+      selectedNodeId,
+      categoryFilteredData.nodes.map((n) => n.id),
+      neighbours,
+      depthLimit,
+    );
+    if (depthVisible === null) return categoryFilteredData;
+    const nodes = categoryFilteredData.nodes.filter((n) => depthVisible.has(n.id));
+    const ids = new Set(nodes.map((n) => n.id));
+    const edges = categoryFilteredData.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+    return { nodes, edges };
+  }, [categoryFilteredData, neighbours, selectedNodeId, depthLimit]);
 
   const positionedNodes = useMemo(
     () => applyForceLayout(filteredData?.nodes ?? [], filteredData?.edges ?? []),
@@ -351,7 +497,8 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     [positionedNodes],
   );
 
-  const visibleIds = useMemo(
+  // Hover visibility (existing behaviour)
+  const hoverVisibleIds = useMemo(
     () => visibleIdsForHover(hoveredNodeId, neighbours),
     [hoveredNodeId, neighbours],
   );
@@ -370,8 +517,8 @@ export default function VaultGraphView({ onOpenNote }: Props) {
 
   useEffect(() => {
     if (!filteredData || prefersReducedMotion()) return;
-    setLiveMessage(graphSummary(positionedNodes, filteredData.edges, search, neighbours));
-  }, [filteredData, neighbours, positionedNodes, search]);
+    setLiveMessage(graphSummary(positionedNodes, filteredData.edges, searchQuery, neighbours));
+  }, [filteredData, neighbours, positionedNodes, searchQuery]);
 
   useEffect(() => {
     if (!keyboardFocusedNodeId || nodeById.has(keyboardFocusedNodeId)) return;
@@ -388,6 +535,22 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     return () => window.clearTimeout(timeoutId);
   }, [hoveredNodeId, neighbours, nodeById]);
 
+  // Search highlight set
+  const searchMatchIds = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return null;
+    const ids = new Set<string>();
+    for (const node of positionedNodes) {
+      if (
+        node.label.toLowerCase().includes(query)
+        || node.path.toLowerCase().includes(query)
+      ) {
+        ids.add(node.id);
+      }
+    }
+    return ids;
+  }, [searchQuery, positionedNodes]);
+
   const resetView = useCallback(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -397,12 +560,20 @@ export default function VaultGraphView({ onOpenNote }: Props) {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === '0' || event.key === 'Escape') resetView();
+      if (event.key === '0') resetView();
+      if (event.key === 'Escape') {
+        if (searchQuery) {
+          setSearchQuery('');
+          searchRef.current?.blur();
+        } else {
+          resetView();
+        }
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [resetView]);
+  }, [resetView, searchQuery]);
 
   const handleWheel = useCallback((event: WheelEvent<SVGSVGElement>) => {
     event.preventDefault();
@@ -500,6 +671,34 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     onOpenNote?.(node.path);
   }, [onOpenNote]);
 
+  const handleSearchKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && searchMatchIds && searchMatchIds.size > 0) {
+      // Select the first match
+      const first = positionedNodes.find((n) => searchMatchIds.has(n.id));
+      if (first) selectNode(first);
+    }
+  }, [searchMatchIds, positionedNodes, selectNode]);
+
+  const handleToggleCategory = useCallback((key: GraphCategory) => {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) { next.delete(key); } else { next.add(key); }
+      return next;
+    });
+  }, []);
+
+  const handleShowOnly = useCallback((key: GraphCategory) => {
+    setActiveCategories(new Set([key]));
+  }, []);
+
+  const handleShowAll = useCallback(() => {
+    setActiveCategories(new Set(ALL_CHIP_KEYS));
+  }, []);
+
+  const depthLabel = depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit);
+  const visibleChips = chipsExpanded ? CHIP_DEFS : CHIP_DEFS.slice(0, MAX_VISIBLE_CHIPS);
+  const hiddenCount = CHIP_DEFS.length > MAX_VISIBLE_CHIPS ? CHIP_DEFS.length - MAX_VISIBLE_CHIPS : 0;
+
   if (loading) return <div className="vgv-state">Loading vault graph…</div>;
 
   if (error) {
@@ -530,9 +729,12 @@ export default function VaultGraphView({ onOpenNote }: Props) {
           <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
         </div>
         <input
+          ref={searchRef}
+          type="search"
           className="vgv-search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          onKeyDown={handleSearchKeyDown}
           placeholder="Search nodes…"
           aria-label="Search nodes"
         />
@@ -575,7 +777,7 @@ export default function VaultGraphView({ onOpenNote }: Props) {
               const source = nodeById.get(edge.source);
               const target = nodeById.get(edge.target);
               if (!source || !target) return null;
-              const dimmed = visibleIds ? (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) : false;
+              const dimmed = hoverVisibleIds ? (!hoverVisibleIds.has(edge.source) || !hoverVisibleIds.has(edge.target)) : false;
               return (
                 <line
                   key={`${edge.source}-${edge.target}`}
@@ -590,10 +792,20 @@ export default function VaultGraphView({ onOpenNote }: Props) {
             })}
 
             {positionedNodes.map((node) => {
-              const dimmed = visibleIds ? !visibleIds.has(node.id) : false;
+              const hoverDimmed = hoverVisibleIds ? !hoverVisibleIds.has(node.id) : false;
+              const searchHighlighted = searchMatchIds ? searchMatchIds.has(node.id) : false;
+              const searchDimmed = searchMatchIds ? !searchMatchIds.has(node.id) : false;
               const selected = selectedNodeId === node.id;
               const keyboardFocused = keyboardFocusedNodeId === node.id;
               const label = displayLabel(node.label);
+
+              let nodeClass = 'vgv-graph-node';
+              if (hoverDimmed) nodeClass += ' vgv-graph-node--dimmed';
+              if (selected) nodeClass += ' vgv-graph-node--selected';
+              if (keyboardFocused) nodeClass += ' vgv-graph-node--keyboard-focused';
+              if (searchHighlighted) nodeClass += ' vgv-graph-node--search-match';
+              else if (searchDimmed) nodeClass += ' vgv-graph-node--search-dimmed';
+
               return (
                 <g
                   key={node.id}
@@ -601,7 +813,7 @@ export default function VaultGraphView({ onOpenNote }: Props) {
                   tabIndex={-1}
                   aria-label={`Open note ${label}`}
                   data-testid={`vault-node-${node.id}`}
-                  className={`vgv-graph-node${dimmed ? ' vgv-graph-node--dimmed' : ''}${selected ? ' vgv-graph-node--selected' : ''}${keyboardFocused ? ' vgv-graph-node--keyboard-focused' : ''}`}
+                  className={nodeClass}
                   transform={`translate(${node.x} ${node.y})`}
                   onMouseEnter={() => setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
@@ -676,6 +888,61 @@ export default function VaultGraphView({ onOpenNote }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Bottom toolbar — category chips + depth slider (spec: 40px) */}
+      <footer className="vgv-bottom-toolbar" role="toolbar" aria-label="Graph filters">
+        <div className="vgv-chips" role="group" aria-label="Category filters">
+          {visibleChips.map((chip) => (
+            <CategoryChip
+              key={chip.key}
+              chipKey={chip.key}
+              label={chip.label}
+              active={activeCategories.has(chip.key)}
+              onToggle={handleToggleCategory}
+              onShowOnly={handleShowOnly}
+              onShowAll={handleShowAll}
+            />
+          ))}
+          {hiddenCount > 0 && !chipsExpanded && (
+            <button
+              type="button"
+              className="vgv-chip vgv-chip--overflow"
+              onClick={() => setChipsExpanded(true)}
+              aria-label={`Show ${hiddenCount} more category filters`}
+            >
+              +{hiddenCount} more
+            </button>
+          )}
+          {chipsExpanded && CHIP_DEFS.length > MAX_VISIBLE_CHIPS && (
+            <button
+              type="button"
+              className="vgv-chip vgv-chip--overflow"
+              onClick={() => setChipsExpanded(false)}
+              aria-label="Collapse category filters"
+            >
+              Less
+            </button>
+          )}
+        </div>
+
+        <div className="vgv-depth-wrap">
+          <label htmlFor="vgv-depth-slider" className="vgv-depth-label">
+            Depth: {depthLabel}
+          </label>
+          <input
+            id="vgv-depth-slider"
+            type="range"
+            className="vgv-depth-slider"
+            min={1}
+            max={DEPTH_UNLIMITED}
+            step={1}
+            value={depthLimit}
+            onChange={(e) => setDepthLimit(Number(e.target.value))}
+            aria-label={`Depth limit: ${depthLabel}`}
+            aria-valuetext={depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit)}
+          />
+        </div>
+      </footer>
     </section>
   );
 }

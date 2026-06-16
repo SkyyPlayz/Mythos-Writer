@@ -282,12 +282,141 @@
   background: var(--bg-inset);
 }
 
+/* ─── Search highlight / dimmed states (AC-GV-08) ────────────────────────── */
+
+.vgv-graph-node--search-match .vgv-node-circle {
+  stroke: var(--ln-graph-border-highlight);
+  stroke-width: 3;
+  filter: var(--ln-graph-glow-highlight);
+}
+
+.vgv-graph-node--search-dimmed {
+  opacity: 0.28;
+}
+
+/* ─── Bottom toolbar (spec: 40 px) ──────────────────────────────────────── */
+
+.vgv-bottom-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border-default);
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--blur-panel));
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* ─── Category chips ─────────────────────────────────────────────────────── */
+
+.vgv-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.vgv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 100px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  flex-shrink: 0;
+}
+
+.vgv-chip--active {
+  background: color-mix(in srgb, var(--chip-color, var(--ln-graph-border-highlight)) 18%, transparent);
+  border: 1.5px solid var(--chip-color, var(--ln-graph-border-highlight));
+  color: var(--chip-color, var(--ln-graph-border-highlight));
+}
+
+.vgv-chip--inactive {
+  background: transparent;
+  border: 1.5px solid var(--border-default);
+  color: var(--text-muted);
+}
+
+.vgv-chip--inactive:hover {
+  border-color: var(--ln-graph-border-highlight);
+  color: var(--text-body);
+}
+
+.vgv-chip--overflow {
+  background: transparent;
+  border: 1.5px dashed var(--border-default);
+  color: var(--text-muted);
+}
+
+.vgv-chip--overflow:hover {
+  border-color: var(--ln-graph-border-highlight);
+  color: var(--text-body);
+}
+
+.vgv-chip:focus-visible {
+  outline: 2px solid var(--ln-graph-border-highlight);
+  outline-offset: 2px;
+}
+
+.vgv-chip-dismiss {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.vgv-chip-dismiss:hover {
+  opacity: 1;
+}
+
+/* ─── Depth slider ───────────────────────────────────────────────────────── */
+
+.vgv-depth-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.vgv-depth-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: right;
+}
+
+.vgv-depth-slider {
+  width: 96px;
+  accent-color: var(--ln-graph-border-highlight);
+  cursor: pointer;
+}
+
+.vgv-depth-slider:focus-visible {
+  outline: 2px solid var(--ln-graph-border-highlight);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .vgv-search,
   .vgv-graph-edge,
   .vgv-graph-node,
   .vgv-node-circle,
-  .vgv-legend-popover {
+  .vgv-legend-popover,
+  .vgv-chip {
     transition: none;
   }
 }
