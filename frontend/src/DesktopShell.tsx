@@ -43,6 +43,7 @@ import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRi
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
 import DockedTabBar from './DockedTabBar';
+import SplitEditorPane from './SplitEditorPane';
 // SKY-1695: Panel content components for the unified sidebar renderer
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -623,6 +624,17 @@ export default function DesktopShell() {
   const [dockedTabs, setDockedTabs] = useState<DockedTab[]>([]);
   const [activeDockedTabId, setActiveDockedTabId] = useState<string | null>(null);
 
+  // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
+  const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
+  const [splitRatio, setSplitRatio] = useState(50);
+  const [focusedPane, setFocusedPane] = useState<1 | 2>(1);
+  const [pane2Scene, setPane2Scene] = useState<Scene | null>(null);
+  const [pane2Chapter, setPane2Chapter] = useState<Chapter | null>(null);
+  const [pane2Story, setPane2Story] = useState<Story | null>(null);
+  const pane2EditorApiRef = useRef<BlockEditorApi | null>(null);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const splitDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
+
   // ─── SKY-863: Sync conflict modal state ───
   const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
   const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
@@ -1032,6 +1044,10 @@ export default function DesktopShell() {
         if (Array.isArray(s.activeLayout?.dockedTabs) && s.activeLayout!.dockedTabs!.length > 0) {
           setDockedTabs(s.activeLayout!.dockedTabs!);
         }
+        // SKY-1699: restore split window ratio from persisted AppSettings.
+        if (typeof s.activeLayout?.splitWindow?.splitRatio === 'number') {
+          setSplitRatio(s.activeLayout.splitWindow.splitRatio);
+        }
         setGettingStartedProgress(
           createInitialGettingStartedProgress(
             undefined,
@@ -1280,6 +1296,24 @@ export default function DesktopShell() {
     });
   }, []);
 
+  // SKY-1699 (Wave 2e): Persist split ratio to AppSettings.
+  const persistSplitRatio = useCallback((ratio: number) => {
+    setSplitRatio(ratio);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = {
+        ...prev,
+        activeLayout: {
+          ...prev.activeLayout,
+          leftSidebar: leftSidebarLayoutRef.current,
+          splitWindow: { splitRatio: ratio },
+        },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
   // SKY-1698: Remove a panel from its source sidebar before docking it as a tab.
   const removePanelFromSource = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
     if (sourceSidebar === 'left') {
@@ -1482,6 +1516,25 @@ export default function DesktopShell() {
     }
   }, [checkGettingStartedItem, layout, selectedScene, persistLayout]);
 
+  // SKY-1699: Toggle split window on/off (declared early so keyboard useEffect can reference it).
+  const handleToggleSplitWindow = useCallback(() => {
+    setSplitWindowEnabled((prev) => {
+      if (prev) {
+        // Closing split: focused pane's scene becomes the active scene.
+        if (focusedPane === 2 && pane2Scene && pane2Chapter && pane2Story) {
+          setSelectedScene(pane2Scene);
+          setSelectedChapter(pane2Chapter);
+          setSelectedStory(pane2Story);
+        }
+        setFocusedPane(1);
+        setPane2Scene(null);
+        setPane2Chapter(null);
+        setPane2Story(null);
+      }
+      return !prev;
+    });
+  }, [focusedPane, pane2Scene, pane2Chapter, pane2Story]);
+
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1550,6 +1603,23 @@ export default function DesktopShell() {
         return;
       }
       if (!mod || !e.shiftKey) return;
+      // SKY-1699: Ctrl+Shift+2 — toggle split window
+      if (e.key === '2') {
+        e.preventDefault();
+        handleToggleSplitWindow();
+        return;
+      }
+      // SKY-1699: Ctrl+Shift+→ / Ctrl+Shift+← — move focus between split panes
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (splitWindowEnabled) setFocusedPane(2);
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (splitWindowEnabled) setFocusedPane(1);
+        return;
+      }
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
         setWritingMode('focus');
@@ -1563,7 +1633,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled]);
 
   // ─── Panel resize drag handlers ───
 
@@ -1611,6 +1681,76 @@ export default function DesktopShell() {
     persistLayout({ ...layout, [key]: newWidth });
   }, [layout, persistLayout]);
 
+  // SKY-1699: Split window drag — mousedown on the divider starts a drag tracking the ratio.
+  const startSplitDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+    splitDragRef.current = {
+      startX: e.clientX,
+      startRatio: splitRatio,
+      containerWidth: container.getBoundingClientRect().width,
+    };
+  }, [splitRatio]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!splitDragRef.current) return;
+      const { startX, startRatio, containerWidth } = splitDragRef.current;
+      if (containerWidth === 0) return;
+      const delta = e.clientX - startX;
+      const deltaPct = (delta / containerWidth) * 100;
+      const minPanePct = (320 / containerWidth) * 100;
+      const newRatio = Math.max(minPanePct, Math.min(100 - minPanePct, startRatio + deltaPct));
+      setSplitRatio(newRatio);
+    };
+    const onMouseUp = () => {
+      if (!splitDragRef.current) return;
+      splitDragRef.current = null;
+      setSplitRatio((r) => {
+        persistSplitRatio(r);
+        return r;
+      });
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [persistSplitRatio]);
+
+  // SKY-1699: Pane 2 scene selection.
+  const handlePane2SelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
+    setPane2Scene(scene);
+    setPane2Chapter(chapter);
+    setPane2Story(story);
+    setFocusedPane(2);
+  }, []);
+
+  // SKY-1699: Keyboard handler for split divider (accessibility).
+  const handleSplitDividerKey = useCallback((e: React.KeyboardEvent) => {
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const containerWidth = container.getBoundingClientRect().width;
+    const minPanePct = containerWidth > 0 ? (320 / containerWidth) * 100 : 0;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setSplitRatio((r) => {
+        const next = Math.max(minPanePct, r - 2);
+        persistSplitRatio(next);
+        return next;
+      });
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setSplitRatio((r) => {
+        const next = Math.min(100 - minPanePct, r + 2);
+        persistSplitRatio(next);
+        return next;
+      });
+    }
+  }, [persistSplitRatio]);
+
   // ─── Story/scene management ───
 
   const persistSceneMarkdown = useCallback(async (scene: Scene) => {
@@ -1620,6 +1760,26 @@ export default function DesktopShell() {
       console.error('Failed to write scene markdown:', e);
     }
   }, []);
+
+  // SKY-1699: Pane 2 blocks change handler — mirrors handleBlocksChange for pane 2's scene.
+  const handlePane2BlocksChange = useCallback((blocks: Block[]) => {
+    if (!pane2Scene || !pane2Chapter || !pane2Story) return;
+    const updatedScene: Scene = { ...pane2Scene, blocks, updatedAt: now() };
+    setPane2Scene(updatedScene);
+    const updatedStories = stories.map((story) =>
+      story.id !== pane2Story.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== pane2Chapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+  }, [pane2Scene, pane2Chapter, pane2Story, stories, updateManifest, persistSceneMarkdown]);
 
   const handleBlocksChange = useCallback((blocks: Block[]) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
@@ -1982,6 +2142,10 @@ export default function DesktopShell() {
     }
   }, [stories, handleSelectScene, handleSelectEntity]);
 
+  // SKY-1699: The scene that the right sidebar agents (Writing Assistant, Archive) should
+  // respond to. In split mode this tracks the focused pane; otherwise it is the selected scene.
+  const activeSceneForSidebar = splitWindowEnabled && focusedPane === 2 ? pane2Scene : selectedScene;
+
   // SKY-1695: Renders any sidebar panel's content. Both sidebars call this so
   // panels render correctly regardless of which sidebar they live in.
   const renderSidebarPanel = useCallback((id: SidebarPanelId): ReactNode => {
@@ -2039,7 +2203,7 @@ export default function DesktopShell() {
       case 'writing-assistant':
         return (
           <WritingAssistantPanel
-            scene={selectedScene}
+            scene={activeSceneForSidebar}
             enabled={appSettings?.agents?.writingAssistant?.enabled ?? true}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
             waScanInterval={appSettings?.waScanInterval}
@@ -2054,7 +2218,7 @@ export default function DesktopShell() {
       case 'archive-continuity':
         return (
           <ContinuityPanel
-            scene={selectedScene}
+            scene={activeSceneForSidebar}
             enabled={appSettings?.agents?.archive?.enabled ?? true}
             archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
             archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
@@ -2081,6 +2245,7 @@ export default function DesktopShell() {
     handleOpenSceneByPath, setVaultContext, setExportScope, appSettings,
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
+    activeSceneForSidebar,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -2248,6 +2413,16 @@ export default function DesktopShell() {
       if (first) handleSelectScene(first, selectedChapter, selectedStory);
     }
   }, [selectedScene, selectedChapter, selectedStory, handleSelectScene]);
+
+  // SKY-1699: word counts for both panes in split mode — must be before early returns (rules-of-hooks).
+  const splitWordCounts = useMemo(() => {
+    if (!splitWindowEnabled) return null;
+    const countBlocks = (scene: Scene | null) =>
+      scene
+        ? scene.blocks.map((b) => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
+        : 0;
+    return { pane1: countBlocks(selectedScene), pane2: countBlocks(pane2Scene) };
+  }, [splitWindowEnabled, selectedScene, pane2Scene]);
 
   if (loading) {
     return (
@@ -2511,152 +2686,229 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {selectedStory && showTabBar && (
-            <DepthSlider
-              depth={viewDepth}
-              onDepthChange={handleViewDepthChange}
-              canPrev={depthCanPrev}
-              canNext={depthCanNext}
-              onPrev={handleDepthPrev}
-              onNext={handleDepthNext}
-              contextLabel={depthContextLabel}
-              writingMode={writingMode}
-              isEmpty={depthIsEmpty}
-            />
-          )}
-          {viewDepth === 'book' && selectedStory ? (
-            <BookOutlineView
-              story={selectedStory}
-              selectedChapterId={selectedChapter?.id ?? null}
-              selectedSceneId={selectedScene?.id ?? null}
-              onSelectScene={(sc, ch) => {
-                handleSelectScene(sc, ch, selectedStory);
-                setViewDepth('scene');
-              }}
-            />
-          ) : viewDepth === 'chapter' && selectedChapter ? (
-            <ChapterDocView
-              chapter={selectedChapter}
-              selectedSceneId={selectedScene?.id ?? null}
-              onSelectScene={(sc) => {
-                if (selectedStory) {
-                  handleSelectScene(sc, selectedChapter, selectedStory);
-                  setViewDepth('scene');
-                }
-              }}
-            />
-          ) : selectedScene ? (
-            <div className="shell-editor-scene-wrap">
-              <div className="scene-snapshot-toolbar">
-                <button
-                  className="scene-snapshot-save"
-                  onClick={handleManualSnapshot}
-                >
-                  Save snapshot now
-                </button>
-                <span className="scene-autosave" aria-live="polite">
-                  {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
-                </span>
-                <button
-                  className="btn-history"
-                  onClick={() => setShowSceneHistory(true)}
-                  aria-label="Open scene history"
-                >
-                  History
-                </button>
-              </div>
-              <div className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
-                <BlockEditor
-                  key={`${selectedScene.id}-${restoreKey}`}
+          {/* SKY-1699: Writing toolbar — DepthSlider + split toggle button */}
+          <div className="shell-editor-toolbar">
+            {selectedStory && showTabBar && !splitWindowEnabled && (
+              <DepthSlider
+                depth={viewDepth}
+                onDepthChange={handleViewDepthChange}
+                canPrev={depthCanPrev}
+                canNext={depthCanNext}
+                onPrev={handleDepthPrev}
+                onNext={handleDepthNext}
+                contextLabel={depthContextLabel}
+                writingMode={writingMode}
+                isEmpty={depthIsEmpty}
+              />
+            )}
+            <button
+              className="split-toggle-btn"
+              onClick={handleToggleSplitWindow}
+              aria-pressed={splitWindowEnabled}
+              aria-label={splitWindowEnabled ? 'Close split view' : 'Split editor (2 panes)'}
+              title="Split window (Ctrl+Shift+2)"
+              data-testid="split-toggle-btn"
+            >
+              ⬜⬜
+            </button>
+          </div>
+
+          {splitWindowEnabled ? (
+            /* SKY-1699: 2-pane split view */
+            <>
+              {selectedScene && pane2Scene && selectedScene.id === pane2Scene.id && (
+                <div className="split-same-scene-banner" role="status" data-testid="split-same-scene-banner">
+                  <span className="split-same-scene-icon" aria-hidden="true">⚠</span>
+                  Both panes are editing the same scene.
+                </div>
+              )}
+              <div
+                className="split-window-container"
+                ref={splitContainerRef}
+              >
+                <SplitEditorPane
+                  paneNumber={1}
+                  isFocused={focusedPane === 1}
                   scene={selectedScene}
+                  chapter={selectedChapter}
+                  story={selectedStory}
+                  stories={stories}
+                  onFocus={() => setFocusedPane(1)}
+                  onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
                   onBlocksChange={handleBlocksChange}
-                  onDraftStateChange={handleDraftStateChange}
                   onEditorReady={handleEditorReady}
-                  onBetaReadRequest={handleBetaReadRequest}
                   wikiLinkSuggestions={wikiLinkSuggestions}
                   onAcceptWikiLink={handleEditorAcceptWikiLink}
                   onRejectWikiLink={handleEditorRejectWikiLink}
                   autoLinkerEntities={allEntities}
                   autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
-                  initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                  onCursorPosChange={handleCursorPosChange}
                   onEntityClick={handleEntityMentionClick}
-                  emptySceneHint={
-                    isGettingStartedVisible(gettingStartedProgress) &&
-                    !seenEmptySceneHints.has(selectedScene.id)
-                      ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
-                      : ''
-                  }
+                  style={{ flex: splitRatio }}
                 />
-                {(betaReadComments.length > 0 || betaReadLoading) && (
-                  <div className="shell-beta-margin">
-                    {betaReadLoading && (
-                      <div className="br-loading" aria-live="polite">
-                        <span className="wa-spinner" aria-hidden="true" />
-                        Reading…
-                      </div>
-                    )}
-                    <BetaReadMargin
-                      comments={betaReadComments}
-                      onDismiss={handleBetaReadDismiss}
-                    />
-                  </div>
+                <div
+                  className="split-window-divider"
+                  role="separator"
+                  aria-label="Resize split panes"
+                  aria-orientation="vertical"
+                  tabIndex={0}
+                  onMouseDown={startSplitDrag}
+                  onKeyDown={handleSplitDividerKey}
+                  data-testid="split-divider"
+                />
+                <SplitEditorPane
+                  paneNumber={2}
+                  isFocused={focusedPane === 2}
+                  scene={pane2Scene}
+                  chapter={pane2Chapter}
+                  story={pane2Story}
+                  stories={stories}
+                  onFocus={() => setFocusedPane(2)}
+                  onSelectScene={handlePane2SelectScene}
+                  onBlocksChange={handlePane2BlocksChange}
+                  onEditorReady={(api) => { pane2EditorApiRef.current = api; }}
+                  autoLinkerEntities={allEntities}
+                  autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                  onEntityClick={handleEntityMentionClick}
+                  style={{ flex: 100 - splitRatio }}
+                />
+              </div>
+            </>
+          ) : (
+            /* Single-pane view (existing behavior) */
+            viewDepth === 'book' && selectedStory ? (
+              <BookOutlineView
+                story={selectedStory}
+                selectedChapterId={selectedChapter?.id ?? null}
+                selectedSceneId={selectedScene?.id ?? null}
+                onSelectScene={(sc, ch) => {
+                  handleSelectScene(sc, ch, selectedStory);
+                  setViewDepth('scene');
+                }}
+              />
+            ) : viewDepth === 'chapter' && selectedChapter ? (
+              <ChapterDocView
+                chapter={selectedChapter}
+                selectedSceneId={selectedScene?.id ?? null}
+                onSelectScene={(sc) => {
+                  if (selectedStory) {
+                    handleSelectScene(sc, selectedChapter, selectedStory);
+                    setViewDepth('scene');
+                  }
+                }}
+              />
+            ) : selectedScene ? (
+              <div className="shell-editor-scene-wrap">
+                <div className="scene-snapshot-toolbar">
+                  <button
+                    className="scene-snapshot-save"
+                    onClick={handleManualSnapshot}
+                  >
+                    Save snapshot now
+                  </button>
+                  <span className="scene-autosave" aria-live="polite">
+                    {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
+                  </span>
+                  <button
+                    className="btn-history"
+                    onClick={() => setShowSceneHistory(true)}
+                    aria-label="Open scene history"
+                  >
+                    History
+                  </button>
+                </div>
+                <div className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
+                  <BlockEditor
+                    key={`${selectedScene.id}-${restoreKey}`}
+                    scene={selectedScene}
+                    onBlocksChange={handleBlocksChange}
+                    onDraftStateChange={handleDraftStateChange}
+                    onEditorReady={handleEditorReady}
+                    onBetaReadRequest={handleBetaReadRequest}
+                    wikiLinkSuggestions={wikiLinkSuggestions}
+                    onAcceptWikiLink={handleEditorAcceptWikiLink}
+                    onRejectWikiLink={handleEditorRejectWikiLink}
+                    autoLinkerEntities={allEntities}
+                    autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                    initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                    onCursorPosChange={handleCursorPosChange}
+                    onEntityClick={handleEntityMentionClick}
+                    emptySceneHint={
+                      isGettingStartedVisible(gettingStartedProgress) &&
+                      !seenEmptySceneHints.has(selectedScene.id)
+                        ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
+                        : ''
+                    }
+                  />
+                  {(betaReadComments.length > 0 || betaReadLoading) && (
+                    <div className="shell-beta-margin">
+                      {betaReadLoading && (
+                        <div className="br-loading" aria-live="polite">
+                          <span className="wa-spinner" aria-hidden="true" />
+                          Reading…
+                        </div>
+                      )}
+                      <BetaReadMargin
+                        comments={betaReadComments}
+                        onDismiss={handleBetaReadDismiss}
+                      />
+                    </div>
+                  )}
+                </div>
+                {showSceneHistory && (
+                  <SceneHistory
+                    sceneId={selectedScene.id}
+                    scenePath={selectedScene.path}
+                    currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                    onRestore={handleSceneRestore}
+                    onClose={() => setShowSceneHistory(false)}
+                  />
                 )}
               </div>
-              {showSceneHistory && (
-                <SceneHistory
-                  sceneId={selectedScene.id}
-                  scenePath={selectedScene.path}
-                  currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
-                  onRestore={handleSceneRestore}
-                  onClose={() => setShowSceneHistory(false)}
-                />
-              )}
-            </div>
-          ) : selectedEntity ? (
-            <EntityDetail
-              key={selectedEntity.id}
-              entity={selectedEntity}
-              onClose={() => setSelectedEntity(null)}
-              onUpdated={(updated) => setSelectedEntity(updated)}
-              onDeleted={() => setSelectedEntity(null)}
-              onOpenScene={handleOpenSceneByPath}
-            />
-          ) : openedNotePath ? (
-            // SKY-204: vault note viewer (daily notes and any other .md file)
-            <NoteViewer
-              key={openedNotePath}
-              path={openedNotePath}
-              onWordCountChange={setOpenedNoteWordCount}
-              onClose={() => setOpenedNotePath(null)}
-            />
-          ) : (
-            <div className="shell-editor-empty">
-              <div className="shell-editor-empty-icon">✍️</div>
-              <h2>Welcome to Mythos Writer</h2>
-              {stories.length === 0 ? (
-                <>
-                  <p>Create your first story to begin writing.</p>
-                  <button
-                    className="shell-editor-empty-cta"
-                    onClick={createStory}
-                    data-testid="shell-empty-new-story"
-                  >
-                    New Story
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p>Select a scene from the left panel to start writing.</p>
-                  <PaneTip
-                    tipKey="editor"
-                    text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
-                    seen={seenTips['editor'] ?? false}
-                    onDismiss={handleDismissTip}
-                  />
-                </>
-              )}
-            </div>
+            ) : selectedEntity ? (
+              <EntityDetail
+                key={selectedEntity.id}
+                entity={selectedEntity}
+                onClose={() => setSelectedEntity(null)}
+                onUpdated={(updated) => setSelectedEntity(updated)}
+                onDeleted={() => setSelectedEntity(null)}
+                onOpenScene={handleOpenSceneByPath}
+              />
+            ) : openedNotePath ? (
+              // SKY-204: vault note viewer (daily notes and any other .md file)
+              <NoteViewer
+                key={openedNotePath}
+                path={openedNotePath}
+                onWordCountChange={setOpenedNoteWordCount}
+                onClose={() => setOpenedNotePath(null)}
+              />
+            ) : (
+              <div className="shell-editor-empty">
+                <div className="shell-editor-empty-icon">✍️</div>
+                <h2>Welcome to Mythos Writer</h2>
+                {stories.length === 0 ? (
+                  <>
+                    <p>Create your first story to begin writing.</p>
+                    <button
+                      className="shell-editor-empty-cta"
+                      onClick={createStory}
+                      data-testid="shell-empty-new-story"
+                    >
+                      New Story
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p>Select a scene from the left panel to start writing.</p>
+                    <PaneTip
+                      tipKey="editor"
+                      text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                      seen={seenTips['editor'] ?? false}
+                      onDismiss={handleDismissTip}
+                    />
+                  </>
+                )}
+              </div>
+            )
           )}
         </div>
         {showBottomBar && (
@@ -2668,6 +2920,7 @@ export default function DesktopShell() {
             activeNotePath={openedNotePath}
             activeNoteWordCount={openedNoteWordCount}
             isVoiceActive={voiceActive}
+            splitWordCounts={splitWordCounts}
           />
         )}
       </div>

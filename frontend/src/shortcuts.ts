@@ -43,6 +43,14 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
       ],
     },
     {
+      label: 'Editor — Split View',
+      entries: [
+        { keys: [`${mod}+Shift+2`], action: 'Toggle split view (2-pane editing)' },
+        { keys: [`${mod}+Shift+→`], action: 'Move focus to right pane' },
+        { keys: [`${mod}+Shift+←`], action: 'Move focus to left pane' },
+      ],
+    },
+    {
       label: 'Editor — Text (Tiptap)',
       entries: [
         { keys: [`${mod}+B`], action: 'Bold' },

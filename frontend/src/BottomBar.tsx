@@ -11,6 +11,8 @@ interface Props {
   /** SKY-204: word count for the active vault note. */
   activeNoteWordCount?: number;
   isVoiceActive?: boolean;
+  /** SKY-1699 (Wave 2e): when split view is active, show per-pane word counts. */
+  splitWordCounts?: { pane1: number; pane2: number } | null;
 }
 
 export default function BottomBar({
@@ -21,6 +23,7 @@ export default function BottomBar({
   activeNotePath,
   activeNoteWordCount,
   isVoiceActive = false,
+  splitWordCounts = null,
 }: Props) {
   const allScenes: { scene: Scene; chapter: Chapter; story: Story }[] = [];
   if (selectedStory) {
@@ -70,7 +73,13 @@ export default function BottomBar({
       </div>
 
       <div className="bottom-meta">
-        {isNoteActive ? (
+        {splitWordCounts !== null ? (
+          <span className="bottom-stats" data-testid="split-word-counts">
+            Pane 1: {splitWordCounts.pane1.toLocaleString()} words
+            {' '}·{' '}
+            Pane 2: {splitWordCounts.pane2.toLocaleString()} words
+          </span>
+        ) : isNoteActive ? (
           <>
             <span className="bottom-breadcrumb">
               <span className="bottom-scene-name">{noteFileName}</span>
