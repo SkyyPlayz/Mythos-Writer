@@ -1003,6 +1003,10 @@ interface Window {
     agentPersonaRead: (agentName: string, key: string) => Promise<{ content: string; isCustom: boolean }>;
     agentPersonaReset: (agentName: string, key: string) => Promise<unknown>;
 
+    // SKY-1686: Global right-sidebar panel popout window
+    panelPopout?: (panelId: string, sceneId: string | null) => Promise<void>;
+    onPanelPopoutClosed?: (callback: (panelId: string) => void) => () => void;
+
     // Optional / feature-gated entry points (may not be registered in all builds)
     newStory?: () => Promise<void>;
     openVault?: () => Promise<void>;

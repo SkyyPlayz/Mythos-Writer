@@ -77,16 +77,19 @@ describe('createWindowOpenHandler — deny by default', () => {
   });
 });
 
-describe('main.ts wiring — secureWebPreferences is the source of truth for the only BrowserWindow', () => {
-  // Guards against drift: if someone adds a second BrowserWindow or hand-rolls
-  // webPreferences, this test flips red and forces them to route through
-  // secureWebPreferences().
-  it('the only BrowserWindow constructor in main.ts uses secureWebPreferences()', () => {
+describe('main.ts wiring — secureWebPreferences is the source of truth for all BrowserWindows', () => {
+  // Guards against drift: if someone adds a BrowserWindow that hand-rolls
+  // webPreferences without secureWebPreferences(), this test flips red.
+  // SKY-1686 added a second BrowserWindow for panel popout windows — both must
+  // use secureWebPreferences(). The count is intentionally 2 now.
+  it('all BrowserWindow constructors in main.ts use secureWebPreferences()', () => {
     const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
     const ctorMatches = mainSrc.match(/new BrowserWindow\s*\(/g) ?? [];
-    expect(ctorMatches.length).toBe(1);
-    // The constructor must reference secureWebPreferences in its options block.
-    expect(mainSrc).toMatch(/new BrowserWindow\(\{[\s\S]*?webPreferences:\s*secureWebPreferences\(/);
+    // Count must equal the number of intentional windows (2: main + panel popout).
+    expect(ctorMatches.length).toBe(2);
+    // Count secureWebPreferences usages — must match BrowserWindow count.
+    const secureMatches = mainSrc.match(/webPreferences:\s*secureWebPreferences\(/g) ?? [];
+    expect(secureMatches.length).toBe(ctorMatches.length);
   });
 
   it('main.ts installs the window-open deny handler', () => {

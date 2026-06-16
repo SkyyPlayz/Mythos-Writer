@@ -4826,6 +4826,54 @@ const handlers: IpcHandlers = {
 
 };
 
+// ─── Panel popout windows (SKY-1686) ───
+const popoutWindows = new Map<string, BrowserWindow>();
+
+function registerPanelPopoutHandler(): void {
+  const preloadPath = path.join(__dirname, '../preload/preload.js');
+
+  ipcMain.handle(IPC_CHANNELS.PANEL_POPOUT, wrapIpcHandler(IPC_CHANNELS.PANEL_POPOUT, (event, payload: { panelId: string; sceneId: string | null }) => {
+    if (!isFromTopFrame(event)) return;
+    const { panelId, sceneId } = payload ?? {};
+    if (!panelId || typeof panelId !== 'string') return;
+
+    // If already open, focus it.
+    const existing = popoutWindows.get(panelId);
+    if (existing && !existing.isDestroyed()) {
+      existing.focus();
+      return;
+    }
+
+    const win = new BrowserWindow({
+      width: 360,
+      height: 600,
+      alwaysOnTop: false,
+      titleBarStyle: 'hiddenInset',
+      title: panelId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      webPreferences: secureWebPreferences({ preloadPath }),
+    });
+
+    popoutWindows.set(panelId, win);
+
+    const baseUrl = process.env.VITE_DEV_SERVER_URL
+      ? `${process.env.VITE_DEV_SERVER_URL}#/popout/${panelId}${sceneId ? `?sceneId=${sceneId}` : ''}`
+      : null;
+
+    if (baseUrl) {
+      win.loadURL(baseUrl).catch(() => {});
+    } else {
+      const htmlPath = path.join(__dirname, '../renderer/index.html');
+      const hash = `/popout/${panelId}${sceneId ? `?sceneId=${sceneId}` : ''}`;
+      win.loadFile(htmlPath, { hash }).catch(() => {});
+    }
+
+    win.on('closed', () => {
+      popoutWindows.delete(panelId);
+      mainWindow?.webContents.send(IPC_CHANNELS.PANEL_POPOUT_CLOSED, { panelId });
+    });
+  }));
+}
+
 // ─── Create BrowserWindow ───
 function createWindow() {
   // electron-vite emits the preload to out/preload/preload.js, while this
@@ -6464,7 +6512,7 @@ app.whenReady().then(async () => {
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
   registerPresetHandlers();
-
+  registerPanelPopoutHandler();
 
   if (initializeVaults) startWritingScanScheduler();
   registerVoiceHandlers(

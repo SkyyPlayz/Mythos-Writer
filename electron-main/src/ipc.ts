@@ -415,6 +415,10 @@ export const IPC_CHANNELS = {
   DRAFTS_RESTORE: 'drafts:restore',
   DRAFTS_LABEL: 'drafts:label',
   DRAFTS_DELETE: 'drafts:delete',
+
+  // SKY-1686: Global right-sidebar — panel popout window
+  PANEL_POPOUT: 'panel:popout',
+  PANEL_POPOUT_CLOSED: 'panel:popout-closed',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───

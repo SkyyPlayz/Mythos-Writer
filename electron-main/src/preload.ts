@@ -731,6 +731,16 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('brainstorm:proposalQueued', handler);
   },
 
+  // SKY-1686: panel popout window
+  panelPopout: (panelId: string, sceneId: string | null) =>
+    ipcRenderer.invoke('panel:popout', { panelId, sceneId }),
+
+  onPanelPopoutClosed: (cb: (panelId: string) => void) => {
+    const handler = (_: unknown, data: { panelId: string }) => cb(data.panelId);
+    ipcRenderer.on('panel:popout-closed', handler);
+    return () => ipcRenderer.removeListener('panel:popout-closed', handler);
+  },
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

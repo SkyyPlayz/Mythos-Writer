@@ -291,6 +291,14 @@
 }
 
 /* Main panels row */
+/* SKY-1686: row wrapper that hosts view content + global right sidebar */
+.shell-main-row {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  flex-direction: row;
+}
+
 .shell-panels {
   display: flex;
   flex: 1;
