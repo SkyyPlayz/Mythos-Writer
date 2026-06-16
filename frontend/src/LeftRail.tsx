@@ -113,6 +113,8 @@ interface Props {
 
   /** SKY-1697: Float a panel to a free-floating window. */
   onFloatPanel?: (panelId: SidebarPanelId) => void;
+  /** SKY-1698: Dock a panel as a new custom tab in the main tab bar. */
+  onDockAsTab?: (panelId: SidebarPanelId) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -125,6 +127,7 @@ export default function LeftRail({
   renderPanelContent,
   rightPanelCount,
   onFloatPanel,
+  onDockAsTab,
 }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -439,6 +442,18 @@ export default function LeftRail({
                   >
                     ⧉
                   </button>
+
+                  {/* Dock as tab — SKY-1698 */}
+                  {onDockAsTab && (
+                    <button
+                      className="lr-panel-float-btn"
+                      onClick={() => onDockAsTab(panel.id)}
+                      aria-label={`Dock ${label} as tab`}
+                      title="Dock as tab"
+                    >
+                      ⊞
+                    </button>
+                  )}
 
                   <button
                     className="lr-panel-remove-btn"

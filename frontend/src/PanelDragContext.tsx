@@ -60,6 +60,16 @@ export interface PanelDragContextValue {
   /** True if the current/most-recent drag was cancelled by Escape (not a float-worthy drop). */
   wasEscapeCancelled: () => boolean;
 
+  /**
+   * SKY-1698 (Wave 2d): Dropped on the main tab bar — create a new custom tab.
+   * insertAfterTabIndex: index after which to insert (-1 = append at end).
+   */
+  commitTabBarDrop: (insertAfterTabIndex: number) => void;
+  /**
+   * SKY-1698 (Wave 2d): Dropped on an existing custom tab — add panel to that tab group.
+   */
+  commitTabGroupDrop: (targetTabId: string) => void;
+
   /** Keyboard-drag state (null when in pointer mode or idle). */
   kbDrag: KeyboardDrag | null;
   startKeyboardDrag: (state: PanelDragState, leftCount: number, rightCount: number) => void;
@@ -89,9 +99,13 @@ interface ProviderProps {
   ) => void;
   /** SKY-1697: Called when a panel is dropped off all sidebars — float it. */
   onFloatDrop?: (panelId: SidebarPanelId, sourceSidebar: DragSidebar) => void;
+  /** SKY-1698 (Wave 2d): Called when a panel is dropped on the main tab bar as a new tab. */
+  onTabBarDrop?: (panelId: SidebarPanelId, sourceSidebar: DragSidebar, insertAfterTabIndex: number) => void;
+  /** SKY-1698 (Wave 2d): Called when a panel is dropped on an existing custom tab group. */
+  onTabGroupDrop?: (panelId: SidebarPanelId, sourceSidebar: DragSidebar, targetTabId: string) => void;
 }
 
-export function PanelDragProvider({ children, onDrop, onFloatDrop }: ProviderProps) {
+export function PanelDragProvider({ children, onDrop, onFloatDrop, onTabBarDrop, onTabGroupDrop }: ProviderProps) {
   const [dragState, setDragState] = useState<PanelDragState | null>(null);
   const [ghostPos, setGhostPos] = useState({ x: -9999, y: -9999 });
   const [activeDropTarget, setActiveDropTarget] = useState<DropTarget | null>(null);
@@ -179,6 +193,26 @@ export function PanelDragProvider({ children, onDrop, onFloatDrop }: ProviderPro
     [dragState, onDrop],
   );
 
+  const commitTabBarDrop = useCallback(
+    (insertAfterTabIndex: number) => {
+      if (!dragState) return;
+      if (onTabBarDrop) onTabBarDrop(dragState.panelId, dragState.sourceSidebar, insertAfterTabIndex);
+      setDragState(null);
+      setActiveDropTarget(null);
+    },
+    [dragState, onTabBarDrop],
+  );
+
+  const commitTabGroupDrop = useCallback(
+    (targetTabId: string) => {
+      if (!dragState) return;
+      if (onTabGroupDrop) onTabGroupDrop(dragState.panelId, dragState.sourceSidebar, targetTabId);
+      setDragState(null);
+      setActiveDropTarget(null);
+    },
+    [dragState, onTabGroupDrop],
+  );
+
   const startKeyboardDrag = useCallback(
     (state: PanelDragState, leftCount: number, rightCount: number) => {
       setKbDrag({ ...state, sidebar: state.sourceSidebar, index: state.sourceIndex, leftCount, rightCount });
@@ -233,6 +267,8 @@ export function PanelDragProvider({ children, onDrop, onFloatDrop }: ProviderPro
         cancelDrag,
         floatDrop,
         wasEscapeCancelled,
+        commitTabBarDrop,
+        commitTabGroupDrop,
         kbDrag,
         startKeyboardDrag,
         moveKbTarget,
