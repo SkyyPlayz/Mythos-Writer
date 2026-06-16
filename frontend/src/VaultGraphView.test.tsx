@@ -149,17 +149,101 @@ describe('VaultGraphView', () => {
     });
   });
 
-  it('shows empty state when no nodes', async () => {
+  it('AC-GV-09: shows animated empty state with copy and open-note CTA when no wikilinks', async () => {
     (window as any).api = {
       vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: [] }),
       vaultGraphEdges: vi.fn().mockResolvedValue({ edges: [] }),
     };
 
+    const onOpenNote = vi.fn();
+    render(<VaultGraphView onOpenNote={onOpenNote} mostRecentNotePath="Notes/recent.md" />);
+
+    const emptyState = await screen.findByTestId('vault-graph-empty');
+    expect(emptyState).toBeInTheDocument();
+    expect(screen.getByText(/haven't linked up yet/i)).toBeInTheDocument();
+
+    const cta = screen.getByTestId('vault-graph-open-note-cta');
+    fireEvent.click(cta);
+    expect(onOpenNote).toHaveBeenCalledWith('Notes/recent.md');
+  });
+
+  it('AC-GV-09: CTA calls onOpenNote with empty string when no mostRecentNotePath', async () => {
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: [] }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: [] }),
+    };
+
+    const onOpenNote = vi.fn();
+    render(<VaultGraphView onOpenNote={onOpenNote} />);
+
+    const cta = await screen.findByTestId('vault-graph-open-note-cta');
+    fireEvent.click(cta);
+    expect(onOpenNote).toHaveBeenCalledWith('');
+  });
+
+  it('shows skeleton while loading, before data resolves', async () => {
+    let resolveNodes!: (v: unknown) => void;
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockReturnValue(new Promise((r) => { resolveNodes = r; })),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: [] }),
+    };
+
+    render(<VaultGraphView />);
+    expect(screen.getByTestId('vault-graph-skeleton')).toBeInTheDocument();
+    await act(async () => { resolveNodes({ nodes: [] }); });
+  });
+
+  it('AC-GV-10: renders top-500 by degree + truncation banner when >=500 linked notes', async () => {
+    const nodes = Array.from({ length: 520 }, (_, i) => ({
+      id: `note-${i}`,
+      label: `Note ${i}`,
+      path: `note-${i}.md`,
+      degree: i,
+    }));
+    const edges = nodes.slice(0, 50).map((n, i) => ({
+      source: n.id,
+      target: nodes[(i + 1) % 50].id,
+    }));
+
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges }),
+    };
+
     render(<VaultGraphView />);
 
+    const banner = await screen.findByTestId('vault-graph-truncation-banner');
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveTextContent('520 notes');
+    expect(banner).toHaveTextContent('top 500');
+    expect(screen.getByRole('button', { name: /show all/i })).toBeInTheDocument();
+  });
+
+  it('AC-GV-10: Show all button removes truncation, banner persists until dismissed', async () => {
+    const nodes = Array.from({ length: 510 }, (_, i) => ({
+      id: `note-${i}`,
+      label: `Note ${i}`,
+      path: `note-${i}.md`,
+      degree: i,
+    }));
+
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: [] }),
+    };
+
+    render(<VaultGraphView />);
+    await screen.findByTestId('vault-graph-truncation-banner');
+
+    fireEvent.click(screen.getByRole('button', { name: /show all/i }));
+
     await waitFor(() => {
-      expect(screen.getByText(/No notes found/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument();
     });
+    expect(screen.getByTestId('vault-graph-truncation-banner')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss large vault notice/i }));
+    expect(screen.queryByTestId('vault-graph-truncation-banner')).not.toBeInTheDocument();
   });
 
   // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────

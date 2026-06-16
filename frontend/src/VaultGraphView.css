@@ -270,16 +270,176 @@
   color: var(--state-danger);
 }
 
-.vgv-error-sub,
-.vgv-large-notice {
+.vgv-error-sub {
   color: var(--text-muted);
   font-size: 12px;
 }
 
-.vgv-large-notice {
-  padding: 6px 12px;
+/* ── Loading skeleton ─────────────────────────────────────────── */
+
+.vgv-state--loading {
+  padding: 0;
+  overflow: hidden;
+}
+
+.vgv-skeleton {
+  width: 100%;
+  height: 100%;
+}
+
+.vgv-skeleton-node {
+  fill: var(--bg-inset);
+  stroke: var(--border-default);
+  stroke-width: 1.5;
+  animation: vgv-pulse 1.8s ease-in-out infinite;
+}
+
+.vgv-skeleton-edge {
+  stroke: var(--border-default);
+  stroke-width: 1;
+  opacity: 0.5;
+  animation: vgv-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes vgv-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+.vgv-spinner-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.vgv-spinner {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-default);
+  border-top-color: var(--ln-graph-border-highlight, var(--text-accent));
+  border-radius: 50%;
+  animation: vgv-spin 0.8s linear infinite;
+}
+
+@keyframes vgv-spin {
+  to { transform: rotate(360deg); }
+}
+
+.vgv-loading-text {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+/* ── Empty state ──────────────────────────────────────────────── */
+
+.vgv-state--empty {
+  gap: 16px;
+}
+
+.vgv-empty-dots {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.vgv-empty-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.35;
+}
+
+.vgv-empty-dot--a { animation: vgv-drift 3.2s ease-in-out infinite 0s; }
+.vgv-empty-dot--b { animation: vgv-drift 3.2s ease-in-out infinite 1.07s; }
+.vgv-empty-dot--c { animation: vgv-drift 3.2s ease-in-out infinite 2.13s; }
+
+@keyframes vgv-drift {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.vgv-empty-copy {
+  max-width: 340px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.vgv-empty-wikilink {
+  color: var(--text-accent, var(--ln-graph-node-default));
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+}
+
+.vgv-empty-cta {
+  margin-top: 4px;
+  padding: 6px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.vgv-empty-cta:hover,
+.vgv-empty-cta:focus-visible {
+  border-color: var(--ln-graph-border-highlight, var(--text-accent));
+  background: var(--bg-surface);
+  outline: none;
+}
+
+/* ── Truncation banner ────────────────────────────────────────── */
+
+.vgv-truncation-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
   border-bottom: 1px solid var(--border-default);
   background: var(--bg-inset);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.vgv-truncation-banner span {
+  flex: 1;
+  min-width: 0;
+}
+
+.vgv-truncation-showall,
+.vgv-truncation-dismiss {
+  flex-shrink: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--bg-surface);
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.vgv-truncation-showall:hover,
+.vgv-truncation-showall:focus-visible,
+.vgv-truncation-dismiss:hover,
+.vgv-truncation-dismiss:focus-visible {
+  border-color: var(--ln-graph-border-highlight, var(--text-accent));
+  outline: none;
+}
+
+.vgv-truncation-dismiss {
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* ─── Search highlight / dimmed states (AC-GV-08) ────────────────────────── */
@@ -416,7 +576,12 @@
   .vgv-graph-node,
   .vgv-node-circle,
   .vgv-legend-popover,
-  .vgv-chip {
+  .vgv-chip,
+  .vgv-empty-dot,
+  .vgv-skeleton-node,
+  .vgv-skeleton-edge,
+  .vgv-spinner {
+    animation: none;
     transition: none;
   }
 }
