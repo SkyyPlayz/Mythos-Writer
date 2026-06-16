@@ -228,14 +228,10 @@ test.beforeAll(async () => {
   // Navigate to Editor view.
   await page.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
 
-  // Wait for the story navigator to appear, then click the scene.
+  // Wait for the story navigator to render — stories and chapters start expanded by default.
   await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
-  const storyRow = page.locator('.nav-story-row').first();
-  // Expand the story row to show chapters.
-  await storyRow.click();
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 4_000 });
-  await chapterRow.click();
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 4_000 });
   await sceneRow.click();
