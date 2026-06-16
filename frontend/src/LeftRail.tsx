@@ -110,6 +110,9 @@ interface Props {
    * keyboard-drag target range when initiating a keyboard drag from the left.
    */
   rightPanelCount: number;
+
+  /** SKY-1697: Float a panel to a free-floating window. */
+  onFloatPanel?: (panelId: SidebarPanelId) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -121,6 +124,7 @@ export default function LeftRail({
   onLeftSidebarLayoutChange,
   renderPanelContent,
   rightPanelCount,
+  onFloatPanel,
 }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -138,6 +142,8 @@ export default function LeftRail({
     commitDrop,
     endDrag,
     cancelDrag,
+    floatDrop,
+    wasEscapeCancelled,
     kbDrag,
     startKeyboardDrag,
     moveKbTarget,
@@ -236,15 +242,19 @@ export default function LeftRail({
   );
 
   const handleDragEnd = useCallback(
-    (e: React.DragEvent) => {
+    (e: React.DragEvent, panelId: SidebarPanelId) => {
       if (e.dataTransfer.dropEffect === 'none') {
-        // Dropped outside any valid target — cancel
-        cancelDrag();
+        if (!wasEscapeCancelled()) {
+          // Dropped outside all valid zones — float the panel (AC-F-01).
+          floatDrop(panelId, 'left');
+        } else {
+          cancelDrag();
+        }
       } else {
         endDrag();
       }
     },
-    [cancelDrag, endDrag],
+    [cancelDrag, endDrag, floatDrop, wasEscapeCancelled],
   );
 
   // Drop zone activation
@@ -398,7 +408,7 @@ export default function LeftRail({
                     aria-grabbed={isDraggingThis || isKbSource}
                     title="Drag to reorder"
                     onDragStart={(e) => handleDragStart(e, panel.id, i)}
-                    onDragEnd={handleDragEnd}
+                    onDragEnd={(e) => handleDragEnd(e, panel.id)}
                     onKeyDown={(e) => handleDragHandleKeyDown(e, panel.id, i)}
                     tabIndex={0}
                   >
@@ -419,6 +429,16 @@ export default function LeftRail({
                   </button>
 
                   <span className="lr-panel-title">{label}</span>
+
+                  {/* Float panel — SKY-1697 */}
+                  <button
+                    className="lr-panel-float-btn"
+                    onClick={() => onFloatPanel?.(panel.id)}
+                    aria-label={`Float ${label} panel`}
+                    title="Float panel"
+                  >
+                    ⧉
+                  </button>
 
                   <button
                     className="lr-panel-remove-btn"

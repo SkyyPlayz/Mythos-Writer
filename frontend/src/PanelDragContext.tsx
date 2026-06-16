@@ -50,8 +50,15 @@ export interface PanelDragContextValue {
   commitDrop: (target: DropTarget) => void;
   /** End drag without committing (drag-end fired without drop). */
   endDrag: () => void;
-  /** Cancel drag and return panel to origin. */
+  /** Cancel drag and return panel to origin (Escape or failed drop). */
   cancelDrag: () => void;
+  /**
+   * SKY-1697: Dropped outside all valid sidebar zones — create floating window.
+   * Called by sidebar drag-handles when `dropEffect === 'none'` and Escape was NOT pressed.
+   */
+  floatDrop: (panelId: SidebarPanelId, sourceSidebar: DragSidebar) => void;
+  /** True if the current/most-recent drag was cancelled by Escape (not a float-worthy drop). */
+  wasEscapeCancelled: () => boolean;
 
   /** Keyboard-drag state (null when in pointer mode or idle). */
   kbDrag: KeyboardDrag | null;
@@ -80,14 +87,18 @@ interface ProviderProps {
     toSidebar: DragSidebar,
     toIndex: number,
   ) => void;
+  /** SKY-1697: Called when a panel is dropped off all sidebars — float it. */
+  onFloatDrop?: (panelId: SidebarPanelId, sourceSidebar: DragSidebar) => void;
 }
 
-export function PanelDragProvider({ children, onDrop }: ProviderProps) {
+export function PanelDragProvider({ children, onDrop, onFloatDrop }: ProviderProps) {
   const [dragState, setDragState] = useState<PanelDragState | null>(null);
   const [ghostPos, setGhostPos] = useState({ x: -9999, y: -9999 });
   const [activeDropTarget, setActiveDropTarget] = useState<DropTarget | null>(null);
   const [kbDrag, setKbDrag] = useState<KeyboardDrag | null>(null);
   const announceRef = useRef<HTMLDivElement | null>(null);
+  /** True when the current drag was cancelled by Escape key (not an off-sidebar drop). */
+  const escapeCancelledRef = useRef(false);
 
   // Polite announcements for screen readers
   const announce = (msg: string) => {
@@ -116,6 +127,7 @@ export function PanelDragProvider({ children, onDrop }: ProviderProps) {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        escapeCancelledRef.current = true;
         setDragState(null);
         setActiveDropTarget(null);
         setKbDrag(null);
@@ -127,6 +139,7 @@ export function PanelDragProvider({ children, onDrop }: ProviderProps) {
   }, [dragState, kbDrag]);
 
   const startDrag = useCallback((state: PanelDragState) => {
+    escapeCancelledRef.current = false;
     setDragState(state);
     setActiveDropTarget(null);
   }, []);
@@ -137,9 +150,18 @@ export function PanelDragProvider({ children, onDrop }: ProviderProps) {
   }, []);
 
   const cancelDrag = useCallback(() => {
+    escapeCancelledRef.current = true;
     setDragState(null);
     setActiveDropTarget(null);
   }, []);
+
+  const floatDrop = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
+    setDragState(null);
+    setActiveDropTarget(null);
+    if (onFloatDrop) onFloatDrop(panelId, sourceSidebar);
+  }, [onFloatDrop]);
+
+  const wasEscapeCancelled = useCallback(() => escapeCancelledRef.current, []);
 
   const commitDrop = useCallback(
     (target: DropTarget) => {
@@ -209,6 +231,8 @@ export function PanelDragProvider({ children, onDrop }: ProviderProps) {
         commitDrop,
         endDrag,
         cancelDrag,
+        floatDrop,
+        wasEscapeCancelled,
         kbDrag,
         startKeyboardDrag,
         moveKbTarget,

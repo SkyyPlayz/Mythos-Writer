@@ -745,6 +745,28 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('panel:popout-closed', handler);
   },
 
+  // SKY-1697: Wave 2c — free-floating panel windows
+  panelFloat: (panelId: string, opts?: { sourceSidebar?: 'left' | 'right'; x?: number; y?: number; width?: number; height?: number }) =>
+    ipcRenderer.invoke('panel:float', { panelId, ...opts }),
+
+  panelFloatDockBack: (panelId: string) =>
+    ipcRenderer.invoke('panel:float-dock-back', { panelId }),
+
+  panelFloatSetPin: (panelId: string, alwaysOnTop: boolean) =>
+    ipcRenderer.invoke('panel:float-set-pin', { panelId, alwaysOnTop }),
+
+  onPanelFloatClosed: (cb: (data: { panelId: string; docked: boolean; bounds: { x: number; y: number; width: number; height: number } }) => void) => {
+    const handler = (_: unknown, data: { panelId: string; docked: boolean; bounds: { x: number; y: number; width: number; height: number } }) => cb(data);
+    ipcRenderer.on('panel:float-closed', handler);
+    return () => ipcRenderer.removeListener('panel:float-closed', handler);
+  },
+
+  onPanelFloatBoundsChanged: (cb: (data: { panelId: string; x: number; y: number; width: number; height: number }) => void) => {
+    const handler = (_: unknown, data: { panelId: string; x: number; y: number; width: number; height: number }) => cb(data);
+    ipcRenderer.on('panel:float-bounds', handler);
+    return () => ipcRenderer.removeListener('panel:float-bounds', handler);
+  },
+
   // SKY-1684: Archive Agent v1 — continuity scan
   archiveScanContinuity: (sceneId: string, text: string, scope?: string) =>
     ipcRenderer.invoke('archive:scan-continuity', { sceneId, text, scope }),
