@@ -192,3 +192,56 @@
   background: var(--bg-elevated);
   box-shadow: var(--shadow-strong);
 }
+
+/* Keyboard lane reorder buttons inside lane header */
+.scene-crafter-lane-reorder {
+  display: flex;
+  gap: 2px;
+}
+
+.scene-crafter-lane-reorder button {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.scene-crafter-lane-reorder button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* "Move to…" button and its lane-picker popover */
+.scene-crafter-move-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.scene-crafter-move-menu-popover {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 120px;
+  padding: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-strong);
+}
+
+.scene-crafter-move-menu-popover button {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 7px;
+  text-align: left;
+  font-size: 0.82rem;
+}
+
+.scene-crafter-move-menu-popover button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
