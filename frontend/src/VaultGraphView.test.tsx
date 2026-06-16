@@ -212,12 +212,13 @@ describe('VaultGraphView', () => {
 
     render(<VaultGraphView />);
 
-    const banner = await screen.findByTestId('vault-graph-truncation-banner');
+    // applyForceLayout on 500 nodes is O(n²) — allow up to 15 s on slow CI runners
+    const banner = await screen.findByTestId('vault-graph-truncation-banner', {}, { timeout: 15_000 });
     expect(banner).toBeInTheDocument();
     expect(banner).toHaveTextContent('520 notes');
     expect(banner).toHaveTextContent('top 500');
     expect(screen.getByRole('button', { name: /show all/i })).toBeInTheDocument();
-  }, 15000); // 520-node render is heavy in CI jsdom — extend timeout to avoid load-induced flake
+  }, 30_000);
 
   it('AC-GV-10: Show all button removes truncation, banner persists until dismissed', async () => {
     const nodes = Array.from({ length: 510 }, (_, i) => ({
@@ -233,18 +234,20 @@ describe('VaultGraphView', () => {
     };
 
     render(<VaultGraphView />);
-    await screen.findByTestId('vault-graph-truncation-banner');
+    // initial truncated layout (500 nodes) — allow up to 15 s on slow CI runners
+    await screen.findByTestId('vault-graph-truncation-banner', {}, { timeout: 15_000 });
 
-    fireEvent.click(screen.getByRole('button', { name: /show all/i }));
+    // "show all" triggers a second applyForceLayout on all 510 nodes — wrap in act() to flush
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /show all/i })); });
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument();
-    });
+    }, { timeout: 15_000 });
     expect(screen.getByTestId('vault-graph-truncation-banner')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /dismiss large vault notice/i }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /dismiss large vault notice/i })); });
     expect(screen.queryByTestId('vault-graph-truncation-banner')).not.toBeInTheDocument();
-  }, 15000); // 510-node render is heavy in CI jsdom — extend timeout to avoid load-induced flake
+  }, 30_000);
 
   // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────
 
