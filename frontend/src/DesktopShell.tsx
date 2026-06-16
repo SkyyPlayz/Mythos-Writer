@@ -1798,6 +1798,8 @@ export default function DesktopShell() {
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           />
         );
+      case 'vault-graph':
+        return <VaultGraphView onOpenNote={handleOpenSceneByPath} />;
       case 'review':
         return <SuggestionReview onOpenVaultPath={handleOpenSceneByPath} />;
       case 'progress':

@@ -435,7 +435,7 @@ interface RightSidebarPanel {
 }
 
 /** SKY-1694: Panel IDs available in the left sidebar panel zone. */
-type LeftPanelId = 'stories' | 'entities' | 'vault' | 'review' | 'progress';
+type LeftPanelId = 'stories' | 'entities' | 'vault' | 'vault-graph' | 'review' | 'progress';
 
 /** SKY-1695 (Wave 2b): Unified panel ID — any panel in either sidebar. */
 type SidebarPanelId = LeftPanelId | RightPanelId;
@@ -730,6 +730,24 @@ interface Window {
 
     // Vault Graph View (MYT-249)
     vaultGraphData: () => Promise<unknown>;
+
+    // Notes Vault graph — in-memory link index with degree + category (SKY-1756 / SKY-1743)
+    vaultGraphNodes: () => Promise<{
+      nodes: Array<{
+        id: string;
+        label: string;
+        path: string;
+        category: 'characters' | 'locations' | 'factions' | 'history' | 'systems' | 'items' | 'misc' | 'default';
+        degree: number;
+      }>;
+    }>;
+    vaultGraphEdges: () => Promise<{
+      edges: Array<{
+        source: string;
+        target: string;
+        weight: number;
+      }>;
+    }>;
 
     // Timeline (MYT-319) — Archive-inferred chronology
     timelineList: (scenePath?: string) => Promise<unknown>;

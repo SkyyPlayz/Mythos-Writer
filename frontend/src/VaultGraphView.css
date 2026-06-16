@@ -1,88 +1,184 @@
 /* =============================================================================
- * VaultGraphView — Liquid Neon styling (SKY-217)
- * All glow effects read --lg-neon / --lg-blur / --lg-glass from tokens.css
- * so the Softness↔Contrast slider drives them automatically.
+ * VaultGraphView — Liquid Neon graph renderer (SKY-1760)
+ * Graph colors are consumed only from --ln-graph-* tokens in tokens.css.
  * ========================================================================== */
-
-/* ─── Shell ──────────────────────────────────────────────────────────────── */
 
 .vgv-root {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-base, #0e1116);
-  color: var(--text-body, #bfd6e8);
+  min-height: 0;
+  background: var(--bg-base);
+  color: var(--text-body);
 }
-
-/* ─── Toolbar ────────────────────────────────────────────────────────────── */
 
 .vgv-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
-  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
-  border-bottom: 1px solid var(--border-default, rgba(255, 255, 255, 0.10));
+  min-height: 32px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--blur-panel));
   flex-shrink: 0;
 }
 
+.vgv-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
 .vgv-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-header, #edecf6);
+  color: var(--text-header);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .vgv-count {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
   font-size: 12px;
-  color: var(--text-muted, #8a9bb0);
-  flex: 1;
+  white-space: nowrap;
 }
 
-.vgv-filters {
-  display: flex;
-  gap: 8px;
-}
-
-.vgv-filters select {
-  background: var(--bg-inset, #15191f);
-  color: var(--text-body, #bfd6e8);
-  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.10));
-  border-radius: var(--radius-xs, 8px);
-  padding: 2px 8px;
+.vgv-search {
+  width: 132px;
+  min-width: 96px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-body);
+  font-family: var(--font-sans);
   font-size: 12px;
-  cursor: pointer;
-  transition: border-color 140ms cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 4px 8px;
+  transition: width 150ms ease, border-color 150ms ease;
 }
 
-.vgv-filters select:hover {
-  border-color: var(--neon-cyan, #00f0ff);
+.vgv-search:focus {
+  width: 220px;
+  border-color: var(--ln-graph-border-highlight);
+  outline: none;
 }
-
-.vgv-filters select:focus-visible {
-  outline: 2px solid var(--neon-cyan, #00f0ff);
-  outline-offset: 2px;
-}
-
-/* ─── Canvas ─────────────────────────────────────────────────────────────── */
 
 .vgv-canvas {
+  position: relative;
   flex: 1;
   min-height: 0;
-  position: relative;
-  background: var(--bg-base, #0e1116);
+  overflow: hidden;
+  cursor: grab;
+  background: var(--bg-base);
+  backdrop-filter: blur(var(--blur-panel));
 }
 
-/* Radial vignette — spec §4, pointer-events:none so graph stays fully interactive */
-.vgv-canvas::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0, 0, 0, 0.28) 100%);
+.vgv-canvas:active {
+  cursor: grabbing;
+}
+
+.vgv-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.vgv-graph-edge {
+  stroke: var(--ln-graph-edge-default);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 1;
+  transition: opacity 120ms ease, stroke 120ms ease;
+}
+
+.vgv-graph-edge--dimmed {
+  stroke: var(--ln-graph-edge-dimmed);
+  opacity: 0.55;
+}
+
+.vgv-graph-node {
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.vgv-graph-node--dimmed {
+  opacity: 0.35;
+}
+
+.vgv-node-circle {
+  fill: var(--vgv-node-fill);
+  stroke: var(--vgv-node-stroke);
+  stroke-width: 2;
+  filter: var(--ln-graph-glow-default);
+  transition: fill 120ms ease, stroke 120ms ease, stroke-width 120ms ease, filter 120ms ease;
+}
+
+.vgv-node-circle--characters { filter: var(--ln-graph-glow-characters); }
+.vgv-node-circle--locations { filter: var(--ln-graph-glow-locations); }
+.vgv-node-circle--factions { filter: var(--ln-graph-glow-factions); }
+.vgv-node-circle--history { filter: var(--ln-graph-glow-history); }
+.vgv-node-circle--systems { filter: var(--ln-graph-glow-systems); }
+.vgv-node-circle--items { filter: var(--ln-graph-glow-items); }
+.vgv-node-circle--misc { filter: var(--ln-graph-glow-misc); }
+.vgv-node-circle--default { filter: var(--ln-graph-glow-default); }
+
+.vgv-graph-node:hover .vgv-node-circle,
+.vgv-graph-node--selected .vgv-node-circle {
+  fill: var(--ln-graph-node-highlight);
+  stroke: var(--ln-graph-border-highlight);
+  stroke-width: 3;
+  filter: var(--ln-graph-glow-highlight);
+}
+
+.vgv-node-label {
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  text-anchor: middle;
+  dominant-baseline: hanging;
   pointer-events: none;
-  z-index: 5;
+  user-select: none;
 }
 
-/* ─── State screens ──────────────────────────────────────────────────────── */
+.vgv-graph-node:hover .vgv-node-label,
+.vgv-graph-node--selected .vgv-node-label {
+  fill: var(--text-body);
+  font-size: 11px;
+}
+
+.vgv-zoom-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--blur-panel));
+}
+
+.vgv-zoom-controls button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-body);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.vgv-zoom-controls button:hover,
+.vgv-zoom-controls button:focus-visible {
+  border-color: var(--ln-graph-border-highlight);
+  outline: none;
+}
 
 .vgv-state {
   display: flex;
@@ -90,240 +186,42 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-muted, #8a9bb0);
-  gap: 8px;
-  font-size: 14px;
-  text-align: center;
   padding: 24px;
-  background: var(--bg-base, #0e1116);
+  color: var(--text-muted);
+  background: var(--bg-base);
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+.vgv-state--overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: transparent;
 }
 
 .vgv-error {
-  color: var(--state-danger, #f87171);
+  color: var(--state-danger);
 }
 
-.vgv-error-sub {
+.vgv-error-sub,
+.vgv-large-notice {
+  color: var(--text-muted);
   font-size: 12px;
-  color: var(--text-muted, #8a9bb0);
 }
 
-/* ─── ReactFlow overrides — background + controls ────────────────────────── */
-
-.vgv-canvas .react-flow {
-  background: var(--bg-base, #0e1116);
+.vgv-large-notice {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-inset);
 }
-
-.vgv-canvas .react-flow__background {
-  background: var(--bg-base, #0e1116);
-}
-
-/* ─── Handle (invisible — only needed for edge routing) ──────────────────── */
-
-.vgv-handle {
-  opacity: 0 !important;
-  pointer-events: none !important;
-  width: 0 !important;
-  height: 0 !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  border: none !important;
-  background: transparent !important;
-}
-
-/* ─── Node base (spec §1, §3, §6) ───────────────────────────────────────── */
-
-.vgv-node-base {
-  width: 100px;
-  height: 48px;
-  border-radius: var(--radius-sm, 12px);
-  border: 2px solid transparent;
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.4;
-  color: var(--text-body, #bfd6e8);
-  cursor: pointer;
-  box-sizing: border-box;
-  opacity: var(--vgv-node-opacity, 1);
-  transition:
-    transform 140ms cubic-bezier(0.4, 0, 0.2, 1),
-    filter 240ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 240ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-width 140ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 100ms;
-}
-
-/* ─── Per-type node colors (spec §1 table) ───────────────────────────────── */
-
-/* Note / Location / History → --neon-cyan */
-.vgv-node--note {
-  --_nc: var(--neon-cyan, #00f0ff);
-  --_nb: rgba(0, 240, 255, 0.06);
-}
-
-.vgv-node--location {
-  --_nc: var(--neon-cyan, #00f0ff);
-  --_nb: rgba(0, 240, 255, 0.06);
-}
-
-.vgv-node--history {
-  --_nc: var(--neon-cyan, #00f0ff);
-  --_nb: rgba(0, 240, 255, 0.06);
-}
-
-/* Character / Item → --neon-violet */
-.vgv-node--character {
-  --_nc: var(--neon-violet, #9b5fff);
-  --_nb: rgba(155, 95, 255, 0.06);
-}
-
-.vgv-node--item {
-  --_nc: var(--neon-violet, #9b5fff);
-  --_nb: rgba(155, 95, 255, 0.06);
-}
-
-/* Faction / System → --neon-magenta */
-.vgv-node--faction {
-  --_nc: var(--neon-magenta, #ff4dff);
-  --_nb: rgba(255, 77, 255, 0.06);
-}
-
-.vgv-node--system {
-  --_nc: var(--neon-magenta, #ff4dff);
-  --_nb: rgba(255, 77, 255, 0.06);
-}
-
-/* Apply color to every typed node */
-.vgv-node--note,
-.vgv-node--location,
-.vgv-node--history,
-.vgv-node--character,
-.vgv-node--item,
-.vgv-node--faction,
-.vgv-node--system {
-  background: var(--_nb, rgba(0, 240, 255, 0.06));
-  border-color: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 70%, transparent);
-  filter:
-    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.5) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 40%, transparent))
-    drop-shadow(0 0 var(--lg-blur, 16px) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 25%, transparent));
-}
-
-/* ─── Hover state (spec §5) ──────────────────────────────────────────────── */
-
-.vgv-node--note:hover,
-.vgv-node--location:hover,
-.vgv-node--history:hover,
-.vgv-node--character:hover,
-.vgv-node--item:hover,
-.vgv-node--faction:hover,
-.vgv-node--system:hover {
-  transform: scale(1.08);
-  border-width: 2.5px;
-  border-color: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 85%, transparent);
-  filter:
-    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.75) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 60%, transparent))
-    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 1.5) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 40%, transparent));
-}
-
-/* ─── Selected state (spec §5) ───────────────────────────────────────────── */
-
-.vgv-node--selected {
-  border-width: 3px !important;
-  border-color: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 100%, transparent) !important;
-  background: color-mix(in srgb, var(--_nc, var(--neon-cyan)) 12%, var(--_nb, rgba(0, 240, 255, 0.06))) !important;
-  filter:
-    drop-shadow(0 0 var(--lg-blur, 16px) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 75%, transparent))
-    drop-shadow(0 0 calc(var(--lg-blur, 16px) * 2) color-mix(in srgb, var(--_nc, var(--neon-cyan)) 20%, transparent)) !important;
-}
-
-/* ─── Label (spec §6) ────────────────────────────────────────────────────── */
-
-.vgv-node-label {
-  display: block;
-  max-width: 84px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  text-align: center;
-  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.4;
-  color: var(--text-body, #bfd6e8);
-  opacity: var(--vgv-label-opacity, 1);
-  transition: opacity 100ms;
-}
-
-/* ─── ReactFlow default node override — ensure our custom node fills the node wrapper */
-
-.react-flow__node-neonNode {
-  width: 100px;
-  height: 48px;
-  background: transparent !important;
-  border: none !important;
-  border-radius: var(--radius-sm, 12px) !important;
-  padding: 0 !important;
-  box-shadow: none !important;
-}
-
-.react-flow__node-neonNode:focus-visible {
-  outline: 2px solid var(--neon-cyan, #00f0ff);
-  outline-offset: 2px;
-}
-
-/* ─── Edges (spec §2, §3) ────────────────────────────────────────────────── */
-
-.vgv-edge {
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  /* Glow scales with --lg-blur — crisper at sharp, softer at soft */
-  filter: drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.375) color-mix(in srgb, var(--neon-cyan, #00f0ff) 40%, transparent));
-  transition:
-    stroke-width 140ms cubic-bezier(0.4, 0, 0.2, 1),
-    filter 240ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.vgv-edge--selected,
-.vgv-edge:hover {
-  filter: drop-shadow(0 0 calc(var(--lg-blur, 16px) * 0.75) color-mix(in srgb, var(--neon-cyan, #00f0ff) 60%, transparent));
-}
-
-/* ─── Reduced-motion (spec §9) ───────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .vgv-node-base {
+  .vgv-search,
+  .vgv-graph-edge,
+  .vgv-graph-node,
+  .vgv-node-circle {
     transition: none;
-  }
-
-  .vgv-node--note:hover,
-  .vgv-node--location:hover,
-  .vgv-node--history:hover,
-  .vgv-node--character:hover,
-  .vgv-node--item:hover,
-  .vgv-node--faction:hover,
-  .vgv-node--system:hover {
-    transform: none;
-  }
-
-  .vgv-node-label {
-    transition: none;
-  }
-
-  .vgv-edge {
-    transition: none;
-  }
-
-  .vgv-filters select {
-    transition: none;
-  }
-
-  /* Static focus indicator in place of animated focus ring */
-  .react-flow__node-neonNode:focus-visible {
-    outline: 2px solid var(--neon-cyan, #00f0ff);
-    outline-offset: 2px;
   }
 }
