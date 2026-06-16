@@ -6,6 +6,11 @@ import EntityBrowser from './EntityBrowser';
 import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
+import WritingAssistantPanel from './WritingAssistantPanel';
+import ContinuityPanel from './ContinuityPanel';
+import ScenePreviewPanel from './ScenePreviewPanel';
+import { DragHandle, DropZoneLine, DragPlaceholder, usePanelDrag } from './PanelDrag';
+import type { GrsPanelId, SidebarPanelId } from './PanelDrag';
 import './LeftRail.css';
 
 // SKY-1694: AppView values mirrored here to avoid a circular import with DesktopShell
@@ -25,6 +30,12 @@ const ALL_PANELS: { id: LeftPanelId; label: string }[] = [
   { id: 'review', label: 'Suggestion Review' },
   { id: 'progress', label: 'Writing Goals' },
 ];
+
+const GRS_PANEL_LABELS: Record<GrsPanelId, string> = {
+  'writing-assistant': 'Writing Assistant',
+  'archive-continuity': 'Continuity',
+  'scene-preview': 'Scene Preview',
+};
 
 const DEFAULT_LEFT_SIDEBAR_LAYOUT: LeftSidebarLayout = {
   panels: [
@@ -63,27 +74,30 @@ interface Props {
   showTemplateCta?: boolean;
   onTemplateCtaClick?: () => void;
   onEntityCreated?: (entity: EntityEntry) => void;
+  /** Props for GRS panels dragged into the left sidebar (Wave 2b). */
+  selectedScene?: Scene | null;
+  selectedChapter?: Chapter | null;
+  selectedStory?: Story | null;
+  archiveEnabled?: boolean;
+  writingAssistantEnabled?: boolean;
 }
 
-function PanelContent({
-  id,
-  stories,
-  selectedSceneId,
-  selectedEntityId,
-  onSelectScene,
-  onSelectEntity,
-  onCreateStory,
-  onCreateChapter,
-  onCreateScene,
-  onReorderScenes,
-  onOpenVaultPath,
-  onContextChange,
-  onExport,
-  journalModeEnabled,
-  showTemplateCta,
-  onTemplateCtaClick,
-  onEntityCreated,
-}: { id: LeftPanelId } & Omit<Props, 'activeView' | 'onViewChange' | 'leftSidebarLayout' | 'onLeftSidebarLayoutChange'>) {
+type PanelContentBaseProps = Omit<
+  Props,
+  'activeView' | 'onViewChange' | 'leftSidebarLayout' | 'onLeftSidebarLayoutChange'
+>;
+
+function PanelContent({ id, ...props }: { id: SidebarPanelId } & PanelContentBaseProps) {
+  const {
+    stories, selectedSceneId, selectedEntityId,
+    onSelectScene, onSelectEntity,
+    onCreateStory, onCreateChapter, onCreateScene, onReorderScenes,
+    onOpenVaultPath, onContextChange, onExport,
+    journalModeEnabled, showTemplateCta, onTemplateCtaClick, onEntityCreated,
+    selectedScene, selectedChapter, selectedStory,
+    archiveEnabled, writingAssistantEnabled,
+  } = props;
+
   switch (id) {
     case 'stories':
       return (
@@ -126,10 +140,32 @@ function PanelContent({
       return <SuggestionReview onOpenVaultPath={onOpenVaultPath} />;
     case 'progress':
       return <ProgressDashboard stories={stories} />;
+    // SKY-1695: GRS panels dragged into left sidebar
+    case 'writing-assistant':
+      return <WritingAssistantPanel scene={selectedScene ?? null} enabled={writingAssistantEnabled} />;
+    case 'archive-continuity':
+      return <ContinuityPanel scene={selectedScene ?? null} enabled={archiveEnabled} />;
+    case 'scene-preview':
+      return (
+        <ScenePreviewPanel
+          scene={selectedScene ?? null}
+          chapter={selectedChapter ?? null}
+          story={selectedStory ?? null}
+        />
+      );
     default:
       return null;
   }
 }
+
+function getPanelLabel(id: SidebarPanelId): string {
+  const left = ALL_PANELS.find(p => p.id === id);
+  if (left) return left.label;
+  return GRS_PANEL_LABELS[id as GrsPanelId] ?? id;
+}
+
+const HOVER_REVEAL_DELAY_MS = 200;
+const HOVER_REVEAL_COLLAPSE_DELAY_MS = 400;
 
 export default function LeftRail({
   activeView,
@@ -141,21 +177,26 @@ export default function LeftRail({
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const hoverRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hoverRevealed, setHoverRevealed] = useState(false);
 
   const { panels, sidebarCollapsed } = leftSidebarLayout;
+  const { dragState } = usePanelDrag();
+  const isDragActive = !!dragState;
 
   const toggleSidebar = useCallback(() => {
     onLeftSidebarLayoutChange({ ...leftSidebarLayout, sidebarCollapsed: !sidebarCollapsed });
   }, [leftSidebarLayout, sidebarCollapsed, onLeftSidebarLayoutChange]);
 
-  const togglePanel = useCallback((id: LeftPanelId) => {
+  const togglePanel = useCallback((id: SidebarPanelId) => {
     onLeftSidebarLayoutChange({
       ...leftSidebarLayout,
       panels: panels.map(p => p.id === id ? { ...p, collapsed: !p.collapsed } : p),
     });
   }, [leftSidebarLayout, panels, onLeftSidebarLayoutChange]);
 
-  const removePanel = useCallback((id: LeftPanelId) => {
+  const removePanel = useCallback((id: SidebarPanelId) => {
     onLeftSidebarLayoutChange({
       ...leftSidebarLayout,
       panels: panels.filter(p => p.id !== id),
@@ -186,10 +227,74 @@ export default function LeftRail({
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [pickerOpen]);
 
+  // Hover-to-reveal: when dragging toward collapsed left sidebar, reveal after 200ms (AC-D-07)
+  useEffect(() => {
+    if (!isDragActive || !sidebarCollapsed) {
+      if (hoverRevealTimerRef.current) {
+        clearTimeout(hoverRevealTimerRef.current);
+        hoverRevealTimerRef.current = null;
+      }
+      return;
+    }
+
+    const onMove = (e: PointerEvent) => {
+      const rail = railRef.current;
+      if (!rail) return;
+      const rect = rail.getBoundingClientRect();
+      const inHotzone =
+        e.clientX >= rect.left - 8 &&
+        e.clientX <= rect.right + 8 &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+
+      if (inHotzone && !hoverRevealed) {
+        if (!hoverRevealTimerRef.current) {
+          hoverRevealTimerRef.current = setTimeout(() => {
+            setHoverRevealed(true);
+            hoverRevealTimerRef.current = null;
+          }, HOVER_REVEAL_DELAY_MS);
+        }
+      } else if (!inHotzone && hoverRevealTimerRef.current) {
+        clearTimeout(hoverRevealTimerRef.current);
+        hoverRevealTimerRef.current = null;
+      }
+    };
+
+    document.addEventListener('pointermove', onMove, { passive: true });
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      if (hoverRevealTimerRef.current) {
+        clearTimeout(hoverRevealTimerRef.current);
+        hoverRevealTimerRef.current = null;
+      }
+    };
+  }, [isDragActive, sidebarCollapsed, hoverRevealed]);
+
+  // Collapse hover-reveal once drag ends
+  useEffect(() => {
+    if (!isDragActive && hoverRevealed) {
+      const timer = setTimeout(() => setHoverRevealed(false), HOVER_REVEAL_COLLAPSE_DELAY_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [isDragActive, hoverRevealed]);
+
+  const effectivelyCollapsed = sidebarCollapsed && !hoverRevealed;
+  const showPanelZone = !effectivelyCollapsed;
+
+  // Panels from the "add panel" picker only include native left-rail panels
   const availablePanels = ALL_PANELS.filter(p => !panels.some(ep => ep.id === p.id));
 
   return (
-    <div className={`left-rail${sidebarCollapsed ? ' left-rail--collapsed' : ''}`}>
+    <div
+      ref={railRef}
+      className={[
+        'left-rail',
+        effectivelyCollapsed ? 'left-rail--collapsed' : '',
+        hoverRevealed ? 'left-rail--hover-revealed' : '',
+        isDragActive ? 'left-rail--drag-active' : '',
+      ].filter(Boolean).join(' ')}
+      data-sidebar-zone="left"
+    >
       {/* Toggle button */}
       <button
         className="lr-toggle-btn"
@@ -216,45 +321,65 @@ export default function LeftRail({
             title={nav.ariaLabel}
           >
             {nav.label}
-            {!sidebarCollapsed && <span className="lr-nav-label">{nav.ariaLabel}</span>}
+            {!effectivelyCollapsed && <span className="lr-nav-label">{nav.ariaLabel}</span>}
           </button>
         ))}
       </nav>
 
-      {/* Customizable panel zone — hidden when sidebar is collapsed */}
-      {!sidebarCollapsed && (
+      {/* Customizable panel zone */}
+      {showPanelZone && (
         <div className="lr-panel-zone" aria-label="Panel zone">
-          {panels.map(panel => {
-            const meta = ALL_PANELS.find(p => p.id === panel.id);
-            if (!meta) return null;
+          {/* Drop zone before the first panel */}
+          {panels.length === 0
+            ? <DropZoneLine sidebar="left" insertIndex={0} isEmpty />
+            : <DropZoneLine sidebar="left" insertIndex={0} />
+          }
+
+          {panels.map((panel, i) => {
+            const label = getPanelLabel(panel.id);
+            const isBeingDragged =
+              dragState?.panelId === panel.id && dragState.sourceSidebar === 'left';
+
             return (
-              <section key={panel.id} className={`lr-panel${panel.collapsed ? ' lr-panel--collapsed' : ''}`} data-panel-id={panel.id}>
-                <div className="lr-panel-header">
-                  <button
-                    className="lr-panel-collapse-btn"
-                    onClick={() => togglePanel(panel.id)}
-                    aria-expanded={!panel.collapsed}
-                    aria-label={panel.collapsed ? `Expand ${meta.label}` : `Collapse ${meta.label}`}
-                    title={panel.collapsed ? 'Expand' : 'Collapse'}
+              <div key={panel.id}>
+                {isBeingDragged ? (
+                  <DragPlaceholder />
+                ) : (
+                  <section
+                    className={`lr-panel${panel.collapsed ? ' lr-panel--collapsed' : ''}`}
+                    data-panel-id={panel.id}
                   >
-                    {panel.collapsed ? '▸' : '▾'}
-                  </button>
-                  <span className="lr-panel-title">{meta.label}</span>
-                  <button
-                    className="lr-panel-remove-btn"
-                    onClick={() => removePanel(panel.id)}
-                    aria-label={`Remove ${meta.label} panel`}
-                    title="Remove panel"
-                  >
-                    ×
-                  </button>
-                </div>
-                {!panel.collapsed && (
-                  <div className="lr-panel-content">
-                    <PanelContent id={panel.id} {...panelProps} />
-                  </div>
+                    <div className="lr-panel-header">
+                      <DragHandle panelId={panel.id} sidebar="left" label={label} insertIndex={i} />
+                      <button
+                        className="lr-panel-collapse-btn"
+                        onClick={() => togglePanel(panel.id)}
+                        aria-expanded={!panel.collapsed}
+                        aria-label={panel.collapsed ? `Expand ${label}` : `Collapse ${label}`}
+                        title={panel.collapsed ? 'Expand' : 'Collapse'}
+                      >
+                        {panel.collapsed ? '▸' : '▾'}
+                      </button>
+                      <span className="lr-panel-title">{label}</span>
+                      <button
+                        className="lr-panel-remove-btn"
+                        onClick={() => removePanel(panel.id)}
+                        aria-label={`Remove ${label} panel`}
+                        title="Remove panel"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {!panel.collapsed && (
+                      <div className="lr-panel-content">
+                        <PanelContent id={panel.id} {...panelProps} />
+                      </div>
+                    )}
+                  </section>
                 )}
-              </section>
+                {/* Drop zone after each panel */}
+                <DropZoneLine sidebar="left" insertIndex={i + 1} />
+              </div>
             );
           })}
 

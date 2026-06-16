@@ -40,6 +40,8 @@ import {
 } from './gettingStartedReducer';
 import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
+import { PanelDragProvider } from './PanelDrag';
+import type { SidebarPanelId, SidebarSide } from './PanelDrag';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -1167,6 +1169,84 @@ export default function DesktopShell() {
     persistGrsSettings({ panels });
   }, [persistGrsSettings]);
 
+  // SKY-1695 Wave 2b: cross-sidebar panel move handler (must be after handleGrsPanelsChange)
+  const handlePanelMove = useCallback((
+    panelId: SidebarPanelId,
+    from: SidebarSide,
+    to: SidebarSide,
+    insertIndex: number,
+  ) => {
+    if (from === 'left' && to === 'left') {
+      setLeftSidebarLayout(prev => {
+        const next = [...prev.panels];
+        const srcIdx = next.findIndex(p => p.id === panelId);
+        if (srcIdx < 0) return prev;
+        const [moved] = next.splice(srcIdx, 1);
+        next.splice(Math.max(0, Math.min(next.length, insertIndex > srcIdx ? insertIndex - 1 : insertIndex)), 0, moved);
+        const updated = { ...prev, panels: next };
+        leftSidebarLayoutRef.current = updated;
+        setAppSettings(s => {
+          if (!s) return s;
+          const u = { ...s, activeLayout: { ...s.activeLayout, leftSidebar: updated } } as AppSettings;
+          window.api.settingsSet(u).catch(() => {});
+          return u;
+        });
+        return updated;
+      });
+    } else if (from === 'right' && to === 'right') {
+      setGrsPanels(prev => {
+        const next = [...prev];
+        const srcIdx = next.findIndex(p => p.id === panelId);
+        if (srcIdx < 0) return prev;
+        const [moved] = next.splice(srcIdx, 1);
+        next.splice(Math.max(0, Math.min(next.length, insertIndex > srcIdx ? insertIndex - 1 : insertIndex)), 0, moved);
+        persistGrsSettings({ panels: next });
+        return next;
+      });
+    } else if (from === 'left' && to === 'right') {
+      setLeftSidebarLayout(prev => {
+        const entry = prev.panels.find(p => p.id === panelId);
+        if (!entry) return prev;
+        setGrsPanels(rPrev => {
+          const nextRight = [...rPrev];
+          nextRight.splice(Math.max(0, Math.min(nextRight.length, insertIndex)), 0, { id: panelId, collapsed: entry.collapsed });
+          persistGrsSettings({ panels: nextRight });
+          return nextRight;
+        });
+        const updated = { ...prev, panels: prev.panels.filter(p => p.id !== panelId) };
+        leftSidebarLayoutRef.current = updated;
+        setAppSettings(s => {
+          if (!s) return s;
+          const u = { ...s, activeLayout: { ...s.activeLayout, leftSidebar: updated } } as AppSettings;
+          window.api.settingsSet(u).catch(() => {});
+          return u;
+        });
+        return updated;
+      });
+    } else if (from === 'right' && to === 'left') {
+      setGrsPanels(prev => {
+        const entry = prev.find(p => p.id === panelId);
+        if (!entry) return prev;
+        setLeftSidebarLayout(lPrev => {
+          const nextLeft = [...lPrev.panels];
+          nextLeft.splice(Math.max(0, Math.min(nextLeft.length, insertIndex)), 0, { id: panelId, collapsed: entry.collapsed });
+          const updated = { ...lPrev, panels: nextLeft };
+          leftSidebarLayoutRef.current = updated;
+          setAppSettings(s => {
+            if (!s) return s;
+            const u = { ...s, activeLayout: { ...s.activeLayout, leftSidebar: updated } } as AppSettings;
+            window.api.settingsSet(u).catch(() => {});
+            return u;
+          });
+          return updated;
+        });
+        const nextRight = prev.filter(p => p.id !== panelId);
+        persistGrsSettings({ panels: nextRight });
+        return nextRight;
+      });
+    }
+  }, [persistGrsSettings]);
+
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
     if (mode === 'edit') {
@@ -1924,6 +2004,7 @@ export default function DesktopShell() {
   ].filter(Boolean).join(' ');
 
   return (
+    <PanelDragProvider onPanelMove={handlePanelMove}>
     <div className={shellClasses}>
       <UpdateBanner />
       {showTitleBar && (
@@ -2095,6 +2176,11 @@ export default function DesktopShell() {
                 persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'CHECK_ITEM', itemId: 'add-character' }));
               }
             }}
+            selectedScene={selectedScene}
+            selectedChapter={selectedChapter}
+            selectedStory={selectedStory}
+            archiveEnabled={agentFlags.archive}
+            writingAssistantEnabled={agentFlags.writingAssistant}
           />
         </div>
       )}
@@ -2364,6 +2450,18 @@ export default function DesktopShell() {
         onJumpToText={handleJumpToText}
         onInsertWikiLink={handleInsertWikiLink}
         onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+        stories={stories}
+        selectedSceneId={selectedScene?.id ?? null}
+        selectedEntityId={selectedEntity?.id ?? null}
+        onSelectScene={(sc, ch, story) => { handleSelectScene(sc, ch, story); setViewDepth('scene'); }}
+        onSelectEntity={handleSelectEntity}
+        onCreateStory={createStory}
+        onCreateChapter={createChapter}
+        onCreateScene={createScene}
+        onReorderScenes={handleReorderScenes}
+        onOpenVaultPath={handleOpenSceneByPath}
+        onContextChange={setVaultContext}
+        journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
       />}
 
       </div>{/* end shell-main-row */}
@@ -2400,5 +2498,6 @@ export default function DesktopShell() {
         />
       )}
     </div>
+    </PanelDragProvider>
   );
 }

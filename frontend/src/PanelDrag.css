@@ -1,0 +1,184 @@
+/* SKY-1695 Wave 2b — panel drag system styles */
+
+/* ── Drag handle ─────────────────────────────────────────────────────────── */
+
+.pdrag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-height: 32px;
+  padding-left: var(--space-2, 8px);
+  margin-right: var(--space-2, 8px);
+  font-size: var(--text-sm, 14px);
+  color: var(--text-muted, #8a9bb0);
+  opacity: 0;
+  cursor: grab;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs, 8px);
+  transition:
+    opacity var(--dur-hover-in, 180ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    color var(--dur-hover-in, 180ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  user-select: none;
+  touch-action: none;
+}
+
+/* Reveal on panel-header hover (parent adds .pdrag-handle--revealed) */
+.lr-panel-header:hover .pdrag-handle,
+.grs-panel-header:hover .pdrag-handle {
+  opacity: 1;
+}
+
+.pdrag-handle:hover {
+  color: var(--text-body, #bfd6e8);
+}
+
+.pdrag-handle:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--focus-ring, var(--neon-cyan, #00f0ff));
+  outline-offset: 2px;
+}
+
+.pdrag-handle--active {
+  cursor: grabbing;
+  opacity: 1;
+  color: var(--accent, #00f0ff);
+  /* Neon glow on active drag handle */
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent, #00f0ff) 60%, transparent));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdrag-handle {
+    transition: none;
+  }
+}
+
+/* ── Ghost card ──────────────────────────────────────────────────────────── */
+
+.pdrag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  height: 32px;
+  padding: 0 12px;
+  min-width: 160px;
+  background: var(--bg-elevated, #222a36);
+  border: 1px dashed var(--border-default, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-lg, 20px);
+  box-shadow: var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55));
+  opacity: 0.6;
+  pointer-events: none;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.pdrag-ghost-handle {
+  font-size: var(--text-sm, 14px);
+  color: var(--text-muted, #8a9bb0);
+}
+
+.pdrag-ghost-label {
+  font-size: var(--text-sm, 14px);
+  color: var(--text-body, #bfd6e8);
+}
+
+/* ── Source slot placeholder ─────────────────────────────────────────────── */
+
+.pdrag-placeholder {
+  height: 32px;
+  margin: 2px 0;
+  border: 1px dashed var(--border-default, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-sm, 12px);
+  background: transparent;
+  opacity: 0.4;
+}
+
+/* ── Drop zone line ──────────────────────────────────────────────────────── */
+
+.pdrag-dropzone {
+  position: relative;
+  height: 20px;            /* snap hitbox: 20px total */
+  margin: 0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-hover-in, 180ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* Always show drop zones when drag is active (opacity 0 = invisible but hittable) */
+.pdrag-dropzone {
+  opacity: 0;
+}
+
+/* Show the visible 2px line via ::after */
+.pdrag-dropzone::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: var(--accent, #00f0ff);
+  border-radius: 1px;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition:
+    transform var(--dur-hover-in, 180ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    opacity var(--dur-hover-in, 180ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent, #00f0ff) 60%, transparent);
+}
+
+/* End-cap circles on the line */
+.pdrag-dropzone::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 2px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.pdrag-dropzone--active {
+  opacity: 1;
+}
+
+.pdrag-dropzone--active::after {
+  transform: scaleX(1);
+}
+
+/* Noop positions show inactive (no line) */
+.pdrag-dropzone--noop {
+  pointer-events: none;
+}
+
+/* Empty sidebar: full-height highlight instead of a line */
+.pdrag-dropzone--empty {
+  height: 80px;
+  border: 1px dashed var(--accent, #00f0ff);
+  border-radius: var(--radius-md, 16px);
+  background: transparent;
+  transition: background var(--dur-hover-in, 180ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.pdrag-dropzone--empty::after {
+  display: none;
+}
+
+.pdrag-dropzone--empty.pdrag-dropzone--active {
+  background: var(--accent-soft, rgba(0, 240, 255, 0.12));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdrag-dropzone,
+  .pdrag-dropzone::after {
+    transition: none;
+  }
+}

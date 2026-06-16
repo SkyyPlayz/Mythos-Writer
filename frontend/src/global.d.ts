@@ -426,17 +426,25 @@ interface AppSettings {
   };
 }
 
+/** SKY-1695: id expanded to SidebarPanelId to support cross-sidebar drops. */
 interface RightSidebarPanel {
-  id: 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+  id: SidebarPanelId;
   collapsed: boolean;
 }
 
 /** SKY-1694: Panel IDs available in the left sidebar panel zone. */
 type LeftPanelId = 'stories' | 'entities' | 'vault' | 'review' | 'progress';
 
-/** SKY-1694: Per-panel config entry in the left sidebar panel zone. */
+/** SKY-1695: Panel IDs available in the right sidebar (GlobalRightSidebar). */
+type GrsPanelId = 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+
+/** SKY-1695: Unified panel ID covering both sidebars (used for cross-sidebar drag). */
+type SidebarPanelId = LeftPanelId | GrsPanelId;
+
+/** SKY-1694: Per-panel config entry in the left sidebar panel zone.
+ *  SKY-1695: id expanded to SidebarPanelId to support cross-sidebar drops. */
 interface LeftPanelConfig {
-  id: LeftPanelId;
+  id: SidebarPanelId;
   collapsed: boolean;
 }
 
