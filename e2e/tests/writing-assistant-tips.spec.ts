@@ -102,7 +102,7 @@ function seedUserData(userData: string, vaultDir: string): void {
   fs.writeFileSync(sceneAbsPath, SCENE_PROSE);
 
   const manifest = {
-    schemaVersion: 15,
+    schemaVersion: 1,
     version: '1.0.0',
     vaultRoot: vaultDir,
     stories: [
@@ -148,10 +148,19 @@ function seedUserData(userData: string, vaultDir: string): void {
     ],
     entities: [],
     suggestions: [],
-    scenes: [],
+    scenes: [
+      {
+        id: SCENE_ID,
+        title: 'E2E Scene',
+        path: scenePath,
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
     chapters: [],
-    provenance: {},
-    boardReferences: [],
+    provenance: [],
+    boards: [],
   };
 
   fs.writeFileSync(
