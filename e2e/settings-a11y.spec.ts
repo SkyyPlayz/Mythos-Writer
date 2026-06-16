@@ -217,10 +217,9 @@ test('TC-SKY-814-05: Slider controls have aria-label and announce value', async 
 test('TC-SKY-814-06: Focus ring is visible with cyan color on interactive controls', async () => {
   const input = page.locator('.settings-input').first();
 
-  for (let i = 0; i < 50; i++) {
-    await page.keyboard.press('Tab');
-    if (await input.evaluate((el) => el === document.activeElement)) break;
-  }
+  // Focus directly — this test checks focus-ring styling (TC-SKY-814-02 covers tab order).
+  // The tab-loop pattern was flaky: focus moved between the evaluate() check and toBeFocused().
+  await input.focus();
   await expect(input).toBeFocused();
 
   const focusStyle = await input.evaluate((el) => {

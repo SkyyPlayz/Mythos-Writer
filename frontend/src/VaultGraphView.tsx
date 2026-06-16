@@ -557,11 +557,14 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
   );
 
   const culledNodes = useMemo(() => {
-    if (!showAll) return positionedNodes;
-    const el = svgRef.current;
-    const viewW = el ? el.clientWidth : GRAPH_WIDTH;
-    const viewH = el ? el.clientHeight : GRAPH_HEIGHT;
-    return positionedNodes.filter((node) => isNodeInViewport(node, pan, zoom, viewW, viewH));
+    // When "Show all" is active, skip viewport culling entirely — the user
+    // explicitly asked to see every node and E2E tests assert count > 500.
+    // Viewport culling is only applied for normal (truncated) mode to keep
+    // the DOM lean during panning/zooming large graphs.
+    if (showAll) return positionedNodes;
+    return positionedNodes.filter((node) =>
+      isNodeInViewport(node, pan, zoom, GRAPH_WIDTH, GRAPH_HEIGHT),
+    );
   }, [positionedNodes, showAll, pan, zoom]);
 
   // Hover visibility (existing behaviour)
