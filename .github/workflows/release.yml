@@ -65,6 +65,7 @@ jobs:
       - name: Build Windows artifacts (NSIS + ZIP)
         run: npm run dist
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
       - name: Upload artifacts
