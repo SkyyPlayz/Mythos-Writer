@@ -149,7 +149,7 @@ jobs:
         with:
           name: fuzz-crashes
           path: electron-main/fuzz/crashes/
-          retention-days: 30
+          retention-days: 7
 
       - name: Build (electron-vite)
         env:
