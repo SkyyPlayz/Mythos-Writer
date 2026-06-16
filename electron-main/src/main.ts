@@ -156,7 +156,10 @@ import {
   type SceneCrafterRenameLanePayload,
   type SceneCrafterDeleteLanePayload,
   type SceneCrafterReorderLanesPayload,
+  type SceneCrafterClosePayload,
 } from './ipc.js';
+import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
+import { boardRelPath } from './sceneCrafterBoard.js';
 import {
   handleGetBoard,
   handleCreateBoard,
@@ -3611,6 +3614,7 @@ const handlers: IpcHandlers = {
     }
     // Stop watchers, scheduler, and close current DB before switching
     stopWritingScanScheduler();
+    await stopBoardWatcher();
     await stopVaultWatcher();
     await stopNotesVaultWatcher();
     closeDb();
@@ -4904,11 +4908,27 @@ const handlers: IpcHandlers = {
     return importTemplate(app.getPath('userData'), res.filePaths[0]);
   },
 
-  // ─── Scene Crafter board IPC (SKY-1758) ───
-  [IPC_CHANNELS.SCENE_CRAFTER_GET_BOARD]: (payload: SceneCrafterGetBoardPayload) =>
-    handleGetBoard(getNotesVaultRoot(), payload),
-  [IPC_CHANNELS.SCENE_CRAFTER_CREATE_BOARD]: (payload: SceneCrafterCreateBoardPayload) =>
-    handleCreateBoard(getNotesVaultRoot(), payload),
+  // ─── Scene Crafter board IPC (SKY-1758 / SKY-1759) ───
+  [IPC_CHANNELS.SCENE_CRAFTER_GET_BOARD]: (payload: SceneCrafterGetBoardPayload) => {
+    const board = handleGetBoard(getNotesVaultRoot(), payload);
+    // SKY-1759: start file-watcher so external edits are detected.
+    void watchBoardFile(
+      path.join(getNotesVaultRoot(), boardRelPath(payload.storySlug)),
+      payload.storySlug,
+      (slug) => mainWindow?.webContents.send(IPC_CHANNELS.SCENE_CRAFTER_EXTERNAL_EDIT, { storySlug: slug }),
+    );
+    return board;
+  },
+  [IPC_CHANNELS.SCENE_CRAFTER_CREATE_BOARD]: (payload: SceneCrafterCreateBoardPayload) => {
+    const board = handleCreateBoard(getNotesVaultRoot(), payload);
+    // SKY-1759: start file-watcher so external edits are detected.
+    void watchBoardFile(
+      path.join(getNotesVaultRoot(), boardRelPath(payload.storySlug)),
+      payload.storySlug,
+      (slug) => mainWindow?.webContents.send(IPC_CHANNELS.SCENE_CRAFTER_EXTERNAL_EDIT, { storySlug: slug }),
+    );
+    return board;
+  },
   [IPC_CHANNELS.SCENE_CRAFTER_ADD_CARD]: (payload: SceneCrafterAddCardPayload) =>
     handleAddCard(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.SCENE_CRAFTER_MOVE_CARD]: (payload: SceneCrafterMoveCardPayload) =>
@@ -4925,6 +4945,11 @@ const handlers: IpcHandlers = {
     handleDeleteLane(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.SCENE_CRAFTER_REORDER_LANES]: (payload: SceneCrafterReorderLanesPayload) =>
     handleReorderLanes(getNotesVaultRoot(), payload),
+
+  // SKY-1759: stop the board watcher when the renderer closes the scene crafter.
+  [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: async (_payload: SceneCrafterClosePayload) => {
+    await stopBoardWatcher();
+  },
 
 };
 
@@ -6960,6 +6985,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', async () => {
   stopWritingScanScheduler();
   stopArchiveContScheduler();
+  await stopBoardWatcher();
   await stopVaultWatcher();
   await stopNotesVaultWatcher();
   closeDb();

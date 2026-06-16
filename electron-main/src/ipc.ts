@@ -445,6 +445,11 @@ export const IPC_CHANNELS = {
   SCENE_CRAFTER_RENAME_LANE: 'scene-crafter:rename-lane',
   SCENE_CRAFTER_DELETE_LANE: 'scene-crafter:delete-lane',
   SCENE_CRAFTER_REORDER_LANES: 'scene-crafter:reorder-lanes',
+
+  // SKY-1759: Scene Crafter file-watcher conflict detection
+  SCENE_CRAFTER_CLOSE: 'scene-crafter:close',
+  // Push event (main → renderer): external edit detected on board.md
+  SCENE_CRAFTER_EXTERNAL_EDIT: 'scene-crafter:external-edit',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -765,6 +770,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_CRAFTER_RENAME_LANE]: (payload: SceneCrafterRenameLanePayload) => { ok: true };
   [IPC_CHANNELS.SCENE_CRAFTER_DELETE_LANE]: (payload: SceneCrafterDeleteLanePayload) => { ok: boolean; cardCount: number };
   [IPC_CHANNELS.SCENE_CRAFTER_REORDER_LANES]: (payload: SceneCrafterReorderLanesPayload) => { ok: true };
+
+  // SKY-1759: Scene Crafter file-watcher — SCENE_CRAFTER_EXTERNAL_EDIT is a push-only
+  // channel (webContents.send), so no handler entry is needed for it here.
+  [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: (payload: SceneCrafterClosePayload) => Promise<void>;
 }
 
 // ─── Payload / Response types ───
@@ -3779,5 +3788,14 @@ export interface SceneCrafterReorderLanesPayload {
   fromIndex: number;
   toIndex: number;
 }
+export interface SceneCrafterClosePayload {
+  storySlug: string;
+}
+
+/** Payload emitted on the push channel `scene-crafter:external-edit`. */
+export interface SceneCrafterExternalEditPayload {
+  storySlug: string;
+}
+
 // Re-export SceneCrafterBoard so callers can import it from ipc.ts instead of sceneCrafterBoard.ts.
 export type { SceneCrafterBoard };
