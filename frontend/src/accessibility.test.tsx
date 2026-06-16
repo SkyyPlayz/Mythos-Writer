@@ -343,7 +343,7 @@ describe('Accessibility — LeftRail nav + panel zone (WCAG 4.1.2)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('nav zone renders 4 nav icon buttons with aria-label and aria-pressed', async () => {
+  it('nav zone renders 5 nav icon buttons with aria-label and aria-pressed', async () => {
     const { container } = render(
       <PanelDragProvider onDrop={() => {}}><LeftRail {...DEFAULT_LEFT_RAIL_PROPS} activeView="brainstorm" /></PanelDragProvider>
     );
@@ -351,7 +351,9 @@ describe('Accessibility — LeftRail nav + panel zone (WCAG 4.1.2)', () => {
     const nav = container.querySelector('[aria-label="Main navigation"]');
     expect(nav).not.toBeNull();
     const navBtns = nav!.querySelectorAll('button');
-    expect(navBtns).toHaveLength(4);
+    expect(navBtns).toHaveLength(5);
+    const graphBtn = Array.from(navBtns).find(b => b.getAttribute('aria-label') === 'Graph');
+    expect(graphBtn?.getAttribute('aria-pressed')).toBe('false');
     const brainstormBtn = Array.from(navBtns).find(b => b.getAttribute('aria-label') === 'Brainstorm');
     expect(brainstormBtn?.getAttribute('aria-pressed')).toBe('true');
   });
