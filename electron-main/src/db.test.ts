@@ -44,6 +44,13 @@ import {
   deleteSceneEntityLinks,
   upsertEntityFts,
   searchEntityFts,
+  insertContinuityIssue,
+  listContinuityIssues,
+  getContinuityIssue,
+  updateContinuityIssueStatus,
+  deleteContinuityIssue,
+  insertArchiveAuditLog,
+  listArchiveAuditLog,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
@@ -638,7 +645,7 @@ describe('world DB migration — entity tables', () => {
   it('sets user_version to 22 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(22);
+    expect(row.user_version).toBe(23);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -685,7 +692,7 @@ describe('world DB migration — entity tables', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(22);
+    expect(row.user_version).toBe(23);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -720,7 +727,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(22);
+    expect(row.user_version).toBe(23);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -992,6 +999,162 @@ describe('scene_snapshots / SKY-1611', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(22);
+    expect(row.user_version).toBe(23);
+  });
+});
+
+// ─── Continuity Issues (SKY-1683) ───
+
+describe('continuity_issues table', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeIssue(overrides: Partial<Parameters<typeof insertContinuityIssue>[0]> = {}) {
+    return {
+      id: crypto.randomUUID(),
+      category: 'character_attribute_drift' as const,
+      severity: 'high' as const,
+      manuscript_scene_id: 'scene-1',
+      manuscript_offset: 42,
+      manuscript_excerpt: 'She had blue eyes',
+      vault_note_path: 'characters/Alice.md',
+      vault_line: 7,
+      vault_excerpt: 'Eye color: green',
+      rationale: 'Eye color mismatch',
+      proposed_match_archive: 'Update manuscript to green',
+      proposed_suggest_story: 'Update archive to blue',
+      status: 'open' as const,
+      resolved_at: null,
+      resolved_action: null,
+      created_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it('migration is idempotent — running twice does not error and preserves schema', () => {
+    closeDb();
+    const db2 = openDb(tmpDir);
+    const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
+    expect(row.user_version).toBe(23);
+    const tables = db2
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
+      .all() as Array<{ name: string }>;
+    expect(tables.map((t) => t.name).sort()).toEqual(['archive_audit_log', 'continuity_issues']);
+  });
+
+  it('create: inserts a continuity issue and reads it back', () => {
+    const issue = makeIssue();
+    insertContinuityIssue(issue);
+    const fetched = getContinuityIssue(issue.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.category).toBe('character_attribute_drift');
+    expect(fetched!.severity).toBe('high');
+    expect(fetched!.manuscript_scene_id).toBe('scene-1');
+    expect(fetched!.status).toBe('open');
+  });
+
+  it('list by status: returns only matching rows', () => {
+    const open1 = makeIssue({ id: crypto.randomUUID(), status: 'open' });
+    const open2 = makeIssue({ id: crypto.randomUUID(), status: 'open' });
+    const resolved = makeIssue({ id: crypto.randomUUID(), status: 'resolved', resolved_at: new Date().toISOString(), resolved_action: 'match_archive_to_story' });
+    insertContinuityIssue(open1);
+    insertContinuityIssue(open2);
+    insertContinuityIssue(resolved);
+
+    const openList = listContinuityIssues('open');
+    expect(openList).toHaveLength(2);
+    expect(openList.every((r) => r.status === 'open')).toBe(true);
+
+    const resolvedList = listContinuityIssues('resolved');
+    expect(resolvedList).toHaveLength(1);
+    expect(resolvedList[0].resolved_action).toBe('match_archive_to_story');
+  });
+
+  it('update status: transitions open → resolved and persists resolved_at', () => {
+    const issue = makeIssue();
+    insertContinuityIssue(issue);
+    const resolvedAt = new Date().toISOString();
+    updateContinuityIssueStatus(issue.id, 'resolved', resolvedAt, 'match_archive_to_story');
+    const fetched = getContinuityIssue(issue.id);
+    expect(fetched!.status).toBe('resolved');
+    expect(fetched!.resolved_at).toBe(resolvedAt);
+    expect(fetched!.resolved_action).toBe('match_archive_to_story');
+  });
+
+  it('soft-delete via status=ignored: issue remains but status changes', () => {
+    const issue = makeIssue();
+    insertContinuityIssue(issue);
+    updateContinuityIssueStatus(issue.id, 'ignored');
+    const fetched = getContinuityIssue(issue.id);
+    expect(fetched!.status).toBe('ignored');
+    expect(listContinuityIssues('open')).toHaveLength(0);
+    expect(listContinuityIssues('ignored')).toHaveLength(1);
+  });
+
+  it('hard delete: issue is removed from DB', () => {
+    const issue = makeIssue();
+    insertContinuityIssue(issue);
+    deleteContinuityIssue(issue.id);
+    expect(getContinuityIssue(issue.id)).toBeNull();
+    expect(listContinuityIssues()).toHaveLength(0);
+  });
+});
+
+// ─── Archive Audit Log (SKY-1683) ───
+
+describe('archive_audit_log table', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeAuditEntry(overrides: Partial<Parameters<typeof insertArchiveAuditLog>[0]> = {}) {
+    return {
+      id: crypto.randomUUID(),
+      action: 'match_archive_to_story' as const,
+      source: 'archive_agent',
+      item_id: crypto.randomUUID(),
+      target_path: 'characters/Alice.md',
+      changed_from: null,
+      changed_to: null,
+      scene_id: 'scene-1',
+      reason: 'Eye color corrected',
+      created_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it('insert: writes an audit entry and list returns it', () => {
+    const entry = makeAuditEntry();
+    insertArchiveAuditLog(entry);
+    const all = listArchiveAuditLog();
+    expect(all).toHaveLength(1);
+    expect(all[0].action).toBe('match_archive_to_story');
+    expect(all[0].source).toBe('archive_agent');
+  });
+
+  it('list by item_id: filters to matching item', () => {
+    const itemId = crypto.randomUUID();
+    insertArchiveAuditLog(makeAuditEntry({ id: crypto.randomUUID(), item_id: itemId }));
+    insertArchiveAuditLog(makeAuditEntry({ id: crypto.randomUUID(), item_id: crypto.randomUUID() }));
+    const byItem = listArchiveAuditLog(itemId);
+    expect(byItem).toHaveLength(1);
+    expect(byItem[0].item_id).toBe(itemId);
   });
 });

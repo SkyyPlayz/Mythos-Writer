@@ -1709,6 +1709,29 @@ export interface AppSettings {
   journalMode?: JournalModeSettings;
   /** SKY-627: author name entered during onboarding (optional). */
   authorName?: string;
+
+  // ── Archive Agent v1 continuity settings (SKY-1683 / PRD §8) ──
+  archiveContinuityEnabled?: boolean;
+  archiveScanOnSave?: boolean;
+  archiveScanScope?: 'active_scene' | 'active_chapter' | 'full_manuscript';
+  archiveScanInterval?: number | null;
+  archiveMinSeverity?: 'low' | 'high' | 'critical';
+  archiveCheckCharacterDrift?: boolean;
+  archiveCheckLocationMismatch?: boolean;
+  archiveCheckFactualContradict?: boolean;
+  archiveScanBudget?: number;
+  archiveStoryEditConsentGiven?: boolean;
+
+  // ── Right sidebar persistence (SKY-1683 / PRD §8) ──
+  rightSidebarVisible?: boolean;
+  rightSidebarWidth?: number;
+  rightSidebarPanels?: RightSidebarPanel[];
+}
+
+/** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */
+export interface RightSidebarPanel {
+  id: 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+  collapsed: boolean;
 }
 
 /** SKY-204: daily notes journal mode configuration. */

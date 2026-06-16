@@ -5119,6 +5119,23 @@ const SETTINGS_DEFAULTS: AppSettings = {
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   updateChannel: 'stable',
+  archiveContinuityEnabled: true,
+  archiveScanOnSave: true,
+  archiveScanScope: 'active_scene',
+  archiveScanInterval: null,
+  archiveMinSeverity: 'low',
+  archiveCheckCharacterDrift: true,
+  archiveCheckLocationMismatch: true,
+  archiveCheckFactualContradict: true,
+  archiveScanBudget: 8000,
+  archiveStoryEditConsentGiven: false,
+  rightSidebarVisible: true,
+  rightSidebarWidth: 300,
+  rightSidebarPanels: [
+    { id: 'writing-assistant', collapsed: false },
+    { id: 'archive-continuity', collapsed: false },
+    { id: 'scene-preview', collapsed: false },
+  ],
 };
 
 /**
