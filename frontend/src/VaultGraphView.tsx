@@ -2,8 +2,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
   type WheelEvent,
 } from 'react';
@@ -29,6 +31,17 @@ const GRAPH_CATEGORIES = [
 ] as const;
 
 type GraphCategory = (typeof GRAPH_CATEGORIES)[number];
+
+const GRAPH_CATEGORY_LABELS: Record<GraphCategory, string> = {
+  characters: 'Characters',
+  locations: 'Locations',
+  factions: 'Factions',
+  history: 'History',
+  systems: 'Systems',
+  items: 'Items',
+  misc: 'Misc',
+  default: 'Default',
+};
 
 export interface GraphNode {
   id: string;
@@ -196,6 +209,60 @@ function visibleIdsForHover(hoveredNodeId: string | null, neighbours: Map<string
   return new Set([hoveredNodeId, ...(neighbours.get(hoveredNodeId) ?? [])]);
 }
 
+function sortNodesForKeyboard(nodes: PositionedNode[], neighbours: Map<string, Set<string>>): PositionedNode[] {
+  return [...nodes].sort((a, b) => {
+    const degreeDelta = nodeDegree(b, neighbours) - nodeDegree(a, neighbours);
+    if (degreeDelta !== 0) return degreeDelta;
+    return displayLabel(a.label).localeCompare(displayLabel(b.label));
+  });
+}
+
+function nearestDirectionalNode(
+  current: PositionedNode,
+  candidates: PositionedNode[],
+  direction: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight',
+): PositionedNode | null {
+  const scored = candidates
+    .filter((candidate) => candidate.id !== current.id)
+    .map((candidate) => {
+      const dx = candidate.x - current.x;
+      const dy = candidate.y - current.y;
+      const inDirection = (
+        (direction === 'ArrowRight' && dx > 0)
+        || (direction === 'ArrowLeft' && dx < 0)
+        || (direction === 'ArrowDown' && dy > 0)
+        || (direction === 'ArrowUp' && dy < 0)
+      );
+      if (!inDirection) return null;
+      const primary = direction === 'ArrowLeft' || direction === 'ArrowRight' ? Math.abs(dx) : Math.abs(dy);
+      const secondary = direction === 'ArrowLeft' || direction === 'ArrowRight' ? Math.abs(dy) : Math.abs(dx);
+      return { candidate, score: primary + secondary * 0.5 };
+    })
+    .filter((entry): entry is { candidate: PositionedNode; score: number } => entry !== null)
+    .sort((a, b) => a.score - b.score);
+
+  return scored[0]?.candidate ?? null;
+}
+
+function graphSummary(nodes: PositionedNode[], edges: GraphEdge[], search: string, neighbours: Map<string, Set<string>>): string {
+  const orphanCount = nodes.filter((node) => (neighbours.get(node.id)?.size ?? 0) === 0).length;
+  const filterSummary = search.trim() ? `Filtered by "${search.trim()}".` : 'No active filters.';
+  return `${nodes.length} notes. ${edges.length} connections. ${orphanCount} orphan notes. ${filterSummary}`;
+}
+
+function nodeAnnouncement(node: PositionedNode, neighbours: Map<string, Set<string>>, terse = false): string {
+  const label = displayLabel(node.label);
+  const connectionCount = neighbours.get(node.id)?.size ?? 0;
+  if (terse) return `${label}. ${connectionCount} connections.`;
+  return `${label}. ${node.categoryKey} note. ${connectionCount} connections. Press Enter to open.`;
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function normalizeNodeResponse(response: unknown): GraphNode[] | null {
   if (Array.isArray(response)) return response as GraphNode[];
   if (response && typeof response === 'object' && Array.isArray((response as { nodes?: unknown }).nodes)) {
@@ -222,6 +289,10 @@ export default function VaultGraphView({ onOpenNote }: Props) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [panStart, setPanStart] = useState<{ clientX: number; clientY: number; x: number; y: number } | null>(null);
   const [search, setSearch] = useState('');
+  const [keyboardFocusedNodeId, setKeyboardFocusedNodeId] = useState<string | null>(null);
+  const [liveMessage, setLiveMessage] = useState('');
+  const [legendOpen, setLegendOpen] = useState(false);
+  const toolbarRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -285,10 +356,43 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     [hoveredNodeId, neighbours],
   );
 
+  const keyboardNodes = useMemo(
+    () => sortNodesForKeyboard(positionedNodes, neighbours),
+    [positionedNodes, neighbours],
+  );
+
+  const visibleCategories = useMemo(
+    () => GRAPH_CATEGORIES.filter((category) => positionedNodes.some((node) => node.categoryKey === category)),
+    [positionedNodes],
+  );
+
+  const shouldShowLegend = visibleCategories.length >= 2;
+
+  useEffect(() => {
+    if (!filteredData || prefersReducedMotion()) return;
+    setLiveMessage(graphSummary(positionedNodes, filteredData.edges, search, neighbours));
+  }, [filteredData, neighbours, positionedNodes, search]);
+
+  useEffect(() => {
+    if (!keyboardFocusedNodeId || nodeById.has(keyboardFocusedNodeId)) return;
+    setKeyboardFocusedNodeId(null);
+  }, [keyboardFocusedNodeId, nodeById]);
+
+  useEffect(() => {
+    if (!hoveredNodeId || prefersReducedMotion()) return undefined;
+    const hoveredNode = nodeById.get(hoveredNodeId);
+    if (!hoveredNode) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      setLiveMessage(nodeAnnouncement(hoveredNode, neighbours, true));
+    }, 500);
+    return () => window.clearTimeout(timeoutId);
+  }, [hoveredNodeId, neighbours, nodeById]);
+
   const resetView = useCallback(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setSelectedNodeId(null);
+    setKeyboardFocusedNodeId(null);
   }, []);
 
   useEffect(() => {
@@ -305,6 +409,73 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     const direction = event.deltaY > 0 ? -0.1 : 0.1;
     setZoom((value) => Math.max(0.1, Math.min(4, Number((value + direction).toFixed(2)))));
   }, []);
+
+  const focusNode = useCallback((node: PositionedNode | null) => {
+    if (!node) return;
+    setKeyboardFocusedNodeId(node.id);
+    setLiveMessage(nodeAnnouncement(node, neighbours));
+  }, [neighbours]);
+
+  function handleCanvasKeyDown(event: ReactKeyboardEvent<SVGSVGElement>) {
+    if (keyboardNodes.length === 0) return;
+    const currentIndex = keyboardFocusedNodeId
+      ? keyboardNodes.findIndex((node) => node.id === keyboardFocusedNodeId)
+      : -1;
+    const currentNode = currentIndex >= 0 ? keyboardNodes[currentIndex] : null;
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const offset = event.shiftKey ? -1 : 1;
+      const nextIndex = currentIndex >= 0
+        ? (currentIndex + offset + keyboardNodes.length) % keyboardNodes.length
+        : (event.shiftKey ? keyboardNodes.length - 1 : 0);
+      focusNode(keyboardNodes[nextIndex]);
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      if (!currentNode) return;
+      event.preventDefault();
+      selectNode(currentNode);
+      return;
+    }
+
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      setZoom((value) => Math.min(4, Number((value + 0.1).toFixed(2))));
+      return;
+    }
+
+    if (event.key === '-') {
+      event.preventDefault();
+      setZoom((value) => Math.max(0.1, Number((value - 0.1).toFixed(2))));
+      return;
+    }
+
+    if (event.key === '0') {
+      event.preventDefault();
+      resetView();
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setSelectedNodeId(null);
+      setKeyboardFocusedNodeId(null);
+      toolbarRef.current?.focus();
+      return;
+    }
+
+    if (
+      event.key === 'ArrowUp'
+      || event.key === 'ArrowDown'
+      || event.key === 'ArrowLeft'
+      || event.key === 'ArrowRight'
+    ) {
+      event.preventDefault();
+      focusNode(currentNode ? nearestDirectionalNode(currentNode, positionedNodes, event.key) : keyboardNodes[0]);
+    }
+  }
 
   function handlePointerDown(event: PointerEvent<SVGSVGElement>) {
     if (event.button !== 0) return;
@@ -353,7 +524,7 @@ export default function VaultGraphView({ onOpenNote }: Props) {
 
   return (
     <section className="vgv-root" data-testid="vault-graph-view" aria-label="Vault Graph panel">
-      <header className="vgv-toolbar">
+      <header className="vgv-toolbar" ref={toolbarRef} tabIndex={-1}>
         <div className="vgv-title-group">
           <span className="vgv-title">Vault Graph</span>
           <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
@@ -366,6 +537,14 @@ export default function VaultGraphView({ onOpenNote }: Props) {
           aria-label="Search nodes"
         />
       </header>
+
+      <div
+        className="sr-only"
+        aria-live="polite"
+        data-testid="vault-graph-live-region"
+      >
+        {liveMessage}
+      </div>
 
       {showLargeGraphNotice && (
         <div className="vgv-large-notice" role="status">
@@ -381,8 +560,10 @@ export default function VaultGraphView({ onOpenNote }: Props) {
         <svg
           className="vgv-svg"
           viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
-          role="img"
+          role="application"
           aria-label="Notes Vault graph"
+          tabIndex={0}
+          onKeyDown={handleCanvasKeyDown}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -411,15 +592,16 @@ export default function VaultGraphView({ onOpenNote }: Props) {
             {positionedNodes.map((node) => {
               const dimmed = visibleIds ? !visibleIds.has(node.id) : false;
               const selected = selectedNodeId === node.id;
+              const keyboardFocused = keyboardFocusedNodeId === node.id;
               const label = displayLabel(node.label);
               return (
                 <g
                   key={node.id}
                   role="button"
-                  tabIndex={0}
+                  tabIndex={-1}
                   aria-label={`Open note ${label}`}
                   data-testid={`vault-node-${node.id}`}
-                  className={`vgv-graph-node${dimmed ? ' vgv-graph-node--dimmed' : ''}${selected ? ' vgv-graph-node--selected' : ''}`}
+                  className={`vgv-graph-node${dimmed ? ' vgv-graph-node--dimmed' : ''}${selected ? ' vgv-graph-node--selected' : ''}${keyboardFocused ? ' vgv-graph-node--keyboard-focused' : ''}`}
                   transform={`translate(${node.x} ${node.y})`}
                   onMouseEnter={() => setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
@@ -458,10 +640,40 @@ export default function VaultGraphView({ onOpenNote }: Props) {
           <div className="vgv-state vgv-state--overlay">No matching graph nodes.</div>
         )}
 
-        <div className="vgv-zoom-controls" aria-label="Graph zoom controls">
-          <button type="button" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.1, value - 0.1))}>−</button>
-          <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(4, value + 0.1))}>+</button>
-          <button type="button" aria-label="Reset graph view" onClick={resetView}>↺</button>
+        <div className="vgv-graph-controls" aria-label="Graph controls">
+          {shouldShowLegend && (
+            <div className="vgv-legend-wrap">
+              <button
+                type="button"
+                aria-label="Legend"
+                aria-expanded={legendOpen}
+                aria-controls="vault-graph-legend"
+                onClick={() => setLegendOpen((open) => !open)}
+              >
+                Legend
+              </button>
+              {legendOpen && (
+                <div
+                  id="vault-graph-legend"
+                  className="vgv-legend-popover"
+                  role="dialog"
+                  aria-label="Graph category legend"
+                >
+                  {visibleCategories.map((category) => (
+                    <div key={category} className="vgv-legend-row">
+                      <span className={`vgv-legend-swatch vgv-legend-swatch--${category}`} aria-hidden="true" />
+                      <span>{GRAPH_CATEGORY_LABELS[category]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="vgv-zoom-controls" aria-label="Graph zoom controls">
+            <button type="button" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.1, value - 0.1))}>−</button>
+            <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(4, value + 0.1))}>+</button>
+            <button type="button" aria-label="Reset graph view" onClick={resetView}>↺</button>
+          </div>
         </div>
       </div>
     </section>

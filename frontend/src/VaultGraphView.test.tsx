@@ -87,6 +87,57 @@ describe('VaultGraphView', () => {
     expect(screen.getByRole('button', { name: /reset graph view/i })).toBeInTheDocument();
   });
 
+  it('treats the graph canvas as the single keyboard entry point and cycles nodes by degree then label', async () => {
+    const onOpenNote = vi.fn();
+    render(<VaultGraphView onOpenNote={onOpenNote} />);
+
+    const canvas = await screen.findByRole('application', { name: /Notes Vault graph/i });
+    expect(canvas).toHaveAttribute('tabindex', '0');
+
+    fireEvent.keyDown(canvas, { key: 'Tab' });
+    expect(screen.getByTestId('vault-node-characters/ava.md')).toHaveClass('vgv-graph-node--keyboard-focused');
+
+    fireEvent.keyDown(canvas, { key: 'Tab' });
+    expect(screen.getByTestId('vault-node-locations/citadel.md')).toHaveClass('vgv-graph-node--keyboard-focused');
+
+    fireEvent.keyDown(canvas, { key: 'Tab', shiftKey: true });
+    expect(screen.getByTestId('vault-node-characters/ava.md')).toHaveClass('vgv-graph-node--keyboard-focused');
+
+    fireEvent.keyDown(canvas, { key: 'Enter' });
+    expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
+  });
+
+  it('announces graph summary and focused node details through a polite live region', async () => {
+    render(<VaultGraphView />);
+
+    const liveRegion = await screen.findByTestId('vault-graph-live-region');
+    await waitFor(() => {
+      expect(liveRegion).toHaveTextContent('3 notes. 2 connections. 0 orphan notes. No active filters.');
+    });
+    expect(liveRegion).toHaveAttribute('aria-live', 'polite');
+
+    const canvas = screen.getByRole('application', { name: /Notes Vault graph/i });
+    fireEvent.keyDown(canvas, { key: 'Tab' });
+
+    expect(liveRegion).toHaveTextContent('Ava. characters note. 2 connections. Press Enter to open.');
+  });
+
+  it('shows an accessible legend popover when multiple categories are visible', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const legendButton = screen.getByRole('button', { name: /legend/i });
+    expect(legendButton).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(legendButton);
+
+    expect(legendButton).toHaveAttribute('aria-expanded', 'true');
+    const legend = screen.getByRole('dialog', { name: /graph category legend/i });
+    expect(within(legend).getByText('Characters')).toBeInTheDocument();
+    expect(within(legend).getByText('Locations')).toBeInTheDocument();
+    expect(within(legend).getByText('Items')).toBeInTheDocument();
+  });
+
   it('shows error state when v2 IPC handlers are unavailable', async () => {
     (window as any).api = { vaultGraphNodes: vi.fn().mockResolvedValue(undefined) };
 
