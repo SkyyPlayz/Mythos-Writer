@@ -253,6 +253,52 @@ jobs:
           path: e2e-report/
           retention-days: 3
 
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (frontend)
+        run: npm run lint -w frontend
+
+      - name: Type-check (frontend)
+        run: npm run typecheck -w frontend
+
+      - name: Type-check (electron-main)
+        run: npm run typecheck -w electron-main
+
+      - name: Test (electron-main)
+        run: npm run test -w electron-main
+
+      - name: Test (frontend)
+        run: npm run test -w frontend
+
+      - name: Build and package (Windows NSIS + ZIP)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build:electron && npx electron-builder --win nsis zip --publish never
+
+      - name: Upload Windows packages
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.zip
+          retention-days: 3
+
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
     # Running on self-hosted (Linux) so the required check CI/build-macos resolves green.
@@ -390,7 +436,7 @@ jobs:
     # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
     # sweep for missed pings. PR-only — plain pushes to main get no ping.
     # Self-hosted only (no public/fork PR exposure per SKY-849).
-    needs: [lint, typecheck, unit, ci, build-macos, build-linux]
+    needs: [lint, typecheck, unit, ci, build-macos, build-linux, build-windows]
     runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
     permissions:
@@ -413,6 +459,7 @@ jobs:
           CI_RESULT: ${{ needs.ci.result }}
           BUILD_LINUX_RESULT: ${{ needs.build-linux.result }}
           BUILD_MACOS_RESULT: ${{ needs.build-macos.result }}
+          BUILD_WINDOWS_RESULT: ${{ needs.build-windows.result }}
           PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
           PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
           PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f

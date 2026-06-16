@@ -27,15 +27,15 @@ You can:
 
 This makes revisions safe, simple, and reversible.
 
-## Local-first with optional cloud sync
+## Local-first — sync via your existing cloud folder
 
-Your vaults live on your computer by default.
+Your vaults live on your computer. You own the files; you can open them in any editor; you can back them up however you like.
 
-- You own your files.
-- You can open them in any editor.
-- You can back them up however you like.
+**MVP sync approach:** To keep your vault in sync across multiple machines, place the vault folder inside your existing cloud-storage folder (Dropbox, iCloud Drive, Google Drive, or OneDrive) and let the OS desktop client handle sync. No account or Mythos configuration required — it works because the vault is plain markdown files. See the setup guide at `plans/help/sync-vault-between-devices.md`.
 
-If you want cloud sync, you can turn it on later — but it's never required.
+**Caveat:** Do not open Mythos Writer and the OS sync client at the same time when the sync client is mid-conflict. Close Mythos before resolving sync conflicts in the cloud client, then reopen Mythos.
+
+**Future — Mythos-hosted cloud sync (Monetization Phase 3):** A paid cloud-storage subscription tier that adds seamless in-app sync and the mobile companion app (where folder-level OS sync isn't viable). This is post-MVP and post-Phase 2 (in-app AI subscription). See `plans/ProjectGoalOverView/10-releases-and-roadmap.md` → Monetization plan.
 
 ## Full Obsidian compatibility
 

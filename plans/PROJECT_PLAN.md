@@ -47,7 +47,7 @@ Three named AI agents assist the author across these surfaces. None of them auto
 - **Scene Crafter** — first-class Kanban planning board (per story), modeled after the **Obsidian Kanban plugin**. Author drags existing vault notes from the vault browser onto the board to build scenes visually. Board is stored as a markdown file in the Notes Vault.
 - **Automatic Timeline Builder (Story Timeline)** — first-class **Archive Agent**-driven timeline per story. Archive infers scene timestamps from explicit and implicit time cues with a confidence score.
 - **Archive Agent (full scope)** — the third agent owns vault linking/continuity *and* the Story Timeline. Compares manuscript to vault, proposes `[[wiki-links]]` and timeline placements, detects inconsistencies.
-- Optional cloud sync and collaboration features.
+- Optional **Mythos-hosted cloud storage subscription** (Monetization Phase 3, post-MVP): in-app sync between devices without relying on OS-level desktop syncers. Tied to the paid subscription tier and the future mobile companion. Until then, users place the vault folder inside their existing Dropbox / iCloud Drive / Google Drive / OneDrive folder and the OS desktop client handles sync (see `plans/help/sync-vault-between-devices.md`).
 - Plugin or template system for genre-specific workflows (fantasy, sci-fi, mystery, etc.).
 - Full **macOS and Linux** distribution (signing, notarization).
 
