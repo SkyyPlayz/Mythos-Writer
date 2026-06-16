@@ -125,32 +125,24 @@ async function selectStory(pg: Page, title: string): Promise<void> {
 /** Navigate to the Scene Crafter (Board) view via the toolbar. */
 async function openBoardView(pg: Page): Promise<void> {
   await pg.locator('.app-menu-view-btn', { hasText: 'Board' }).click();
-  await expect(pg.locator('.scene-crafter-page')).toBeVisible({ timeout: 8_000 });
+  // Wait for the lanes container, which is only rendered once the board has fully loaded.
+  // (The loading state renders .scene-crafter-page but not .scene-crafter-lanes.)
+  await expect(pg.locator('.scene-crafter-lanes')).toBeVisible({ timeout: 8_000 });
+}
+
+/**
+ * Force a board re-read from disk by navigating to Editor then back.
+ * Unmounting SceneCrafterPage triggers a fresh IPC + disk read on remount.
+ * Use this instead of page.reload() — reload clears React story-selection state.
+ */
+async function reloadBoardView(pg: Page): Promise<void> {
+  await pg.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
+  await openBoardView(pg);
 }
 
 /** Return the absolute path to a story's board.md in the notes vault. */
 function boardPath(notesVaultDir: string, storySlug: string): string {
   return path.join(notesVaultDir, 'scenes', storySlug, 'board.md');
-}
-
-/** Add a card to a lane via IPC (faster than DOM drag in headless CI). */
-async function addCardViaIpc(
-  pg: Page,
-  storySlug: string,
-  laneIndex: number,
-  wikilink: string,
-  title: string,
-): Promise<void> {
-  await pg.evaluate(
-    ({ storySlug, laneIndex, wikilink, title }) =>
-      (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterAddCard({ storySlug, laneIndex, card: { wikilink, title, done: false, tags: [] } }),
-    { storySlug, laneIndex, wikilink, title },
-  );
-  // reload board to reflect IPC mutation
-  await pg.reload();
-  await pg.waitForLoadState('domcontentloaded');
-  await openBoardView(pg);
 }
 
 // ─── Suite state ──────────────────────────────────────────────────────────────
@@ -160,6 +152,13 @@ let vaultDir: string;
 let notesVaultDir: string;
 let app: ElectronApplication | undefined;
 let page: Page;
+/**
+ * The actual filesystem slug for the primary story's board directory.
+ * DesktopShell creates stories with path `stories/<uuid>`, so
+ * storySlugFromStory() returns the UUID — NOT the human title.
+ * Discovered after the board is first created in beforeAll.
+ */
+let storySlug: string;
 
 test.beforeAll(async () => {
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-'));
@@ -174,6 +173,19 @@ test.beforeAll(async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
   await createStory(page, STORY_TITLE);
   await selectStory(page, STORY_TITLE);
+
+  // Open the board to trigger board creation; wait for full load so the
+  // scenes/<slug>/ directory exists on disk before tests read it.
+  await openBoardView(page);
+
+  // Discover the actual storySlug from the filesystem.
+  const scenesDir = path.join(notesVaultDir, 'scenes');
+  const slugEntry = fs.existsSync(scenesDir)
+    ? fs.readdirSync(scenesDir, { withFileTypes: true }).find((e) => e.isDirectory())
+    : undefined;
+  storySlug = slugEntry?.name ?? '';
+  // Fail fast if board creation did not produce a scenes directory.
+  if (!storySlug) throw new Error('beforeAll: board not created — scenes/ directory missing');
 });
 
 test.afterAll(async () => {
@@ -226,35 +238,30 @@ test('AC-SC-03: moving a card to another lane updates the board', async () => {
   await openBoardView(page);
 
   // Ensure a card exists in the Idea lane via IPC to avoid relying on AC-SC-02 ordering.
-  const storySlug = STORY_TITLE; // DesktopShell derives slug from last path segment = story title
   const WIKILINK = 'worldbuilding/scene-to-move';
   await page.evaluate(
-    ({ storySlug, wikilink }) =>
+    ({ slug, wikilink }) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
         .api.sceneCrafterAddCard({
-          storySlug,
+          storySlug: slug,
           laneIndex: 0,
           card: { wikilink, title: 'Scene To Move', done: false, tags: [] },
         }),
-    { storySlug, wikilink: WIKILINK },
+    { slug: storySlug, wikilink: WIKILINK },
   );
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  await reloadBoardView(page);
 
   const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
   await expect(card).toBeVisible({ timeout: 6_000 });
 
   // Move via IPC (lane 0 → lane 1).
   await page.evaluate(
-    ({ storySlug }) =>
+    (slug) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterMoveCard({ storySlug, fromLane: 0, fromIndex: 0, toLane: 1, toIndex: 0 }),
-    { storySlug },
+        .api.sceneCrafterMoveCard({ storySlug: slug, fromLane: 0, fromIndex: 0, toLane: 1, toIndex: 0 }),
+    storySlug,
   );
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  await reloadBoardView(page);
 
   // Card now lives inside the Outline lane.
   const outlineLane = page.locator('[data-testid="scene-crafter-lane-Outline"]');
@@ -267,23 +274,20 @@ test('AC-SC-03: moving a card to another lane updates the board', async () => {
 test('AC-SC-04: checking the checkbox marks a card done', async () => {
   await openBoardView(page);
 
-  const storySlug = STORY_TITLE;
   const WIKILINK = 'worldbuilding/toggle-test';
 
   // Seed a card in lane 0.
   await page.evaluate(
-    ({ storySlug, wikilink }) =>
+    ({ slug, wikilink }) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
         .api.sceneCrafterAddCard({
-          storySlug,
+          storySlug: slug,
           laneIndex: 0,
           card: { wikilink, title: 'Toggle Test', done: false, tags: [] },
         }),
-    { storySlug, wikilink: WIKILINK },
+    { slug: storySlug, wikilink: WIKILINK },
   );
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  await reloadBoardView(page);
 
   const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
   const checkbox = card.locator('input[type="checkbox"]');
@@ -292,10 +296,8 @@ test('AC-SC-04: checking the checkbox marks a card done', async () => {
   await checkbox.check();
   await expect(checkbox).toBeChecked({ timeout: 4_000 });
 
-  // Verify persistence by reloading.
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  // Verify persistence: navigate away and back to force a fresh board read from disk.
+  await reloadBoardView(page);
   await expect(
     page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`).locator('input[type="checkbox"]'),
   ).toBeChecked({ timeout: 6_000 });
@@ -332,33 +334,28 @@ test('AC-SC-05: add lane, rename it, delete empty lane', async () => {
 test('AC-SC-05b: delete non-empty lane shows confirmation, force-delete removes it', async () => {
   await openBoardView(page);
 
-  const storySlug = STORY_TITLE;
   // Add a lane with a card.
   await page.evaluate(
-    ({ storySlug }) =>
+    (slug) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterAddLane(storySlug, 'ToDelete'),
-    { storySlug },
+        .api.sceneCrafterAddLane(slug, 'ToDelete'),
+    storySlug,
   );
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  await reloadBoardView(page);
 
   const laneCount = await page.locator('.scene-crafter-lane').count();
 
   await page.evaluate(
-    ({ storySlug, laneIndex }) =>
+    ({ slug, laneIndex }) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
         .api.sceneCrafterAddCard({
-          storySlug,
+          storySlug: slug,
           laneIndex,
           card: { wikilink: 'wl/card-in-lane-to-delete', title: 'Card', done: false, tags: [] },
         }),
-    { storySlug, laneIndex: laneCount - 1 },
+    { slug: storySlug, laneIndex: laneCount - 1 },
   );
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  await reloadBoardView(page);
 
   const toLaneLoc = page.locator('[data-testid="scene-crafter-lane-ToDelete"]');
   await toLaneLoc.locator('button[aria-label^="Delete lane"]').click();
@@ -378,22 +375,19 @@ test('AC-SC-05b: delete non-empty lane shows confirmation, force-delete removes 
 test('AC-SC-06: deleting a card removes it from the board', async () => {
   await openBoardView(page);
 
-  const storySlug = STORY_TITLE;
   const WIKILINK = 'worldbuilding/card-to-delete';
 
   await page.evaluate(
-    ({ storySlug, wikilink }) =>
+    ({ slug, wikilink }) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
         .api.sceneCrafterAddCard({
-          storySlug,
+          storySlug: slug,
           laneIndex: 0,
           card: { wikilink, title: 'Card To Delete', done: false, tags: [] },
         }),
-    { storySlug, wikilink: WIKILINK },
+    { slug: storySlug, wikilink: WIKILINK },
   );
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  await reloadBoardView(page);
 
   const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
   await expect(card).toBeVisible({ timeout: 6_000 });
@@ -406,21 +400,8 @@ test('AC-SC-06: deleting a card removes it from the board', async () => {
 test('AC-SC-07: board.md round-trips through the Obsidian Kanban format spec', async () => {
   await openBoardView(page);
 
-  // Read the board.md written by the app.
-  // The story slug is derived from the last segment of story.path — for a fresh story
-  // created via the prompt, the path on disk is <vaultRoot>/<title>/ so the last segment
-  // is the sanitized title. We discover the actual slug by globbing.
-  const scenesDir = path.join(notesVaultDir, 'scenes');
-
-  let storySlug: string | undefined;
-  if (fs.existsSync(scenesDir)) {
-    const entries = fs.readdirSync(scenesDir, { withFileTypes: true });
-    storySlug = entries.find((e) => e.isDirectory())?.name;
-  }
-
-  expect(storySlug, 'scenes/<slug>/ directory must exist in notesVaultDir').toBeTruthy();
-
-  const boardFilePath = path.join(scenesDir, storySlug!, 'board.md');
+  // storySlug is discovered in beforeAll — it is the UUID-based segment of story.path.
+  const boardFilePath = boardPath(notesVaultDir, storySlug);
   expect(fs.existsSync(boardFilePath), `board.md must exist at ${boardFilePath}`).toBe(true);
 
   const content = fs.readFileSync(boardFilePath, 'utf-8');
@@ -458,15 +439,14 @@ test.skip('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposa
 test('AC-SC-10: card with manuscript/ tag shows "Go to scene" deep-link button', async () => {
   await openBoardView(page);
 
-  const storySlug = STORY_TITLE;
   const SCENE_ID = 'abc123';
   const WIKILINK = 'worldbuilding/deep-link-scene';
 
   await page.evaluate(
-    ({ storySlug, wikilink, sceneId }) =>
+    ({ slug, wikilink, sceneId }) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
         .api.sceneCrafterAddCard({
-          storySlug,
+          storySlug: slug,
           laneIndex: 0,
           card: {
             wikilink,
@@ -475,11 +455,9 @@ test('AC-SC-10: card with manuscript/ tag shows "Go to scene" deep-link button',
             tags: [`manuscript/${sceneId}`],
           },
         }),
-    { storySlug, wikilink: WIKILINK, sceneId: SCENE_ID },
+    { slug: storySlug, wikilink: WIKILINK, sceneId: SCENE_ID },
   );
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await openBoardView(page);
+  await reloadBoardView(page);
 
   const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
   await expect(card.locator('button', { hasText: 'Go to scene' })).toBeVisible({ timeout: 6_000 });
@@ -519,15 +497,8 @@ test('AC-SC-11: empty board shows "Plan your next scene" CTA', async () => {
 test('AC-SC-12: writing board.md from outside the app surfaces the conflict alert', async () => {
   await openBoardView(page);
 
-  // Discover the slug.
-  const scenesDir = path.join(notesVaultDir, 'scenes');
-  const storySlug = fs.existsSync(scenesDir)
-    ? fs.readdirSync(scenesDir, { withFileTypes: true }).find((e) => e.isDirectory())?.name
-    : undefined;
-
-  expect(storySlug, 'scenes/<slug>/ must exist').toBeTruthy();
-
-  const boardFilePath = boardPath(notesVaultDir, storySlug!);
+  // storySlug is discovered in beforeAll — it is guaranteed non-empty here.
+  const boardFilePath = boardPath(notesVaultDir, storySlug);
   expect(fs.existsSync(boardFilePath), 'board.md must exist before external edit').toBe(true);
 
   // Simulate an external write by appending a comment to the file outside the app.
