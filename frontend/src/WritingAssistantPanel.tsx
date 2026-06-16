@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
+import type { WritingAssistantTip, WritingAssistantTipInput, WritingTipCategory } from './hooks/useWritingScheduler';
+import { TipCard } from './TipCard';
 import { useTtsPlayer } from './hooks/useTtsPlayer';
 import PresetSelector from './components/PresetSelector';
 import PresetEditor from './components/PresetEditor';
@@ -42,6 +44,7 @@ interface Props {
   scene: Scene | null;
   enabled?: boolean;
   scanIntervalSeconds?: number;
+  waScanInterval?: number | 'on-save' | 'manual';
   isActive?: boolean;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
@@ -55,10 +58,58 @@ function getSceneProse(scene: Scene) {
   return scene.blocks.map((block) => block.content).join('\n\n');
 }
 
+const CADENCE_OPTIONS = [
+  { value: '30', label: '30 s' },
+  { value: '60', label: '1 min' },
+  { value: '300', label: '5 min' },
+  { value: 'on-save', label: 'On save' },
+  { value: 'manual', label: 'Manual only' },
+] as const;
+
+type CadenceValue = typeof CADENCE_OPTIONS[number]['value'];
+
+function toCadenceValue(interval: number | 'on-save' | 'manual'): CadenceValue {
+  if (interval === 'on-save' || interval === 'manual') return interval;
+  return interval === 30 || interval === 300 ? String(interval) as CadenceValue : '60';
+}
+
+function isTipCategory(value: unknown): value is WritingTipCategory {
+  return value === 'grammar' || value === 'pacing' || value === 'clarity' || value === 'style' || value === 'tone';
+}
+
+function normalizeTip(input: WritingAssistantTipInput, index: number, scene: Scene | null): WritingAssistantTip {
+  if (typeof input === 'string') {
+    return {
+      id: `scan-tip-${index}-${input}`,
+      text: input,
+      category: 'clarity',
+      sceneAnchor: scene?.title,
+      sceneId: scene?.id,
+      scenePath: scene?.path,
+      sceneUpdatedAt: scene?.updatedAt,
+    };
+  }
+
+  return {
+    id: input.id ?? `scan-tip-${index}-${input.text}`,
+    text: input.text,
+    category: isTipCategory(input.category) ? input.category : 'clarity',
+    sceneAnchor: input.sceneAnchor ?? scene?.title,
+    sceneId: input.sceneId ?? scene?.id,
+    scenePath: input.scenePath ?? scene?.path,
+    sceneUpdatedAt: input.sceneUpdatedAt ?? scene?.updatedAt,
+  };
+}
+
+function tipSuppressKey(tip: WritingAssistantTip, scene: Scene | null) {
+  return `${tip.id}:${tip.sceneUpdatedAt ?? scene?.updatedAt ?? 'unknown-scene-version'}`;
+}
+
 export default function WritingAssistantPanel({
   scene,
   enabled = true,
   scanIntervalSeconds = 60,
+  waScanInterval,
   isActive = true,
 }: Props) {
   const [prompt, setPrompt] = useState('');
@@ -74,6 +125,10 @@ export default function WritingAssistantPanel({
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [betaReadError, setBetaReadError] = useState<string | null>(null);
   const [betaReadLastScannedAt, setBetaReadLastScannedAt] = useState<string | null>(null);
+  const [cadence, setCadence] = useState<CadenceValue>(() => toCadenceValue(waScanInterval ?? scanIntervalSeconds));
+  const [cadenceTouched, setCadenceTouched] = useState(false);
+  const [suppressedTipKeys, setSuppressedTipKeys] = useState<Set<string>>(() => new Set());
+  const [reportConfirmTipId, setReportConfirmTipId] = useState<string | null>(null);
 
   // Preset state — persisted per session via sessionStorage
   const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
@@ -95,12 +150,23 @@ export default function WritingAssistantPanel({
 
   const tts = useTtsPlayer();
 
-  const { result: scheduledResult } = useWritingScheduler({
+  const initialScanIntervalSeconds = typeof waScanInterval === 'number' ? waScanInterval : scanIntervalSeconds;
+  const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'
+    ? initialScanIntervalSeconds
+    : Number(cadence);
+  const schedulerEnabled = enabled && cadence !== 'manual' && cadence !== 'on-save';
+
+  const { result: scheduledResult, scanning, runScan } = useWritingScheduler({
     scene,
-    enabled,
-    scanIntervalSeconds,
+    enabled: schedulerEnabled,
+    scanIntervalSeconds: effectiveScanIntervalSeconds,
     isActive,
   });
+
+  const visibleTips = useMemo(() => {
+    const normalized = scheduledResult?.tips.map((tip, index) => normalizeTip(tip, index, scene)) ?? [];
+    return normalized.filter((tip) => !suppressedTipKeys.has(tipSuppressKey(tip, scene)));
+  }, [scheduledResult, scene, suppressedTipKeys]);
 
   const clearStreamResources = useCallback(() => {
     unsubscribeRef.current?.();
@@ -349,6 +415,59 @@ export default function WritingAssistantPanel({
     );
   };
 
+  const handleCadenceChange = useCallback(async (value: CadenceValue) => {
+    setCadence(value);
+    setCadenceTouched(true);
+    const waScanInterval = value === 'on-save' || value === 'manual' ? value : Number(value);
+    try {
+      await window.api.writingAssistantCadenceChange({ waScanInterval });
+      announce('Writing Assistant cadence updated.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg || 'Could not update Writing Assistant cadence.');
+    }
+  }, [announce]);
+
+  const handleScanNow = useCallback(async () => {
+    setError(null);
+    await runScan(true);
+  }, [runScan]);
+
+  const applyTipDecision = useCallback(async (
+    tipId: string,
+    decision: 'noted' | 'ignored' | 'reported',
+  ) => {
+    const tip = visibleTips.find((item) => item.id === tipId);
+    if (!tip) return;
+    if (decision === 'ignored' || decision === 'noted') {
+      const key = tipSuppressKey(tip, scene);
+      setSuppressedTipKeys((prev) => new Set(prev).add(key));
+    }
+    if (decision === 'reported') {
+      setReportConfirmTipId(null);
+    }
+    try {
+      await window.api.writingAssistantTipDecision({
+        tipId,
+        decision,
+        sceneId: tip.sceneId ?? scene?.id,
+        scenePath: tip.scenePath ?? scene?.path,
+        sceneUpdatedAt: tip.sceneUpdatedAt ?? scene?.updatedAt,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg || 'Could not save tip decision.');
+    }
+  }, [scene, visibleTips]);
+
+  const dismissAllTips = useCallback(() => {
+    setSuppressedTipKeys((prev) => {
+      const next = new Set(prev);
+      visibleTips.forEach((tip) => next.add(tipSuppressKey(tip, scene)));
+      return next;
+    });
+  }, [scene, visibleTips]);
+
   if (!enabled) {
     return (
       <div className="writing-assistant-panel writing-assistant-disabled">
@@ -368,12 +487,26 @@ export default function WritingAssistantPanel({
         {liveText}
       </span>
 
-      <div className="writing-assistant-header">
+      <div className="wa-panel-header">
         <p className="writing-assistant-hint">
           {scene
             ? <><strong>Writing Assistant</strong> — context: <em>{scene.title}</em></>
             : <><strong>Writing Assistant</strong> — no scene selected, asking freely.</>}
         </p>
+        <label className="wa-cadence-label">
+          <span className="wa-cadence-text">Cadence</span>
+          <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
+          <select
+            className="wa-cadence-select"
+            aria-label="Heartbeat cadence"
+            value={cadence}
+            onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
+          >
+            {CADENCE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
         {/* AC-V-06: session mute toggle */}
         <button
           className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
@@ -403,16 +536,57 @@ export default function WritingAssistantPanel({
         </button>
       </div>
 
-      {scheduledResult && scheduledResult.tips.length > 0 && (
-        <div className="wa-scheduled-tips" aria-label="Writing tips">
-          <p className="wa-tips-heading">Writing tips</p>
-          <ul className="wa-tips-list">
-            {scheduledResult.tips.map((tip, i) => (
-              <li key={i} className="wa-tip-item">{tip}</li>
-            ))}
-          </ul>
+      <div className="wa-heartbeat-tips" aria-label="Heartbeat panel">
+        <div className="wa-heartbeat-header">
+          <span className="wa-heartbeat-title">Heartbeat tips</span>
+          <button
+            type="button"
+            className="wa-scan-now"
+            onClick={() => void handleScanNow()}
+            disabled={!scene || scanning}
+          >
+            Scan now
+          </button>
+          {scanning && (
+            <span className="wa-heartbeat-scanning">
+              <span className="wa-spinner" aria-hidden="true" /> Scanning
+            </span>
+          )}
+          {scheduledResult?.scannedAt && (
+            <span className="wa-heartbeat-time">Updated {new Date(scheduledResult.scannedAt).toLocaleTimeString()}</span>
+          )}
         </div>
-      )}
+        <div className="wa-heartbeat-list" aria-live="polite" aria-label={visibleTips.length > 0 ? 'Writing tips' : 'Heartbeat status'}>
+          {visibleTips.length === 0 ? (
+            <p className="wa-heartbeat-empty">
+              {scanning ? 'Scanning this scene for quick writing tips…' : 'No heartbeat tips yet.'}
+            </p>
+          ) : (
+            visibleTips.map((tip) => (
+              <div key={tipSuppressKey(tip, scene)} className="wa-heartbeat-tip">
+                <TipCard
+                  tip={tip}
+                  onNote={(tipId) => void applyTipDecision(tipId, 'noted')}
+                  onIgnore={(tipId) => void applyTipDecision(tipId, 'ignored')}
+                  onReport={setReportConfirmTipId}
+                />
+                {reportConfirmTipId === tip.id && (
+                  <div className="tc-report-confirm" role="alert">
+                    <span>Report this tip?</span>
+                    <button type="button" onClick={() => void applyTipDecision(tip.id, 'reported')}>Report</button>
+                    <button type="button" onClick={() => setReportConfirmTipId(null)}>Cancel</button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+        {visibleTips.length >= 2 && (
+          <button type="button" className="tc-dismiss-all" onClick={dismissAllTips}>
+            Dismiss all ({visibleTips.length})
+          </button>
+        )}
+      </div>
 
       <BetaReadPanel
         scene={scene}

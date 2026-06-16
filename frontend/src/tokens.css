@@ -300,6 +300,18 @@
   --entity-scene-text: #fda4af;
   --entity-inbox-bg: rgba(148, 163, 184, 0.15);
   --entity-inbox-text: #b4c2ce;  /* SKY-1597: was #94a3b8 (4.34:1); brightened to ≈5.5:1 */
+
+  /* Writing Assistant category badge tokens */
+  --wa-cat-grammar-bg: rgba(96, 165, 250, 0.18);
+  --wa-cat-grammar-text: #93c5fd;
+  --wa-cat-pacing-bg: rgba(34, 211, 238, 0.16);
+  --wa-cat-pacing-text: #a5f3fc;
+  --wa-cat-clarity-bg: rgba(16, 185, 129, 0.16);
+  --wa-cat-clarity-text: #86efac;
+  --wa-cat-style-bg: rgba(167, 139, 250, 0.18);
+  --wa-cat-style-text: #c4b5fd;
+  --wa-cat-tone-bg: rgba(244, 114, 182, 0.18);
+  --wa-cat-tone-text: #fda4af;
 }
 
 /* =============================================================================
@@ -369,6 +381,18 @@
   --entity-scene-text: #fecdd3;
   --entity-inbox-bg: rgba(148, 163, 184, 0.25);
   --entity-inbox-text: #dde6ee;  /* SKY-1597: was #cbd5e1 (6.7:1); brightened to ≈7.9:1 (AAA) */
+
+  /* Writing Assistant category badges — higher contrast */
+  --wa-cat-grammar-bg: rgba(96, 165, 250, 0.30);
+  --wa-cat-grammar-text: #bfdbfe;
+  --wa-cat-pacing-bg: rgba(34, 211, 238, 0.28);
+  --wa-cat-pacing-text: #cffafe;
+  --wa-cat-clarity-bg: rgba(16, 185, 129, 0.26);
+  --wa-cat-clarity-text: #bbf7d0;
+  --wa-cat-style-bg: rgba(167, 139, 250, 0.32);
+  --wa-cat-style-text: #ede9fe;
+  --wa-cat-tone-bg: rgba(244, 114, 182, 0.30);
+  --wa-cat-tone-text: #fecdd3;
 }
 
 /* OS-level increased-contrast request → clamp toward the high-contrast theme. */

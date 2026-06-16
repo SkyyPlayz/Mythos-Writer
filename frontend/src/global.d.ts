@@ -133,6 +133,28 @@ interface Suggestion {
   category?: SuggestionCategory | null;
 }
 
+type WritingTipCategory =
+  | 'punctuation'
+  | 'spelling'
+  | 'grammar'
+  | 'sentence-structure'
+  | 'style-tone'
+  | 'other';
+
+type WritingAssistantHeartbeatCategory = 'grammar' | 'pacing' | 'clarity' | 'style' | 'tone';
+
+interface WritingAssistantTip {
+  id: string;
+  text: string;
+  category: WritingAssistantHeartbeatCategory;
+  sceneAnchor?: string;
+  sceneId?: string;
+  scenePath?: string;
+  sceneUpdatedAt?: string;
+}
+
+type WritingAssistantTipDecision = 'noted' | 'ignored' | 'reported';
+
 type SuggestionCategory =
   | 'punctuation'
   | 'spelling'
@@ -297,6 +319,8 @@ interface AppSettings {
   apiKey: string;
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderConfig;
+  /** Sidebar heartbeat cadence: seconds, on-save, or manual. */
+  waScanInterval?: number | 'on-save' | 'manual';
   /** SKY-818: Selected voice-capable provider ID. Absent = use first voice-capable provider. */
   voiceProviderId?: string;
   agents: {
@@ -605,8 +629,20 @@ interface Window {
     appInstallUpdate: () => Promise<unknown>;
 
     // Writing Assistant scheduled scan (MYT-233) + push subscription (MYT-236)
-    writingScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ tips: string[]; scannedAt: string }>;
-    onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => () => void;
+    writingScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ tips: Array<string | WritingAssistantTip>; scannedAt: string }>;
+    onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: Array<string | WritingAssistantTip>; scannedAt: string }) => void) => () => void;
+    writingAssistantCadenceChange: (payload: { waScanInterval: number | 'on-save' | 'manual' }) => Promise<{ saved: boolean; waScanInterval: number | 'on-save' | 'manual' }>;
+    writingAssistantTipDecision: (payload: {
+      tipId: string;
+      decision: WritingAssistantTipDecision;
+      sceneId?: string;
+      scenePath?: string;
+      sceneUpdatedAt?: string;
+    }) => Promise<{ saved: boolean }>;
+    writingAssistantScanNow: (payload: { sceneId: string; prose: string; scenePath: string }) => Promise<{ tips: Array<string | WritingAssistantTip>; scannedAt: string }>;
+    onWritingAssistantScanStart: (cb: (data: { sceneId?: string; scenePath?: string; startedAt: string }) => void) => () => void;
+    onWritingAssistantScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: Array<string | WritingAssistantTip>; scannedAt: string }) => void) => () => void;
+    onWritingAssistantScanError: (cb: (data: { sceneId?: string; scenePath?: string; error: string; occurredAt: string }) => void) => () => void;
 
     // Archive continuity-check scheduled scan (MYT-234)
     archiveScan: (sceneText: string, scenePath: string) => Promise<{ suggestions: unknown[]; inconsistenciesFound: number; wikiLinksFound: number }>;

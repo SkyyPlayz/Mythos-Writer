@@ -2223,6 +2223,7 @@ export default function DesktopShell() {
             writingAssistantEnabled={agentFlags.writingAssistant}
             archiveEnabled={agentFlags.archive}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+            waScanInterval={appSettings?.waScanInterval}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}

@@ -19,6 +19,7 @@ interface Props {
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
   scanIntervalSeconds?: number;
+  waScanInterval?: number | 'on-save' | 'manual';
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -205,6 +206,7 @@ function AiPanel({
   writingAssistantEnabled = true,
   archiveEnabled = true,
   scanIntervalSeconds = 30,
+  waScanInterval,
   isPageFocused = true,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
@@ -214,6 +216,7 @@ function AiPanel({
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
   scanIntervalSeconds?: number;
+  waScanInterval?: number | 'on-save' | 'manual';
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -263,6 +266,7 @@ function AiPanel({
             scene={scene}
             enabled={writingAssistantEnabled}
             scanIntervalSeconds={scanIntervalSeconds}
+            waScanInterval={waScanInterval}
             isActive={isPageFocused}
           />
         )}
@@ -368,6 +372,7 @@ export default function RightSidebar({
   writingAssistantEnabled = true,
   archiveEnabled = true,
   scanIntervalSeconds = 30,
+  waScanInterval,
   isPageFocused = true,
   onJumpToText,
   onInsertWikiLink,
@@ -450,6 +455,7 @@ export default function RightSidebar({
             writingAssistantEnabled={writingAssistantEnabled}
             archiveEnabled={archiveEnabled}
             scanIntervalSeconds={scanIntervalSeconds}
+            waScanInterval={waScanInterval}
             isPageFocused={isPageFocused}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}

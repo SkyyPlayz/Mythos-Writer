@@ -2106,6 +2106,68 @@ const handlers: IpcHandlers = {
     return { entry: getGenerationLogEntry(payload.id) };
   },
 
+  [IPC_CHANNELS.WRITING_ASSISTANT_CADENCE_CHANGE]: (payload) => {
+    const interval = payload.waScanInterval;
+    if (typeof interval === 'number' && ![30, 60, 300].includes(interval)) {
+      throw new Error('Invalid Writing Assistant cadence. Expected 30, 60, 300, on-save, or manual.');
+    }
+    if (typeof interval === 'string' && interval !== 'on-save' && interval !== 'manual') {
+      throw new Error('Invalid Writing Assistant cadence.');
+    }
+    const current = loadAppSettings();
+    const writingAssistant = {
+      ...current.agents.writingAssistant,
+      scanIntervalSeconds: typeof interval === 'number'
+        ? interval
+        : current.agents.writingAssistant.scanIntervalSeconds,
+    };
+    saveAppSettings({
+      ...current,
+      waScanInterval: interval,
+      agents: { ...current.agents, writingAssistant },
+    });
+    stopWritingScanScheduler();
+    startWritingScanScheduler();
+    return { saved: true, waScanInterval: interval };
+  },
+
+  [IPC_CHANNELS.WRITING_ASSISTANT_TIP_DECISION]: () => {
+    return { saved: true };
+  },
+
+  [IPC_CHANNELS.WRITING_ASSISTANT_SCAN_NOW]: async (payload) => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send(IPC_CHANNELS.WRITING_ASSISTANT_SCAN_START, {
+          sceneId: payload.sceneId,
+          scenePath: payload.scenePath,
+          startedAt: new Date().toISOString(),
+        });
+      }
+    });
+    try {
+      const result = await runWritingScan(payload.prose, payload.scenePath, payload.sceneId, getProviderConfigForAgent('writingAssistant'));
+      const pushPayload = { sceneId: payload.sceneId, scenePath: payload.scenePath, tips: result.tips, scannedAt: result.scannedAt };
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.WRITING_ASSISTANT_SCAN_RESULT, pushPayload);
+      });
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.WRITING_ASSISTANT_SCAN_ERROR, {
+            sceneId: payload.sceneId,
+            scenePath: payload.scenePath,
+            error,
+            occurredAt: new Date().toISOString(),
+          });
+        }
+      });
+      throw err;
+    }
+  },
+
   // ─── Chapter / Scene creation (Phase 2 — MYT-195) ───
   [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => {
     ensureVaultDir();
@@ -5048,8 +5110,9 @@ const AGENT_BUDGET_DEFAULTS = {
 
 const SETTINGS_DEFAULTS: AppSettings = {
   apiKey: '',
+  waScanInterval: 60,
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
   },

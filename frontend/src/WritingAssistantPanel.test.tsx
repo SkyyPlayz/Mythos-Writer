@@ -5,6 +5,9 @@ const mockAgentWritingAssistant = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockOnWritingAssistantChunk = vi.fn<any>(() => vi.fn()); // returns unsub fn
 const mockWritingScan = vi.fn();
+const mockWritingAssistantCadenceChange = vi.fn();
+const mockWritingAssistantTipDecision = vi.fn();
+const mockWritingAssistantScanNow = vi.fn();
 const mockBetaReadScan = vi.fn();
 const mockBetaReadDismiss = vi.fn();
 const mockVoiceSpeak = vi.fn();
@@ -19,6 +22,9 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     agentWritingAssistant: mockAgentWritingAssistant,
     onWritingAssistantChunk: mockOnWritingAssistantChunk,
     writingScan: mockWritingScan,
+    writingAssistantCadenceChange: mockWritingAssistantCadenceChange,
+    writingAssistantTipDecision: mockWritingAssistantTipDecision,
+    writingAssistantScanNow: mockWritingAssistantScanNow,
     betaReadScan: mockBetaReadScan,
     betaReadDismiss: mockBetaReadDismiss,
     voiceSpeak: mockVoiceSpeak,
@@ -32,6 +38,9 @@ function makeApi(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.resetAllMocks();
   mockWritingScan.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
+  mockWritingAssistantCadenceChange.mockResolvedValue({ saved: true, waScanInterval: 60 });
+  mockWritingAssistantTipDecision.mockResolvedValue({ saved: true });
+  mockWritingAssistantScanNow.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
   mockBetaReadScan.mockResolvedValue({ comments: [], scannedAt: new Date().toISOString() });
   mockBetaReadDismiss.mockResolvedValue({ id: 'br-1', dismissed: true });
   mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
@@ -430,7 +439,7 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
 
     render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
 
-    expect(screen.queryByLabelText(/writing tips/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/heartbeat status/i)).toBeInTheDocument();
 
     await act(async () => { vi.advanceTimersByTime(10_000); });
 
@@ -438,6 +447,7 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     expect(screen.getByText('Use shorter sentences.')).toBeInTheDocument();
     expect(screen.getByText('Add sensory detail.')).toBeInTheDocument();
   });
+
 
   it('calls writingScan with scene prose and path', async () => {
     mockWritingScan.mockResolvedValue({ tips: ['Tip.'], scannedAt: new Date().toISOString() });
@@ -459,7 +469,7 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     await act(() => { vi.advanceTimersByTime(30_000); });
 
     expect(mockWritingScan).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText(/writing tips/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/heartbeat status/i)).toBeInTheDocument();
   });
 
   it('does not call writingScan when enabled is false', async () => {
@@ -477,7 +487,7 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
 
     await act(async () => { vi.advanceTimersByTime(10_000); });
 
-    expect(screen.queryByLabelText(/writing tips/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/heartbeat status/i)).toBeInTheDocument();
   });
 
   it('updates tips after a second scan tick', async () => {
@@ -493,6 +503,113 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     await act(async () => { vi.advanceTimersByTime(10_000); });
     expect(screen.getByText('Second tip.')).toBeInTheDocument();
     expect(screen.queryByText('First tip.')).not.toBeInTheDocument();
+  });
+
+  it('reads saved manual cadence from AppSettings and pauses scheduler on startup', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['Should not run.'], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={30} waScanInterval="manual" isActive={true} />);
+
+    expect(screen.getByLabelText(/heartbeat cadence/i)).toHaveValue('manual');
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(mockWritingScan).not.toHaveBeenCalled();
+  });
+
+  it('persists cadence picker changes via writing-assistant cadence IPC', async () => {
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={60} isActive={true} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: /heartbeat cadence/i }), {
+        target: { value: '300' },
+      });
+    });
+
+    expect(mockWritingAssistantCadenceChange).toHaveBeenCalledWith({ waScanInterval: 300 });
+  });
+
+  it('emits tip decision payloads for Note it and Ignore actions', async () => {
+    mockWritingScan.mockResolvedValueOnce({
+      tips: [{
+        id: 'tip-grammar-1',
+        text: 'Fix the tense shift in this paragraph.',
+        category: 'grammar',
+        sceneAnchor: 'The Heist',
+        sceneId: mockScene.id,
+        scenePath: mockScene.path,
+        sceneUpdatedAt: mockScene.updatedAt,
+      }],
+      scannedAt: '2026-06-15T12:00:00.000Z',
+    });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    fireEvent.click(screen.getByRole('button', { name: /note it/i }));
+
+    expect(mockWritingAssistantTipDecision).toHaveBeenCalledWith(expect.objectContaining({
+      tipId: 'tip-grammar-1',
+      decision: 'noted',
+      sceneId: mockScene.id,
+      sceneUpdatedAt: mockScene.updatedAt,
+    }));
+
+    mockWritingScan.mockResolvedValueOnce({
+      tips: [{
+        id: 'tip-grammar-2',
+        text: 'Clarify who speaks in the last line.',
+        category: 'clarity',
+        sceneAnchor: 'The Heist',
+        sceneId: mockScene.id,
+        scenePath: mockScene.path,
+        sceneUpdatedAt: mockScene.updatedAt,
+      }],
+      scannedAt: '2026-06-15T12:01:00.000Z',
+    });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    fireEvent.click(screen.getByRole('button', { name: /ignore tip/i }));
+
+    expect(mockWritingAssistantTipDecision).toHaveBeenCalledWith(expect.objectContaining({
+      tipId: 'tip-grammar-2',
+      decision: 'ignored',
+    }));
+  });
+
+  it('session-suppresses ignored tips until scene updatedAt advances', async () => {
+    const sceneAt1 = { ...mockScene, updatedAt: '2026-06-15T12:00:00.000Z' };
+    const sceneAt2 = { ...mockScene, updatedAt: '2026-06-15T12:01:00.000Z' };
+    const tip = {
+      id: 'tip-pacing-1',
+      text: 'Vary sentence length to improve momentum.',
+      category: 'pacing',
+      sceneAnchor: 'The Heist',
+      sceneId: mockScene.id,
+      scenePath: mockScene.path,
+      sceneUpdatedAt: sceneAt1.updatedAt,
+    };
+    mockWritingScan.mockResolvedValue({ tips: [tip], scannedAt: '2026-06-15T12:00:10.000Z' });
+
+    const { rerender } = render(<WritingAssistantPanel scene={sceneAt1} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(screen.getByText(tip.text)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /ignore tip/i }));
+    });
+    expect(screen.queryByText(tip.text)).not.toBeInTheDocument();
+
+    rerender(<WritingAssistantPanel scene={sceneAt1} scanIntervalSeconds={10} isActive={true} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(screen.queryByText(tip.text)).not.toBeInTheDocument();
+
+    mockWritingScan.mockResolvedValueOnce({
+      tips: [{ ...tip, sceneUpdatedAt: sceneAt2.updatedAt }],
+      scannedAt: '2026-06-15T12:01:10.000Z',
+    });
+    rerender(<WritingAssistantPanel scene={sceneAt2} scanIntervalSeconds={10} isActive={true} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(screen.getByText(tip.text)).toBeInTheDocument();
   });
 });
 
