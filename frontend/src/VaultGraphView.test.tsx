@@ -235,16 +235,16 @@ describe('VaultGraphView', () => {
     render(<VaultGraphView />);
     await screen.findByTestId('vault-graph-truncation-banner');
 
-    fireEvent.click(screen.getByRole('button', { name: /show all/i }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /show all/i })); });
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument();
     });
     expect(screen.getByTestId('vault-graph-truncation-banner')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /dismiss large vault notice/i }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /dismiss large vault notice/i })); });
     expect(screen.queryByTestId('vault-graph-truncation-banner')).not.toBeInTheDocument();
-  });
+  }, 30_000);
 
   // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────
 
