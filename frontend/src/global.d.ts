@@ -1274,6 +1274,19 @@ interface Window {
     newStory?: () => Promise<void>;
     openVault?: () => Promise<void>;
 
+    // SKY-1764: Brainstorm → Scene Crafter suggestion accept/reject
+    sceneCrafterSuggestionAccept: (suggestionId: string, actor?: string) => Promise<{
+      suggestionId: string;
+      auditId: string;
+      cardPath: string;
+      laneUsed: string;
+      laneIndex: number;
+    }>;
+    sceneCrafterSuggestionReject: (suggestionId: string, actor?: string) => Promise<{
+      suggestionId: string;
+      auditId: string;
+    }>;
+
   };
 
   // Non-standard browser speech recognition (Chromium only)

@@ -15,6 +15,7 @@ export type NoteProposalKind =
   | 'item'
   | 'faction'
   | 'scene_card'
+  | 'scene_crafter_card'
   | 'inbox';
 
 export interface NoteProposal {
@@ -44,6 +45,7 @@ const KIND_LABELS: Record<NoteProposalKind, string> = {
   item: 'ITEM',
   faction: 'FACTION',
   scene_card: 'SCENE',
+  scene_crafter_card: 'BOARD CARD',
   inbox: 'INBOX',
 };
 
@@ -53,6 +55,7 @@ const KIND_ARIA: Record<NoteProposalKind, string> = {
   item: 'Item note proposal',
   faction: 'Faction note proposal',
   scene_card: 'Scene card proposal',
+  scene_crafter_card: 'Scene Crafter board card proposal',
   inbox: 'Inbox note proposal',
 };
 
