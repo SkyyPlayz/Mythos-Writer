@@ -302,87 +302,75 @@ describe('Accessibility — StoryNavigator (Editor tree)', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Surface 6 — LeftRail tab bar (MYT-282 ARIA tab pattern)
+// Surface 6 — LeftRail nav zone + panel zone (SKY-1694 Wave 2a)
 // ══════════════════════════════════════════════════════════════════════════════
-import LeftRail from './LeftRail';
+import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 
-describe('Accessibility — LeftRail tab bar (WCAG 4.1.2)', () => {
+const DEFAULT_LEFT_RAIL_PROPS = {
+  activeView: 'editor' as const,
+  onViewChange: () => {},
+  leftSidebarLayout: DEFAULT_LEFT_SIDEBAR_LAYOUT,
+  onLeftSidebarLayoutChange: () => {},
+  stories: [],
+  selectedSceneId: null,
+  selectedEntityId: null,
+  onSelectScene: () => {},
+  onSelectEntity: () => {},
+  onCreateStory: () => {},
+  onCreateChapter: () => {},
+  onCreateScene: () => {},
+  onReorderScenes: () => {},
+};
+
+describe('Accessibility — LeftRail nav + panel zone (WCAG 4.1.2)', () => {
   beforeEach(() => { stubApi(); vi.clearAllMocks(); });
 
-  it('stories tab active — no axe violations', async () => {
-    const { container } = render(
-      <LeftRail
-        activeTab="stories"
-        onTabChange={() => {}}
-        stories={[]}
-        selectedSceneId={null}
-        selectedEntityId={null}
-        onSelectScene={() => {}}
-        onSelectEntity={() => {}}
-        onCreateStory={() => {}}
-        onCreateChapter={() => {}}
-        onCreateScene={() => {}}
-        onReorderScenes={() => {}}
-      />,
-    );
-    // Flush EntityBrowser's async entityList call so its state update lands inside act()
+  it('default layout (entities panel) — no axe violations', async () => {
+    const { container } = render(<LeftRail {...DEFAULT_LEFT_RAIL_PROPS} />);
     await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('entities tab active — no axe violations', async () => {
+  it('with stories panel — no axe violations', async () => {
+    const layout: LeftSidebarLayout = {
+      panels: [{ id: 'stories', collapsed: false }],
+      sidebarCollapsed: false,
+    };
     const { container } = render(
-      <LeftRail
-        activeTab="entities"
-        onTabChange={() => {}}
-        stories={[]}
-        selectedSceneId={null}
-        selectedEntityId={null}
-        onSelectScene={() => {}}
-        onSelectEntity={() => {}}
-        onCreateStory={() => {}}
-        onCreateChapter={() => {}}
-        onCreateScene={() => {}}
-        onReorderScenes={() => {}}
-      />,
+      <LeftRail {...DEFAULT_LEFT_RAIL_PROPS} leftSidebarLayout={layout} />,
     );
-    // Flush EntityBrowser's async entityList call so its state update lands inside act()
     await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('tab elements carry correct ARIA roles and attributes', async () => {
-    const { container } = render(
-      <LeftRail
-        activeTab="vault"
-        onTabChange={() => {}}
-        stories={[]}
-        selectedSceneId={null}
-        selectedEntityId={null}
-        onSelectScene={() => {}}
-        onSelectEntity={() => {}}
-        onCreateStory={() => {}}
-        onCreateChapter={() => {}}
-        onCreateScene={() => {}}
-        onReorderScenes={() => {}}
-      />,
-    );
-    // Flush VaultBrowser's async listVault/listNotesVault calls so state updates land inside act()
+  it('nav zone renders 4 nav icon buttons with aria-label and aria-pressed', async () => {
+    const { container } = render(<LeftRail {...DEFAULT_LEFT_RAIL_PROPS} activeView="brainstorm" />);
     await act(async () => {});
-    const tablist = container.querySelector('[role="tablist"]');
-    expect(tablist).not.toBeNull();
+    const nav = container.querySelector('[aria-label="Main navigation"]');
+    expect(nav).not.toBeNull();
+    const navBtns = nav!.querySelectorAll('button');
+    expect(navBtns).toHaveLength(4);
+    const brainstormBtn = Array.from(navBtns).find(b => b.getAttribute('aria-label') === 'Brainstorm');
+    expect(brainstormBtn?.getAttribute('aria-pressed')).toBe('true');
+  });
 
-    const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(5);
+  it('nav zone has data-no-drop guard (AC-L-08)', async () => {
+    const { container } = render(<LeftRail {...DEFAULT_LEFT_RAIL_PROPS} />);
+    await act(async () => {});
+    const nav = container.querySelector('[data-no-drop="true"]');
+    expect(nav).not.toBeNull();
+  });
 
-    const activeTab = container.querySelector('[aria-selected="true"]');
-    expect(activeTab?.id).toBe('leftrail-tab-vault');
-
-    const panel = container.querySelector('[role="tabpanel"]');
-    expect(panel).not.toBeNull();
-    expect(panel?.getAttribute('aria-labelledby')).toBe('leftrail-tab-vault');
+  it('collapsed sidebar renders icon-only rail', async () => {
+    const layout: LeftSidebarLayout = { ...DEFAULT_LEFT_SIDEBAR_LAYOUT, sidebarCollapsed: true };
+    const { container } = render(
+      <LeftRail {...DEFAULT_LEFT_RAIL_PROPS} leftSidebarLayout={layout} />,
+    );
+    await act(async () => {});
+    expect(container.querySelector('.left-rail--collapsed')).not.toBeNull();
+    expect(container.querySelector('.lr-panel-zone')).toBeNull();
   });
 });
 
