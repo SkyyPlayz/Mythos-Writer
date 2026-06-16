@@ -127,6 +127,12 @@
   flex-direction: column;
   border-bottom: 1px solid #27272a;
   flex-shrink: 0;
+  position: relative; /* needed for drag placeholder pseudo-elements */
+}
+
+/* Transition width for hover-to-reveal */
+.left-rail {
+  transition: width var(--dur-panel, 280ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .lr-panel-header {

@@ -426,17 +426,29 @@ interface AppSettings {
   };
 }
 
+/** SKY-1695 (Wave 2b): Panel IDs for the right sidebar panel zone. */
+type RightPanelId = 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+
 interface RightSidebarPanel {
-  id: 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+  id: SidebarPanelId;
   collapsed: boolean;
 }
 
 /** SKY-1694: Panel IDs available in the left sidebar panel zone. */
 type LeftPanelId = 'stories' | 'entities' | 'vault' | 'review' | 'progress';
 
+/** SKY-1695 (Wave 2b): Unified panel ID — any panel in either sidebar. */
+type SidebarPanelId = LeftPanelId | RightPanelId;
+
+/** SKY-1695 (Wave 2b): Generic panel config entry usable in either sidebar. */
+interface SidebarPanelConfig {
+  id: SidebarPanelId;
+  collapsed: boolean;
+}
+
 /** SKY-1694: Per-panel config entry in the left sidebar panel zone. */
 interface LeftPanelConfig {
-  id: LeftPanelId;
+  id: SidebarPanelId;
   collapsed: boolean;
 }
 

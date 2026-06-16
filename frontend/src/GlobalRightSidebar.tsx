@@ -1,24 +1,36 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Scene, Chapter, Story } from './types';
-import WritingAssistantPanel from './WritingAssistantPanel';
-import ContinuityPanel from './ContinuityPanel';
-import ScenePreviewPanel from './ScenePreviewPanel';
+import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { usePanelDrag } from './PanelDragContext';
+import type { DragSidebar } from './PanelDragContext';
 import './GlobalRightSidebar.css';
+import './PanelDragContext.css';
 
-type PanelId = 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type PanelId = SidebarPanelId;
 
 interface PanelConfig {
   id: PanelId;
   collapsed: boolean;
 }
 
-const PANEL_LABELS: Record<PanelId, string> = {
+const PANEL_LABELS: Record<string, string> = {
   'writing-assistant': 'Writing Assistant',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
+  // Left panels that may be dragged over:
+  stories: 'Story Navigator',
+  entities: 'Entity Browser',
+  vault: 'Vault Browser',
+  review: 'Suggestion Review',
+  progress: 'Writing Goals',
 };
 
-const ALL_PANEL_IDS: PanelId[] = ['writing-assistant', 'archive-continuity', 'scene-preview'];
+/** Right-sidebar-native panel IDs shown in the "Add Panel" picker. */
+const RIGHT_PANEL_IDS: PanelId[] = [
+  'writing-assistant',
+  'archive-continuity',
+  'scene-preview',
+];
 
 const DEFAULT_PANELS: PanelConfig[] = [
   { id: 'writing-assistant', collapsed: false },
@@ -30,30 +42,43 @@ const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 600;
 const SIDEBAR_DEFAULT_WIDTH = 300;
 
-export interface GlobalRightSidebarProps {
-  visible: boolean;
-  width: number;
-  panels: PanelConfig[];
-  onVisibilityChange: (visible: boolean) => void;
-  onWidthChange: (width: number) => void;
-  onPanelsChange: (panels: PanelConfig[]) => void;
-  scene: Scene | null;
-  chapter: Chapter | null;
-  story: Story | null;
-  archiveEnabled?: boolean;
-  writingAssistantEnabled?: boolean;
-  scanIntervalSeconds?: number;
-  waScanInterval?: number | 'on-save' | 'manual';
-  isPageFocused?: boolean;
-  onJumpToText?: (text: string) => void;
-  onInsertWikiLink?: (link: string, anchorText: string) => void;
-  onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
-  /** @deprecated use internal continuity count from ContinuityPanel — kept for backward compat */
-  continuityIssueCount?: number;
-  archiveScanScope?: 'active_scene' | 'active_chapter' | 'full_manuscript';
-  archiveStoryEditConsentGiven?: boolean;
-  onOpenSettings?: () => void;
+// ── DropZone ───────────────────────────────────────────────────────────────────
+
+function DropZone({
+  sidebar,
+  index,
+  active,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  sidebar: DragSidebar;
+  index: number;
+  active: boolean;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
+}) {
+  return (
+    <div
+      className={`grs-drop-zone${active ? ' grs-drop-zone--active' : ''}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      data-drop-sidebar={sidebar}
+      data-drop-index={index}
+      aria-hidden="true"
+    >
+      <div className="grs-drop-zone-inner">
+        <div className="drop-zone-cap" />
+        <div className="drop-zone-line" />
+        <div className="drop-zone-cap" />
+      </div>
+    </div>
+  );
 }
+
+// ── PanelSlot ──────────────────────────────────────────────────────────────────
 
 function PanelSlot({
   config,
@@ -61,7 +86,10 @@ function PanelSlot({
   onToggleCollapse,
   onPopout,
   onRemove,
-  dragHandleProps,
+  onDragStart,
+  onDragEnd,
+  onKeyDown,
+  isDragging,
   badgeCount,
   children,
 }: {
@@ -70,16 +98,19 @@ function PanelSlot({
   onToggleCollapse: () => void;
   onPopout: () => void;
   onRemove: () => void;
-  dragHandleProps: React.HTMLAttributes<HTMLSpanElement>;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  isDragging: boolean;
   badgeCount?: number;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  const label = PANEL_LABELS[config.id];
+  const label = PANEL_LABELS[config.id] ?? config.id;
   const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
 
   return (
     <div
-      className={`grs-panel${config.collapsed ? ' grs-panel--collapsed' : ''}${isPopout ? ' grs-panel--popout' : ''}`}
+      className={`grs-panel${config.collapsed ? ' grs-panel--collapsed' : ''}${isPopout ? ' grs-panel--popout' : ''}${isDragging ? ' grs-panel--dragging' : ''}`}
       data-panel-id={config.id}
     >
       <div
@@ -96,15 +127,22 @@ function PanelSlot({
           }
         }}
       >
-        <span
-          className="grs-panel-drag"
-          aria-label="Drag to reorder"
-          role="presentation"
-          {...dragHandleProps}
+        {/* Drag handle — AC-D-01 */}
+        <button
+          className="panel-drag-handle"
+          draggable
+          aria-label={`Move ${label}`}
+          aria-grabbed={isDragging}
+          title="Drag to reorder"
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onKeyDown={onKeyDown}
           onClick={(e) => e.stopPropagation()}
+          tabIndex={0}
         >
-          ≡
-        </span>
+          ⠿
+        </button>
+
         <span className="grs-panel-label">
           {label}
           {showBadge && (
@@ -113,6 +151,7 @@ function PanelSlot({
             </span>
           )}
         </span>
+
         <span className="grs-panel-controls" onClick={(e) => e.stopPropagation()}>
           <button
             className="grs-panel-btn"
@@ -133,7 +172,8 @@ function PanelSlot({
           </button>
         </span>
       </div>
-      {!config.collapsed && (
+
+      {!config.collapsed && !isDragging && (
         <div className="grs-panel-body">
           {isPopout ? (
             <div className="grs-panel-popout-placeholder">Panel is open in a window.</div>
@@ -146,6 +186,31 @@ function PanelSlot({
   );
 }
 
+// ── Props ──────────────────────────────────────────────────────────────────────
+
+export interface GlobalRightSidebarProps {
+  visible: boolean;
+  width: number;
+  panels: PanelConfig[];
+  onVisibilityChange: (visible: boolean) => void;
+  onWidthChange: (width: number) => void;
+  onPanelsChange: (panels: PanelConfig[]) => void;
+
+  /**
+   * SKY-1695: Renders the content for any panel ID. Supplied by DesktopShell
+   * so that left-sidebar panels dragged into the right sidebar render correctly.
+   */
+  renderPanelContent: (id: SidebarPanelId) => ReactNode;
+
+  /** Badge count for the archive-continuity panel header. */
+  continuityIssueCount?: number;
+
+  /** Count of left sidebar panels (needed for keyboard-drag bounds). */
+  leftPanelCount: number;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
+
 export default function GlobalRightSidebar({
   visible,
   width,
@@ -154,34 +219,34 @@ export default function GlobalRightSidebar({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onWidthChange: _onWidthChange,
   onPanelsChange,
-  scene,
-  chapter,
-  story,
-  archiveEnabled = true,
-  writingAssistantEnabled = true,
-  scanIntervalSeconds = 30,
-  waScanInterval,
-  isPageFocused = true,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onJumpToText: _onJumpToText,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onInsertWikiLink: _onInsertWikiLink,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onWikiLinkSuggestionsChange: _onWikiLinkSuggestionsChange,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  continuityIssueCount: _continuityIssueCount = 0,
-  archiveScanScope,
-  archiveStoryEditConsentGiven,
-  onOpenSettings,
+  renderPanelContent,
+  continuityIssueCount = 0,
+  leftPanelCount,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
-  const [dragOver, setDragOver] = useState<PanelId | null>(null);
-  const [localContinuityCount, setLocalContinuityCount] = useState(0);
-  const dragSource = useRef<PanelId | null>(null);
   const addPanelRef = useRef<HTMLDivElement | null>(null);
 
-  const effectiveWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, width || SIDEBAR_DEFAULT_WIDTH));
+  const {
+    dragState,
+    activeDropTarget,
+    setActiveDropTarget,
+    startDrag,
+    commitDrop,
+    endDrag,
+    cancelDrag,
+    kbDrag,
+    startKeyboardDrag,
+    moveKbTarget,
+    commitKbDrop,
+  } = usePanelDrag();
+
+  const effectiveWidth = Math.max(
+    SIDEBAR_MIN_WIDTH,
+    Math.min(SIDEBAR_MAX_WIDTH, width || SIDEBAR_DEFAULT_WIDTH),
+  );
+
+  // ── Panel mutation helpers ───────────────────────────────────────────────────
 
   const toggleCollapse = useCallback(
     (panelId: PanelId) => {
@@ -214,7 +279,7 @@ export default function GlobalRightSidebar({
         next.add(panelId);
         return next;
       });
-      window.api.panelPopout?.(panelId, scene?.id ?? null).catch(() => {
+      window.api.panelPopout?.(panelId, null).catch(() => {
         setPopoutPanels((prev) => {
           const next = new Set(prev);
           next.delete(panelId);
@@ -222,8 +287,10 @@ export default function GlobalRightSidebar({
         });
       });
     },
-    [scene?.id],
+    [],
   );
+
+  // ── Add-panel picker close on outside click ──────────────────────────────────
 
   useEffect(() => {
     if (!showAddPanel) return;
@@ -236,47 +303,105 @@ export default function GlobalRightSidebar({
     return () => document.removeEventListener('mousedown', handler);
   }, [showAddPanel]);
 
-  const handleDragStart = (panelId: PanelId) => {
-    dragSource.current = panelId;
-  };
+  // ── Drag event handlers ──────────────────────────────────────────────────────
 
-  const handleDragOver = (e: React.DragEvent, panelId: PanelId) => {
-    e.preventDefault();
-    setDragOver(panelId);
-  };
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, panelId: PanelId, index: number) => {
+      const img = new Image();
+      img.src =
+        'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      e.dataTransfer.setDragImage(img, 0, 0);
+      e.dataTransfer.effectAllowed = 'move';
 
-  const handleDrop = (targetId: PanelId) => {
-    const srcId = dragSource.current;
-    if (!srcId || srcId === targetId) {
-      dragSource.current = null;
-      setDragOver(null);
-      return;
-    }
-    const srcIdx = panels.findIndex((p) => p.id === srcId);
-    const tgtIdx = panels.findIndex((p) => p.id === targetId);
-    if (srcIdx < 0 || tgtIdx < 0) {
-      dragSource.current = null;
-      setDragOver(null);
-      return;
-    }
-    const next = [...panels];
-    const [moved] = next.splice(srcIdx, 1);
-    next.splice(tgtIdx, 0, moved);
-    onPanelsChange(next);
-    dragSource.current = null;
-    setDragOver(null);
-  };
+      startDrag({
+        panelId,
+        label: PANEL_LABELS[panelId] ?? panelId,
+        sourceSidebar: 'right',
+        sourceIndex: index,
+      });
+    },
+    [startDrag],
+  );
 
-  const handleDragEnd = () => {
-    dragSource.current = null;
-    setDragOver(null);
-  };
+  const handleDragEnd = useCallback(
+    (e: React.DragEvent) => {
+      if (e.dataTransfer.dropEffect === 'none') {
+        cancelDrag();
+      } else {
+        endDrag();
+      }
+    },
+    [cancelDrag, endDrag],
+  );
 
-  const availableToAdd = ALL_PANEL_IDS.filter((id) => !panels.find((p) => p.id === id));
+  const handleDropZoneDragOver = useCallback(
+    (e: React.DragEvent, index: number) => {
+      if (!dragState) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setActiveDropTarget({ sidebar: 'right', index });
+    },
+    [dragState, setActiveDropTarget],
+  );
+
+  const handleDropZoneDragLeave = useCallback(() => {
+    setActiveDropTarget(null);
+  }, [setActiveDropTarget]);
+
+  const handleDropZoneDrop = useCallback(
+    (e: React.DragEvent, index: number) => {
+      e.preventDefault();
+      commitDrop({ sidebar: 'right', index });
+    },
+    [commitDrop],
+  );
+
+  // ── Keyboard drag ────────────────────────────────────────────────────────────
+
+  const handleDragHandleKeyDown = useCallback(
+    (e: React.KeyboardEvent, panelId: PanelId, index: number) => {
+      if (e.key === ' ') {
+        e.preventDefault();
+        startKeyboardDrag(
+          {
+            panelId,
+            label: PANEL_LABELS[panelId] ?? panelId,
+            sourceSidebar: 'right',
+            sourceIndex: index,
+          },
+          leftPanelCount,
+          panels.length,
+        );
+      } else if (kbDrag) {
+        if (e.key === 'ArrowUp') { e.preventDefault(); moveKbTarget('up'); }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); moveKbTarget('down'); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); moveKbTarget('left'); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); moveKbTarget('right'); }
+        else if (e.key === 'Enter') { e.preventDefault(); commitKbDrop(); }
+      }
+    },
+    [kbDrag, leftPanelCount, panels.length, startKeyboardDrag, moveKbTarget, commitKbDrop],
+  );
+
+  // ── Render helpers ───────────────────────────────────────────────────────────
+
+  const isDropZoneActive = (index: number) =>
+    activeDropTarget?.sidebar === 'right' && activeDropTarget.index === index;
+
+  const kbTargetHere = (index: number) =>
+    kbDrag?.sidebar === 'right' && kbDrag.index === index;
+
+  const availableToAdd = RIGHT_PANEL_IDS.filter((id) => !panels.find((p) => p.id === id));
+
+  // ── Collapsed edge ───────────────────────────────────────────────────────────
 
   if (!visible) {
     return (
-      <div className="grs-collapsed-edge" role="complementary" aria-label="Right sidebar (hidden)">
+      <div
+        className="grs-collapsed-edge"
+        role="complementary"
+        aria-label="Right sidebar (hidden)"
+      >
         <button
           className="grs-toggle-btn"
           aria-label="Show right sidebar"
@@ -289,9 +414,11 @@ export default function GlobalRightSidebar({
     );
   }
 
+  // ── Main render ──────────────────────────────────────────────────────────────
+
   return (
     <aside
-      className={`grs-root${dragOver ? ' grs-root--drag-active' : ''}`}
+      className="grs-root"
       style={{ width: effectiveWidth }}
       aria-label="Right sidebar"
       data-testid="global-right-sidebar"
@@ -336,51 +463,68 @@ export default function GlobalRightSidebar({
       </div>
 
       <div className="grs-panel-list">
-        {panels.map((config) => (
+        {/* Drop zone before first panel */}
+        <DropZone
+          sidebar="right"
+          index={0}
+          active={isDropZoneActive(0) || kbTargetHere(0)}
+          onDragOver={(e) => handleDropZoneDragOver(e, 0)}
+          onDragLeave={handleDropZoneDragLeave}
+          onDrop={(e) => handleDropZoneDrop(e, 0)}
+        />
+
+        {panels.map((config, i) => {
+          const isDraggingThis =
+            dragState?.sourceSidebar === 'right' && dragState?.sourceIndex === i;
+
+          return (
+            <div key={config.id} className="grs-panel-wrapper">
+              <PanelSlot
+                config={config}
+                isPopout={popoutPanels.has(config.id)}
+                onToggleCollapse={() => toggleCollapse(config.id)}
+                onPopout={() => handlePopout(config.id)}
+                onRemove={() => removePanel(config.id)}
+                onDragStart={(e) => handleDragStart(e, config.id, i)}
+                onDragEnd={handleDragEnd}
+                onKeyDown={(e) => handleDragHandleKeyDown(e, config.id, i)}
+                isDragging={isDraggingThis}
+                badgeCount={
+                  config.id === 'archive-continuity' ? continuityIssueCount : undefined
+                }
+              >
+                {renderPanelContent(config.id)}
+              </PanelSlot>
+
+              {/* Drop zone after each panel */}
+              <DropZone
+                sidebar="right"
+                index={i + 1}
+                active={isDropZoneActive(i + 1) || kbTargetHere(i + 1)}
+                onDragOver={(e) => handleDropZoneDragOver(e, i + 1)}
+                onDragLeave={handleDropZoneDragLeave}
+                onDrop={(e) => handleDropZoneDrop(e, i + 1)}
+              />
+            </div>
+          );
+        })}
+
+        {/* Full-height drop target when panel zone is empty */}
+        {panels.length === 0 && dragState && (
           <div
-            key={config.id}
-            className={`grs-panel-wrapper${dragOver === config.id ? ' grs-panel-wrapper--dragover' : ''}`}
-            onDragOver={(e) => handleDragOver(e, config.id)}
-            onDrop={() => handleDrop(config.id)}
-          >
-            <PanelSlot
-              config={config}
-              isPopout={popoutPanels.has(config.id)}
-              onToggleCollapse={() => toggleCollapse(config.id)}
-              onPopout={() => handlePopout(config.id)}
-              onRemove={() => removePanel(config.id)}
-              badgeCount={config.id === 'archive-continuity' ? localContinuityCount : undefined}
-              dragHandleProps={{
-                draggable: true,
-                onDragStart: () => handleDragStart(config.id),
-                onDragEnd: handleDragEnd,
-              }}
-            >
-              {config.id === 'writing-assistant' && (
-                <WritingAssistantPanel
-                  scene={scene}
-                  enabled={writingAssistantEnabled}
-                  scanIntervalSeconds={scanIntervalSeconds}
-                  waScanInterval={waScanInterval}
-                  isActive={isPageFocused}
-                />
-              )}
-              {config.id === 'archive-continuity' && (
-                <ContinuityPanel
-                  scene={scene}
-                  enabled={archiveEnabled}
-                  archiveScanScope={archiveScanScope}
-                  archiveStoryEditConsentGiven={archiveStoryEditConsentGiven}
-                  onCountChange={setLocalContinuityCount}
-                  onOpenSettings={onOpenSettings}
-                />
-              )}
-              {config.id === 'scene-preview' && (
-                <ScenePreviewPanel scene={scene} chapter={chapter} story={story} />
-              )}
-            </PanelSlot>
-          </div>
-        ))}
+            className={`panel-zone-empty-drop${activeDropTarget?.sidebar === 'right' ? ' panel-zone-empty-drop--active' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setActiveDropTarget({ sidebar: 'right', index: 0 });
+            }}
+            onDragLeave={() => setActiveDropTarget(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              commitDrop({ sidebar: 'right', index: 0 });
+            }}
+            aria-hidden="true"
+          />
+        )}
       </div>
     </aside>
   );

@@ -1,22 +1,20 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
+import { PanelDragProvider } from './PanelDragContext';
 
-// Stub heavy panel components
-vi.mock('./WritingAssistantPanel', () => ({
-  default: () => <div data-testid="writing-assistant-panel">WritingAssistantPanel</div>,
-}));
+// SKY-1695: renderPanelContent is now supplied by DesktopShell. Stubs map panel
+// IDs to test-discoverable divs so we can assert panel body visibility.
+function renderPanelContent(id: string) {
+  const testIdMap: Record<string, string> = {
+    'writing-assistant': 'writing-assistant-panel',
+    'archive-continuity': 'archive-panel',
+    'scene-preview': 'scene-preview-panel',
+  };
+  return <div data-testid={testIdMap[id] ?? id}>{id}</div>;
+}
 
-let mockContinuityOnCountChange: ((n: number) => void) | undefined;
-vi.mock('./ContinuityPanel', () => ({
-  default: (props: { onCountChange?: (n: number) => void }) => {
-    mockContinuityOnCountChange = props.onCountChange;
-    return <div data-testid="continuity-panel">ContinuityPanel</div>;
-  },
-}));
-vi.mock('./ScenePreviewPanel', () => ({
-  default: () => <div data-testid="scene-preview-panel">ScenePreviewPanel</div>,
-}));
+const noop = vi.fn();
 
 const defaultProps = {
   visible: true,
@@ -25,10 +23,15 @@ const defaultProps = {
   onVisibilityChange: vi.fn(),
   onWidthChange: vi.fn(),
   onPanelsChange: vi.fn(),
-  scene: null,
-  chapter: null,
-  story: null,
+  renderPanelContent,
+  leftPanelCount: 3,
 };
+
+function renderWithProvider(ui: React.ReactElement) {
+  return render(
+    <PanelDragProvider onDrop={noop}>{ui}</PanelDragProvider>
+  );
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -37,26 +40,26 @@ beforeEach(() => {
 describe('GlobalRightSidebar', () => {
   describe('visibility', () => {
     it('renders the sidebar when visible=true', () => {
-      render(<GlobalRightSidebar {...defaultProps} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} />);
       expect(screen.getByTestId('global-right-sidebar')).toBeInTheDocument();
     });
 
     it('renders collapsed edge with show button when visible=false', () => {
-      render(<GlobalRightSidebar {...defaultProps} visible={false} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} visible={false} />);
       expect(screen.queryByTestId('global-right-sidebar')).toBeNull();
       expect(screen.getByRole('button', { name: /show right sidebar/i })).toBeInTheDocument();
     });
 
     it('calls onVisibilityChange(false) when hide button is clicked', () => {
       const onVisibilityChange = vi.fn();
-      render(<GlobalRightSidebar {...defaultProps} onVisibilityChange={onVisibilityChange} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} onVisibilityChange={onVisibilityChange} />);
       fireEvent.click(screen.getByRole('button', { name: /hide right sidebar/i }));
       expect(onVisibilityChange).toHaveBeenCalledWith(false);
     });
 
     it('calls onVisibilityChange(true) when show button is clicked from collapsed state', () => {
       const onVisibilityChange = vi.fn();
-      render(<GlobalRightSidebar {...defaultProps} visible={false} onVisibilityChange={onVisibilityChange} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} visible={false} onVisibilityChange={onVisibilityChange} />);
       fireEvent.click(screen.getByRole('button', { name: /show right sidebar/i }));
       expect(onVisibilityChange).toHaveBeenCalledWith(true);
     });
@@ -64,7 +67,7 @@ describe('GlobalRightSidebar', () => {
 
   describe('panel collapse/expand', () => {
     it('renders all three default panels', () => {
-      render(<GlobalRightSidebar {...defaultProps} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} />);
       expect(screen.getByLabelText(/writing assistant panel/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/continuity panel/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/scene preview panel/i)).toBeInTheDocument();
@@ -77,7 +80,7 @@ describe('GlobalRightSidebar', () => {
         { id: 'archive-continuity', collapsed: false },
         { id: 'scene-preview', collapsed: false },
       ];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
 
       const header = screen.getByLabelText(/writing assistant panel/i);
       fireEvent.click(header);
@@ -92,7 +95,7 @@ describe('GlobalRightSidebar', () => {
       const panels: PanelConfig[] = [
         { id: 'writing-assistant', collapsed: true },
       ];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
 
       const header = screen.getByLabelText(/writing assistant panel/i);
       fireEvent.click(header);
@@ -104,13 +107,13 @@ describe('GlobalRightSidebar', () => {
 
     it('hides panel body when collapsed', () => {
       const panels: PanelConfig[] = [{ id: 'writing-assistant', collapsed: true }];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
       expect(screen.queryByTestId('writing-assistant-panel')).toBeNull();
     });
 
     it('shows panel body when not collapsed', () => {
       const panels: PanelConfig[] = [{ id: 'writing-assistant', collapsed: false }];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
       expect(screen.getByTestId('writing-assistant-panel')).toBeInTheDocument();
     });
   });
@@ -122,7 +125,7 @@ describe('GlobalRightSidebar', () => {
         { id: 'writing-assistant', collapsed: false },
         { id: 'scene-preview', collapsed: false },
       ];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
 
       fireEvent.click(screen.getByRole('button', { name: /remove writing assistant/i }));
 
@@ -139,7 +142,7 @@ describe('GlobalRightSidebar', () => {
         { id: 'writing-assistant', collapsed: false },
         { id: 'archive-continuity', collapsed: false },
       ];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
 
       fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
       const picker = screen.getByRole('menu', { name: /available panels/i });
@@ -152,7 +155,7 @@ describe('GlobalRightSidebar', () => {
     it('calls onPanelsChange with new panel when picker item is clicked', () => {
       const onPanelsChange = vi.fn();
       const panels: PanelConfig[] = [{ id: 'writing-assistant', collapsed: false }];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
 
       fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
       fireEvent.click(screen.getByRole('menuitem', { name: /scene preview/i }));
@@ -164,41 +167,36 @@ describe('GlobalRightSidebar', () => {
   });
 
   describe('badge count', () => {
-    it('shows continuity badge when ContinuityPanel reports count > 0', () => {
-      render(<GlobalRightSidebar {...defaultProps} />);
-      act(() => { mockContinuityOnCountChange?.(3); });
+    it('shows continuity badge when continuityIssueCount > 0', () => {
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} continuityIssueCount={3} />);
       expect(screen.getByLabelText(/3 issues/i)).toBeInTheDocument();
     });
 
-    it('does not show badge when count is 0', () => {
-      render(<GlobalRightSidebar {...defaultProps} />);
-      act(() => { mockContinuityOnCountChange?.(0); });
+    it('does not show badge when continuityIssueCount is 0', () => {
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} continuityIssueCount={0} />);
       expect(screen.queryByLabelText(/0 issues/i)).toBeNull();
     });
   });
 
-  describe('panel drag reorder', () => {
-    it('reorders panels on drag-and-drop', () => {
-      const onPanelsChange = vi.fn();
+  describe('panel drag handles', () => {
+    it('renders drag handles for each panel with correct aria-labels', () => {
       const panels: PanelConfig[] = [
         { id: 'writing-assistant', collapsed: false },
         { id: 'archive-continuity', collapsed: false },
         { id: 'scene-preview', collapsed: false },
       ];
-      render(<GlobalRightSidebar {...defaultProps} panels={panels} onPanelsChange={onPanelsChange} />);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
 
-      const dragHandles = screen.getAllByLabelText(/drag to reorder/i);
-      // Drag writing-assistant (index 0) handle
-      fireEvent.dragStart(dragHandles[0]);
-      // Drop on archive-continuity panel wrapper
-      const wrappers = document.querySelectorAll('[data-panel-id]');
-      fireEvent.dragOver(wrappers[1], { preventDefault: vi.fn() });
-      fireEvent.drop(wrappers[1]);
+      expect(screen.getByRole('button', { name: 'Move Writing Assistant' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Move Continuity' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Move Scene Preview' })).toBeInTheDocument();
+    });
 
-      expect(onPanelsChange).toHaveBeenCalledOnce();
-      const updated: PanelConfig[] = onPanelsChange.mock.calls[0][0];
-      expect(updated[0].id).toBe('archive-continuity');
-      expect(updated[1].id).toBe('writing-assistant');
+    it('drag handles are draggable', () => {
+      const panels: PanelConfig[] = [{ id: 'writing-assistant', collapsed: false }];
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      const handle = screen.getByRole('button', { name: 'Move Writing Assistant' });
+      expect(handle).toHaveAttribute('draggable', 'true');
     });
   });
 });
