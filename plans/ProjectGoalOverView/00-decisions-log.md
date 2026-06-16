@@ -15,6 +15,33 @@ For the full plain-language explanation of every question and the recommended de
 
 ---
 
+## Board decisions — SKY-1663 open-questions round (2026-06-16)
+
+Ten open product questions posed by CEO on [SKY-1663](/SKY/issues/SKY-1663); board answered all ten. Decisions and follow-ups:
+
+| Q | Topic | Decision |
+| --- | --- | --- |
+| 1 | **MVP ship target date** | No fixed public date — ship when ready. Internal velocity gating, not a calendar. |
+| 2 | **Launch platforms** | **Windows-only first.** macOS and Linux remain in CI (don't regress them) but the first official published release is Windows-only. macOS/Linux ship as follow-on releases once Windows is stable. |
+| 3 | **Monetization model** | **Three-tier plan.** MVP: **one-time license fee** (BYO-API-key for now). Phase 2: **in-app AI subscription** where users buy LLM credits from us instead of managing third-party API keys. Phase 3: **paid cloud-storage subscription** with our own sync, gated to coincide with a future mobile app. Documented in [10-releases-and-roadmap.md → Monetization plan](10-releases-and-roadmap.md#monetization-plan). |
+| 4 | **Telemetry posture** | Opt-in anonymous usage analytics **and** opt-in crash reports. Both default off; user enables each independently. |
+| 5 | **Early-user support channel** | GitHub Discussions + Issues. No Discord at MVP. |
+| 6 | **Cloud sync v1 — build any?** | **No built-in sync at MVP.** Users put the vault folder in their existing cloud storage (Dropbox / iCloud / Google Drive / OneDrive desktop client) and the OS-level syncer handles it. Built-in sync is **Phase 3 only**, tied to the paid cloud-storage subscription and a future mobile app where folder-syncers aren't available. SKY-843 spec is preserved but the implementation epic is parked behind monetization Phase 3. |
+| 7 | **Default local-model recommendation** | `llama3.1:8b` via Ollama in the post-MVP local-model picker placeholder text. |
+| 8 | **Voice IO default state** | Off by default at first run. User opts in via Settings. No mic-permission prompt on first launch. |
+| 9 | **Writing Assistant heartbeat cadence** | **User-configurable in Settings.** Default = **on save**. Add a sub-toggle "idle-typing heartbeat" (on = constant interval heartbeat, off = only after user stops typing). This supersedes any single-default cadence I'd previously have picked. |
+| 10 | **App name** | Locked: **"Mythos Writer"** is the shipping name. Brand assets (icon, marketing copy, social handles) can proceed against this name. |
+
+### Implementation follow-ups (CEO will fan out)
+
+- **Phase-3 monetization roadmap revision** ([10-releases-and-roadmap.md](10-releases-and-roadmap.md) updated inline).
+- **Writing Assistant cadence settings spec** — PM ticket to define the Settings toggle UX (default on-save, optional idle heartbeat sub-toggle).
+- **Cloud-sync re-scope** — defer the SKY-843 built-in sync implementation behind monetization Phase 3; ship a "Put your vault in Dropbox/iCloud/GDrive/OneDrive" help doc instead for MVP.
+- **Voice IO default audit** — verify the SKY-1506 voice-IO setting defaults to off at first run; create a fix ticket if not.
+- **Windows-first release pipeline** — verify Windows packaging + signing is on the critical path for first ship; macOS/Linux stay green in CI but are not the launch target.
+
+---
+
 ## Board-overridden questions
 
 | Q | Topic | Resolution | Lives in |
