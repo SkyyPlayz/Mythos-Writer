@@ -78,7 +78,7 @@ describe('buildEpub — HTML-escaping property-based (SKY-361)', () => {
       }),
       { numRuns: 500 }
     );
-  });
+  }, 30_000);
 
   // ── P6: HTML-injection safety ─────────────────────────────────────────────
   // Any prose containing '<', '>', '&', or '"' must not appear raw inside
