@@ -238,6 +238,12 @@ test.beforeAll(async () => {
 
   // Wait for scene editor to load.
   await expect(page.locator('.block-editor')).toBeVisible({ timeout: 8_000 });
+
+  // The right sidebar defaults to "notes"; click the "Assistant" outer tab so
+  // the AI sub-tabs (Writing / Vault / Archive) are rendered for the tests.
+  const assistantOuterTab = page.locator('button.sidebar-tab', { hasText: 'Assistant' });
+  await expect(assistantOuterTab).toBeVisible({ timeout: 4_000 });
+  await assistantOuterTab.click();
 });
 
 test.afterAll(async () => {
