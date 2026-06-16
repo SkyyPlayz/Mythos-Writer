@@ -310,18 +310,24 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(orphanNode).toBeVisible({ timeout: 5_000 });
 
     // React 17+ uses event delegation at the root and synthesizes onMouseEnter from
-    // native `mouseover` events (not `mouseenter`, which doesn't bubble). Dispatch a
-    // bubbling mouseover so React's listener picks it up. Bypassing hit-testing this
-    // way is necessary because SVG <g> elements under a viewBox transform may not be
-    // hit-tested at their bounding-box centre.
-    await aryaNode.dispatchEvent('mouseover');
+    // native `mouseover` events (not `mouseenter`, which doesn't bubble). We must use
+    // page.evaluate() with an explicit new MouseEvent(..., {bubbles:true}) constructor
+    // because Playwright's locator.dispatchEvent() uses new Event(type) internally and
+    // bubbles defaults to false — so the event never reaches React's root delegate listener.
+    await page.evaluate(
+      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true })),
+      `[data-testid="vault-node-${ARYA_ID}"]`,
+    );
 
     await expect(orphanNode).toHaveClass(/vgv-graph-node--dimmed/, { timeout: 3_000 });
     await expect(aryaNode).not.toHaveClass(/vgv-graph-node--dimmed/);
     await expect(winterfellNode).not.toHaveClass(/vgv-graph-node--dimmed/);
 
     // Dispatch mouseout on Arya → React synthesizes onMouseLeave → clears hoveredNodeId
-    await aryaNode.dispatchEvent('mouseout');
+    await page.evaluate(
+      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, cancelable: true })),
+      `[data-testid="vault-node-${ARYA_ID}"]`,
+    );
 
     // Dimmed class must be removed (immediate React state update on mouseleave)
     await expect(orphanNode).not.toHaveClass(/vgv-graph-node--dimmed/, { timeout: 500 });
@@ -337,9 +343,14 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 10_000 });
 
-    // dispatchEvent('click') fires the click event directly on the SVG <g> element,
-    // bypassing hit-testing. force:true alone is not enough for SVG nodes under a viewBox.
-    await aryaNode.dispatchEvent('click');
+    // page.evaluate() dispatches a native MouseEvent with bubbles:true so React's root
+    // delegation listener receives the click. Playwright's locator.dispatchEvent() uses
+    // new Event(type) where bubbles defaults to false, so the SVG <g> click never reaches
+    // React's event root.
+    await page.evaluate(
+      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+      `[data-testid="vault-node-${ARYA_ID}"]`,
+    );
     await expect(aryaNode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
   });
 
@@ -390,8 +401,11 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(chainANode).toBeVisible({ timeout: 10_000 });
     await expect(chainDNode).toBeVisible({ timeout: 5_000 });
 
-    // dispatchEvent('click') fires the click event directly on the SVG <g> element
-    await chainANode.dispatchEvent('click');
+    // page.evaluate() with bubbles:true ensures React's root listener sees the click
+    await page.evaluate(
+      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+      `[data-testid="vault-node-${CHAIN_A_ID}"]`,
+    );
     await expect(chainANode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
 
     // Set depth slider to 2. React-controlled <input> tracks .value via its own
@@ -500,11 +514,15 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
 
     // Hovering a node triggers nodeAnnouncement (debounced 500ms):
     // "{label}. {connectionCount} connections."
-    // React 17+ synthesizes onMouseEnter from native `mouseover` events. Dispatching
-    // the event directly bypasses hit-testing issues for SVG <g> under viewBox transform.
+    // React 17+ synthesizes onMouseEnter from native `mouseover` events. Use page.evaluate()
+    // with an explicit MouseEvent({bubbles:true}) so the event reaches React's root delegation
+    // listener. Playwright's locator.dispatchEvent() defaults to bubbles:false.
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 5_000 });
-    await aryaNode.dispatchEvent('mouseover');
+    await page.evaluate(
+      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true })),
+      `[data-testid="vault-node-${ARYA_ID}"]`,
+    );
 
     await expect(async () => {
       const text = (await liveRegion.textContent()) ?? '';
