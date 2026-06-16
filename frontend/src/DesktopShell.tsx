@@ -42,6 +42,7 @@ import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
+import DockedTabBar from './DockedTabBar';
 // SKY-1695: Panel content components for the unified sidebar renderer
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -132,9 +133,17 @@ interface AppMenuBarProps {
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
   requestText: (label: string) => Promise<string | null>;
+  // SKY-1698 (Wave 2d): docked tab bar props
+  dockedTabs: DockedTab[];
+  activeDockedTabId: string | null;
+  onDockedTabSelect: (tabId: string) => void;
+  onDockedTabClose: (tabId: string, action: 'send-to-sidebar' | 'remove') => void;
+  onDockedTabReorder: (fromIndex: number, toIndex: number) => void;
+  dockedPanelIds: SidebarPanelId[];
+  onAddPanelAsNewTab: (panelId: SidebarPanelId) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
+function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -291,6 +300,16 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
           Entries
         </button>
       </div>
+      {/* SKY-1698 (Wave 2d): custom panel tabs right of built-in tabs (AC-T-04) */}
+      <DockedTabBar
+        dockedTabs={dockedTabs}
+        activeDockedTabId={activeDockedTabId}
+        onTabSelect={onDockedTabSelect}
+        onTabClose={onDockedTabClose}
+        onTabReorder={onDockedTabReorder}
+        dockedPanelIds={dockedPanelIds}
+        onAddPanelAsNewTab={onAddPanelAsNewTab}
+      />
       <div className="writing-mode-selector" aria-label="Writing mode">
         <button
           className={`writing-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
@@ -599,6 +618,10 @@ export default function DesktopShell() {
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
   const [continuityCount, setContinuityCount] = useState(0);
+
+  // SKY-1698 (Wave 2d): custom panel tabs in the main tab bar
+  const [dockedTabs, setDockedTabs] = useState<DockedTab[]>([]);
+  const [activeDockedTabId, setActiveDockedTabId] = useState<string | null>(null);
 
   // ─── SKY-863: Sync conflict modal state ───
   const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
@@ -1005,6 +1028,10 @@ export default function DesktopShell() {
             }).catch(() => {});
           }
         }
+        // SKY-1698: restore docked custom tabs from persisted AppSettings.
+        if (Array.isArray(s.activeLayout?.dockedTabs) && s.activeLayout!.dockedTabs!.length > 0) {
+          setDockedTabs(s.activeLayout!.dockedTabs!);
+        }
         setGettingStartedProgress(
           createInitialGettingStartedProgress(
             undefined,
@@ -1241,6 +1268,112 @@ export default function DesktopShell() {
       window.api.settingsSet(updated).catch(() => {});
       return updated;
     });
+  }, []);
+
+  // SKY-1698 (Wave 2d): Persist dockedTabs array to AppSettings.
+  const persistDockedTabs = useCallback((tabs: DockedTab[]) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, dockedTabs: tabs } };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // SKY-1698: Remove a panel from its source sidebar before docking it as a tab.
+  const removePanelFromSource = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
+    if (sourceSidebar === 'left') {
+      const cur = leftSidebarLayoutRef.current;
+      persistLeftSidebarLayout({ ...cur, panels: cur.panels.filter((p) => p.id !== panelId) });
+    } else {
+      const next = grsPanels.filter((p) => p.id !== panelId);
+      setGrsPanels(next);
+      persistGrsSettings({ panels: next });
+    }
+  }, [grsPanels, persistLeftSidebarLayout, persistGrsSettings]);
+
+  // SKY-1698: Panel dropped on main tab bar — create a new custom tab (AC-T-01).
+  const handleTabBarDrop = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar, insertAfterTabIndex: number) => {
+    removePanelFromSource(panelId, sourceSidebar);
+    const newTab: DockedTab = { id: crypto.randomUUID(), panels: [panelId] };
+    setDockedTabs((prev) => {
+      const arr = [...prev];
+      const insertAt = insertAfterTabIndex < 0 ? arr.length : Math.min(insertAfterTabIndex, arr.length);
+      arr.splice(insertAt, 0, newTab);
+      persistDockedTabs(arr);
+      return arr;
+    });
+    setActiveDockedTabId(newTab.id);
+  }, [removePanelFromSource, persistDockedTabs]);
+
+  // SKY-1698: Panel dropped on an existing custom tab — group it (AC-T-03, max 5).
+  const handleTabGroupDrop = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar, targetTabId: string) => {
+    removePanelFromSource(panelId, sourceSidebar);
+    setDockedTabs((prev) => {
+      const arr = prev.map((tab) => {
+        if (tab.id !== targetTabId) return tab;
+        if (tab.panels.includes(panelId) || tab.panels.length >= 5) return tab;
+        return { ...tab, panels: [...tab.panels, panelId] };
+      });
+      persistDockedTabs(arr);
+      return arr;
+    });
+    setActiveDockedTabId(targetTabId);
+  }, [removePanelFromSource, persistDockedTabs]);
+
+  // SKY-1698: "Dock as tab" from panel ⋮ menu — appends as new tab at end (AC-T-08).
+  const handleDockPanelAsTab = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
+    handleTabBarDrop(panelId, sourceSidebar, -1);
+  }, [handleTabBarDrop]);
+
+  // SKY-1698: Close a custom tab (AC-T-06).
+  const handleTabClose = useCallback((tabId: string, action: 'send-to-sidebar' | 'remove') => {
+    setDockedTabs((prev) => {
+      const tab = prev.find((t) => t.id === tabId);
+      if (!tab) return prev;
+      if (action === 'send-to-sidebar') {
+        setGrsPanels((cur) => {
+          const toAdd = tab.panels.filter((id) => !cur.some((p) => p.id === id));
+          const next = [...cur, ...toAdd.map((id) => ({ id, collapsed: false as const }))];
+          persistGrsSettings({ panels: next });
+          return next;
+        });
+      }
+      const arr = prev.filter((t) => t.id !== tabId);
+      persistDockedTabs(arr);
+      return arr;
+    });
+    setActiveDockedTabId((prev) => (prev === tabId ? null : prev));
+  }, [persistGrsSettings, persistDockedTabs]);
+
+  // SKY-1698: Reorder custom tabs by drag (AC-T-05).
+  const handleTabReorder = useCallback((fromIndex: number, toIndex: number) => {
+    setDockedTabs((prev) => {
+      const arr = [...prev];
+      const [removed] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex > fromIndex ? toIndex - 1 : toIndex, 0, removed);
+      persistDockedTabs(arr);
+      return arr;
+    });
+  }, [persistDockedTabs]);
+
+  // SKY-1698: Add a panel as a new tab from the [+] picker.
+  const handleAddPanelAsNewTab = useCallback((panelId: SidebarPanelId) => {
+    const inRight = grsPanels.some((p) => p.id === panelId);
+    handleTabBarDrop(panelId, inRight ? 'right' : 'left', -1);
+  }, [grsPanels, handleTabBarDrop]);
+
+  // SKY-1698: flat list of panel IDs already placed in docked tabs (for [+] picker filter).
+  // Must be before early returns (loading/error) to satisfy rules-of-hooks.
+  const dockedPanelIds = useMemo<SidebarPanelId[]>(
+    () => dockedTabs.flatMap((t) => t.panels),
+    [dockedTabs],
+  );
+
+  // SKY-1698: Selecting a built-in view clears any active docked tab (they're mutually exclusive).
+  const handleSetView = useCallback((v: AppView) => {
+    setView(v);
+    setActiveDockedTabId(null);
   }, []);
 
   const handleFloatPanel = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
@@ -2172,13 +2305,13 @@ export default function DesktopShell() {
   ].filter(Boolean).join(' ');
 
   return (
-    <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel}>
+    <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
       <UpdateBanner />
       {showTitleBar && (
         <AppMenuBar
           view={view}
-          onSetView={setView}
+          onSetView={handleSetView}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenHistory={() => setHistoryOpen(true)}
           onSearchNavigate={handleSearchNavigate}
@@ -2193,6 +2326,13 @@ export default function DesktopShell() {
           onOpenTour={() => setTourOpen(true)}
           onOpenExport={(scope: ExportScope) => setExportScope(scope)}
           requestText={requestText}
+          dockedTabs={dockedTabs}
+          activeDockedTabId={activeDockedTabId}
+          onDockedTabSelect={setActiveDockedTabId}
+          onDockedTabClose={handleTabClose}
+          onDockedTabReorder={handleTabReorder}
+          dockedPanelIds={dockedPanelIds}
+          onAddPanelAsNewTab={handleAddPanelAsNewTab}
         />
       )}
       {showStatusOverlay && (
@@ -2239,7 +2379,21 @@ export default function DesktopShell() {
       )}
       {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
       <div className="shell-main-row">
-      {view === 'brainstorm' && (
+      {/* SKY-1698: active docked tab shows its panels in the main area */}
+      {activeDockedTabId !== null && (() => {
+        const activeTab = dockedTabs.find((t) => t.id === activeDockedTabId);
+        if (!activeTab) return null;
+        return (
+          <div className="shell-panel-tab-view">
+            {activeTab.panels.map((panelId) => (
+              <div key={panelId} className="shell-panel-tab-panel">
+                {renderSidebarPanel(panelId)}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+      {activeDockedTabId === null && view === 'brainstorm' && (
         <BrainstormPage
           onClose={() => setView('editor')}
           enabled={agentFlags.brainstorm}
@@ -2267,12 +2421,12 @@ export default function DesktopShell() {
           }}
         />
       )}
-      {view === 'entries' && (
+      {activeDockedTabId === null && view === 'entries' && (
         <div className="shell-entries">
           <EntriesPanel storyTitle={selectedStory?.title ?? ''} />
         </div>
       )}
-      {view === 'kanban' && (
+      {activeDockedTabId === null && view === 'kanban' && (
         <div className="shell-kanban">
           {selectedStory ? (
             <SceneCrafterPage
@@ -2290,17 +2444,17 @@ export default function DesktopShell() {
           )}
         </div>
       )}
-      {view === 'graph' && (
+      {activeDockedTabId === null && view === 'graph' && (
         <div className="shell-graph">
           <VaultGraphView onOpenNote={handleOpenSceneByPath} />
         </div>
       )}
-      {view === 'timeline' && (
+      {activeDockedTabId === null && view === 'timeline' && (
         <div className="shell-timeline">
           <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
         </div>
       )}
-      {view === 'structure' && (
+      {activeDockedTabId === null && view === 'structure' && (
         <div className="shell-structure">
           <ManuscriptStructureView
             story={selectedStory ?? null}
@@ -2316,7 +2470,7 @@ export default function DesktopShell() {
           />
         </div>
       )}
-      {view === 'editor' && <div className="shell-panels">
+      {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: layout.leftWidth }}>
@@ -2328,6 +2482,7 @@ export default function DesktopShell() {
             renderPanelContent={renderSidebarPanel}
             rightPanelCount={grsPanels.length}
             onFloatPanel={(id) => handleFloatPanel(id, 'left')}
+            onDockAsTab={(id) => handleDockPanelAsTab(id, 'left')}
           />
         </div>
       )}
@@ -2590,6 +2745,7 @@ export default function DesktopShell() {
         continuityIssueCount={continuityCount}
         leftPanelCount={leftSidebarLayout.panels.length}
         onFloatPanel={(id) => handleFloatPanel(id, 'right')}
+        onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
       />}
 
       </div>{/* end shell-main-row */}

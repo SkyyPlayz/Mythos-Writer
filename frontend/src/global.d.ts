@@ -446,6 +446,8 @@ interface AppSettings {
     leftSidebar: LeftSidebarLayout;
     /** SKY-1697 (Wave 2c): floating panel windows, restored on restart. */
     floatingPanels?: FloatingPanelEntry[];
+    /** SKY-1698 (Wave 2d): custom docked tabs in the main tab bar. */
+    dockedTabs?: DockedTab[];
   };
 }
 
@@ -458,6 +460,14 @@ interface FloatingPanelEntry {
   height: number;
   alwaysOnTop: boolean;
   lastDockSidebar: 'left' | 'right';
+}
+
+/** SKY-1698 (Wave 2d): A custom panel tab docked in the main tab bar. */
+interface DockedTab {
+  /** Stable UUID for this tab slot. */
+  id: string;
+  /** Ordered list of panel IDs shown in this tab (max 5). */
+  panels: SidebarPanelId[];
 }
 
 /** SKY-1695 (Wave 2b): Panel IDs for the right sidebar panel zone. */

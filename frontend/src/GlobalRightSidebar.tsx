@@ -87,6 +87,7 @@ function PanelSlot({
   onToggleCollapse,
   onPopout,
   onFloat,
+  onDockAsTab,
   onRemove,
   onDragStart,
   onDragEnd,
@@ -100,6 +101,7 @@ function PanelSlot({
   onToggleCollapse: () => void;
   onPopout: () => void;
   onFloat: () => void;
+  onDockAsTab?: () => void;
   onRemove: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
@@ -164,6 +166,16 @@ function PanelSlot({
           >
             ⧉
           </button>
+          {onDockAsTab && (
+            <button
+              className="grs-panel-btn"
+              aria-label={`Dock ${label} as tab`}
+              title="Dock as tab"
+              onClick={onDockAsTab}
+            >
+              ⊞
+            </button>
+          )}
           <button
             className="grs-panel-btn"
             aria-label={`Pop out ${label}`}
@@ -221,6 +233,8 @@ export interface GlobalRightSidebarProps {
 
   /** SKY-1697: Float a panel to a free-floating window. */
   onFloatPanel?: (panelId: SidebarPanelId) => void;
+  /** SKY-1698: Dock a panel as a new custom tab in the main tab bar. */
+  onDockAsTab?: (panelId: SidebarPanelId) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -237,6 +251,7 @@ export default function GlobalRightSidebar({
   continuityIssueCount = 0,
   leftPanelCount,
   onFloatPanel,
+  onDockAsTab,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -507,6 +522,7 @@ export default function GlobalRightSidebar({
                 onToggleCollapse={() => toggleCollapse(config.id)}
                 onPopout={() => handlePopout(config.id)}
                 onFloat={() => onFloatPanel?.(config.id)}
+                onDockAsTab={onDockAsTab ? () => onDockAsTab(config.id) : undefined}
                 onRemove={() => removePanel(config.id)}
                 onDragStart={(e) => handleDragStart(e, config.id, i)}
                 onDragEnd={(e) => handleDragEnd(e, config.id, 'right')}
