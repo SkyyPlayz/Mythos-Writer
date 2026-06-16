@@ -213,6 +213,11 @@ import {
   getDraftSnapshotContent,
   updateDraftSnapshotLabel,
   deleteDraftSnapshot,
+  insertContinuityIssue,
+  listContinuityIssues,
+  getContinuityIssue,
+  updateContinuityIssueStatus,
+  insertArchiveAuditLog,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -304,6 +309,15 @@ import {
   runArchiveScan,
   type ArchiveIgnoreKey,
 } from './archiveAgent.js';
+import {
+  runEntityPrePass,
+  buildScanPrompt,
+  parseScanResponse,
+  shouldReSurface,
+  dbRowToItem,
+  itemToDbRow,
+  DEFAULT_SCAN_BUDGET_TOKENS,
+} from './archiveContinuityEngine.js';
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
@@ -1729,6 +1743,18 @@ const handlers: IpcHandlers = {
     if (prevInterval !== newInterval || prevEnabled !== newEnabled) {
       startWritingScanScheduler();
     }
+    // Restart archive continuity scheduler when relevant settings change.
+    const prevArchiveInterval = current.archiveScanInterval;
+    const newArchiveInterval = updated.archiveScanInterval;
+    const prevArchiveEnabled = current.archiveContinuityEnabled;
+    const newArchiveEnabled = updated.archiveContinuityEnabled;
+    if (
+      prevArchiveInterval !== newArchiveInterval ||
+      prevArchiveEnabled !== newArchiveEnabled ||
+      current.agents.archive.enabled !== updated.agents.archive.enabled
+    ) {
+      startArchiveContScheduler();
+    }
     return { saved: true };
   },
 
@@ -2385,6 +2411,15 @@ const handlers: IpcHandlers = {
     } catch { /* non-fatal — scene save still succeeds */ }
 
     if (mainWindow) mainWindow.webContents.send('vault:changed', { kind: 'scene', id: found.id, path: found.path });
+
+    // SKY-1684: Archive Agent v1 — on-save continuity scan (AC-CC-02)
+    // Fire async, non-blocking; must start within 500 ms of save.
+    const savedSceneId = found.id;
+    const savedProse = payload.prose;
+    setTimeout(() => {
+      void triggerArchiveContScanOnSave(savedSceneId, savedProse);
+    }, 0);
+
     return { scene: found };
   },
 
@@ -6401,6 +6436,302 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
 // Pure text analysis — no LLM. Builds the lore fixture from the current archive
 // index, runs cross-chapter contradiction detection, logs results per chapter,
 // and returns aggregate drift metrics.
+// ─── Archive Agent v1 — continuity scan engine (SKY-1684) ───────────────────
+
+/** Run the LLM continuity scan for a scene and push events to all windows. */
+async function runArchiveContScan(
+  sceneId: string,
+  prose: string,
+  scope: import('./ipc.js').ArchiveScanScope,
+): Promise<import('./ipc.js').InconsistencyItem[]> {
+  const settings = loadAppSettings();
+  if (!settings.archiveContinuityEnabled) return [];
+  if (!settings.agents.archive.enabled) return [];
+
+  let archiveIndex = getArchiveIndex();
+  if (!archiveIndex) {
+    try {
+      const manifest = readManifest(getManifestPath());
+      archiveIndex = buildArchiveIndex(getVaultRoot(), manifest);
+    } catch { return []; }
+  }
+
+  // Entity pre-pass (AC-CC-14): skip LLM when no mismatches detected.
+  const candidates = runEntityPrePass(prose, archiveIndex);
+  if (candidates.length === 0) return [];
+
+  const budgetTokens = settings.archiveScanBudget ?? DEFAULT_SCAN_BUDGET_TOKENS;
+  const { systemPrompt, userContent, partial } = buildScanPrompt(prose, candidates, budgetTokens);
+
+  const scopeToUse = scope ?? (settings.archiveScanScope ?? 'active_scene');
+
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.ARCHIVE_CONT_SCAN_START, {
+        sceneId,
+        scope: scopeToUse,
+      } satisfies import('./ipc.js').ArchiveContScanStartEvent);
+    }
+  });
+
+  const providerConfig = getProviderConfigForAgent('archive');
+  const startedAt = Date.now();
+  let text = '';
+  let llmError: string | null = null;
+
+  try {
+    for await (const token of streamFromProvider(providerConfig, {
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }],
+      maxTokens: 1024,
+    })) {
+      text += token;
+    }
+  } catch (err: unknown) {
+    llmError = (err as Error)?.message ?? 'unknown error';
+    const userMsg = streamErrorUserMessage(categorizeStreamError(err));
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send(IPC_CHANNELS.ARCHIVE_CONT_SCAN_ERROR, {
+          sceneId,
+          error: userMsg,
+        } satisfies import('./ipc.js').ArchiveContScanErrorEvent);
+      }
+    });
+    return [];
+  } finally {
+    try {
+      insertGenerationLog({
+        id: crypto.randomUUID(),
+        agent: 'archive-continuity',
+        model: providerConfig.model,
+        endpoint: 'messages.stream',
+        request_id: null,
+        tokens_in: null,
+        tokens_out: null,
+        latency_ms: Date.now() - startedAt,
+        error: llmError,
+        created_at: new Date().toISOString(),
+        payload_digest: crypto.createHash('sha256').update(userContent.slice(0, 100)).digest('hex'),
+      });
+    } catch { /* non-fatal */ }
+  }
+
+  const createdAt = new Date().toISOString();
+  // Use the vault root as a placeholder notePath; real line resolution is renderer-side.
+  const vaultNotePath = getVaultRoot();
+  const items = parseScanResponse(text, sceneId, vaultNotePath, createdAt);
+
+  // Persist items to SQLite.
+  for (const item of items) {
+    try {
+      insertContinuityIssue(itemToDbRow(item));
+    } catch { /* non-fatal — duplicate ids or db closed */ }
+  }
+
+  const tokenUsed = Math.ceil((systemPrompt.length + userContent.length + text.length) / 4);
+
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.ARCHIVE_CONT_SCAN_RESULT, {
+        sceneId,
+        items,
+        tokenUsed,
+        partial,
+      } satisfies import('./ipc.js').ArchiveContScanResultEvent);
+    }
+  });
+
+  return items;
+}
+
+/** On-save trigger (AC-CC-02): fires within 500 ms of scene save when enabled. */
+async function triggerArchiveContScanOnSave(sceneId: string, prose: string): Promise<void> {
+  try {
+    const settings = loadAppSettings();
+    if (!settings.archiveContinuityEnabled) return;
+    if (!settings.archiveScanOnSave) return;
+    if (!settings.agents.archive.enabled) return;
+    const wordCount = prose.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount < 100) return;
+    const scope = settings.archiveScanScope ?? 'active_scene';
+    await runArchiveContScan(sceneId, prose, scope);
+  } catch { /* non-fatal */ }
+}
+
+/** Re-surface any ignored items whose excerpts have drifted > 20% (AC-CC-07). */
+function reSurfaceIgnoredItems(sceneId: string, currentProse: string): void {
+  try {
+    const ignored = listContinuityIssues('ignored').filter(
+      (row) => row.manuscript_scene_id === sceneId,
+    );
+    for (const row of ignored) {
+      if (shouldReSurface(row.manuscript_excerpt, row.manuscript_offset, currentProse)) {
+        updateContinuityIssueStatus(row.id, 'open');
+      }
+    }
+  } catch { /* non-fatal */ }
+}
+
+// ─── Archive continuity heartbeat scheduler (AC-CC-03) ──────────────────────
+// Fires at archiveScanInterval seconds; backs off after 3 consecutive zero-issue scans.
+
+let archiveContScanTimer: ReturnType<typeof setInterval> | null = null;
+let _archiveZeroIssueStreak = 0;
+const ARCHIVE_HEARTBEAT_MIN_SEC = 60;
+const ARCHIVE_HEARTBEAT_MAX_SEC = 7200;
+
+function stopArchiveContScheduler(): void {
+  if (archiveContScanTimer !== null) {
+    clearInterval(archiveContScanTimer);
+    archiveContScanTimer = null;
+  }
+}
+
+function startArchiveContScheduler(): void {
+  stopArchiveContScheduler();
+  const settings = loadAppSettings();
+  if (!settings.archiveContinuityEnabled) return;
+  if (!settings.agents.archive.enabled) return;
+  const rawInterval = settings.archiveScanInterval;
+  if (rawInterval == null) return;
+
+  const intervalSec = Math.max(ARCHIVE_HEARTBEAT_MIN_SEC, rawInterval);
+  let currentIntervalMs = intervalSec * 1000;
+  _archiveZeroIssueStreak = 0;
+
+  const tick = async () => {
+    try {
+      const currentSettings = loadAppSettings();
+      if (!currentSettings.archiveContinuityEnabled) return;
+      if (!currentSettings.agents.archive.enabled) return;
+
+      // Find most recently updated scene.
+      let latestSceneId: string | null = null;
+      let latestProse = '';
+      try {
+        const manifest = readManifest(getManifestPath());
+        let latestScene: import('./ipc.js').SceneEntry | null = null;
+        for (const story of manifest.stories) {
+          for (const chapter of story.chapters) {
+            for (const scene of chapter.scenes) {
+              if (!latestScene || scene.updatedAt > latestScene.updatedAt) latestScene = scene;
+            }
+          }
+        }
+        if (!latestScene) {
+          for (const scene of manifest.scenes) {
+            if (!latestScene || scene.updatedAt > latestScene.updatedAt) latestScene = scene;
+          }
+        }
+        if (latestScene) {
+          latestSceneId = latestScene.id;
+          try { latestProse = readSceneFile(getVaultRoot(), latestScene.path).prose; } catch { return; }
+        }
+      } catch { return; }
+
+      if (!latestSceneId || !latestProse.trim()) return;
+
+      // Re-surface check before scan.
+      reSurfaceIgnoredItems(latestSceneId, latestProse);
+
+      const scope = currentSettings.archiveScanScope ?? 'active_scene';
+      const items = await runArchiveContScan(latestSceneId, latestProse, scope);
+
+      // Back-off: after 3 consecutive zero-issue scans, double interval (max 7200 s).
+      if (items.length === 0) {
+        _archiveZeroIssueStreak++;
+        if (_archiveZeroIssueStreak >= 3) {
+          _archiveZeroIssueStreak = 0;
+          const newMs = Math.min(currentIntervalMs * 2, ARCHIVE_HEARTBEAT_MAX_SEC * 1000);
+          if (newMs !== currentIntervalMs) {
+            currentIntervalMs = newMs;
+            stopArchiveContScheduler();
+            archiveContScanTimer = setInterval(tick, currentIntervalMs);
+          }
+        }
+      } else {
+        _archiveZeroIssueStreak = 0;
+      }
+    } catch { /* non-fatal — scheduler must not crash main process */ }
+  };
+
+  archiveContScanTimer = setInterval(tick, currentIntervalMs);
+}
+
+// ─── Archive continuity IPC handlers (SKY-1684) ─────────────────────────────
+
+function registerArchiveContinuityHandlers(): void {
+  // archive:scan-continuity — on-demand scan from renderer
+  ipcMain.handle(
+    IPC_CHANNELS.ARCHIVE_SCAN_CONTINUITY,
+    wrapIpcHandler(IPC_CHANNELS.ARCHIVE_SCAN_CONTINUITY, async (event, payload: import('./ipc.js').ArchiveScanContinuityPayload) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      const settings = loadAppSettings();
+      if (!settings.archiveContinuityEnabled || !settings.agents.archive.enabled) return [];
+      const scope = payload.scope ?? settings.archiveScanScope ?? 'active_scene';
+      const items = await runArchiveContScan(payload.sceneId, payload.text, scope);
+      // Also run re-surface check on explicit renderer-initiated scans.
+      reSurfaceIgnoredItems(payload.sceneId, payload.text);
+      return items;
+    }),
+  );
+
+  // archive:resolve-continuity — mark item resolved/ignored + write audit log
+  ipcMain.handle(
+    IPC_CHANNELS.ARCHIVE_RESOLVE_CONTINUITY,
+    wrapIpcHandler(IPC_CHANNELS.ARCHIVE_RESOLVE_CONTINUITY, async (event, payload: import('./ipc.js').ArchiveResolveContinuityPayload) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      const { itemId, action, note } = payload;
+
+      const row = getContinuityIssue(itemId);
+      if (!row) throw new Error(`Continuity issue not found: ${itemId}`);
+
+      const now = new Date().toISOString();
+      const newStatus = action === 'ignore' ? 'ignored' : 'resolved';
+      updateContinuityIssueStatus(itemId, newStatus, now, action);
+
+      // Audit log entry.
+      try {
+        insertArchiveAuditLog({
+          id: crypto.randomUUID(),
+          action,
+          source: 'archive_agent',
+          item_id: itemId,
+          target_path: action === 'match_archive_to_story' ? row.vault_note_path
+            : action === 'suggest_story_change' ? row.manuscript_scene_id
+            : null,
+          changed_from: null,
+          changed_to: null,
+          scene_id: row.manuscript_scene_id,
+          reason: note ?? null,
+          created_at: now,
+        });
+      } catch { /* non-fatal */ }
+
+      // For match_archive_to_story and suggest_story_change:
+      // Actual file patching is deferred to the renderer (diff preview + consent modal).
+      // This handler only updates the item status + writes the audit log (AC-CC-05/06 partial).
+
+      return { ok: true };
+    }),
+  );
+
+  // archive:list-continuity — list issues with optional filter
+  ipcMain.handle(
+    IPC_CHANNELS.ARCHIVE_LIST_CONTINUITY,
+    wrapIpcHandler(IPC_CHANNELS.ARCHIVE_LIST_CONTINUITY, (event, payload: import('./ipc.js').ArchiveListContinuityPayload) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      const filter = payload?.filter;
+      let rows = listContinuityIssues(filter?.status as import('./db.js').ContinuityIssueStatus | undefined);
+      if (filter?.category) {
+        rows = rows.filter((r) => r.category === filter.category);
+      }
+      return rows.map(dbRowToItem);
+    }),
+  );
+}
+
 function registerContinuityHandler(): void {
   // The stub in the handlers object satisfies the IpcHandlers type but gets
   // registered by setupIpcMain first. Remove it before installing the real handler.
@@ -6507,6 +6838,7 @@ app.whenReady().then(async () => {
   setupAgentPersonaIpc();
   registerVaultAgentHandlers();
   registerContinuityHandler();
+  registerArchiveContinuityHandlers();
   registerWritingScanHandler();
   registerBetaReadScanHandler();
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
@@ -6515,6 +6847,7 @@ app.whenReady().then(async () => {
   registerPanelPopoutHandler();
 
   if (initializeVaults) startWritingScanScheduler();
+  if (initializeVaults) startArchiveContScheduler();
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
@@ -6559,6 +6892,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', async () => {
   stopWritingScanScheduler();
+  stopArchiveContScheduler();
   await stopVaultWatcher();
   await stopNotesVaultWatcher();
   closeDb();
