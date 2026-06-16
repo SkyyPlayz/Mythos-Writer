@@ -557,10 +557,11 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
   );
 
   const culledNodes = useMemo(() => {
-    if (!showAll) return positionedNodes;
-    // Node positions are in SVG viewBox space (0–GRAPH_WIDTH × 0–GRAPH_HEIGHT).
-    // Using el.clientWidth (CSS pixels) would mismatch the coordinate system and
-    // incorrectly cull in-bounds nodes when the panel is narrower than the viewBox.
+    // When "Show all" is active, skip viewport culling entirely — the user
+    // explicitly asked to see every node and E2E tests assert count > 500.
+    // Viewport culling is only applied for normal (truncated) mode to keep
+    // the DOM lean during panning/zooming large graphs.
+    if (showAll) return positionedNodes;
     return positionedNodes.filter((node) =>
       isNodeInViewport(node, pan, zoom, GRAPH_WIDTH, GRAPH_HEIGHT),
     );
