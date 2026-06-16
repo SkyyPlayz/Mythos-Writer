@@ -793,10 +793,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   useEffect(() => {
     triggerRef.current = document.activeElement as HTMLElement;
-    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
-      'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    firstFocusable?.focus();
     return () => {
       triggerRef.current?.focus();
     };
@@ -956,6 +952,20 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       setLoading(false);
     });
   }, [fetchModels]);
+
+  // SKY-1902: Move focus into the dialog once content has loaded. The mount-time
+  // effect above runs while `loading` is still true and the dialog body hasn't
+  // mounted, so `dialogRef.current` is null and no element gets focused. Without
+  // this follow-up effect, keyboard focus stays on the trigger button outside
+  // the dialog, breaking the focus trap and TC-SKY-814-06 (Tab navigation never
+  // reaches the AI provider select).
+  useEffect(() => {
+    if (loading) return;
+    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+      'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    firstFocusable?.focus();
+  }, [loading]);
 
   // Close popover on Escape
   useEffect(() => {
