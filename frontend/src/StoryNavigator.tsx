@@ -7,6 +7,7 @@ interface Props {
   stories: Story[];
   selectedSceneId: string | null;
   onSelectScene: (scene: Scene, chapter: Chapter, story: Story) => void;
+  onSelectStory?: (story: Story) => void;
   onCreateStory: () => void;
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
@@ -19,6 +20,7 @@ export default function StoryNavigator({
   stories,
   selectedSceneId,
   onSelectScene,
+  onSelectStory,
   onCreateStory,
   onCreateChapter,
   onCreateScene,
@@ -167,7 +169,12 @@ export default function StoryNavigator({
                 onClick={() => toggleStory(story.id)}
               >
                 <span className="nav-chevron">{expandedStories.has(story.id) ? '▾' : '▸'}</span>
-                <span className="nav-story-title">{story.title}</span>
+                <span
+                  className="nav-story-title"
+                  onClick={(e) => { e.stopPropagation(); onSelectStory?.(story); }}
+                >
+                  {story.title}
+                </span>
               </button>
               {storyWordCount > 0 && (
                 <span className="nav-wordcount" aria-label={`${storyWordCount.toLocaleString()} words`}>

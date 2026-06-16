@@ -154,6 +154,25 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
   }
 
   function toggleCard(laneIndex: number, cardIndex: number) {
+    // Optimistic update so the controlled checkbox reflects the new state
+    // immediately — without this, Playwright's `.check()` sees the element
+    // flip back to unchecked before the async IPC round-trip completes.
+    setBoard((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        lanes: prev.lanes.map((lane, li) =>
+          li !== laneIndex
+            ? lane
+            : {
+                ...lane,
+                cards: lane.cards.map((card, ci) =>
+                  ci !== cardIndex ? card : { ...card, done: !card.done, raw: '' },
+                ),
+              },
+        ),
+      };
+    });
     void runMutation(() => window.api.sceneCrafterToggleCardDone({ storySlug, laneIndex, cardIndex }).then(() => undefined));
   }
 

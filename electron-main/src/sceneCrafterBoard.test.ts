@@ -54,6 +54,26 @@ describe('parseBoardMarkdown', () => {
     expect(board.lanes[0].cards[1].tags).toEqual(['act1', 'mystery']);
   });
 
+  it('parses path-style tags (e.g. manuscript/sceneId) as a single tag', () => {
+    const src = `---
+kanban-plugin: board
+mythos-board-version: 1
+story-id: abc
+last-modified: 2026-01-01T00:00:00.000Z
+---
+
+## Idea
+
+- [ ] [[scenes/foo|Foo]] #manuscript/abc123
+
+%% kanban:settings
+{"kanban-plugin":"board"}
+%%
+`;
+    const board = parseBoardMarkdown(src);
+    expect(board.lanes[0].cards[0].tags).toEqual(['manuscript/abc123']);
+  });
+
   it('preserves kanban settings block', () => {
     const board = parseBoardMarkdown(SAMPLE);
     expect(board.kanbanSettings).toBe('{"kanban-plugin":"board"}');
