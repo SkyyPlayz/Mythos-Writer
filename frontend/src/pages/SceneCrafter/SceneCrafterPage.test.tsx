@@ -288,3 +288,111 @@ describe('SceneCrafterPage — conflict banner', () => {
     await waitFor(() => expect(api.sceneCrafterGetBoard).toHaveBeenCalledTimes(2));
   });
 });
+
+describe('SceneCrafterPage — keyboard card move (M1 a11y)', () => {
+  it('moves a card via "Move to…" button menu without a pointing device', async () => {
+    const api = makeApi();
+    (window as unknown as { api: unknown }).api = api;
+    await renderPage();
+
+    const card = screen.getByTestId('scene-crafter-card-Notes/Opening Beat');
+    fireEvent.click(within(card).getByRole('button', { name: /move Opening Beat to lane/i }));
+
+    const menu = screen.getByRole('menu', { name: /choose lane for Opening Beat/i });
+    expect(menu).toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Draft' }));
+
+    await waitFor(() => {
+      expect(api.sceneCrafterMoveCard).toHaveBeenCalledWith({
+        storySlug: 'Skyfall Chronicles',
+        fromLane: 0,
+        fromIndex: 0,
+        toLane: 2,
+        toIndex: 0,
+      });
+    });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('closes the "Move to…" menu on Escape and does not move the card', async () => {
+    await renderPage();
+
+    const card = screen.getByTestId('scene-crafter-card-Notes/Opening Beat');
+    fireEvent.click(within(card).getByRole('button', { name: /move Opening Beat to lane/i }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('reorders lanes left/right via keyboard buttons', async () => {
+    const api = makeApi();
+    (window as unknown as { api: unknown }).api = api;
+    await renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: /move lane Outline right/i }));
+
+    await waitFor(() => {
+      expect(api.sceneCrafterReorderLanes).toHaveBeenCalledWith({
+        storySlug: 'Skyfall Chronicles',
+        fromIndex: 1,
+        toIndex: 2,
+      });
+    });
+  });
+
+  it('disables move-left on first lane and move-right on last lane', async () => {
+    await renderPage();
+
+    expect(screen.getByRole('button', { name: /move lane Idea left/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /move lane Done right/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /move lane Idea right/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /move lane Done left/i })).not.toBeDisabled();
+  });
+});
+
+describe('SceneCrafterPage — diff modal a11y (M2)', () => {
+  async function openDiffModal() {
+    let externalEditHandler: ((storySlug: string) => void) | undefined;
+    const api = makeApi({
+      onSceneCrafterExternalEdit: vi.fn((cb: (storySlug: string) => void) => {
+        externalEditHandler = cb;
+        return vi.fn();
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    await renderPage();
+    await act(async () => { externalEditHandler?.('Skyfall Chronicles'); });
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: /see diff/i }));
+    return screen.getByRole('dialog');
+  }
+
+  it('dialog has aria-modal="true" and is labelled by its heading', async () => {
+    const dialog = await openDiffModal();
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveAttribute('aria-labelledby', 'sc-diff-title');
+    expect(document.getElementById('sc-diff-title')).toHaveTextContent(/board diff/i);
+  });
+
+  it('closes the diff modal with the Escape key', async () => {
+    const dialog = await openDiffModal();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('closes the diff modal by clicking the backdrop', async () => {
+    await openDiffModal();
+    const backdrop = document.querySelector('.scene-crafter-modal') as HTMLElement;
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('Close button inside the dialog closes the modal', async () => {
+    const dialog = await openDiffModal();
+    fireEvent.click(within(dialog).getByRole('button', { name: /close/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
