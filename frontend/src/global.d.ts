@@ -453,7 +453,21 @@ interface AppSettings {
       /** Pane 1 width as percentage (0–100). Default 50. */
       splitRatio: number;
     };
+    /** SKY-1700 (Wave 2f): right sidebar state snapshot. */
+    rightSidebar?: {
+      visible: boolean;
+      width: number;
+      panels: RightSidebarPanel[];
+    };
   };
+
+  // ── SKY-1700 (Wave 2f): Named workspace layout library ──
+  /** Named saved layouts. Built-in layouts have isBuiltIn=true and cannot be deleted. */
+  workspaceLayouts?: WorkspaceLayout[];
+  /** Which named layout is currently active. null = unsaved/custom state. */
+  activeLayoutId?: string | null;
+  /** Migration flag: true once v1→v2 layout migration has run. */
+  layoutMigrationDone?: boolean;
 }
 
 /** SKY-1697 (Wave 2c): persisted floating panel window state. */
@@ -473,6 +487,25 @@ interface DockedTab {
   id: string;
   /** Ordered list of panel IDs shown in this tab (max 5). */
   panels: SidebarPanelId[];
+}
+
+/** SKY-1700 (Wave 2f): A saved named workspace layout. */
+interface WorkspaceLayout {
+  /** Stable UUID. */
+  id: string;
+  /** 1–64 chars. */
+  name: string;
+  /** Exactly one layout may be default; loads on app start. */
+  isDefault: boolean;
+  /** Unix timestamp ms. */
+  createdAt: number;
+  /** When true this is a built-in layout; cannot be deleted. */
+  isBuiltIn?: boolean;
+  leftSidebar: { visible: boolean; width: number; panels: LeftPanelConfig[] };
+  rightSidebar: { visible: boolean; width: number; panels: RightSidebarPanel[] };
+  floatingPanels: FloatingPanelEntry[];
+  dockedTabs: DockedTab[];
+  splitWindow: { enabled: boolean; splitRatio: number };
 }
 
 /** SKY-1695 (Wave 2b): Panel IDs for the right sidebar panel zone. */
