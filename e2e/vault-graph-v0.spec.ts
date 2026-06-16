@@ -305,15 +305,23 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(aryaNode).toBeVisible({ timeout: 10_000 });
     await expect(orphanNode).toBeVisible({ timeout: 5_000 });
 
-    // Hover Arya — Winterfell is a neighbour (Arya links to [[Winterfell]])
-    await aryaNode.hover();
+    // Hover Arya using absolute mouse coords — locator.hover() is intercepted by the
+    // SVG's pointer handlers when the viewBox transform maps coordinates differently.
+    const aryaBox = await aryaNode.boundingBox();
+    if (!aryaBox) throw new Error('aryaNode bounding box not available');
+    await page.mouse.move(aryaBox.x + aryaBox.width / 2, aryaBox.y + aryaBox.height / 2);
 
     await expect(orphanNode).toHaveClass(/vgv-graph-node--dimmed/, { timeout: 3_000 });
     await expect(aryaNode).not.toHaveClass(/vgv-graph-node--dimmed/);
     await expect(winterfellNode).not.toHaveClass(/vgv-graph-node--dimmed/);
 
     // Move mouse to toolbar (neutral element) to trigger mouseLeave on the node
-    await page.locator('.vgv-toolbar').hover();
+    const toolbarBox = await page.locator('.vgv-toolbar').boundingBox();
+    if (toolbarBox) {
+      await page.mouse.move(toolbarBox.x + toolbarBox.width / 2, toolbarBox.y + toolbarBox.height / 2);
+    } else {
+      await page.mouse.move(0, 0);
+    }
 
     // Dimmed class must be removed (immediate React state update on mouseleave)
     await expect(orphanNode).not.toHaveClass(/vgv-graph-node--dimmed/, { timeout: 500 });
@@ -329,8 +337,10 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 10_000 });
 
-    // Click fires selectNode → setSelectedNodeId + onOpenNote
-    await aryaNode.click();
+    // Click fires selectNode — use absolute mouse coords to bypass SVG pointer-event interception
+    const aryaBox = await aryaNode.boundingBox();
+    if (!aryaBox) throw new Error('aryaNode bounding box not available');
+    await page.mouse.click(aryaBox.x + aryaBox.width / 2, aryaBox.y + aryaBox.height / 2);
     await expect(aryaNode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
   });
 
@@ -381,8 +391,10 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(chainANode).toBeVisible({ timeout: 10_000 });
     await expect(chainDNode).toBeVisible({ timeout: 5_000 });
 
-    // Select ChainA
-    await chainANode.click();
+    // Select ChainA — use absolute mouse coords to bypass SVG pointer-event interception
+    const chainABox = await chainANode.boundingBox();
+    if (!chainABox) throw new Error('chainANode bounding box not available');
+    await page.mouse.click(chainABox.x + chainABox.width / 2, chainABox.y + chainABox.height / 2);
     await expect(chainANode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
 
     // Set depth slider to 2
@@ -484,9 +496,12 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
 
     // Hovering a node triggers nodeAnnouncement (debounced 500ms):
     // "{label}. {connectionCount} connections."
+    // Use absolute mouse coords — locator.hover() is intercepted by the SVG's pointer handlers.
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 5_000 });
-    await aryaNode.hover();
+    const aryaBox = await aryaNode.boundingBox();
+    if (!aryaBox) throw new Error('aryaNode bounding box not available');
+    await page.mouse.move(aryaBox.x + aryaBox.width / 2, aryaBox.y + aryaBox.height / 2);
 
     await expect(async () => {
       const text = (await liveRegion.textContent()) ?? '';
