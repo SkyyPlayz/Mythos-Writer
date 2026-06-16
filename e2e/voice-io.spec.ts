@@ -18,7 +18,7 @@
  * | AC-V-08 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-08 (smoke E2E)        |
  * | AC-V-09 | SKY-1505       | SettingsPanel.test.tsx ✓                   | TC-V-09 (smoke E2E)        |
  * | AC-V-10 | Both           | WritingAssistantPanel.test.tsx + this file | TC-V-10 real               |
- * | AC-V-11 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-11 (skip — axe/play.) |
+ * | AC-V-11 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-11 real               |
  * | AC-V-12 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-12 (skip — needs STT) |
  *
  * SKY-1503 merged via PR #457. Tests that depend on the browser-native
@@ -48,6 +48,19 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
+const AXE_SOURCE = fs.readFileSync(
+  path.resolve(__dirname, '../node_modules/axe-core/axe.min.js'),
+  'utf8',
+);
+
+type AxeRunResult = {
+  violations: Array<{
+    id: string;
+    impact?: string;
+    description: string;
+    nodes: Array<{ target: string[]; failureSummary?: string }>;
+  }>;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -128,6 +141,69 @@ async function openBrainstorm(page: Page): Promise<void> {
   await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 8_000 });
 }
 
+/** Navigate to the Editor sidebar's Assistant tab and wait for it to mount. */
+async function openAssistantPanel(page: Page): Promise<void> {
+  await page.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
+  await page.getByRole('tab', { name: 'Assistant' }).click();
+  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 5_000 });
+}
+
+async function installSpeechRecognitionMock(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    type RecognitionCallback = ((event: Event) => void) | null;
+
+    class MockSpeechRecognition {
+      continuous = false;
+      interimResults = false;
+      lang = '';
+      onstart: RecognitionCallback = null;
+      onend: RecognitionCallback = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onresult: unknown = null;
+
+      start(): void {
+        setTimeout(() => this.onstart?.(new Event('start')), 0);
+      }
+
+      stop(): void {
+        this.onend?.(new Event('end'));
+      }
+
+      abort(): void {
+        this.onend?.(new Event('end'));
+      }
+    }
+
+    Object.defineProperty(window, 'SpeechRecognition', {
+      configurable: true,
+      value: MockSpeechRecognition,
+    });
+    Object.defineProperty(window, 'webkitSpeechRecognition', {
+      configurable: true,
+      value: MockSpeechRecognition,
+    });
+  });
+}
+
+async function analyzeMicColorContrast(page: Page): Promise<AxeRunResult> {
+  // Electron's renderer CSP blocks inline <script> injection; CDP evaluation is
+  // still allowed and gives axe access to the real Chromium-computed styles.
+  await page.evaluate(AXE_SOURCE);
+  return page.evaluate(async () => {
+    const target = document.querySelector('[data-testid="brainstorm-mic-btn"]');
+    if (!target) throw new Error('brainstorm mic button not found for axe scan');
+    const axe = (window as unknown as {
+      axe: {
+        run: (
+          root: Element,
+          options: { runOnly: { type: 'rule'; values: string[] } },
+        ) => Promise<AxeRunResult>;
+      };
+    }).axe;
+    return axe.run(target, { runOnly: { type: 'rule', values: ['color-contrast'] } });
+  });
+}
+
 // ─── Test lifecycle ───────────────────────────────────────────────────────────
 
 let userData: string;
@@ -142,6 +218,7 @@ test.beforeAll(async () => {
 
   app = await launchApp(userData);
   page = await firstWindow(app);
+  await installSpeechRecognitionMock(page);
 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
@@ -213,8 +290,7 @@ test('TC-V-10d: Brainstorm mic button listening aria-label is correct', async ()
   // AC-V-01 (partial — listening state aria-label differs per implementation)
   const micBtn = page.locator('[data-testid="brainstorm-mic-btn"], .brainstorm-mic-btn').first();
   await micBtn.click();
-  const label = await micBtn.getAttribute('aria-label');
-  expect(label).toMatch(/stop (recording|voice input)|listening/i);
+  await expect(micBtn).toHaveAttribute('aria-label', /stop (recording|voice input)|listening/i);
   await micBtn.click(); // reset
 });
 
@@ -226,15 +302,9 @@ test('TC-V-10d: Brainstorm mic button listening aria-label is correct', async ()
 // This E2E test verifies the mute toggle renders in a real Electron window.
 
 test('TC-V-06: Writing Assistant mute toggle renders in Electron', async () => {
-  // Navigate to Writing Assistant (via the main view button)
-  // The panel must have a mute button in the header
-  const writingBtn = page.locator('.app-menu-view-btn', { hasText: 'Writing' });
-  if (await writingBtn.count() > 0) {
-    await writingBtn.click();
-  }
+  await openAssistantPanel(page);
   const muteBtn = page.locator('.wa-mute-btn');
-  // The WritingAssistantPanel is always mounted in the DesktopShell sidebar;
-  // verify mute button exists in the DOM (may be off-screen when panel not active).
+  // The WritingAssistantPanel only mounts when the Editor sidebar's Assistant tab is active.
   await expect(muteBtn).toBeAttached({ timeout: 5_000 });
   await expect(muteBtn).toHaveAttribute('aria-pressed');
   await expect(muteBtn).toHaveAttribute(
@@ -269,6 +339,7 @@ test.skip('TC-V-07: Hear button renders on WA suggestion card (requires LLM/seed
 // Primary unit coverage: WritingAssistantPanel.test.tsx "AC-V-08:" tests.
 
 test('TC-V-08: mute toggle flips aria-pressed in Electron', async () => {
+  await openAssistantPanel(page);
   const muteBtn = page.locator('.wa-mute-btn');
   await expect(muteBtn).toBeAttached({ timeout: 5_000 });
   const initialPressed = await muteBtn.getAttribute('aria-pressed');
@@ -309,6 +380,7 @@ test('TC-V-09: Settings Voice section renders all required fields in Electron', 
   await expect(page.locator('#voice-tts-volume')).toBeAttached();
   await expect(page.locator('#voice-tts-rate')).toBeAttached();
   await expect(page.locator('#voice-persistent-mute')).toBeAttached();
+  await page.keyboard.press('Escape');
 });
 
 // ─── TC-V-10e: Writing Assistant live region always in DOM ───────────────────
@@ -316,6 +388,7 @@ test('TC-V-09: Settings Voice section renders all required fields in Electron', 
 // AC-V-10: WA panel must also have an always-in-DOM sr-only live region.
 
 test('TC-V-10e: Writing Assistant live region is always in DOM', async () => {
+  await openAssistantPanel(page);
   const liveRegion = page.locator('.writing-assistant-panel [role="status"][aria-live="polite"]');
   await expect(liveRegion).toBeAttached({ timeout: 5_000 });
 });
@@ -411,9 +484,12 @@ test('TC-V-04b: Escape SR announcement fires via assertive live region', async (
   // "Voice input cancelled." is set via setAlertText — fires through data-testid="voice-alert"
   // (aria-live="assertive", NOT role="alert" — that element does not exist).
   await openBrainstorm(page);
-  await page.locator('[data-testid="brainstorm-mic-btn"]').click();
+  const alertRegion = page.locator('.brainstorm-page [data-testid="voice-alert"]');
+  await expect(alertRegion).toBeAttached();
+  const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 3_000 });
   await page.keyboard.press('Escape');
-  const alertRegion = page.locator('[data-testid="voice-alert"]');
   await expect(alertRegion).toContainText(/voice input cancelled/i, { timeout: 3_000 });
 });
 
@@ -437,16 +513,47 @@ test('TC-V-05b: mic button aria-pressed=true after mic toggle', async () => {
   await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 3_000 });
 });
 
-// ─── TC-V-11: axe color-contrast (pending SKY-1503 + @axe-core/playwright) ───
+// ─── TC-V-11: axe color-contrast ─────────────────────────────────────────────
 //
-// AC-V-11 requires @axe-core/playwright in devDependencies.
-// AC-V-01..V-04 must also be implemented for 4-state coverage.
+// AC-V-11: mic states must not communicate by colour alone and must pass axe's
+// Chromium-backed color-contrast rule. Processing/error are transient states in
+// the running app, so this test applies the production state classes directly to
+// the real button and scans each CSS state.
 
-test.skip('TC-V-11: all 4 mic states pass axe color-contrast rule (pending @axe-core/playwright install)', async () => {
-  // Implementation note: install @axe-core/playwright, inject via page.addScriptTag,
-  // then run AxeBuilder({ page }).include('.brainstorm-mic-btn').analyze() for each state.
-  // Expected: no violations including color-contrast rule (Chromium computed styles available).
-  throw new Error('TC-V-11: install @axe-core/playwright and implement per-state color-contrast scan');
+test('TC-V-11: all 4 mic states pass axe color-contrast rule', async () => {
+  await openBrainstorm(page);
+  const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
+  await expect(micBtn).toBeAttached();
+
+  const states = [
+    { state: 'idle', label: 'Start voice input', pressed: 'false', disabled: false, icon: '🎤' },
+    { state: 'listening', label: 'Stop voice input — listening', pressed: 'true', disabled: false, icon: '🎤' },
+    { state: 'processing', label: 'Processing speech…', pressed: 'true', disabled: true, icon: '⏳' },
+    { state: 'error', label: 'Voice error — click to retry', pressed: 'true', disabled: false, icon: '⚠' },
+  ];
+
+  for (const stateConfig of states) {
+    await micBtn.evaluate((element, config) => {
+      const button = element as HTMLButtonElement;
+      button.setAttribute(
+        'class',
+        `brainstorm-mic-btn brainstorm-mic-btn--${config.state}${config.state === 'listening' ? ' brainstorm-mic-btn-recording' : ''}`,
+      );
+      button.textContent = config.icon;
+      button.setAttribute('aria-label', config.label);
+      button.setAttribute('title', config.label);
+      button.setAttribute('aria-pressed', config.pressed);
+      if (config.disabled) {
+        button.setAttribute('disabled', '');
+      } else {
+        button.removeAttribute('disabled');
+      }
+    }, stateConfig);
+
+    const results = await analyzeMicColorContrast(page);
+
+    expect(results.violations, `${stateConfig.state} mic state axe violations`).toEqual([]);
+  }
 });
 
 // ─── TC-V-12: Reduced-motion (pending SKY-1503) ───────────────────────────────
@@ -467,12 +574,12 @@ test.skip('TC-V-12: silence countdown under prefers-reduced-motion (requires Spe
   await page.locator('[data-testid="brainstorm-mic-btn"]').click();
   // Ring exists but its SVG animation CSS should have animation-duration: 0
   const ring = page.locator('.voice-countdown-ring');
-  if (await ring.isAttached()) {
+  if (await ring.count() > 0) {
     await expect(ring).toHaveCSS('animation-duration', '0s');
   }
   // Text element must be visible (CSS shows it under reduced-motion)
   const countdownText = page.locator('.voice-countdown-text');
-  if (await countdownText.isAttached()) {
+  if (await countdownText.count() > 0) {
     await expect(countdownText).toBeVisible();
   }
   await cdpSession.send('Emulation.setEmulatedMedia', { features: [] });
