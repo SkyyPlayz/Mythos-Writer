@@ -146,7 +146,10 @@ export function snapshotCurrentLayout(params: {
  */
 export function migrateV1Layout(settings: AppSettings): Partial<AppSettings> {
   const rightSidebar = {
-    visible: settings.rightSidebarVisible ?? true,
+    // Default false when v1 never set rightSidebarVisible: the legacy RightSidebar is still rendered,
+    // so auto-enabling the global one would duplicate Writing Assistant / Archive panels.
+    // Users opt into the v2 global sidebar via a built-in layout switch.
+    visible: settings.rightSidebarVisible ?? false,
     width: settings.rightSidebarWidth ?? 300,
     panels: settings.rightSidebarPanels ?? [
       { id: 'writing-assistant' as SidebarPanelId, collapsed: false },

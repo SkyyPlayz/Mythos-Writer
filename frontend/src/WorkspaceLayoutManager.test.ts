@@ -177,7 +177,8 @@ describe('migrateV1Layout (AC-W-10)', () => {
   it('defaults rightSidebar when legacy fields absent', () => {
     const settings = {} as AppSettings;
     const result = migrateV1Layout(settings);
-    expect(result.activeLayout?.rightSidebar?.visible).toBe(true);
+    // visible defaults false so we don't double-render alongside the legacy RightSidebar.
+    expect(result.activeLayout?.rightSidebar?.visible).toBe(false);
     expect(result.activeLayout?.rightSidebar?.width).toBe(300);
   });
 
