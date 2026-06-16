@@ -325,7 +325,7 @@ interface AppSettings {
   voiceProviderId?: string;
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). */
-    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
   };

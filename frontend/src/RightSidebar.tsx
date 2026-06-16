@@ -20,6 +20,9 @@ interface Props {
   archiveEnabled?: boolean;
   scanIntervalSeconds?: number;
   waScanInterval?: number | 'on-save' | 'manual';
+  cadenceTrigger?: 'on_save' | 'idle_heartbeat';
+  idleHeartbeatConstantInterval?: boolean;
+  idleDebounceSeconds?: number;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -207,6 +210,9 @@ function AiPanel({
   archiveEnabled = true,
   scanIntervalSeconds = 30,
   waScanInterval,
+  cadenceTrigger,
+  idleHeartbeatConstantInterval,
+  idleDebounceSeconds,
   isPageFocused = true,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
@@ -217,6 +223,9 @@ function AiPanel({
   archiveEnabled?: boolean;
   scanIntervalSeconds?: number;
   waScanInterval?: number | 'on-save' | 'manual';
+  cadenceTrigger?: 'on_save' | 'idle_heartbeat';
+  idleHeartbeatConstantInterval?: boolean;
+  idleDebounceSeconds?: number;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -267,6 +276,9 @@ function AiPanel({
             enabled={writingAssistantEnabled}
             scanIntervalSeconds={scanIntervalSeconds}
             waScanInterval={waScanInterval}
+            cadenceTrigger={cadenceTrigger}
+            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
+            idleDebounceSeconds={idleDebounceSeconds}
             isActive={isPageFocused}
           />
         )}
@@ -373,6 +385,9 @@ export default function RightSidebar({
   archiveEnabled = true,
   scanIntervalSeconds = 30,
   waScanInterval,
+  cadenceTrigger,
+  idleHeartbeatConstantInterval,
+  idleDebounceSeconds,
   isPageFocused = true,
   onJumpToText,
   onInsertWikiLink,
@@ -456,6 +471,9 @@ export default function RightSidebar({
             archiveEnabled={archiveEnabled}
             scanIntervalSeconds={scanIntervalSeconds}
             waScanInterval={waScanInterval}
+            cadenceTrigger={cadenceTrigger}
+            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
+            idleDebounceSeconds={idleDebounceSeconds}
             isPageFocused={isPageFocused}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}

@@ -5112,7 +5112,7 @@ const SETTINGS_DEFAULTS: AppSettings = {
   apiKey: '',
   waScanInterval: 60,
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: true, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
   },
@@ -5249,6 +5249,11 @@ function loadAppSettings(): AppSettings {
           archive: { ...SETTINGS_DEFAULTS.agents.archive, ...(rawAgents.archive ?? {}) },
         },
       };
+      // Migration AC-CAD-12: existing installs without cadenceTrigger default to idle_heartbeat to preserve prior behavior
+      if (rawAgents.writingAssistant && !(rawAgents.writingAssistant as unknown as Record<string, unknown>).cadenceTrigger) {
+        base.agents.writingAssistant.cadenceTrigger = 'idle_heartbeat';
+        base.agents.writingAssistant.idleHeartbeatConstantInterval = true;
+      }
     } catch {
       base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }

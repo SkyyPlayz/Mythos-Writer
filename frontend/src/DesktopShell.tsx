@@ -661,6 +661,8 @@ export default function DesktopShell() {
     } catch {
       // non-fatal
     }
+    // Notify useWritingScheduler on_save cadence listeners (AC-CAD-02)
+    window.dispatchEvent(new CustomEvent('scene:saved'));
   }, [selectedScene]);
 
   const handleDraftRestore = useCallback((content: string) => {
@@ -2224,6 +2226,9 @@ export default function DesktopShell() {
             archiveEnabled={agentFlags.archive}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
             waScanInterval={appSettings?.waScanInterval}
+            cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
+            idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
+            idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
