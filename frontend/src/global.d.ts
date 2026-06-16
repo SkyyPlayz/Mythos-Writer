@@ -448,6 +448,11 @@ interface AppSettings {
     floatingPanels?: FloatingPanelEntry[];
     /** SKY-1698 (Wave 2d): custom docked tabs in the main tab bar. */
     dockedTabs?: DockedTab[];
+    /** SKY-1699 (Wave 2e): split window state. */
+    splitWindow?: {
+      /** Pane 1 width as percentage (0–100). Default 50. */
+      splitRatio: number;
+    };
   };
 }
 
