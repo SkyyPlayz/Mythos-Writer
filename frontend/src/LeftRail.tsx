@@ -27,7 +27,11 @@ const ALL_PANELS: { id: LeftPanelId; label: string }[] = [
 ];
 
 const DEFAULT_LEFT_SIDEBAR_LAYOUT: LeftSidebarLayout = {
-  panels: [{ id: 'entities', collapsed: false }],
+  panels: [
+    { id: 'stories', collapsed: false },
+    { id: 'entities', collapsed: true },
+    { id: 'vault', collapsed: true },
+  ],
   sidebarCollapsed: false,
 };
 
@@ -224,7 +228,7 @@ export default function LeftRail({
             const meta = ALL_PANELS.find(p => p.id === panel.id);
             if (!meta) return null;
             return (
-              <section key={panel.id} className={`lr-panel${panel.collapsed ? ' lr-panel--collapsed' : ''}`}>
+              <section key={panel.id} className={`lr-panel${panel.collapsed ? ' lr-panel--collapsed' : ''}`} data-panel-id={panel.id}>
                 <div className="lr-panel-header">
                   <button
                     className="lr-panel-collapse-btn"
