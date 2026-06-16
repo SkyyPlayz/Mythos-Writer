@@ -575,7 +575,9 @@ export default function DesktopShell() {
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
   // ─── SKY-1686: Global right-sidebar state ───
-  const [grsVisible, setGrsVisible] = useState(true);
+  // Start hidden; restored to persisted value when settings load (prevents layout shift in tests
+  // that seed settings without rightSidebarVisible and in new-install first-paint).
+  const [grsVisible, setGrsVisible] = useState(false);
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
 
