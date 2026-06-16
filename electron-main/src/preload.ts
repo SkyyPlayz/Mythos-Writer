@@ -795,6 +795,16 @@ contextBridge.exposeInMainWorld('api', {
   sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) =>
     ipcRenderer.invoke('scene-crafter:reorder-lanes', payload),
 
+  // SKY-1759: Scene Crafter file-watcher conflict detection
+  sceneCrafterClose: (storySlug: string) =>
+    ipcRenderer.invoke('scene-crafter:close', { storySlug }),
+
+  onSceneCrafterExternalEdit: (cb: (storySlug: string) => void) => {
+    const handler = (_: unknown, data: { storySlug: string }) => cb(data.storySlug);
+    ipcRenderer.on('scene-crafter:external-edit', handler);
+    return () => ipcRenderer.removeListener('scene-crafter:external-edit', handler);
+  },
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

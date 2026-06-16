@@ -1,4 +1,4 @@
-// Scene Crafter IPC handler logic — pure functions, no Electron imports.
+// Scene Crafter IPC handler logic — no Electron imports.
 // Each handler takes notesVaultRoot as the first argument to allow unit testing.
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,6 +11,13 @@ import {
   type BoardCard,
 } from './sceneCrafterBoard.js';
 import { writeFileAtomic } from './vault.js';
+import { beginBoardWrite, endBoardWrite } from './sceneCrafterWatcher.js';
+
+// How long to keep the write-lock after a successful write, in milliseconds.
+// Must exceed the chokidar awaitWriteFinish stabilityThreshold (300 ms) so the
+// watcher event for our own write is suppressed rather than treated as an
+// external edit.
+const WRITE_LOCK_HOLD_MS = 600;
 import type {
   SceneCrafterGetBoardPayload,
   SceneCrafterCreateBoardPayload,
@@ -37,8 +44,16 @@ function readBoard(notesVaultRoot: string, storySlug: string): SceneCrafterBoard
 }
 
 function writeBoard(notesVaultRoot: string, storySlug: string, board: SceneCrafterBoard): void {
-  board.lastModified = new Date().toISOString();
-  writeFileAtomic(absPath(notesVaultRoot, storySlug), serializeBoardMarkdown(board));
+  const p = absPath(notesVaultRoot, storySlug);
+  beginBoardWrite(p);
+  try {
+    board.lastModified = new Date().toISOString();
+    writeFileAtomic(p, serializeBoardMarkdown(board));
+  } finally {
+    // Release write-lock after chokidar's awaitWriteFinish window passes so the
+    // watcher event for this write is suppressed, not treated as an external edit.
+    setTimeout(() => endBoardWrite(p), WRITE_LOCK_HOLD_MS);
+  }
 }
 
 function validateLaneIndex(board: SceneCrafterBoard, laneIndex: number): void {
