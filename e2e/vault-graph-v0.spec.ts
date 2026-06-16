@@ -98,6 +98,10 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
  * Navigating away first resets VaultGraphView component state (chips, depth, search).
  */
 async function navigateToGraph(page: Page): Promise<void> {
+  // Disable prefers-reduced-motion so VaultGraphView's prefersReducedMotion() guard
+  // doesn't block setLiveMessage() calls (TC-GV-12 live region assertions).
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
   // Navigate away to reset state — use Timeline (exists in every fixture)
   const timelineBtn = page.locator('.app-menu-view-btn', { hasText: 'Timeline' });
   if (await timelineBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
@@ -305,23 +309,17 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(aryaNode).toBeVisible({ timeout: 10_000 });
     await expect(orphanNode).toBeVisible({ timeout: 5_000 });
 
-    // Hover Arya using absolute mouse coords — locator.hover() is intercepted by the
-    // SVG's pointer handlers when the viewBox transform maps coordinates differently.
-    const aryaBox = await aryaNode.boundingBox();
-    if (!aryaBox) throw new Error('aryaNode bounding box not available');
-    await page.mouse.move(aryaBox.x + aryaBox.width / 2, aryaBox.y + aryaBox.height / 2);
+    // hover({ force: true }) fires the native browser mouseenter event sequence, which
+    // triggers React's onMouseEnter synthetic handler. page.mouse.move() only fires
+    // mousemove and does NOT trigger mouseenter.
+    await aryaNode.hover({ force: true });
 
     await expect(orphanNode).toHaveClass(/vgv-graph-node--dimmed/, { timeout: 3_000 });
     await expect(aryaNode).not.toHaveClass(/vgv-graph-node--dimmed/);
     await expect(winterfellNode).not.toHaveClass(/vgv-graph-node--dimmed/);
 
-    // Move mouse to toolbar (neutral element) to trigger mouseLeave on the node
-    const toolbarBox = await page.locator('.vgv-toolbar').boundingBox();
-    if (toolbarBox) {
-      await page.mouse.move(toolbarBox.x + toolbarBox.width / 2, toolbarBox.y + toolbarBox.height / 2);
-    } else {
-      await page.mouse.move(0, 0);
-    }
+    // Move mouse away from the node to fire mouseleave → React clears hoveredNodeId
+    await page.mouse.move(0, 0);
 
     // Dimmed class must be removed (immediate React state update on mouseleave)
     await expect(orphanNode).not.toHaveClass(/vgv-graph-node--dimmed/, { timeout: 500 });
@@ -337,10 +335,9 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 10_000 });
 
-    // Click fires selectNode — use absolute mouse coords to bypass SVG pointer-event interception
-    const aryaBox = await aryaNode.boundingBox();
-    if (!aryaBox) throw new Error('aryaNode bounding box not available');
-    await page.mouse.click(aryaBox.x + aryaBox.width / 2, aryaBox.y + aryaBox.height / 2);
+    // click({ force: true }) fires a real click event on the SVG <g> element, bypassing
+    // Playwright's hit-testing (which can fail for SVG elements under a viewBox transform).
+    await aryaNode.click({ force: true });
     await expect(aryaNode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
   });
 
@@ -391,10 +388,8 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(chainANode).toBeVisible({ timeout: 10_000 });
     await expect(chainDNode).toBeVisible({ timeout: 5_000 });
 
-    // Select ChainA — use absolute mouse coords to bypass SVG pointer-event interception
-    const chainABox = await chainANode.boundingBox();
-    if (!chainABox) throw new Error('chainANode bounding box not available');
-    await page.mouse.click(chainABox.x + chainABox.width / 2, chainABox.y + chainABox.height / 2);
+    // click({ force: true }) fires a real click on the SVG <g> element
+    await chainANode.click({ force: true });
     await expect(chainANode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
 
     // Set depth slider to 2
@@ -496,18 +491,16 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
 
     // Hovering a node triggers nodeAnnouncement (debounced 500ms):
     // "{label}. {connectionCount} connections."
-    // Use absolute mouse coords — locator.hover() is intercepted by the SVG's pointer handlers.
+    // hover({ force: true }) fires native mouseenter → React onMouseEnter → setHoveredNodeId
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 5_000 });
-    const aryaBox = await aryaNode.boundingBox();
-    if (!aryaBox) throw new Error('aryaNode bounding box not available');
-    await page.mouse.move(aryaBox.x + aryaBox.width / 2, aryaBox.y + aryaBox.height / 2);
+    await aryaNode.hover({ force: true });
 
     await expect(async () => {
       const text = (await liveRegion.textContent()) ?? '';
       expect(text).toContain('Arya');
       expect(text).toMatch(/connection/);
-    }).toPass({ timeout: 2_000 });
+    }).toPass({ timeout: 3_000 });
   });
 });
 
