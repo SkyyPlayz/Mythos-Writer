@@ -661,6 +661,8 @@ export default function DesktopShell() {
     } catch {
       // non-fatal
     }
+    // Notify useWritingScheduler on_save cadence listeners (AC-CAD-02)
+    window.dispatchEvent(new CustomEvent('scene:saved'));
   }, [selectedScene]);
 
   const handleDraftRestore = useCallback((content: string) => {

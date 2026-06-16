@@ -1866,12 +1866,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 />
                 <fieldset className="settings-fieldset">
                   <legend className="settings-label">Scan cadence</legend>
-                  <div className="settings-field settings-field-inline">
+                  <div className="settings-field settings-field-inline" role="radiogroup" aria-label="Scan cadence">
                     <label className="settings-radio-label">
                       <input
                         type="radio"
                         name="wa-cadence-trigger"
                         value="on_save"
+                        aria-label="Scan cadence: on save"
                         checked={settings.agents.writingAssistant.cadenceTrigger === 'on_save'}
                         onChange={() => setAgentField('writingAssistant', 'cadenceTrigger', 'on_save')}
                       />
@@ -1882,6 +1883,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                         type="radio"
                         name="wa-cadence-trigger"
                         value="idle_heartbeat"
+                        aria-label="Scan cadence: idle heartbeat"
                         checked={settings.agents.writingAssistant.cadenceTrigger === 'idle_heartbeat'}
                         onChange={() => setAgentField('writingAssistant', 'cadenceTrigger', 'idle_heartbeat')}
                       />
@@ -1895,7 +1897,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                           <input
                             id="wa-constant-interval"
                             type="checkbox"
-                            aria-label="Use constant interval for idle heartbeat"
+                            aria-label="Idle-typing heartbeat: constant interval"
                             checked={settings.agents.writingAssistant.idleHeartbeatConstantInterval ?? true}
                             onChange={(e) => setAgentField('writingAssistant', 'idleHeartbeatConstantInterval', e.target.checked)}
                           />
