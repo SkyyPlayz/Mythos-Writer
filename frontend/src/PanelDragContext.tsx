@@ -170,7 +170,8 @@ export function PanelDragProvider({ children, onDrop }: ProviderProps) {
   const moveKbTarget = useCallback((dir: 'up' | 'down' | 'left' | 'right') => {
     setKbDrag((prev) => {
       if (!prev) return null;
-      let { sidebar, index, leftCount, rightCount } = prev;
+      let { sidebar, index } = prev;
+      const { leftCount, rightCount } = prev;
       const maxIdx = sidebar === 'left' ? leftCount : rightCount;
       if (dir === 'up') index = Math.max(0, index - 1);
       else if (dir === 'down') index = Math.min(maxIdx, index + 1);

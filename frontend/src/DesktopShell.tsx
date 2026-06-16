@@ -1845,7 +1845,7 @@ export default function DesktopShell() {
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
     handleOpenSceneByPath, setVaultContext, setExportScope, appSettings,
-    view, handleJumpToText, handleInsertWikiLink, setWikiLinkSuggestions,
+    view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
   ]);
 
