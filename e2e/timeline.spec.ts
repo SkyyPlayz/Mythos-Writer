@@ -402,17 +402,20 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
   // from the DOM entirely (opacity 0 → tls-row not rendered per visibleScenes
   // memo in TimelineSpreadsheet).
   //
-  // Use evaluate() instead of fill() for <input type="date"> controlled components
-  // in Electron/Chromium: Playwright's fill() may not reliably trigger React's
-  // onChange because Chromium's date picker handles value assignment differently
-  // from text inputs (same issue as type="range" sliders — see ENGINEERING_LESSONS).
+  // React 18 installs an instance-level value descriptor (trackValueOnNode) that
+  // updates its internal tracker whenever el.value = val is assigned, so the
+  // subsequent input event sees tracker==DOM and skips onChange. Bypass by calling
+  // the native prototype setter directly, leaving the tracker stale so React
+  // detects a change and fires onChange. Same root cause as type="range" sliders.
   await page.locator('#tlf-date-from').evaluate((el, val) => {
-    (el as HTMLInputElement).value = val;
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(el, val);
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }, '2340-06-14');
   await page.locator('#tlf-date-to').evaluate((el, val) => {
-    (el as HTMLInputElement).value = val;
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(el, val);
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }, '2340-06-14');
