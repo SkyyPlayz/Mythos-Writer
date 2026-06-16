@@ -597,6 +597,49 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 23');
   }
+
+  if (currentVersion < 24) {
+    // SKY-1745: Archive Agent query perf audit + index pass.
+    // Eliminates filesorts on the three hot read paths:
+    //  1. ContinuityPanel list (status filter + recency sort)
+    //  2. reSurfaceIgnoredItems (scene + status filter)
+    //  3. archive_audit_log per-item fetch
+    // Also covers suggestion budget-window counters and status-filtered list.
+    // Guards match v17 pattern — tables may be absent on artificial test DBs seeded at an
+    // intermediate version that skipped early migrations.
+    const hasContinuity24 = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='continuity_issues'"
+    ).get();
+    if (hasContinuity24) {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_ci_status_created
+          ON continuity_issues (status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_ci_scene_status
+          ON continuity_issues (manuscript_scene_id, status, created_at DESC);
+      `);
+    }
+    const hasArchiveAudit24 = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='archive_audit_log'"
+    ).get();
+    if (hasArchiveAudit24) {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_archive_audit_item_created
+          ON archive_audit_log (item_id, created_at DESC);
+      `);
+    }
+    const hasSuggestions24 = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions'"
+    ).get();
+    if (hasSuggestions24) {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_suggestions_agent_created
+          ON suggestions (source_agent, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_suggestions_status_created
+          ON suggestions (status, created_at DESC);
+      `);
+    }
+    db.exec('PRAGMA user_version = 24');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -1505,6 +1548,25 @@ export function listContinuityIssues(status?: ContinuityIssueStatus): DbContinui
   return getDb()
     .prepare('SELECT * FROM continuity_issues ORDER BY created_at DESC')
     .all() as unknown as DbContinuityIssue[];
+}
+
+/** Scene-scoped fetch — hits idx_ci_scene_status covering index. */
+export function listContinuityIssuesByScene(
+  sceneId: string,
+  status?: ContinuityIssueStatus,
+): DbContinuityIssue[] {
+  if (status) {
+    return getDb()
+      .prepare(
+        'SELECT * FROM continuity_issues WHERE manuscript_scene_id = ? AND status = ? ORDER BY created_at DESC'
+      )
+      .all(sceneId, status) as unknown as DbContinuityIssue[];
+  }
+  return getDb()
+    .prepare(
+      'SELECT * FROM continuity_issues WHERE manuscript_scene_id = ? ORDER BY created_at DESC'
+    )
+    .all(sceneId) as unknown as DbContinuityIssue[];
 }
 
 export function getContinuityIssue(id: string): DbContinuityIssue | null {

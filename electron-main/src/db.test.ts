@@ -46,6 +46,7 @@ import {
   searchEntityFts,
   insertContinuityIssue,
   listContinuityIssues,
+  listContinuityIssuesByScene,
   getContinuityIssue,
   updateContinuityIssueStatus,
   deleteContinuityIssue,
@@ -642,10 +643,10 @@ describe('world DB migration — entity tables', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('sets user_version to 22 on fresh vault', () => {
+  it('sets user_version to 24 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(23);
+    expect(row.user_version).toBe(24);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -687,12 +688,12 @@ describe('world DB migration — entity tables', () => {
     expect(row?.name).toBe('entity_fts');
   });
 
-  it('migration is idempotent — close/reopen keeps user_version at 22', () => {
+  it('migration is idempotent — close/reopen keeps user_version at 24', () => {
     openDb(tmpDir);
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(23);
+    expect(row.user_version).toBe(24);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -711,7 +712,7 @@ describe('world DB migration — entity tables', () => {
     expect(names).toContain('scene_text_hash');
   });
 
-  it('upgrading from v13 reaches v22 with all entity tables and writing_log', () => {
+  it('upgrading from v13 reaches v24 with all entity tables and writing_log', () => {
     const mythosDir = path.join(tmpDir, '.mythos');
     fs.mkdirSync(mythosDir, { recursive: true });
     const dbPath = path.join(mythosDir, 'state.db');
@@ -727,7 +728,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(23);
+    expect(row.user_version).toBe(24);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -995,11 +996,11 @@ describe('scene_snapshots / SKY-1611', () => {
     expect(getDraftSnapshotContent(listDraftSnapshots('scene-A')[0].id)).toBe('content for A');
   });
 
-  it('migration is idempotent — reopening DB keeps user_version at 22', () => {
+  it('migration is idempotent — reopening DB keeps user_version at 24', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(23);
+    expect(row.user_version).toBe(24);
   });
 });
 
@@ -1044,7 +1045,7 @@ describe('continuity_issues table', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(23);
+    expect(row.user_version).toBe(24);
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
       .all() as Array<{ name: string }>;
@@ -1106,6 +1107,144 @@ describe('continuity_issues table', () => {
     deleteContinuityIssue(issue.id);
     expect(getContinuityIssue(issue.id)).toBeNull();
     expect(listContinuityIssues()).toHaveLength(0);
+  });
+});
+
+// ─── listContinuityIssuesByScene (SKY-1745) ───
+
+describe('listContinuityIssuesByScene', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeIssue(overrides: Partial<Parameters<typeof insertContinuityIssue>[0]> = {}) {
+    return {
+      id: crypto.randomUUID(),
+      category: 'character_attribute_drift' as const,
+      severity: 'high' as const,
+      manuscript_scene_id: 'scene-1',
+      manuscript_offset: 0,
+      manuscript_excerpt: 'She had blue eyes',
+      vault_note_path: 'characters/Alice.md',
+      vault_line: 7,
+      vault_excerpt: 'Eye color: green',
+      rationale: 'Eye color mismatch',
+      proposed_match_archive: 'Update manuscript to green',
+      proposed_suggest_story: 'Update archive to blue',
+      status: 'open' as const,
+      resolved_at: null,
+      resolved_action: null,
+      created_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it('returns only issues for the given scene', () => {
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-A' }));
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-A' }));
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-B' }));
+
+    const forA = listContinuityIssuesByScene('scene-A');
+    expect(forA).toHaveLength(2);
+    expect(forA.every((r) => r.manuscript_scene_id === 'scene-A')).toBe(true);
+
+    const forB = listContinuityIssuesByScene('scene-B');
+    expect(forB).toHaveLength(1);
+  });
+
+  it('filters by status within a scene', () => {
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-1', status: 'open' }));
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-1', status: 'ignored' }));
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-1', status: 'resolved', resolved_at: new Date().toISOString(), resolved_action: 'match_archive_to_story' }));
+
+    expect(listContinuityIssuesByScene('scene-1', 'open')).toHaveLength(1);
+    expect(listContinuityIssuesByScene('scene-1', 'ignored')).toHaveLength(1);
+    expect(listContinuityIssuesByScene('scene-1', 'resolved')).toHaveLength(1);
+    expect(listContinuityIssuesByScene('scene-1')).toHaveLength(3);
+  });
+
+  it('returns empty for a scene with no issues', () => {
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-X' }));
+    expect(listContinuityIssuesByScene('scene-Z')).toHaveLength(0);
+  });
+
+  it('does not cross-contaminate scene results when status filter applied', () => {
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-1', status: 'ignored' }));
+    insertContinuityIssue(makeIssue({ id: crypto.randomUUID(), manuscript_scene_id: 'scene-2', status: 'ignored' }));
+
+    const result = listContinuityIssuesByScene('scene-1', 'ignored');
+    expect(result).toHaveLength(1);
+    expect(result[0].manuscript_scene_id).toBe('scene-1');
+  });
+});
+
+// ─── Archive query perf benchmark (SKY-1745) ───
+
+describe('archive query perf — 5000 rows (SKY-1745)', () => {
+  let tmpDir: string;
+  const ISSUE_COUNT = 5000;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-perf-'));
+    const db = openDb(tmpDir);
+    db.exec('BEGIN');
+    const stmt = db.prepare(
+      `INSERT INTO continuity_issues
+         (id, category, severity, manuscript_scene_id, manuscript_offset, manuscript_excerpt,
+          vault_note_path, vault_line, vault_excerpt, rationale, proposed_match_archive,
+          proposed_suggest_story, status, resolved_at, resolved_action, created_at)
+       VALUES (?, 'character_attribute_drift', 'high', ?, 0, 'excerpt', 'vault.md', 0, 'v', 'r', 'm', 's', ?, NULL, NULL, ?)`
+    );
+    for (let i = 0; i < ISSUE_COUNT; i++) {
+      const sceneId = `scene-${i % 1000}`;
+      const status = i % 5 === 0 ? 'ignored' : i % 7 === 0 ? 'resolved' : 'open';
+      stmt.run(
+        crypto.randomUUID(),
+        sceneId,
+        status,
+        new Date(Date.now() - i * 1000).toISOString(),
+      );
+    }
+    db.exec('COMMIT');
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('listContinuityIssues(status) p95 < 50ms with 5000 rows', () => {
+    const RUNS = 10;
+    const times: number[] = [];
+    for (let r = 0; r < RUNS; r++) {
+      const start = Date.now();
+      listContinuityIssues('open');
+      times.push(Date.now() - start);
+    }
+    times.sort((a, b) => a - b);
+    const p95 = times[Math.ceil(RUNS * 0.95) - 1];
+    expect(p95).toBeLessThan(50);
+  });
+
+  it('listContinuityIssuesByScene(sceneId, status) p95 < 10ms with 5000 rows', () => {
+    const RUNS = 10;
+    const times: number[] = [];
+    for (let r = 0; r < RUNS; r++) {
+      const start = Date.now();
+      listContinuityIssuesByScene('scene-0', 'ignored');
+      times.push(Date.now() - start);
+    }
+    times.sort((a, b) => a - b);
+    const p95 = times[Math.ceil(RUNS * 0.95) - 1];
+    expect(p95).toBeLessThan(10);
   });
 });
 

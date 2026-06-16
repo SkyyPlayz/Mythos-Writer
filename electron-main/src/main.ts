@@ -215,6 +215,7 @@ import {
   deleteDraftSnapshot,
   insertContinuityIssue,
   listContinuityIssues,
+  listContinuityIssuesByScene,
   getContinuityIssue,
   updateContinuityIssueStatus,
   insertArchiveAuditLog,
@@ -6564,9 +6565,7 @@ async function triggerArchiveContScanOnSave(sceneId: string, prose: string): Pro
 /** Re-surface any ignored items whose excerpts have drifted > 20% (AC-CC-07). */
 function reSurfaceIgnoredItems(sceneId: string, currentProse: string): void {
   try {
-    const ignored = listContinuityIssues('ignored').filter(
-      (row) => row.manuscript_scene_id === sceneId,
-    );
+    const ignored = listContinuityIssuesByScene(sceneId, 'ignored');
     for (const row of ignored) {
       if (shouldReSurface(row.manuscript_excerpt, row.manuscript_offset, currentProse)) {
         updateContinuityIssueStatus(row.id, 'open');
