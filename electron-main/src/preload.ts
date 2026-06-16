@@ -769,6 +769,28 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('archive:cont-scan-error', handler);
   },
 
+  // SKY-1758: Scene Crafter board IPC
+  sceneCrafterGetBoard: (storyId: string, storySlug: string) =>
+    ipcRenderer.invoke('scene-crafter:get-board', { storyId, storySlug }),
+  sceneCrafterCreateBoard: (storyId: string, storySlug: string) =>
+    ipcRenderer.invoke('scene-crafter:create-board', { storyId, storySlug }),
+  sceneCrafterAddCard: (payload: { storySlug: string; laneIndex: number; card: { wikilink: string; title: string; done?: boolean; tags?: string[] } }) =>
+    ipcRenderer.invoke('scene-crafter:add-card', payload),
+  sceneCrafterMoveCard: (payload: { storySlug: string; fromLane: number; fromIndex: number; toLane: number; toIndex: number }) =>
+    ipcRenderer.invoke('scene-crafter:move-card', payload),
+  sceneCrafterToggleCardDone: (payload: { storySlug: string; laneIndex: number; cardIndex: number }) =>
+    ipcRenderer.invoke('scene-crafter:toggle-card-done', payload),
+  sceneCrafterDeleteCard: (payload: { storySlug: string; laneIndex: number; cardIndex: number }) =>
+    ipcRenderer.invoke('scene-crafter:delete-card', payload),
+  sceneCrafterAddLane: (storySlug: string, name: string) =>
+    ipcRenderer.invoke('scene-crafter:add-lane', { storySlug, name }),
+  sceneCrafterRenameLane: (payload: { storySlug: string; laneIndex: number; name: string }) =>
+    ipcRenderer.invoke('scene-crafter:rename-lane', payload),
+  sceneCrafterDeleteLane: (payload: { storySlug: string; laneIndex: number; force?: boolean }) =>
+    ipcRenderer.invoke('scene-crafter:delete-lane', payload),
+  sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) =>
+    ipcRenderer.invoke('scene-crafter:reorder-lanes', payload),
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

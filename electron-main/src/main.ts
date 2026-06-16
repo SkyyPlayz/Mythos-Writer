@@ -146,7 +146,29 @@ import {
   type DraftsRestorePayload,
   type DraftsLabelPayload,
   type DraftsDeletePayload,
+  type SceneCrafterGetBoardPayload,
+  type SceneCrafterCreateBoardPayload,
+  type SceneCrafterAddCardPayload,
+  type SceneCrafterMoveCardPayload,
+  type SceneCrafterToggleCardDonePayload,
+  type SceneCrafterDeleteCardPayload,
+  type SceneCrafterAddLanePayload,
+  type SceneCrafterRenameLanePayload,
+  type SceneCrafterDeleteLanePayload,
+  type SceneCrafterReorderLanesPayload,
 } from './ipc.js';
+import {
+  handleGetBoard,
+  handleCreateBoard,
+  handleAddCard,
+  handleMoveCard,
+  handleToggleCardDone,
+  handleDeleteCard,
+  handleAddLane,
+  handleRenameLane,
+  handleDeleteLane,
+  handleReorderLanes,
+} from './sceneCrafterIpc.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot } from './validatePathUtil.js';
@@ -4859,6 +4881,28 @@ const handlers: IpcHandlers = {
     if (res.canceled || !res.filePaths[0]) return { ok: true as const, cancelled: true };
     return importTemplate(app.getPath('userData'), res.filePaths[0]);
   },
+
+  // ─── Scene Crafter board IPC (SKY-1758) ───
+  [IPC_CHANNELS.SCENE_CRAFTER_GET_BOARD]: (payload: SceneCrafterGetBoardPayload) =>
+    handleGetBoard(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_CREATE_BOARD]: (payload: SceneCrafterCreateBoardPayload) =>
+    handleCreateBoard(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_ADD_CARD]: (payload: SceneCrafterAddCardPayload) =>
+    handleAddCard(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_MOVE_CARD]: (payload: SceneCrafterMoveCardPayload) =>
+    handleMoveCard(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_TOGGLE_CARD_DONE]: (payload: SceneCrafterToggleCardDonePayload) =>
+    handleToggleCardDone(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_DELETE_CARD]: (payload: SceneCrafterDeleteCardPayload) =>
+    handleDeleteCard(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_ADD_LANE]: (payload: SceneCrafterAddLanePayload) =>
+    handleAddLane(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_RENAME_LANE]: (payload: SceneCrafterRenameLanePayload) =>
+    handleRenameLane(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_DELETE_LANE]: (payload: SceneCrafterDeleteLanePayload) =>
+    handleDeleteLane(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_REORDER_LANES]: (payload: SceneCrafterReorderLanesPayload) =>
+    handleReorderLanes(getNotesVaultRoot(), payload),
 
 };
 

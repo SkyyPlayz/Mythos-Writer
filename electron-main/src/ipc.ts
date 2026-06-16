@@ -4,6 +4,7 @@
 import { ipcMain, ipcRenderer } from 'electron';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 import { sanitizeIpcError } from './ipcErrors.js';
+import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -428,6 +429,18 @@ export const IPC_CHANNELS = {
   ARCHIVE_CONT_SCAN_START: 'archive:cont-scan-start',
   ARCHIVE_CONT_SCAN_RESULT: 'archive:cont-scan-result',
   ARCHIVE_CONT_SCAN_ERROR: 'archive:cont-scan-error',
+
+  // SKY-1758: Scene Crafter board IPC
+  SCENE_CRAFTER_GET_BOARD: 'scene-crafter:get-board',
+  SCENE_CRAFTER_CREATE_BOARD: 'scene-crafter:create-board',
+  SCENE_CRAFTER_ADD_CARD: 'scene-crafter:add-card',
+  SCENE_CRAFTER_MOVE_CARD: 'scene-crafter:move-card',
+  SCENE_CRAFTER_TOGGLE_CARD_DONE: 'scene-crafter:toggle-card-done',
+  SCENE_CRAFTER_DELETE_CARD: 'scene-crafter:delete-card',
+  SCENE_CRAFTER_ADD_LANE: 'scene-crafter:add-lane',
+  SCENE_CRAFTER_RENAME_LANE: 'scene-crafter:rename-lane',
+  SCENE_CRAFTER_DELETE_LANE: 'scene-crafter:delete-lane',
+  SCENE_CRAFTER_REORDER_LANES: 'scene-crafter:reorder-lanes',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -733,6 +746,18 @@ export interface IpcHandlers {
   [IPC_CHANNELS.DRAFTS_RESTORE]: (payload: DraftsRestorePayload) => DraftsRestoreResponse;
   [IPC_CHANNELS.DRAFTS_LABEL]: (payload: DraftsLabelPayload) => void;
   [IPC_CHANNELS.DRAFTS_DELETE]: (payload: DraftsDeletePayload) => void;
+
+  // SKY-1758: Scene Crafter board IPC
+  [IPC_CHANNELS.SCENE_CRAFTER_GET_BOARD]: (payload: SceneCrafterGetBoardPayload) => SceneCrafterBoard | null;
+  [IPC_CHANNELS.SCENE_CRAFTER_CREATE_BOARD]: (payload: SceneCrafterCreateBoardPayload) => SceneCrafterBoard;
+  [IPC_CHANNELS.SCENE_CRAFTER_ADD_CARD]: (payload: SceneCrafterAddCardPayload) => { ok: true };
+  [IPC_CHANNELS.SCENE_CRAFTER_MOVE_CARD]: (payload: SceneCrafterMoveCardPayload) => { ok: true };
+  [IPC_CHANNELS.SCENE_CRAFTER_TOGGLE_CARD_DONE]: (payload: SceneCrafterToggleCardDonePayload) => { ok: true };
+  [IPC_CHANNELS.SCENE_CRAFTER_DELETE_CARD]: (payload: SceneCrafterDeleteCardPayload) => { ok: true };
+  [IPC_CHANNELS.SCENE_CRAFTER_ADD_LANE]: (payload: SceneCrafterAddLanePayload) => { ok: true };
+  [IPC_CHANNELS.SCENE_CRAFTER_RENAME_LANE]: (payload: SceneCrafterRenameLanePayload) => { ok: true };
+  [IPC_CHANNELS.SCENE_CRAFTER_DELETE_LANE]: (payload: SceneCrafterDeleteLanePayload) => { ok: boolean; cardCount: number };
+  [IPC_CHANNELS.SCENE_CRAFTER_REORDER_LANES]: (payload: SceneCrafterReorderLanesPayload) => { ok: true };
 }
 
 // ─── Payload / Response types ───
@@ -3640,3 +3665,75 @@ export interface DraftsLabelPayload {
 export interface DraftsDeletePayload {
   snapshotId: string;
 }
+
+// ─── Scene Crafter IPC payload types (SKY-1758) ───
+
+/** Minimal card fields required to create a new board card. */
+export interface BoardCardInput {
+  wikilink: string;
+  title: string;
+  done?: boolean;
+  tags?: string[];
+}
+
+export interface SceneCrafterGetBoardPayload {
+  storyId: string;
+  storySlug: string;
+}
+
+export interface SceneCrafterCreateBoardPayload {
+  storyId: string;
+  storySlug: string;
+}
+
+export interface SceneCrafterAddCardPayload {
+  storySlug: string;
+  laneIndex: number;
+  card: BoardCardInput;
+}
+
+export interface SceneCrafterMoveCardPayload {
+  storySlug: string;
+  fromLane: number;
+  fromIndex: number;
+  toLane: number;
+  toIndex: number;
+}
+
+export interface SceneCrafterToggleCardDonePayload {
+  storySlug: string;
+  laneIndex: number;
+  cardIndex: number;
+}
+
+export interface SceneCrafterDeleteCardPayload {
+  storySlug: string;
+  laneIndex: number;
+  cardIndex: number;
+}
+
+export interface SceneCrafterAddLanePayload {
+  storySlug: string;
+  name: string;
+}
+
+export interface SceneCrafterRenameLanePayload {
+  storySlug: string;
+  laneIndex: number;
+  name: string;
+}
+
+export interface SceneCrafterDeleteLanePayload {
+  storySlug: string;
+  laneIndex: number;
+  /** When true, delete the lane even if it contains cards. */
+  force?: boolean;
+}
+
+export interface SceneCrafterReorderLanesPayload {
+  storySlug: string;
+  fromIndex: number;
+  toIndex: number;
+}
+// Re-export SceneCrafterBoard so callers can import it from ipc.ts instead of sceneCrafterBoard.ts.
+export type { SceneCrafterBoard };
