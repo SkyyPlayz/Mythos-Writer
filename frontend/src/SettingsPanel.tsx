@@ -2713,6 +2713,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   min={2000}
                   max={16000}
                   step={1000}
+                  disabled={!settings.agents.archive.enabled}
                   value={settings.archiveScanBudget ?? 8000}
                   onChange={(e) => setSettings((p) => ({ ...p, archiveScanBudget: Number(e.target.value) }))}
                 />
