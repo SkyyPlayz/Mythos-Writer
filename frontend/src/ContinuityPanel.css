@@ -1,0 +1,226 @@
+/* ContinuityPanel — Archive Agent v1 (SKY-1685) */
+
+.cp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* ── Centered states (empty, not-scanned, loading) ── */
+.cp-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 24px) var(--space-3, 12px);
+  text-align: center;
+  flex: 1;
+}
+
+.cp-empty-icon {
+  font-size: 28px;
+  opacity: 0.6;
+}
+
+.cp-empty-text {
+  font-size: var(--text-sm, 14px);
+  color: var(--text-body);
+  margin: 0;
+}
+
+.cp-empty-sub {
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Scan-now button ── */
+.cp-scan-now-btn {
+  margin-top: var(--space-2, 8px);
+  height: 32px;
+  padding: 0 var(--space-3, 12px);
+  border-radius: var(--radius-sm, 12px);
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cp-scan-now-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.cp-scan-now-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cp-scan-now-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Scanning banner ── */
+.cp-scanning-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted);
+  padding: var(--space-2, 8px) 0;
+}
+
+/* ── Spinner ── */
+.cp-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: cp-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes cp-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-spinner {
+    animation: none;
+    border-top-color: var(--border-default);
+    opacity: 0.5;
+  }
+}
+
+/* ── Status/error banners ── */
+.cp-banner {
+  border-radius: var(--radius-sm, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: var(--text-xs, 12px);
+  line-height: 1.4;
+}
+
+.cp-banner--warning {
+  background: var(--state-warning-bg, rgba(249, 115, 22, 0.12));
+  color: var(--severity-high-text, #fdba74);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.cp-banner--error {
+  background: var(--state-danger-bg, rgba(239, 68, 68, 0.12));
+  color: var(--severity-critical-text, #fca5a5);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.cp-banner-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}
+
+/* ── Issue list ── */
+.cp-issues-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Group header ── */
+.cp-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: var(--text-xs, 12px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+
+.cp-group-header:hover {
+  color: var(--text-body);
+}
+
+.cp-group-header:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 12px);
+}
+
+/* ── Group card list ── */
+.cp-group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-bottom: var(--space-2, 8px);
+}
+
+/* ── Panel footer ── */
+.cp-footer {
+  border-top: 1px solid var(--border-subtle, var(--border-default));
+  padding-top: var(--space-2, 8px);
+  margin-top: auto;
+}
+
+.cp-footer-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.cp-footer-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cp-footer-detail {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── Status message (sr-only) ── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

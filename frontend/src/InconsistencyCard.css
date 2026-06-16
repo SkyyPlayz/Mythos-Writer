@@ -1,0 +1,388 @@
+/* SKY-1685 — InconsistencyCard (UXD spec: SKY-1682) */
+
+/* ── Card shell ─────────────────────────────────────────────────────────── */
+.ic-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+/* ── Header row ─────────────────────────────────────────────────────────── */
+.ic-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ic-checkbox {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--border-default);
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.ic-checkbox:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.ic-checkbox[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.ic-severity-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ic-severity-badge--critical {
+  background: var(--severity-critical-bg);
+  color: var(--severity-critical-text);
+}
+
+.ic-severity-badge--high {
+  background: var(--severity-high-bg);
+  color: var(--severity-high-text);
+}
+
+.ic-severity-badge--low {
+  background: var(--severity-low-bg);
+  color: var(--severity-low-text);
+}
+
+.ic-category {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-body);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ic-dismiss-btn {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  transition: color var(--dur-hover-in) var(--ease-standard),
+              background var(--dur-hover-in) var(--ease-standard);
+}
+
+.ic-dismiss-btn:hover {
+  color: var(--text-header);
+  background: var(--bg-hover);
+}
+
+.ic-dismiss-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.ic-dismiss-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Anchor row ─────────────────────────────────────────────────────────── */
+.ic-anchors {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.ic-anchor {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ic-arrow {
+  flex-shrink: 0;
+  padding: 0 var(--space-1, 4px);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ── Separator ──────────────────────────────────────────────────────────── */
+.ic-separator {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+
+/* ── Rationale ──────────────────────────────────────────────────────────── */
+.ic-rationale-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ic-rationale {
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.ic-rationale--expanded {
+  -webkit-line-clamp: unset;
+  display: block;
+}
+
+.ic-show-more {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  align-self: flex-start;
+  transition: color var(--dur-hover-in) var(--ease-standard);
+}
+
+.ic-show-more:hover {
+  color: var(--accent-hover);
+}
+
+.ic-show-more:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Action row ─────────────────────────────────────────────────────────── */
+.ic-action-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.ic-btn {
+  flex: 1;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background var(--dur-hover-in) var(--ease-standard),
+              color var(--dur-hover-in) var(--ease-standard),
+              transform var(--dur-press) var(--ease-standard);
+}
+
+.ic-btn:active {
+  transform: scale(0.97);
+}
+
+.ic-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.ic-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.ic-btn--primary {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.ic-btn--primary:hover {
+  background: var(--accent-hover);
+}
+
+.ic-btn--secondary {
+  background: var(--bg-input, var(--bg-inset));
+  color: var(--text-body);
+  border: 1px solid var(--border-default);
+}
+
+.ic-btn--secondary:hover {
+  background: var(--bg-hover);
+  color: var(--text-header);
+}
+
+.ic-btn--ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.ic-btn--ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+/* ── Expand area ────────────────────────────────────────────────────────── */
+.ic-expand-area {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 250ms var(--ease-standard);
+}
+
+.ic-expand-area--open {
+  max-height: 320px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ic-expand-area {
+    transition-duration: 0.01ms;
+  }
+}
+
+.ic-diff-preview,
+.ic-suggest-preview {
+  background: var(--bg-input, var(--bg-inset));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ic-diff-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.ic-diff-old {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-decoration: line-through;
+  margin: 0;
+}
+
+.ic-diff-new {
+  font-size: var(--text-sm);
+  color: var(--severity-high-text);
+  margin: 0;
+}
+
+.ic-suggest-edit-area {
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+
+.ic-suggest-edit-area:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.ic-expand-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ── Consent modal ──────────────────────────────────────────────────────── */
+.ic-consent-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ic-consent-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1);
+  padding: var(--space-3);
+  max-width: 360px;
+  width: calc(100% - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ic-consent-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-header);
+  margin: 0;
+}
+
+.ic-consent-body {
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  margin: 0;
+  line-height: var(--leading-sm, 1.5);
+}
+
+.ic-consent-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  cursor: pointer;
+}
+
+.ic-consent-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.ic-consent-actions {
+  display: flex;
+  gap: var(--space-2);
+}

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Scene, Chapter, Story } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
-import ArchivePanel from './ArchivePanel';
+import ContinuityPanel from './ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import './GlobalRightSidebar.css';
 
@@ -48,7 +48,11 @@ export interface GlobalRightSidebarProps {
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
   onWikiLinkSuggestionsChange?: (suggestions: Array<{ id: string; anchorText: string; wikiLink: string }>) => void;
+  /** @deprecated use internal continuity count from ContinuityPanel — kept for backward compat */
   continuityIssueCount?: number;
+  archiveScanScope?: 'active_scene' | 'active_chapter' | 'full_manuscript';
+  archiveStoryEditConsentGiven?: boolean;
+  onOpenSettings?: () => void;
 }
 
 function PanelSlot({
@@ -158,14 +162,22 @@ export default function GlobalRightSidebar({
   scanIntervalSeconds = 30,
   waScanInterval,
   isPageFocused = true,
-  onJumpToText,
-  onInsertWikiLink,
-  onWikiLinkSuggestionsChange,
-  continuityIssueCount = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onJumpToText: _onJumpToText,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onInsertWikiLink: _onInsertWikiLink,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onWikiLinkSuggestionsChange: _onWikiLinkSuggestionsChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  continuityIssueCount: _continuityIssueCount = 0,
+  archiveScanScope,
+  archiveStoryEditConsentGiven,
+  onOpenSettings,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [dragOver, setDragOver] = useState<PanelId | null>(null);
+  const [localContinuityCount, setLocalContinuityCount] = useState(0);
   const dragSource = useRef<PanelId | null>(null);
   const addPanelRef = useRef<HTMLDivElement | null>(null);
 
@@ -337,7 +349,7 @@ export default function GlobalRightSidebar({
               onToggleCollapse={() => toggleCollapse(config.id)}
               onPopout={() => handlePopout(config.id)}
               onRemove={() => removePanel(config.id)}
-              badgeCount={config.id === 'archive-continuity' ? continuityIssueCount : undefined}
+              badgeCount={config.id === 'archive-continuity' ? localContinuityCount : undefined}
               dragHandleProps={{
                 draggable: true,
                 onDragStart: () => handleDragStart(config.id),
@@ -354,12 +366,13 @@ export default function GlobalRightSidebar({
                 />
               )}
               {config.id === 'archive-continuity' && (
-                <ArchivePanel
+                <ContinuityPanel
                   scene={scene}
                   enabled={archiveEnabled}
-                  onJumpToText={onJumpToText ?? (() => {})}
-                  onInsertWikiLink={onInsertWikiLink ?? (() => {})}
-                  onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
+                  archiveScanScope={archiveScanScope}
+                  archiveStoryEditConsentGiven={archiveStoryEditConsentGiven}
+                  onCountChange={setLocalContinuityCount}
+                  onOpenSettings={onOpenSettings}
                 />
               )}
               {config.id === 'scene-preview' && (
