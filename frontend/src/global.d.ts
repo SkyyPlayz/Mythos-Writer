@@ -1024,6 +1024,45 @@ interface Window {
     agentPersonaRead: (agentName: string, key: string) => Promise<{ content: string; isCustom: boolean }>;
     agentPersonaReset: (agentName: string, key: string) => Promise<unknown>;
 
+    // SKY-1684 / SKY-1685: Archive Agent v1 — continuity scan
+    archiveScanContinuity: (sceneId: string, text: string, scope?: string) => Promise<void>;
+    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean }>;
+    archiveListContinuity: (filter?: { status?: string; category?: string }) => Promise<{
+      items: Array<{
+        id: string;
+        category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
+        severity: 'critical' | 'high' | 'low';
+        manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };
+        vaultAnchor: { notePath: string; line: number; excerpt: string };
+        rationale: string;
+        proposedResolution: { matchArchiveToStory: string; suggestStoryChange: string };
+        status: 'open' | 'resolved' | 'ignored';
+        resolvedAt: string | null;
+        resolvedAction: 'match_archive_to_story' | 'suggest_story_change' | 'ignore' | null;
+        createdAt: string;
+      }>;
+    }>;
+    onArchiveContScanStart: (cb: (data: { sceneId: string; scope: string }) => void) => () => void;
+    onArchiveContScanResult: (cb: (data: {
+      sceneId: string;
+      items: Array<{
+        id: string;
+        category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
+        severity: 'critical' | 'high' | 'low';
+        manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };
+        vaultAnchor: { notePath: string; line: number; excerpt: string };
+        rationale: string;
+        proposedResolution: { matchArchiveToStory: string; suggestStoryChange: string };
+        status: 'open' | 'resolved' | 'ignored';
+        resolvedAt: string | null;
+        resolvedAction: 'match_archive_to_story' | 'suggest_story_change' | 'ignore' | null;
+        createdAt: string;
+      }>;
+      tokenUsed: number;
+      partial: boolean;
+    }) => void) => () => void;
+    onArchiveContScanError: (cb: (data: { sceneId: string; error: string }) => void) => () => void;
+
     // SKY-1686: Global right-sidebar panel popout window
     panelPopout?: (panelId: string, sceneId: string | null) => Promise<void>;
     onPanelPopoutClosed?: (callback: (panelId: string) => void) => () => void;

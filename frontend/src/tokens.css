@@ -198,6 +198,14 @@
   --state-success-bg: color-mix(in srgb, var(--state-success) 18%, var(--bg-inset));
   --state-warning-bg: color-mix(in srgb, var(--state-warning) 18%, var(--bg-inset));
 
+  /* SKY-1682: Archive Agent v1 — severity badge tokens (InconsistencyCard) */
+  --severity-critical-bg: rgba(239, 68, 68, 0.18);
+  --severity-critical-text: #fca5a5;
+  --severity-high-bg: rgba(249, 115, 22, 0.18);
+  --severity-high-text: #fdba74;
+  --severity-low-bg: rgba(148, 163, 184, 0.15);
+  --severity-low-text: #94a3b8;
+
   /* =========================================================================
    * Compatibility aliases.
    * The existing components were authored against a token vocabulary that was

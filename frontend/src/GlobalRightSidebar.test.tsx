@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
 
@@ -6,8 +6,13 @@ import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRi
 vi.mock('./WritingAssistantPanel', () => ({
   default: () => <div data-testid="writing-assistant-panel">WritingAssistantPanel</div>,
 }));
-vi.mock('./ArchivePanel', () => ({
-  default: () => <div data-testid="archive-panel">ArchivePanel</div>,
+
+let mockContinuityOnCountChange: ((n: number) => void) | undefined;
+vi.mock('./ContinuityPanel', () => ({
+  default: (props: { onCountChange?: (n: number) => void }) => {
+    mockContinuityOnCountChange = props.onCountChange;
+    return <div data-testid="continuity-panel">ContinuityPanel</div>;
+  },
 }));
 vi.mock('./ScenePreviewPanel', () => ({
   default: () => <div data-testid="scene-preview-panel">ScenePreviewPanel</div>,
@@ -159,13 +164,15 @@ describe('GlobalRightSidebar', () => {
   });
 
   describe('badge count', () => {
-    it('shows continuity badge when continuityIssueCount > 0', () => {
-      render(<GlobalRightSidebar {...defaultProps} continuityIssueCount={3} />);
+    it('shows continuity badge when ContinuityPanel reports count > 0', () => {
+      render(<GlobalRightSidebar {...defaultProps} />);
+      act(() => { mockContinuityOnCountChange?.(3); });
       expect(screen.getByLabelText(/3 issues/i)).toBeInTheDocument();
     });
 
-    it('does not show badge when continuityIssueCount is 0', () => {
-      render(<GlobalRightSidebar {...defaultProps} continuityIssueCount={0} />);
+    it('does not show badge when count is 0', () => {
+      render(<GlobalRightSidebar {...defaultProps} />);
+      act(() => { mockContinuityOnCountChange?.(0); });
       expect(screen.queryByLabelText(/0 issues/i)).toBeNull();
     });
   });
