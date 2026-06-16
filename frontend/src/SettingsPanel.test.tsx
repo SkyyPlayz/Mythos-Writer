@@ -49,9 +49,9 @@ describe('SettingsPanel', () => {
   it('renders all sections after loading', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
-    expect(screen.getByText(/writing assistant/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/writing assistant/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
-    expect(screen.getByText(/archive agent/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/archive agent/i)[0]).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
   });
 
@@ -926,5 +926,81 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
+  });
+});
+
+// ── Archive Agent Settings (SKY-1683 / AC-CC-09) ──
+
+describe('Archive Agent settings section (AC-CC-09)', () => {
+  it('renders the Archive Agent section heading', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('heading', { name: /archive agent/i }));
+    expect(screen.getByRole('heading', { name: /archive agent/i })).toBeInTheDocument();
+  });
+
+  it('master toggle is enabled by default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
+    const toggle = screen.getByTestId('archive-continuity-enabled') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+  });
+
+  it('disabling master toggle disables sub-settings fieldset', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
+    fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
+    const fieldset = screen.getByTestId('archive-agent-subsettings') as HTMLFieldSetElement;
+    expect(fieldset.disabled).toBe(true);
+  });
+
+  it('re-enabling master toggle re-enables sub-settings fieldset', async () => {
+    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, archiveContinuityEnabled: false });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
+    fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
+    const fieldset = screen.getByTestId('archive-agent-subsettings') as HTMLFieldSetElement;
+    expect(fieldset.disabled).toBe(false);
+  });
+
+  it('persists archiveContinuityEnabled=false when saved', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
+    fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.archiveContinuityEnabled).toBe(false);
+  });
+
+  it('shows full-manuscript+interval warning when both conditions met', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      archiveScanScope: 'full_manuscript',
+      archiveScanInterval: 900,
+    });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-full-manuscript-warning'));
+    expect(screen.getByTestId('archive-full-manuscript-warning')).toBeInTheDocument();
+  });
+
+  it('does not show full-manuscript+interval warning when interval is off', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      archiveScanScope: 'full_manuscript',
+      archiveScanInterval: null,
+    });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-agent-section'));
+    expect(screen.queryByTestId('archive-full-manuscript-warning')).not.toBeInTheDocument();
+  });
+
+  it('archiveScanBudget change persists on save', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-scan-budget'));
+    fireEvent.change(screen.getByTestId('archive-scan-budget'), { target: { value: '12000' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.archiveScanBudget).toBe(12000);
   });
 });

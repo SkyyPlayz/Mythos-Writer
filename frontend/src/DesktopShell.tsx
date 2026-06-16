@@ -39,6 +39,7 @@ import {
   type GettingStartedProgress,
 } from './gettingStartedReducer';
 import TemplatePicker from './TemplatePicker';
+import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -573,6 +574,15 @@ export default function DesktopShell() {
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
+  // ─── SKY-1686: Global right-sidebar state ───
+  // undefined = settings not yet loaded (sidebar not rendered at all, no space taken).
+  // true/false = settings loaded with an explicit rightSidebarVisible value.
+  // E2E tests that seed settings without rightSidebarVisible keep undefined → no sidebar renders,
+  // preserving the same layout as before this PR (fixes timeline TC-TL-06 overlap regression).
+  const [grsVisible, setGrsVisible] = useState<boolean | undefined>(undefined);
+  const [grsWidth, setGrsWidth] = useState(300);
+  const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
+
   // ─── SKY-863: Sync conflict modal state ───
   const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
   const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
@@ -946,6 +956,10 @@ export default function DesktopShell() {
       }
       if (s) {
         setAppSettings(s);
+        // Restore global right sidebar state from persisted settings (SKY-1686)
+        if (typeof s.rightSidebarVisible === 'boolean') setGrsVisible(s.rightSidebarVisible);
+        if (typeof s.rightSidebarWidth === 'number') setGrsWidth(s.rightSidebarWidth);
+        if (Array.isArray(s.rightSidebarPanels) && s.rightSidebarPanels.length > 0) setGrsPanels(s.rightSidebarPanels as PanelConfig[]);
         setGettingStartedProgress(
           createInitialGettingStartedProgress(
             undefined,
@@ -1104,6 +1118,33 @@ export default function DesktopShell() {
     setManifest(updated);
     scheduleManifestSave(updated);
   }, [manifest, scheduleManifestSave]);
+
+  const persistGrsSettings = useCallback((patch: { visible?: boolean; width?: number; panels?: PanelConfig[] }) => {
+    if (!appSettings) return;
+    const updated: AppSettings = {
+      ...appSettings,
+      ...(patch.visible !== undefined ? { rightSidebarVisible: patch.visible } : {}),
+      ...(patch.width !== undefined ? { rightSidebarWidth: patch.width } : {}),
+      ...(patch.panels !== undefined ? { rightSidebarPanels: patch.panels } : {}),
+    };
+    setAppSettings(updated);
+    window.api.settingsSet(updated).catch(() => {});
+  }, [appSettings]);
+
+  const handleGrsVisibilityChange = useCallback((visible: boolean) => {
+    setGrsVisible(visible);
+    persistGrsSettings({ visible });
+  }, [persistGrsSettings]);
+
+  const handleGrsWidthChange = useCallback((width: number) => {
+    setGrsWidth(width);
+    persistGrsSettings({ width });
+  }, [persistGrsSettings]);
+
+  const handleGrsPanelsChange = useCallback((panels: PanelConfig[]) => {
+    setGrsPanels(panels);
+    persistGrsSettings({ panels });
+  }, [persistGrsSettings]);
 
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
@@ -1900,6 +1941,8 @@ export default function DesktopShell() {
           onClose={() => setTemplatePickerOpen(false)}
         />
       )}
+      {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
+      <div className="shell-main-row">
       {view === 'brainstorm' && (
         <BrainstormPage
           onClose={() => setView('editor')}
@@ -2249,6 +2292,32 @@ export default function DesktopShell() {
         </div>
       )}
       </div>}{/* end shell-panels */}
+
+      {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.
+           undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
+           This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
+           settings arrive, which caused TC-TL-06 detail-card pointer-event regression. */}
+      {grsVisible !== undefined && <GlobalRightSidebar
+        visible={grsVisible as boolean}
+        width={grsWidth}
+        panels={grsPanels}
+        onVisibilityChange={handleGrsVisibilityChange}
+        onWidthChange={handleGrsWidthChange}
+        onPanelsChange={handleGrsPanelsChange}
+        scene={selectedScene}
+        chapter={selectedChapter}
+        story={selectedStory}
+        archiveEnabled={agentFlags.archive}
+        writingAssistantEnabled={agentFlags.writingAssistant}
+        scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+        waScanInterval={appSettings?.waScanInterval}
+        isPageFocused={view === 'editor'}
+        onJumpToText={handleJumpToText}
+        onInsertWikiLink={handleInsertWikiLink}
+        onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+      />}
+
+      </div>{/* end shell-main-row */}
       {budgetToast && (
         <div className="budget-toast" role="alert" aria-live="assertive">
           {budgetToast}

@@ -731,6 +731,44 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('brainstorm:proposalQueued', handler);
   },
 
+  // SKY-1686: panel popout window
+  panelPopout: (panelId: string, sceneId: string | null) =>
+    ipcRenderer.invoke('panel:popout', { panelId, sceneId }),
+
+  onPanelPopoutClosed: (cb: (panelId: string) => void) => {
+    const handler = (_: unknown, data: { panelId: string }) => cb(data.panelId);
+    ipcRenderer.on('panel:popout-closed', handler);
+    return () => ipcRenderer.removeListener('panel:popout-closed', handler);
+  },
+
+  // SKY-1684: Archive Agent v1 — continuity scan
+  archiveScanContinuity: (sceneId: string, text: string, scope?: string) =>
+    ipcRenderer.invoke('archive:scan-continuity', { sceneId, text, scope }),
+
+  archiveResolveContinuity: (itemId: string, action: string, note?: string) =>
+    ipcRenderer.invoke('archive:resolve-continuity', { itemId, action, note }),
+
+  archiveListContinuity: (filter?: { status?: string; category?: string }) =>
+    ipcRenderer.invoke('archive:list-continuity', { filter }),
+
+  onArchiveContScanStart: (cb: (data: { sceneId: string; scope: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string; scope: string }) => cb(data);
+    ipcRenderer.on('archive:cont-scan-start', handler);
+    return () => ipcRenderer.removeListener('archive:cont-scan-start', handler);
+  },
+
+  onArchiveContScanResult: (cb: (data: { sceneId: string; items: unknown[]; tokenUsed: number; partial: boolean }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string; items: unknown[]; tokenUsed: number; partial: boolean }) => cb(data);
+    ipcRenderer.on('archive:cont-scan-result', handler);
+    return () => ipcRenderer.removeListener('archive:cont-scan-result', handler);
+  },
+
+  onArchiveContScanError: (cb: (data: { sceneId: string; error: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string; error: string }) => cb(data);
+    ipcRenderer.on('archive:cont-scan-error', handler);
+    return () => ipcRenderer.removeListener('archive:cont-scan-error', handler);
+  },
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

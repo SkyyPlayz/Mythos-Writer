@@ -1,0 +1,220 @@
+/* GlobalRightSidebar — global panel strip visible on all tabs */
+
+.grs-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-surface, #1e1e1e);
+  border-left: 1px solid var(--color-border, #333);
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: width 0.15s ease;
+  min-width: 200px;
+  max-width: 600px;
+}
+
+/* Show/hide edge strip */
+.grs-collapsed-edge {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 4px;
+  border-left: 1px solid var(--color-border, #333);
+  background: var(--color-surface, #1e1e1e);
+}
+
+/* Header */
+.grs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border, #333);
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.grs-header-left {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.grs-header-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #888);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.grs-header-btn:hover {
+  background: var(--color-surface-hover, #2a2a2a);
+  color: var(--color-text, #e0e0e0);
+}
+
+.grs-toggle-btn {
+  font-size: 14px;
+}
+
+/* Add panel picker */
+.grs-add-panel-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  background: var(--color-surface-raised, #2a2a2a);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.grs-add-panel-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--color-text, #e0e0e0);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.grs-add-panel-item:hover {
+  background: var(--color-surface-hover, #333);
+}
+
+.grs-add-panel-empty {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-text-muted, #888);
+}
+
+/* Panel list */
+.grs-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.grs-panel-wrapper {
+  border-bottom: 1px solid var(--color-border, #333);
+}
+
+.grs-panel-wrapper--dragover {
+  box-shadow: inset 0 2px 0 var(--color-accent, #7c6af7);
+}
+
+/* Individual panel */
+.grs-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.grs-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.grs-panel-header:hover {
+  background: var(--color-surface-hover, #2a2a2a);
+}
+
+.grs-panel-header:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--color-accent, #7c6af7));
+  outline-offset: -2px;
+}
+
+.grs-panel-drag {
+  color: var(--color-text-muted, #888);
+  cursor: grab;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.grs-panel-drag:active {
+  cursor: grabbing;
+}
+
+.grs-panel-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text, #e0e0e0);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grs-panel-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--color-error, #e05252);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.grs-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.grs-panel-header:hover .grs-panel-controls,
+.grs-panel-header:focus-within .grs-panel-controls {
+  opacity: 1;
+}
+
+.grs-panel-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #888);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.grs-panel-btn:hover {
+  background: var(--color-surface-hover, #333);
+  color: var(--color-text, #e0e0e0);
+}
+
+.grs-panel-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.grs-panel-body {
+  padding: 0;
+}
+
+.grs-panel-popout-placeholder {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--color-text-muted, #888);
+  font-style: italic;
+}
+
+/* Collapsed state */
+.grs-panel--collapsed .grs-panel-header {
+  border-bottom: none;
+}

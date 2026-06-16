@@ -402,6 +402,28 @@ interface AppSettings {
   };
   /** SKY-627: author name entered during onboarding (optional). */
   authorName?: string;
+
+  // ── Archive Agent v1 continuity settings (SKY-1683 / PRD §8) ──
+  archiveContinuityEnabled?: boolean;
+  archiveScanOnSave?: boolean;
+  archiveScanScope?: 'active_scene' | 'active_chapter' | 'full_manuscript';
+  archiveScanInterval?: number | null;
+  archiveMinSeverity?: 'low' | 'high' | 'critical';
+  archiveCheckCharacterDrift?: boolean;
+  archiveCheckLocationMismatch?: boolean;
+  archiveCheckFactualContradict?: boolean;
+  archiveScanBudget?: number;
+  archiveStoryEditConsentGiven?: boolean;
+
+  // ── Right sidebar persistence (SKY-1683 / PRD §8) ──
+  rightSidebarVisible?: boolean;
+  rightSidebarWidth?: number;
+  rightSidebarPanels?: RightSidebarPanel[];
+}
+
+interface RightSidebarPanel {
+  id: 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+  collapsed: boolean;
 }
 
 interface GenerationLogRow {
@@ -980,6 +1002,10 @@ interface Window {
     // Agent persona files (typed here to avoid renderer-side any-casts)
     agentPersonaRead: (agentName: string, key: string) => Promise<{ content: string; isCustom: boolean }>;
     agentPersonaReset: (agentName: string, key: string) => Promise<unknown>;
+
+    // SKY-1686: Global right-sidebar panel popout window
+    panelPopout?: (panelId: string, sceneId: string | null) => Promise<void>;
+    onPanelPopoutClosed?: (callback: (panelId: string) => void) => () => void;
 
     // Optional / feature-gated entry points (may not be registered in all builds)
     newStory?: () => Promise<void>;

@@ -415,6 +415,19 @@ export const IPC_CHANNELS = {
   DRAFTS_RESTORE: 'drafts:restore',
   DRAFTS_LABEL: 'drafts:label',
   DRAFTS_DELETE: 'drafts:delete',
+
+  // SKY-1686: Global right-sidebar — panel popout window
+  PANEL_POPOUT: 'panel:popout',
+  PANEL_POPOUT_CLOSED: 'panel:popout-closed',
+
+  // SKY-1684: Archive Agent v1 — continuity scan IPC
+  ARCHIVE_SCAN_CONTINUITY: 'archive:scan-continuity',
+  ARCHIVE_RESOLVE_CONTINUITY: 'archive:resolve-continuity',
+  ARCHIVE_LIST_CONTINUITY: 'archive:list-continuity',
+  // Push events (main → renderer)
+  ARCHIVE_CONT_SCAN_START: 'archive:cont-scan-start',
+  ARCHIVE_CONT_SCAN_RESULT: 'archive:cont-scan-result',
+  ARCHIVE_CONT_SCAN_ERROR: 'archive:cont-scan-error',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -1709,6 +1722,29 @@ export interface AppSettings {
   journalMode?: JournalModeSettings;
   /** SKY-627: author name entered during onboarding (optional). */
   authorName?: string;
+
+  // ── Archive Agent v1 continuity settings (SKY-1683 / PRD §8) ──
+  archiveContinuityEnabled?: boolean;
+  archiveScanOnSave?: boolean;
+  archiveScanScope?: 'active_scene' | 'active_chapter' | 'full_manuscript';
+  archiveScanInterval?: number | null;
+  archiveMinSeverity?: 'low' | 'high' | 'critical';
+  archiveCheckCharacterDrift?: boolean;
+  archiveCheckLocationMismatch?: boolean;
+  archiveCheckFactualContradict?: boolean;
+  archiveScanBudget?: number;
+  archiveStoryEditConsentGiven?: boolean;
+
+  // ── Right sidebar persistence (SKY-1683 / PRD §8) ──
+  rightSidebarVisible?: boolean;
+  rightSidebarWidth?: number;
+  rightSidebarPanels?: RightSidebarPanel[];
+}
+
+/** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */
+export interface RightSidebarPanel {
+  id: 'writing-assistant' | 'archive-continuity' | 'scene-preview';
+  collapsed: boolean;
 }
 
 /** SKY-204: daily notes journal mode configuration. */
@@ -2649,6 +2685,69 @@ export interface ArchiveIgnoreEntry {
 
 export interface ArchiveIgnoreListResponse {
   entries: ArchiveIgnoreEntry[];
+}
+
+// ─── Archive Agent v1 — continuity scan types (SKY-1684) ───────────────────
+
+export type ArchiveScanScope = 'active_scene' | 'active_chapter' | 'full_manuscript';
+export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
+
+export interface InconsistencyItem {
+  id: string;
+  category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
+  severity: 'critical' | 'high' | 'low';
+  manuscriptAnchor: {
+    sceneId: string;
+    offset: number;
+    excerpt: string;
+  };
+  vaultAnchor: {
+    notePath: string;
+    line: number;
+    excerpt: string;
+  };
+  rationale: string;
+  proposedResolution: {
+    matchArchiveToStory: string;
+    suggestStoryChange: string;
+  };
+  status: 'open' | 'resolved' | 'ignored';
+  resolvedAt: string | null;
+  resolvedAction: ResolutionAction | null;
+  createdAt: string;
+}
+
+export interface ArchiveScanContinuityPayload {
+  sceneId: string;
+  text: string;
+  scope?: ArchiveScanScope;
+}
+
+export interface ArchiveResolveContinuityPayload {
+  itemId: string;
+  action: ResolutionAction;
+  note?: string;
+}
+
+export interface ArchiveListContinuityPayload {
+  filter?: { status?: string; category?: string };
+}
+
+export interface ArchiveContScanStartEvent {
+  sceneId: string;
+  scope: ArchiveScanScope;
+}
+
+export interface ArchiveContScanResultEvent {
+  sceneId: string;
+  items: InconsistencyItem[];
+  tokenUsed: number;
+  partial: boolean;
+}
+
+export interface ArchiveContScanErrorEvent {
+  sceneId: string;
+  error: string;
 }
 
 // ─── Liquid Neon background image (MYT-613) ────

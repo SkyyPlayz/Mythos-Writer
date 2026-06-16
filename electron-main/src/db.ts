@@ -557,6 +557,46 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 22');
   }
+
+  if (currentVersion < 23) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS continuity_issues (
+        id                       TEXT PRIMARY KEY,
+        category                 TEXT NOT NULL,
+        severity                 TEXT NOT NULL,
+        manuscript_scene_id      TEXT NOT NULL,
+        manuscript_offset        INTEGER NOT NULL,
+        manuscript_excerpt       TEXT NOT NULL,
+        vault_note_path          TEXT NOT NULL,
+        vault_line               INTEGER NOT NULL,
+        vault_excerpt            TEXT NOT NULL,
+        rationale                TEXT NOT NULL,
+        proposed_match_archive   TEXT NOT NULL,
+        proposed_suggest_story   TEXT NOT NULL,
+        status                   TEXT NOT NULL DEFAULT 'open',
+        resolved_at              TEXT,
+        resolved_action          TEXT,
+        created_at               TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_continuity_issues_status ON continuity_issues (status);
+      CREATE INDEX IF NOT EXISTS idx_continuity_issues_scene ON continuity_issues (manuscript_scene_id);
+
+      CREATE TABLE IF NOT EXISTS archive_audit_log (
+        id           TEXT PRIMARY KEY,
+        action       TEXT NOT NULL,
+        source       TEXT NOT NULL DEFAULT 'archive_agent',
+        item_id      TEXT NOT NULL,
+        target_path  TEXT,
+        changed_from TEXT,
+        changed_to   TEXT,
+        scene_id     TEXT,
+        reason       TEXT,
+        created_at   TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_archive_audit_item ON archive_audit_log (item_id);
+    `);
+    db.exec('PRAGMA user_version = 23');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -1410,4 +1450,130 @@ export function updateDraftSnapshotLabel(snapshotId: string, label: string): voi
 
 export function deleteDraftSnapshot(snapshotId: string): void {
   getDb().prepare('DELETE FROM scene_snapshots WHERE id = ?').run(snapshotId);
+}
+
+// ─── Continuity Issues (SKY-1683 / Archive Agent v1) ───
+
+export type ContinuityCategory =
+  | 'character_attribute_drift'
+  | 'location_attribute_mismatch'
+  | 'factual_contradiction';
+
+export type ContinuitySeverity = 'critical' | 'high' | 'low';
+export type ContinuityIssueStatus = 'open' | 'resolved' | 'ignored';
+
+export interface DbContinuityIssue {
+  id: string;
+  category: ContinuityCategory;
+  severity: ContinuitySeverity;
+  manuscript_scene_id: string;
+  manuscript_offset: number;
+  manuscript_excerpt: string;
+  vault_note_path: string;
+  vault_line: number;
+  vault_excerpt: string;
+  rationale: string;
+  proposed_match_archive: string;
+  proposed_suggest_story: string;
+  status: ContinuityIssueStatus;
+  resolved_at: string | null;
+  resolved_action: string | null;
+  created_at: string;
+}
+
+export function insertContinuityIssue(issue: DbContinuityIssue): void {
+  getDb()
+    .prepare(
+      `INSERT INTO continuity_issues
+         (id, category, severity, manuscript_scene_id, manuscript_offset, manuscript_excerpt,
+          vault_note_path, vault_line, vault_excerpt, rationale, proposed_match_archive,
+          proposed_suggest_story, status, resolved_at, resolved_action, created_at)
+       VALUES
+         (@id, @category, @severity, @manuscript_scene_id, @manuscript_offset, @manuscript_excerpt,
+          @vault_note_path, @vault_line, @vault_excerpt, @rationale, @proposed_match_archive,
+          @proposed_suggest_story, @status, @resolved_at, @resolved_action, @created_at)`
+    )
+    .run(issue as unknown as Record<string, SQLInputValue>);
+}
+
+export function listContinuityIssues(status?: ContinuityIssueStatus): DbContinuityIssue[] {
+  if (status) {
+    return getDb()
+      .prepare('SELECT * FROM continuity_issues WHERE status = ? ORDER BY created_at DESC')
+      .all(status) as unknown as DbContinuityIssue[];
+  }
+  return getDb()
+    .prepare('SELECT * FROM continuity_issues ORDER BY created_at DESC')
+    .all() as unknown as DbContinuityIssue[];
+}
+
+export function getContinuityIssue(id: string): DbContinuityIssue | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM continuity_issues WHERE id = ?')
+      .get(id) as DbContinuityIssue | undefined) ?? null
+  );
+}
+
+export function updateContinuityIssueStatus(
+  id: string,
+  status: ContinuityIssueStatus,
+  resolvedAt?: string,
+  resolvedAction?: string,
+): void {
+  getDb()
+    .prepare(
+      `UPDATE continuity_issues
+          SET status = @status, resolved_at = @resolved_at, resolved_action = @resolved_action
+        WHERE id = @id`
+    )
+    .run({
+      id,
+      status,
+      resolved_at: resolvedAt ?? null,
+      resolved_action: resolvedAction ?? null,
+    });
+}
+
+export function deleteContinuityIssue(id: string): void {
+  getDb().prepare('DELETE FROM continuity_issues WHERE id = ?').run(id);
+}
+
+// ─── Archive Audit Log (SKY-1683 / Archive Agent v1) ───
+
+export type ArchiveAuditAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
+
+export interface DbArchiveAuditLog {
+  id: string;
+  action: ArchiveAuditAction;
+  source: string;
+  item_id: string;
+  target_path: string | null;
+  changed_from: string | null;
+  changed_to: string | null;
+  scene_id: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+export function insertArchiveAuditLog(entry: DbArchiveAuditLog): void {
+  getDb()
+    .prepare(
+      `INSERT INTO archive_audit_log
+         (id, action, source, item_id, target_path, changed_from, changed_to, scene_id, reason, created_at)
+       VALUES
+         (@id, @action, @source, @item_id, @target_path, @changed_from, @changed_to, @scene_id, @reason, @created_at)`
+    )
+    .run(entry as unknown as Record<string, SQLInputValue>);
+}
+
+export function listArchiveAuditLog(itemId?: string): DbArchiveAuditLog[] {
+  if (itemId) {
+    return getDb()
+      .prepare('SELECT * FROM archive_audit_log WHERE item_id = ? ORDER BY created_at DESC')
+      .all(itemId) as unknown as DbArchiveAuditLog[];
+  }
+  return getDb()
+    .prepare('SELECT * FROM archive_audit_log ORDER BY created_at DESC')
+    .all() as unknown as DbArchiveAuditLog[];
 }
