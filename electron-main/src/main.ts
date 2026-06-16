@@ -6729,7 +6729,7 @@ function registerArchiveContinuityHandlers(): void {
       if (filter?.category) {
         rows = rows.filter((r) => r.category === filter.category);
       }
-      return rows.map(dbRowToItem);
+      return { items: rows.map(dbRowToItem) };
     }),
   );
 }

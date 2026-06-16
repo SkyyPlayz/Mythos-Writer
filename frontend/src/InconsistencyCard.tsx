@@ -6,7 +6,7 @@ export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change'
 export interface InconsistencyItem {
   id: string;
   category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
-  severity: 'critical' | 'high' | 'low';
+  severity: 'critical' | 'high' | 'medium' | 'low';
   manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };
   vaultAnchor: { notePath: string; line: number; excerpt: string };
   rationale: string;
@@ -20,12 +20,14 @@ export interface InconsistencyItem {
 const SEVERITY_LABEL: Record<InconsistencyItem['severity'], string> = {
   critical: 'CRITICAL',
   high: 'HIGH',
+  medium: 'MEDIUM',
   low: 'LOW',
 };
 
 const SEVERITY_ARIA: Record<InconsistencyItem['severity'], string> = {
   critical: 'Critical severity',
   high: 'High severity',
+  medium: 'Medium severity',
   low: 'Low severity',
 };
 

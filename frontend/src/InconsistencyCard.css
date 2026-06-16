@@ -60,13 +60,18 @@
 }
 
 .ic-severity-badge--high {
-  background: var(--severity-high-bg);
-  color: var(--severity-high-text);
+  background: var(--ln-severity-high-bg, var(--severity-high-bg));
+  color: var(--ln-severity-high-text, var(--severity-high-text));
+}
+
+.ic-severity-badge--medium {
+  background: var(--ln-severity-medium-bg, var(--severity-medium-bg));
+  color: var(--ln-severity-medium-text, var(--severity-medium-text));
 }
 
 .ic-severity-badge--low {
-  background: var(--severity-low-bg);
-  color: var(--severity-low-text);
+  background: var(--ln-severity-low-bg, var(--severity-low-bg));
+  color: var(--ln-severity-low-text, var(--severity-low-text));
 }
 
 .ic-category {

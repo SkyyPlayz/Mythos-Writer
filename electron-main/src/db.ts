@@ -1459,7 +1459,7 @@ export type ContinuityCategory =
   | 'location_attribute_mismatch'
   | 'factual_contradiction';
 
-export type ContinuitySeverity = 'critical' | 'high' | 'low';
+export type ContinuitySeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ContinuityIssueStatus = 'open' | 'resolved' | 'ignored';
 
 export interface DbContinuityIssue {

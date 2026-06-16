@@ -203,8 +203,18 @@
   --severity-critical-text: #fca5a5;
   --severity-high-bg: rgba(249, 115, 22, 0.18);
   --severity-high-text: #fdba74;
+  --severity-medium-bg: rgba(234, 179, 8, 0.18);
+  --severity-medium-text: #fde68a;
   --severity-low-bg: rgba(148, 163, 184, 0.15);
   --severity-low-text: #94a3b8;
+
+  /* Liquid Neon aliases used by Archive Agent E2E assertions and downstream themes. */
+  --ln-severity-high-bg: var(--severity-high-bg);
+  --ln-severity-high-text: var(--severity-high-text);
+  --ln-severity-medium-bg: var(--severity-medium-bg);
+  --ln-severity-medium-text: var(--severity-medium-text);
+  --ln-severity-low-bg: var(--severity-low-bg);
+  --ln-severity-low-text: var(--severity-low-text);
 
   /* =========================================================================
    * Compatibility aliases.
