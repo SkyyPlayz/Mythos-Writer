@@ -140,10 +140,16 @@ async function waitUntil(
  * before exercising the StoryNavigator empty state.
  */
 async function ensureStoriesTab(pg: Page): Promise<void> {
-  const storiesTab = pg.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible().catch(() => false)) {
-    await storiesTab.click();
+  // SKY-1694: Story Navigator is now a panel in the left sidebar panel zone.
+  // If the panel is collapsed, expand it. No-op if already expanded.
+  const storiesPanel = pg.locator('[data-panel-id="stories"]');
+  if (await storiesPanel.isVisible().catch(() => false)) {
+    const isCollapsed = await storiesPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+    if (isCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
   }
+  // Legacy guard: old .rail-tab click (no-op if element absent)
+  const storiesTab = pg.locator('.rail-tab', { hasText: 'Stories' });
+  if (await storiesTab.isVisible().catch(() => false)) await storiesTab.click();
 }
 
 // ─── Suite state ──────────────────────────────────────────────────────────────

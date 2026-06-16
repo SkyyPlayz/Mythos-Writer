@@ -4,7 +4,7 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens } from './theme';
-import LeftRail from './LeftRail';
+import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
@@ -571,6 +571,11 @@ export default function DesktopShell() {
   /** SKY-204: word count of the currently open vault note, updated live. */
   const [openedNoteWordCount, setOpenedNoteWordCount] = useState(0);
 
+  // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
+  const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
+  const [rightSidebarUserCollapsed, setRightSidebarUserCollapsed] = useState(false);
+  const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
+
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
@@ -621,6 +626,17 @@ export default function DesktopShell() {
     setAppSettings(updatedSettings);
     window.api.settingsSet(updatedSettings).catch(() => {});
   }, [appSettings, seenTips]);
+
+  const persistLeftSidebarLayout = useCallback((next: LeftSidebarLayout) => {
+    setLeftSidebarLayout(next);
+    leftSidebarLayoutRef.current = next;
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: next } } as AppSettings;
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
 
   const persistGettingStartedProgress = useCallback((next: GettingStartedProgress) => {
     setGettingStartedProgress(next);
@@ -960,6 +976,11 @@ export default function DesktopShell() {
         if (typeof s.rightSidebarVisible === 'boolean') setGrsVisible(s.rightSidebarVisible);
         if (typeof s.rightSidebarWidth === 'number') setGrsWidth(s.rightSidebarWidth);
         if (Array.isArray(s.rightSidebarPanels) && s.rightSidebarPanels.length > 0) setGrsPanels(s.rightSidebarPanels as PanelConfig[]);
+        // SKY-1694: restore left sidebar layout from persisted AppSettings
+        if (s.activeLayout?.leftSidebar) {
+          setLeftSidebarLayout(s.activeLayout.leftSidebar);
+          leftSidebarLayoutRef.current = s.activeLayout.leftSidebar;
+        }
         setGettingStartedProgress(
           createInitialGettingStartedProgress(
             undefined,
@@ -1217,6 +1238,31 @@ export default function DesktopShell() {
         void handleManualSnapshot();
         return;
       }
+      // SKY-1694: Ctrl+[ / Cmd+[ — toggle left sidebar; Ctrl+] / Cmd+] — toggle right sidebar
+      if (mod && !e.shiftKey && !e.altKey && e.key === '[') {
+        e.preventDefault();
+        const next = { ...leftSidebarLayoutRef.current, sidebarCollapsed: !leftSidebarLayoutRef.current.sidebarCollapsed };
+        persistLeftSidebarLayout(next);
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && e.key === ']') {
+        e.preventDefault();
+        setRightSidebarUserCollapsed(prev => !prev);
+        return;
+      }
+      // SKY-1694: Ctrl+Shift+L / Ctrl+Shift+R — move focus to left/right sidebar
+      if (mod && e.shiftKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
+        e.preventDefault();
+        const el = document.querySelector<HTMLElement>('.lr-nav-zone button:first-child, .lr-panel-content :is(button,input,textarea,[tabindex="0"])');
+        el?.focus();
+        return;
+      }
+      if (mod && e.shiftKey && !e.altKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault();
+        const el = document.querySelector<HTMLElement>('.right-sidebar [role="tab"][aria-selected="true"], .right-sidebar button');
+        el?.focus();
+        return;
+      }
       if (!mod || !e.shiftKey) return;
       if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
@@ -1231,7 +1277,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout]);
 
   // ─── Panel resize drag handlers ───
 
@@ -1850,7 +1896,8 @@ export default function DesktopShell() {
   };
   const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
-  const showRightSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
+  // SKY-1694: rightSidebarUserCollapsed allows Ctrl+] to toggle right sidebar independently of focus mode
+  const showRightSidebar = !distractionFree && !rightSidebarUserCollapsed && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
   const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
@@ -2024,8 +2071,10 @@ export default function DesktopShell() {
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: layout.leftWidth }}>
           <LeftRail
-            activeTab={layout.leftTab}
-            onTabChange={(tab) => persistLayout({ ...layout, leftTab: tab })}
+            activeView={view}
+            onViewChange={(v) => setView(v)}
+            leftSidebarLayout={leftSidebarLayout}
+            onLeftSidebarLayoutChange={persistLeftSidebarLayout}
             stories={stories}
             selectedSceneId={selectedScene?.id ?? null}
             selectedEntityId={selectedEntity?.id ?? null}
@@ -2038,7 +2087,7 @@ export default function DesktopShell() {
             onOpenVaultPath={handleOpenSceneByPath}
             onContextChange={setVaultContext}
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
-          onExport={(scope: ExportScope) => setExportScope(scope)}
+            onExport={(scope: ExportScope) => setExportScope(scope)}
             showTemplateCta={showTemplateCta}
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
             onEntityCreated={(entity) => {

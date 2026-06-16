@@ -223,9 +223,12 @@ test('TC-V-01: Story Vault manifest.json and Notes Vault directory both created 
 // creation time; here we only verify the UI reflects the new hierarchy.
 
 test('TC-V-02: create story + chapter, both appear in Stories navigator', async () => {
-  // Ensure the Stories tab is active
-  const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible()) await storiesTab.click();
+  // SKY-1694: Story Navigator is in the panel zone; ensure it's expanded.
+  const storiesPanel = page.locator('[data-panel-id="stories"]');
+  if (await storiesPanel.isVisible().catch(() => false)) {
+    const isCollapsed = await storiesPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+    if (isCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
+  }
 
   // ── Create story ──────────────────────────────────────────────────────────
   await page.locator('.nav-add-btn').first().click();
@@ -331,9 +334,12 @@ test('TC-V-05: prose persists after full app restart (same userData)', async () 
   // Wait for DesktopShell to render
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to Stories tab
-  const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible()) await storiesTab.click();
+  // SKY-1694: Story Navigator is in the panel zone; ensure it's expanded.
+  const storiesPanel2 = page.locator('[data-panel-id="stories"]');
+  if (await storiesPanel2.isVisible().catch(() => false)) {
+    const isCollapsed = await storiesPanel2.evaluate((el) => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+    if (isCollapsed) await storiesPanel2.locator('.lr-panel-collapse-btn').click();
+  }
 
   // The story and scene should still be there (from manifest.json on disk)
   const storyRow = page.locator('.nav-story-row').first();
@@ -359,8 +365,10 @@ test('TC-V-05: prose persists after full app restart (same userData)', async () 
 test('TC-V-07: double-click scene in Vault tab shows rename input with pre-filled name', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  const vaultTab = page.locator('.rail-tab', { hasText: 'Vault' });
-  await vaultTab.click();
+  // SKY-1694: Vault Browser is in the panel zone (collapsed by default); expand it.
+  const vaultPanel = page.locator('[data-panel-id="vault"]');
+  const vaultPanelCollapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
+  if (vaultPanelCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
   await expect(page.locator('[data-testid="vb-story-vault"]')).toBeVisible({ timeout: 6_000 });
 
   const chapterToggle = page.locator('.vb-tree-toggle', { hasText: CHAPTER_TITLE });
@@ -393,9 +401,10 @@ test('TC-V-07: double-click scene in Vault tab shows rename input with pre-fille
 // will go to notesVaultRoot instead.
 
 test('TC-V-06: create entity (note), entity shown in Entities tab, file written to disk', async () => {
-  // Switch to Entities tab
-  const entitiesTab = page.locator('.rail-tab', { hasText: 'Entities' });
-  await entitiesTab.click();
+  // SKY-1694: Entity Browser is in the panel zone (collapsed by default); expand it.
+  const entitiesPanel = page.locator('[data-panel-id="entities"]');
+  const entitiesPanelCollapsed = await entitiesPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
+  if (entitiesPanelCollapsed) await entitiesPanel.locator('.lr-panel-collapse-btn').click();
 
   // Wait for entity browser toolbar
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });

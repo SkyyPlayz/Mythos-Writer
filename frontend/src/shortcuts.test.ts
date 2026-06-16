@@ -47,7 +47,7 @@ describe('buildShortcutGroups', () => {
     expect(labels).toContain('Suggestion Review');
     expect(labels).toContain('Brainstorm & Writing Assistant');
     expect(labels).toContain('Search Bar');
-    expect(labels).toContain('Right Sidebar');
+    expect(labels).toContain('Sidebars');
   });
 });
 

@@ -419,11 +419,32 @@ interface AppSettings {
   rightSidebarVisible?: boolean;
   rightSidebarWidth?: number;
   rightSidebarPanels?: RightSidebarPanel[];
+
+  /** SKY-1694 (Wave 2a): persisted layout customizations for the panel system. */
+  activeLayout?: {
+    leftSidebar: LeftSidebarLayout;
+  };
 }
 
 interface RightSidebarPanel {
   id: 'writing-assistant' | 'archive-continuity' | 'scene-preview';
   collapsed: boolean;
+}
+
+/** SKY-1694: Panel IDs available in the left sidebar panel zone. */
+type LeftPanelId = 'stories' | 'entities' | 'vault' | 'review' | 'progress';
+
+/** SKY-1694: Per-panel config entry in the left sidebar panel zone. */
+interface LeftPanelConfig {
+  id: LeftPanelId;
+  collapsed: boolean;
+}
+
+/** SKY-1694: Persisted state for the left sidebar panel zone. */
+interface LeftSidebarLayout {
+  panels: LeftPanelConfig[];
+  /** When true the sidebar collapses to an icon-only nav rail. */
+  sidebarCollapsed: boolean;
 }
 
 interface GenerationLogRow {

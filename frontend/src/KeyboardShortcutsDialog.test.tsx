@@ -29,7 +29,7 @@ describe('KeyboardShortcutsDialog', () => {
     expect(screen.getByText('Suggestion Review')).toBeInTheDocument();
     expect(screen.getByText('Brainstorm & Writing Assistant')).toBeInTheDocument();
     expect(screen.getByText('Search Bar')).toBeInTheDocument();
-    expect(screen.getByText('Right Sidebar')).toBeInTheDocument();
+    expect(screen.getByText('Sidebars')).toBeInTheDocument();
   });
 
   it('renders shortcut keys and actions', () => {

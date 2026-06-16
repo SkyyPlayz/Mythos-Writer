@@ -18,48 +18,261 @@
   }
 }
 
-.rail-tabs {
+/* Collapsed state: icon-only rail */
+.left-rail--collapsed {
+  width: 48px !important;
+}
+
+/* Toggle button (collapse/expand) */
+.lr-toggle-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: none;
+  border: none;
+  color: #52525b;
+  font-size: 0.65rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  z-index: 2;
+  transition: color 0.15s;
+}
+
+.lr-toggle-btn:hover {
+  color: #a1a1aa;
+  background: #27272a;
+}
+
+.lr-toggle-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* Fixed nav zone */
+.lr-nav-zone {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 28px 6px 6px;
   border-bottom: 1px solid #27272a;
   flex-shrink: 0;
 }
 
-.rail-tab {
-  flex: 1;
-  padding: 8px 4px;
+.lr-nav-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
   background: none;
   border: none;
+  border-radius: 6px;
   color: #71717a;
-  font-size: 0.78rem;
-  font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s;
-  letter-spacing: 0.02em;
+  font-size: 0.85rem;
+  text-align: left;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  position: relative;
 }
 
-.rail-tab:hover {
+.lr-nav-icon:hover {
   color: #a1a1aa;
+  background: #27272a;
 }
 
-.rail-tab.active {
+.lr-nav-icon--active {
   color: #e4e4e7;
-  border-bottom: 2px solid #7c3aed;
-  margin-bottom: -1px;
+  background: #27272a;
   text-shadow: var(--neon-glow);
 }
 
-.rail-tab:focus-visible {
+.lr-nav-icon--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: #7c3aed;
+  border-radius: 0 2px 2px 0;
+}
+
+.lr-nav-icon:focus-visible {
   outline: 2px solid var(--focus-ring, #00f0ff);
   outline-offset: -2px;
 }
 
-.rail-content {
+.lr-nav-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Panel zone */
+.lr-panel-zone {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-/* Vault browser */
+/* Individual panel */
+.lr-panel {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #27272a;
+  flex-shrink: 0;
+}
+
+.lr-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  background: #18181b;
+  flex-shrink: 0;
+  min-height: 32px;
+}
+
+.lr-panel-collapse-btn {
+  background: none;
+  border: none;
+  color: #52525b;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.lr-panel-collapse-btn:hover {
+  color: #a1a1aa;
+}
+
+.lr-panel-collapse-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.lr-panel-title {
+  flex: 1;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #71717a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lr-panel-remove-btn {
+  background: none;
+  border: none;
+  color: #3f3f46;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.lr-panel-remove-btn:hover {
+  color: #ef4444;
+  background: #27272a;
+}
+
+.lr-panel-remove-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.lr-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Add panel button + picker */
+.lr-add-panel-wrapper {
+  padding: 8px 8px 6px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lr-add-panel-btn {
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: 1px dashed #3f3f46;
+  border-radius: 6px;
+  color: #52525b;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.lr-add-panel-btn:hover:not(:disabled) {
+  color: #a1a1aa;
+  border-color: #71717a;
+  background: #18181b;
+}
+
+.lr-add-panel-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lr-add-panel-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.lr-panel-picker {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 8px;
+  right: 8px;
+  background: #1c1c1f;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  z-index: 10;
+  overflow: hidden;
+}
+
+.lr-panel-picker-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.lr-panel-picker-item:hover {
+  background: #27272a;
+  color: #e4e4e7;
+}
+
+.lr-panel-picker-item:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: -2px;
+}
+
+/* Vault browser (preserved from original) */
 .vault-loading {
   padding: 16px;
   color: #52525b;
