@@ -1,6 +1,14 @@
-# Mythos Writer
+# Mythos Writer — v0.2.0-beta.1
 
-Mythos Writer is a local-first desktop writing app for fiction authors. It gives you a structured vault for your stories and notes, a distraction-free scene editor, and an AI brainstorm assistant powered by Claude — all running on your own machine with your files stored as plain Markdown. No subscription, no cloud, no lock-in.
+> *A writing app, with an extra brain, to keep everything in mind so you don't have to.*
+
+Your manuscript and your world live in separate apps. Every time you rename a character, you update it in two places. **Mythos Writer fixes that.**
+
+One local Windows app: write your scenes in the Story Vault as plain Markdown files, and let the Brainstorm AI automatically fill your Notes Vault with the characters, locations, and factions it finds in your conversations. Map your plot on the **Scene Crafter** Kanban board. Follow the connections between your world's notes in the **Vault Graph**. Everything lives on your machine — no account, no subscription required.
+
+**[Download Mythos Writer v0.2.0-beta.1 for Windows →](https://github.com/SkyyPlayz/Mythos-Writer/releases/latest)**
+
+> **Beta notice:** v0.2.0 is a Windows-first beta. Core writing and worldbuilding features are stable; rough edges remain. File bugs on [GitHub Issues](https://github.com/SkyyPlayz/Mythos-Writer/issues) — every report helps.
 
 ## Screenshots
 
@@ -27,7 +35,7 @@ Mythos Writer is a local-first desktop writing app for fiction authors. It gives
 </tr>
 </table>
 
-> **What's new in June 2026 (Wave 3.3):** Brainstorm Panel drag-reorder + Open in Writing Panel, custom template save / rename / duplicate / delete / import-export, and the Getting Started guided panel are all live in the current release.
+> **What's new in v0.2.0-beta.1:** Scene Crafter Kanban board for visual scene planning, Vault Graph for wiki-link mapping across your notes, and the Getting Started guided panel are live in this release. Brainstorm Panel drag-reorder, Open in Writing Panel, and custom template management (save / rename / duplicate / delete / import-export) landed in Wave 3.3.
 
 ## Installation
 
