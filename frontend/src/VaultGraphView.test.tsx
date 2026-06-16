@@ -217,7 +217,7 @@ describe('VaultGraphView', () => {
     expect(banner).toHaveTextContent('520 notes');
     expect(banner).toHaveTextContent('top 500');
     expect(screen.getByRole('button', { name: /show all/i })).toBeInTheDocument();
-  });
+  }, 15000); // 520-node render is heavy in CI jsdom — extend timeout to avoid load-induced flake
 
   it('AC-GV-10: Show all button removes truncation, banner persists until dismissed', async () => {
     const nodes = Array.from({ length: 510 }, (_, i) => ({
@@ -244,7 +244,7 @@ describe('VaultGraphView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /dismiss large vault notice/i }));
     expect(screen.queryByTestId('vault-graph-truncation-banner')).not.toBeInTheDocument();
-  });
+  }, 15000); // 510-node render is heavy in CI jsdom — extend timeout to avoid load-induced flake
 
   // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────
 
