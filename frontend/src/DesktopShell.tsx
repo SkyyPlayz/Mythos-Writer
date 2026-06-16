@@ -2159,6 +2159,7 @@ export default function DesktopShell() {
             stories={stories}
             selectedSceneId={selectedScene?.id ?? null}
             onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
+            onSelectStory={(st) => setSelectedStory(st)}
             onCreateStory={createStory}
             onCreateChapter={createChapter}
             onCreateScene={createScene}

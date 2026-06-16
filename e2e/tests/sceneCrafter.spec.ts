@@ -117,9 +117,9 @@ async function createStory(pg: Page, title: string): Promise<void> {
     .toBeVisible({ timeout: 8_000 });
 }
 
-/** Select a story by clicking its row in the StoryNavigator sidebar. */
+/** Select a story by clicking its title in the StoryNavigator sidebar. */
 async function selectStory(pg: Page, title: string): Promise<void> {
-  await pg.locator('.nav-story-row').filter({ hasText: title }).click();
+  await pg.locator('.nav-story-title', { hasText: title }).click();
 }
 
 /** Navigate to the Scene Crafter (Board) view via the toolbar. */
