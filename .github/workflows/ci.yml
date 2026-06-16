@@ -25,6 +25,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # SKY-1809: reject any tracked filename containing Windows-illegal characters
+      # (\, <, >, :, ", |, ?, *) so build-windows can always check out the repo.
+      - name: Guard — no Windows-illegal filenames in repo
+        run: |
+          if git ls-files | grep -Pq '[\\<>:"|?*]'; then
+            echo 'ERROR: tracked filenames contain Windows-illegal characters (one of: \ < > : " | ? *):'
+            git ls-files | grep -P '[\\<>:"|?*]'
+            exit 1
+          fi
+          echo "Guard passed: no Windows-illegal filenames tracked."
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
