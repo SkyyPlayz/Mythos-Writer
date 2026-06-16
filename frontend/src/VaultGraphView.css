@@ -127,11 +127,24 @@
 .vgv-node-circle--default { filter: var(--ln-graph-glow-default); }
 
 .vgv-graph-node:hover .vgv-node-circle,
-.vgv-graph-node--selected .vgv-node-circle {
+.vgv-graph-node--selected .vgv-node-circle,
+.vgv-graph-node--keyboard-focused .vgv-node-circle {
   fill: var(--ln-graph-node-highlight);
   stroke: var(--ln-graph-border-highlight);
   stroke-width: 3;
   filter: var(--ln-graph-glow-highlight);
+}
+
+.vgv-graph-node--keyboard-focused .vgv-node-circle {
+  outline: 3px solid var(--focus-ring, #fff);
+  outline-offset: 4px;
+}
+
+.vgv-graph-node:hover .vgv-node-label,
+.vgv-graph-node--selected .vgv-node-label,
+.vgv-graph-node--keyboard-focused .vgv-node-label {
+  fill: var(--text-body);
+  font-size: 11px;
 }
 
 .vgv-node-label {
@@ -144,16 +157,17 @@
   user-select: none;
 }
 
-.vgv-graph-node:hover .vgv-node-label,
-.vgv-graph-node--selected .vgv-node-label {
-  fill: var(--text-body);
-  font-size: 11px;
+.vgv-graph-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
-.vgv-zoom-controls {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
+.vgv-zoom-controls,
+.vgv-legend-wrap {
   display: flex;
   gap: 6px;
   padding: 6px;
@@ -163,8 +177,13 @@
   backdrop-filter: blur(var(--blur-panel));
 }
 
-.vgv-zoom-controls button {
-  width: 28px;
+.vgv-legend-wrap {
+  position: relative;
+}
+
+.vgv-zoom-controls button,
+.vgv-legend-wrap > button {
+  min-width: 28px;
   height: 28px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xs);
@@ -174,11 +193,57 @@
   font-size: 14px;
 }
 
+.vgv-legend-wrap > button {
+  padding: 0 8px;
+}
+
 .vgv-zoom-controls button:hover,
-.vgv-zoom-controls button:focus-visible {
+.vgv-zoom-controls button:focus-visible,
+.vgv-legend-wrap > button:hover,
+.vgv-legend-wrap > button:focus-visible {
   border-color: var(--ln-graph-border-highlight);
   outline: none;
 }
+
+.vgv-legend-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 150px;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  box-shadow: var(--shadow-panel, 0 8px 24px rgb(0 0 0 / 35%));
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.vgv-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vgv-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--vgv-swatch-stroke);
+  border-radius: 999px;
+  background: var(--vgv-swatch-fill);
+}
+
+.vgv-legend-swatch--characters { --vgv-swatch-fill: var(--ln-graph-node-characters); --vgv-swatch-stroke: var(--ln-graph-border-characters); }
+.vgv-legend-swatch--locations { --vgv-swatch-fill: var(--ln-graph-node-locations); --vgv-swatch-stroke: var(--ln-graph-border-locations); }
+.vgv-legend-swatch--factions { --vgv-swatch-fill: var(--ln-graph-node-factions); --vgv-swatch-stroke: var(--ln-graph-border-factions); }
+.vgv-legend-swatch--history { --vgv-swatch-fill: var(--ln-graph-node-history); --vgv-swatch-stroke: var(--ln-graph-border-history); }
+.vgv-legend-swatch--systems { --vgv-swatch-fill: var(--ln-graph-node-systems); --vgv-swatch-stroke: var(--ln-graph-border-systems); }
+.vgv-legend-swatch--items { --vgv-swatch-fill: var(--ln-graph-node-items); --vgv-swatch-stroke: var(--ln-graph-border-items); }
+.vgv-legend-swatch--misc { --vgv-swatch-fill: var(--ln-graph-node-misc); --vgv-swatch-stroke: var(--ln-graph-border-misc); }
+.vgv-legend-swatch--default { --vgv-swatch-fill: var(--ln-graph-node-default); --vgv-swatch-stroke: var(--ln-graph-border-default); }
 
 .vgv-state {
   display: flex;
@@ -221,7 +286,99 @@
   .vgv-search,
   .vgv-graph-edge,
   .vgv-graph-node,
-  .vgv-node-circle {
+  .vgv-node-circle,
+  .vgv-legend-popover {
     transition: none;
   }
+}
+
+@media (prefers-contrast: more) {
+  .vgv-root {
+    --neon-intensity: 0;
+  }
+
+  .vgv-graph-edge,
+  .vgv-graph-edge--dimmed {
+    stroke: ButtonText;
+    opacity: 1;
+  }
+
+  .vgv-node-circle,
+  .vgv-node-circle--characters,
+  .vgv-node-circle--locations,
+  .vgv-node-circle--factions,
+  .vgv-node-circle--history,
+  .vgv-node-circle--systems,
+  .vgv-node-circle--items,
+  .vgv-node-circle--misc,
+  .vgv-node-circle--default {
+    fill: Canvas;
+    stroke: ButtonText;
+    stroke-width: 2;
+    filter: none;
+  }
+
+  .vgv-graph-node:hover .vgv-node-circle,
+  .vgv-graph-node--selected .vgv-node-circle,
+  .vgv-graph-node--keyboard-focused .vgv-node-circle {
+    fill: Highlight;
+    stroke: Highlight;
+    filter: none;
+  }
+
+  .vgv-graph-node--keyboard-focused .vgv-node-circle {
+    outline-color: Highlight;
+  }
+
+  .vgv-graph-node:hover .vgv-node-label,
+  .vgv-graph-node--selected .vgv-node-label,
+  .vgv-graph-node--keyboard-focused .vgv-node-label {
+    fill: HighlightText;
+  }
+}
+
+[data-contrast="high"] .vgv-root,
+.vgv-root[data-contrast="high"] {
+  --neon-intensity: 0;
+}
+
+[data-contrast="high"] .vgv-graph-edge,
+[data-contrast="high"] .vgv-graph-edge--dimmed,
+.vgv-root[data-contrast="high"] .vgv-graph-edge,
+.vgv-root[data-contrast="high"] .vgv-graph-edge--dimmed {
+  stroke: ButtonText;
+  opacity: 1;
+}
+
+[data-contrast="high"] .vgv-node-circle,
+.vgv-root[data-contrast="high"] .vgv-node-circle {
+  fill: Canvas;
+  stroke: ButtonText;
+  stroke-width: 2;
+  filter: none;
+}
+
+[data-contrast="high"] .vgv-graph-node:hover .vgv-node-circle,
+[data-contrast="high"] .vgv-graph-node--selected .vgv-node-circle,
+[data-contrast="high"] .vgv-graph-node--keyboard-focused .vgv-node-circle,
+.vgv-root[data-contrast="high"] .vgv-graph-node:hover .vgv-node-circle,
+.vgv-root[data-contrast="high"] .vgv-graph-node--selected .vgv-node-circle,
+.vgv-root[data-contrast="high"] .vgv-graph-node--keyboard-focused .vgv-node-circle {
+  fill: Highlight;
+  stroke: Highlight;
+  filter: none;
+}
+
+[data-contrast="high"] .vgv-graph-node--keyboard-focused .vgv-node-circle,
+.vgv-root[data-contrast="high"] .vgv-graph-node--keyboard-focused .vgv-node-circle {
+  outline-color: Highlight;
+}
+
+[data-contrast="high"] .vgv-graph-node:hover .vgv-node-label,
+[data-contrast="high"] .vgv-graph-node--selected .vgv-node-label,
+[data-contrast="high"] .vgv-graph-node--keyboard-focused .vgv-node-label,
+.vgv-root[data-contrast="high"] .vgv-graph-node:hover .vgv-node-label,
+.vgv-root[data-contrast="high"] .vgv-graph-node--selected .vgv-node-label,
+.vgv-root[data-contrast="high"] .vgv-graph-node--keyboard-focused .vgv-node-label {
+  fill: HighlightText;
 }
