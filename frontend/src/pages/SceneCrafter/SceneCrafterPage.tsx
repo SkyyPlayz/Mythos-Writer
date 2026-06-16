@@ -92,7 +92,12 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
     return () => unsubscribe?.();
   }, [storySlug]);
 
+  useEffect(() => {
+    return () => { window.api.sceneCrafterClose?.(storySlug); };
+  }, [storySlug]);
+
   async function runMutation(action: () => Promise<void>) {
+    if (conflicted) return;
     try {
       setRetryAction(null);
       await action();
@@ -171,6 +176,7 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
   }
 
   async function requestDeleteLane(laneIndex: number, force = false) {
+    if (conflicted) return;
     try {
       const result = await window.api.sceneCrafterDeleteLane({ storySlug, laneIndex, force });
       if (!result.ok) {
@@ -219,7 +225,7 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
         </div>
         <div className="scene-crafter-actions">
           <span>{board.lanes.length} lanes · {cardCount} cards</span>
-          <button onClick={addLane}>Add lane</button>
+          <button onClick={addLane} disabled={conflicted}>Add lane</button>
         </div>
       </header>
 
@@ -261,7 +267,7 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
       {cardCount === 0 && (
         <div className="scene-crafter-empty">
           <strong>Plan your next scene.</strong>
-          <span>Drag a vault note here or use Add card to start the board.</span>
+          <span>Drag a vault note here to start the board.</span>
         </div>
       )}
 
@@ -295,7 +301,7 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
                 <h3 onDoubleClick={() => setEditingLane({ laneIndex, name: lane.name })}>{lane.name}</h3>
               )}
               <span>{lane.cards.length}</span>
-              <button aria-label={`Delete lane ${lane.name}`} onClick={() => void requestDeleteLane(laneIndex)}>×</button>
+              <button aria-label={`Delete lane ${lane.name}`} onClick={() => void requestDeleteLane(laneIndex)} disabled={conflicted}>×</button>
             </header>
 
             <div className="scene-crafter-card-list">
@@ -315,6 +321,7 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
                         checked={card.done}
                         aria-label={`Mark ${card.title} done`}
                         onChange={() => toggleCard(laneIndex, cardIndex)}
+                        disabled={conflicted}
                       />
                       <span>{card.title}</span>
                     </label>
@@ -324,7 +331,7 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
                     <div className="scene-crafter-card-actions">
                       <button onClick={() => onOpenNote?.(card.wikilink)}>Go to note</button>
                       {sceneId && <button onClick={() => onOpenScene?.(sceneId)}>Go to scene</button>}
-                      <button aria-label={`Delete card ${card.title}`} onClick={() => deleteCard(laneIndex, cardIndex)}>Delete</button>
+                      <button aria-label={`Delete card ${card.title}`} onClick={() => deleteCard(laneIndex, cardIndex)} disabled={conflicted}>Delete</button>
                     </div>
                   </article>
                 );
