@@ -53,6 +53,7 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     sceneCrafterDeleteLane: vi.fn().mockResolvedValue({ ok: true, cardCount: 0 }),
     sceneCrafterReorderLanes: vi.fn().mockResolvedValue({ ok: true }),
     onSceneCrafterExternalEdit: vi.fn().mockReturnValue(vi.fn()),
+    sceneCrafterClose: vi.fn(),
     ...overrides,
   };
 }
@@ -220,6 +221,49 @@ describe('SceneCrafterPage — lane management and error states', () => {
     fireEvent.click(screen.getByRole('button', { name: /retry save/i }));
 
     await waitFor(() => expect(api.sceneCrafterToggleCardDone).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('SceneCrafterPage — SKY-1805 post-merge bug fixes', () => {
+  it('calls sceneCrafterClose with the story slug on component unmount', async () => {
+    const api = makeApi();
+    (window as unknown as { api: unknown }).api = api;
+    const { unmount } = await renderPage();
+    unmount();
+    expect(api.sceneCrafterClose).toHaveBeenCalledWith('Skyfall Chronicles');
+  });
+
+  it('blocks mutations while conflicted — IPC handlers not called after external-edit signal', async () => {
+    let externalEditHandler: ((storySlug: string) => void) | undefined;
+    const api = makeApi({
+      onSceneCrafterExternalEdit: vi.fn((cb: (storySlug: string) => void) => {
+        externalEditHandler = cb;
+        return vi.fn();
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    await renderPage();
+
+    await act(async () => { externalEditHandler?.('Skyfall Chronicles'); });
+
+    fireEvent.click(screen.getByRole('button', { name: /add lane/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /mark Opening Beat done/i }));
+    await act(async () => {});
+
+    expect(api.sceneCrafterAddLane).not.toHaveBeenCalled();
+    expect(api.sceneCrafterToggleCardDone).not.toHaveBeenCalled();
+  });
+
+  it('empty-state copy does not reference a non-existent "Add card" button', async () => {
+    const emptyBoard = cloneBoard();
+    emptyBoard.lanes.forEach((lane) => { lane.cards = []; });
+    (window as unknown as { api: unknown }).api = makeApi({
+      sceneCrafterGetBoard: vi.fn().mockResolvedValue(emptyBoard),
+    });
+
+    await renderPage();
+
+    expect(screen.queryByText(/add card/i)).not.toBeInTheDocument();
   });
 });
 
