@@ -2578,6 +2578,10 @@ const handlers: IpcHandlers = {
   // ─── Archive confirmation dialog (MYT-376) ───
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => {
     ensureVaultDir();
+    const VALID_ARCHIVE_ACTIONS = ['match_archive', 'suggest_story_change', 'ignore'] as const;
+    if (!VALID_ARCHIVE_ACTIONS.includes(payload.action as typeof VALID_ARCHIVE_ACTIONS[number])) {
+      throw new Error(`Invalid action: ${payload.action}`);
+    }
     const now = new Date().toISOString();
     const auditId = crypto.randomUUID();
 
@@ -6728,7 +6732,7 @@ function registerArchiveContinuityHandlers(): void {
       if (filter?.category) {
         rows = rows.filter((r) => r.category === filter.category);
       }
-      return rows.map(dbRowToItem);
+      return { items: rows.map(dbRowToItem) };
     }),
   );
 }

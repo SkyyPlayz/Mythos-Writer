@@ -16,11 +16,12 @@ type PanelState =
   | 'error_vault'
   | 'open_issues';
 
-type GroupKey = 'critical' | 'high' | 'low' | 'ignored';
+type GroupKey = 'critical' | 'high' | 'medium' | 'low' | 'ignored';
 
 const GROUP_LABELS: Record<GroupKey, string> = {
   critical: 'Critical',
   high: 'High',
+  medium: 'Medium',
   low: 'Low',
   ignored: 'Ignored',
 };
@@ -29,16 +30,21 @@ function groupItems(items: InconsistencyItem[]): Record<GroupKey, InconsistencyI
   const groups: Record<GroupKey, InconsistencyItem[]> = {
     critical: [],
     high: [],
+    medium: [],
     low: [],
     ignored: [],
   };
   for (const item of items) {
     if (item.status === 'ignored') {
       groups.ignored.push(item);
+    } else if (item.status !== 'open') {
+      continue;
     } else if (item.severity === 'critical') {
       groups.critical.push(item);
     } else if (item.severity === 'high') {
       groups.high.push(item);
+    } else if (item.severity === 'medium') {
+      groups.medium.push(item);
     } else {
       groups.low.push(item);
     }
@@ -101,9 +107,10 @@ export default function ContinuityPanel({
       try {
         const result = await window.api.archiveListContinuity({});
         if (cancelled) return;
-        const loaded = result.items as InconsistencyItem[];
+        const loaded = (Array.isArray(result) ? result : result?.items ?? []) as InconsistencyItem[];
+        const loadedOpenCount = loaded.filter((i) => i.status === 'open').length;
         setItems(loaded);
-        setPanelState(loaded.length === 0 ? 'not_scanned' : 'open_issues');
+        setPanelState(loaded.length === 0 ? 'not_scanned' : loadedOpenCount === 0 ? 'empty' : 'open_issues');
       } catch {
         if (!cancelled) setPanelState('not_scanned');
       }
@@ -149,17 +156,28 @@ export default function ContinuityPanel({
   }, [enabled]);
 
   const handleResolve = useCallback(async (id: string, action: ResolutionAction) => {
+    let previousItem: InconsistencyItem | undefined;
+    const resolvedAt = new Date().toISOString();
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        previousItem = item;
+        return {
+          ...item,
+          status: action === 'ignore' ? 'ignored' : 'resolved',
+          resolvedAction: action,
+          resolvedAt,
+        };
+      }),
+    );
+
     try {
       await window.api.archiveResolveContinuity(id, action);
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? { ...item, status: action === 'ignore' ? 'ignored' : 'resolved', resolvedAction: action, resolvedAt: new Date().toISOString() }
-            : item,
-        ),
-      );
     } catch {
-      // Optimistic update already done on the card; log silently
+      if (previousItem) {
+        const restored = previousItem as InconsistencyItem;
+        setItems((prev) => prev.map((item) => (item.id === id ? restored : item)));
+      }
     }
   }, []);
 
@@ -194,7 +212,7 @@ export default function ContinuityPanel({
   }
 
   const groups = groupItems(items);
-  const hasHigherSeverity = groups.critical.length > 0 || groups.high.length > 0;
+  const hasHigherSeverity = groups.critical.length > 0 || groups.high.length > 0 || groups.medium.length > 0;
 
   return (
     <div className="cp-panel">
@@ -275,7 +293,7 @@ export default function ContinuityPanel({
 
       {(panelState === 'open_issues' || panelState === 'partial' || panelState === 'scanning') && items.length > 0 && (
         <ul role="list" aria-label="Continuity issues" className="cp-issues-list">
-          {(['critical', 'high', 'low', 'ignored'] as GroupKey[]).map((key) => {
+          {(['critical', 'high', 'medium', 'low', 'ignored'] as GroupKey[]).map((key) => {
             const groupItems = groups[key];
             if (groupItems.length === 0) return null;
             const isCollapsed = collapsedGroups.has(key);

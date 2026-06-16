@@ -2695,7 +2695,7 @@ export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change'
 export interface InconsistencyItem {
   id: string;
   category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
-  severity: 'critical' | 'high' | 'low';
+  severity: 'critical' | 'high' | 'medium' | 'low';
   manuscriptAnchor: {
     sceneId: string;
     offset: number;

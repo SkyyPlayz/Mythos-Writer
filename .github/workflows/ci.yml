@@ -230,6 +230,9 @@ jobs:
       - name: E2E — Post-onboarding polish panel, scene hint, template CTA (SKY-1188)
         run: xvfb-run --auto-servernum npm run test:e2e:post-onboarding
 
+      - name: E2E — Archive continuity panel + inconsistency flow (SKY-1742)
+        run: xvfb-run --auto-servernum npm run test:e2e:continuity-panel
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
