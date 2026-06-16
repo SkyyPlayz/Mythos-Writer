@@ -131,9 +131,10 @@ async function waitUntil(
 }
 
 async function openVaultTab(pg: Page): Promise<void> {
-  const vaultTab = pg.locator('.rail-tab', { hasText: 'Vault' });
-  await expect(vaultTab).toBeVisible({ timeout: 8_000 });
-  await vaultTab.click();
+  // SKY-1694: Vault Browser is in the panel zone (collapsed by default); expand it.
+  const vaultPanel = pg.locator('[data-panel-id="vault"]');
+  const isCollapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+  if (isCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
   await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
 }
 
