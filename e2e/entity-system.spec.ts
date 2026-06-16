@@ -150,9 +150,10 @@ test('TC-E-01: create entity (character) via Entity Browser', async () => {
   // Wait for app to fully load
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to Entities tab
-  const entitiesTab = page.locator('.rail-tab', { hasText: 'Entities' });
-  await entitiesTab.click();
+  // SKY-1694: Entities is now a panel in the panel zone; expand it if collapsed.
+  const entitiesPanel = page.locator('[data-panel-id="entities"]');
+  const ep1Collapsed = await entitiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+  if (ep1Collapsed) await entitiesPanel.locator('.lr-panel-collapse-btn').click();
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
   // Click "+ New Entity" — SKY-619: opens CreateDialog (role="dialog")
@@ -208,8 +209,10 @@ test('TC-E-02: add alias to entity via EntityDetail panel', async () => {
 
 test('TC-E-03: reference entity in prose editor via wiki-link syntax', async () => {
   // Create a story/chapter/scene to get a prose editor
-  const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-  await storiesTab.click();
+  // SKY-1694: Stories is now a panel in the panel zone; ensure it's expanded.
+  const storiesPanel = page.locator('[data-panel-id="stories"]');
+  const sp1Collapsed = await storiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+  if (sp1Collapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
 
   // Create story
   await page.locator('.nav-add-btn').first().click();
@@ -257,9 +260,10 @@ test('TC-E-04: entity with alias persists after full app restart', async () => {
   // Wait for app to fully load
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to Entities tab
-  const entitiesTab = page.locator('.rail-tab', { hasText: 'Entities' });
-  await entitiesTab.click();
+  // SKY-1694: Entities is now a panel in the panel zone; expand it if collapsed.
+  const entitiesPanel2 = page.locator('[data-panel-id="entities"]');
+  const ep2Collapsed = await entitiesPanel2.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+  if (ep2Collapsed) await entitiesPanel2.locator('.lr-panel-collapse-btn').click();
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
   // Entity should still exist after reload
