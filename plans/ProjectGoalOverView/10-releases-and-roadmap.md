@@ -114,6 +114,36 @@ This means:
 
 ---
 
+## Monetization plan
+
+Decided on [SKY-1663](/SKY/issues/SKY-1663) (2026-06-16). Three tiers, delivered in order:
+
+### Phase 1 — MVP launch: one-time license fee
+
+Mythos Writer ships as a paid desktop app with a single one-time purchase. Users continue to bring their own API key for any LLM provider they prefer (Anthropic, OpenAI, etc. — see post-MVP picker above). No subscription, no account system required to use the product.
+
+### Phase 2 — In-app AI subscription
+
+Once the user base is established, introduce an optional in-app AI subscription so users can pay us a monthly fee in exchange for LLM credits, instead of managing third-party API keys themselves. The BYO-key path stays available; the subscription is an alternative for users who don't want to touch a vendor dashboard.
+
+### Phase 3 — Cloud storage subscription + mobile companion
+
+A separate paid tier that adds (a) Mythos-hosted cloud storage for vaults, (b) seamless in-app sync between devices, and (c) the mobile companion app where folder-level OS sync isn't viable. Built-in cloud sync (the work originally spec'd in SKY-843) belongs to this phase — it is **not** part of MVP. Until then, users put their vault inside their existing Dropbox / iCloud / Google Drive / OneDrive folder and let the OS desktop client sync it.
+
+> **Cost surfacing:** until Phase 2 ships, the in-app cost controls described in [09-safety-versioning-sync.md](09-safety-versioning-sync.md) apply to BYO-key spend only — there's no Mythos-side bill to estimate or cap.
+
+---
+
+## Launch platform order
+
+Decided on [SKY-1663](/SKY/issues/SKY-1663) (2026-06-16):
+
+- **Windows first.** The first official released build of Mythos Writer ships only for Windows. Signing, notarisation, auto-updater channel work, and storefront listings all target Windows first.
+- **macOS + Linux** stay green in CI and remain build-tested every PR. Official releases follow Windows once Windows is stable in users' hands.
+- This ordering does **not** change the codebase — cross-platform code paths and tests remain a hard requirement.
+
+---
+
 ## Final note
 
 Mythos Writer is built so you can focus on telling your story while the app quietly handles the complex parts of worldbuilding, organization, and continuity. Your story stays safe, your notes stay organized, and every suggestion is reversible. You stay in control at every step — the AI helps, but you make the decisions.
