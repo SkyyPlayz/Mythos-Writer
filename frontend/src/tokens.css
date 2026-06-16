@@ -330,6 +330,57 @@
   --wa-cat-style-text: #c4b5fd;
   --wa-cat-tone-bg: rgba(244, 114, 182, 0.18);
   --wa-cat-tone-text: #fda4af;
+
+  /* ── Vault Graph View — Liquid Neon graph tokens (SKY-1743 §3.2) ─────────
+   * All graph colors must be consumed via these variables — no hard-coded
+   * rgba() values in component files. Default values = Liquid Neon Dark.
+   * High-contrast overrides live in the [data-contrast="high"] block below.
+   * ─────────────────────────────────────────────────────────────────────── */
+
+  /* Node fill — frosted glass chip with category tint */
+  --ln-graph-node-characters:  rgba(0,   240, 255, 0.18);
+  --ln-graph-node-locations:   rgba(155,  95, 255, 0.18);
+  --ln-graph-node-factions:    rgba(255,  77, 255, 0.18);
+  --ln-graph-node-history:     rgba(245, 166,  35, 0.18);
+  --ln-graph-node-systems:     rgba(  0, 212, 170, 0.18);
+  --ln-graph-node-items:       rgba(255, 123,  84, 0.18);
+  --ln-graph-node-misc:        rgba(255, 255, 255, 0.06);
+  --ln-graph-node-default:     rgba(255, 255, 255, 0.10);
+
+  /* Node border */
+  --ln-graph-border-characters: rgba(0,   240, 255, 0.65);
+  --ln-graph-border-locations:  rgba(155,  95, 255, 0.65);
+  --ln-graph-border-factions:   rgba(255,  77, 255, 0.65);
+  --ln-graph-border-history:    rgba(245, 166,  35, 0.65);
+  --ln-graph-border-systems:    rgba(  0, 212, 170, 0.65);
+  --ln-graph-border-items:      rgba(255, 123,  84, 0.65);
+  --ln-graph-border-misc:       rgba(255, 255, 255, 0.20);
+  --ln-graph-border-default:    rgba(255, 255, 255, 0.30);
+
+  /* Glow (drop-shadow, composited) */
+  --ln-graph-glow-characters:  0 0 8px rgba(0,   240, 255, 0.45);
+  --ln-graph-glow-locations:   0 0 8px rgba(155,  95, 255, 0.45);
+  --ln-graph-glow-factions:    0 0 8px rgba(255,  77, 255, 0.45);
+  --ln-graph-glow-history:     0 0 8px rgba(245, 166,  35, 0.45);
+  --ln-graph-glow-systems:     0 0 8px rgba(  0, 212, 170, 0.45);
+  --ln-graph-glow-items:       0 0 8px rgba(255, 123,  84, 0.45);
+  --ln-graph-glow-misc:        none;
+  --ln-graph-glow-default:     0 0 6px rgba(255, 255, 255, 0.20);
+
+  /* Edges */
+  --ln-graph-edge-default:     rgba(255, 255, 255, 0.12);
+  --ln-graph-edge-hover:       rgba(255, 255, 255, 0.50);
+  --ln-graph-edge-highlight:   rgba(0,   240, 255, 0.65);
+  --ln-graph-edge-dimmed:      rgba(255, 255, 255, 0.04);
+
+  /* Highlight state (selected or search match) */
+  --ln-graph-node-highlight:   rgba(0,   240, 255, 0.35);
+  --ln-graph-border-highlight: rgba(0,   240, 255, 1.00);
+  --ln-graph-glow-highlight:   0 0 16px rgba(0, 240, 255, 0.70);
+
+  /* Dimmed (non-neighbour during hover) */
+  --ln-graph-node-dimmed:      rgba(255, 255, 255, 0.04);
+  --ln-graph-border-dimmed:    rgba(255, 255, 255, 0.08);
 }
 
 /* =============================================================================
@@ -411,6 +462,46 @@
   --wa-cat-style-text: #ede9fe;
   --wa-cat-tone-bg: rgba(244, 114, 182, 0.30);
   --wa-cat-tone-text: #fecdd3;
+
+  /* Vault Graph tokens — high contrast overrides (glows removed; fills/borders boosted) */
+  --ln-graph-node-characters:  rgba(0,   240, 255, 0.35);
+  --ln-graph-node-locations:   rgba(155,  95, 255, 0.35);
+  --ln-graph-node-factions:    rgba(255,  77, 255, 0.35);
+  --ln-graph-node-history:     rgba(245, 166,  35, 0.35);
+  --ln-graph-node-systems:     rgba(  0, 212, 170, 0.35);
+  --ln-graph-node-items:       rgba(255, 123,  84, 0.35);
+  --ln-graph-node-misc:        rgba(255, 255, 255, 0.15);
+  --ln-graph-node-default:     rgba(255, 255, 255, 0.20);
+
+  --ln-graph-border-characters: rgba(0,   240, 255, 1.00);
+  --ln-graph-border-locations:  rgba(155,  95, 255, 1.00);
+  --ln-graph-border-factions:   rgba(255,  77, 255, 1.00);
+  --ln-graph-border-history:    rgba(245, 166,  35, 1.00);
+  --ln-graph-border-systems:    rgba(  0, 212, 170, 1.00);
+  --ln-graph-border-items:      rgba(255, 123,  84, 1.00);
+  --ln-graph-border-misc:       rgba(255, 255, 255, 0.60);
+  --ln-graph-border-default:    rgba(255, 255, 255, 0.80);
+
+  --ln-graph-glow-characters:  none;
+  --ln-graph-glow-locations:   none;
+  --ln-graph-glow-factions:    none;
+  --ln-graph-glow-history:     none;
+  --ln-graph-glow-systems:     none;
+  --ln-graph-glow-items:       none;
+  --ln-graph-glow-misc:        none;
+  --ln-graph-glow-default:     none;
+
+  --ln-graph-edge-default:     rgba(255, 255, 255, 0.35);
+  --ln-graph-edge-hover:       rgba(255, 255, 255, 0.90);
+  --ln-graph-edge-highlight:   rgba(0,   240, 255, 1.00);
+  --ln-graph-edge-dimmed:      rgba(255, 255, 255, 0.12);
+
+  --ln-graph-node-highlight:   rgba(0,   240, 255, 0.50);
+  --ln-graph-border-highlight: rgba(255, 255, 255, 1.00);
+  --ln-graph-glow-highlight:   none;
+
+  --ln-graph-node-dimmed:      rgba(255, 255, 255, 0.08);
+  --ln-graph-border-dimmed:    rgba(255, 255, 255, 0.20);
 }
 
 /* OS-level increased-contrast request → clamp toward the high-contrast theme. */

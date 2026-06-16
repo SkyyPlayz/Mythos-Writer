@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
@@ -40,6 +40,17 @@ import {
 } from './gettingStartedReducer';
 import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
+import { PanelDragProvider } from './PanelDragContext';
+import type { DragSidebar } from './PanelDragContext';
+// SKY-1695: Panel content components for the unified sidebar renderer
+import StoryNavigator from './StoryNavigator';
+import EntityBrowser from './EntityBrowser';
+import SuggestionReview from './SuggestionReview';
+import VaultBrowser from './components/VaultBrowser';
+import ProgressDashboard from './ProgressDashboard';
+import WritingAssistantPanel from './WritingAssistantPanel';
+import ContinuityPanel from './ContinuityPanel';
+import ScenePreviewPanel from './ScenePreviewPanel';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -587,6 +598,7 @@ export default function DesktopShell() {
   const [grsVisible, setGrsVisible] = useState<boolean | undefined>(undefined);
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
+  const [continuityCount, setContinuityCount] = useState(0);
 
   // ─── SKY-863: Sync conflict modal state ───
   const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
@@ -1167,6 +1179,48 @@ export default function DesktopShell() {
     persistGrsSettings({ panels });
   }, [persistGrsSettings]);
 
+  // SKY-1695: Unified drop handler for panel drag-and-drop across both sidebars.
+  const handlePanelDrop = useCallback((
+    panelId: SidebarPanelId,
+    fromSidebar: DragSidebar,
+    fromIndex: number,
+    toSidebar: DragSidebar,
+    toIndex: number,
+  ) => {
+    if (fromSidebar === toSidebar) {
+      if (fromSidebar === 'left') {
+        const cur = leftSidebarLayoutRef.current;
+        const panels = [...cur.panels];
+        const [removed] = panels.splice(fromIndex, 1);
+        panels.splice(toIndex > fromIndex ? toIndex - 1 : toIndex, 0, removed);
+        persistLeftSidebarLayout({ ...cur, panels });
+      } else {
+        const next = [...grsPanels];
+        const [removed] = next.splice(fromIndex, 1);
+        next.splice(toIndex > fromIndex ? toIndex - 1 : toIndex, 0, removed);
+        setGrsPanels(next);
+        persistGrsSettings({ panels: next });
+      }
+    } else if (fromSidebar === 'left') {
+      // left → right: remove from left, insert into right
+      const cur = leftSidebarLayoutRef.current;
+      persistLeftSidebarLayout({ ...cur, panels: cur.panels.filter((_, i) => i !== fromIndex) });
+      const rightNext = [...grsPanels];
+      rightNext.splice(toIndex, 0, { id: panelId, collapsed: false });
+      setGrsPanels(rightNext);
+      persistGrsSettings({ panels: rightNext });
+    } else {
+      // right → left: remove from right, insert into left
+      const rightNext = grsPanels.filter((_, i) => i !== fromIndex);
+      setGrsPanels(rightNext);
+      persistGrsSettings({ panels: rightNext });
+      const cur = leftSidebarLayoutRef.current;
+      const leftPanels = [...cur.panels];
+      leftPanels.splice(toIndex, 0, { id: panelId, collapsed: false });
+      persistLeftSidebarLayout({ ...cur, panels: leftPanels });
+    }
+  }, [grsPanels, persistLeftSidebarLayout, persistGrsSettings]);
+
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
     if (mode === 'edit') {
@@ -1696,6 +1750,105 @@ export default function DesktopShell() {
     }
   }, [stories, handleSelectScene, handleSelectEntity]);
 
+  // SKY-1695: Renders any sidebar panel's content. Both sidebars call this so
+  // panels render correctly regardless of which sidebar they live in.
+  const renderSidebarPanel = useCallback((id: SidebarPanelId): ReactNode => {
+    const showTemplateCta =
+      appSettings?.onboardingStartMode === 'blank' &&
+      !(gettingStartedProgress?.completedItems.includes('write-scene'));
+    switch (id) {
+      case 'stories':
+        return (
+          <StoryNavigator
+            stories={stories}
+            selectedSceneId={selectedScene?.id ?? null}
+            onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
+            onCreateStory={createStory}
+            onCreateChapter={createChapter}
+            onCreateScene={createScene}
+            onReorderScenes={handleReorderScenes}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+          />
+        );
+      case 'entities':
+        return (
+          <EntityBrowser
+            onSelectEntity={handleSelectEntity}
+            selectedEntityId={selectedEntity?.id ?? null}
+            onEntityCreated={(entity) => {
+              if (entity.type === 'character' && gettingStartedProgress) {
+                persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'CHECK_ITEM', itemId: 'add-character' }));
+              }
+            }}
+          />
+        );
+      case 'vault':
+        return (
+          <VaultBrowser
+            stories={stories}
+            selectedSceneId={selectedScene?.id ?? null}
+            onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
+            onCreateStory={createStory}
+            onCreateChapter={createChapter}
+            onCreateScene={createScene}
+            onOpenFile={handleOpenSceneByPath}
+            onContextChange={setVaultContext}
+            onExport={(scope: ExportScope) => setExportScope(scope)}
+            journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
+          />
+        );
+      case 'review':
+        return <SuggestionReview onOpenVaultPath={handleOpenSceneByPath} />;
+      case 'progress':
+        return <ProgressDashboard stories={stories} />;
+      case 'writing-assistant':
+        return (
+          <WritingAssistantPanel
+            scene={selectedScene}
+            enabled={appSettings?.agents?.writingAssistant?.enabled ?? true}
+            scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+            waScanInterval={appSettings?.waScanInterval}
+            cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
+            idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
+            idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
+            isActive={view === 'editor'}
+            isPageFocused={view === 'editor'}
+            onJumpToText={handleJumpToText}
+          />
+        );
+      case 'archive-continuity':
+        return (
+          <ContinuityPanel
+            scene={selectedScene}
+            enabled={appSettings?.agents?.archive?.enabled ?? true}
+            archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
+            archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
+            onCountChange={setContinuityCount}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        );
+      case 'scene-preview':
+        return (
+          <ScenePreviewPanel
+            scene={selectedScene}
+            chapter={selectedChapter}
+            story={selectedStory}
+          />
+        );
+      default:
+        return null;
+    }
+  }, [
+    stories, selectedScene, selectedEntity, selectedChapter, selectedStory,
+    handleSelectScene, setViewDepth, createStory, createChapter, createScene,
+    handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
+    gettingStartedProgress, persistGettingStartedProgress,
+    handleOpenSceneByPath, setVaultContext, setExportScope, appSettings,
+    view, handleJumpToText,
+    setContinuityCount, setSettingsOpen,
+  ]);
+
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
     if (!selectedStory || !selectedScene) return;
     const allScenes: { scene: Scene; chapter: Chapter }[] = [];
@@ -1903,12 +2056,6 @@ export default function DesktopShell() {
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
   const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
 
-  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-  const showTemplateCta =
-    appSettings?.onboardingStartMode === 'blank' &&
-    !(gettingStartedProgress?.completedItems.includes('write-scene')) &&
-    !(appSettings.firstLaunchAt && Date.now() - new Date(appSettings.firstLaunchAt).getTime() > SEVEN_DAYS_MS);
-
   const focusWordCount = selectedScene
     ? selectedScene.blocks.map(b => b.content.trim().split(/\s+/).filter(Boolean).length).reduce((a, c) => a + c, 0)
     : 0;
@@ -1924,6 +2071,7 @@ export default function DesktopShell() {
   ].filter(Boolean).join(' ');
 
   return (
+    <PanelDragProvider onDrop={handlePanelDrop}>
     <div className={shellClasses}>
       <UpdateBanner />
       {showTitleBar && (
@@ -2075,26 +2223,8 @@ export default function DesktopShell() {
             onViewChange={(v) => setView(v)}
             leftSidebarLayout={leftSidebarLayout}
             onLeftSidebarLayoutChange={persistLeftSidebarLayout}
-            stories={stories}
-            selectedSceneId={selectedScene?.id ?? null}
-            selectedEntityId={selectedEntity?.id ?? null}
-            onSelectScene={(sc, ch, story) => { handleSelectScene(sc, ch, story); setViewDepth('scene'); }}
-            onSelectEntity={handleSelectEntity}
-            onCreateStory={createStory}
-            onCreateChapter={createChapter}
-            onCreateScene={createScene}
-            onReorderScenes={handleReorderScenes}
-            onOpenVaultPath={handleOpenSceneByPath}
-            onContextChange={setVaultContext}
-            journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
-            onExport={(scope: ExportScope) => setExportScope(scope)}
-            showTemplateCta={showTemplateCta}
-            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
-            onEntityCreated={(entity) => {
-              if (entity.type === 'character' && gettingStartedProgress) {
-                persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'CHECK_ITEM', itemId: 'add-character' }));
-              }
-            }}
+            renderPanelContent={renderSidebarPanel}
+            rightPanelCount={grsPanels.length}
           />
         </div>
       )}
@@ -2353,17 +2483,9 @@ export default function DesktopShell() {
         onVisibilityChange={handleGrsVisibilityChange}
         onWidthChange={handleGrsWidthChange}
         onPanelsChange={handleGrsPanelsChange}
-        scene={selectedScene}
-        chapter={selectedChapter}
-        story={selectedStory}
-        archiveEnabled={agentFlags.archive}
-        writingAssistantEnabled={agentFlags.writingAssistant}
-        scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
-        waScanInterval={appSettings?.waScanInterval}
-        isPageFocused={view === 'editor'}
-        onJumpToText={handleJumpToText}
-        onInsertWikiLink={handleInsertWikiLink}
-        onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
+        renderPanelContent={renderSidebarPanel}
+        continuityIssueCount={continuityCount}
+        leftPanelCount={leftSidebarLayout.panels.length}
       />}
 
       </div>{/* end shell-main-row */}
@@ -2400,5 +2522,6 @@ export default function DesktopShell() {
         />
       )}
     </div>
+    </PanelDragProvider>
   );
 }

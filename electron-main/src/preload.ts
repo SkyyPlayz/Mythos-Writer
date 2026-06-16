@@ -465,6 +465,10 @@ contextBridge.exposeInMainWorld('api', {
   // Vault Graph View (MYT-249)
   vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
 
+  // Notes Vault graph — in-memory link index with degree + category (SKY-1756 / SKY-1743)
+  vaultGraphNodes: () => ipcRenderer.invoke('vault:graph:nodes', undefined),
+  vaultGraphEdges: () => ipcRenderer.invoke('vault:graph:edges', undefined),
+
   // Timeline (MYT-319) — Archive-inferred chronology
   timelineList: (scenePath?: string) =>
     ipcRenderer.invoke('timeline:list', { scenePath }),

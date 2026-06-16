@@ -118,6 +118,10 @@ export const IPC_CHANNELS = {
   // Vault graph (Phase 5 — MYT-163)
   VAULT_GRAPH_DATA: 'vault:graph-data',
 
+  // Notes Vault graph — in-memory link index (SKY-1756 / SKY-1743)
+  VAULT_GRAPH_NODES: 'vault:graph:nodes',
+  VAULT_GRAPH_EDGES: 'vault:graph:edges',
+
   // Structured chapter / scene creation (Phase 2 — MYT-195)
   CHAPTER_CREATE: 'chapter:create',
   SCENE_CREATE: 'scene:create',
@@ -565,6 +569,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
+  // SKY-1756: Notes Vault graph — in-memory link index with degree + category
+  [IPC_CHANNELS.VAULT_GRAPH_NODES]: (payload: never) => VaultGraphNodesResponse;
+  [IPC_CHANNELS.VAULT_GRAPH_EDGES]: (payload: never) => VaultGraphEdgesResponse;
   [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => ChapterEntry;
   [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => SceneEntry;
   [IPC_CHANNELS.CHAPTER_LIST]: (payload: ChapterListPayload) => ChapterListResponse;
@@ -2337,6 +2344,43 @@ export interface VaultGraphEdge {
 export interface VaultGraphDataResponse {
   nodes: VaultGraphNode[];
   edges: VaultGraphEdge[];
+}
+
+// ─── Notes Vault Graph v2 types (SKY-1756 / SKY-1743) ───
+// Extends the Phase 5 story-vault graph with degree, category, and Notes Vault targeting.
+
+export type VaultGraphCategory =
+  | 'characters'
+  | 'locations'
+  | 'factions'
+  | 'history'
+  | 'systems'
+  | 'items'
+  | 'misc'
+  | 'default';
+
+export interface VaultGraphNodeV2 {
+  id: string;
+  label: string;
+  path: string;
+  category: VaultGraphCategory;
+  /** Count of unique edges this node participates in (in + out, undirected). */
+  degree: number;
+}
+
+export interface VaultGraphEdgeV2 {
+  source: string;
+  target: string;
+  /** Number of [[...]] references from source to target in the source file. */
+  weight: number;
+}
+
+export interface VaultGraphNodesResponse {
+  nodes: VaultGraphNodeV2[];
+}
+
+export interface VaultGraphEdgesResponse {
+  edges: VaultGraphEdgeV2[];
 }
 
 // ─── Search (MYT-251) ───
