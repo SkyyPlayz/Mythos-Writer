@@ -254,12 +254,24 @@ test('AC-SC-03: moving a card to another lane updates the board', async () => {
   const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
   await expect(card).toBeVisible({ timeout: 6_000 });
 
+  // Find the actual index of the card in lane 0; earlier tests may have left
+  // cards there (e.g. AC-SC-02 adds act-one-notes at index 0).
+  const fromIndex = await page.evaluate(
+    async ({ slug, wikilink }) => {
+      type Api = { sceneCrafterGetBoard: (id: string, slug: string) => Promise<{ lanes: Array<{ cards: Array<{ wikilink: string }> }> } | null> };
+      const board = await (window as Window & typeof globalThis & { api: Api }).api.sceneCrafterGetBoard(slug, slug);
+      return board?.lanes[0].cards.findIndex((c) => c.wikilink === wikilink) ?? -1;
+    },
+    { slug: storySlug, wikilink: WIKILINK },
+  );
+  expect(fromIndex, `Card ${WIKILINK} not found in lane 0`).toBeGreaterThanOrEqual(0);
+
   // Move via IPC (lane 0 → lane 1).
   await page.evaluate(
-    (slug) =>
+    ({ slug, fromIdx }) =>
       (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterMoveCard({ storySlug: slug, fromLane: 0, fromIndex: 0, toLane: 1, toIndex: 0 }),
-    storySlug,
+        .api.sceneCrafterMoveCard({ storySlug: slug, fromLane: 0, fromIndex: fromIdx, toLane: 1, toIndex: 0 }),
+    { slug: storySlug, fromIdx: fromIndex },
   );
   await reloadBoardView(page);
 

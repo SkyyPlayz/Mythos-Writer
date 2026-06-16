@@ -32,7 +32,7 @@ export interface SceneCrafterBoard {
 const LANE_RE = /^## (.+)$/;
 // Title group is optional to support bare [[path]] wikilinks (no |alias).
 const CARD_RE = /^- \[([ x])\] \[\[([^\]|]+)(?:\|([^\]]+))?\]\](.*)/;
-const TAG_RE = /#([\w-]+)/g;
+const TAG_RE = /#([\w/-]+)/g;
 const SETTINGS_BLOCK_RE = /^%%\s*kanban:settings\n([\s\S]*?)\n%%\s*$/m;
 
 // ─── Parser ───
