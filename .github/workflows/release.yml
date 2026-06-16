@@ -63,9 +63,8 @@ jobs:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
 
       - name: Build Windows artifacts (NSIS + ZIP)
-        run: npm run dist
+        run: npx electron-vite build && npx electron-builder --win --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
       - name: Upload artifacts
@@ -195,7 +194,7 @@ jobs:
             dist-electron/*.yml
 
   publish-release:
-    needs: [determine-release, build-linux]
+    needs: [determine-release, build-linux, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -210,6 +209,12 @@ jobs:
         with:
           name: linux-dist
           path: linux-dist
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-dist
+          path: windows-dist
 
       - name: Generate release notes
         id: changelog
@@ -236,5 +241,7 @@ jobs:
           tag_name: ${{ needs.determine-release.outputs.version }}
           draft: true
           prerelease: ${{ needs.determine-release.outputs.is-beta == 'true' }}
-          files: linux-dist/**/*
+          files: |
+            linux-dist/**/*
+            windows-dist/**/*
           body: ${{ steps.changelog.outputs.notes }}
