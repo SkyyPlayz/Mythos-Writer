@@ -13,7 +13,7 @@ import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import BrainstormPage from './BrainstormPage';
 import EntriesPanel from './EntriesPanel';
-import KanbanBoard from './KanbanBoard';
+import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import TimelineSpreadsheet from './TimelineSpreadsheet';
@@ -2176,10 +2176,11 @@ export default function DesktopShell() {
       {view === 'kanban' && (
         <div className="shell-kanban">
           {selectedStory ? (
-            <KanbanBoard
+            <SceneCrafterPage
               key={selectedStory.id}
-              boardPath={`${selectedStory.path}/kanban.md`}
-              storyTitle={selectedStory.title}
+              story={selectedStory}
+              onOpenNote={handleOpenSceneByPath}
+              onOpenScene={handleOpenSceneById}
             />
           ) : (
             <div className="shell-editor-empty">

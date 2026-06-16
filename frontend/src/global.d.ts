@@ -1,5 +1,26 @@
 /// <reference types="vite/client" />
 
+interface SceneCrafterCard {
+  wikilink: string;
+  title: string;
+  done: boolean;
+  tags: string[];
+  raw?: string;
+}
+
+interface SceneCrafterLane {
+  name: string;
+  cards: SceneCrafterCard[];
+}
+
+interface SceneCrafterBoard {
+  storyId: string;
+  lastModified: string;
+  lanes: SceneCrafterLane[];
+  extraFrontmatter?: Record<string, unknown>;
+  kanbanSettings?: string;
+}
+
 interface SceneSnapshot {
   id: string;
   sceneId: string;
@@ -727,6 +748,24 @@ interface Window {
     // Markdown / plaintext export
     exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
     exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
+
+    // Scene Crafter Kanban board (SKY-1758/SKY-1763)
+    sceneCrafterGetBoard: (storyId: string, storySlug: string) => Promise<SceneCrafterBoard | null>;
+    sceneCrafterCreateBoard: (storyId: string, storySlug: string) => Promise<SceneCrafterBoard>;
+    sceneCrafterAddCard: (payload: {
+      storySlug: string;
+      laneIndex: number;
+      card: { wikilink: string; title: string; done?: boolean; tags?: string[]; raw?: string };
+    }) => Promise<{ ok: true }>;
+    sceneCrafterMoveCard: (payload: { storySlug: string; fromLane: number; fromIndex: number; toLane: number; toIndex: number }) => Promise<{ ok: true }>;
+    sceneCrafterToggleCardDone: (payload: { storySlug: string; laneIndex: number; cardIndex: number }) => Promise<{ ok: true }>;
+    sceneCrafterDeleteCard: (payload: { storySlug: string; laneIndex: number; cardIndex: number }) => Promise<{ ok: true }>;
+    sceneCrafterAddLane: (storySlug: string, name: string) => Promise<{ ok: true }>;
+    sceneCrafterRenameLane: (payload: { storySlug: string; laneIndex: number; name: string }) => Promise<{ ok: true }>;
+    sceneCrafterDeleteLane: (payload: { storySlug: string; laneIndex: number; force?: boolean }) => Promise<{ ok: boolean; cardCount: number }>;
+    sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) => Promise<{ ok: true }>;
+    sceneCrafterClose?: (storySlug: string) => Promise<void>;
+    onSceneCrafterExternalEdit?: (cb: (storySlug: string) => void) => () => void;
 
     // Vault Graph View (MYT-249)
     vaultGraphData: () => Promise<unknown>;

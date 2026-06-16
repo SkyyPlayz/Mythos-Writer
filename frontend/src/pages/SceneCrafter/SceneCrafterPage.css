@@ -1,0 +1,194 @@
+.scene-crafter-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 20px;
+  gap: 16px;
+  color: var(--text-body);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34%),
+    var(--bg-base);
+}
+
+.scene-crafter-state {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.scene-crafter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  box-shadow: var(--shadow-soft);
+}
+
+.scene-crafter-eyebrow {
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.scene-crafter-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.scene-crafter-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.scene-crafter-page button {
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  cursor: pointer;
+}
+
+.scene-crafter-page button:hover {
+  border-color: var(--accent);
+}
+
+.scene-crafter-conflict,
+.scene-crafter-write-error,
+.scene-crafter-confirm,
+.scene-crafter-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+}
+
+.scene-crafter-conflict {
+  border-color: color-mix(in srgb, var(--warning) 65%, var(--border-subtle));
+}
+
+.scene-crafter-write-error {
+  border-color: color-mix(in srgb, var(--danger) 65%, var(--border-subtle));
+}
+
+.scene-crafter-lanes {
+  display: flex;
+  gap: 14px;
+  min-height: 0;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.scene-crafter-lane {
+  display: flex;
+  flex: 0 0 280px;
+  flex-direction: column;
+  min-height: 360px;
+  max-height: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  box-shadow: var(--shadow-soft);
+}
+
+.scene-crafter-lane-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: grab;
+}
+
+.scene-crafter-lane-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.scene-crafter-lane-header input {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 6px 8px;
+  color: var(--text-body);
+  background: var(--bg-base);
+}
+
+.scene-crafter-card-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.scene-crafter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-base) 86%, transparent);
+}
+
+.scene-crafter-card label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+}
+
+.scene-crafter-card-tags,
+.scene-crafter-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scene-crafter-card-tags span {
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-size: 0.78rem;
+}
+
+.scene-crafter-card-actions button {
+  padding: 4px 8px;
+  font-size: 0.78rem;
+}
+
+.scene-crafter-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.scene-crafter-modal > div {
+  max-width: 440px;
+  padding: 20px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-strong);
+}
