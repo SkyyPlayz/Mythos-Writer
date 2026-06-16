@@ -80,6 +80,14 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
+// SKY-1694: Vault Browser is now a panel in the left sidebar panel zone.
+// Expand it if collapsed; no-op if already expanded.
+async function openVaultPanel(pg: Page): Promise<void> {
+  const vaultPanel = pg.locator('[data-panel-id="vault"]');
+  const isCollapsed = await vaultPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+  if (isCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
+}
+
 let userData: string;
 let vaultDir: string;
 let notesVaultDir: string;
@@ -110,8 +118,8 @@ test.afterAll(async () => {
 test('TC-A11Y-01: VaultBrowser scope bar buttons are keyboard-focusable via Tab', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to the Vault tab in the LeftRail
-  await page.locator('.rail-tab', { hasText: 'Vault' }).click();
+  // SKY-1694: Vault Browser is now a panel in the panel zone; expand it.
+  await openVaultPanel(page);
 
   const storyScopeBtn = page.locator('[data-testid="vb-scope-story"]');
   await expect(storyScopeBtn).toBeVisible({ timeout: 6_000 });
@@ -136,8 +144,8 @@ test('TC-A11Y-01: VaultBrowser scope bar buttons are keyboard-focusable via Tab'
 // beyond the scope bar are part of the natural tab order.
 
 test('TC-A11Y-02: Tab past scope bar reaches the Story Vault "New Story" button', async () => {
-  // Navigate to Vault tab and switch to story-only scope for a deterministic DOM
-  await page.locator('.rail-tab', { hasText: 'Vault' }).click();
+  // SKY-1694: Vault Browser is now a panel in the panel zone; expand it if needed.
+  await openVaultPanel(page);
   await page.locator('[data-testid="vb-scope-story"]').click();
 
   // Anchor on the Story scope button, then Tab through Notes and Both buttons
