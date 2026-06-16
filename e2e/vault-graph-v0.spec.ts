@@ -309,17 +309,19 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(aryaNode).toBeVisible({ timeout: 10_000 });
     await expect(orphanNode).toBeVisible({ timeout: 5_000 });
 
-    // hover({ force: true }) fires the native browser mouseenter event sequence, which
-    // triggers React's onMouseEnter synthetic handler. page.mouse.move() only fires
-    // mousemove and does NOT trigger mouseenter.
-    await aryaNode.hover({ force: true });
+    // React 17+ uses event delegation at the root and synthesizes onMouseEnter from
+    // native `mouseover` events (not `mouseenter`, which doesn't bubble). Dispatch a
+    // bubbling mouseover so React's listener picks it up. Bypassing hit-testing this
+    // way is necessary because SVG <g> elements under a viewBox transform may not be
+    // hit-tested at their bounding-box centre.
+    await aryaNode.dispatchEvent('mouseover');
 
     await expect(orphanNode).toHaveClass(/vgv-graph-node--dimmed/, { timeout: 3_000 });
     await expect(aryaNode).not.toHaveClass(/vgv-graph-node--dimmed/);
     await expect(winterfellNode).not.toHaveClass(/vgv-graph-node--dimmed/);
 
-    // Move mouse away from the node to fire mouseleave → React clears hoveredNodeId
-    await page.mouse.move(0, 0);
+    // Dispatch mouseout on Arya → React synthesizes onMouseLeave → clears hoveredNodeId
+    await aryaNode.dispatchEvent('mouseout');
 
     // Dimmed class must be removed (immediate React state update on mouseleave)
     await expect(orphanNode).not.toHaveClass(/vgv-graph-node--dimmed/, { timeout: 500 });
@@ -335,9 +337,9 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 10_000 });
 
-    // click({ force: true }) fires a real click event on the SVG <g> element, bypassing
-    // Playwright's hit-testing (which can fail for SVG elements under a viewBox transform).
-    await aryaNode.click({ force: true });
+    // dispatchEvent('click') fires the click event directly on the SVG <g> element,
+    // bypassing hit-testing. force:true alone is not enough for SVG nodes under a viewBox.
+    await aryaNode.dispatchEvent('click');
     await expect(aryaNode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
   });
 
@@ -388,15 +390,22 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await expect(chainANode).toBeVisible({ timeout: 10_000 });
     await expect(chainDNode).toBeVisible({ timeout: 5_000 });
 
-    // click({ force: true }) fires a real click on the SVG <g> element
-    await chainANode.click({ force: true });
+    // dispatchEvent('click') fires the click event directly on the SVG <g> element
+    await chainANode.dispatchEvent('click');
     await expect(chainANode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
 
-    // Set depth slider to 2
+    // Set depth slider to 2. React-controlled <input> tracks .value via its own
+    // setter; assigning el.value directly is intercepted and onChange never fires.
+    // We must use the prototype's native setter so React's listener picks up the change.
     const depthSlider = page.locator('#vgv-depth-slider');
     await expect(depthSlider).toBeVisible({ timeout: 5_000 });
     await depthSlider.evaluate((el: HTMLInputElement) => {
-      el.value = '2';
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      if (nativeSetter) nativeSetter.call(el, '2');
+      else el.value = '2';
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
@@ -491,10 +500,11 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
 
     // Hovering a node triggers nodeAnnouncement (debounced 500ms):
     // "{label}. {connectionCount} connections."
-    // hover({ force: true }) fires native mouseenter → React onMouseEnter → setHoveredNodeId
+    // React 17+ synthesizes onMouseEnter from native `mouseover` events. Dispatching
+    // the event directly bypasses hit-testing issues for SVG <g> under viewBox transform.
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
     await expect(aryaNode).toBeVisible({ timeout: 5_000 });
-    await aryaNode.hover({ force: true });
+    await aryaNode.dispatchEvent('mouseover');
 
     await expect(async () => {
       const text = (await liveRegion.textContent()) ?? '';
