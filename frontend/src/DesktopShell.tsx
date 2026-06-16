@@ -575,9 +575,11 @@ export default function DesktopShell() {
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
   // ─── SKY-1686: Global right-sidebar state ───
-  // Start hidden; restored to persisted value when settings load (prevents layout shift in tests
-  // that seed settings without rightSidebarVisible and in new-install first-paint).
-  const [grsVisible, setGrsVisible] = useState(false);
+  // undefined = settings not yet loaded (sidebar not rendered at all, no space taken).
+  // true/false = settings loaded with an explicit rightSidebarVisible value.
+  // E2E tests that seed settings without rightSidebarVisible keep undefined → no sidebar renders,
+  // preserving the same layout as before this PR (fixes timeline TC-TL-06 overlap regression).
+  const [grsVisible, setGrsVisible] = useState<boolean | undefined>(undefined);
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
 
@@ -2286,9 +2288,12 @@ export default function DesktopShell() {
       )}
       </div>}{/* end shell-panels */}
 
-      {/* SKY-1686: Global right sidebar — visible on all tabs */}
-      <GlobalRightSidebar
-        visible={grsVisible}
+      {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.
+           undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
+           This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
+           settings arrive, which caused TC-TL-06 detail-card pointer-event regression. */}
+      {grsVisible !== undefined && <GlobalRightSidebar
+        visible={grsVisible as boolean}
         width={grsWidth}
         panels={grsPanels}
         onVisibilityChange={handleGrsVisibilityChange}
@@ -2305,7 +2310,7 @@ export default function DesktopShell() {
         onJumpToText={handleJumpToText}
         onInsertWikiLink={handleInsertWikiLink}
         onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
-      />
+      />}
 
       </div>{/* end shell-main-row */}
       {budgetToast && (
