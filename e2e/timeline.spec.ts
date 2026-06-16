@@ -401,9 +401,28 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
   // Set a narrow range covering only SCENE_1's date. SCENE_2/3 should disappear
   // from the DOM entirely (opacity 0 → tls-row not rendered per visibleScenes
   // memo in TimelineSpreadsheet).
-  await page.locator('#tlf-date-from').fill('2340-06-14');
-  await page.locator('#tlf-date-to').fill('2340-06-14');
+  //
+  // React 18 installs an instance-level value descriptor (trackValueOnNode) that
+  // updates its internal tracker whenever el.value = val is assigned, so the
+  // subsequent input event sees tracker==DOM and skips onChange. Bypass by calling
+  // the native prototype setter directly, leaving the tracker stale so React
+  // detects a change and fires onChange. Same root cause as type="range" sliders.
+  await page.locator('#tlf-date-from').evaluate((el, val) => {
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(el, val);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, '2340-06-14');
+  await page.locator('#tlf-date-to').evaluate((el, val) => {
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSetter) nativeSetter.call(el, val);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, '2340-06-14');
 
+  // The Clear button is conditionally rendered — wait for it to confirm React
+  // processed the filter update before asserting row counts.
+  await expect(page.locator('.tlf-clear-btn')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator(`[data-testid="row-${SCENE_1.id}"]`)).toBeVisible();
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-testid="row-${SCENE_3.id}"]`)).toHaveCount(0);
@@ -416,11 +435,20 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
 // ─── TC-TL-07: Keyboard nav (Tab / Enter / Delete) ──────────────────────────
 
 test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete removes the focused scene', async () => {
+  // Establish a known focusedSceneId baseline rather than relying on state
+  // carried over from TC-TL-03's click across multiple intervening tests.
+  // TC-TL-06 can leave the date-from input with a dirty DOM focus state after
+  // dispatching synthetic events; clicking SCENE_1 here resets that focus and
+  // pins focusedSceneId to SCENE_1 before we exercise Tab cycling.
+  const row1 = page.locator(`[data-testid="row-${SCENE_1.id}"]`);
+  await expect(row1).toBeVisible({ timeout: 4_000 });
+  await row1.click();
+  await expect(row1).toHaveClass(/tls-row--selected/, { timeout: 4_000 });
+
   const root = page.locator('[data-testid="timeline-spreadsheet-root"]');
   await root.focus();
 
-  // SCENE_1 is the current focused row carried over from TC-TL-03's click. From
-  // that state, Tab advances one chronological step → SCENE_2 (next in
+  // Tab advances one chronological step → SCENE_2 (next in
   // chronologicalSceneIds, which sorts by chronologicalDate ascending).
   await root.press('Tab');
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`))
@@ -438,8 +466,13 @@ test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete remov
   // Switch back to the Timeline view and Delete the now-focused scene.
   // The shell unmounts the spreadsheet on view-out, so focus state resets and
   // the first Tab after re-entering lands on SCENE_1.
+  // Use a generous timeout: the component must remount and complete its async
+  // IPC load (timelineGetScenes) before the root div renders — 4 s was too
+  // tight on loaded CI runners.
   await page.locator('.app-menu-view-btn', { hasText: 'Timeline' }).click();
-  await expect(root).toBeVisible({ timeout: 4_000 });
+  await expect(root).toBeVisible({ timeout: 8_000 });
+  // Confirm at least one scene row is in the DOM (data loaded) before Tab.
+  await expect(page.locator('.tls-row').first()).toBeVisible({ timeout: 6_000 });
   await root.focus();
 
   await root.press('Tab');
