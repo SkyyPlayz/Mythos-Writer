@@ -5212,13 +5212,10 @@ const SETTINGS_DEFAULTS: AppSettings = {
   archiveCheckFactualContradict: true,
   archiveScanBudget: 8000,
   archiveStoryEditConsentGiven: false,
-  rightSidebarVisible: true,
-  rightSidebarWidth: 300,
-  rightSidebarPanels: [
-    { id: 'writing-assistant', collapsed: false },
-    { id: 'archive-continuity', collapsed: false },
-    { id: 'scene-preview', collapsed: false },
-  ],
+  // rightSidebarVisible/Width/Panels are intentionally absent from defaults so
+  // DesktopShell keeps grsVisible=undefined until the user explicitly opens the
+  // new global sidebar. This prevents the old per-view RightSidebar and the new
+  // GlobalRightSidebar from rendering simultaneously (duplicate WritingAssistantPanel).
 };
 
 /**
