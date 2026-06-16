@@ -2708,6 +2708,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   type="range"
                   id="archive-scan-budget"
                   data-testid="archive-scan-budget"
+                  aria-label="Scan token budget"
                   className="settings-range"
                   min={2000}
                   max={16000}
