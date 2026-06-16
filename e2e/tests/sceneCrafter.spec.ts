@@ -109,17 +109,17 @@ async function fillPrompt(pg: Page, response: string): Promise<void> {
   await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
-/** Create a story in the vault and return its title. */
+/** Create a story in the vault. Uses the StoryNavigator add button which is always visible. */
 async function createStory(pg: Page, title: string): Promise<void> {
-  await pg.locator('[data-testid="shell-empty-new-story"]').click();
+  await pg.locator('.nav-add-btn').first().click();
   await fillPrompt(pg, title);
-  await expect(pg.locator('.story-list-item, [data-testid^="story-row"]').filter({ hasText: title }))
+  await expect(pg.locator('.nav-story-row').filter({ hasText: title }))
     .toBeVisible({ timeout: 8_000 });
 }
 
-/** Select a story by clicking its row in the sidebar / story list. */
+/** Select a story by clicking its row in the StoryNavigator sidebar. */
 async function selectStory(pg: Page, title: string): Promise<void> {
-  await pg.locator('.story-list-item, [data-testid^="story-row"]').filter({ hasText: title }).click();
+  await pg.locator('.nav-story-row').filter({ hasText: title }).click();
 }
 
 /** Navigate to the Scene Crafter (Board) view via the toolbar. */
@@ -529,19 +529,12 @@ test.skip('AC-SC-13: I/O error during board save surfaces the write-error banner
 // ─── AC-SC-14: Per-story isolation ───────────────────────────────────────────
 
 test('AC-SC-14: each story has an independent board that does not share cards', async () => {
-  // Create a second story.
+  // Navigate to Editor first so the sidebar nav-add-btn is accessible.
   await page.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 6_000 });
 
-  // Create the second story.
-  const newStoryBtn = page.locator('[data-testid="shell-empty-new-story"]');
-  if (await newStoryBtn.isVisible()) {
-    await newStoryBtn.click();
-  } else {
-    // When a story is already selected the button may not be visible; use sidebar action.
-    await page.locator('button', { hasText: 'New Story' }).first().click();
-  }
-  await fillPrompt(page, STORY_TITLE_B);
+  // Create the second story via the StoryNavigator add button (always visible).
+  await createStory(page, STORY_TITLE_B);
 
   await selectStory(page, STORY_TITLE_B);
   await openBoardView(page);
