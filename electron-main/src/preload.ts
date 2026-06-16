@@ -794,6 +794,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('scene-crafter:delete-lane', payload),
   sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) =>
     ipcRenderer.invoke('scene-crafter:reorder-lanes', payload),
+  onSceneCrafterExternalEdit: (cb: (payload: { storySlug: string }) => void) => {
+    const handler = (_: unknown, payload: { storySlug: string }) => cb(payload);
+    ipcRenderer.on('scene-crafter:external-edit', handler);
+    return () => ipcRenderer.removeListener('scene-crafter:external-edit', handler);
+  },
 
 });
 

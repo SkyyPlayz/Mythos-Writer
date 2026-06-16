@@ -810,6 +810,18 @@ interface Window {
     templateImport: () => Promise<{ cancelled: boolean; template?: { id: string; name: string } } | { error: string }>;
     // SKY-1405: drag-drop import — passes filePath to bypass the open-file dialog
     templateImportFromPath: (filePath: string) => Promise<{ cancelled: boolean; template?: { id: string; name: string } } | { error: string }>;
+    // SKY-1758/SKY-1759: Scene Crafter board IPC + external-edit push event
+    sceneCrafterGetBoard: (storyId: string, storySlug: string) => Promise<unknown>;
+    sceneCrafterCreateBoard: (storyId: string, storySlug: string) => Promise<unknown>;
+    sceneCrafterAddCard: (payload: { storySlug: string; laneIndex: number; card: { wikilink: string; title: string; done?: boolean; tags?: string[] } }) => Promise<{ ok: true } | { error: string }>;
+    sceneCrafterMoveCard: (payload: { storySlug: string; fromLane: number; fromIndex: number; toLane: number; toIndex: number }) => Promise<{ ok: true } | { error: string }>;
+    sceneCrafterToggleCardDone: (payload: { storySlug: string; laneIndex: number; cardIndex: number }) => Promise<{ ok: true } | { error: string }>;
+    sceneCrafterDeleteCard: (payload: { storySlug: string; laneIndex: number; cardIndex: number }) => Promise<{ ok: true } | { error: string }>;
+    sceneCrafterAddLane: (storySlug: string, name: string) => Promise<{ ok: true } | { error: string }>;
+    sceneCrafterRenameLane: (payload: { storySlug: string; laneIndex: number; name: string }) => Promise<{ ok: true } | { error: string }>;
+    sceneCrafterDeleteLane: (payload: { storySlug: string; laneIndex: number; force?: boolean }) => Promise<{ ok: boolean; cardCount: number } | { error: string }>;
+    sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) => Promise<{ ok: true } | { error: string }>;
+    onSceneCrafterExternalEdit: (cb: (payload: { storySlug: string }) => void) => () => void;
     // SKY-12.2: pure filesystem path check for the onboarding wizard path-picker
     validatePath: (path: string) => Promise<{ valid?: boolean; exists: boolean; isEmpty: boolean; writable: boolean; error?: string }>;
     appQuit?: () => Promise<void>;

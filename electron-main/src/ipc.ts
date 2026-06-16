@@ -445,6 +445,7 @@ export const IPC_CHANNELS = {
   SCENE_CRAFTER_RENAME_LANE: 'scene-crafter:rename-lane',
   SCENE_CRAFTER_DELETE_LANE: 'scene-crafter:delete-lane',
   SCENE_CRAFTER_REORDER_LANES: 'scene-crafter:reorder-lanes',
+  SCENE_CRAFTER_EXTERNAL_EDIT: 'scene-crafter:external-edit',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -3778,6 +3779,10 @@ export interface SceneCrafterReorderLanesPayload {
   storySlug: string;
   fromIndex: number;
   toIndex: number;
+}
+
+export interface SceneCrafterExternalEditPayload {
+  storySlug: string;
 }
 // Re-export SceneCrafterBoard so callers can import it from ipc.ts instead of sceneCrafterBoard.ts.
 export type { SceneCrafterBoard };

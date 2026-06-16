@@ -169,6 +169,7 @@ import {
   handleDeleteLane,
   handleReorderLanes,
 } from './sceneCrafterIpc.js';
+import { createSceneCrafterBoardWatcher, type SceneCrafterBoardWatcher } from './sceneCrafterBoardWatcher.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot } from './validatePathUtil.js';
@@ -925,6 +926,30 @@ function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js'
   }
 }
 
+
+let sceneCrafterBoardWatcher: SceneCrafterBoardWatcher | null = null;
+
+function getSceneCrafterBoardWatcher(): SceneCrafterBoardWatcher {
+  if (!sceneCrafterBoardWatcher) sceneCrafterBoardWatcher = createSceneCrafterBoardWatcher();
+  return sceneCrafterBoardWatcher;
+}
+
+function watchSceneCrafterBoard(storySlug: string): void {
+  getSceneCrafterBoardWatcher().watchBoard(getNotesVaultRoot(), storySlug, (channel, payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  });
+}
+
+function withSceneCrafterMythosWrite<T>(storySlug: string, write: () => T): T {
+  return getSceneCrafterBoardWatcher().withMythosWrite(getNotesVaultRoot(), storySlug, write);
+}
+
+function closeSceneCrafterBoardWatcher(): void {
+  sceneCrafterBoardWatcher?.closeActive();
+  sceneCrafterBoardWatcher = null;
+}
 
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
@@ -4904,27 +4929,32 @@ const handlers: IpcHandlers = {
     return importTemplate(app.getPath('userData'), res.filePaths[0]);
   },
 
-  // ─── Scene Crafter board IPC (SKY-1758) ───
-  [IPC_CHANNELS.SCENE_CRAFTER_GET_BOARD]: (payload: SceneCrafterGetBoardPayload) =>
-    handleGetBoard(getNotesVaultRoot(), payload),
-  [IPC_CHANNELS.SCENE_CRAFTER_CREATE_BOARD]: (payload: SceneCrafterCreateBoardPayload) =>
-    handleCreateBoard(getNotesVaultRoot(), payload),
+  // ─── Scene Crafter board IPC (SKY-1758 / SKY-1759) ───
+  [IPC_CHANNELS.SCENE_CRAFTER_GET_BOARD]: (payload: SceneCrafterGetBoardPayload) => {
+    watchSceneCrafterBoard(payload.storySlug);
+    return handleGetBoard(getNotesVaultRoot(), payload);
+  },
+  [IPC_CHANNELS.SCENE_CRAFTER_CREATE_BOARD]: (payload: SceneCrafterCreateBoardPayload) => {
+    const board = handleCreateBoard(getNotesVaultRoot(), payload);
+    watchSceneCrafterBoard(payload.storySlug);
+    return board;
+  },
   [IPC_CHANNELS.SCENE_CRAFTER_ADD_CARD]: (payload: SceneCrafterAddCardPayload) =>
-    handleAddCard(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleAddCard(getNotesVaultRoot(), payload)),
   [IPC_CHANNELS.SCENE_CRAFTER_MOVE_CARD]: (payload: SceneCrafterMoveCardPayload) =>
-    handleMoveCard(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleMoveCard(getNotesVaultRoot(), payload)),
   [IPC_CHANNELS.SCENE_CRAFTER_TOGGLE_CARD_DONE]: (payload: SceneCrafterToggleCardDonePayload) =>
-    handleToggleCardDone(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleToggleCardDone(getNotesVaultRoot(), payload)),
   [IPC_CHANNELS.SCENE_CRAFTER_DELETE_CARD]: (payload: SceneCrafterDeleteCardPayload) =>
-    handleDeleteCard(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleDeleteCard(getNotesVaultRoot(), payload)),
   [IPC_CHANNELS.SCENE_CRAFTER_ADD_LANE]: (payload: SceneCrafterAddLanePayload) =>
-    handleAddLane(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleAddLane(getNotesVaultRoot(), payload)),
   [IPC_CHANNELS.SCENE_CRAFTER_RENAME_LANE]: (payload: SceneCrafterRenameLanePayload) =>
-    handleRenameLane(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleRenameLane(getNotesVaultRoot(), payload)),
   [IPC_CHANNELS.SCENE_CRAFTER_DELETE_LANE]: (payload: SceneCrafterDeleteLanePayload) =>
-    handleDeleteLane(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleDeleteLane(getNotesVaultRoot(), payload)),
   [IPC_CHANNELS.SCENE_CRAFTER_REORDER_LANES]: (payload: SceneCrafterReorderLanesPayload) =>
-    handleReorderLanes(getNotesVaultRoot(), payload),
+    withSceneCrafterMythosWrite(payload.storySlug, () => handleReorderLanes(getNotesVaultRoot(), payload)),
 
 };
 
@@ -5098,6 +5128,7 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    closeSceneCrafterBoardWatcher();
     mainWindow = null;
   });
 }
