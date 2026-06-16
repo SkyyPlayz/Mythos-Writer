@@ -378,6 +378,7 @@ import {
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
+import { getGraphNodes, getGraphEdges, handleNoteFileChanged } from './vaultGraph.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
 import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
 import type { SmartFolderEntry, CustomFieldDef } from './ipc.js';
@@ -728,10 +729,16 @@ function notifyVaultChanged(filePath: string) {
 
 // Notify renderer when the notes vault changes so it can refresh entity state.
 // Fires on external edits (e.g. Obsidian) and schedules an FTS rebuild.
-function notifyNotesVaultChanged(_filePath: string) {
+// SKY-1756: also invalidates the in-memory graph index when link topology changes.
+// Content-only saves do NOT push vault:graph-topology-changed so the renderer graph stays stable.
+function notifyNotesVaultChanged(filePath: string) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     scheduleReindex();
+    const topologyChanged = handleNoteFileChanged(getNotesVaultRoot(), filePath);
     mainWindow.webContents.send('vault:notes-updated', { count: 1 });
+    if (topologyChanged) {
+      mainWindow.webContents.send('vault:graph-topology-changed', {});
+    }
   }
 }
 
@@ -2541,6 +2548,17 @@ const handlers: IpcHandlers = {
     }
 
     return { nodes: sampled, edges };
+  },
+
+  // ─── Notes Vault Graph — in-memory link index (SKY-1756 / SKY-1743) ───
+  [IPC_CHANNELS.VAULT_GRAPH_NODES]: () => {
+    const notesVaultRoot = getNotesVaultRoot();
+    return { nodes: getGraphNodes(notesVaultRoot) };
+  },
+
+  [IPC_CHANNELS.VAULT_GRAPH_EDGES]: () => {
+    const notesVaultRoot = getNotesVaultRoot();
+    return { edges: getGraphEdges(notesVaultRoot) };
   },
 
   // ─── Archive Agent (MYT-157) ───
