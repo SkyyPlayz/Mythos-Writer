@@ -300,6 +300,19 @@ test('TC-WAT-01: manual scan returns tip card; Note-it removes it optimistically
 // ─── TC-WAT-02: Scan → tip card appears; Ignore suppresses it ─────────────────
 
 test('TC-WAT-02: Ignore suppresses tip card for the session', async () => {
+  // TC-WAT-01's "Note it" suppressed MOCK_TIP_ID; use a fresh id so this scan
+  // returns an unsuppressed tip and the Ignore flow can be tested in isolation.
+  await app!.evaluate(
+    async ({ ipcMain }, { tipId, tipText }: { tipId: string; tipText: string }) => {
+      ipcMain.removeHandler('writing-assistant:scan-now');
+      ipcMain.handle('writing-assistant:scan-now', async () => ({
+        tips: [{ id: tipId, text: tipText, category: 'pacing', sceneAnchor: 'E2E Scene' }],
+        scannedAt: new Date().toISOString(),
+      }));
+    },
+    { tipId: 'e2e-tip-pacing-002', tipText: MOCK_TIP_TEXT },
+  );
+
   // Trigger another scan to get a fresh tip card.
   const scanNowBtn = page.locator('.wa-scan-now');
   await expect(scanNowBtn).toBeEnabled({ timeout: 4_000 });
