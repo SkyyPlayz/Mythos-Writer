@@ -238,7 +238,7 @@ describe('useWritingScheduler', () => {
           isActive: true,
           cadenceTrigger,
         }),
-      { initialProps: { cadenceTrigger: 'idle_heartbeat' as const } },
+      { initialProps: { cadenceTrigger: 'idle_heartbeat' as 'on_save' | 'idle_heartbeat' } },
     );
 
     // Scan fires under idle_heartbeat constant interval
