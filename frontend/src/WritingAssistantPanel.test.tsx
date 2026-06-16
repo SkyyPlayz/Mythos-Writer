@@ -5,6 +5,8 @@ const mockAgentWritingAssistant = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockOnWritingAssistantChunk = vi.fn<any>(() => vi.fn()); // returns unsub fn
 const mockWritingScan = vi.fn();
+const mockBetaReadScan = vi.fn();
+const mockBetaReadDismiss = vi.fn();
 const mockVoiceSpeak = vi.fn();
 const mockVoiceSpeakCancel = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,6 +19,8 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     agentWritingAssistant: mockAgentWritingAssistant,
     onWritingAssistantChunk: mockOnWritingAssistantChunk,
     writingScan: mockWritingScan,
+    betaReadScan: mockBetaReadScan,
+    betaReadDismiss: mockBetaReadDismiss,
     voiceSpeak: mockVoiceSpeak,
     voiceSpeakCancel: mockVoiceSpeakCancel,
     onVoiceSpeakDone: mockOnVoiceSpeakDone,
@@ -28,6 +32,8 @@ function makeApi(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.resetAllMocks();
   mockWritingScan.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
+  mockBetaReadScan.mockResolvedValue({ comments: [], scannedAt: new Date().toISOString() });
+  mockBetaReadDismiss.mockResolvedValue({ id: 'br-1', dismissed: true });
   mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
   (window as unknown as { api: unknown }).api = makeApi();
 });
@@ -119,6 +125,59 @@ describe('WritingAssistantPanel', () => {
     expect(prompt).toBe('what happens next?');
     expect(context).toContain('The Heist');
     expect(context).toContain('The airship docked.');
+  });
+
+  it('routes explicit beta-read scene requests to Beta-Read scan IPC', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({
+      comments: [
+        {
+          id: 'br-1',
+          scene_id: 's1',
+          anchor_text: 'The airship docked.',
+          comment_text: 'Clarify the sensory detail here.',
+          created_at: '2026-01-01T00:00:00.000Z',
+          dismissed_at: null,
+        },
+      ],
+      scannedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const scene = {
+      id: 's1',
+      title: 'The Heist',
+      blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked.', updatedAt: '' }],
+      draftState: 'in-progress' as const,
+      order: 0,
+      path: '/scene.md',
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    render(<WritingAssistantPanel scene={scene} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Beta-read this scene' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => {
+      expect(mockBetaReadScan).toHaveBeenCalledWith('s1', 'The airship docked.', '/scene.md');
+    });
+    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
+    expect(screen.getByRole('article', { name: /beta-read comment/i })).toHaveTextContent('Clarify the sensory detail here.');
+  });
+
+  it('requires a selected scene before starting Beta-Read mode', async () => {
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'beta read this scene' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/select a scene/i);
+    });
+    expect(mockBetaReadScan).not.toHaveBeenCalled();
+    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
   });
 
   it('shows an error message when the IPC call rejects', async () => {
