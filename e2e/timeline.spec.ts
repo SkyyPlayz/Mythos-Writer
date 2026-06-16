@@ -435,11 +435,20 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
 // ─── TC-TL-07: Keyboard nav (Tab / Enter / Delete) ──────────────────────────
 
 test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete removes the focused scene', async () => {
+  // Establish a known focusedSceneId baseline rather than relying on state
+  // carried over from TC-TL-03's click across multiple intervening tests.
+  // TC-TL-06 can leave the date-from input with a dirty DOM focus state after
+  // dispatching synthetic events; clicking SCENE_1 here resets that focus and
+  // pins focusedSceneId to SCENE_1 before we exercise Tab cycling.
+  const row1 = page.locator(`[data-testid="row-${SCENE_1.id}"]`);
+  await expect(row1).toBeVisible({ timeout: 4_000 });
+  await row1.click();
+  await expect(row1).toHaveClass(/tls-row--selected/, { timeout: 4_000 });
+
   const root = page.locator('[data-testid="timeline-spreadsheet-root"]');
   await root.focus();
 
-  // SCENE_1 is the current focused row carried over from TC-TL-03's click. From
-  // that state, Tab advances one chronological step → SCENE_2 (next in
+  // Tab advances one chronological step → SCENE_2 (next in
   // chronologicalSceneIds, which sorts by chronologicalDate ascending).
   await root.press('Tab');
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`))
