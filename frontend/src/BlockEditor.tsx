@@ -362,8 +362,8 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   }, []);
 
   const handleHintMouseLeave = useCallback((e: React.MouseEvent) => {
-    const related = e.relatedTarget as HTMLElement | null;
-    if (related?.closest('.wl-hint-tooltip')) return;
+    const related = e.relatedTarget;
+    if (related instanceof Element && related.closest('.wl-hint-tooltip')) return;
     setHintTooltip(null);
   }, []);
 
