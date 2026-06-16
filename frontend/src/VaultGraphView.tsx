@@ -87,8 +87,24 @@ interface PositionedNode extends GraphNode {
   categoryKey: GraphCategory;
 }
 
+const TRUNCATION_THRESHOLD = MAX_INTERACTIVE_NODES;
+const LOADING_SPINNER_DELAY_MS = 2000;
+const VIEWPORT_BUFFER = 0.2;
+
+const SKELETON_NODES: Array<{ x: number; y: number; r: number }> = [
+  { x: 600, y: 200, r: 14 }, { x: 400, y: 350, r: 10 }, { x: 780, y: 320, r: 8 },
+  { x: 300, y: 500, r: 9 }, { x: 500, y: 550, r: 7 }, { x: 700, y: 480, r: 11 },
+  { x: 850, y: 550, r: 7 }, { x: 200, y: 300, r: 6 }, { x: 900, y: 200, r: 8 },
+  { x: 650, y: 650, r: 6 },
+];
+
+const SKELETON_EDGES: Array<[number, number]> = [
+  [0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 6], [3, 7], [4, 5], [5, 9], [2, 8],
+];
+
 interface Props {
   onOpenNote?: (path: string) => void;
+  mostRecentNotePath?: string;
 }
 
 function isGraphCategory(value: string): value is GraphCategory {
@@ -402,11 +418,29 @@ function CategoryChip({ chipKey, label, active, onToggle, onShowOnly, onShowAll 
   );
 }
 
+function isNodeInViewport(
+  node: PositionedNode,
+  pan: { x: number; y: number },
+  zoom: number,
+  viewW: number,
+  viewH: number,
+): boolean {
+  const buffer = VIEWPORT_BUFFER;
+  const minX = -pan.x - viewW * buffer;
+  const maxX = -pan.x + viewW * (1 + buffer);
+  const minY = -pan.y - viewH * buffer;
+  const maxY = -pan.y + viewH * (1 + buffer);
+  const nx = node.x * zoom;
+  const ny = node.y * zoom;
+  return nx >= minX && nx <= maxX && ny >= minY && ny <= maxY;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function VaultGraphView({ onOpenNote }: Props) {
+export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props) {
   const [graphData, setGraphData] = useState<VaultGraphData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showSpinner, setShowSpinner] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -422,9 +456,17 @@ export default function VaultGraphView({ onOpenNote }: Props) {
   const [chipsExpanded, setChipsExpanded] = useState(false);
   const toolbarRef = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     let cancelled = false;
+
+    spinnerTimerRef.current = setTimeout(() => {
+      if (!cancelled) setShowSpinner(true);
+    }, LOADING_SPINNER_DELAY_MS);
 
     async function loadGraph() {
       try {
@@ -442,28 +484,45 @@ export default function VaultGraphView({ onOpenNote }: Props) {
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError));
       } finally {
+        if (spinnerTimerRef.current) clearTimeout(spinnerTimerRef.current);
         if (!cancelled) setLoading(false);
       }
     }
 
     loadGraph();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (spinnerTimerRef.current) clearTimeout(spinnerTimerRef.current);
+    };
   }, []);
+
+  // Truncation (top-500 by degree when vault is large, unless "show all" is active)
+  const truncatedData = useMemo(() => {
+    if (!graphData) return null;
+    if (graphData.nodes.length < TRUNCATION_THRESHOLD || showAll) return graphData;
+    const nb = buildNeighbourMap(graphData.edges);
+    const nodes = [...graphData.nodes]
+      .sort((a, b) => nodeDegree(b, nb) - nodeDegree(a, nb))
+      .slice(0, TRUNCATION_THRESHOLD);
+    const ids = new Set(nodes.map((n) => n.id));
+    const edges = graphData.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+    return { nodes, edges };
+  }, [graphData, showAll]);
 
   // Category-filtered data (chips)
   const categoryFilteredData = useMemo(() => {
-    if (!graphData) return null;
+    if (!truncatedData) return null;
     // 'default' nodes pass through unless all chip keys are filtered — they aren't in CHIP_DEFS
-    const nodes = graphData.nodes.filter((n) => {
+    const nodes = truncatedData.nodes.filter((n) => {
       const cat = nodeCategory(n);
       // 'default' is not in CHIP_DEFS, so always show unless ALL categories are off
       if (cat === 'default') return activeCategories.size > 0;
       return activeCategories.has(cat);
     });
     const ids = new Set(nodes.map((n) => n.id));
-    const edges = graphData.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+    const edges = truncatedData.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
     return { nodes, edges };
-  }, [graphData, activeCategories]);
+  }, [truncatedData, activeCategories]);
 
   // Neighbour map (computed from category-filtered edges)
   const neighbours = useMemo(
@@ -496,6 +555,14 @@ export default function VaultGraphView({ onOpenNote }: Props) {
     () => new Map(positionedNodes.map((node) => [node.id, node])),
     [positionedNodes],
   );
+
+  const culledNodes = useMemo(() => {
+    if (!showAll) return positionedNodes;
+    const el = svgRef.current;
+    const viewW = el ? el.clientWidth : GRAPH_WIDTH;
+    const viewH = el ? el.clientHeight : GRAPH_HEIGHT;
+    return positionedNodes.filter((node) => isNodeInViewport(node, pan, zoom, viewW, viewH));
+  }, [positionedNodes, showAll, pan, zoom]);
 
   // Hover visibility (existing behaviour)
   const hoverVisibleIds = useMemo(
@@ -673,7 +740,6 @@ export default function VaultGraphView({ onOpenNote }: Props) {
 
   const handleSearchKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter' && searchMatchIds && searchMatchIds.size > 0) {
-      // Select the first match
       const first = positionedNodes.find((n) => searchMatchIds.has(n.id));
       if (first) selectNode(first);
     }
@@ -699,7 +765,45 @@ export default function VaultGraphView({ onOpenNote }: Props) {
   const visibleChips = chipsExpanded ? CHIP_DEFS : CHIP_DEFS.slice(0, MAX_VISIBLE_CHIPS);
   const hiddenCount = CHIP_DEFS.length > MAX_VISIBLE_CHIPS ? CHIP_DEFS.length - MAX_VISIBLE_CHIPS : 0;
 
-  if (loading) return <div className="vgv-state">Loading vault graph…</div>;
+  if (loading) {
+    return (
+      <div className="vgv-state vgv-state--loading" data-testid="vault-graph-loading" aria-live="polite" aria-label="Loading vault graph">
+        {showSpinner ? (
+          <div className="vgv-spinner-wrap">
+            <span className="vgv-spinner" role="status" />
+            <span className="vgv-loading-text">Calculating layout…</span>
+          </div>
+        ) : (
+          <svg
+            className="vgv-skeleton"
+            viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+            aria-hidden="true"
+            data-testid="vault-graph-skeleton"
+          >
+            {SKELETON_EDGES.map(([src, tgt]) => (
+              <line
+                key={`sk-e-${src}-${tgt}`}
+                className="vgv-skeleton-edge"
+                x1={SKELETON_NODES[src].x}
+                y1={SKELETON_NODES[src].y}
+                x2={SKELETON_NODES[tgt].x}
+                y2={SKELETON_NODES[tgt].y}
+              />
+            ))}
+            {SKELETON_NODES.map((pos, i) => (
+              <circle
+                key={`sk-n-${i}`}
+                className="vgv-skeleton-node"
+                cx={pos.x}
+                cy={pos.y}
+                r={pos.r}
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -712,14 +816,37 @@ export default function VaultGraphView({ onOpenNote }: Props) {
 
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div className="vgv-state">
-        <p>No notes found. Add markdown files with [[wiki-links]] to see your vault graph.</p>
+      <div className="vgv-state vgv-state--empty" data-testid="vault-graph-empty">
+        <div className="vgv-empty-dots" aria-hidden="true">
+          <span className="vgv-empty-dot vgv-empty-dot--a" />
+          <span className="vgv-empty-dot vgv-empty-dot--b" />
+          <span className="vgv-empty-dot vgv-empty-dot--c" />
+        </div>
+        <p className="vgv-empty-copy">
+          Your notes haven&apos;t linked up yet. Add <span className="vgv-empty-wikilink">[[wiki-links]]</span> in your notes to see connections appear here.
+        </p>
+        <button
+          type="button"
+          className="vgv-empty-cta"
+          data-testid="vault-graph-open-note-cta"
+          onClick={() => {
+            if (mostRecentNotePath) {
+              onOpenNote?.(mostRecentNotePath);
+            } else {
+              onOpenNote?.('');
+            }
+          }}
+        >
+          Open a note →
+        </button>
       </div>
     );
   }
 
+  const totalNodeCount = graphData.nodes.length;
+  const isTruncated = totalNodeCount >= TRUNCATION_THRESHOLD && !showAll;
   const renderedNodeCount = positionedNodes.length;
-  const showLargeGraphNotice = graphData.nodes.length > MAX_INTERACTIVE_NODES;
+  const showTruncationBanner = totalNodeCount >= TRUNCATION_THRESHOLD && !bannerDismissed;
 
   return (
     <section className="vgv-root" data-testid="vault-graph-view" aria-label="Vault Graph panel">
@@ -748,9 +875,26 @@ export default function VaultGraphView({ onOpenNote }: Props) {
         {liveMessage}
       </div>
 
-      {showLargeGraphNotice && (
-        <div className="vgv-large-notice" role="status">
-          Showing the default interactive graph. Large-vault show-all rendering is reserved for the canvas mode.
+      {showTruncationBanner && (
+        <div className="vgv-truncation-banner" role="status" data-testid="vault-graph-truncation-banner">
+          <span>⚠ Large vault: {totalNodeCount} notes. Showing top 500 by links.</span>
+          {isTruncated && (
+            <button
+              type="button"
+              className="vgv-truncation-showall"
+              onClick={() => setShowAll(true)}
+            >
+              Show all — may be slow
+            </button>
+          )}
+          <button
+            type="button"
+            className="vgv-truncation-dismiss"
+            aria-label="Dismiss large vault notice"
+            onClick={() => setBannerDismissed(true)}
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -760,6 +904,7 @@ export default function VaultGraphView({ onOpenNote }: Props) {
         onClick={() => setSelectedNodeId(null)}
       >
         <svg
+          ref={svgRef}
           className="vgv-svg"
           viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
           role="application"
@@ -791,7 +936,7 @@ export default function VaultGraphView({ onOpenNote }: Props) {
               );
             })}
 
-            {positionedNodes.map((node) => {
+            {culledNodes.map((node) => {
               const hoverDimmed = hoverVisibleIds ? !hoverVisibleIds.has(node.id) : false;
               const searchHighlighted = searchMatchIds ? searchMatchIds.has(node.id) : false;
               const searchDimmed = searchMatchIds ? !searchMatchIds.has(node.id) : false;
