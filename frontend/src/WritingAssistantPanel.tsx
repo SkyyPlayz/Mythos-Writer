@@ -48,6 +48,9 @@ interface Props {
   isActive?: boolean;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
+  cadenceTrigger?: 'on_save' | 'idle_heartbeat';
+  idleHeartbeatConstantInterval?: boolean;
+  idleDebounceSeconds?: number;
 }
 
 function isBetaReadRequest(prompt: string) {
@@ -111,6 +114,9 @@ export default function WritingAssistantPanel({
   scanIntervalSeconds = 60,
   waScanInterval,
   isActive = true,
+  cadenceTrigger,
+  idleHeartbeatConstantInterval,
+  idleDebounceSeconds,
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -161,6 +167,9 @@ export default function WritingAssistantPanel({
     enabled: schedulerEnabled,
     scanIntervalSeconds: effectiveScanIntervalSeconds,
     isActive,
+    cadenceTrigger,
+    idleHeartbeatConstantInterval,
+    idleDebounceSeconds,
   });
 
   const visibleTips = useMemo(() => {

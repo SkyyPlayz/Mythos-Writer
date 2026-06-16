@@ -2224,6 +2224,9 @@ export default function DesktopShell() {
             archiveEnabled={agentFlags.archive}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
             waScanInterval={appSettings?.waScanInterval}
+            cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
+            idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
+            idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}

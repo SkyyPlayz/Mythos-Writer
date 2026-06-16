@@ -1864,18 +1864,81 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   onChange={(field, value) => setAgentOverride('writingAssistant', field, value)}
                   onTest={() => handleAgentTestConnection('writingAssistant')}
                 />
-                <div className="settings-field settings-field-inline">
-                  <label className="settings-label" htmlFor="wa-interval">Scan interval (s)</label>
-                  <input
-                    id="wa-interval"
-                    className="settings-input settings-input-sm settings-input-number"
-                    type="number"
-                    min={5}
-                    max={3600}
-                    value={settings.agents.writingAssistant.scanIntervalSeconds}
-                    onChange={(e) => setAgentField('writingAssistant', 'scanIntervalSeconds', Number(e.target.value))}
-                  />
-                </div>
+                <fieldset className="settings-fieldset">
+                  <legend className="settings-label">Scan cadence</legend>
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-radio-label">
+                      <input
+                        type="radio"
+                        name="wa-cadence-trigger"
+                        value="on_save"
+                        checked={settings.agents.writingAssistant.cadenceTrigger === 'on_save'}
+                        onChange={() => setAgentField('writingAssistant', 'cadenceTrigger', 'on_save')}
+                      />
+                      On save
+                    </label>
+                    <label className="settings-radio-label">
+                      <input
+                        type="radio"
+                        name="wa-cadence-trigger"
+                        value="idle_heartbeat"
+                        checked={settings.agents.writingAssistant.cadenceTrigger === 'idle_heartbeat'}
+                        onChange={() => setAgentField('writingAssistant', 'cadenceTrigger', 'idle_heartbeat')}
+                      />
+                      Idle heartbeat
+                    </label>
+                  </div>
+                  {settings.agents.writingAssistant.cadenceTrigger === 'idle_heartbeat' && (
+                    <div className="settings-sub-section">
+                      <div className="settings-field settings-field-inline">
+                        <label className="settings-toggle" htmlFor="wa-constant-interval">
+                          <input
+                            id="wa-constant-interval"
+                            type="checkbox"
+                            aria-label="Use constant interval for idle heartbeat"
+                            checked={settings.agents.writingAssistant.idleHeartbeatConstantInterval ?? true}
+                            onChange={(e) => setAgentField('writingAssistant', 'idleHeartbeatConstantInterval', e.target.checked)}
+                          />
+                          <span className="settings-toggle-track" />
+                        </label>
+                        <span className="settings-label">Constant interval</span>
+                      </div>
+                      {(settings.agents.writingAssistant.idleHeartbeatConstantInterval ?? true) ? (
+                        <>
+                          <p className="settings-help-text">Scans every N seconds regardless of typing activity.</p>
+                          <div className="settings-field settings-field-inline">
+                            <label className="settings-label" htmlFor="wa-interval">Scan interval (s)</label>
+                            <input
+                              id="wa-interval"
+                              className="settings-input settings-input-sm settings-input-number"
+                              type="number"
+                              min={5}
+                              max={3600}
+                              value={settings.agents.writingAssistant.scanIntervalSeconds}
+                              onChange={(e) => setAgentField('writingAssistant', 'scanIntervalSeconds', Number(e.target.value))}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="settings-help-text">Scans after N seconds of no keypress activity.</p>
+                          <div className="settings-field settings-field-inline">
+                            <label className="settings-label" htmlFor="wa-idle-debounce">Idle debounce (s)</label>
+                            <input
+                              id="wa-idle-debounce"
+                              className="settings-input settings-input-sm settings-input-number"
+                              type="number"
+                              min={5}
+                              max={3600}
+                              value={settings.agents.writingAssistant.idleDebounceSeconds ?? 30}
+                              onChange={(e) => setAgentField('writingAssistant', 'idleDebounceSeconds', Number(e.target.value))}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </fieldset>
                 <div className="settings-field settings-field-inline">
                   <label className="settings-label" htmlFor="wa-heartbeat">Heartbeat interval (min)</label>
                   <input

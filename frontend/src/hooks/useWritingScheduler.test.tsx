@@ -143,6 +143,123 @@ describe('useWritingScheduler', () => {
     expect(result.current.result).toEqual({ tips, scannedAt });
   });
 
+  // AC-CAD-02: on_save mode — setInterval NOT called, writingScan called on scene:saved event
+  it('AC-CAD-02: on_save mode does not use setInterval and fires on scene:saved event', async () => {
+    const mockOnWritingScanResult = vi.fn();
+    (window as unknown as { api: Partial<Window['api']> }).api = {
+      writingScan: mockWritingScan,
+      writingAssistantScanNow: vi.fn().mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() }),
+      onWritingScanResult: mockOnWritingScanResult,
+    };
+
+    mockWritingScan.mockResolvedValue({ tips: ['on-save tip'], scannedAt: new Date().toISOString() });
+    mockOnWritingScanResult.mockReturnValue(() => {});
+
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+    renderHook(() =>
+      useWritingScheduler({
+        scene: mockScene,
+        enabled: true,
+        scanIntervalSeconds: 10,
+        isActive: true,
+        cadenceTrigger: 'on_save',
+      }),
+    );
+
+    // Advance time — no setInterval should have fired writingScan
+    await act(() => { vi.advanceTimersByTime(30_000); });
+    expect(mockWritingScan).not.toHaveBeenCalled();
+
+    // scene:saved event should trigger a scan
+    await act(async () => {
+      window.dispatchEvent(new Event('scene:saved'));
+      await Promise.resolve();
+    });
+    expect(mockWritingScan).toHaveBeenCalledTimes(1);
+
+    // setInterval should not have been called for the scan loop
+    const intervalCalls = setIntervalSpy.mock.calls.filter(
+      (call) => typeof call[1] === 'number' && (call[1] as number) >= 5000,
+    );
+    expect(intervalCalls).toHaveLength(0);
+
+    setIntervalSpy.mockRestore();
+  });
+
+  // AC-CAD-04: idle_heartbeat + debounce — fires writingScan after idleDebounceSeconds of no keypress
+  it('AC-CAD-04: idle_heartbeat + debounce fires after idleDebounceSeconds of no keypress', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['debounce tip'], scannedAt: new Date().toISOString() });
+
+    renderHook(() =>
+      useWritingScheduler({
+        scene: mockScene,
+        enabled: true,
+        scanIntervalSeconds: 60,
+        isActive: true,
+        cadenceTrigger: 'idle_heartbeat',
+        idleHeartbeatConstantInterval: false,
+        idleDebounceSeconds: 10,
+      }),
+    );
+
+    // Trigger a keydown
+    await act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    });
+
+    // Not yet fired
+    await act(() => { vi.advanceTimersByTime(5_000); });
+    expect(mockWritingScan).not.toHaveBeenCalled();
+
+    // After debounce period, scan fires
+    await act(async () => { vi.advanceTimersByTime(5_000); });
+    expect(mockWritingScan).toHaveBeenCalledTimes(1);
+  });
+
+  // AC-CAD-10: switching to on_save clears setInterval
+  it('AC-CAD-10: switching cadenceTrigger to on_save clears the setInterval', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['tip'], scannedAt: new Date().toISOString() });
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
+    const mockOnWritingScanResult = vi.fn().mockReturnValue(() => {});
+    (window as unknown as { api: Partial<Window['api']> }).api = {
+      writingScan: mockWritingScan,
+      writingAssistantScanNow: vi.fn().mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() }),
+      onWritingScanResult: mockOnWritingScanResult,
+    };
+
+    const { rerender } = renderHook(
+      ({ cadenceTrigger }: { cadenceTrigger: 'on_save' | 'idle_heartbeat' }) =>
+        useWritingScheduler({
+          scene: mockScene,
+          enabled: true,
+          scanIntervalSeconds: 10,
+          isActive: true,
+          cadenceTrigger,
+        }),
+      { initialProps: { cadenceTrigger: 'idle_heartbeat' as const } },
+    );
+
+    // Scan fires under idle_heartbeat constant interval
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(mockWritingScan).toHaveBeenCalledTimes(1);
+
+    clearIntervalSpy.mockClear();
+
+    // Switch to on_save
+    rerender({ cadenceTrigger: 'on_save' as const });
+
+    // clearInterval should have been called to clean up the old interval
+    expect(clearIntervalSpy).toHaveBeenCalled();
+
+    // Advancing time should NOT call writingScan again (interval cleared)
+    await act(() => { vi.advanceTimersByTime(10_000); });
+    expect(mockWritingScan).toHaveBeenCalledTimes(1);
+
+    clearIntervalSpy.mockRestore();
+  });
+
   it('continues scheduling after a failed scan (non-fatal)', async () => {
     mockWritingScan
       .mockRejectedValueOnce(new Error('Network error'))

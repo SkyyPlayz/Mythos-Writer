@@ -1660,7 +1660,7 @@ export interface AppSettings {
   waScanInterval?: number | 'on-save' | 'manual';
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). API key stored in SecretsStore under `provider.<agentName>.apiKey`. */
-    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
+    writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
   };
