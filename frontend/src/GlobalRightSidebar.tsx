@@ -147,6 +147,7 @@ export default function GlobalRightSidebar({
   width,
   panels,
   onVisibilityChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onWidthChange: _onWidthChange,
   onPanelsChange,
   scene,
