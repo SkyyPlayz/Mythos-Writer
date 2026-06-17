@@ -101,7 +101,7 @@ jobs:
           path: |
             dist-electron/*.exe
             dist-electron/*.zip
-          retention-days: 5
+          retention-days: 14
 
   # macOS build — optional; not a dependency of publish-release.
   # Runs on hosted macos-latest; will be skipped when Actions minutes are exhausted.
@@ -187,7 +187,7 @@ jobs:
           path: |
             dist-electron/*.dmg
             dist-electron/*.zip
-          retention-days: 5
+          retention-days: 14
 
   build-linux:
     needs: [determine-release]
@@ -225,7 +225,7 @@ jobs:
           path: |
             dist-electron/*.AppImage
             dist-electron/*.yml
-          retention-days: 5
+          retention-days: 14
 
   publish-release:
     needs: [determine-release, build-linux, build-windows]
