@@ -429,7 +429,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
     expect(tablist?.getAttribute('aria-label')).toBe('Sidebar panels');
 
     const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(4); // notes, properties, ai, outline
+    expect(tabs).toHaveLength(5); // notes, properties, ai, outline, continuity
 
     const activeTab = container.querySelector('[aria-selected="true"]');
     expect(activeTab?.id).toBe('rightsidebar-tab-properties');
@@ -523,7 +523,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
 
     const notesTab = container.querySelector('#rightsidebar-tab-notes') as HTMLElement;
     fireEvent.keyDown(notesTab, { key: 'ArrowLeft' });
-    expect(onTabChange).toHaveBeenCalledWith('outline'); // wraps to last tab
+    expect(onTabChange).toHaveBeenCalledWith('continuity'); // wraps to last tab
   });
 
   it('outline tab active — no axe violations', async () => {

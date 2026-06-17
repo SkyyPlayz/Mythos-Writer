@@ -834,6 +834,16 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('scene-crafter:external-edit', handler);
   },
 
+  // SKY-2011: Continuity Peek
+  continuityMatchSelection: (selectedText: string, notesVaultRoot: string) =>
+    ipcRenderer.invoke('continuity:matchSelection', { selectedText, notesVaultRoot }),
+
+  continuitySearch: (query: string, notesVaultRoot: string) =>
+    ipcRenderer.invoke('continuity:search', { query, notesVaultRoot }),
+
+  continuityReadEntity: (path: string) =>
+    ipcRenderer.invoke('continuity:readEntity', { path }),
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

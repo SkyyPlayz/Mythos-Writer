@@ -1,0 +1,229 @@
+.continuity-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+}
+
+.continuity-search-row {
+  padding: 8px;
+  border-bottom: 1px solid #27272a;
+  flex-shrink: 0;
+}
+
+.continuity-search-input {
+  width: 100%;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #e4e4e7;
+  font-size: 0.82rem;
+  padding: 6px 8px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.continuity-search-input::placeholder {
+  color: #52525b;
+}
+
+.continuity-search-input:focus {
+  border-color: var(--accent, #06b6d4);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+}
+
+.continuity-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 8px 16px;
+}
+
+.continuity-section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #52525b;
+  text-transform: uppercase;
+  padding: 4px 0 6px;
+}
+
+.continuity-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #71717a;
+  font-size: 0.82rem;
+  padding: 12px 0;
+}
+
+/* Entity Card */
+.entity-card {
+  background: #1c1c1f;
+  border: 1px solid #2d2d31;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.entity-card:hover,
+.entity-card:focus-within {
+  border-color: var(--accent, #06b6d4);
+  background: #222226;
+}
+
+.entity-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.entity-card-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e4e4e7;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-type-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.entity-type-badge--character { background: #312e81; color: #a5b4fc; }
+.entity-type-badge--location  { background: #14532d; color: #86efac; }
+.entity-type-badge--item      { background: #451a03; color: #fcd34d; }
+.entity-type-badge--faction   { background: #164e63; color: #67e8f9; }
+.entity-type-badge--other     { background: #3b0764; color: #d8b4fe; }
+.entity-type-badge--default   { background: #27272a; color: #a1a1aa; }
+
+.entity-card-aliases {
+  font-size: 0.75rem;
+  color: #71717a;
+  margin-bottom: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-card-excerpt {
+  font-size: 0.78rem;
+  color: #a1a1aa;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Empty state */
+.continuity-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 16px;
+  color: #52525b;
+  gap: 8px;
+}
+
+.continuity-empty-icon {
+  font-size: 2rem;
+  line-height: 1;
+  opacity: 0.5;
+}
+
+.continuity-empty-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #71717a;
+}
+
+.continuity-empty-body {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #52525b;
+  max-width: 220px;
+}
+
+/* No-notes-vault state */
+.continuity-no-vault {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 24px 16px;
+  gap: 8px;
+  color: #52525b;
+  font-size: 0.78rem;
+}
+
+/* Focus Mode overlay */
+.continuity-focus-overlay {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 280px;
+  max-height: 60vh;
+  background: #111113;
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.continuity-focus-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #27272a;
+  flex-shrink: 0;
+}
+
+.continuity-focus-overlay-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent-light, #67e8f9);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.continuity-focus-close {
+  background: none;
+  border: none;
+  color: #71717a;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.continuity-focus-close:hover {
+  color: #e4e4e7;
+}
+
+.continuity-focus-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}

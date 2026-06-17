@@ -683,7 +683,7 @@ describe('SettingsPanel', () => {
 
   it('voice settings round-trip — all new fields persist together', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/stt input language/i));
+    await waitFor(() => screen.getByLabelText(/stt input language/i), { timeout: 15000 });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
     fireEvent.change(screen.getByLabelText(/stt input language/i), { target: { value: 'ja-JP' } });

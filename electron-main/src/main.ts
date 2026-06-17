@@ -366,6 +366,11 @@ import {
 } from './exportFormatters.js';
 import { registerStreamingHandlers, categorizeStreamError, streamErrorUserMessage, MAX_PAYLOAD_BYTES } from './streaming.js';
 import { buildLoreFixture, checkMultiChapterContinuity } from './continuityEngine.js';
+import {
+  handleContinuityMatchSelection,
+  handleContinuitySearch,
+  handleContinuityReadEntity,
+} from './continuityPeekHandlers.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -5012,6 +5017,14 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: async (_payload: SceneCrafterClosePayload) => {
     await stopBoardWatcher();
   },
+
+  // SKY-2011: Continuity Peek — entity matching, search, read
+  [IPC_CHANNELS.CONTINUITY_MATCH_SELECTION]: (payload: import('./ipc.js').ContinuityMatchSelectionPayload) =>
+    handleContinuityMatchSelection(payload),
+  [IPC_CHANNELS.CONTINUITY_SEARCH]: (payload: import('./ipc.js').ContinuitySearchPayload) =>
+    handleContinuitySearch(payload),
+  [IPC_CHANNELS.CONTINUITY_READ_ENTITY]: (payload: import('./ipc.js').ContinuityReadEntityPayload) =>
+    handleContinuityReadEntity(payload),
 
 };
 

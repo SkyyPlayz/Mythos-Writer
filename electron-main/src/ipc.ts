@@ -459,6 +459,11 @@ export const IPC_CHANNELS = {
   SCENE_CRAFTER_CLOSE: 'scene-crafter:close',
   // Push event (main → renderer): external edit detected on board.md
   SCENE_CRAFTER_EXTERNAL_EDIT: 'scene-crafter:external-edit',
+
+  // SKY-2011: Continuity Peek — entity matching, search, and read
+  CONTINUITY_MATCH_SELECTION: 'continuity:matchSelection',
+  CONTINUITY_SEARCH: 'continuity:search',
+  CONTINUITY_READ_ENTITY: 'continuity:readEntity',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -803,6 +808,11 @@ export interface IpcHandlers {
   // SKY-1759: Scene Crafter file-watcher — SCENE_CRAFTER_EXTERNAL_EDIT is a push-only
   // channel (webContents.send), so no handler entry is needed for it here.
   [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: (payload: SceneCrafterClosePayload) => Promise<void>;
+
+  // SKY-2011: Continuity Peek
+  [IPC_CHANNELS.CONTINUITY_MATCH_SELECTION]: (payload: ContinuityMatchSelectionPayload) => ContinuityMatchSelectionResponse;
+  [IPC_CHANNELS.CONTINUITY_SEARCH]: (payload: ContinuitySearchPayload) => ContinuitySearchResponse;
+  [IPC_CHANNELS.CONTINUITY_READ_ENTITY]: (payload: ContinuityReadEntityPayload) => ContinuityReadEntityResponse;
 }
 
 // ─── Payload / Response types ───
@@ -3874,3 +3884,42 @@ export interface SceneCrafterExternalEditPayload {
 
 // Re-export SceneCrafterBoard so callers can import it from ipc.ts instead of sceneCrafterBoard.ts.
 export type { SceneCrafterBoard };
+
+// ─── Continuity Peek payload / response types (SKY-2011) ─────────────────────
+
+export interface ContinuityMatchSelectionPayload {
+  selectedText: string;
+  notesVaultRoot: string;
+}
+
+export interface ContinuityEntityResult {
+  name: string;
+  aliases: string[];
+  type: string | null;
+  path: string;
+  excerpt: string;
+}
+
+export interface ContinuityMatchSelectionResponse {
+  match: ContinuityEntityResult | null;
+}
+
+export interface ContinuitySearchPayload {
+  query: string;
+  notesVaultRoot: string;
+}
+
+export interface ContinuitySearchResponse {
+  results: ContinuityEntityResult[];
+}
+
+export interface ContinuityReadEntityPayload {
+  path: string;
+}
+
+export interface ContinuityReadEntityResponse {
+  name: string;
+  aliases: string[];
+  type: string | null;
+  excerpt: string;
+}

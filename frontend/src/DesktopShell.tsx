@@ -553,6 +553,7 @@ export default function DesktopShell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
+  const [editorSelectionText, setEditorSelectionText] = useState<string>('');
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1905,6 +1906,12 @@ export default function DesktopShell() {
         el?.focus();
         return;
       }
+      // SKY-2011: Ctrl/Cmd+Shift+K — open Continuity Peek panel
+      if (mod && e.shiftKey && !e.altKey && (e.key === 'K' || e.key === 'k')) {
+        e.preventDefault();
+        persistLayout({ ...layout, rightTab: 'continuity' });
+        return;
+      }
       if (!mod || !e.shiftKey) return;
       // SKY-1699: Ctrl+Shift+2 — toggle split window
       if (e.key === '2') {
@@ -1938,7 +1945,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout.writingMode]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout]);
 
   // ─── Panel resize drag handlers ───
 
@@ -3218,6 +3225,7 @@ export default function DesktopShell() {
                     onCursorPosChange={handleCursorPosChange}
                     onEntityClick={handleEntityMentionClick}
                     onWikiLinkClick={handleWikiLinkClick}
+                    onSelectionChange={setEditorSelectionText}
                     emptySceneHint={
                       isGettingStartedVisible(gettingStartedProgress) &&
                       !seenEmptySceneHints.has(selectedScene.id)
@@ -3367,6 +3375,7 @@ export default function DesktopShell() {
             }}
             currentSceneContent={selectedScene?.blocks.map(b => b.content).join('\n\n') ?? ''}
             onDraftRestore={handleDraftRestore}
+            editorSelectionText={editorSelectionText}
           />
         </div>
       )}

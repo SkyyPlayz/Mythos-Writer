@@ -1259,6 +1259,17 @@ interface Window {
     onPanelFloatClosed?: (callback: (data: { panelId: string; docked: boolean; bounds: { x: number; y: number; width: number; height: number } }) => void) => () => void;
     onPanelFloatBoundsChanged?: (callback: (data: { panelId: string; x: number; y: number; width: number; height: number }) => void) => () => void;
 
+    // SKY-2011: Continuity Peek — entity matching, search, read
+    continuityMatchSelection?: (selectedText: string, notesVaultRoot: string) => Promise<{
+      match: { name: string; aliases: string[]; type: string | null; path: string; excerpt: string } | null;
+    }>;
+    continuitySearch?: (query: string, notesVaultRoot: string) => Promise<{
+      results: Array<{ name: string; aliases: string[]; type: string | null; path: string; excerpt: string }>;
+    }>;
+    continuityReadEntity?: (path: string) => Promise<{
+      name: string; aliases: string[]; type: string | null; excerpt: string;
+    }>;
+
     // Optional / feature-gated entry points (may not be registered in all builds)
     newStory?: () => Promise<void>;
     openVault?: () => Promise<void>;
