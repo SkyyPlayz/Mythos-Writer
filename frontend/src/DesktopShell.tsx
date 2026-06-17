@@ -2994,7 +2994,7 @@ export default function DesktopShell() {
                 )}
                 <div
                   className="shell-editor-scene-wrap"
-                  style={sceneNavigating ? { display: 'none' } : undefined}
+                  style={sceneNavigating ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
                 >
                   <div className="scene-snapshot-toolbar">
                     <button
