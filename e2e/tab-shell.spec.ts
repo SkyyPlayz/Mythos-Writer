@@ -126,6 +126,16 @@ test.describe('TabBar — tab switching and persistence', () => {
 
     const app = await launchApp(userData);
     try {
+      await app.evaluate(({ ipcMain }, { storyVaultDir, notesVaultDir }) => {
+        ipcMain.removeHandler('vault:validate-path');
+        ipcMain.handle('vault:validate-path', (_event, payload: { path?: string } | string) => {
+          const targetPath = typeof payload === 'string' ? payload : payload.path;
+          if (targetPath === storyVaultDir) return { exists: false, writable: false };
+          if (targetPath === notesVaultDir) return { exists: true, writable: true };
+          return { exists: true, writable: true };
+        });
+      }, { storyVaultDir, notesVaultDir });
+
       const page = await firstWindow(app);
       await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
 
