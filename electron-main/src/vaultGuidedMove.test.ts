@@ -44,6 +44,21 @@ describe('checkGuidedMoveGate', () => {
     }
   });
 
+  it('accepts a valid Windows payload with matching token', () => {
+    const windowsHome = 'C:\\Users\\testuser';
+    const windowsTarget = `${windowsHome}\\Dropbox\\Mythos\\Story Vault`;
+    const token = makeToken(windowsTarget);
+    const result = checkGuidedMoveGate(
+      { targetPath: windowsTarget, syncProvider: 'dropbox', sessionToken: token },
+      windowsHome,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.targetPath).toBe(windowsTarget);
+      expect(result.syncProvider).toBe('dropbox');
+    }
+  });
+
   it('rejects missing targetPath', () => {
     const token = makeToken(TARGET);
     const result = checkGuidedMoveGate(

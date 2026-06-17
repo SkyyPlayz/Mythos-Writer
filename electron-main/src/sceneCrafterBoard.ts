@@ -38,6 +38,8 @@ const SETTINGS_BLOCK_RE = /^%%\s*kanban:settings\n([\s\S]*?)\n%%\s*$/m;
 // ─── Parser ───
 
 export function parseBoardMarkdown(src: string): SceneCrafterBoard {
+  src = src.replace(/\r\n?/g, '\n');
+
   let kanbanSettings = '{"kanban-plugin":"board"}';
   const settingsMatch = SETTINGS_BLOCK_RE.exec(src);
   if (settingsMatch) {

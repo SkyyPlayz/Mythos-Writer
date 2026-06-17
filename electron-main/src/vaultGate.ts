@@ -42,6 +42,26 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0;
 }
 
+function pathApiFor(...paths: string[]): typeof path.posix | typeof path.win32 {
+  return paths.some((p) => /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('\\\\')) ? path.win32 : path.posix;
+}
+
+function joinPathLike(root: string, child: string): string {
+  return pathApiFor(root).join(root, child);
+}
+
+function isStrictChildPath(parent: string, child: string): boolean {
+  const pathApi = pathApiFor(parent, child);
+  if (!pathApi.isAbsolute(parent) || !pathApi.isAbsolute(child)) return false;
+  const relative = pathApi.relative(pathApi.resolve(parent), pathApi.resolve(child));
+  return (
+    relative.length > 0 &&
+    relative !== '..' &&
+    !relative.startsWith(`..${pathApi.sep}`) &&
+    !pathApi.isAbsolute(relative)
+  );
+}
+
 /**
  * Gate `vault:setPaths`. Each of the two requested paths must independently
  * pass either the registration-token check or the recent-projects allowlist
@@ -235,7 +255,7 @@ export function looksLikeObsidianVault(
   p: string,
   existsSync: (fsPath: string) => boolean = fs.existsSync,
 ): boolean {
-  return existsSync(path.join(p, '.obsidian'));
+  return existsSync(joinPathLike(p, '.obsidian'));
 }
 
 // ─── checkGuidedMoveGate (SKY-862) ───────────────────────────────────────────
@@ -286,8 +306,7 @@ export function checkGuidedMoveGate(
   }
 
   // Require an absolute path strictly within homeDir (not homeDir itself).
-  const homeWithSep = homeDir.endsWith(path.sep) ? homeDir : homeDir + path.sep;
-  if (!path.isAbsolute(targetPath) || !targetPath.startsWith(homeWithSep)) {
+  if (!isStrictChildPath(homeDir, targetPath)) {
     return { ok: false, error: 'targetPath: must be within the user home directory' };
   }
 

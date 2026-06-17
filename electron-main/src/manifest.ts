@@ -177,7 +177,7 @@ export function pruneOrphanScenes(manifest: Manifest, vaultRoot: string): PruneR
 
   const filterScenes = (scenes: Manifest['scenes']) =>
     scenes.filter((s) => {
-      const abs = s.path.startsWith('/') ? s.path : `${vaultRoot}/${s.path}`;
+      const abs = path.isAbsolute(s.path) ? s.path : path.join(vaultRoot, s.path);
       if (fs.existsSync(abs)) return true;
       pruned.push(s.path);
       return false;

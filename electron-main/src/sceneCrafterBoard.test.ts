@@ -12,7 +12,8 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(__dirname, '../fixtures/scene-crafter-sample.md');
 
-const SAMPLE = fs.readFileSync(FIXTURE, 'utf-8');
+const SAMPLE = fs.readFileSync(FIXTURE, 'utf-8').replace(/\r\n/g, '\n');
+const SAMPLE_CRLF = SAMPLE.replace(/\n/g, '\r\n');
 
 describe('parseBoardMarkdown', () => {
   it('extracts storyId and lastModified from frontmatter', () => {
@@ -24,6 +25,13 @@ describe('parseBoardMarkdown', () => {
   it('parses all five lanes', () => {
     const board = parseBoardMarkdown(SAMPLE);
     expect(board.lanes.map(l => l.name)).toEqual(['Idea', 'Outline', 'Draft', 'Revision', 'Done']);
+  });
+
+  it('parses CRLF board markdown from Windows checkouts', () => {
+    const board = parseBoardMarkdown(SAMPLE_CRLF);
+    expect(board.storyId).toBe('3fa85f64-5717-4562-b3fc-2c963f66afa6');
+    expect(board.lanes.map(l => l.name)).toEqual(['Idea', 'Outline', 'Draft', 'Revision', 'Done']);
+    expect(board.lanes[0].cards).toHaveLength(2);
   });
 
   it('parses cards in each lane', () => {
@@ -90,6 +98,13 @@ describe('serializeBoardMarkdown', () => {
   it('round-trips the sample fixture exactly', () => {
     const board = parseBoardMarkdown(SAMPLE);
     const out = serializeBoardMarkdown(board);
+    expect(out).toBe(SAMPLE);
+  });
+
+  it('normalizes CRLF input to deterministic LF output', () => {
+    const board = parseBoardMarkdown(SAMPLE_CRLF);
+    const out = serializeBoardMarkdown(board);
+
     expect(out).toBe(SAMPLE);
   });
 

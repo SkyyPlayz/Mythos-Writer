@@ -145,8 +145,9 @@ describe('scaffoldFromTemplate', () => {
 
   it('scaffolds all 4 bundled templates without throwing', () => {
     for (const template of BUNDLED_TEMPLATES) {
-      const storyRoot = path.join(tmpDir, template.id, 'story');
-      const notesRoot = path.join(tmpDir, template.id, 'notes');
+      const templateDir = template.id.replace(/[^a-z0-9-]+/gi, '-');
+      const storyRoot = path.join(tmpDir, templateDir, 'story');
+      const notesRoot = path.join(tmpDir, templateDir, 'notes');
       expect(() => scaffoldFromTemplate(storyRoot, notesRoot, template)).not.toThrow();
     }
   });
