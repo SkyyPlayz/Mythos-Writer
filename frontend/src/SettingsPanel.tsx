@@ -1441,10 +1441,10 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   return (
     <>
-    <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
+    <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-labelledby="settings-dialog-title">
       <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
-          <h2 className="settings-title">Settings</h2>
+          <h2 id="settings-dialog-title" className="settings-title">Settings</h2>
           <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
@@ -2584,6 +2584,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             <div className="settings-field settings-field-inline" style={{ marginTop: 8 }}>
               <span className="settings-label">Danger zone</span>
               <button
+                type="button"
                 className="settings-btn-danger"
                 onClick={async () => {
                   if (!window.confirm('Delete ALL snapshots across every scene? This cannot be undone.')) return;
@@ -2784,7 +2785,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   id="archive-scan-budget"
                   data-testid="archive-scan-budget"
                   aria-label="Scan token budget"
-                  className="settings-range"
+                  aria-describedby="archive-scan-budget-hint"
+                  className="settings-slider"
                   min={2000}
                   max={16000}
                   step={1000}
@@ -2792,7 +2794,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   value={settings.archiveScanBudget ?? 8000}
                   onChange={(e) => setSettings((p) => ({ ...p, archiveScanBudget: Number(e.target.value) }))}
                 />
-                <p className="settings-hint">Limits AI token spend per scan. Higher values allow deeper analysis.</p>
+                <p className="settings-hint" id="archive-scan-budget-hint">Limits AI token spend per scan. Higher values allow deeper analysis.</p>
               </div>
             </fieldset>
           </section>
@@ -3324,11 +3326,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             className="lg-popover"
             role="dialog"
             aria-modal="true"
-            aria-label="Advanced UI settings"
+            aria-labelledby="lg-popover-title"
             ref={popoverRef}
           >
             <div className="lg-popover-header">
-              <h3 className="lg-popover-title">Advanced UI settings</h3>
+              <h3 id="lg-popover-title" className="lg-popover-title">Advanced UI settings</h3>
               <button
                 className="settings-close"
                 type="button"
