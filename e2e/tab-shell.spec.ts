@@ -7,15 +7,25 @@ import { test, expect, _electron as electron, type ElectronApplication, type Pag
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 function seedUserData(userData: string, vaultDir: string): void {
+  seedUserDataWithVaults(userData, vaultDir, vaultDir, { createStory: true, createNotes: true });
+}
+
+function seedUserDataWithVaults(
+  userData: string,
+  storyVaultDir: string,
+  notesVaultDir: string,
+  options: { createStory: boolean; createNotes: boolean },
+): void {
   fs.mkdirSync(userData, { recursive: true });
-  fs.mkdirSync(vaultDir, { recursive: true });
+  if (options.createStory) fs.mkdirSync(storyVaultDir, { recursive: true });
+  if (options.createNotes) fs.mkdirSync(notesVaultDir, { recursive: true });
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
     JSON.stringify({ onboardingComplete: true, theme: 'dark' }, null, 2),
   );
   fs.writeFileSync(
     path.join(userData, 'vault-settings.json'),
-    JSON.stringify({ vaultRoot: vaultDir }, null, 2),
+    JSON.stringify({ vaultRoot: storyVaultDir, notesVaultRoot: notesVaultDir }, null, 2),
   );
 }
 
@@ -83,6 +93,47 @@ test.describe('TabBar — tab switching and persistence', () => {
       await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'false');
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
       await expect(page.locator('#app-tabpanel-story')).not.toBeVisible();
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  test('only Story vault bound: Notes tab shows missing-vault empty state with CTAs', async () => {
+    const storyVaultDir = path.join(tempRoot, 'story-vault');
+    const notesVaultDir = path.join(tempRoot, 'missing-notes-vault');
+    seedUserDataWithVaults(userData, storyVaultDir, notesVaultDir, { createStory: true, createNotes: false });
+
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+
+      await page.locator('[data-testid="app-tab-notes"]').click();
+
+      await expect(page.getByRole('heading', { name: 'No Notes vault' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Create a Notes vault' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Connect existing folder' })).toBeVisible();
+      await expect(page.locator('.tab-bar-vault-badge--missing')).toContainText('No Notes vault');
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  test('only Notes vault bound: Story tab shows missing-vault empty state with CTAs', async () => {
+    const storyVaultDir = path.join(tempRoot, 'missing-story-vault');
+    const notesVaultDir = path.join(tempRoot, 'notes-vault');
+    seedUserDataWithVaults(userData, storyVaultDir, notesVaultDir, { createStory: false, createNotes: true });
+
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+
+      await expect(page.getByRole('heading', { name: 'No Story vault' })).toBeVisible();
+      await expect(page.getByText('Start your first story to begin writing.')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Create a new story' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Continue onboarding' })).toBeVisible();
+      await expect(page.locator('.tab-bar-vault-badge--missing')).toContainText('No Story vault');
     } finally {
       await app.close().catch(() => undefined);
     }
