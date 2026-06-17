@@ -713,6 +713,8 @@ export interface VaultBrowserProps {
   onExport?: (scope: ExportScope) => void;
   /** SKY-204: whether journal mode is enabled (shows Daily Notes widget). */
   journalModeEnabled?: boolean;
+  /** SKY-2096: initial vault scope selection. Defaults to 'both'. */
+  initialScope?: 'story' | 'notes' | 'both';
 }
 
 // SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
@@ -783,8 +785,9 @@ export default function VaultBrowser({
   onContextChange,
   onExport,
   journalModeEnabled,
+  initialScope = 'both',
 }: VaultBrowserProps) {
-  const [scope, setScope] = useState<VaultScope>('both');
+  const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
   const [notesIconMap, setNotesIconMap] = useState<Record<string, string>>({});

@@ -266,6 +266,22 @@ interface EditModeConfig {
   showBetaRead: boolean;
 }
 
+/** SKY-2097: Writing-surface panel appearance preset. */
+type PageBackgroundPreset = 'liquid-neon' | 'minimal' | 'paper' | 'dark-slate';
+
+/** SKY-2097 (Phase 2 #4): Writing-surface panel appearance settings. */
+interface PageBackgroundSettings {
+  preset: PageBackgroundPreset;
+  /** Panel opacity 0–100. Default 65. */
+  opacity: number;
+  /** Panel blur 0–32 px. Default 12. Active only on glass presets (liquid-neon). */
+  blur: number;
+  /** Glow intensity 0–100. Default 60. Active only on liquid-neon preset. */
+  glowIntensity: number;
+  /** When true (default), story and notes tabs share the same appearance values. */
+  applyToBothTabs: boolean;
+}
+
 /** Liquid Neon theme customization. All values optional; absent = LIQUID_NEON_DEFAULTS. */
 interface LiquidNeonPrefs {
   /** 'default' = built-in CSS gradient; file path = background image (MYT-716). */
@@ -377,10 +393,14 @@ interface AppSettings {
   lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
   /** SKY-1188: first post-onboarding timestamp, written once. */
   firstLaunchAt?: string;
+  /** SKY-2098: one-time upgrade notice for existing users moved to the two-tab shell. */
+  notesTabUpgradeToastShown?: boolean;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
+  /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
+  pageBackground?: PageBackgroundSettings;
   /** Voice IO settings (MYT-205 / SKY-1505). */
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
@@ -482,8 +502,8 @@ type AppTab = 'story' | 'notes';
 /** SKY-2094: Sub-view within the Story tab. Mirrors DesktopShell AppView. */
 type StorySubView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline' | 'entries';
 
-/** SKY-2094: Sub-view within the Notes tab. */
-type NotesSubView = 'notes-browser';
+/** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. */
+type NotesSubView = 'editor' | 'graph' | 'entities';
 
 /** SKY-2094: Persisted two-tab app shell state. */
 interface AppTabShellState {

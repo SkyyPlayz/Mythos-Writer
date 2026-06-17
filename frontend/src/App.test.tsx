@@ -76,22 +76,51 @@ describe('App — onboarding gate (SKY-152)', () => {
     await waitFor(() => expect(screen.getByText(/loading your vault/i)).toBeInTheDocument());
   });
 
-  it('blocks app load with a missing-vault recovery screen when saved story vault is invalid', async () => {
+  it('routes back through onboarding when neither vault binding is valid', async () => {
     (window as any).api = makeMockApi({
       vaultGetPaths: vi.fn().mockResolvedValue({
         storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
         notesVaultPath: '/Volumes/Cloud/Mythos/Notes Vault',
       }),
       validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: false }),
+      pickFolder: vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null }),
+      obsidianDryRun: vi.fn(),
+      obsidianRegister: vi.fn(),
+      vaultSetPaths: vi.fn(),
+      loadSampleTwoVault: vi.fn(),
+      obsidianPickFolderByPath: vi.fn(),
+      onboardingComplete: vi.fn().mockResolvedValue({ ok: true }),
+      templateList: vi.fn().mockResolvedValue({ templates: [] }),
+      writeVault: vi.fn(),
+      writeNotesVault: vi.fn(),
     });
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: /vault not found/i })).toBeInTheDocument());
-    expect(screen.getByText('/Volumes/Cloud/Mythos/Story Vault')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /re-run setup/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /open settings/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /quit/i })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('gs-overlay')).toBeInTheDocument());
+  });
+
+  it('opens the shell when only the Notes vault is valid and shows the Story empty state', async () => {
+    (window as any).api = makeMockApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({
+        storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
+        notesVaultPath: '/Volumes/Cloud/Mythos/Notes Vault',
+      }),
+      validatePath: vi.fn(async (path: string) => (
+        path.includes('Notes Vault')
+          ? { exists: true, isEmpty: false, writable: true }
+          : { exists: false, isEmpty: true, writable: false }
+      )),
+      readManifest: vi.fn().mockRejectedValue(new Error('story vault missing')),
+      settingsSet: vi.fn().mockResolvedValue({}),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText(/start your first story to begin writing/i)).toBeInTheDocument());
+    expect(screen.getAllByText(/no story vault/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /create a new story/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue onboarding/i })).toBeInTheDocument();
   });
 });
 

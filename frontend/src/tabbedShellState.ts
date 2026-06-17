@@ -24,7 +24,7 @@ export type TabbedShellAction =
 export const DEFAULT_TABBED_SHELL_STATE: TabbedShellState = {
   activeTab: 'story',
   storySubView: 'editor',
-  notesSubView: 'notes-browser',
+  notesSubView: 'editor',
   storySidebarWidth: 240,
   notesSidebarWidth: 240,
   storySidebarCollapsed: false,
@@ -70,15 +70,22 @@ export function serializeTabbedShellState(state: TabbedShellState): AppTabShellS
   };
 }
 
+const VALID_NOTES_SUBVIEWS: NotesSubView[] = ['editor', 'graph', 'entities'];
+
 /** Hydrate live state from persisted AppSettings, filling gaps with defaults. */
 export function deserializeTabbedShellState(
   persisted: AppTabShellState | undefined | null,
 ): TabbedShellState {
   if (!persisted) return DEFAULT_TABBED_SHELL_STATE;
+  // SKY-2096: migrate old 'notes-browser' placeholder value → 'editor'
+  const rawNotes = persisted.notesSubView as string;
+  const notesSubView: NotesSubView = (VALID_NOTES_SUBVIEWS as string[]).includes(rawNotes)
+    ? rawNotes as NotesSubView
+    : DEFAULT_TABBED_SHELL_STATE.notesSubView;
   return {
     activeTab: persisted.activeTab ?? DEFAULT_TABBED_SHELL_STATE.activeTab,
     storySubView: persisted.storySubView ?? DEFAULT_TABBED_SHELL_STATE.storySubView,
-    notesSubView: persisted.notesSubView ?? DEFAULT_TABBED_SHELL_STATE.notesSubView,
+    notesSubView,
     storySidebarWidth: typeof persisted.storySidebarWidth === 'number'
       ? persisted.storySidebarWidth
       : DEFAULT_TABBED_SHELL_STATE.storySidebarWidth,

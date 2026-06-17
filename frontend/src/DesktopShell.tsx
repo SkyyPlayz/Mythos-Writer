@@ -5,7 +5,7 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, E
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
-import { applyTheme, applyLiquidNeonTokens } from './theme';
+import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens } from './theme';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
@@ -47,6 +47,8 @@ import type { DragSidebar } from './PanelDragContext';
 import DockedTabBar from './DockedTabBar';
 import SplitEditorPane from './SplitEditorPane';
 import TabBar from './TabBar';
+import StorySubViewBar from './StorySubViewBar';
+import NotesTabPanel from './NotesTabPanel';
 import {
   tabbedShellReducer,
   DEFAULT_TABBED_SHELL_STATE,
@@ -66,7 +68,6 @@ import ProgressDashboard from './ProgressDashboard';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
-import { SceneEditorEmptyState } from './SceneEditorEmptyState';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -129,6 +130,33 @@ interface SearchResultItem {
   title: string;
   snippet: string;
   rank: number;
+}
+
+interface VaultBindingState {
+  storyPath: string;
+  notesPath: string;
+  storyValid: boolean;
+  notesValid: boolean;
+}
+
+const EMPTY_MANIFEST: Manifest = {
+  version: '1',
+  vaultRoot: '',
+  stories: [],
+  entities: [],
+  suggestions: [],
+  scenes: [],
+  chapters: [],
+};
+
+function isValidVaultPath(result: { valid?: boolean; exists?: boolean; writable?: boolean; error?: string } | null | undefined): boolean {
+  if (!result) return false;
+  if (typeof result.valid === 'boolean') return result.valid;
+  return Boolean(result.exists && result.writable && !result.error);
+}
+
+function labelFromPath(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
 interface AppMenuBarProps {
@@ -579,7 +607,6 @@ export default function DesktopShell() {
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
   const [vaultContext, setVaultContext] = useState<'file' | 'folder' | null>(null);
-  const [sceneNavigating, setSceneNavigating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
@@ -591,8 +618,10 @@ export default function DesktopShell() {
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
+  const [vaultBinding, setVaultBinding] = useState<VaultBindingState>({ storyPath: '', notesPath: '', storyValid: true, notesValid: true });
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
   const { toast: voiceToastState, showToast: showVoiceToast } = useToast(4000);
+  const { toast: upgradeToastState, showToast: showUpgradeToast } = useToast(5000);
 
   // ─── Voice state (SKY-322) ───
   const [voiceActive, setVoiceActive] = useState(false);
@@ -686,7 +715,6 @@ export default function DesktopShell() {
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
-    setSceneNavigating(false);
   }, []);
 
   // SKY-152: seenTips — memoized to avoid new object reference on every render
@@ -1016,11 +1044,33 @@ export default function DesktopShell() {
     setLoading(true);
     setError(null);
     try {
-      const [m, s, rootResult] = await Promise.all([
-        window.api.readManifest() as Promise<Manifest>,
+      const [s, rootResult, vaultPaths] = await Promise.all([
         (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
+        (window.api.vaultGetPaths?.() ?? Promise.resolve(null)).catch(() => null),
       ]);
+
+      let storyValid = true;
+      let notesValid = true;
+      let storyPath = rootResult?.vaultRoot ?? '';
+      let notesPath = '';
+      if (vaultPaths) {
+        storyPath = vaultPaths.storyVaultPath ?? storyPath;
+        notesPath = vaultPaths.notesVaultPath ?? '';
+        const [storyResult, notesResult] = await Promise.all([
+          window.api.validatePath(storyPath).catch(() => null),
+          window.api.validatePath(notesPath).catch(() => null),
+        ]);
+        storyValid = isValidVaultPath(storyResult);
+        notesValid = isValidVaultPath(notesResult);
+        setVaultBinding({ storyPath, notesPath, storyValid, notesValid });
+      } else {
+        setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
+      }
+
+      const m = storyValid
+        ? await window.api.readManifest() as Manifest
+        : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
       setManifest(m);
       setStories(m.stories ?? []);
       if (m.layout) {
@@ -1070,6 +1120,12 @@ export default function DesktopShell() {
           tabShellRef.current = restored;
           // Sync story sub-view into the legacy view state.
           setView(restored.storySubView);
+        } else if (s.onboardingComplete && !s.notesTabUpgradeToastShown) {
+          dispatchTabShell({ type: 'SET_TAB', tab: 'story' });
+          showUpgradeToast('Your notes are in the new Notes tab.', 'info');
+          const updated = { ...s, notesTabUpgradeToastShown: true } as AppSettings;
+          setAppSettings(updated);
+          window.api.settingsSet(updated).catch(() => {});
         }
         // SKY-1700 (Wave 2f): restore named layouts + run v1→v2 migration.
         {
@@ -1114,6 +1170,7 @@ export default function DesktopShell() {
           ),
         );
         applyTheme(s.theme);
+        applyPageBackgroundTokens(s.pageBackground);
         // Load background image data URL if a custom path is stored
         const lg = s.liquidNeon;
         if (lg?.background && lg.background !== 'default') {
@@ -1125,6 +1182,7 @@ export default function DesktopShell() {
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
+      else if (storyPath) setActiveVaultRoot(storyPath);
 
       // SKY-863: run conflict check after vault is ready.
       // Non-fatal: errors here must not prevent opening the vault.
@@ -1147,7 +1205,7 @@ export default function DesktopShell() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showUpgradeToast]);
 
   useEffect(() => {
     loadVault();
@@ -1372,6 +1430,10 @@ export default function DesktopShell() {
   }, []);
 
   const handleTabChange = useCallback((tab: AppTab) => {
+    if (tab === 'story') {
+      // Restore the story sub-view the user was in before switching to Notes.
+      setView(tabShellRef.current.storySubView);
+    }
     dispatchTabShell({ type: 'SET_TAB', tab });
     tabShellRef.current = { ...tabShellRef.current, activeTab: tab };
     persistTabShell({ ...tabShellRef.current, activeTab: tab });
@@ -1618,6 +1680,29 @@ export default function DesktopShell() {
     setActiveDockedTabId(null);
     const next = { ...tabShellRef.current, storySubView: v as StorySubView };
     dispatchTabShell({ type: 'SET_STORY_SUBVIEW', subView: v as StorySubView });
+    tabShellRef.current = next;
+    persistTabShell(next);
+  }, [persistTabShell]);
+
+  // SKY-2096: Switch Notes sub-view and persist.
+  const handleNotesSubViewChange = useCallback((sv: NotesSubView) => {
+    const next = { ...tabShellRef.current, notesSubView: sv };
+    dispatchTabShell({ type: 'SET_NOTES_SUBVIEW', subView: sv });
+    tabShellRef.current = next;
+    persistTabShell(next);
+  }, [persistTabShell]);
+
+  // SKY-2096: Notes left-sidebar width + collapsed state.
+  const handleNotesSidebarWidthChange = useCallback((w: number) => {
+    const next = { ...tabShellRef.current, notesSidebarWidth: w };
+    dispatchTabShell({ type: 'SET_NOTES_SIDEBAR_WIDTH', width: w });
+    tabShellRef.current = next;
+    persistTabShell(next);
+  }, [persistTabShell]);
+
+  const handleNotesSidebarCollapsedChange = useCallback((c: boolean) => {
+    const next = { ...tabShellRef.current, notesSidebarCollapsed: c };
+    dispatchTabShell({ type: 'SET_NOTES_SIDEBAR_COLLAPSED', collapsed: c });
     tabShellRef.current = next;
     persistTabShell(next);
   }, [persistTabShell]);
@@ -2063,6 +2148,23 @@ export default function DesktopShell() {
     updateManifest([...stories, story]);
   }, [stories, updateManifest, requestText]);
 
+  const handleContinueOnboarding = useCallback(() => {
+    const updated = { ...(appSettings ?? {}), onboardingComplete: false } as AppSettings;
+    setAppSettings(updated);
+    window.api.settingsSet(updated).finally(() => window.location.reload()).catch(() => window.location.reload());
+  }, [appSettings]);
+
+  const handleConnectNotesVault = useCallback(async (seedMode: 'default' | 'blank') => {
+    const picked = await window.api.pickFolder();
+    if (picked.cancelled || !picked.vaultRoot) return;
+    const storyPath = vaultBinding.storyPath || activeVaultRoot;
+    await window.api.vaultSetPaths(storyPath, picked.vaultRoot, {
+      seedMode,
+      notesVaultToken: picked.registrationToken ?? undefined,
+    });
+    await loadVault();
+  }, [activeVaultRoot, loadVault, vaultBinding.storyPath]);
+
   const createChapter = useCallback(async (storyId: string) => {
     const title = await requestText('Chapter title:');
     if (!title?.trim()) return;
@@ -2079,7 +2181,6 @@ export default function DesktopShell() {
   }, [stories, updateManifest, requestText]);
 
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
-    setSceneNavigating(true);
     setSelectedScene(scene);
     setSelectedChapter(chapter);
     setSelectedStory(story);
@@ -2540,11 +2641,6 @@ export default function DesktopShell() {
     [viewDepth, selectedChapter],
   );
 
-  const hasAnyScenes = useMemo(
-    () => stories.some(st => st.chapters.some(ch => ch.scenes.length > 0)),
-    [stories],
-  );
-
   const handleDepthPrev = useCallback(() => {
     if (!selectedStory) return;
     if (viewDepth === 'scene') {
@@ -2708,6 +2804,14 @@ export default function DesktopShell() {
     inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
   ].filter(Boolean).join(' ');
 
+  const activeVaultBadge = tabShell.activeTab === 'notes'
+    ? (vaultBinding.notesValid ? labelFromPath(vaultBinding.notesPath) : 'No Notes vault')
+    : (vaultBinding.storyValid ? labelFromPath(vaultBinding.storyPath || activeVaultRoot) : 'No Story vault');
+  const activeVaultBadgeTitle = tabShell.activeTab === 'notes'
+    ? vaultBinding.notesPath
+    : vaultBinding.storyPath || activeVaultRoot;
+  const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
+
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
@@ -2746,11 +2850,11 @@ export default function DesktopShell() {
           onTabChange={handleTabChange}
         />
       )}
-      {/* SKY-2094: vault badge slot — content wired by Phase 2 #2/#3 refactor tickets */}
-      {showTitleBar && activeVaultRoot && (
-        <div className="tab-bar-vault-badge" aria-hidden="true">
-          <span className="tab-bar-vault-badge__name" title={activeVaultRoot}>
-            {activeVaultRoot.split(/[\\/]/).filter(Boolean).pop() ?? activeVaultRoot}
+      {/* SKY-2098: per-tab vault badge */}
+      {showTitleBar && activeVaultBadge && (
+        <div className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`} aria-live="polite">
+          <span className="tab-bar-vault-badge__name" title={activeVaultBadgeTitle}>
+            {activeVaultBadge}
           </span>
         </div>
       )}
@@ -2768,6 +2872,7 @@ export default function DesktopShell() {
             setAppSettings(s);
             applyTheme(s.theme);
             applyLiquidNeonTokens(s.liquidNeon);
+            applyPageBackgroundTokens(s.pageBackground);
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
@@ -2799,6 +2904,15 @@ export default function DesktopShell() {
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      {/* SKY-2095 (Phase 2 #2): Story sub-view bar — vault badge + sub-view toggles + writing mode. */}
+      <StorySubViewBar
+        activeSubView={view}
+        onSubViewChange={handleSetView}
+        writingMode={writingMode}
+        onSetWritingMode={setWritingMode}
+        onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
+        vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
+      />
       {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
       <div className="shell-main-row">
       {/* SKY-1698: active docked tab shows its panels in the main area */}
@@ -3033,7 +3147,27 @@ export default function DesktopShell() {
             </>
           ) : (
             /* Single-pane view (existing behavior) */
-            viewDepth === 'book' && selectedStory ? (
+            !vaultBinding.storyValid ? (
+              <div className="shell-editor-empty shell-editor-empty--vault-missing">
+                <div className="shell-editor-empty-icon">✍️</div>
+                <h2>No Story vault</h2>
+                <p>Start your first story to begin writing.</p>
+                <div className="shell-editor-empty-actions">
+                  <button
+                    className="shell-editor-empty-cta"
+                    onClick={handleContinueOnboarding}
+                  >
+                    Create a new story
+                  </button>
+                  <button
+                    className="shell-editor-empty-secondary"
+                    onClick={handleContinueOnboarding}
+                  >
+                    Continue onboarding
+                  </button>
+                </div>
+              </div>
+            ) : viewDepth === 'book' && selectedStory ? (
               <BookOutlineView
                 story={selectedStory}
                 selectedChapterId={selectedChapter?.id ?? null}
@@ -3055,83 +3189,73 @@ export default function DesktopShell() {
                 }}
               />
             ) : selectedScene ? (
-              <>
-                <div
-                  className="shell-editor-scene-wrap"
-                  style={{ position: 'relative' }}
-                >
-                  {sceneNavigating && (
-                    <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
-                      <SceneEditorEmptyState variant="loading" />
+              <div className="shell-editor-scene-wrap story-page-canvas">
+                <div className="scene-snapshot-toolbar">
+                  <button
+                    className="scene-snapshot-save"
+                    onClick={handleManualSnapshot}
+                  >
+                    Save snapshot now
+                  </button>
+                  <span className="scene-autosave" aria-live="polite">
+                    {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
+                  </span>
+                  <button
+                    className="btn-history"
+                    onClick={() => setShowSceneHistory(true)}
+                    aria-label="Open scene history"
+                  >
+                    History
+                  </button>
+                </div>
+                <div className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
+                  <BlockEditor
+                    key={`${selectedScene.id}-${restoreKey}`}
+                    scene={selectedScene}
+                    onBlocksChange={handleBlocksChange}
+                    onDraftStateChange={handleDraftStateChange}
+                    onEditorReady={handleEditorReady}
+                    onBetaReadRequest={handleBetaReadRequest}
+                    wikiLinkSuggestions={wikiLinkSuggestions}
+                    onAcceptWikiLink={handleEditorAcceptWikiLink}
+                    onRejectWikiLink={handleEditorRejectWikiLink}
+                    autoLinkerEntities={allEntities}
+                    autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                    initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                    onCursorPosChange={handleCursorPosChange}
+                    onEntityClick={handleEntityMentionClick}
+                    emptySceneHint={
+                      isGettingStartedVisible(gettingStartedProgress) &&
+                      !seenEmptySceneHints.has(selectedScene.id)
+                        ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
+                        : ''
+                    }
+                  />
+                  {(betaReadComments.length > 0 || betaReadLoading) && (
+                    <div className="shell-beta-margin">
+                      {betaReadLoading && (
+                        <div className="br-loading" aria-live="polite">
+                          <span className="wa-spinner" aria-hidden="true" />
+                          Reading…
+                        </div>
+                      )}
+                      <BetaReadMargin
+                        comments={betaReadComments}
+                        onDismiss={handleBetaReadDismiss}
+                      />
                     </div>
                   )}
-                  <div className="scene-snapshot-toolbar">
-                    <button
-                      className="scene-snapshot-save"
-                      onClick={handleManualSnapshot}
-                    >
-                      Save snapshot now
-                    </button>
-                    <span className="scene-autosave" aria-live="polite">
-                      {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
-                    </span>
-                    <button
-                      className="btn-history"
-                      onClick={() => setShowSceneHistory(true)}
-                      aria-label="Open scene history"
-                    >
-                      History
-                    </button>
-                  </div>
-                  <div className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
-                    <BlockEditor
-                      key={`${selectedScene.id}-${restoreKey}`}
-                      scene={selectedScene}
-                      onBlocksChange={handleBlocksChange}
-                      onDraftStateChange={handleDraftStateChange}
-                      onEditorReady={handleEditorReady}
-                      onBetaReadRequest={handleBetaReadRequest}
-                      wikiLinkSuggestions={wikiLinkSuggestions}
-                      onAcceptWikiLink={handleEditorAcceptWikiLink}
-                      onRejectWikiLink={handleEditorRejectWikiLink}
-                      autoLinkerEntities={allEntities}
-                      autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
-                      initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                      onCursorPosChange={handleCursorPosChange}
-                      onEntityClick={handleEntityMentionClick}
-                      emptySceneHint={
-                        isGettingStartedVisible(gettingStartedProgress) &&
-                        !seenEmptySceneHints.has(selectedScene.id)
-                          ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
-                          : ''
-                      }
-                    />
-                    {(betaReadComments.length > 0 || betaReadLoading) && (
-                      <div className="shell-beta-margin">
-                        {betaReadLoading && (
-                          <div className="br-loading" aria-live="polite">
-                            <span className="wa-spinner" aria-hidden="true" />
-                            Reading…
-                          </div>
-                        )}
-                        <BetaReadMargin
-                          comments={betaReadComments}
-                          onDismiss={handleBetaReadDismiss}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  {showSceneHistory && (
-                    <SceneHistory
-                      sceneId={selectedScene.id}
-                      scenePath={selectedScene.path}
-                      currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
-                      onRestore={handleSceneRestore}
-                      onClose={() => setShowSceneHistory(false)}
-                    />
-                  )}
                 </div>
-              </>
+                {showSceneHistory && (
+                  <SceneHistory
+                    sceneId={selectedScene.id}
+                    scenePath={selectedScene.path}
+                    currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                    onRestore={handleSceneRestore}
+                    onClose={() => setShowSceneHistory(false)}
+                  />
+                )}
+              </div>
             ) : selectedEntity ? (
               <EntityDetail
                 key={selectedEntity.id}
@@ -3149,33 +3273,33 @@ export default function DesktopShell() {
                 onWordCountChange={setOpenedNoteWordCount}
                 onClose={() => setOpenedNotePath(null)}
               />
-            ) : stories.length === 0 ? (
-              <div className="shell-editor-empty" data-testid="shell-editor-empty-no-stories">
+            ) : (
+              <div className="shell-editor-empty">
                 <div className="shell-editor-empty-icon">✍️</div>
                 <h2>Welcome to Mythos Writer</h2>
-                <p>Create your first story to begin writing.</p>
-                <button
-                  className="shell-editor-empty-cta"
-                  onClick={createStory}
-                  data-testid="shell-empty-new-story"
-                >
-                  New Story
-                </button>
-              </div>
-            ) : (
-              <>
-                <SceneEditorEmptyState
-                  variant={hasAnyScenes ? 'select-scene' : 'no-scenes-yet'}
-                />
-                {hasAnyScenes && (
-                  <PaneTip
-                    tipKey="editor"
-                    text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
-                    seen={seenTips['editor'] ?? false}
-                    onDismiss={handleDismissTip}
-                  />
+                {stories.length === 0 ? (
+                  <>
+                    <p>Start your first story to begin writing.</p>
+                    <button
+                      className="shell-editor-empty-cta"
+                      onClick={createStory}
+                      data-testid="shell-empty-new-story"
+                    >
+                      Create a new story
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p>Select a scene from the left panel to start writing.</p>
+                    <PaneTip
+                      tipKey="editor"
+                      text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                      seen={seenTips['editor'] ?? false}
+                      onDismiss={handleDismissTip}
+                    />
+                  </>
                 )}
-              </>
+              </div>
             )
           )}
         </div>
@@ -3271,20 +3395,84 @@ export default function DesktopShell() {
 
       </div>{/* end shell-main-row */}
       </div>)}{/* end app-tabpanel-story */}
-      {/* SKY-2094: Notes tabpanel — placeholder until Phase 2 #3 wires the layout */}
-      {tabShell.activeTab === 'notes' && (
+      {/* SKY-2096: Notes tabpanel — full layout (vault tree + editor + Brainstorm sidebar) */}
+      {tabShell.activeTab === 'notes' && !vaultBinding.notesValid && (
         <div
           id="app-tabpanel-notes"
           role="tabpanel"
           aria-labelledby="app-tab-notes"
-          className="shell-notes-tab-placeholder"
-          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
-          📁 Notes tab — full layout coming in Phase 2 #3
+          <div className="shell-editor-empty shell-editor-empty--vault-missing">
+            <div className="shell-editor-empty-icon">📁</div>
+            <h2>No Notes vault</h2>
+            <p>Connect or create a Notes vault to use worldbuilding notes in this tab.</p>
+            <div className="shell-editor-empty-actions">
+              <button
+                className="shell-editor-empty-cta"
+                onClick={() => { void handleConnectNotesVault('default'); }}
+              >
+                Create a Notes vault
+              </button>
+              <button
+                className="shell-editor-empty-secondary"
+                onClick={() => { void handleConnectNotesVault('blank'); }}
+              >
+                Connect existing folder
+              </button>
+            </div>
+          </div>
         </div>
+      )}
+      {tabShell.activeTab === 'notes' && vaultBinding.notesValid && (
+        <NotesTabPanel
+          notesSubView={tabShell.notesSubView}
+          onNotesSubViewChange={handleNotesSubViewChange}
+          notesSidebarWidth={tabShell.notesSidebarWidth}
+          notesSidebarCollapsed={tabShell.notesSidebarCollapsed}
+          onNotesSidebarWidthChange={handleNotesSidebarWidthChange}
+          onNotesSidebarCollapsedChange={handleNotesSidebarCollapsedChange}
+          stories={stories}
+          selectedSceneId={selectedScene?.id ?? null}
+          onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
+          onCreateStory={createStory}
+          onCreateChapter={createChapter}
+          onCreateScene={createScene}
+          onOpenFile={handleOpenSceneByPath}
+          onExport={(scope: ExportScope) => setExportScope(scope)}
+          journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
+          brainstormEnabled={agentFlags.brainstorm}
+          onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
+          onNavigateToEntity={(entityId) => {
+            window.api.entityRead(entityId).then((entity) => {
+              if (entity) {
+                setSelectedEntity(entity);
+                setView('editor');
+                handleTabChange('story');
+              }
+            }).catch(() => {});
+          }}
+          onNavigateToScene={async (sceneId) => {
+            for (const story of stories) {
+              for (const chapter of story.chapters) {
+                const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+                if (scene) {
+                  handleSelectScene(scene, chapter, story);
+                  setView('editor');
+                  handleTabChange('story');
+                  return true;
+                }
+              }
+            }
+            return false;
+          }}
+          onSelectEntity={handleSelectEntity}
+          selectedEntityId={selectedEntity?.id ?? null}
+        />
       )}
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
       <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
+      <Toast message={upgradeToastState?.message ?? null} level={upgradeToastState?.level} className="app-toast--stacked" />
       {voiceListening && (
         <div className="voice-listening-badge" role="status" aria-live="polite" aria-label="Voice input active">
           Listening…

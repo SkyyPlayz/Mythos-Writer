@@ -381,6 +381,9 @@
   /* Dimmed (non-neighbour during hover) */
   --ln-graph-node-dimmed:      rgba(255, 255, 255, 0.04);
   --ln-graph-border-dimmed:    rgba(255, 255, 255, 0.08);
+
+  /* SKY-2095 (Phase 2 #2): Story editor page-width metaphor */
+  --page-width-story: 720px;
 }
 
 /* =============================================================================
@@ -553,4 +556,14 @@
 :root {
   --neon-glow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
   --neon-glow-strong: 0 0 16px color-mix(in srgb, var(--accent) 80%, transparent), 0 0 4px var(--accent);
+}
+
+/* Page background tokens — overridden at runtime by applyPageBackgroundTokens().
+   Defaults match PAGE_BACKGROUND_DEFAULTS (liquid-neon, opacity 65, blur 12, glow 60). */
+:root {
+  --page-bg-fill: rgba(255, 255, 255, 0.650);
+  --page-bg-blur: 12px;
+  --page-bg-glow: 0.600;
+  --page-bg-glow-color: rgba(0, 240, 255, 0.180); /* glow 60 * 0.3 = 0.18 */
+  --page-bg-backdrop-blur: 12px;
 }

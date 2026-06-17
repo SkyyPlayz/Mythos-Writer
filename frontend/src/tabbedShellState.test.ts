@@ -17,8 +17,8 @@ describe('DEFAULT_TABBED_SHELL_STATE', () => {
     expect(DEFAULT_TABBED_SHELL_STATE.storySubView).toBe('editor');
   });
 
-  it('defaults notes sub-view to notes-browser', () => {
-    expect(DEFAULT_TABBED_SHELL_STATE.notesSubView).toBe('notes-browser');
+  it('defaults notes sub-view to editor', () => {
+    expect(DEFAULT_TABBED_SHELL_STATE.notesSubView).toBe('editor');
   });
 });
 
@@ -48,7 +48,7 @@ describe('tabbedShellReducer — sub-view independence', () => {
     });
     expect(next.storySubView).toBe('brainstorm');
     expect(next.activeTab).toBe('story');
-    expect(next.notesSubView).toBe('notes-browser');
+    expect(next.notesSubView).toBe('editor');
   });
 
   it('story sub-view is preserved after round-trip to notes tab', () => {
@@ -64,9 +64,9 @@ describe('tabbedShellReducer — sub-view independence', () => {
   it('SET_NOTES_SUBVIEW updates notes sub-view independently', () => {
     const next = tabbedShellReducer(DEFAULT_TABBED_SHELL_STATE, {
       type: 'SET_NOTES_SUBVIEW',
-      subView: 'notes-browser',
+      subView: 'graph',
     });
-    expect(next.notesSubView).toBe('notes-browser');
+    expect(next.notesSubView).toBe('graph');
     expect(next.storySubView).toBe('editor');
   });
 });
@@ -124,7 +124,7 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
     const original: TabbedShellState = {
       activeTab: 'notes',
       storySubView: 'graph',
-      notesSubView: 'notes-browser',
+      notesSubView: 'entities',
       storySidebarWidth: 300,
       notesSidebarWidth: 260,
       storySidebarCollapsed: true,
@@ -151,5 +151,19 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
     expect(state.activeTab).toBe('notes');
     expect(state.storySubView).toBe('editor');
     expect(state.storySidebarWidth).toBe(240);
+  });
+
+  it('SKY-2096: migrates legacy notes-browser sub-view to editor', () => {
+    // Old persisted state used 'notes-browser' before Phase 2 #3
+    const legacy = { activeTab: 'notes', notesSubView: 'notes-browser' } as unknown as AppTabShellState;
+    const state = deserializeTabbedShellState(legacy);
+    expect(state.notesSubView).toBe('editor');
+  });
+
+  it('SKY-2096: preserves valid notes sub-view on round-trip', () => {
+    (['editor', 'graph', 'entities'] as NotesSubView[]).forEach((sv) => {
+      const state = deserializeTabbedShellState({ notesSubView: sv } as AppTabShellState);
+      expect(state.notesSubView).toBe(sv);
+    });
   });
 });
