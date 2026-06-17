@@ -144,6 +144,8 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
     expect(fs.existsSync(storyVaultPath)).toBe(true);
     expect(fs.existsSync(notesVaultPath)).toBe(true);
+    expect(fs.existsSync(path.join(userData, 'vaults', 'Story Vault'))).toBe(false);
+    expect(fs.existsSync(path.join(userData, 'vaults', 'Notes Vault'))).toBe(false);
 
     // The orchestrated path also seeds a first scene file so the editor lands
     // on something writable. The exact scene file name uses the slug "my-first-story".

@@ -176,6 +176,11 @@ import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot } from './validatePathUtil.js';
 import {
+  defaultMythosVaultsParentPath,
+  defaultNotesVaultRootPath,
+  defaultVaultRootPath,
+} from './defaultVaultPaths.js';
+import {
   buildAgentSystemPrompt,
 } from './agentPersona.js';
 import { registerAgentPersonaHandlers } from './agentPersonaIpc.js';
@@ -518,23 +523,23 @@ function getVaultIndexCacheDir(): string {
   return path.join(app.getPath('userData'), 'vault-index-cache');
 }
 
-// SKY-2157: Default vault roots now live under app.getPath('userData') so that
-// fresh installs don't scatter folders across ~/Mythos. Existing installs are
-// unaffected — their vault-settings.json already persists their chosen paths
-// and these defaults only fire when no settings file exists yet.
+// SKY-2157 / SKY-2204: Default vault roots live under app.getPath('userData')
+// inside the recommended Mythos Vault bundle. Existing installs are unaffected
+// — their vault-settings.json already persists their chosen paths — while fresh
+// fallback reads no longer point at flat sibling roots under `<userData>/vaults`.
 function defaultVaultRoot(): string {
-  return path.join(app.getPath('userData'), 'vaults', 'Story Vault');
+  return defaultVaultRootPath(app.getPath('userData'));
 }
 
 function defaultNotesVaultRoot(): string {
-  return path.join(app.getPath('userData'), 'vaults', 'Notes Vault');
+  return defaultNotesVaultRootPath(app.getPath('userData'));
 }
 
 // SKY-320 / SKY-2157: Obsidian-style multi-vault root anchored under userData.
 // New Mythos Vaults land at `<userData>/vaults/<vault-name>/` so the app's own
 // data dir contains all vault bundles and ~/Mythos is not touched by default.
 function defaultMythosVaultsParent(): string {
-  return path.join(app.getPath('userData'), 'vaults');
+  return defaultMythosVaultsParentPath(app.getPath('userData'));
 }
 
 // SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
