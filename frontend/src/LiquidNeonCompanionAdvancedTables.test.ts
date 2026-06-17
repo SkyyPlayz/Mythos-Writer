@@ -31,12 +31,13 @@ describe('Liquid Neon Companion Advanced Tables CSS', () => {
   });
 
   it('uses accessible focus ring on cell input (2px solid neon)', () => {
-    expect(atCss).toMatch(/table-editor-cell-input:focus[\s\S]*box-shadow[\s\S]*var\(--ln-at-neon\)/);
+    expect(atCss).toMatch(/table-editor-cell-input:focus[\s\S]*box-shadow:[\s\S]*0 0 0 2px var\(--ln-at-neon\)/);
   });
 
-  it('styles context menu with glass background and neon hover', () => {
+  it('styles context menu with inherited Liquid Neon tokens and neon hover', () => {
     expect(atCss).toContain('.menu');
     expect(atCss).toContain('.menu-item');
-    expect(atCss).toMatch(/\.menu-item:hover[\s\S]*var\(--ln-at-neon\)/);
+    expect(atCss).toMatch(/\.theme-dark \.table-editor-table,\s*\.theme-dark \.tablecontrols,\s*\.theme-dark \.menu \{/);
+    expect(atCss).toMatch(/\.menu-item:hover[\s\S]*color:\s*var\(--ln-at-neon\)/);
   });
 });

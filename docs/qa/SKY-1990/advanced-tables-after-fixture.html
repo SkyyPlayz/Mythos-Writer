@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SKY-1990 Advanced Tables after fixture</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --neon-cyan: #00f0ff;
+      --neon-violet: #9b5fff;
+      --neon-magenta: #ff4dff;
+      --text-header: #eaf6ff;
+      --text-body: #bfd6e8;
+      --text-muted: #93a4b8;
+      --glass-fill: rgba(14, 14, 18, 0.72);
+      --glass-fill-fallback: rgba(18, 18, 28, 0.88);
+      --glass-rim: rgba(255, 255, 255, 0.12);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --bg-inset: #15191f;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --lg-blur: 16px;
+      --lg-neon: 0.5;
+      --elev-1: 0 8px 24px rgba(5, 8, 20, 0.36);
+      --elev-2: 0 16px 40px rgba(5, 8, 20, 0.48);
+      --state-danger: #f88585;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 1440px;
+      min-height: 900px;
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      color: var(--text-body);
+      background: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%);
+    }
+    .workspace { min-height: 900px; padding: 48px 64px; }
+    .panel {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px;
+      background: rgba(18, 18, 28, .72);
+      border: 1px solid var(--glass-rim);
+      border-radius: 22px;
+      box-shadow: var(--elev-1);
+      backdrop-filter: blur(var(--lg-blur));
+    }
+    .eyebrow { margin: 0 0 8px; color: var(--text-muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 0 0 22px; color: var(--text-header); font-size: 30px; }
+    .layout { display: grid; grid-template-columns: 1fr 280px; gap: 24px; align-items: start; }
+    .tablecontrols { margin: 0 0 14px; }
+    .table-editor-btn { font: inherit; }
+    .table-editor-table th, .table-editor-table td { font-size: 15px; }
+    .table-editor-cell-input { font: inherit; }
+    .menu { padding: 6px; }
+    .menu-title { margin: 0 0 8px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+    .menu-item { display: flex; gap: 8px; align-items: center; padding: 7px 10px; }
+    .menu-separator { border-top-style: solid; border-top-width: 1px; margin: 5px 0; }
+  </style>
+  <link rel="stylesheet" href="../../../plugin/Liquid-Neon-Companion/advanced-tables-liquid-neon.css">
+</head>
+<body class="theme-dark">
+  <main class="workspace">
+    <section class="panel">
+      <p class="eyebrow">SKY-1990 Advanced Tables after — 1440×900 dark viewport</p>
+      <h1>Worldbuilding production tracker</h1>
+      <div class="layout">
+        <div>
+          <div class="tablecontrols" aria-label="Advanced Tables alignment controls">
+            <button class="table-editor-btn" aria-label="Align left">L</button>
+            <button class="table-editor-btn is-active" aria-label="Align center" aria-pressed="true">C</button>
+            <button class="table-editor-btn" aria-label="Align right">R</button>
+            <button class="table-editor-btn" aria-label="Insert column">＋ Col</button>
+            <button class="table-editor-btn" aria-label="Delete row">− Row</button>
+          </div>
+          <table class="table-editor-table">
+            <thead>
+              <tr><th>Arc</th><th>Status</th><th>Owner</th><th class="table-editor-resizer" aria-label="Column resize handle"></th><th>Risk</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Glass City</td><td>Draft</td><td>Mira</td><td class="table-editor-resizer"></td><td>Timeline drift</td></tr>
+              <tr><td>Neon Archive</td><td><input class="table-editor-cell-input" value="Editing cell"></td><td>Archivist</td><td class="table-editor-resizer"></td><td>Low</td></tr>
+              <tr><td>Sky Dock</td><td>Review</td><td>Rook</td><td class="table-editor-resizer"></td><td>Continuity check</td></tr>
+              <tr><td>Mirror Market</td><td>Ready</td><td>Juno</td><td class="table-editor-resizer"></td><td>Medium</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <aside class="menu" aria-label="Advanced Tables context menu">
+          <p class="menu-title">Context menu</p>
+          <div class="menu-item selected"><span class="menu-item-icon">↔</span><span>Align center</span></div>
+          <div class="menu-item"><span class="menu-item-icon">＋</span><span>Insert column right</span></div>
+          <div class="menu-item"><span class="menu-item-icon">↓</span><span>Insert row below</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-item"><span class="menu-item-icon">✕</span><span>Delete row</span></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
