@@ -76,28 +76,21 @@ describe('App — onboarding gate (SKY-152)', () => {
     await waitFor(() => expect(screen.getByText(/loading your vault/i)).toBeInTheDocument());
   });
 
-  it('routes back through onboarding when neither vault binding is valid', async () => {
+  it('shows recovery screen when neither vault binding is valid', async () => {
     (window as any).api = makeMockApi({
       vaultGetPaths: vi.fn().mockResolvedValue({
         storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
         notesVaultPath: '/Volumes/Cloud/Mythos/Notes Vault',
       }),
       validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: false }),
-      pickFolder: vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null }),
-      obsidianDryRun: vi.fn(),
-      obsidianRegister: vi.fn(),
-      vaultSetPaths: vi.fn(),
-      loadSampleTwoVault: vi.fn(),
-      obsidianPickFolderByPath: vi.fn(),
-      onboardingComplete: vi.fn().mockResolvedValue({ ok: true }),
-      templateList: vi.fn().mockResolvedValue({ templates: [] }),
-      writeVault: vi.fn(),
-      writeNotesVault: vi.fn(),
     });
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByTestId('gs-overlay')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Vault not found' })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Re-run setup' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quit' })).toBeInTheDocument();
   });
 
   it('opens the shell when only the Notes vault is valid and shows the Story empty state', async () => {

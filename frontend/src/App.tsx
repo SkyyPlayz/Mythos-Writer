@@ -56,7 +56,7 @@ function App() {
         const notesValid = isVaultPathValid(notesResult);
 
         if (!storyValid && !notesValid) {
-          setView({ kind: 'wizard', settings: { ...nextSettings, onboardingComplete: false } });
+          setView({ kind: 'missing-vault', settings: nextSettings, vaultPath: vaults.storyVaultPath });
           return;
         }
       } catch {
