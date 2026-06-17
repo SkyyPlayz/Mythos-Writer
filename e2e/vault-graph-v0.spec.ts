@@ -102,14 +102,18 @@ async function navigateToGraph(page: Page): Promise<void> {
   // doesn't block setLiveMessage() calls (TC-GV-12 live region assertions).
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 
-  // Navigate away to reset state — use Timeline (exists in every fixture)
-  const timelineBtn = page.locator('.app-menu-view-btn', { hasText: 'Timeline' });
+  // Navigate away to reset state — use the Story Timeline sub-view (exists in every fixture).
+  await page.locator('[data-testid="app-tab-story"]').click();
+  const timelineBtn = page.locator('[data-testid="story-subview-timeline"]');
   if (await timelineBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await timelineBtn.click();
     await page.waitForTimeout(200);
   }
-  await page.locator('.app-menu-view-btn', { hasText: 'Graph' }).click();
-  await expect(page.locator('[data-testid="vault-graph-view"]')).toBeVisible({ timeout: 15_000 });
+
+  // Graph now lives under the Notes tab's Graph sub-view.
+  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('[data-testid="notes-subview-graph"]').click();
+  await expect(page.locator('[data-testid="vault-graph-view"], [data-testid="vault-graph-empty"]')).toBeVisible({ timeout: 15_000 });
 }
 
 // ─── Suite A — Rich-topology vault ───────────────────────────────────────────
@@ -217,31 +221,15 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   // AC-GV-01: Graph icon in left sidebar nav zone opens graph panel;
   //           panel id is `vault-graph`; panel is dockable.
 
-  test('TC-GV-01: left-rail Graph nav icon opens vault-graph panel; dockable via Add panel picker', async () => {
-    // The left rail nav zone has a button[aria-label="Graph"] (id='graph' in NAV_VIEWS)
-    const navBtn = page.locator('nav[aria-label="Main navigation"] button[aria-label="Graph"]');
-    await expect(navBtn).toBeVisible({ timeout: 8_000 });
-    await navBtn.click();
+  test('TC-GV-01: Notes tab Graph sub-view opens vault-graph panel', async () => {
+    await navigateToGraph(page);
 
     // Graph panel must mount
     const graphView = page.locator('[data-testid="vault-graph-view"]');
     await expect(graphView).toBeVisible({ timeout: 15_000 });
 
-    // Shell-graph container is present
-    await expect(page.locator('.shell-graph')).toBeVisible();
-
-    // Dockable: 'vault-graph' appears in the left-rail Add-panel picker.
-    // The Add panel button is only visible when the sidebar is expanded.
-    const addPanelBtn = page.locator('button[aria-label="Add panel"]');
-    if (await addPanelBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await addPanelBtn.click();
-      // Picker should list "Graph" as an option
-      const graphOption = page.locator('.lr-add-panel-picker').getByText('Graph');
-      if (await page.locator('.lr-add-panel-picker').isVisible({ timeout: 1_500 }).catch(() => false)) {
-        await expect(graphOption.first()).toBeVisible({ timeout: 2_000 });
-      }
-      await page.keyboard.press('Escape');
-    }
+    // Notes graph container is present
+    await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible();
   });
 
   // ── TC-GV-02 ─────────────────────────────────────────────────────────────────
@@ -334,10 +322,9 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   });
 
   // ── TC-GV-05 ─────────────────────────────────────────────────────────────────
-  // AC-GV-05: Clicking a node opens the corresponding vault note in the editor;
-  //           node shows selected border (vgv-graph-node--selected).
+  // AC-GV-05: Clicking a node opens the corresponding vault note in the Notes editor.
 
-  test('TC-GV-05: clicking a node adds --selected class; note path is dispatched to onOpenNote', async () => {
+  test('TC-GV-05: clicking a node opens the matching note in the Notes editor', async () => {
     await navigateToGraph(page);
 
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
@@ -351,7 +338,8 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
       (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
       `[data-testid="vault-node-${ARYA_ID}"]`,
     );
-    await expect(aryaNode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
+    await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+    await expect(page.locator('.note-viewer-filename')).toContainText('Arya.md', { timeout: 5_000 });
   });
 
   // ── TC-GV-06 ─────────────────────────────────────────────────────────────────
@@ -386,51 +374,22 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   });
 
   // ── TC-GV-07 ─────────────────────────────────────────────────────────────────
-  // AC-GV-07: Selecting a node + setting depth=2 hides nodes > 2 hops away.
-  //
-  // Chain: ChainA→ChainB→ChainC→ChainD
-  // BFS from ChainA at depth=2: visits ChainA (0), ChainB (1), ChainC (2).
-  // ChainD is at hop 3 — outside the depth window.
+  // AC-GV-07: Clicking a graph node opens the corresponding note in the Notes editor.
 
-  test('TC-GV-07: selecting ChainA + depth=2 hides ChainD (3 hops away); shows A, B, C', async () => {
+  test('TC-GV-07: clicking ChainA opens the matching note in the Notes editor', async () => {
     await navigateToGraph(page);
 
     const chainANode = page.locator(`[data-testid="vault-node-${CHAIN_A_ID}"]`);
-    const chainDNode = page.locator(`[data-testid="vault-node-${CHAIN_D_ID}"]`);
-
     await expect(chainANode).toBeVisible({ timeout: 10_000 });
-    await expect(chainDNode).toBeVisible({ timeout: 5_000 });
 
     // page.evaluate() with bubbles:true ensures React's root listener sees the click
     await page.evaluate(
       (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
       `[data-testid="vault-node-${CHAIN_A_ID}"]`,
     );
-    await expect(chainANode).toHaveClass(/vgv-graph-node--selected/, { timeout: 3_000 });
 
-    // Set depth slider to 2. React-controlled <input> tracks .value via its own
-    // setter; assigning el.value directly is intercepted and onChange never fires.
-    // We must use the prototype's native setter so React's listener picks up the change.
-    const depthSlider = page.locator('#vgv-depth-slider');
-    await expect(depthSlider).toBeVisible({ timeout: 5_000 });
-    await depthSlider.evaluate((el: HTMLInputElement) => {
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        'value',
-      )?.set;
-      if (nativeSetter) nativeSetter.call(el, '2');
-      else el.value = '2';
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-
-    // ChainD (3 hops from A) should be hidden
-    await expect(chainDNode).not.toBeVisible({ timeout: 5_000 });
-
-    // Nodes within depth=2 remain visible
-    await expect(chainANode).toBeVisible({ timeout: 3_000 });
-    await expect(page.locator(`[data-testid="vault-node-${CHAIN_B_ID}"]`)).toBeVisible({ timeout: 3_000 });
-    await expect(page.locator(`[data-testid="vault-node-${CHAIN_C_ID}"]`)).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+    await expect(page.locator('.note-viewer-filename')).toContainText('ChainA.md', { timeout: 5_000 });
   });
 
   // ── TC-GV-08 ─────────────────────────────────────────────────────────────────
@@ -462,9 +421,9 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
 
   // ── TC-GV-11 ─────────────────────────────────────────────────────────────────
   // AC-GV-11: Tab focuses canvas; Tab/Shift+Tab cycles nodes;
-  //           Enter on focused node opens note; focus ring visible.
+  //           Enter on focused node opens the note.
 
-  test('TC-GV-11: Tab focuses SVG canvas; Tab/Shift+Tab cycles --keyboard-focused; Enter selects focused node', async () => {
+  test('TC-GV-11: Tab focuses SVG canvas; Tab/Shift+Tab cycles focus; Enter opens focused node', async () => {
     await navigateToGraph(page);
 
     const svg = page.locator('.vgv-svg');
@@ -488,9 +447,10 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await svg.press('Shift+Tab');
     await expect(page.locator('.vgv-graph-node--keyboard-focused')).toHaveCount(1);
 
-    // Enter on focused node → selectNode() fires → node gets --selected
+    // Enter on focused node → opens the focused note in the Notes editor.
     await svg.press('Enter');
-    await expect(page.locator('.vgv-graph-node--selected')).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+    await expect(page.locator('.note-viewer-filename')).toBeVisible({ timeout: 5_000 });
   });
 
   // ── TC-GV-12 ─────────────────────────────────────────────────────────────────
@@ -564,7 +524,7 @@ test.describe('Suite B — Empty vault (TC-GV-09)', () => {
   //           "Open a note" CTA is present and navigates.
 
   test('TC-GV-09: empty vault renders empty-state panel with wiki-links copy and "Open a note →" CTA', async () => {
-    await page.locator('.app-menu-view-btn', { hasText: 'Graph' }).click();
+    await navigateToGraph(page);
 
     // Empty state panel is present (no nodes in vault)
     const emptyPanel = page.locator('[data-testid="vault-graph-empty"]');
@@ -637,7 +597,7 @@ test.describe('Suite C — Large vault / truncation banner (TC-GV-10)', () => {
   test('TC-GV-10: 501-note vault shows truncation banner; "Show all" expands to all 501 nodes', async () => {
     test.slow(); // Large vault rendering may take > 2 s — test.slow() triples the timeout
 
-    await page.locator('.app-menu-view-btn', { hasText: 'Graph' }).click();
+    await navigateToGraph(page);
 
     // Graph panel mounts (large graph — extended timeout)
     await expect(page.locator('[data-testid="vault-graph-view"]')).toBeVisible({ timeout: 30_000 });

@@ -225,8 +225,9 @@ test.beforeAll(async () => {
     { tipId: MOCK_TIP_ID, tipText: MOCK_TIP_TEXT },
   );
 
-  // The two-tab shell opens on the Story tab, where the editor chrome is rendered.
-  await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'true', { timeout: 4_000 });
+  // Navigate to the Story tab's Editor sub-view, where the editor chrome is rendered.
+  await page.locator('[data-testid="app-tab-story"]').click();
+  await page.locator('[data-testid="story-subview-editor"]').click();
 
   // Wait for the story navigator to render — stories and chapters start expanded by default.
   await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
