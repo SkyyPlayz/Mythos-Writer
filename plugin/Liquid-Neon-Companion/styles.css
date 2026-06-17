@@ -1,0 +1,12 @@
+/* =============================================================================
+ * Liquid Neon Companion — Main Plugin Stylesheet
+ *
+ * Obsidian loads this file as a <link rel="stylesheet"> from the plugin
+ * directory; relative @import paths resolve correctly against it.
+ *
+ * Module index:
+ *   dataview-liquid-neon.css  — Dataview query tables, inline fields,
+ *                               error pill, settings panels  (LN-51)
+ * ========================================================================== */
+
+@import url('./dataview-liquid-neon.css');
