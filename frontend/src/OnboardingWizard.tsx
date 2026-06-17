@@ -6,10 +6,49 @@ import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WizardStep = 'step1' | 'step1b' | 'step2' | 'step3';
+type WizardStep = 'step1' | 'step1b' | 'step1c' | 'step2' | 'step3';
 // SKY-906: 'default-mythos-vault' is the one-click first-run path that
 // bypasses the title/save-path form entirely.
 type StartMode = 'blank' | 'sample' | 'template' | 'default-mythos-vault';
+
+// SKY-2008: genre IDs for the step1c sample picker
+type SampleGenreId = 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
+
+interface GenreOption {
+  id: SampleGenreId;
+  emoji: string;
+  title: string;
+  description: string;
+  /** Displayed inside the "What's Inside" accordion */
+  contents: string;
+}
+
+const GENRE_OPTIONS: GenreOption[] = [
+  {
+    id: 'cozy-fantasy',
+    emoji: '🏰',
+    title: 'The Hearthstone Witch',
+    description: 'Whimsical magic in small towns and forests. Perfect for intimate stories of discovery.',
+    contents:
+      'Story Vault/\n└── The Hearthstone Witch\n    ├── Manuscript/ (3 chapters, 8 scenes)\n    └── (Outline, Synopsis sketched)\n\nNotes Vault/\n└── Universes/\n    ├── Characters/ (12 entries)\n    └── Systems/ (1 magic system)',
+  },
+  {
+    id: 'sci-fi-noir',
+    emoji: '🌃',
+    title: 'Neon Rust',
+    description: 'Neon-soaked cyberpunk. Dangerous, gritty, and chrome enough to cut yourself. For the rebels.',
+    contents:
+      'Story Vault/\n└── Neon Rust\n    ├── Manuscript/ (4 chapters, 10 scenes)\n    └── (Outline, Synopsis sketched)\n\nNotes Vault/\n└── Universes/\n    ├── Characters/ (6 entries)\n    └── Factions/ (1 faction map)',
+  },
+  {
+    id: 'mystery',
+    emoji: '🔍',
+    title: 'The Last Wednesday Club',
+    description: 'Secrets, clues, and code-breakers. A classic whodunit framework ready for your twists.',
+    contents:
+      'Story Vault/\n└── The Last Wednesday Club\n    ├── Manuscript/ (2 chapters, 6 scenes)\n    └── (Outline, Timeline sketched)\n\nNotes Vault/\n└── Universes/\n    ├── Characters/ (5 suspects)\n    └── Research/ (1 timeline)',
+  },
+];
 
 interface TemplateItem {
   id: string;
@@ -40,6 +79,8 @@ type Api = {
     vaultParentPath?: string;
     templateId?: string;
     vaultName?: string;
+    /** SKY-2008: genre selected on step1c; required for startMode=sample */
+    sampleGenre?: SampleGenreId;
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
@@ -170,12 +211,95 @@ function ConfirmDialog({ onKeepGoing, onCancelSetup }: ConfirmDialogProps) {
   );
 }
 
+// ─── GenreCard (step1c) ──────────────────────────────────────────────────────
+
+interface GenreCardProps {
+  genre: GenreOption;
+  isSelected: boolean;
+  isAccordionOpen: boolean;
+  tabIndex: number;
+  onSelect: () => void;
+  onToggleAccordion: (e: React.MouseEvent | React.KeyboardEvent) => void;
+}
+
+function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onToggleAccordion }: GenreCardProps) {
+  const panelId = `gp-panel-${genre.id}`;
+  const accordionBtnId = `gp-accordion-btn-${genre.id}`;
+
+  function handleCardKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect();
+    }
+  }
+
+  function handleAccordionKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onToggleAccordion(e);
+    }
+    if (e.key === 'Escape' && isAccordionOpen) {
+      e.stopPropagation();
+      onToggleAccordion(e);
+    }
+  }
+
+  return (
+    <button
+      role="radio"
+      aria-checked={isSelected}
+      className="gp-card"
+      onClick={onSelect}
+      onKeyDown={handleCardKeyDown}
+      tabIndex={tabIndex}
+      type="button"
+      data-testid={`genre-card-${genre.id}`}
+    >
+      <div className="gp-card-header">
+        <span className="gp-card-emoji" aria-hidden="true">{genre.emoji}</span>
+        <span className="gp-card-title">{genre.title}</span>
+        <span className="gp-radio" aria-hidden="true" />
+      </div>
+      <p className="gp-card-description">{genre.description}</p>
+      <button
+        id={accordionBtnId}
+        type="button"
+        className="gp-card-accordion"
+        aria-expanded={isAccordionOpen}
+        aria-controls={panelId}
+        onClick={(e) => { e.stopPropagation(); onToggleAccordion(e); }}
+        onKeyDown={(e) => { e.stopPropagation(); handleAccordionKeyDown(e); }}
+        data-testid={`genre-accordion-btn-${genre.id}`}
+      >
+        <span className={`gp-card-accordion-icon${isAccordionOpen ? ' gp-card-accordion-icon--open' : ''}`} aria-hidden="true">▼</span>
+        {isAccordionOpen ? 'Hide contents' : 'What\'s inside ›'}
+      </button>
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={accordionBtnId}
+        aria-hidden={!isAccordionOpen}
+        className="gp-card-accordion-panel"
+        data-testid={`genre-accordion-panel-${genre.id}`}
+      >
+        <div className="gp-card-accordion-inner">
+          <pre>{genre.contents}</pre>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 export default function OnboardingWizard({ initialSettings, onComplete, onCancel }: OnboardingWizardProps) {
   const [step, setStep] = useState<WizardStep>('step1');
   const [startMode, setStartMode] = useState<StartMode | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  // SKY-2008: step1c genre picker state
+  const [selectedSampleGenre, setSelectedSampleGenre] = useState<SampleGenreId | null>(null);
+  const [openAccordionGenre, setOpenAccordionGenre] = useState<SampleGenreId | null>(null);
+  const [sampleError, setSampleError] = useState('');
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateLoadError, setTemplateLoadError] = useState('');
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -319,6 +443,20 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
+  function handleGenreToggleAccordion(genreId: SampleGenreId) {
+    setOpenAccordionGenre((prev) => prev === genreId ? null : genreId);
+  }
+
+  function handleGenreArrowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
+    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const idx = cards.indexOf(document.activeElement as HTMLElement);
+    if (idx === -1) return;
+    let next = -1;
+    if (e.key === 'ArrowDown') next = (idx + 1) % cards.length;
+    if (e.key === 'ArrowUp')   next = (idx - 1 + cards.length) % cards.length;
+    if (next !== -1) { e.preventDefault(); cards[next].focus(); }
+  }
+
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
 
   // SKY-906: one-click default Mythos Vault. Bypasses the title + save-path
@@ -360,7 +498,45 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   function handleSelectSample() {
-    goToStep2FromMode('sample');
+    // SKY-2008: go to genre picker (step1c) instead of form (step2)
+    setStartMode('sample');
+    setSampleError('');
+    setSelectedSampleGenre(null);
+    setOpenAccordionGenre(null);
+    setStep('step1c');
+  }
+
+  async function handleStartSample() {
+    if (!selectedSampleGenre) return;
+    setScaffoldError('');
+    setSampleError('');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const res = await api().onboardingComplete({ startMode: 'sample', sampleGenre: selectedSampleGenre });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Sample content couldn\'t be loaded. Try starting blank instead.');
+        setScaffolding(false);
+        setStep('step1c');
+        setSampleError(res.error ?? 'Sample content couldn\'t be loaded. Try starting blank instead.');
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'sample',
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Sample content couldn\'t be loaded. Try starting blank instead.';
+      setScaffoldError(msg);
+      setScaffolding(false);
+      setStep('step1c');
+      setSampleError(msg);
+    }
   }
 
   function handleSelectTemplate() {
@@ -469,8 +645,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       // SKY-906: the one-click flow never collected a title/save path, so
       // retry must not echo those fields — re-issuing with empty strings
       // would be rejected by the main-side validator.
+      // SKY-2008: sample mode also skips the form — pass sampleGenre instead.
       const payload = startMode === 'default-mythos-vault'
         ? { startMode: 'default-mythos-vault' as const }
+        : startMode === 'sample'
+        ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
         : {
             startMode: startMode!,
             storyTitle: storyTitle.trim(),
@@ -521,7 +700,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step2') {
+      if (step === 'step1' || step === 'step1b' || step === 'step1c' || step === 'step2') {
         setShowCancelConfirm(true);
       }
     }
@@ -917,6 +1096,99 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         </div>
       )}
 
+      {/* ── Step 1c: Genre picker (sample projects) ── */}
+      {step === 'step1c' && (
+        <div className="gs-modal" data-testid="screen-step1c">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              aria-label="Back to mode selection"
+              onClick={() => {
+                setSelectedSampleGenre(null);
+                setOpenAccordionGenre(null);
+                setSampleError('');
+                setStep('step1');
+              }}
+              data-testid="gs-back-step1c"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Step 1 of 3</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-step1c"
+            >
+              &#x2715;
+            </button>
+          </div>
+
+          <div className="genre-picker">
+            <h2 className="gp-title">Pick a sample world</h2>
+            <p className="gp-subtitle">You can explore any of these — they won&apos;t affect your own files.</p>
+
+            {/* sr-only live region for genre selection announcement */}
+            <p className="sr-only" aria-live="polite" aria-atomic="true" data-testid="genre-announcement">
+              {selectedSampleGenre
+                ? `${GENRE_OPTIONS.find((g) => g.id === selectedSampleGenre)?.title ?? ''} selected.`
+                : ''}
+            </p>
+
+            <div
+              role="radiogroup"
+              aria-label="Choose a sample genre"
+              className="gp-radiogroup"
+              onKeyDown={handleGenreArrowKeys}
+              data-testid="genre-radiogroup"
+            >
+              {GENRE_OPTIONS.map((genre, i) => (
+                <GenreCard
+                  key={genre.id}
+                  genre={genre}
+                  isSelected={selectedSampleGenre === genre.id}
+                  isAccordionOpen={openAccordionGenre === genre.id}
+                  tabIndex={selectedSampleGenre === genre.id || (selectedSampleGenre === null && i === 0) ? 0 : -1}
+                  onSelect={() => setSelectedSampleGenre(genre.id)}
+                  onToggleAccordion={() => handleGenreToggleAccordion(genre.id)}
+                />
+              ))}
+            </div>
+
+            {sampleError && (
+              <div className="gp-error" role="alert" data-testid="genre-sample-error">
+                <p>{sampleError}</p>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => { setSampleError(''); setStartMode('blank'); setStep('step2'); }}
+                  data-testid="genre-error-blank-cta"
+                >
+                  Start blank instead
+                </button>
+              </div>
+            )}
+
+            <div className="gp-footer">
+              <button
+                type="button"
+                className="btn-primary gp-start-button"
+                disabled={!selectedSampleGenre}
+                onClick={handleStartSample}
+                data-testid="genre-start-btn"
+              >
+                {selectedSampleGenre
+                  ? `Start with ${GENRE_OPTIONS.find((g) => g.id === selectedSampleGenre)?.title ?? ''} →`
+                  : 'Start with… →'}
+              </button>
+              <p className="gp-note">Sampling won&apos;t affect your own files.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Step 2: Name your story ── */}
       {step === 'step2' && (
         <div className="gs-modal" data-testid="screen-step2">
@@ -1036,9 +1308,15 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         <div className="gs-modal" data-testid="screen-step3">
           {scaffolding && !scaffoldError ? (
             <>
-              <h2 className="gs-modal__title">Setting up your story&#x2026;</h2>
+              <h2 className="gs-modal__title">
+                {startMode === 'sample' && selectedSampleGenre
+                  ? `Loading ${GENRE_OPTIONS.find((g) => g.id === selectedSampleGenre)?.title ?? 'sample'}…`
+                  : 'Setting up your story…'}
+              </h2>
               <div className="gs-spinner" aria-label="Creating story" role="status" data-testid="gs-spinner" />
-              <p className="gs-modal__subtitle">Creating your folders and first scene&#x2026;</p>
+              <p className="gs-modal__subtitle">
+                {startMode === 'sample' ? 'Copying sample files…' : 'Creating your folders and first scene…'}
+              </p>
             </>
           ) : scaffoldError ? (
             <div className="gs-scaffold-error" data-testid="gs-scaffold-error">

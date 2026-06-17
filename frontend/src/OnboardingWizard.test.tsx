@@ -163,10 +163,10 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('clicking Sample Novel advances to Step 2', async () => {
+  it('clicking Sample Novel advances to Step 1c (genre picker)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-sample'));
-    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -482,6 +482,95 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 });
 
+// ─── Step 1c: Genre picker (SKY-2008) ─────────────────────────────────────────
+
+describe('OnboardingWizard — Step 1c (genre picker)', () => {
+  function renderAtStep1c() {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-sample'));
+  }
+
+  it('shows genre picker screen on Sample Novel click', async () => {
+    renderAtStep1c();
+    expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
+    expect(screen.getByText('Pick a sample world')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('renders all three genre cards in a radiogroup', async () => {
+    renderAtStep1c();
+    expect(screen.getByTestId('genre-radiogroup')).toBeInTheDocument();
+    expect(screen.getByTestId('genre-card-cozy-fantasy')).toBeInTheDocument();
+    expect(screen.getByTestId('genre-card-sci-fi-noir')).toBeInTheDocument();
+    expect(screen.getByTestId('genre-card-mystery')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('Start button is disabled until a genre is selected', async () => {
+    renderAtStep1c();
+    expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('selecting a genre enables Start button with genre title', async () => {
+    renderAtStep1c();
+    fireEvent.click(screen.getByTestId('genre-card-mystery'));
+    const startBtn = screen.getByTestId('genre-start-btn');
+    expect(startBtn).not.toBeDisabled();
+    expect(startBtn).toHaveTextContent('The Last Wednesday Club');
+    await act(async () => {});
+  });
+
+  it('genre card shows aria-checked=true when selected', async () => {
+    renderAtStep1c();
+    fireEvent.click(screen.getByTestId('genre-card-cozy-fantasy'));
+    expect(screen.getByTestId('genre-card-cozy-fantasy')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('genre-card-sci-fi-noir')).toHaveAttribute('aria-checked', 'false');
+    await act(async () => {});
+  });
+
+  it('accordion expands on toggle and collapses others', async () => {
+    renderAtStep1c();
+    const cozyBtn = screen.getByTestId('genre-accordion-btn-cozy-fantasy');
+    fireEvent.click(cozyBtn);
+    expect(cozyBtn).toHaveAttribute('aria-expanded', 'true');
+    // Opening sci-fi accordion should close cozy one
+    fireEvent.click(screen.getByTestId('genre-accordion-btn-sci-fi-noir'));
+    expect(cozyBtn).toHaveAttribute('aria-expanded', 'false');
+    await act(async () => {});
+  });
+
+  it('Back button returns to step1 and resets genre selection', async () => {
+    renderAtStep1c();
+    fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
+    fireEvent.click(screen.getByTestId('gs-back-step1c'));
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    // Re-entering step1c should have no selection
+    fireEvent.click(screen.getByTestId('card-sample'));
+    expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('Start triggers step3 and calls onboardingComplete with sampleGenre', async () => {
+    renderAtStep1c();
+    fireEvent.click(screen.getByTestId('genre-card-cozy-fantasy'));
+    fireEvent.click(screen.getByTestId('genre-start-btn'));
+    await waitFor(() => expect(screen.getByTestId('screen-step3')).toBeInTheDocument());
+    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ startMode: 'sample', sampleGenre: 'cozy-fantasy' })
+    ));
+  });
+
+  it('error on onboardingComplete shows error card on step1c', async () => {
+    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Bundle not found' });
+    renderAtStep1c();
+    fireEvent.click(screen.getByTestId('genre-card-mystery'));
+    fireEvent.click(screen.getByTestId('genre-start-btn'));
+    await waitFor(() => expect(screen.getByTestId('genre-sample-error')).toBeInTheDocument());
+    expect(screen.getByTestId('genre-sample-error')).toHaveTextContent('Bundle not found');
+  });
+});
+
 // ─── Step 2: Name your story ──────────────────────────────────────────────────
 
 describe('OnboardingWizard — Step 2', () => {
@@ -732,10 +821,11 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
   it('calls onboardingComplete with correct sample payload', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-sample'));
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Glass Library' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
+    // Step1c: select Sci-Fi Noir genre card
+    fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
+    fireEvent.click(screen.getByTestId('genre-start-btn'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ startMode: 'sample', storyTitle: 'Glass Library' })
+      expect.objectContaining({ startMode: 'sample', sampleGenre: 'sci-fi-noir' })
     ));
   });
 

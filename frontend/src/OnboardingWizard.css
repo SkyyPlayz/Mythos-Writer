@@ -1525,3 +1525,276 @@
     outline-color: Highlight;
   }
 }
+
+/* ─── Step 1c: Genre Picker (SKY-2008) ────────────────────────────────────── */
+
+.genre-picker {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.gp-title {
+  font-size: var(--text-xl, 1.25rem);
+  font-weight: 700;
+  color: var(--text-header, #edecf6);
+  margin: 0 0 var(--space-2, 8px);
+}
+
+.gp-subtitle {
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--text-body, #bfd6e8);
+  margin: 0 0 var(--space-4, 16px);
+  line-height: 1.5;
+}
+
+/* Radiogroup container */
+.gp-radiogroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  margin: 0 0 var(--space-5, 20px);
+}
+
+/* Card — functions as a radio button */
+.gp-card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  width: 100%;
+  padding: var(--space-5, 20px);
+  background: var(--bg-elevated, #222a36);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-md, 16px);
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+  transition: border-color var(--dur-hover-in, 180ms) var(--ease-out, ease),
+              box-shadow var(--dur-hover-in, 180ms) var(--ease-out, ease),
+              background var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.gp-card:hover {
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.gp-card[aria-checked="true"] {
+  border: 2px solid var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.04);
+  box-shadow: 0 0 24px rgba(0, 240, 255, 0.15);
+}
+
+.gp-card:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* Card header row */
+.gp-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+}
+
+.gp-card-emoji {
+  font-size: 28px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.gp-card-title {
+  flex: 1;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-header, #edecf6);
+  margin: 0;
+}
+
+/* Custom radio indicator */
+.gp-radio {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 2px solid var(--border-default, rgba(255, 255, 255, 0.1));
+  border-radius: 50%;
+  background: transparent;
+  position: relative;
+  transition: border-color var(--dur-hover-in, 180ms) var(--ease-out, ease),
+              background var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.gp-card:hover .gp-radio {
+  border-color: var(--neon-cyan, #00f0ff);
+}
+
+.gp-card[aria-checked="true"] .gp-radio {
+  border-color: var(--neon-cyan, #00f0ff);
+  background: var(--neon-cyan, #00f0ff);
+}
+
+.gp-radio::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  background: var(--bg-elevated, #222a36);
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.gp-card[aria-checked="true"] .gp-radio::after {
+  opacity: 1;
+}
+
+/* Description text */
+.gp-card-description {
+  font-size: 0.875rem;
+  color: var(--text-body, #bfd6e8);
+  line-height: 1.5;
+  margin: 0 0 var(--space-3, 12px);
+}
+
+/* Accordion button */
+.gp-card-accordion {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-muted, #8a9bb0);
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-family: inherit;
+  transition: color var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.gp-card-accordion:hover {
+  color: var(--neon-cyan, #00f0ff);
+}
+
+.gp-card-accordion:focus-visible {
+  outline: 1px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.gp-card-accordion-icon {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.gp-card-accordion-icon--open {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gp-card-accordion-icon {
+    transition: none;
+  }
+}
+
+/* Accordion panel — CSS grid height animation */
+.gp-card-accordion-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows var(--dur-panel, 280ms) var(--ease-standard, ease);
+}
+
+.gp-card-accordion-panel[aria-hidden="false"] {
+  grid-template-rows: 1fr;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gp-card-accordion-panel {
+    transition: none;
+  }
+}
+
+.gp-card-accordion-inner {
+  overflow: hidden;
+}
+
+.gp-card-accordion-inner pre {
+  margin: var(--space-3, 12px) 0 0;
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  font-size: 0.75rem;
+  color: var(--text-muted, #8a9bb0);
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Footer — CTA + note */
+.gp-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-4, 16px);
+}
+
+.gp-start-button {
+  font-size: 1rem;
+  padding: 0.625rem 1.5rem;
+  min-width: 260px;
+}
+
+.gp-start-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.gp-note {
+  font-size: 0.75rem;
+  color: var(--text-muted, #8a9bb0);
+  margin: 0;
+}
+
+/* Error state */
+.gp-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  background: rgba(248, 133, 133, 0.08);
+  border: 1px solid var(--state-danger, #f88585);
+  border-radius: var(--radius-sm, 12px);
+  margin-top: var(--space-4, 16px);
+}
+
+.gp-error p {
+  font-size: 0.875rem;
+  color: var(--state-danger, #f88585);
+  margin: 0;
+}
+
+/* Forced-colors support */
+@media (forced-colors: active) {
+  .gp-card {
+    border-color: ButtonText;
+    color: ButtonText;
+    background: ButtonFace;
+    forced-color-adjust: auto;
+  }
+  .gp-card:focus-visible {
+    outline-color: Highlight;
+    border-color: Highlight;
+  }
+  .gp-card[aria-checked="true"] {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+    box-shadow: none;
+  }
+  .gp-radio {
+    border-color: ButtonText;
+    forced-color-adjust: auto;
+  }
+}
