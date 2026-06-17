@@ -39,7 +39,7 @@ describe('Liquid Neon Companion Advanced Tables CSS', () => {
   it('styles context menu with Liquid Neon glass and neon hover', () => {
     expect(atCss).toContain('.theme-dark .menu');
     expect(atCss).toContain('.theme-dark .menu-item');
-    // Menu hover uses --neon-cyan directly (not the scoped --ln-at-neon token)
-    expect(atCss).toMatch(/\.theme-dark \.menu-item:hover[\s\S]*color:\s*var\(--neon-cyan/);
+    // Menu hover is scoped under .theme-dark .menu and uses --ln-at-neon (the scoped token)
+    expect(atCss).toMatch(/\.theme-dark \.menu \.menu-item:hover[\s\S]*color:\s*var\(--ln-at-neon/);
   });
 });
