@@ -5,7 +5,7 @@ import { BrainstormEmptyState } from './BrainstormEmptyState';
 describe('BrainstormEmptyState', () => {
   it('renders heading and Notes Vault sub-copy', () => {
     render(<BrainstormEmptyState onSeedPrompt={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /nothing here yet/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /no facts yet/i })).toBeTruthy();
     expect(screen.getByText(/Notes Vault/)).toBeTruthy();
     expect(screen.getByText(/not your Story Vault/)).toBeTruthy();
   });
