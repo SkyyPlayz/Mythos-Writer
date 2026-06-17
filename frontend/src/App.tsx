@@ -48,14 +48,14 @@ function App() {
 
       try {
         const vaults = await window.api.vaultGetPaths();
-        // Validate both vaults concurrently. Only show the recovery screen when
-        // both vaults are gone — if notes is still valid the user can still use
-        // the Notes tab, so fall through to the shell (story tab shows empty state).
         const [storyResult, notesResult] = await Promise.all([
-          window.api.validatePath(vaults.storyVaultPath).catch(() => ({ valid: false as const })),
-          window.api.validatePath(vaults.notesVaultPath).catch(() => ({ valid: false as const })),
+          window.api.validatePath(vaults.storyVaultPath).catch(() => ({ valid: false })),
+          window.api.validatePath(vaults.notesVaultPath).catch(() => ({ valid: false })),
         ]);
-        if (!isVaultPathValid(storyResult) && !isVaultPathValid(notesResult)) {
+        const storyValid = isVaultPathValid(storyResult);
+        const notesValid = isVaultPathValid(notesResult);
+
+        if (!storyValid && !notesValid) {
           setView({ kind: 'missing-vault', settings: nextSettings, vaultPath: vaults.storyVaultPath });
           return;
         }

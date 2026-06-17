@@ -5,16 +5,18 @@ import { test, expect, _electron as electron, type ElectronApplication } from '@
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
-function seedCompletedOnboarding(userData: string, missingStoryVault: string, notesVault: string): void {
+function seedCompletedOnboarding(userData: string, missingStoryVault: string, missingNotesVault: string): void {
   fs.mkdirSync(userData, { recursive: true });
-  fs.mkdirSync(notesVault, { recursive: true });
+  // Neither vault directory is created so the real vault:validate-path handler
+  // returns invalid for both paths, triggering the recovery screen without any
+  // IPC mock race condition.
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
     JSON.stringify({ onboardingComplete: true, theme: 'dark' }, null, 2),
   );
   fs.writeFileSync(
     path.join(userData, 'vault-settings.json'),
-    JSON.stringify({ vaultRoot: missingStoryVault, notesVaultRoot: notesVault }, null, 2),
+    JSON.stringify({ vaultRoot: missingStoryVault, notesVaultRoot: missingNotesVault }, null, 2),
   );
 }
 
@@ -34,12 +36,13 @@ test('missing Story Vault shows recovery screen after load-time vault check fail
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-missing-vault-'));
   const userData = path.join(tempRoot, 'userData');
   const missingStoryVault = path.join(tempRoot, 'missing-story-vault');
-  const notesVault = path.join(tempRoot, 'notes-vault');
-  seedCompletedOnboarding(userData, missingStoryVault, notesVault);
+  const missingNotesVault = path.join(tempRoot, 'missing-notes-vault');
+  seedCompletedOnboarding(userData, missingStoryVault, missingNotesVault);
 
   const app = await launchApp(userData);
   try {
     expect(fs.existsSync(missingStoryVault)).toBe(false);
+    expect(fs.existsSync(missingNotesVault)).toBe(false);
 
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
