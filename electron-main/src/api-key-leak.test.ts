@@ -151,6 +151,16 @@ describe('maskSettingsForRenderer — apiKey field (MYT-143)', () => {
     const masked = maskSettingsForRenderer(settingsFixture({ apiKey: '' }));
     expect(masked.apiKey).toBe('');
   });
+
+  it('does not mask onboarding recents or sample genre fields', () => {
+    const masked = maskSettingsForRenderer(settingsFixture({
+      recentVaultParentPaths: ['/vaults/A', '/vaults/B'],
+      lastSampleGenre: 'sci-fi-noir',
+    }));
+
+    expect(masked.recentVaultParentPaths).toEqual(['/vaults/A', '/vaults/B']);
+    expect(masked.lastSampleGenre).toBe('sci-fi-noir');
+  });
 });
 
 describe('maskSettingsForRenderer — voice.openaiApiKey field (MYT-424)', () => {

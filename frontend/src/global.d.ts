@@ -370,7 +370,11 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
+  /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
+  recentVaultParentPaths?: string[];
+  /** SKY-2005: last sample genre selected from the onboarding sample preview. */
+  lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
   /** SKY-1188: first post-onboarding timestamp, written once. */
   firstLaunchAt?: string;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
@@ -913,6 +917,13 @@ interface Window {
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.
     vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\' }>;
+    vaultGetSystemPaths: () => Promise<{
+      homeDir: string;
+      documentsDir: string;
+      desktopDir: string;
+      oneDriveDir: string | null;
+      iCloudDir: string | null;
+    }>;
     // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
     // SKY-270 / MYT-789: storyVaultToken / notesVaultToken from vault:pick-folder satisfy the gate.
     vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
@@ -935,11 +946,13 @@ interface Window {
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'sample' | 'template' | 'skip';
+      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;
       templateId?: string;
+      vaultName?: string;
+      sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;

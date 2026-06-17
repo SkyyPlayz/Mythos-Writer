@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   // a re-seed on the main side, so the renderer can persist user edits in a
   // single round-trip.
   vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
+  vaultGetSystemPaths: () => ipcRenderer.invoke('vault:getSystemPaths', undefined),
   // SKY-12.2: opts.seedMode = 'default' | 'blank' controls scaffold behavior.
   // Defaults to 'default' (full SKY-15 layout) when absent — backwards-compatible.
   // SKY-270 / MYT-789: storyVaultToken / notesVaultToken come from vault:pick-folder.
@@ -39,7 +40,7 @@ contextBridge.exposeInMainWorld('api', {
   loadSampleTwoVault: (parentPath: string) =>
     ipcRenderer.invoke('vault:load-sample-twovault', { parentPath }),
   // SKY-627: extended onboarding orchestration — creates vault + first scene.
-  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string }) =>
+  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; sampleGenre?: string }) =>
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
   onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
