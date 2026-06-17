@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
+import { useToast } from './hooks/useToast';
+import { Toast } from './components/Toast/Toast';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
@@ -579,16 +581,14 @@ export default function DesktopShell() {
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
-  const [budgetToast, setBudgetToast] = useState<string | null>(null);
-  const budgetToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
+  const { toast: voiceToastState, showToast: showVoiceToast } = useToast(4000);
 
   // ─── Voice state (SKY-322) ───
   const [voiceActive, setVoiceActive] = useState(false);
-  const [voiceToast, setVoiceToast] = useState<string | null>(null);
   const voiceSessionRef = useRef<string | null>(null);
   const speechRecogRef = useRef<SpeechRecognition | null>(null);
   const pttDownRef = useRef(false);
-  const voiceToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
   const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [exportScope, setExportScope] = useState<ExportScope | null>(null);
@@ -850,15 +850,10 @@ export default function DesktopShell() {
     const unsub = window.api.onBudgetCapHit((event) => {
       const windowLabel = event.reason === 'daily_token_cap' ? 'daily' : 'hourly';
       const msg = `${event.agentLabel} paused: ${windowLabel} token cap reached.`;
-      setBudgetToast(msg);
-      if (budgetToastTimer.current) clearTimeout(budgetToastTimer.current);
-      budgetToastTimer.current = setTimeout(() => setBudgetToast(null), 5000);
+      showBudgetToast(msg, 'warn');
     });
-    return () => {
-      unsub();
-      if (budgetToastTimer.current) clearTimeout(budgetToastTimer.current);
-    };
-  }, []);
+    return () => { unsub(); };
+  }, [showBudgetToast]);
 
   // ─── Voice input (SKY-322) ───
 
@@ -892,9 +887,7 @@ export default function DesktopShell() {
       const res = await window.api.voiceStart(micDeviceId) as { sessionId: string };
       sessionId = res.sessionId;
     } catch {
-      setVoiceToast('Failed to start voice input.');
-      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
-      voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      showVoiceToast('Failed to start voice input.');
       return;
     }
     voiceSessionRef.current = sessionId;
@@ -903,9 +896,7 @@ export default function DesktopShell() {
 
     const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SpeechRecognitionCtor) {
-      setVoiceToast('Web Speech API not available.');
-      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
-      voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+      showVoiceToast('Web Speech API not available.');
       voiceSessionRef.current = null;
       setVoiceActive(false);
       window.api.voiceStop(sessionId).catch(() => {});
@@ -929,11 +920,7 @@ export default function DesktopShell() {
       const msg = evt.error === 'not-allowed'
         ? 'Microphone permission denied. Check your system settings.'
         : evt.error !== 'aborted' ? 'Voice recognition error. Please try again.' : null;
-      if (msg) {
-        setVoiceToast(msg);
-        if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
-        voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
-      }
+      if (msg) showVoiceToast(msg);
       const sid = voiceSessionRef.current;
       speechRecogRef.current = null;
       voiceSessionRef.current = null;
@@ -944,7 +931,7 @@ export default function DesktopShell() {
     speechRecogRef.current = recog;
     voiceRecognitionRef.current = recog;
     recog.start();
-  }, [appSettings?.voice?.micDeviceId]);
+  }, [appSettings?.voice?.micDeviceId, showVoiceToast]);
 
   // Subscribe to transcript push events — insert final text at cursor
   useEffect(() => {
@@ -956,16 +943,11 @@ export default function DesktopShell() {
       if (editorApiRef.current) {
         editorApiRef.current.insertText(trimmed + ' ');
       } else {
-        setVoiceToast('Voice captured — open a scene to insert text.');
-        if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
-        voiceToastTimerRef.current = setTimeout(() => setVoiceToast(null), 4000);
+        showVoiceToast('Voice captured — open a scene to insert text.');
       }
     });
-    return () => {
-      unsub();
-      if (voiceToastTimerRef.current) clearTimeout(voiceToastTimerRef.current);
-    };
-  }, []);
+    return () => { unsub(); };
+  }, [showVoiceToast]);
 
   // Keyboard shortcuts: toggle (Ctrl+Shift+V) and push-to-talk (Alt+V hold)
   useEffect(() => {
@@ -3184,16 +3166,8 @@ export default function DesktopShell() {
       />}
 
       </div>{/* end shell-main-row */}
-      {budgetToast && (
-        <div className="budget-toast" role="alert" aria-live="assertive">
-          {budgetToast}
-        </div>
-      )}
-      {voiceToast && (
-        <div className="voice-toast" role="status" aria-live="polite">
-          {voiceToast}
-        </div>
-      )}
+      <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
+      <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
       {voiceListening && (
         <div className="voice-listening-badge" role="status" aria-live="polite" aria-label="Voice input active">
           Listening…

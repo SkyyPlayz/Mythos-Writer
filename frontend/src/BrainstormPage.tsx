@@ -17,6 +17,8 @@ import {
 import type { PresetAxes, RefinementChip } from './presets';
 import EntriesQuickAdd from './EntriesQuickAdd';
 import { PROMPT_MAX_CHARS } from './promptConstants';
+import { useToast } from './hooks/useToast';
+import { Toast } from './components/Toast/Toast';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -281,7 +283,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     voiceStateRef.current = s;
     _setVoiceStateRaw(s);
   }, []);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast: toastState, showToast } = useToast(3000);
   const [pasteWarning, setPasteWarning] = useState(false);
   const [detailDrawerIdeaId, setDetailDrawerIdeaId] = useState<string | null>(null);
   const [proposals, setProposals] = useState<NoteProposal[]>([]);
@@ -332,7 +334,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const streamingTextRef = useRef<string>('');
   const cleanupStreamRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Refs for drag state values needed inside closures without stale captures
   const dragSourceIdRef = useRef<string | null>(null);
   const dropBelowRef = useRef(false);
@@ -496,17 +497,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   useEffect(() => {
     const unsub = window.api.onVaultNotesUpdated?.((data: { count: number }) => {
       const msg = `Vault notes updated (${data.count} note${data.count !== 1 ? 's' : ''})`;
-      setToast(msg);
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+      showToast(msg);
     });
     return () => { unsub?.(); };
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     return () => {
       cleanupStreamRef.current?.();
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
       const rec = recognitionRef.current;
       if (rec) try { rec.abort(); } catch { /* non-fatal */ }
@@ -542,10 +540,8 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     setMessages((prev) => prev.slice(0, -1));
     setLoading(false);
     setStreamPhase('idle');
-    setToast('Generation cancelled');
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-  }, []);
+    showToast('Generation cancelled');
+  }, [showToast]);
 
   const handleNewSession = useCallback(() => {
     if (streamIdRef.current) {
@@ -1060,12 +1056,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     },
     [facts, persistFactWithRouting],
   );
-
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-  }, []);
 
   const handleChipClick = useCallback(async (chip: import('./components/BrainstormCard/IdeaCard').IdeaCardChip) => {
     if (chip.type === 'scene') {
@@ -1646,11 +1636,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         {alertText}
       </span>
 
-      {toast && (
-        <div className="brainstorm-toast" role="status" aria-live="polite">
-          {toast}
-        </div>
-      )}
+      <Toast message={toastState?.message ?? null} level={toastState?.level} />
 
       <div className="brainstorm-header">
         <button className="brainstorm-back-btn" onClick={onClose} aria-label="Close brainstorm">
