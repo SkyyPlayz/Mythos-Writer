@@ -3,7 +3,8 @@
 
 import { ipcMain, ipcRenderer } from 'electron';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
-import { sanitizeIpcError } from './ipcErrors.js';
+import { sanitizeIpcError, withIpcLog, IPC_ERROR_CATEGORIES } from './ipcErrors.js';
+import type { IpcEnvelope } from './ipcErrors.js';
 import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
 
 // ─── Channel names ───
@@ -487,16 +488,35 @@ export function isFromTopFrame(event: IpcMainInvokeEvent | IpcMainEvent): boolea
   return !!frame && frame === frame.top;
 }
 
+const ENVELOPED_IPC_CHANNELS = new Set<string>([
+  IPC_CHANNELS.SETTINGS_GET,
+  IPC_CHANNELS.SETTINGS_SET,
+  IPC_CHANNELS.SETTINGS_TEST_CONNECTION,
+]);
+
+function untrustedFrameEnvelope(): IpcEnvelope<never> {
+  return {
+    ok: false,
+    code: IPC_ERROR_CATEGORIES.PERMISSION_DENIED,
+    message: UNTRUSTED_FRAME_REJECTION.error,
+  };
+}
+
 // ─── Main process handlers ───
 // Each handler: receive request → process → send response via IPC
 
 export function setupIpcMain(handlers: IpcHandlers) {
   for (const [channel, handler] of Object.entries(handlers)) {
+    const returnsEnvelope = ENVELOPED_IPC_CHANNELS.has(channel);
+    const loggedHandler = returnsEnvelope
+      ? withIpcLog(channel, (payload: unknown) => handler(payload as never))
+      : null;
     // `await` is required so async rejections are caught here and sanitized
     // before they reach the renderer. Previously thrown fs errors (ENOENT,
     // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
     ipcMain.handle(channel, async (event, payload) => {
-      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      if (!isFromTopFrame(event)) return returnsEnvelope ? untrustedFrameEnvelope() : UNTRUSTED_FRAME_REJECTION;
+      if (loggedHandler) return loggedHandler(payload);
       try {
         return await handler(payload);
       } catch (error) {

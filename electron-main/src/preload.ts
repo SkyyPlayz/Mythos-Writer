@@ -3,6 +3,24 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 // Primary API exposed as window.api
+
+type IpcEnvelope<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: string; message: string };
+
+function isIpcEnvelope<T>(value: unknown): value is IpcEnvelope<T> {
+  return !!value && typeof value === 'object' && 'ok' in value && (
+    (value as { ok?: unknown }).ok === true || (value as { ok?: unknown }).ok === false
+  );
+}
+
+async function invokeEnvelope<T>(channel: string, payload: unknown): Promise<T | { error: string }> {
+  const result = await ipcRenderer.invoke(channel, payload);
+  if (!isIpcEnvelope<T>(result)) return result as T | { error: string };
+  const envelope = result as IpcEnvelope<T>;
+  return envelope.ok ? envelope.data : { error: envelope.message };
+}
+
 contextBridge.exposeInMainWorld('api', {
   // Vault / filesystem
   readVault: (filePath: string) => ipcRenderer.invoke('vault:read', { path: filePath }),
@@ -187,13 +205,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entity:relationships:delete', { relationshipId }),
 
   // App settings
-  settingsGet: () => ipcRenderer.invoke('settings:get', undefined),
+  settingsGet: () => invokeEnvelope('settings:get', undefined),
   // MYT-788: optional `tokens` carries one-shot registration tokens from
   // voicePickBinary, required when changing the local STT/TTS path fields.
   settingsSet: (settings: unknown, tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string }) =>
-    ipcRenderer.invoke('settings:set', { settings, ...(tokens ?? {}) }),
+    invokeEnvelope('settings:set', { settings, ...(tokens ?? {}) }),
   // MYT-779: test connection to an AI provider.
-  settingsTestConnection: (provider: unknown) => ipcRenderer.invoke('settings:testConnection', { provider }),
+  settingsTestConnection: (provider: unknown) => invokeEnvelope('settings:testConnection', { provider }),
   // SKY-1499/SKY-1501: list available models from a provider endpoint.
   providerListModels: (payload: unknown) => ipcRenderer.invoke('provider:listModels', payload),
   // MYT-788: main-process file picker for local voice binary / model selection.
