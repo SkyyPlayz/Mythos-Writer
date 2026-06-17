@@ -249,7 +249,78 @@
   border-bottom: 1px solid color-mix(in srgb, var(--neon-cyan, #00f0ff) 28%, transparent);
 }
 
-/* ── 8. Context menu (right-click) ───────────────────────────────────────── */
+/* ── 8. Rendered table view — table-editor-* classes ────────────────────── */
+
+/* Token bridge: --ln-at-neon and friends are defined on .advanced-tables-toolbar but the
+   rendered table cells and context menus live outside it. Inherit tokens here so all
+   table-editor-* rules and .menu-item can reference --ln-at-neon without a raw fallback. */
+.theme-dark .table-editor-table,
+.theme-dark .tablecontrols,
+.theme-dark .menu {
+  --ln-at-neon: var(--neon-cyan, #00f0ff);
+  --ln-at-neon-intensity: var(--lg-neon, 0.5);
+  --ln-at-border: var(--glass-border, rgba(255, 255, 255, 0.07));
+  --ln-at-text: var(--text-body, #bfd6e8);
+}
+
+/* Rendered table container */
+.theme-dark .table-editor-table {
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+}
+
+/* Controls bar above the rendered table */
+.theme-dark .tablecontrols {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border-bottom: 1px solid var(--ln-at-border);
+}
+
+/* Cell input in rendered-mode editing */
+.theme-dark .table-editor-cell-input {
+  background: transparent;
+  color: var(--ln-at-text);
+  caret-color: var(--ln-at-neon);
+  outline: none;
+}
+
+/* 2-px neon focus ring on active cell (WCAG 2.1 SC 2.4.7) */
+.theme-dark .table-editor-cell-input:focus {
+  box-shadow: 0 0 0 2px var(--ln-at-neon);
+  border-radius: var(--radius-xs, 4px);
+}
+
+/* Table editor buttons */
+.theme-dark .table-editor-btn {
+  color: var(--ln-at-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  cursor: pointer;
+  transition:
+    color var(--dur-hover-in, 120ms) ease,
+    background var(--dur-hover-in, 120ms) ease,
+    border-color var(--dur-hover-in, 120ms) ease;
+}
+
+.theme-dark .table-editor-btn:hover {
+  color: var(--ln-at-neon);
+  background: color-mix(in srgb, var(--ln-at-neon) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ln-at-neon) 30%, transparent);
+}
+
+/* Column resize handle */
+.theme-dark .table-editor-resizer {
+  background: var(--ln-at-border);
+  transition: background var(--dur-hover-in, 120ms) ease;
+}
+
+.theme-dark .table-editor-resizer:hover {
+  background: var(--ln-at-neon);
+}
+
+/* ── 9. Context menu (right-click) ───────────────────────────────────────── */
 
 /* Obsidian's .menu is global; these rules apply whenever a context menu is open.
    Advanced Tables adds "Insert row/column", "Delete row/column", and alignment items. */
@@ -288,8 +359,8 @@
 
 .theme-dark .menu-item:hover,
 .theme-dark .menu-item.selected {
-  background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 14%, transparent);
-  color: var(--neon-cyan, #00f0ff);           /* #00f0ff on hover bg ~#111d21: 12.5:1 ✓ */
+  background: color-mix(in srgb, var(--ln-at-neon) 14%, transparent);
+  color: var(--ln-at-neon);
 }
 
 .theme-dark .menu-item-icon {
