@@ -56,6 +56,7 @@ import ProgressDashboard from './ProgressDashboard';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
+import { SceneEditorEmptyState } from './SceneEditorEmptyState';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -568,6 +569,7 @@ export default function DesktopShell() {
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
   const [vaultContext, setVaultContext] = useState<'file' | 'folder' | null>(null);
+  const [sceneNavigating, setSceneNavigating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
@@ -670,6 +672,7 @@ export default function DesktopShell() {
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
+    setSceneNavigating(false);
   }, []);
 
   // SKY-152: seenTips — memoized to avoid new object reference on every render
@@ -2027,6 +2030,7 @@ export default function DesktopShell() {
   }, [stories, updateManifest, requestText]);
 
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
+    setSceneNavigating(true);
     setSelectedScene(scene);
     setSelectedChapter(chapter);
     setSelectedStory(story);
@@ -2485,6 +2489,11 @@ export default function DesktopShell() {
   const depthIsEmpty = useMemo(
     () => viewDepth === 'scene' && selectedChapter !== null && selectedChapter.scenes.length === 0,
     [viewDepth, selectedChapter],
+  );
+
+  const hasAnyScenes = useMemo(
+    () => stories.some(st => st.chapters.some(ch => ch.scenes.length > 0)),
+    [stories],
   );
 
   const handleDepthPrev = useCallback(() => {
@@ -2979,73 +2988,81 @@ export default function DesktopShell() {
                 }}
               />
             ) : selectedScene ? (
-              <div className="shell-editor-scene-wrap">
-                <div className="scene-snapshot-toolbar">
-                  <button
-                    className="scene-snapshot-save"
-                    onClick={handleManualSnapshot}
-                  >
-                    Save snapshot now
-                  </button>
-                  <span className="scene-autosave" aria-live="polite">
-                    {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
-                  </span>
-                  <button
-                    className="btn-history"
-                    onClick={() => setShowSceneHistory(true)}
-                    aria-label="Open scene history"
-                  >
-                    History
-                  </button>
-                </div>
-                <div className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
-                  <BlockEditor
-                    key={`${selectedScene.id}-${restoreKey}`}
-                    scene={selectedScene}
-                    onBlocksChange={handleBlocksChange}
-                    onDraftStateChange={handleDraftStateChange}
-                    onEditorReady={handleEditorReady}
-                    onBetaReadRequest={handleBetaReadRequest}
-                    wikiLinkSuggestions={wikiLinkSuggestions}
-                    onAcceptWikiLink={handleEditorAcceptWikiLink}
-                    onRejectWikiLink={handleEditorRejectWikiLink}
-                    autoLinkerEntities={allEntities}
-                    autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
-                    initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                    onCursorPosChange={handleCursorPosChange}
-                    onEntityClick={handleEntityMentionClick}
-                    emptySceneHint={
-                      isGettingStartedVisible(gettingStartedProgress) &&
-                      !seenEmptySceneHints.has(selectedScene.id)
-                        ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
-                        : ''
-                    }
-                  />
-                  {(betaReadComments.length > 0 || betaReadLoading) && (
-                    <div className="shell-beta-margin">
-                      {betaReadLoading && (
-                        <div className="br-loading" aria-live="polite">
-                          <span className="wa-spinner" aria-hidden="true" />
-                          Reading…
-                        </div>
-                      )}
-                      <BetaReadMargin
-                        comments={betaReadComments}
-                        onDismiss={handleBetaReadDismiss}
-                      />
-                    </div>
+              <>
+                {sceneNavigating && (
+                  <SceneEditorEmptyState variant="loading" />
+                )}
+                <div
+                  className="shell-editor-scene-wrap"
+                  style={sceneNavigating ? { display: 'none' } : undefined}
+                >
+                  <div className="scene-snapshot-toolbar">
+                    <button
+                      className="scene-snapshot-save"
+                      onClick={handleManualSnapshot}
+                    >
+                      Save snapshot now
+                    </button>
+                    <span className="scene-autosave" aria-live="polite">
+                      {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
+                    </span>
+                    <button
+                      className="btn-history"
+                      onClick={() => setShowSceneHistory(true)}
+                      aria-label="Open scene history"
+                    >
+                      History
+                    </button>
+                  </div>
+                  <div className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
+                    <BlockEditor
+                      key={`${selectedScene.id}-${restoreKey}`}
+                      scene={selectedScene}
+                      onBlocksChange={handleBlocksChange}
+                      onDraftStateChange={handleDraftStateChange}
+                      onEditorReady={handleEditorReady}
+                      onBetaReadRequest={handleBetaReadRequest}
+                      wikiLinkSuggestions={wikiLinkSuggestions}
+                      onAcceptWikiLink={handleEditorAcceptWikiLink}
+                      onRejectWikiLink={handleEditorRejectWikiLink}
+                      autoLinkerEntities={allEntities}
+                      autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                      initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                      onCursorPosChange={handleCursorPosChange}
+                      onEntityClick={handleEntityMentionClick}
+                      emptySceneHint={
+                        isGettingStartedVisible(gettingStartedProgress) &&
+                        !seenEmptySceneHints.has(selectedScene.id)
+                          ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
+                          : ''
+                      }
+                    />
+                    {(betaReadComments.length > 0 || betaReadLoading) && (
+                      <div className="shell-beta-margin">
+                        {betaReadLoading && (
+                          <div className="br-loading" aria-live="polite">
+                            <span className="wa-spinner" aria-hidden="true" />
+                            Reading…
+                          </div>
+                        )}
+                        <BetaReadMargin
+                          comments={betaReadComments}
+                          onDismiss={handleBetaReadDismiss}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {showSceneHistory && (
+                    <SceneHistory
+                      sceneId={selectedScene.id}
+                      scenePath={selectedScene.path}
+                      currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                      onRestore={handleSceneRestore}
+                      onClose={() => setShowSceneHistory(false)}
+                    />
                   )}
                 </div>
-                {showSceneHistory && (
-                  <SceneHistory
-                    sceneId={selectedScene.id}
-                    scenePath={selectedScene.path}
-                    currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
-                    onRestore={handleSceneRestore}
-                    onClose={() => setShowSceneHistory(false)}
-                  />
-                )}
-              </div>
+              </>
             ) : selectedEntity ? (
               <EntityDetail
                 key={selectedEntity.id}
@@ -3063,33 +3080,33 @@ export default function DesktopShell() {
                 onWordCountChange={setOpenedNoteWordCount}
                 onClose={() => setOpenedNotePath(null)}
               />
-            ) : (
-              <div className="shell-editor-empty">
+            ) : stories.length === 0 ? (
+              <div className="shell-editor-empty" data-testid="shell-editor-empty-no-stories">
                 <div className="shell-editor-empty-icon">✍️</div>
                 <h2>Welcome to Mythos Writer</h2>
-                {stories.length === 0 ? (
-                  <>
-                    <p>Create your first story to begin writing.</p>
-                    <button
-                      className="shell-editor-empty-cta"
-                      onClick={createStory}
-                      data-testid="shell-empty-new-story"
-                    >
-                      New Story
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p>Select a scene from the left panel to start writing.</p>
-                    <PaneTip
-                      tipKey="editor"
-                      text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
-                      seen={seenTips['editor'] ?? false}
-                      onDismiss={handleDismissTip}
-                    />
-                  </>
-                )}
+                <p>Create your first story to begin writing.</p>
+                <button
+                  className="shell-editor-empty-cta"
+                  onClick={createStory}
+                  data-testid="shell-empty-new-story"
+                >
+                  New Story
+                </button>
               </div>
+            ) : (
+              <>
+                <SceneEditorEmptyState
+                  variant={hasAnyScenes ? 'select-scene' : 'no-scenes-yet'}
+                />
+                {hasAnyScenes && (
+                  <PaneTip
+                    tipKey="editor"
+                    text="Tip: Use Ctrl+Shift+F for distraction-free Focus mode, and press ? to see all keyboard shortcuts."
+                    seen={seenTips['editor'] ?? false}
+                    onDismiss={handleDismissTip}
+                  />
+                )}
+              </>
             )
           )}
         </div>
