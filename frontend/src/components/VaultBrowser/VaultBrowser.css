@@ -360,6 +360,15 @@
   align-self: stretch;
 }
 
+/* ─── Per-chapter scenes empty state ─── */
+
+.vb-scenes-empty {
+  font-size: var(--text-sm, 0.8rem);
+  color: var(--text-muted, rgba(255,255,255,0.45));
+  padding: 4px 0 6px;
+  font-style: italic;
+}
+
 /* ─── Empty / loading ─── */
 
 .vb-empty,

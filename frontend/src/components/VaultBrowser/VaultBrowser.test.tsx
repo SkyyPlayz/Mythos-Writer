@@ -267,6 +267,31 @@ describe('VaultBrowser', () => {
     expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument();
   });
 
+  it('Story Vault empty state heading says "Create your first story"', async () => {
+    render(<VaultBrowser {...baseProps} />);
+    await waitFor(() => expect(screen.getByTestId('vb-story-empty')).toBeInTheDocument());
+    expect(screen.getByText(/Create your first story/i)).toBeInTheDocument();
+  });
+
+  it('shows "No scenes yet" when chapter has no scenes', async () => {
+    const stories: Story[] = [{
+      id: 's1', title: 'Empty Chapter Story', path: 'stories/s1',
+      chapters: [{
+        id: 'ch1', title: 'Empty Chapter', path: 'ch1', order: 0, scenes: [], createdAt: '', updatedAt: '',
+      }],
+      createdAt: '', updatedAt: '',
+    }];
+    render(<VaultBrowser {...baseProps} stories={stories} />);
+    // Single story auto-expands; click chapter to expand it
+    const chapterToggle = await screen.findByText('Empty Chapter');
+    fireEvent.click(chapterToggle);
+    await waitFor(() => {
+      expect(screen.getByTestId('vb-scenes-empty')).toBeInTheDocument();
+      expect(screen.getByText(/No scenes yet\. Create one to start writing\./i)).toBeInTheDocument();
+    });
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
+  });
+
   it('calls onCreateStory when New Story button is clicked', async () => {
     render(<VaultBrowser {...baseProps} />);
     // Wait for async listVault/listNotesVault mount effects to settle
