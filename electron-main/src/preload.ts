@@ -1,24 +1,12 @@
 // Preload script — exposes IPC bridge to renderer with context isolation.
 // Uses ipcRenderer directly (no ipcMain import) — safe in preload context.
 import { contextBridge, ipcRenderer } from 'electron';
+import { unwrapIpcEnvelope } from './ipcEnvelope.js';
 
 // Primary API exposed as window.api
 
-type IpcEnvelope<T> =
-  | { ok: true; data: T }
-  | { ok: false; code: string; message: string };
-
-function isIpcEnvelope<T>(value: unknown): value is IpcEnvelope<T> {
-  return !!value && typeof value === 'object' && 'ok' in value && (
-    (value as { ok?: unknown }).ok === true || (value as { ok?: unknown }).ok === false
-  );
-}
-
 async function invokeEnvelope<T>(channel: string, payload: unknown): Promise<T | { error: string }> {
-  const result = await ipcRenderer.invoke(channel, payload);
-  if (!isIpcEnvelope<T>(result)) return result as T | { error: string };
-  const envelope = result as IpcEnvelope<T>;
-  return envelope.ok ? envelope.data : { error: envelope.message };
+  return unwrapIpcEnvelope<T>(await ipcRenderer.invoke(channel, payload)) as T | { error: string };
 }
 
 contextBridge.exposeInMainWorld('api', {
