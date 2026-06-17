@@ -1,0 +1,188 @@
+/* SKY-1989 — Liquid Neon overrides for Dataview-style Obsidian plugin output.
+   The app stays standalone, but imported vault notes can contain Dataview DOM
+   when rendered through compatibility surfaces. Keep every color token-driven so
+   default Obsidian blues/purples never leak through. */
+
+:where(
+  .dataview,
+  .block-language-dataview,
+  .block-language-dataviewjs,
+  .callout[data-callout="info"],
+  .callout[data-callout="warning"],
+  .callout[data-callout="error"]
+) {
+  color: var(--text-body);
+  --dataview-ln-surface: color-mix(in srgb, var(--glass-fill) calc(var(--lg-glass, 0.72) * 100%), transparent);
+  --dataview-ln-surface-strong: color-mix(in srgb, var(--bg-elevated) 76%, var(--glass-fill));
+  --dataview-ln-row: color-mix(in srgb, var(--glass-fill) 86%, transparent);
+  --dataview-ln-row-alt: color-mix(in srgb, var(--neon-cyan) 6%, var(--glass-fill));
+  --dataview-ln-border: color-mix(in srgb, var(--neon-cyan) 28%, var(--glass-rim));
+  --dataview-ln-border-strong: color-mix(in srgb, var(--neon-violet) 42%, var(--glass-rim));
+  --dataview-ln-glow: color-mix(in srgb, var(--neon-cyan) calc(var(--lg-neon, 0.5) * 55%), transparent);
+  --dataview-ln-danger-glow: color-mix(in srgb, var(--state-danger) calc(var(--lg-neon, 0.5) * 45%), transparent);
+}
+
+.dataview.table-view-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  color: var(--text-body);
+  background: var(--dataview-ln-surface);
+  border: var(--frame-width-rest, 1px) solid var(--dataview-ln-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-1), 0 0 calc(18px * var(--lg-neon, 0.5)) var(--dataview-ln-glow);
+  backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+}
+
+.dataview.table-view-table :is(thead, .table-view-thead) {
+  color: var(--text-header);
+  background: color-mix(in srgb, var(--neon-cyan) 10%, var(--dataview-ln-surface-strong));
+}
+
+.dataview.table-view-table :is(th, td) {
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-body);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dataview.table-view-table th {
+  color: var(--text-header);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-heading);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dataview.table-view-table td {
+  line-height: var(--leading-sm);
+  vertical-align: top;
+}
+
+.dataview tbody tr {
+  background: var(--dataview-ln-row);
+}
+
+.dataview tbody tr:nth-child(odd) {
+  background: var(--dataview-ln-row-alt);
+}
+
+.dataview tbody tr:is(:hover, :focus-within) {
+  background: color-mix(in srgb, var(--neon-cyan) 12%, var(--dataview-ln-surface-strong));
+  outline: var(--frame-width-rest, 1px) solid var(--dataview-ln-border-strong);
+  outline-offset: -1px;
+}
+
+.dataview.table-view-table :is(a, .internal-link, .external-link) {
+  color: var(--text-link);
+  text-decoration-color: color-mix(in srgb, var(--text-link) 60%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.dataview :is(.inline-field, .dataview-inline-field) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--space-6);
+  margin: 0 var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--neon-violet) 12%, var(--glass-fill));
+  border: var(--frame-width-rest, 1px) solid color-mix(in srgb, var(--neon-violet) 36%, var(--glass-rim));
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 calc(10px * var(--lg-neon, 0.5)) color-mix(in srgb, var(--neon-violet) calc(var(--lg-neon, 0.5) * 38%), transparent);
+}
+
+.dataview :is(.inline-field-key, .dataview-inline-field-key) {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-heading);
+}
+
+.dataview :is(.inline-field-value, .dataview-inline-field-value) {
+  color: var(--text-header);
+}
+
+:is(.dataview-error, .block-language-dataviewjs .error, .block-language-dataview .error) {
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--state-danger) 16%, var(--glass-fill));
+  border: var(--frame-width-rest, 1px) solid color-mix(in srgb, var(--state-danger) 56%, var(--glass-rim));
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 calc(16px * var(--lg-neon, 0.5)) var(--dataview-ln-danger-glow);
+  backdrop-filter: blur(var(--lg-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--lg-blur, 16px));
+}
+
+:is(.dataview-error, .block-language-dataviewjs .error, .block-language-dataview .error)::before {
+  content: "⚠";
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  margin-right: var(--space-2);
+  color: var(--state-danger);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-full);
+}
+
+:is(.dataview-error, .block-language-dataviewjs .error, .block-language-dataview .error) pre {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  overflow: auto;
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--bg-canvas) 86%, var(--state-danger));
+  border: 1px solid color-mix(in srgb, var(--state-danger) 34%, var(--border-subtle));
+  border-radius: var(--radius-md);
+}
+
+.callout[data-callout="info"],
+.callout[data-callout="warning"],
+.callout[data-callout="error"] {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--glass-fill) 86%, transparent);
+  border: var(--frame-width-rest, 1px) solid var(--dataview-ln-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 calc(14px * var(--lg-neon, 0.5)) var(--dataview-ln-glow);
+  backdrop-filter: blur(var(--lg-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--lg-blur, 16px));
+}
+
+.callout[data-callout="info"] {
+  border-color: color-mix(in srgb, var(--state-info) 46%, var(--glass-rim));
+}
+
+.callout[data-callout="warning"] {
+  border-color: color-mix(in srgb, var(--state-warning) 50%, var(--glass-rim));
+  box-shadow: 0 0 calc(14px * var(--lg-neon, 0.5)) color-mix(in srgb, var(--state-warning) calc(var(--lg-neon, 0.5) * 34%), transparent);
+}
+
+.callout[data-callout="error"] {
+  border-color: color-mix(in srgb, var(--state-danger) 56%, var(--glass-rim));
+  box-shadow: 0 0 calc(14px * var(--lg-neon, 0.5)) var(--dataview-ln-danger-glow);
+}
+
+.callout :is(.callout-title, .callout-title-inner) {
+  color: var(--text-header);
+  font-weight: var(--weight-heading);
+}
+
+.callout :is(.callout-content, .callout-content p) {
+  color: var(--text-body);
+}
+
+:root[data-contrast="high"] :where(.dataview, .block-language-dataview, .block-language-dataviewjs) {
+  --dataview-ln-surface: var(--bg-panel);
+  --dataview-ln-surface-strong: var(--bg-elevated);
+  --dataview-ln-row: var(--bg-panel);
+  --dataview-ln-row-alt: var(--bg-inset);
+  --dataview-ln-border: var(--border-default);
+  --dataview-ln-border-strong: var(--border-strong);
+  --dataview-ln-glow: transparent;
+  --dataview-ln-danger-glow: transparent;
+}

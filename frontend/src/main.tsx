@@ -4,6 +4,7 @@ import App from './App';
 import { applyTheme } from './theme';
 import './tokens.css';
 import './index.css';
+import './obsidianCommunityPluginStyles.css';
 
 performance.mark('renderer:script-start');
 

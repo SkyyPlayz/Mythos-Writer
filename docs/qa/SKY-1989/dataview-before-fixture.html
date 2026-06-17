@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+html, body { width: 100%; min-height: 100%; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, Segoe UI, system-ui, sans-serif; background: #0e1116; color: #bfd6e8; }
+.workspace { min-height: 900px; padding: 56px; background: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%); }
+.panel { max-width: 1040px; margin: 0 auto; padding: 28px; }
+.eyebrow { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .78; }
+h1 { margin: 0 0 24px; font-size: 32px; }
+
+.panel { background: #20242d; border: 1px solid #3b4252; border-radius: 2px; }
+.dataview.table-view-table { width: 100%; border-collapse: collapse; background: #1e1e1e; color: #dcddde; border: 1px solid #5b5fc7; }
+.dataview th { background: #483699; color: #ffffff; padding: 12px; text-align: left; }
+.dataview td { padding: 12px; border: 1px solid #343847; }
+.dataview tbody tr:nth-child(odd) { background: #2a2e3b; }
+a { color: #7b6cd9; }
+.inline-field { display: inline-block; padding: 3px 8px; background: #32314f; border: 1px solid #7b6cd9; border-radius: 4px; color: #d7d1ff; }
+.inline-field-key { color: #9aa0a6; margin-right: 6px; }
+.dataview-error { margin: 16px 0; padding: 14px; background: #3d1f2a; color: #ff9494; border: 1px solid #e05252; border-radius: 2px; }
+.dataview-error pre { background: #181818; color: #f3b7b7; padding: 12px; overflow: auto; }
+.callout { margin: 16px 0; padding: 14px; background: #20242d; border-left: 4px solid #5b5fc7; }
+.callout[data-callout="warning"] { border-left-color: #e0af68; }
+.callout[data-callout="error"] { border-left-color: #e05252; }
+.callout-title { color: #ffffff; font-weight: 700; margin-bottom: 8px; }
+</style></head><body>
+  <main class="workspace">
+    <section class="panel">
+      <p class="eyebrow">SKY-1989 Dataview fixture — 1440×900 dark viewport</p>
+      <h1>Vault metadata query</h1>
+      <table class="dataview table-view-table"><thead><tr><th>File</th><th>Arc</th><th>Status</th><th>Words</th></tr></thead><tbody>
+        <tr><td><a class="internal-link">Chapter 01</a></td><td><span class="inline-field"><span class="inline-field-key">arc</span><span class="inline-field-value">Glass City</span></span></td><td>Draft</td><td>2,840</td></tr>
+        <tr><td><a class="internal-link">Scene Brief</a></td><td><span class="inline-field"><span class="inline-field-key">owner</span><span class="inline-field-value">Archive</span></span></td><td>Ready</td><td>940</td></tr>
+        <tr><td><a class="internal-link">Continuity Notes</a></td><td><span class="inline-field"><span class="inline-field-key">risk</span><span class="inline-field-value">medium</span></span></td><td>Review</td><td>1,120</td></tr>
+      </tbody></table>
+      <div class="dataview-error">Dataview query warning: unresolved field in scene frontmatter.<pre>EvaluationError: field "timeline.day" is missing
+  at dataview query line 4</pre></div>
+      <div class="callout" data-callout="info"><div class="callout-title"><div class="callout-title-inner">Info callout</div></div><div class="callout-content"><p>Inline query results inherit Liquid Neon glass without losing body contrast.</p></div></div>
+      <div class="callout" data-callout="warning"><div class="callout-title"><div class="callout-title-inner">Warning callout</div></div><div class="callout-content"><p>Warnings use semantic tokens, not raw Obsidian default colors.</p></div></div>
+      <div class="callout" data-callout="error"><div class="callout-title"><div class="callout-title-inner">Error callout</div></div><div class="callout-content"><p>Error content keeps readable text over a tinted glass surface.</p></div></div>
+    </section>
+  </main></body></html>

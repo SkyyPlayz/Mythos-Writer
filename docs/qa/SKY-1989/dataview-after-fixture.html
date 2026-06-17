@@ -1,0 +1,774 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/* =============================================================================
+ * Liquid Neon — Design Tokens (phase 1 foundation)
+ * Implements MYT-520 §1 at the default slider position (s ≈ 0.40, leaning soft).
+ *
+ * Scope (MYT-517, foundation only):
+ *   - Single dark-only token layer. No light/system theme.
+ *   - WCAG high-contrast accessibility theme composes on top via
+ *     [data-contrast="high"] and the prefers-* media queries below.
+ *   - Axis-driven tokens (color surfaces, glass opacity, blur, neon intensity)
+ *     are pinned to their DEFAULT values here. The continuous Softness↔Contrast
+ *     slider that interpolates them is MYT-518 and is intentionally NOT built yet.
+ *   - No heavy glass/neon visual treatment is applied to components in this
+ *     phase — that is the polish pass (MYT-521). These tokens are the plumbing
+ *     every surface reads from so the polish pass is a values-only change.
+ *
+ * Rules that override everything (MYT-520 §0):
+ *   1. Legibility wins: body text ≥ 4.5:1 on its panel at all times.
+ *   2. Neon is light, not paint: cyan/violet/magenta only as frames, glows,
+ *      rings, underlines, small accent words — never as body-text color.
+ *      (violet on glass = 4.06:1, below floor → accent-only by rule.)
+ *   3. Motion is subtle, composited (transform/opacity), and off in
+ *      reduced-motion.
+ * ========================================================================== */
+
+:root {
+  /* color-scheme keeps native form controls / scrollbars dark */
+  color-scheme: dark;
+
+  /* ---- 1.1 Color — base palette (static anchors) ----------------------- */
+  --neon-cyan: #00f0ff;        /* primary accent / hover frame / focus ring   */
+  --neon-violet: #9b5fff;      /* secondary accent / heading accent words      */
+  --neon-magenta: #ff4dff;     /* tertiary accent / emphasis, destructive-hover */
+
+  --text-header: #edecf6;      /* titles, active labels (warm white)  13.3:1   */
+  --text-body: #bfd6e8;        /* paragraphs, UI copy (soft gray-blue) 10.4:1  */
+  --text-muted: #8a9bb0;       /* secondary/captions/disabled-adjacent; lowest
+                                  legible text tier (≥ 4.5:1 on every surface) */
+  /* Spec §1.1 stops at muted as the lowest-contrast TEXT tier; per §0 rule 1
+     (legibility wins) there is no sub-muted text tier. The previous #6e7e92
+     failed the 4.5:1 floor on lighter surfaces (UX gate, MYT-517), so the
+     "faint" alias collapses up to muted rather than reintroducing a failing
+     tier. Use opacity, not a darker color, for purely decorative dimming. */
+  --text-faint: var(--text-muted);
+
+  --grad-neon: linear-gradient(120deg, #00f0ff 0%, #9b5fff 50%, #ff4dff 100%);
+  --grad-neon-soft: linear-gradient(120deg,
+      rgba(0, 240, 255, 0.6) 0%,
+      rgba(155, 95, 255, 0.6) 50%,
+      rgba(255, 77, 255, 0.6) 100%);
+
+  /* ── Neon border tokens (SKY-127 / SKY-910) — window chrome multi-color treatment ──── */
+  /* Per-slot border accents (SKY-910). Defaults match the static --grad-neon
+     stops; applyLiquidNeonTokens overrides these from user prefs and rebuilds
+     --grad-neon / --grad-neon-soft to match. */
+  --neon-border-1: var(--neon-cyan);
+  --neon-border-2: var(--neon-violet);
+  --neon-border-3: var(--neon-magenta);
+  /* Solid outline composed over the gradient — picks up slot A by default. */
+  --border-neon-outline: var(--neon-border-1);
+  --border-neon-default: 0 0 16px var(--grad-neon), 0 0 2px var(--border-neon-outline);
+  --border-neon-hover: 0 0 24px var(--grad-neon), 0 0 4px var(--border-neon-outline);
+  --border-neon-context-folder: 0 0 16px
+      linear-gradient(120deg, #9b5fff 0%, #ff4dff 50%, #9b5fff 100%),
+      0 0 2px var(--neon-violet);
+  --border-neon-context-file: 0 0 16px
+      linear-gradient(120deg, #00f0ff 0%, #9b5fff 50%, #00f0ff 100%),
+      0 0 2px var(--neon-cyan);
+
+  /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
+  /* Background image override — set by applyLiquidNeonTokens (MYT-613/716).
+     'none' keeps the plain --bg-base colour; any other value shows as a
+     full-cover wallpaper behind all glass panels. */
+  --bg-app-image: none;
+  /* MYT-716 background image layout tokens (additive; default = no image → unchanged) */
+  --bg-image-size: cover;
+  --bg-image-repeat: no-repeat;
+  --bg-image-position: center;
+  --bg-scrim-alpha: 0;         /* 0 = no scrim; auto-raised by contrast guard */
+  --bg-vignette-alpha: 0.4;    /* vignette overlay strength */
+  --bg-base: #0e1116;          /* app shell / canvas — deep charcoal, not black */
+  --bg-vignette: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%);
+  --glass-fill: rgba(14, 14, 18, 0.72);      /* live glass panel fill (phase-2) */
+  --glass-fill-fallback: rgba(18, 18, 20, 0.92); /* opaque fallback, no-backdrop-filter */
+  --glass-rim: rgba(255, 255, 255, 0.12);    /* 1px bright inner rim           */
+  --glass-border: rgba(255, 255, 255, 0.07); /* glass edge highlight (alias)   */
+  --glass-highlight: rgba(255, 255, 255, 0.04); /* glass inner glow            */
+  --glass-inner-shadow: inset 0 1px 24px rgba(20, 16, 40, 0.45);
+
+  /* ---- 1.2b Softness↔Contrast axis defaults (MYT-518) ------------------ */
+  --lg-blur: 16px;             /* overridden at runtime by applyLiquidNeonTokens */
+  --lg-glass: 0.72;            /* glass opacity multiplier (0–1) */
+  --lg-neon: 0.5;              /* neon glow intensity (0–1) */
+  --lg-style: 0.5;             /* style softness (0–1) */
+
+  /* ---- 1.3 Radii ------------------------------------------------------- */
+  --radius-xs: 8px;            /* floating tabs, chips        */
+  --radius-sm: 12px;           /* inputs, small controls      */
+  --radius-md: 16px;           /* buttons, cards              */
+  --radius-lg: 20px;           /* panels, navigator rails     */
+  --radius-xl: 24px;           /* major surfaces, dialogs     */
+  --radius-full: 999px;        /* pills, circular popouts     */
+
+  /* ---- 1.4 Spacing (4px base, no off-scale values) --------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;             /* default panel padding       */
+  --space-6: 24px;             /* major panel padding         */
+  --space-8: 32px;
+  --space-10: 40px;            /* min control target          */
+  --space-12: 48px;
+
+  /* ---- 1.5 Type scale (base 16, Inter / system sans) ------------------- */
+  --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --text-xs: 12px;   --leading-xs: 1.4;   --weight-xs: 400;
+  --text-sm: 14px;   --leading-sm: 1.5;   --weight-sm: 400;
+  --text-base: 16px; --leading-base: 1.6; --weight-base: 400;
+  --text-lg: 18px;   --leading-lg: 1.4;   --weight-lg: 600;
+  --text-xl: 20px;   --leading-xl: 1.3;   --weight-xl: 600;
+  --text-2xl: 24px;  --leading-2xl: 1.25; --weight-2xl: 600;
+  --text-3xl: 28px;  --leading-3xl: 1.2;  --weight-3xl: 700;
+
+  --tracking-heading: -0.02em;
+  --weight-body: 400;
+  --weight-heading: 600;
+  --weight-emphasis: 700;
+
+  /* ---- 1.6 Elevation / shadow ------------------------------------------ */
+  --elev-0: none;
+  --elev-1: 0 8px 32px rgba(5, 8, 20, 0.45), inset 0 1px 24px rgba(20, 16, 40, 0.45);
+  --elev-2: 0 12px 48px rgba(5, 8, 20, 0.55);
+  --elev-3: 0 20px 64px rgba(5, 8, 20, 0.65);
+  --scrim: rgba(8, 10, 16, 0.55);
+
+  /* ---- 1.7 Blur (axis-driven; perf-capped at 40px, MYT-520 §6) --------- */
+  --blur-panel: 28px;
+  --blur-overlay: 40px;
+  --blur-chip: 18px;
+
+  /* ---- 1.8 Neon glow + frame (axis-driven intensity) ------------------- */
+  --neon-intensity: 0.75;      /* master 0–1 multiplier; 0 disables all glow  */
+  --glow-sm: 0 0 16px;         /* compose with a color, e.g. var(--glow-sm) var(--neon-cyan) */
+  --glow-md: 0 0 28px;
+  --glow-lg: 0 0 48px;
+  --frame-width-rest: 1px;
+  --frame-width-hover: 3px;
+
+  /* ---- 1.9 Motion curves + durations (all ≤ 320ms < Doherty 400ms) ----- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-press: 100ms;
+  --dur-hover-in: 180ms;
+  --dur-hover-out: 240ms;
+  --dur-panel: 280ms;
+
+  /* =========================================================================
+   * Semantic aliases — what components reference.
+   * Foundation phase keeps values visually close to today's UI so retargeting
+   * is non-breaking; the polish pass (MYT-521) shifts these toward full glass.
+   * ====================================================================== */
+
+  /* Surfaces (opaque, foundation-safe; glass treatment is the polish pass) */
+  --bg-app: var(--bg-base);          /* outermost app shell                  */
+  --bg-canvas: #0b0e13;              /* deepest layer behind content         */
+  --bg-panel: var(--glass-fill-fallback); /* default panel fill (opaque)     */
+  --bg-elevated: #222a36;            /* popovers, raised cards               */
+  --bg-inset: #15191f;               /* wells, inputs, code blocks           */
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.1);
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Brand accent — cyan per Liquid Neon spec §1.1 (MYT-680 polish pass). */
+  --accent: var(--neon-cyan);
+  --accent-soft: rgba(0, 240, 255, 0.12);
+  --accent-violet: var(--neon-violet);
+  --accent-magenta: var(--neon-magenta);
+  --focus-ring: var(--neon-cyan);
+
+  /* State colors (kept at today's values; ≥ 4.5:1 as text on dark surfaces) */
+  --state-danger: #f88585;  /* SKY-1597: was #f87171 — 4.41:1 on danger-bg; brightened to 4.5:1+ */
+  --state-danger-hover: var(--neon-magenta);   /* destructive-hover, §2.2     */
+  --state-success: #4ade80;
+  --state-warning: #fbbf24;
+  --state-info: var(--neon-cyan);
+
+  /* State background fills — for banners / badges / inline notices that need a
+     tinted surface, not just text. Mixed against --bg-inset so the same alias
+     reads correctly on a panel or in a well. The 18% mix lands at ≥ 7:1 for
+     adjacent --state-* text on the resulting surface (MYT-520 §0 rule 1). */
+  --state-danger-bg: color-mix(in srgb, var(--state-danger) 18%, var(--bg-inset));
+  --state-success-bg: color-mix(in srgb, var(--state-success) 18%, var(--bg-inset));
+  --state-warning-bg: color-mix(in srgb, var(--state-warning) 18%, var(--bg-inset));
+
+  /* SKY-1682: Archive Agent v1 — severity badge tokens (InconsistencyCard) */
+  --severity-critical-bg: rgba(239, 68, 68, 0.18);
+  --severity-critical-text: #fca5a5;
+  --severity-high-bg: rgba(249, 115, 22, 0.18);
+  --severity-high-text: #fdba74;
+  --severity-medium-bg: rgba(234, 179, 8, 0.18);
+  --severity-medium-text: #fde68a;
+  --severity-low-bg: rgba(148, 163, 184, 0.15);
+  --severity-low-text: #94a3b8;
+
+  /* Liquid Neon aliases used by Archive Agent E2E assertions and downstream themes. */
+  --ln-severity-high-bg: var(--severity-high-bg);
+  --ln-severity-high-text: var(--severity-high-text);
+  --ln-severity-medium-bg: var(--severity-medium-bg);
+  --ln-severity-medium-text: var(--severity-medium-text);
+  --ln-severity-low-bg: var(--severity-low-bg);
+  --ln-severity-low-text: var(--severity-low-text);
+
+  /* =========================================================================
+   * Compatibility aliases.
+   * The existing components were authored against a token vocabulary that was
+   * never committed (the token layer + theme.ts were both missing on main, so
+   * these resolved to nothing and the UI leaned on inline fallbacks). Defining
+   * them here is what actually makes every surface token-driven. Two legacy
+   * conventions are in use — bare (`--text-primary`) and `--color-`-prefixed —
+   * both are mapped onto the Liquid Neon palette above. The MYT-521 polish
+   * pass migrates components onto the canonical names and retires these.
+   * ====================================================================== */
+
+  /* Text */
+  --text-primary: var(--text-header);
+  --text-secondary: var(--text-body);
+  --text-tertiary: var(--text-muted);
+  --text-dim: var(--text-muted);
+  --text: var(--text-body);
+  --text-placeholder: var(--text-muted); /* placeholders carry meaning → ≥ 4.5:1 */
+  --text-link: var(--neon-cyan);
+
+  /* Surfaces */
+  --surface: var(--glass-fill-fallback);
+  --surface-2: var(--bg-elevated);
+  --surface-3: #262d38;        /* kept dark enough that muted text holds ≥ 4.5:1 */
+  --surface-alt: var(--bg-elevated);
+  --bg-surface: var(--bg-panel);
+  --bg-bar: var(--bg-canvas);
+  --bg-input: var(--bg-inset);
+  --input-bg: var(--bg-inset);
+  --bg-code: var(--bg-canvas);
+  --bg-card: var(--bg-panel);
+  --bg-detail: var(--bg-panel);
+  --bg-badge: var(--bg-elevated);
+  --badge-bg: var(--bg-elevated);
+  --bg-drag-over: var(--accent-soft);
+  --selected: var(--accent-soft);
+  --hover: var(--bg-hover);
+
+  /* Borders */
+  --border: var(--border-default);
+  --border-muted: var(--border-subtle);
+  --border-separator: var(--border-subtle);
+  --border-hover: var(--border-strong);
+
+  /* Accents (cyan per MYT-680 phase-2) */
+  --accent-hover: #00cfe0;
+  --accent-light: #67f5ff;
+  --accent-dim: #00a3b4;
+  --accent-dark: #007a8a;
+  --accent-border: var(--accent);
+  --accent-bg: var(--accent-soft);
+  --text-on-accent: #000000;  /* black on neon-cyan --accent; update if accent changes to a dark hue */
+
+  /* States (bare names) */
+  --danger: var(--state-danger);
+  --error: var(--state-danger);
+  --success: var(--state-success);
+  --warning: var(--state-warning);
+
+  /* Elevation alias */
+  --shadow-md: var(--elev-2);
+
+  /* `--color-`-prefixed vocabulary */
+  --color-text: var(--text-body);
+  --color-text-primary: var(--text-header);
+  --color-text-secondary: var(--text-body);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border-default);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-surface-hover: var(--bg-hover);
+  --color-surface-subtle: var(--bg-inset);
+  --color-success: var(--state-success);
+  --color-success-bg: rgba(74, 222, 128, 0.12);
+  --color-success-border: rgba(74, 222, 128, 0.4);
+  --color-danger: var(--state-danger);
+  --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-danger-border: rgba(248, 113, 113, 0.4);
+  --color-error: var(--state-danger);
+  --color-warning: var(--state-warning);
+  --color-warning-bg: rgba(251, 191, 36, 0.12);
+  --color-warning-border: rgba(251, 191, 36, 0.4);
+  --color-warning-text: #fbbf24;
+  --color-archive-hint: var(--neon-violet);
+
+  /* Entity-category badge tokens — fact type chips in BrainstormPage */
+  --entity-char-bg: rgba(99, 102, 241, 0.20);
+  --entity-char-text: #a5b4fc;
+  --entity-loc-bg: rgba(16, 185, 129, 0.15);
+  --entity-loc-text: #6ee7b7;
+  --entity-item-bg: rgba(245, 158, 11, 0.15);
+  --entity-item-text: #fcd34d;
+  --entity-concept-bg: rgba(139, 92, 246, 0.18);
+  --entity-concept-text: #d8b4fe;
+  --entity-faction-bg: rgba(6, 182, 212, 0.18);
+  --entity-faction-text: #67e8f9;
+  --entity-scene-bg: rgba(244, 63, 94, 0.18);
+  --entity-scene-text: #fda4af;
+  --entity-inbox-bg: rgba(148, 163, 184, 0.15);
+  --entity-inbox-text: #b4c2ce;  /* SKY-1597: was #94a3b8 (4.34:1); brightened to ≈5.5:1 */
+
+  /* Writing Assistant category badge tokens */
+  --wa-cat-grammar-bg: rgba(96, 165, 250, 0.18);
+  --wa-cat-grammar-text: #93c5fd;
+  --wa-cat-pacing-bg: rgba(34, 211, 238, 0.16);
+  --wa-cat-pacing-text: #a5f3fc;
+  --wa-cat-clarity-bg: rgba(16, 185, 129, 0.16);
+  --wa-cat-clarity-text: #86efac;
+  --wa-cat-style-bg: rgba(167, 139, 250, 0.18);
+  --wa-cat-style-text: #c4b5fd;
+  --wa-cat-tone-bg: rgba(244, 114, 182, 0.18);
+  --wa-cat-tone-text: #fda4af;
+
+  /* ── Vault Graph View — Liquid Neon graph tokens (SKY-1743 §3.2) ─────────
+   * All graph colors must be consumed via these variables — no hard-coded
+   * rgba() values in component files. Default values = Liquid Neon Dark.
+   * High-contrast overrides live in the [data-contrast="high"] block below.
+   * ─────────────────────────────────────────────────────────────────────── */
+
+  /* Node fill — frosted glass chip with category tint */
+  --ln-graph-node-characters:  rgba(0,   240, 255, 0.18);
+  --ln-graph-node-locations:   rgba(155,  95, 255, 0.18);
+  --ln-graph-node-factions:    rgba(255,  77, 255, 0.18);
+  --ln-graph-node-history:     rgba(245, 166,  35, 0.18);
+  --ln-graph-node-systems:     rgba(  0, 212, 170, 0.18);
+  --ln-graph-node-items:       rgba(255, 123,  84, 0.18);
+  --ln-graph-node-misc:        rgba(255, 255, 255, 0.06);
+  --ln-graph-node-default:     rgba(255, 255, 255, 0.10);
+
+  /* Node border */
+  --ln-graph-border-characters: rgba(0,   240, 255, 0.65);
+  --ln-graph-border-locations:  rgba(155,  95, 255, 0.65);
+  --ln-graph-border-factions:   rgba(255,  77, 255, 0.65);
+  --ln-graph-border-history:    rgba(245, 166,  35, 0.65);
+  --ln-graph-border-systems:    rgba(  0, 212, 170, 0.65);
+  --ln-graph-border-items:      rgba(255, 123,  84, 0.65);
+  --ln-graph-border-misc:       rgba(255, 255, 255, 0.20);
+  --ln-graph-border-default:    rgba(255, 255, 255, 0.30);
+
+  /* Glow (drop-shadow, composited) */
+  --ln-graph-glow-characters:  0 0 8px rgba(0,   240, 255, 0.45);
+  --ln-graph-glow-locations:   0 0 8px rgba(155,  95, 255, 0.45);
+  --ln-graph-glow-factions:    0 0 8px rgba(255,  77, 255, 0.45);
+  --ln-graph-glow-history:     0 0 8px rgba(245, 166,  35, 0.45);
+  --ln-graph-glow-systems:     0 0 8px rgba(  0, 212, 170, 0.45);
+  --ln-graph-glow-items:       0 0 8px rgba(255, 123,  84, 0.45);
+  --ln-graph-glow-misc:        none;
+  --ln-graph-glow-default:     0 0 6px rgba(255, 255, 255, 0.20);
+
+  /* Edges */
+  --ln-graph-edge-default:     rgba(255, 255, 255, 0.12);
+  --ln-graph-edge-hover:       rgba(255, 255, 255, 0.50);
+  --ln-graph-edge-highlight:   rgba(0,   240, 255, 0.65);
+  --ln-graph-edge-dimmed:      rgba(255, 255, 255, 0.04);
+
+  /* Highlight state (selected or search match) */
+  --ln-graph-node-highlight:   rgba(0,   240, 255, 0.35);
+  --ln-graph-border-highlight: rgba(0,   240, 255, 1.00);
+  --ln-graph-glow-highlight:   0 0 16px rgba(0, 240, 255, 0.70);
+
+  /* Dimmed (non-neighbour during hover) */
+  --ln-graph-node-dimmed:      rgba(255, 255, 255, 0.04);
+  --ln-graph-border-dimmed:    rgba(255, 255, 255, 0.08);
+}
+
+/* =============================================================================
+ * High-contrast accessibility theme (MYT-520 §5.2).
+ * Composes ON TOP of Liquid Neon — it is not a slider position. Triggered by:
+ *   - explicit app setting  -> [data-contrast="high"] (set by theme.ts)
+ *   - OS "increase contrast" -> prefers-contrast: more
+ *   - OS "reduce transparency" / forced-colors -> opaque fills
+ * Glass → opaque solid fills, neon → solid strokes, glows removed, text → AAA.
+ * ========================================================================== */
+:root[data-contrast="high"],
+:root[data-contrast="high"] :where(*) {
+  --glass-fill: #15191f;
+  --glass-fill-fallback: #15191f;
+  --glass-rim: rgba(255, 255, 255, 0.6);
+  --glass-inner-shadow: none;
+  --blur-panel: 0px;
+  --blur-overlay: 0px;
+  --blur-chip: 0px;
+  --neon-intensity: 0;
+
+  --text-header: #ffffff;
+  --text-body: #ffffff;       /* white on #15191f ≈ 16:1 (AAA)               */
+  --text-muted: #d6e0ec;      /* ≈ 12:1 (AAA)                                */
+  --text-faint: #b9c6d6;
+
+  --bg-app: #0a0c10;
+  --bg-canvas: #06080b;
+  --bg-panel: #15191f;
+  --bg-elevated: #1d232c;
+  --bg-inset: #0e1116;
+
+  --border-subtle: #6e7e92;
+  --border-default: #9fb3c8;  /* ≥ 3:1 for UI components (WCAG 1.4.11)        */
+  --border-strong: #ffffff;
+
+  --accent: #c9b6ff;          /* solid high-contrast stroke, no glow         */
+  --focus-ring: #ffffff;
+
+  /* Flatten the literal accent family onto the solid high-contrast accent. */
+  --accent-hover: #e0d4ff;
+  --accent-light: #e0d4ff;
+  --accent-dim: #c9b6ff;
+  --accent-dark: #c9b6ff;
+  --surface-3: #1d232c;
+
+  /* State bg/border — higher opacity for legibility */
+  --color-success-bg: rgba(74, 222, 128, 0.22);
+  --color-success-border: rgba(74, 222, 128, 0.7);
+  --color-danger-bg: rgba(248, 113, 113, 0.22);
+  --color-danger-border: rgba(248, 113, 113, 0.7);
+  --color-warning-bg: rgba(251, 191, 36, 0.22);
+  --color-warning-border: rgba(251, 191, 36, 0.7);
+
+  /* Entity-category badges — solid, higher contrast text for AAA */
+  --entity-char-bg: rgba(99, 102, 241, 0.35);
+  --entity-char-text: #c7d2fe;
+  --entity-loc-bg: rgba(16, 185, 129, 0.25);
+  --entity-loc-text: #a7f3d0;
+  --entity-item-bg: rgba(245, 158, 11, 0.25);
+  --entity-item-text: #fde68a;
+  --entity-concept-bg: rgba(139, 92, 246, 0.30);
+  --entity-concept-text: #ede9fe;
+  --entity-faction-bg: rgba(6, 182, 212, 0.30);
+  --entity-faction-text: #a5f3fb;
+  --entity-scene-bg: rgba(244, 63, 94, 0.30);
+  --entity-scene-text: #fecdd3;
+  --entity-inbox-bg: rgba(148, 163, 184, 0.25);
+  --entity-inbox-text: #dde6ee;  /* SKY-1597: was #cbd5e1 (6.7:1); brightened to ≈7.9:1 (AAA) */
+
+  /* Writing Assistant category badges — higher contrast */
+  --wa-cat-grammar-bg: rgba(96, 165, 250, 0.30);
+  --wa-cat-grammar-text: #bfdbfe;
+  --wa-cat-pacing-bg: rgba(34, 211, 238, 0.28);
+  --wa-cat-pacing-text: #cffafe;
+  --wa-cat-clarity-bg: rgba(16, 185, 129, 0.26);
+  --wa-cat-clarity-text: #bbf7d0;
+  --wa-cat-style-bg: rgba(167, 139, 250, 0.32);
+  --wa-cat-style-text: #ede9fe;
+  --wa-cat-tone-bg: rgba(244, 114, 182, 0.30);
+  --wa-cat-tone-text: #fecdd3;
+
+  /* Vault Graph tokens — high contrast overrides (glows removed; fills/borders boosted) */
+  --ln-graph-node-characters:  rgba(0,   240, 255, 0.35);
+  --ln-graph-node-locations:   rgba(155,  95, 255, 0.35);
+  --ln-graph-node-factions:    rgba(255,  77, 255, 0.35);
+  --ln-graph-node-history:     rgba(245, 166,  35, 0.35);
+  --ln-graph-node-systems:     rgba(  0, 212, 170, 0.35);
+  --ln-graph-node-items:       rgba(255, 123,  84, 0.35);
+  --ln-graph-node-misc:        rgba(255, 255, 255, 0.15);
+  --ln-graph-node-default:     rgba(255, 255, 255, 0.20);
+
+  --ln-graph-border-characters: rgba(0,   240, 255, 1.00);
+  --ln-graph-border-locations:  rgba(155,  95, 255, 1.00);
+  --ln-graph-border-factions:   rgba(255,  77, 255, 1.00);
+  --ln-graph-border-history:    rgba(245, 166,  35, 1.00);
+  --ln-graph-border-systems:    rgba(  0, 212, 170, 1.00);
+  --ln-graph-border-items:      rgba(255, 123,  84, 1.00);
+  --ln-graph-border-misc:       rgba(255, 255, 255, 0.60);
+  --ln-graph-border-default:    rgba(255, 255, 255, 0.80);
+
+  --ln-graph-glow-characters:  none;
+  --ln-graph-glow-locations:   none;
+  --ln-graph-glow-factions:    none;
+  --ln-graph-glow-history:     none;
+  --ln-graph-glow-systems:     none;
+  --ln-graph-glow-items:       none;
+  --ln-graph-glow-misc:        none;
+  --ln-graph-glow-default:     none;
+
+  --ln-graph-edge-default:     rgba(255, 255, 255, 0.35);
+  --ln-graph-edge-hover:       rgba(255, 255, 255, 0.90);
+  --ln-graph-edge-highlight:   rgba(0,   240, 255, 1.00);
+  --ln-graph-edge-dimmed:      rgba(255, 255, 255, 0.12);
+
+  --ln-graph-node-highlight:   rgba(0,   240, 255, 0.50);
+  --ln-graph-border-highlight: rgba(255, 255, 255, 1.00);
+  --ln-graph-glow-highlight:   none;
+
+  --ln-graph-node-dimmed:      rgba(255, 255, 255, 0.08);
+  --ln-graph-border-dimmed:    rgba(255, 255, 255, 0.20);
+}
+
+/* OS-level increased-contrast request → clamp toward the high-contrast theme. */
+@media (prefers-contrast: more) {
+  :root {
+    --text-muted: #c4d2e0;
+    --text-faint: #aebccd;
+    --border-default: #9fb3c8;
+    --glass-rim: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Transparency-averse users / unsupported backdrop-filter → opaque fills,
+   no blur (MYT-520 §5.4 / §6). Layout is unchanged. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-fill: var(--glass-fill-fallback);
+    --blur-panel: 0px;
+    --blur-overlay: 0px;
+    --blur-chip: 0px;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-fill: var(--glass-fill-fallback);
+  }
+}
+
+/* Reduced-motion (MYT-520 §5.3): kill pulses/parallax; keep instant feedback.
+   The base reduced-motion reset lives in index.css; this nulls the neon-pulse
+   intensity hook so any future pulse driven by it is static. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-press: 0.01ms;
+    --dur-hover-in: 0.01ms;
+    --dur-hover-out: 0.01ms;
+    --dur-panel: 0.01ms;
+  }
+}
+
+/* Glass surface mixin — applied to panels that support backdrop-filter */
+@supports (backdrop-filter: blur(1px)) {
+  :root {
+    --bg-panel: var(--glass-fill);
+  }
+}
+
+/* Neon glow utility — used on accent elements */
+:root {
+  --neon-glow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+  --neon-glow-strong: 0 0 16px color-mix(in srgb, var(--accent) 80%, transparent), 0 0 4px var(--accent);
+}
+
+
+html, body { width: 100%; min-height: 100%; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, Segoe UI, system-ui, sans-serif; background: #0e1116; color: #bfd6e8; }
+.workspace { min-height: 900px; padding: 56px; background: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%); }
+.panel { max-width: 1040px; margin: 0 auto; padding: 28px; }
+.eyebrow { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .78; }
+h1 { margin: 0 0 24px; font-size: 32px; }
+
+body { background: var(--bg-app); color: var(--text-body); }
+.panel { background: var(--glass-fill); border: 1px solid var(--glass-rim); border-radius: var(--radius-xl); box-shadow: var(--elev-2); backdrop-filter: blur(var(--lg-blur)); -webkit-backdrop-filter: blur(var(--lg-blur)); }
+h1 { color: var(--text-header); }
+/* SKY-1989 — Liquid Neon overrides for Dataview-style Obsidian plugin output.
+   The app stays standalone, but imported vault notes can contain Dataview DOM
+   when rendered through compatibility surfaces. Keep every color token-driven so
+   default Obsidian blues/purples never leak through. */
+
+:where(
+  .dataview,
+  .block-language-dataview,
+  .block-language-dataviewjs,
+  .callout[data-callout="info"],
+  .callout[data-callout="warning"],
+  .callout[data-callout="error"]
+) {
+  color: var(--text-body);
+  --dataview-ln-surface: color-mix(in srgb, var(--glass-fill) calc(var(--lg-glass, 0.72) * 100%), transparent);
+  --dataview-ln-surface-strong: color-mix(in srgb, var(--bg-elevated) 76%, var(--glass-fill));
+  --dataview-ln-row: color-mix(in srgb, var(--glass-fill) 86%, transparent);
+  --dataview-ln-row-alt: color-mix(in srgb, var(--neon-cyan) 6%, var(--glass-fill));
+  --dataview-ln-border: color-mix(in srgb, var(--neon-cyan) 28%, var(--glass-rim));
+  --dataview-ln-border-strong: color-mix(in srgb, var(--neon-violet) 42%, var(--glass-rim));
+  --dataview-ln-glow: color-mix(in srgb, var(--neon-cyan) calc(var(--lg-neon, 0.5) * 55%), transparent);
+  --dataview-ln-danger-glow: color-mix(in srgb, var(--state-danger) calc(var(--lg-neon, 0.5) * 45%), transparent);
+}
+
+.dataview.table-view-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  color: var(--text-body);
+  background: var(--dataview-ln-surface);
+  border: var(--frame-width-rest, 1px) solid var(--dataview-ln-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-1), 0 0 calc(18px * var(--lg-neon, 0.5)) var(--dataview-ln-glow);
+  backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+}
+
+.dataview.table-view-table :is(thead, .table-view-thead) {
+  color: var(--text-header);
+  background: color-mix(in srgb, var(--neon-cyan) 10%, var(--dataview-ln-surface-strong));
+}
+
+.dataview.table-view-table :is(th, td) {
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-body);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dataview.table-view-table th {
+  color: var(--text-header);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-heading);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dataview.table-view-table td {
+  line-height: var(--leading-sm);
+  vertical-align: top;
+}
+
+.dataview tbody tr {
+  background: var(--dataview-ln-row);
+}
+
+.dataview tbody tr:nth-child(odd) {
+  background: var(--dataview-ln-row-alt);
+}
+
+.dataview tbody tr:is(:hover, :focus-within) {
+  background: color-mix(in srgb, var(--neon-cyan) 12%, var(--dataview-ln-surface-strong));
+  outline: var(--frame-width-rest, 1px) solid var(--dataview-ln-border-strong);
+  outline-offset: -1px;
+}
+
+.dataview.table-view-table :is(a, .internal-link, .external-link) {
+  color: var(--text-link);
+  text-decoration-color: color-mix(in srgb, var(--text-link) 60%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.dataview :is(.inline-field, .dataview-inline-field) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--space-6);
+  margin: 0 var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--neon-violet) 12%, var(--glass-fill));
+  border: var(--frame-width-rest, 1px) solid color-mix(in srgb, var(--neon-violet) 36%, var(--glass-rim));
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 calc(10px * var(--lg-neon, 0.5)) color-mix(in srgb, var(--neon-violet) calc(var(--lg-neon, 0.5) * 38%), transparent);
+}
+
+.dataview :is(.inline-field-key, .dataview-inline-field-key) {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-heading);
+}
+
+.dataview :is(.inline-field-value, .dataview-inline-field-value) {
+  color: var(--text-header);
+}
+
+:is(.dataview-error, .block-language-dataviewjs .error, .block-language-dataview .error) {
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--state-danger) 16%, var(--glass-fill));
+  border: var(--frame-width-rest, 1px) solid color-mix(in srgb, var(--state-danger) 56%, var(--glass-rim));
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 calc(16px * var(--lg-neon, 0.5)) var(--dataview-ln-danger-glow);
+  backdrop-filter: blur(var(--lg-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--lg-blur, 16px));
+}
+
+:is(.dataview-error, .block-language-dataviewjs .error, .block-language-dataview .error)::before {
+  content: "⚠";
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  margin-right: var(--space-2);
+  color: var(--state-danger);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-full);
+}
+
+:is(.dataview-error, .block-language-dataviewjs .error, .block-language-dataview .error) pre {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  overflow: auto;
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--bg-canvas) 86%, var(--state-danger));
+  border: 1px solid color-mix(in srgb, var(--state-danger) 34%, var(--border-subtle));
+  border-radius: var(--radius-md);
+}
+
+.callout[data-callout="info"],
+.callout[data-callout="warning"],
+.callout[data-callout="error"] {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  color: var(--text-body);
+  background: color-mix(in srgb, var(--glass-fill) 86%, transparent);
+  border: var(--frame-width-rest, 1px) solid var(--dataview-ln-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 calc(14px * var(--lg-neon, 0.5)) var(--dataview-ln-glow);
+  backdrop-filter: blur(var(--lg-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--lg-blur, 16px));
+}
+
+.callout[data-callout="info"] {
+  border-color: color-mix(in srgb, var(--state-info) 46%, var(--glass-rim));
+}
+
+.callout[data-callout="warning"] {
+  border-color: color-mix(in srgb, var(--state-warning) 50%, var(--glass-rim));
+  box-shadow: 0 0 calc(14px * var(--lg-neon, 0.5)) color-mix(in srgb, var(--state-warning) calc(var(--lg-neon, 0.5) * 34%), transparent);
+}
+
+.callout[data-callout="error"] {
+  border-color: color-mix(in srgb, var(--state-danger) 56%, var(--glass-rim));
+  box-shadow: 0 0 calc(14px * var(--lg-neon, 0.5)) var(--dataview-ln-danger-glow);
+}
+
+.callout :is(.callout-title, .callout-title-inner) {
+  color: var(--text-header);
+  font-weight: var(--weight-heading);
+}
+
+.callout :is(.callout-content, .callout-content p) {
+  color: var(--text-body);
+}
+
+:root[data-contrast="high"] :where(.dataview, .block-language-dataview, .block-language-dataviewjs) {
+  --dataview-ln-surface: var(--bg-panel);
+  --dataview-ln-surface-strong: var(--bg-elevated);
+  --dataview-ln-row: var(--bg-panel);
+  --dataview-ln-row-alt: var(--bg-inset);
+  --dataview-ln-border: var(--border-default);
+  --dataview-ln-border-strong: var(--border-strong);
+  --dataview-ln-glow: transparent;
+  --dataview-ln-danger-glow: transparent;
+}
+</style></head><body>
+  <main class="workspace">
+    <section class="panel">
+      <p class="eyebrow">SKY-1989 Dataview fixture — 1440×900 dark viewport</p>
+      <h1>Vault metadata query</h1>
+      <table class="dataview table-view-table"><thead><tr><th>File</th><th>Arc</th><th>Status</th><th>Words</th></tr></thead><tbody>
+        <tr><td><a class="internal-link">Chapter 01</a></td><td><span class="inline-field"><span class="inline-field-key">arc</span><span class="inline-field-value">Glass City</span></span></td><td>Draft</td><td>2,840</td></tr>
+        <tr><td><a class="internal-link">Scene Brief</a></td><td><span class="inline-field"><span class="inline-field-key">owner</span><span class="inline-field-value">Archive</span></span></td><td>Ready</td><td>940</td></tr>
+        <tr><td><a class="internal-link">Continuity Notes</a></td><td><span class="inline-field"><span class="inline-field-key">risk</span><span class="inline-field-value">medium</span></span></td><td>Review</td><td>1,120</td></tr>
+      </tbody></table>
+      <div class="dataview-error">Dataview query warning: unresolved field in scene frontmatter.<pre>EvaluationError: field "timeline.day" is missing
+  at dataview query line 4</pre></div>
+      <div class="callout" data-callout="info"><div class="callout-title"><div class="callout-title-inner">Info callout</div></div><div class="callout-content"><p>Inline query results inherit Liquid Neon glass without losing body contrast.</p></div></div>
+      <div class="callout" data-callout="warning"><div class="callout-title"><div class="callout-title-inner">Warning callout</div></div><div class="callout-content"><p>Warnings use semantic tokens, not raw Obsidian default colors.</p></div></div>
+      <div class="callout" data-callout="error"><div class="callout-title"><div class="callout-title-inner">Error callout</div></div><div class="callout-content"><p>Error content keeps readable text over a tinted glass surface.</p></div></div>
+    </section>
+  </main></body></html>
