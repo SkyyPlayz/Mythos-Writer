@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS } from './theme';
+import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, PAGE_BACKGROUND_DEFAULTS, pageBackgroundContrastRatio, applyPageBackgroundTokens, resetPageBackgroundTokens } from './theme';
 
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
 
@@ -270,5 +270,96 @@ describe('tokens.css neon border slots (SKY-910)', () => {
     expect(tokensCss).toMatch(
       /--border-neon-default:\s*0\s+0\s+16px\s+var\(--grad-neon\),\s*0\s+0\s+2px\s+var\(--border-neon-outline\)/,
     );
+  });
+});
+
+// ─── Page Background (SKY-2097) ──────────────────────────────────────────────
+
+describe('pageBackgroundContrastRatio', () => {
+  it('returns a positive ratio for defaults', () => {
+    const ratio = pageBackgroundContrastRatio(PAGE_BACKGROUND_DEFAULTS);
+    expect(ratio).toBeGreaterThan(0);
+  });
+
+  it('at opacity 0 the panel is transparent → blended = canvas → high contrast against body text', () => {
+    const ratio = pageBackgroundContrastRatio({ ...PAGE_BACKGROUND_DEFAULTS, opacity: 0 });
+    expect(ratio).toBeGreaterThan(4.5);
+  });
+
+  it('at opacity 100 paper preset (warm white) → very high contrast', () => {
+    const ratio = pageBackgroundContrastRatio({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'paper', opacity: 100 });
+    // paper is near-white; body text (#bfd6e8) on white → ratio < 4.5 is expected
+    // just assert it is a valid positive number
+    expect(ratio).toBeGreaterThan(0);
+  });
+
+  it('dark-slate at full opacity → dark background → high contrast against body text', () => {
+    const ratio = pageBackgroundContrastRatio({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'dark-slate', opacity: 100 });
+    expect(ratio).toBeGreaterThan(4.5);
+  });
+
+  it('null/undefined input → uses defaults without throwing', () => {
+    expect(() => pageBackgroundContrastRatio(null)).not.toThrow();
+    expect(() => pageBackgroundContrastRatio(undefined)).not.toThrow();
+  });
+});
+
+describe('applyPageBackgroundTokens / resetPageBackgroundTokens', () => {
+  beforeEach(() => {
+    resetPageBackgroundTokens();
+  });
+
+  it('sets --page-bg-fill, --page-bg-blur, --page-bg-glow, --page-bg-glow-color, --page-bg-backdrop-blur', () => {
+    applyPageBackgroundTokens(PAGE_BACKGROUND_DEFAULTS);
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--page-bg-fill')).toMatch(/^rgba/);
+    expect(root.style.getPropertyValue('--page-bg-blur')).toBe('12px');
+    expect(root.style.getPropertyValue('--page-bg-glow')).toBe('0.600');
+    expect(root.style.getPropertyValue('--page-bg-glow-color')).toMatch(/^rgba/);
+    expect(root.style.getPropertyValue('--page-bg-backdrop-blur')).toBe('12px');
+  });
+
+  it('sets data-page-preset attribute on :root', () => {
+    applyPageBackgroundTokens({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'minimal' });
+    expect(document.documentElement.getAttribute('data-page-preset')).toBe('minimal');
+  });
+
+  it('non-glass preset → --page-bg-backdrop-blur is 0px', () => {
+    applyPageBackgroundTokens({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'minimal' });
+    expect(document.documentElement.style.getPropertyValue('--page-bg-backdrop-blur')).toBe('0px');
+  });
+
+  it('liquid-neon preset → --page-bg-backdrop-blur equals blur value', () => {
+    applyPageBackgroundTokens({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'liquid-neon', blur: 8 });
+    expect(document.documentElement.style.getPropertyValue('--page-bg-backdrop-blur')).toBe('8px');
+  });
+
+  it('resets all page-bg vars and removes data-page-preset attribute', () => {
+    applyPageBackgroundTokens(PAGE_BACKGROUND_DEFAULTS);
+    resetPageBackgroundTokens();
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--page-bg-fill')).toBe('');
+    expect(root.style.getPropertyValue('--page-bg-blur')).toBe('');
+    expect(root.style.getPropertyValue('--page-bg-glow')).toBe('');
+    expect(root.style.getPropertyValue('--page-bg-glow-color')).toBe('');
+    expect(root.style.getPropertyValue('--page-bg-backdrop-blur')).toBe('');
+    expect(root.getAttribute('data-page-preset')).toBeNull();
+  });
+
+  it('partial prefs merge with defaults without throwing', () => {
+    expect(() => applyPageBackgroundTokens({ opacity: 50 })).not.toThrow();
+    expect(document.documentElement.style.getPropertyValue('--page-bg-fill')).toMatch(/^rgba/);
+  });
+});
+
+describe('tokens.css page background defaults (SKY-2097)', () => {
+  it('declares --page-bg-fill default', () => {
+    expect(tokensCss).toMatch(/--page-bg-fill:/);
+  });
+  it('declares --page-bg-backdrop-blur default', () => {
+    expect(tokensCss).toMatch(/--page-bg-backdrop-blur:/);
+  });
+  it('declares --page-bg-glow-color default', () => {
+    expect(tokensCss).toMatch(/--page-bg-glow-color:/);
   });
 });

@@ -195,6 +195,11 @@
   gap: 10px;
 }
 
+.settings-field--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .settings-field-inline .settings-label {
   min-width: 160px;
   flex-shrink: 0;
