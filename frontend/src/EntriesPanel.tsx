@@ -451,10 +451,10 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
         )}
         {loadState === 'ready' && entries.length === 0 && (
           <div className="entries-empty" data-testid="entries-empty">
-            <p className="entries-empty-heading">No entries yet</p>
+            <p className="entries-empty-heading">Nothing captured yet</p>
             <p>
-              Use this panel to capture raw ideas, fragments, and questions as they
-              come to you — no need to organize them right away.
+              Jot down ideas, fragments, and questions as they come to you —
+              no need to organize them right away.
             </p>
             <p>Once captured, you can:</p>
             <ul>
