@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ScrollText, CircleCheck } from 'lucide-react';
 import type { Scene } from './types';
 import { InconsistencyCard } from './InconsistencyCard';
 import type { InconsistencyItem, ResolutionAction } from './InconsistencyCard';
@@ -242,8 +243,8 @@ export default function ContinuityPanel({
 
       {panelState === 'not_scanned' && (
         <div className="cp-centered cp-not-scanned">
-          <span className="cp-empty-icon" aria-hidden="true">📋</span>
-          <p className="cp-empty-text">Save your scene to trigger a scan</p>
+          <span className="cp-empty-icon" aria-hidden="true"><ScrollText size={32} /></span>
+          <p className="cp-empty-text">Save your scene to check for continuity issues.</p>
           <button
             type="button"
             className="cp-scan-now-btn"
@@ -258,7 +259,7 @@ export default function ContinuityPanel({
 
       {panelState === 'empty' && (
         <div className="cp-centered cp-empty">
-          <span className="cp-empty-icon" aria-hidden="true">✓</span>
+          <span className="cp-empty-icon" aria-hidden="true"><CircleCheck size={32} /></span>
           <p className="cp-empty-text">All consistent</p>
           {lastTokenUsed !== null && (
             <p className="cp-empty-sub">Last scan: ~{lastTokenUsed.toLocaleString()} tokens</p>

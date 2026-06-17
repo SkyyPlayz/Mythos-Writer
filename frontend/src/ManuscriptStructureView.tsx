@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, type ReactElement } from 'react';
+import { BookOpen, Pen } from 'lucide-react';
 import type { Story, Scene, Chapter } from './types';
 import { ViewToggle } from './components/ManuscriptStructure/ViewToggle';
 import type { ManuscriptViewMode } from './components/ManuscriptStructure/ViewToggle';
@@ -200,11 +201,8 @@ export default function ManuscriptStructureView({
     return (
       <div className="msv msv--no-story">
         <div className="msv__empty-state">
-          <div className="msv__empty-icon" aria-hidden="true">📋</div>
-          <h2 className="msv__empty-title">No Story Selected</h2>
-          <p className="msv__empty-body">
-            Select a story from the Editor view to open its Structure View.
-          </p>
+          <div className="msv__empty-icon" aria-hidden="true"><BookOpen size={40} /></div>
+          <h2 className="msv__empty-title">Select a story to view its timeline.</h2>
         </div>
       </div>
     );
@@ -239,9 +237,8 @@ export default function ManuscriptStructureView({
       {/* ── Main content area ── */}
       {!hasScenes && story.chapters.length === 0 ? (
         <div className="msv__empty-state">
-          <div className="msv__empty-icon" aria-hidden="true">✍️</div>
-          <h2 className="msv__empty-title">No scenes yet.</h2>
-          <p className="msv__empty-body">Add a chapter, then create your first scene.</p>
+          <div className="msv__empty-icon" aria-hidden="true"><Pen size={40} /></div>
+          <h2 className="msv__empty-title">Create scenes in your story to see them here.</h2>
           <button
             className="msv__create-chapter-btn"
             onClick={() => onCreateChapter(story.id)}

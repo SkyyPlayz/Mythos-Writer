@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { BookOpen, FileText } from 'lucide-react';
 import type { Story, TimelineAIProposal } from './types';
 import './TimelineSpreadsheet.css';
 import TimelineFilterBar, { type ArcOption, type CharOption, type LocationOption } from './TimelineFilterBar';
@@ -1031,9 +1032,8 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
   if (!story) {
     return (
       <div className="tls-empty">
-        <div className="tls-empty-icon" aria-hidden="true">📋</div>
-        <h2>No Story Selected</h2>
-        <p>Select a story from the Editor view to see its scene spreadsheet.</p>
+        <div className="tls-empty-icon" aria-hidden="true"><BookOpen size={40} /></div>
+        <h2>Select a story to view its timeline.</h2>
       </div>
     );
   }
@@ -1049,9 +1049,8 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
   if (scenes.length === 0 && !loading) {
     return (
       <div className="tls-empty">
-        <div className="tls-empty-icon" aria-hidden="true">📄</div>
-        <h2>No Scenes Yet</h2>
-        <p>Add scenes to <strong>{story.title}</strong> to use the spreadsheet view.</p>
+        <div className="tls-empty-icon" aria-hidden="true"><FileText size={40} /></div>
+        <h2>Create scenes in your story to see them here.</h2>
       </div>
     );
   }
