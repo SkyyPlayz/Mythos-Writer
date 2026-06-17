@@ -1441,7 +1441,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   return (
     <>
-    <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-labelledby="settings-dialog-title">
+    <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings" aria-labelledby="settings-dialog-title">
       <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
           <h2 id="settings-dialog-title" className="settings-title">Settings</h2>
