@@ -1,0 +1,109 @@
+/* SKY-2094 (Phase 2 #1): Top-level two-tab switcher styles. */
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--glass-fill-fallback);
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
+  position: relative;
+  z-index: 49;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .tab-bar {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 12px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 12px)) saturate(160%);
+  }
+}
+
+.tab-bar__list {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.tab-bar__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.12s, color 0.12s;
+  -webkit-app-region: no-drag;
+  letter-spacing: 0.01em;
+  position: relative;
+}
+
+.tab-bar__tab:hover {
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.tab-bar__tab:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.tab-bar__tab--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.tab-bar__tab--active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  box-shadow: var(--neon-glow);
+}
+
+.tab-bar__icon {
+  font-size: 0.9em;
+  line-height: 1;
+}
+
+.tab-bar__label {
+  line-height: 1;
+}
+
+/* Vault badge slot — rendered below the tab bar by DesktopShell */
+.tab-bar-vault-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 14px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-base) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.tab-bar-vault-badge__name {
+  -webkit-app-region: no-drag;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
