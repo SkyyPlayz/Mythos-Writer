@@ -52,6 +52,8 @@ interface Props {
   emptySceneHint?: string;
   /** SKY-616: called when user clicks an @-entity chip to navigate to that entity. */
   onEntityClick?: (entityId: string) => void;
+  /** SKY-2099: called when user clicks a [[typed wiki link]]. */
+  onWikiLinkClick?: (target: string) => void;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -82,7 +84,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
     scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
@@ -122,6 +124,8 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   onBetaReadRef.current = onBetaReadRequest;
   const onEntityClickRef = useRef(onEntityClick);
   onEntityClickRef.current = onEntityClick;
+  const onWikiLinkClickRef = useRef(onWikiLinkClick);
+  onWikiLinkClickRef.current = onWikiLinkClick;
   const editorWrapRef = useRef<HTMLDivElement | null>(null);
   // SKY-130: cursor tracking refs
   const onCursorPosChangeRef = useRef(onCursorPosChange);
@@ -421,16 +425,36 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     }
   }, [mentionState, mentionSuppressed, entities, mentionSelectedIndex, insertEntityMention]);
 
-  // SKY-616: event delegation for entity chip click → navigate to entity page
+  // SKY-616/SKY-2099: event delegation for entity and wiki-link clicks.
   const handleEditorClick = useCallback((e: React.MouseEvent) => {
-    const chip = (e.target as HTMLElement).closest('.entity-mention-chip') as HTMLElement | null;
-    if (!chip) return;
-    const entityId = chip.dataset.entityId;
-    if (entityId) {
-      e.preventDefault();
-      onEntityClickRef.current?.(entityId);
+    const target = e.target as HTMLElement;
+    const chip = target.closest('.entity-mention-chip') as HTMLElement | null;
+    if (chip) {
+      const entityId = chip.dataset.entityId;
+      if (entityId) {
+        e.preventDefault();
+        onEntityClickRef.current?.(entityId);
+        return;
+      }
     }
-  }, []);
+
+    const wikiLink = target.closest('[data-wiki-link]') as HTMLElement | null;
+    const linkTarget = wikiLink?.dataset.wikiLink;
+    if (linkTarget) {
+      e.preventDefault();
+      onWikiLinkClickRef.current?.(linkTarget);
+      return;
+    }
+
+    for (const text of [target.textContent ?? '', editor?.state.doc.textBetween(0, editor.state.doc.content.size, '\n') ?? '']) {
+      const plainTextWikiLinks = Array.from(text.matchAll(/\[\[([^\]]+)\]\]/g));
+      if (plainTextWikiLinks.length === 1) {
+        e.preventDefault();
+        onWikiLinkClickRef.current?.(plainTextWikiLinks[0][1]);
+        return;
+      }
+    }
+  }, [editor]);
 
   // Compute picker position from the @-trigger doc position
   let pickerTop = 0;
@@ -474,7 +498,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         ref={editorWrapRef}
         style={{ position: 'relative' }}
         onKeyDownCapture={handlePickerKeyDown}
-        onClick={handleEditorClick}
+        onClickCapture={handleEditorClick}
         onMouseOver={handleHintMouseOver}
         onMouseLeave={handleHintMouseLeave}
       >

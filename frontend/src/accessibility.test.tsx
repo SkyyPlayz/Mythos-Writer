@@ -308,8 +308,6 @@ import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import { PanelDragProvider } from './PanelDragContext';
 
 const DEFAULT_LEFT_RAIL_PROPS = {
-  activeView: 'editor' as const,
-  onViewChange: () => {},
   leftSidebarLayout: DEFAULT_LEFT_SIDEBAR_LAYOUT,
   onLeftSidebarLayoutChange: () => {},
   renderPanelContent: (id: string) => <div data-testid={id}>{id}</div>,
@@ -343,28 +341,13 @@ describe('Accessibility — LeftRail nav + panel zone (WCAG 4.1.2)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('nav zone renders 5 nav icon buttons with aria-label and aria-pressed', async () => {
-    const { container } = render(
-      <PanelDragProvider onDrop={() => {}}><LeftRail {...DEFAULT_LEFT_RAIL_PROPS} activeView="brainstorm" /></PanelDragProvider>
-    );
-    await act(async () => {});
-    const nav = container.querySelector('[aria-label="Main navigation"]');
-    expect(nav).not.toBeNull();
-    const navBtns = nav!.querySelectorAll('button');
-    expect(navBtns).toHaveLength(5);
-    const graphBtn = Array.from(navBtns).find(b => b.getAttribute('aria-label') === 'Graph');
-    expect(graphBtn?.getAttribute('aria-pressed')).toBe('false');
-    const brainstormBtn = Array.from(navBtns).find(b => b.getAttribute('aria-label') === 'Brainstorm');
-    expect(brainstormBtn?.getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('nav zone has data-no-drop guard (AC-L-08)', async () => {
+  it('legacy nav zone is absent after tab/sub-view migration', async () => {
     const { container } = render(
       <PanelDragProvider onDrop={() => {}}><LeftRail {...DEFAULT_LEFT_RAIL_PROPS} /></PanelDragProvider>
     );
     await act(async () => {});
-    const nav = container.querySelector('[data-no-drop="true"]');
-    expect(nav).not.toBeNull();
+    expect(container.querySelector('[aria-label="Main navigation"]')).toBeNull();
+    expect(container.querySelector('[data-no-drop="true"]')).toBeNull();
   });
 
   it('collapsed sidebar renders icon-only rail', async () => {

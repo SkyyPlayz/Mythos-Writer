@@ -1,11 +1,12 @@
 // SKY-2096 (Phase 2 #3): Notes tab layout — vault tree + editor + Brainstorm sidebar + sub-view toggles.
 // Spec: vault tree (left) + markdown editor (center) + Brainstorm chat (right), with Graph and Entities
 // as in-tab sub-view toggles.
-import { useState, useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser';
 import VaultGraphView from './VaultGraphView';
 import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
+import NoteViewer from './NoteViewer';
 import type { Story, Scene, Chapter } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
@@ -28,6 +29,14 @@ export interface NotesTabPanelProps {
   notesSidebarCollapsed: boolean;
   onNotesSidebarWidthChange: (w: number) => void;
   onNotesSidebarCollapsedChange: (c: boolean) => void;
+  activeNotePath: string | null;
+  activeNotePreview: boolean;
+  onActiveNotePreviewChange: (preview: boolean) => void;
+  onActiveNoteWordCountChange: (wordCount: number) => void;
+  onCloseActiveNote: () => void;
+  onWikiLinkClick: (target: string) => void;
+  brainstormCollapsed: boolean;
+  onBrainstormCollapsedChange: (collapsed: boolean) => void;
   // VaultBrowser passthrough
   stories: VaultBrowserProps['stories'];
   selectedSceneId: string | null;
@@ -55,6 +64,14 @@ export default function NotesTabPanel({
   notesSidebarCollapsed,
   onNotesSidebarWidthChange,
   onNotesSidebarCollapsedChange,
+  activeNotePath,
+  activeNotePreview,
+  onActiveNotePreviewChange,
+  onActiveNoteWordCountChange,
+  onCloseActiveNote,
+  onWikiLinkClick,
+  brainstormCollapsed,
+  onBrainstormCollapsedChange,
   stories,
   selectedSceneId,
   onSelectScene,
@@ -71,7 +88,6 @@ export default function NotesTabPanel({
   onSelectEntity,
   selectedEntityId,
 }: NotesTabPanelProps) {
-  const [brainstormCollapsed, setBrainstormCollapsed] = useState(false);
   const isDraggingLeft = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
@@ -208,7 +224,18 @@ export default function NotesTabPanel({
 
         {/* Center — sub-view body */}
         <div className="notes-tab-center" data-testid="notes-tab-center">
-          {notesSubView === 'editor' && (
+          {notesSubView === 'editor' && activeNotePath && (
+            <NoteViewer
+              key={activeNotePath}
+              path={activeNotePath}
+              previewMode={activeNotePreview}
+              onPreviewModeChange={onActiveNotePreviewChange}
+              onWordCountChange={onActiveNoteWordCountChange}
+              onWikiLinkClick={onWikiLinkClick}
+              onClose={onCloseActiveNote}
+            />
+          )}
+          {notesSubView === 'editor' && !activeNotePath && (
             <div
               className="notes-editor-placeholder"
               data-testid="notes-editor-placeholder"
@@ -239,7 +266,7 @@ export default function NotesTabPanel({
             className="notes-brainstorm-peek-btn"
             aria-label="Expand Brainstorm panel"
             data-testid="notes-brainstorm-expand"
-            onClick={() => setBrainstormCollapsed(false)}
+            onClick={() => onBrainstormCollapsedChange(false)}
           >
             ‹
           </button>
@@ -257,14 +284,14 @@ export default function NotesTabPanel({
                   className="notes-sidebar-collapse-btn"
                   aria-label="Collapse Brainstorm panel"
                   data-testid="notes-brainstorm-collapse"
-                  onClick={() => setBrainstormCollapsed(true)}
+                  onClick={() => onBrainstormCollapsedChange(true)}
                 >
                   ›
                 </button>
               </div>
               <div className="notes-right-sidebar-content">
                 <BrainstormPage
-                  onClose={() => setBrainstormCollapsed(true)}
+                  onClose={() => onBrainstormCollapsedChange(true)}
                   enabled={brainstormEnabled ?? true}
                   onFirstSubmit={onFirstSubmit}
                   onNavigateToEntity={onNavigateToEntity}

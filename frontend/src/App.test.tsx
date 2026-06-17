@@ -20,6 +20,7 @@ function makeMockApi(overrides: Record<string, unknown> = {}) {
       notesVaultPath: '/tmp/mythos-notes-vault',
     }),
     validatePath: () => Promise.resolve({ exists: true, isEmpty: false, writable: true }),
+    settingsSet: () => Promise.resolve({}),
     readManifest: () => Promise.resolve(mockManifest),
     writeManifest: () => Promise.resolve({}),
     onVaultFileChanged: () => () => {},
@@ -74,6 +75,13 @@ describe('App — onboarding gate (SKY-152)', () => {
   it('bypasses wizard when onboardingComplete is true (existing vault)', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/loading your vault/i)).toBeInTheDocument());
+  });
+
+  it('does not render the legacy top-level view switcher chrome', async () => {
+    const { container } = render(<App />);
+    await waitFor(() => expect(container.querySelector('.app-menu-bar')).toBeInTheDocument());
+
+    expect(container.querySelector('.app-menu-view-toggle')).not.toBeInTheDocument();
   });
 
   it('shows recovery screen when neither vault binding is valid', async () => {

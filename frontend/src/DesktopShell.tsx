@@ -13,8 +13,6 @@ import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
-import BrainstormPage from './BrainstormPage';
-import EntriesPanel from './EntriesPanel';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
@@ -49,6 +47,7 @@ import SplitEditorPane from './SplitEditorPane';
 import TabBar from './TabBar';
 import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
+import { resolveCrossTabLink, type CrossTabLinkMatch } from './crossTabLinkResolver';
 import {
   tabbedShellReducer,
   DEFAULT_TABBED_SHELL_STATE,
@@ -121,8 +120,6 @@ function blocksToMarkdown(scene: Scene): string {
   return lines.join('\n');
 }
 
-type AppView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline' | 'entries';
-
 interface SearchResultItem {
   docId: string;
   vault: 'story' | 'notes';
@@ -160,8 +157,6 @@ function labelFromPath(path: string): string {
 }
 
 interface AppMenuBarProps {
-  view: AppView;
-  onSetView: (v: AppView) => void;
   onOpenSettings: () => void;
   onOpenHistory: () => void;
   onSearchNavigate: (result: SearchResultItem) => void;
@@ -186,7 +181,7 @@ interface AppMenuBarProps {
   onAddPanelAsNewTab: (panelId: SidebarPanelId) => void;
 }
 
-function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
+function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -291,58 +286,6 @@ function AppMenuBar({ view, onSetView, onOpenSettings, onOpenHistory, onSearchNa
         </div>
       </div>
       <SearchBar onNavigate={onSearchNavigate} />
-      <div className="app-menu-view-toggle">
-        <button
-          className={`app-menu-view-btn${view === 'editor' ? ' active' : ''}`}
-          onClick={() => onSetView('editor')}
-          aria-pressed={view === 'editor'}
-        >
-          Editor
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'brainstorm' ? ' active' : ''}`}
-          onClick={() => onSetView('brainstorm')}
-          aria-pressed={view === 'brainstorm'}
-        >
-          Brainstorm
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'kanban' ? ' active' : ''}`}
-          onClick={() => onSetView('kanban')}
-          aria-pressed={view === 'kanban'}
-        >
-          Board
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'graph' ? ' active' : ''}`}
-          onClick={() => onSetView('graph')}
-          aria-pressed={view === 'graph'}
-        >
-          Graph
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'structure' ? ' active' : ''}`}
-          onClick={() => onSetView('structure')}
-          aria-pressed={view === 'structure'}
-        >
-          Structure
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'timeline' ? ' active' : ''}`}
-          onClick={() => onSetView('timeline')}
-          aria-pressed={view === 'timeline'}
-        >
-          Timeline
-        </button>
-        <button
-          className={`app-menu-view-btn${view === 'entries' ? ' active' : ''}`}
-          onClick={() => onSetView('entries')}
-          aria-pressed={view === 'entries'}
-          data-testid="view-btn-entries"
-        >
-          Entries
-        </button>
-      </div>
       {/* SKY-1698 (Wave 2d): custom panel tabs right of built-in tabs (AC-T-04) */}
       <DockedTabBar
         dockedTabs={dockedTabs}
@@ -611,7 +554,7 @@ export default function DesktopShell() {
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
-  const [view, setView] = useState<AppView>('editor');
+  const [view, setView] = useState<StorySubView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -643,6 +586,10 @@ export default function DesktopShell() {
   const [openedNotePath, setOpenedNotePath] = useState<string | null>(null);
   /** SKY-204: word count of the currently open vault note, updated live. */
   const [openedNoteWordCount, setOpenedNoteWordCount] = useState(0);
+  const [notePreviewMode, setNotePreviewMode] = useState(false);
+  const [notesBrainstormCollapsed, setNotesBrainstormCollapsed] = useState(false);
+  const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
+  const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
 
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
@@ -710,6 +657,7 @@ export default function DesktopShell() {
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
   // SKY-192: entity registry for the auto-linker
   const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
+  const [allNotePaths, setAllNotePaths] = useState<string[]>([]);
 
   // SKY-130: cross-restart scene/cursor restore refs
   const pendingCursorPosRef = useRef<number | null>(null);
@@ -1122,7 +1070,6 @@ export default function DesktopShell() {
           dispatchTabShell({ type: 'SET_STORY_SIDEBAR_COLLAPSED', collapsed: restored.storySidebarCollapsed });
           dispatchTabShell({ type: 'SET_NOTES_SIDEBAR_COLLAPSED', collapsed: restored.notesSidebarCollapsed });
           tabShellRef.current = restored;
-          // Sync story sub-view into the legacy view state.
           setView(restored.storySubView);
         } else if (s.onboardingComplete && !s.notesTabUpgradeToastShown) {
           dispatchTabShell({ type: 'SET_TAB', tab: 'story' });
@@ -1248,8 +1195,16 @@ export default function DesktopShell() {
   // SKY-192: load entities for the auto-linker on mount and vault changes
   const loadEntities = useCallback(async () => {
     try {
-      const res = await window.api.entityList();
-      setAllEntities(res.entities ?? []);
+      const [entityResult, notesResult] = await Promise.all([
+        window.api.entityList(),
+        window.api.listNotesVault?.().catch(() => null),
+      ]);
+      setAllEntities(entityResult.entities ?? []);
+      setAllNotePaths(
+        notesResult && !('error' in notesResult)
+          ? (notesResult.items ?? []).filter((item) => !item.isDirectory).map((item) => item.path)
+          : [],
+      );
     } catch {
       // non-fatal; auto-linker just won't suggest anything
     }
@@ -1679,11 +1634,11 @@ export default function DesktopShell() {
 
   // SKY-1698: Selecting a built-in view clears any active docked tab (they're mutually exclusive).
   // SKY-2094: also persists story sub-view to tab shell state.
-  const handleSetView = useCallback((v: AppView) => {
+  const handleSetView = useCallback((v: StorySubView) => {
     setView(v);
     setActiveDockedTabId(null);
-    const next = { ...tabShellRef.current, storySubView: v as StorySubView };
-    dispatchTabShell({ type: 'SET_STORY_SUBVIEW', subView: v as StorySubView });
+    const next = { ...tabShellRef.current, storySubView: v };
+    dispatchTabShell({ type: 'SET_STORY_SUBVIEW', subView: v });
     tabShellRef.current = next;
     persistTabShell(next);
   }, [persistTabShell]);
@@ -1799,23 +1754,24 @@ export default function DesktopShell() {
   const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
     checkGettingStartedItem(itemId);
     if (itemId === 'brainstorm') {
-      setView('brainstorm');
+      handleTabChange('notes');
       return;
     }
     if (itemId === 'notes-vault') {
-      setView('editor');
-      persistLayout({ ...layout, leftTab: 'vault' });
+      handleNotesSubViewChange('editor');
+      handleTabChange('notes');
       return;
     }
     if (itemId === 'add-character') {
-      setView('brainstorm');
+      handleTabChange('notes');
       return;
     }
     if (itemId === 'write-scene') {
-      setView('editor');
+      handleSetView('editor');
+      handleTabChange('story');
       if (!selectedScene) editorApiRef.current?.focus();
     }
-  }, [checkGettingStartedItem, layout, selectedScene, persistLayout]);
+  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
 
   // SKY-1699: Toggle split window on/off (declared early so keyboard useEffect can reference it).
   const handleToggleSplitWindow = useCallback(() => {
@@ -1866,16 +1822,52 @@ export default function DesktopShell() {
         setSettingsOpen(true);
         return;
       }
-      // Ctrl+K — open global vault search
-      if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+      // SKY-2099: tab-aware shortcut map.
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
-        setGlobalSearchOpen(true);
+        if (tabShellRef.current.activeTab === 'notes') {
+          setNotePreviewMode((prev) => !prev);
+        } else {
+          setWritingMode(layout.writingMode === 'edit' ? 'normal' : 'edit');
+        }
         return;
       }
-      // Ctrl/Cmd+S — manual save (creates a draft snapshot) — SKY-1611
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        if (tabShellRef.current.activeTab === 'story') {
+          e.preventDefault();
+          handleSetView('kanban');
+        }
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
+        if (tabShellRef.current.activeTab === 'story') {
+          e.preventDefault();
+          handleSetView('timeline');
+        }
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+        if (tabShellRef.current.activeTab === 'notes') {
+          e.preventDefault();
+          handleNotesSubViewChange('graph');
+        }
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+        if (tabShellRef.current.activeTab === 'notes') {
+          e.preventDefault();
+          setNotesBrainstormCollapsed((prev) => !prev);
+        }
+        return;
+      }
+      // Ctrl/Cmd+S — save the active tab.
       if (mod && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
-        void handleManualSnapshot();
+        if (tabShellRef.current.activeTab === 'notes') {
+          window.dispatchEvent(new Event('mythos:save-note'));
+        } else {
+          void handleManualSnapshot();
+        }
         return;
       }
       // SKY-1694: Ctrl+[ / Cmd+[ — toggle left sidebar; Ctrl+] / Cmd+] — toggle right sidebar
@@ -1932,8 +1924,10 @@ export default function DesktopShell() {
         return;
       }
       if (e.key === 'F' || e.key === 'f') {
-        e.preventDefault();
-        setWritingMode('focus');
+        if (tabShellRef.current.activeTab === 'story') {
+          e.preventDefault();
+          setWritingMode('focus');
+        }
       } else if (e.key === 'E' || e.key === 'e') {
         e.preventDefault();
         setWritingMode('edit');
@@ -1944,7 +1938,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout.writingMode]);
 
   // ─── Panel resize drag handlers ───
 
@@ -2444,6 +2438,37 @@ export default function DesktopShell() {
     }).catch(() => {});
   }, [checkGettingStartedItem]);
 
+  const applyCrossTabLinkMatch = useCallback((match: CrossTabLinkMatch) => {
+    setAmbiguousLink(null);
+    if (match.kind === 'scene') {
+      setOpenedNotePath(null);
+      handleSelectScene(match.scene, match.chapter, match.story);
+      setView('editor');
+      setViewDepth('scene');
+      handleTabChange('story');
+      setSceneFlashId(match.sceneId);
+      window.setTimeout(() => setSceneFlashId((current) => current === match.sceneId ? null : current), 1200);
+      return;
+    }
+
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
+    setSelectedEntity(null);
+    setOpenedNotePath(match.entityPath);
+    handleNotesSubViewChange('editor');
+    handleTabChange('notes');
+  }, [handleSelectScene, handleTabChange, handleNotesSubViewChange]);
+
+  const handleWikiLinkClick = useCallback((target: string) => {
+    const resolution = resolveCrossTabLink(target, { stories, entities: allEntities, notePaths: allNotePaths });
+    if (resolution.status === 'single') {
+      applyCrossTabLinkMatch(resolution.matches[0]);
+    } else if (resolution.status === 'ambiguous') {
+      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
+    }
+  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, stories]);
+
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
       // Navigate to scene by docId
@@ -2822,8 +2847,6 @@ export default function DesktopShell() {
       <UpdateBanner />
       {showTitleBar && (
         <AppMenuBar
-          view={view}
-          onSetView={handleSetView}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenHistory={() => setHistoryOpen(true)}
           onSearchNavigate={handleSearchNavigate}
@@ -2933,39 +2956,6 @@ export default function DesktopShell() {
           </div>
         );
       })()}
-      {activeDockedTabId === null && view === 'brainstorm' && (
-        <BrainstormPage
-          onClose={() => setView('editor')}
-          enabled={agentFlags.brainstorm}
-          onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
-          onNavigateToEntity={(entityId) => {
-            window.api.entityRead(entityId).then((entity) => {
-              if (entity) {
-                setSelectedEntity(entity);
-                setView('editor');
-              }
-            }).catch(() => {});
-          }}
-          onNavigateToScene={async (sceneId) => {
-            for (const story of stories) {
-              for (const chapter of story.chapters) {
-                const scene = chapter.scenes.find((sc) => sc.id === sceneId);
-                if (scene) {
-                  handleSelectScene(scene, chapter, story);
-                  setView('editor');
-                  return true;
-                }
-              }
-            }
-            return false;
-          }}
-        />
-      )}
-      {activeDockedTabId === null && view === 'entries' && (
-        <div className="shell-entries">
-          <EntriesPanel storyTitle={selectedStory?.title ?? ''} />
-        </div>
-      )}
       {activeDockedTabId === null && view === 'kanban' && (
         <div className="shell-kanban">
           {selectedStory ? (
@@ -2982,11 +2972,6 @@ export default function DesktopShell() {
               <p>Select a story from the Editor view to open its Scene Board.</p>
             </div>
           )}
-        </div>
-      )}
-      {activeDockedTabId === null && view === 'graph' && (
-        <div className="shell-graph">
-          <VaultGraphView onOpenNote={handleOpenSceneByPath} />
         </div>
       )}
       {activeDockedTabId === null && view === 'timeline' && (
@@ -3015,8 +3000,6 @@ export default function DesktopShell() {
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: layout.leftWidth }}>
           <LeftRail
-            activeView={view}
-            onViewChange={(v) => setView(v)}
             leftSidebarLayout={leftSidebarLayout}
             onLeftSidebarLayoutChange={persistLeftSidebarLayout}
             renderPanelContent={renderSidebarPanel}
@@ -3193,7 +3176,7 @@ export default function DesktopShell() {
                 }}
               />
             ) : selectedScene ? (
-              <div className="shell-editor-scene-wrap story-page-canvas">
+              <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
                 <div className="scene-snapshot-toolbar">
                   <button
                     className="scene-snapshot-save"
@@ -3228,6 +3211,7 @@ export default function DesktopShell() {
                     initialCursorPos={pendingCursorPosRef.current ?? undefined}
                     onCursorPosChange={handleCursorPosChange}
                     onEntityClick={handleEntityMentionClick}
+                    onWikiLinkClick={handleWikiLinkClick}
                     emptySceneHint={
                       isGettingStartedVisible(gettingStartedProgress) &&
                       !seenEmptySceneHints.has(selectedScene.id)
@@ -3274,6 +3258,9 @@ export default function DesktopShell() {
               <NoteViewer
                 key={openedNotePath}
                 path={openedNotePath}
+                previewMode={notePreviewMode}
+                onPreviewModeChange={setNotePreviewMode}
+                onWikiLinkClick={handleWikiLinkClick}
                 onWordCountChange={setOpenedNoteWordCount}
                 onClose={() => setOpenedNotePath(null)}
               />
@@ -3436,13 +3423,24 @@ export default function DesktopShell() {
           notesSidebarCollapsed={tabShell.notesSidebarCollapsed}
           onNotesSidebarWidthChange={handleNotesSidebarWidthChange}
           onNotesSidebarCollapsedChange={handleNotesSidebarCollapsedChange}
+          activeNotePath={openedNotePath}
+          activeNotePreview={notePreviewMode}
+          onActiveNotePreviewChange={setNotePreviewMode}
+          onActiveNoteWordCountChange={setOpenedNoteWordCount}
+          onCloseActiveNote={() => setOpenedNotePath(null)}
+          onWikiLinkClick={handleWikiLinkClick}
+          brainstormCollapsed={notesBrainstormCollapsed}
+          onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
           stories={stories}
           selectedSceneId={selectedScene?.id ?? null}
           onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
           onCreateStory={createStory}
           onCreateChapter={createChapter}
           onCreateScene={createScene}
-          onOpenFile={handleOpenSceneByPath}
+          onOpenFile={(path) => {
+            setOpenedNotePath(path);
+            handleNotesSubViewChange('editor');
+          }}
           onExport={(scope: ExportScope) => setExportScope(scope)}
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}
@@ -3474,6 +3472,26 @@ export default function DesktopShell() {
           selectedEntityId={selectedEntity?.id ?? null}
         />
       )}
+      {ambiguousLink && (
+        <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">
+          <div className="cross-tab-link-modal__card">
+            <h2>Choose link target</h2>
+            <p>Multiple matches found for [[{ambiguousLink.rawTarget}]].</p>
+            <div className="cross-tab-link-modal__list">
+              {ambiguousLink.matches.map((match) => (
+                <button
+                  key={match.kind === 'scene' ? `scene-${match.sceneId}` : `entity-${match.entityId}`}
+                  type="button"
+                  onClick={() => applyCrossTabLinkMatch(match)}
+                >
+                  {match.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setAmbiguousLink(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
       <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
       <Toast message={upgradeToastState?.message ?? null} level={upgradeToastState?.level} className="app-toast--stacked" />
@@ -3484,7 +3502,7 @@ export default function DesktopShell() {
       )}
       <GlobalSearchPanel
         open={globalSearchOpen}
-        defaultScope={view === 'editor' ? 'story' : view === 'brainstorm' ? 'notes' : 'both'}
+        defaultScope={tabShell.activeTab === 'story' ? 'story' : 'notes'}
         onNavigate={(result) => {
           handleSearchNavigate(result);
           setGlobalSearchOpen(false);

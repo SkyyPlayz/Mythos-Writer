@@ -4,17 +4,6 @@ import type { DragSidebar } from './PanelDragContext';
 import './LeftRail.css';
 import './PanelDragContext.css';
 
-// SKY-1694/SKY-1760: AppView values mirrored here to avoid a circular import with DesktopShell
-type NavView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'timeline';
-
-const NAV_VIEWS: { id: NavView; label: string; ariaLabel: string }[] = [
-  { id: 'editor', label: '✍', ariaLabel: 'Writing' },
-  { id: 'brainstorm', label: '💡', ariaLabel: 'Brainstorm' },
-  { id: 'kanban', label: '📋', ariaLabel: 'Scene Crafter' },
-  { id: 'graph', label: '◎', ariaLabel: 'Graph' },
-  { id: 'timeline', label: '📅', ariaLabel: 'Timeline' },
-];
-
 /** All panels that can appear in the left sidebar — used for the add-panel picker. */
 const LEFT_PANELS: { id: LeftPanelId; label: string }[] = [
   { id: 'stories', label: 'Story Navigator' },
@@ -90,10 +79,6 @@ function DropZone({
 // ── Props ──────────────────────────────────────────────────────────────────────
 
 interface Props {
-  /** The currently active top-level view (for nav zone highlighting). */
-  activeView: NavView | string;
-  onViewChange: (view: NavView) => void;
-
   /** Panel zone state + collapse flag. */
   leftSidebarLayout: LeftSidebarLayout;
   onLeftSidebarLayoutChange: (layout: LeftSidebarLayout) => void;
@@ -120,8 +105,6 @@ interface Props {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function LeftRail({
-  activeView,
-  onViewChange,
   leftSidebarLayout,
   onLeftSidebarLayoutChange,
   renderPanelContent,
@@ -356,25 +339,6 @@ export default function LeftRail({
       >
         {effectivelyCollapsed ? '▶' : '◀'}
       </button>
-
-      {/* Fixed nav zone — AC-L-08: data-no-drop guards Wave 2b drag */}
-      <nav className="lr-nav-zone" aria-label="Main navigation" data-no-drop="true">
-        {NAV_VIEWS.map((nav) => (
-          <button
-            key={nav.id}
-            className={`lr-nav-icon${activeView === nav.id ? ' lr-nav-icon--active' : ''}`}
-            onClick={() => onViewChange(nav.id)}
-            aria-label={nav.ariaLabel}
-            aria-pressed={activeView === nav.id}
-            title={nav.ariaLabel}
-          >
-            {nav.label}
-            {!effectivelyCollapsed && (
-              <span className="lr-nav-label">{nav.ariaLabel}</span>
-            )}
-          </button>
-        ))}
-      </nav>
 
       {/* Customizable panel zone — hidden when sidebar is collapsed */}
       {!effectivelyCollapsed && (

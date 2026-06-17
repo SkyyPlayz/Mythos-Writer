@@ -44,9 +44,9 @@ describe('tabbedShellReducer — sub-view independence', () => {
   it('SET_STORY_SUBVIEW updates story sub-view without touching tab or notes', () => {
     const next = tabbedShellReducer(DEFAULT_TABBED_SHELL_STATE, {
       type: 'SET_STORY_SUBVIEW',
-      subView: 'brainstorm',
+      subView: 'structure',
     });
-    expect(next.storySubView).toBe('brainstorm');
+    expect(next.storySubView).toBe('structure');
     expect(next.activeTab).toBe('story');
     expect(next.notesSubView).toBe('editor');
   });
@@ -123,7 +123,7 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
   it('round-trips full state with no loss', () => {
     const original: TabbedShellState = {
       activeTab: 'notes',
-      storySubView: 'graph',
+      storySubView: 'timeline',
       notesSubView: 'entities',
       storySidebarWidth: 300,
       notesSidebarWidth: 260,
@@ -158,6 +158,14 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
     const legacy = { activeTab: 'notes', notesSubView: 'notes-browser' } as unknown as AppTabShellState;
     const state = deserializeTabbedShellState(legacy);
     expect(state.notesSubView).toBe('editor');
+  });
+
+  it('SKY-2103: migrates legacy story-only sub-views to editor', () => {
+    (['brainstorm', 'graph', 'entries'] as const).forEach((sv) => {
+      const legacy = { activeTab: 'story', storySubView: sv } as unknown as AppTabShellState;
+      const state = deserializeTabbedShellState(legacy);
+      expect(state.storySubView).toBe('editor');
+    });
   });
 
   it('SKY-2096: preserves valid notes sub-view on round-trip', () => {

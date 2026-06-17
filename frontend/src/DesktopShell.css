@@ -150,36 +150,6 @@
   margin-left: 16px;
 }
 
-/* View toggle (Editor / Brainstorm) */
-.app-menu-view-toggle {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
-  -webkit-app-region: no-drag;
-}
-
-.app-menu-view-btn {
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 2px 10px;
-  cursor: pointer;
-}
-
-.app-menu-view-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-}
-
-.app-menu-view-btn.active {
-  background: var(--border-default);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-
 .app-menu-tour-btn { background: none; border: none; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; padding: 2px 7px; cursor: pointer; border-radius: 50%; margin-left: 4px; -webkit-app-region: no-drag; line-height: 1.5; min-width: 20px; text-align: center; }
 .app-menu-tour-btn:hover { color: var(--text-header); background: var(--bg-elevated); }
 .app-menu-tour-btn:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
@@ -1036,4 +1006,65 @@
 .desktop-shell.focus-hide-tree-arrows .vs-section-chevron,
 .desktop-shell.focus-hide-tree-arrows .nav-chevron {
   visibility: hidden;
+}
+
+.shell-editor-scene-wrap--flash {
+  animation: scene-link-flash 1.2s ease-out;
+}
+
+@keyframes scene-link-flash {
+  0% { box-shadow: inset 0 0 0 2px var(--neon-cyan, #00e5ff), 0 0 24px rgba(0, 229, 255, 0.45); }
+  100% { box-shadow: none; }
+}
+
+.cross-tab-link-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.cross-tab-link-modal__card {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-fill-fallback, #111);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+.cross-tab-link-modal__card h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.cross-tab-link-modal__card p {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+}
+
+.cross-tab-link-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cross-tab-link-modal button {
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.cross-tab-link-modal button:hover,
+.cross-tab-link-modal button:focus-visible {
+  border-color: var(--neon-cyan, #00e5ff);
+  outline: none;
 }

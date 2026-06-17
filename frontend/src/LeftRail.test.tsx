@@ -3,12 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import { PanelDragProvider } from './PanelDragContext';
 
-function renderLeftRail(onViewChange = vi.fn()) {
+function renderLeftRail() {
   render(
     <PanelDragProvider onDrop={vi.fn()}>
       <LeftRail
-        activeView="editor"
-        onViewChange={onViewChange}
         leftSidebarLayout={DEFAULT_LEFT_SIDEBAR_LAYOUT}
         onLeftSidebarLayoutChange={vi.fn()}
         renderPanelContent={() => null}
@@ -16,23 +14,13 @@ function renderLeftRail(onViewChange = vi.fn()) {
       />
     </PanelDragProvider>,
   );
-  return onViewChange;
 }
 
-describe('LeftRail graph navigation', () => {
-  it('registers a Graph icon in the fixed left sidebar nav zone', () => {
+describe('LeftRail panels', () => {
+  it('does not render the legacy fixed main navigation zone', () => {
     renderLeftRail();
 
-    const nav = screen.getByRole('navigation', { name: /main navigation/i });
-    expect(within(nav).getByRole('button', { name: /graph/i })).toBeInTheDocument();
-  });
-
-  it('opens the graph main-area tab from the left nav icon', () => {
-    const onViewChange = renderLeftRail();
-
-    fireEvent.click(screen.getByRole('button', { name: /graph/i }));
-
-    expect(onViewChange).toHaveBeenCalledWith('graph');
+    expect(screen.queryByRole('navigation', { name: /main navigation/i })).not.toBeInTheDocument();
   });
 
   it('registers vault-graph as an addable left sidebar panel id', () => {

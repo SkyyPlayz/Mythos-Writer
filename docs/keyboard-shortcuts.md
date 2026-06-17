@@ -15,8 +15,32 @@
 | `Mod+Shift+F` | Switch to Focus mode | `DesktopShell.tsx` |
 | `Mod+Shift+E` | Switch to Edit mode | `DesktopShell.tsx` |
 | `Mod+Shift+P` | Toggle Project Switcher | `ProjectSwitcher.tsx` |
+| `Mod+1` | Switch to Story tab | `DesktopShell.tsx` |
+| `Mod+2` | Switch to Notes tab | `DesktopShell.tsx` |
+| `Mod+S` | Save active tab | `DesktopShell.tsx`, `NoteViewer.tsx` |
 | `?` | Open Keyboard Shortcuts help (this dialog) | `DesktopShell.tsx` |
 | `Escape` | Close modal / dismiss overlay | Various |
+
+---
+
+## Story Tab
+
+| Shortcut | Action | Source |
+|---|---|---|
+| `Mod+E` | Toggle Edit mode | `DesktopShell.tsx` |
+| `Mod+Shift+F` | Switch to Focus mode | `DesktopShell.tsx` |
+| `Mod+K` | Open Scene Crafter | `DesktopShell.tsx` |
+| `Mod+T` | Open Timeline | `DesktopShell.tsx` |
+
+---
+
+## Notes Tab
+
+| Shortcut | Action | Source |
+|---|---|---|
+| `Mod+E` | Toggle Edit / Preview | `DesktopShell.tsx`, `NoteViewer.tsx` |
+| `Mod+G` | Open Graph sub-view | `DesktopShell.tsx` |
+| `Mod+B` | Toggle Brainstorm panel | `DesktopShell.tsx` |
 
 ---
 
