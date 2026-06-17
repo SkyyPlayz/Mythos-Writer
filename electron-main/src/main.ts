@@ -3711,7 +3711,7 @@ const handlers: IpcHandlers = {
     payload: CreateDefaultMythosVaultPayload,
   ): Promise<CreateDefaultMythosVaultResponse> => {
     // Determine parent: caller-supplied (any pre-validated absolute path) or
-    // the default ~/Mythos/Vaults convention. Anything not absolute is
+    // the default userData/vaults location. Anything not absolute is
     // rejected so the renderer cannot escape via a relative-path trick.
     const parentPath = (payload?.parentPath && typeof payload.parentPath === 'string')
       ? payload.parentPath
