@@ -33,6 +33,7 @@ const NOTE_COUNT  = 5_000;   // 50% chars, 30% locs, 20% items
 const THRESHOLDS: Record<string, number> = {
   db_open_ms:              1_000,   // migrations on fresh DB
   vault_reindex_ms:       30_000,   // scan 1 000 .md files cold
+  vault_reindex_warm_ms:     500,   // warm start — stat-only skip for 1 000 unchanged files
   fts5_build_ms:          30_000,   // insert 6 000 docs into FTS5
   fts5_search_median_ms:     500,   // median of 3 representative queries
   archive_index_ms:       60_000,   // read 5 000 entity files
@@ -232,10 +233,28 @@ describe.sequential('perf-budget', () => {
     // Empty manifest forces reindexVault to treat every file as new.
     const freshManifest = defaultManifest(vaultRoot);
     const t0 = performance.now();
-    const result = reindexVault(vaultRoot, freshManifest);
+    const result = reindexVault(vaultRoot, freshManifest, null);
     timings.vault_reindex_ms = performance.now() - t0;
     expect(result.scanned).toBeGreaterThanOrEqual(SCENE_COUNT);
     expect.soft(timings.vault_reindex_ms).toBeLessThan(THRESHOLDS.vault_reindex_ms);
+
+    // Capture cold-start cache entries for the warm-start benchmark below.
+    (globalThis as Record<string, unknown>).__vaultColdCache = {
+      appVersion: '0.0.0-bench',
+      schemaVersion: 1,
+      entries: result.cacheEntries,
+    };
+  });
+
+  // 2b. Warm vault reindex — all files unchanged, should be stat-only
+  it('vault-reindex-warm-1000-scenes', { timeout: 60_000 }, () => {
+    // Re-use the populated manifest from beforeAll (reflects the cold pass).
+    const cache = (globalThis as Record<string, unknown>).__vaultColdCache as Parameters<typeof reindexVault>[2];
+    const t0 = performance.now();
+    const result = reindexVault(vaultRoot, manifest, cache);
+    timings.vault_reindex_warm_ms = performance.now() - t0;
+    expect(result.skipped).toBeGreaterThanOrEqual(SCENE_COUNT);
+    expect.soft(timings.vault_reindex_warm_ms).toBeLessThan(THRESHOLDS.vault_reindex_warm_ms ?? 500);
   });
 
   // 3. FTS5 full index build — 1 000 scenes + 5 000 entity docs

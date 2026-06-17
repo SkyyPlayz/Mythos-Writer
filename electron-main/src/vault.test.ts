@@ -18,6 +18,9 @@ import {
   writeEntityFile,
   readEntityFile,
   reindexVault,
+  loadVaultIndexCache,
+  saveVaultIndexCache,
+  vaultRootHash,
   importObsidianVault,
   defaultManifest,
   readManifest,
@@ -1538,5 +1541,125 @@ describe('readManifest / writeManifest', () => {
     expect(loaded.stories).toHaveLength(1);
     expect(loaded.stories[0].id).toBe('story-1');
     expect(loaded.schemaVersion).toBe(original.schemaVersion);
+  });
+});
+
+describe('vaultRootHash', () => {
+  it('returns a 16-char hex string', () => {
+    expect(vaultRootHash('/foo/bar')).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('produces different hashes for different paths', () => {
+    expect(vaultRootHash('/vault/a')).not.toBe(vaultRootHash('/vault/b'));
+  });
+});
+
+describe('loadVaultIndexCache / saveVaultIndexCache', () => {
+  let tmpDir: string;
+  let vaultRoot: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-cache-'));
+    vaultRoot = '/fake/vault';
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns null when cache file is absent', () => {
+    expect(loadVaultIndexCache(tmpDir, vaultRoot, '1.0.0', 1)).toBeNull();
+  });
+
+  it('round-trips save and load', () => {
+    const cache = {
+      appVersion: '1.0.0',
+      schemaVersion: 1,
+      entries: { 'scene.md': { mtimeMs: 1234567890, size: 512 } },
+    };
+    saveVaultIndexCache(tmpDir, vaultRoot, cache);
+    const loaded = loadVaultIndexCache(tmpDir, vaultRoot, '1.0.0', 1);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.entries['scene.md']).toEqual({ mtimeMs: 1234567890, size: 512 });
+  });
+
+  it('returns null when appVersion does not match', () => {
+    saveVaultIndexCache(tmpDir, vaultRoot, {
+      appVersion: '1.0.0',
+      schemaVersion: 1,
+      entries: {},
+    });
+    expect(loadVaultIndexCache(tmpDir, vaultRoot, '2.0.0', 1)).toBeNull();
+  });
+
+  it('returns null when schemaVersion does not match', () => {
+    saveVaultIndexCache(tmpDir, vaultRoot, {
+      appVersion: '1.0.0',
+      schemaVersion: 1,
+      entries: {},
+    });
+    expect(loadVaultIndexCache(tmpDir, vaultRoot, '1.0.0', 2)).toBeNull();
+  });
+});
+
+describe('reindexVault — incremental cache', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-inc-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('skips unchanged files (warm start) and returns skipped count', () => {
+    writeSceneFile(tmpDir, 'a.md', { id: 'a', title: 'A', prose: 'Hello.' });
+    writeSceneFile(tmpDir, 'b.md', { id: 'b', title: 'B', prose: 'World.' });
+    const manifest = defaultManifest(tmpDir);
+
+    // Cold pass — build cache
+    const { manifest: m1, cacheEntries } = reindexVault(tmpDir, manifest, null);
+    const cache = { appVersion: '1.0.0', schemaVersion: 1, entries: cacheEntries };
+
+    // Warm pass — nothing changed; both files should be skipped
+    const { skipped, scanned } = reindexVault(tmpDir, m1, cache);
+    expect(skipped).toBe(2);
+    expect(scanned).toBe(2);
+  });
+
+  it('re-reads a file when mtime changes', () => {
+    writeSceneFile(tmpDir, 'scene.md', { id: 'sc1', title: 'T', prose: 'Original.' });
+    const manifest = defaultManifest(tmpDir);
+    const { manifest: m1, cacheEntries } = reindexVault(tmpDir, manifest, null);
+
+    // Write new content with a future mtime
+    const raw = fs.readFileSync(path.join(tmpDir, 'scene.md'), 'utf-8');
+    const updated = raw.replace('Original.', 'Changed.');
+    const future = new Date(Date.now() + 5000);
+    fs.writeFileSync(path.join(tmpDir, 'scene.md'), updated, 'utf-8');
+    fs.utimesSync(path.join(tmpDir, 'scene.md'), future, future);
+
+    const staleCache = { appVersion: '1.0.0', schemaVersion: 1, entries: cacheEntries };
+    const { skipped, updated: upd } = reindexVault(tmpDir, m1, staleCache);
+    expect(skipped).toBe(0);
+    expect(upd).toBeGreaterThan(0);
+  });
+
+  it('re-reads a file when size changes but mtime is identical', () => {
+    const filePath = path.join(tmpDir, 'scene.md');
+    writeSceneFile(tmpDir, 'scene.md', { id: 'sc2', title: 'T', prose: 'A' });
+    const stat0 = fs.statSync(filePath);
+    const manifest = defaultManifest(tmpDir);
+    const { cacheEntries } = reindexVault(tmpDir, manifest, null);
+
+    // Overwrite with longer content, restore original mtime to isolate size check
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    fs.writeFileSync(filePath, raw + '\nextra line\n', 'utf-8');
+    fs.utimesSync(filePath, stat0.atime, stat0.mtime);
+
+    const staleCache = { appVersion: '1.0.0', schemaVersion: 1, entries: cacheEntries };
+    const { skipped } = reindexVault(tmpDir, manifest, staleCache);
+    expect(skipped).toBe(0);
   });
 });

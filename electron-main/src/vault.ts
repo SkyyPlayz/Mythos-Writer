@@ -591,6 +591,64 @@ export function defaultManifest(vaultRoot: string): Manifest {
   };
 }
 
+// ─── Vault index cache ────────────────────────────────────────────────────────
+// Persisted between runs to skip re-reading files whose mtime+size are unchanged.
+
+export interface VaultIndexCacheEntry {
+  mtimeMs: number;
+  size: number;
+}
+
+export interface VaultIndexCache {
+  /** app version string that wrote this cache — invalidated on upgrade */
+  appVersion: string;
+  /** manifest schemaVersion that wrote this cache — invalidated on schema bump */
+  schemaVersion: number;
+  /** relative path → { mtimeMs, size } for each scanned file */
+  entries: Record<string, VaultIndexCacheEntry>;
+}
+
+/** Stable hash of the vault root path used as the cache filename. */
+export function vaultRootHash(vaultRoot: string): string {
+  return crypto.createHash('sha1').update(vaultRoot).digest('hex').slice(0, 16);
+}
+
+/**
+ * Load the per-vault index cache from disk.
+ * Returns null when the file is absent, malformed, or invalidated by version/schema change.
+ */
+export function loadVaultIndexCache(
+  cacheDir: string,
+  vaultRoot: string,
+  appVersion: string,
+  schemaVersion: number,
+): VaultIndexCache | null {
+  const cachePath = path.join(cacheDir, `${vaultRootHash(vaultRoot)}.json`);
+  try {
+    const raw = fs.readFileSync(cachePath, 'utf8');
+    const parsed = JSON.parse(raw) as VaultIndexCache;
+    if (parsed.appVersion !== appVersion || parsed.schemaVersion !== schemaVersion) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the vault index cache to disk (best-effort; errors are swallowed). */
+export function saveVaultIndexCache(
+  cacheDir: string,
+  vaultRoot: string,
+  cache: VaultIndexCache,
+): void {
+  try {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const cachePath = path.join(cacheDir, `${vaultRootHash(vaultRoot)}.json`);
+    writeFileAtomic(cachePath, JSON.stringify(cache));
+  } catch {
+    // Non-fatal — warm start just degrades to cold next time
+  }
+}
+
 // ─── Reconcile: markdown → manifest ───
 // On app open, scan vault for .md files and update manifest entries
 // that have changed prose since last index.
@@ -599,10 +657,19 @@ export function defaultManifest(vaultRoot: string): Manifest {
 
 export function reindexVault(
   vaultRoot: string,
-  manifest: Manifest
-): { manifest: Manifest; scanned: number; updated: number } {
+  manifest: Manifest,
+  cache?: VaultIndexCache | null,
+): {
+  manifest: Manifest;
+  scanned: number;
+  updated: number;
+  skipped: number;
+  cacheEntries: Record<string, VaultIndexCacheEntry>;
+} {
   let scanned = 0;
   let updated = 0;
+  let skipped = 0;
+  const cacheEntries: Record<string, VaultIndexCacheEntry> = {};
 
   const allFiles = collectMarkdownFiles(vaultRoot);
 
@@ -622,6 +689,16 @@ export function reindexVault(
     const fullPath = path.join(vaultRoot, relPath);
     const stat = fs.statSync(fullPath);
     const modifiedAt = stat.mtime.toISOString();
+
+    // Warm-start: skip full read when mtime + size unchanged since last cache write
+    const cached = cache?.entries[relPath];
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      cacheEntries[relPath] = cached;
+      skipped++;
+      continue;
+    }
+
+    cacheEntries[relPath] = { mtimeMs: stat.mtimeMs, size: stat.size };
 
     try {
       const data = readSceneFile(vaultRoot, relPath);
@@ -696,7 +773,7 @@ export function reindexVault(
     }
   }
 
-  return { manifest, scanned, updated };
+  return { manifest, scanned, updated, skipped, cacheEntries };
 }
 
 function collectMarkdownFiles(dir: string, base = ''): string[] {
