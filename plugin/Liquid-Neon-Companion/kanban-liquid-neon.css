@@ -1,0 +1,319 @@
+/* =============================================================================
+ * Liquid Neon Companion — Kanban Plugin CSS Overrides  (LN-52)
+ *
+ * Surfaces covered:
+ *   1. Board canvas + lanes        (.kanban-plugin__board, __lane-wrapper, __lane)
+ *   2. Lane headers/separators     (__lane-header-wrapper, __lane-title*)
+ *   3. Cards + card markdown       (__item, __item-content-wrapper, __item-title*)
+ *   4. Drag/drop feedback          (.is-dropping, __placeholder, __drag-container)
+ *   5. Add/settings buttons/forms  (__new-item-button, __lane-action-add, form wrappers)
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow). Text color fallbacks are ≥ 4.5:1
+ * contrast against their effective dark glass backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+.theme-dark .kanban-plugin {
+  --ln-kanban-board-scrim: color-mix(in srgb, var(--bg-canvas, #05070f) 82%, transparent);
+  --ln-kanban-lane-glass: var(--glass-fill-fallback, rgba(18, 18, 24, 0.9));
+  --ln-kanban-card-glass: var(--glass-fill-fallback, rgba(20, 24, 34, 0.92));
+  --ln-kanban-border: var(--glass-border, rgba(255, 255, 255, 0.08));
+  --ln-kanban-rim: var(--glass-rim, rgba(255, 255, 255, 0.12));
+  --ln-kanban-neon: var(--neon-cyan, #00f0ff);
+  --ln-kanban-neon-intensity: var(--lg-neon, 0.5);
+  --ln-kanban-card-glass-active: color-mix(in srgb, var(--glass-fill-fallback, rgba(20, 24, 34, 0.92)) 78%, var(--ln-kanban-neon) calc(14% + (16% * var(--ln-kanban-neon-intensity))));
+  --ln-kanban-neon-soft: color-mix(in srgb, var(--ln-kanban-neon) calc(14% + (24% * var(--ln-kanban-neon-intensity))), transparent);
+  --ln-kanban-magenta-soft: color-mix(in srgb, var(--neon-magenta, #ff4fd8) 18%, transparent);
+  --ln-kanban-text: var(--text-body, #bfd6e8);              /* #bfd6e8 on #121820: 9.8:1 ✓ */
+  --ln-kanban-text-strong: var(--text-header, #eaf6ff);     /* #eaf6ff on #121820: 15.1:1 ✓ */
+  --ln-kanban-text-muted: var(--text-muted, #93a4b8);       /* #93a4b8 on #121820: 6.6:1 ✓ */
+  contain: content;
+}
+
+/* ── 1. Board canvas + lanes ─────────────────────────────────────────────── */
+
+.theme-dark .workspace-leaf-content[data-type='kanban'] .view-content {
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--ln-kanban-neon) 14%, transparent), transparent 34%),
+    radial-gradient(circle at 82% 12%, color-mix(in srgb, var(--neon-magenta, #ff4fd8) 12%, transparent), transparent 38%),
+    var(--ln-kanban-board-scrim);
+}
+
+.theme-dark .kanban-plugin__board > div {
+  padding: 18px;
+  gap: 14px;
+}
+
+.theme-dark .kanban-plugin__lane-wrapper {
+  margin-inline-end: 0;
+  filter: drop-shadow(0 18px 36px rgba(0, 0, 0, 0.28));
+}
+
+.theme-dark .kanban-plugin__lane,
+.theme-dark .kanban-plugin__lane-form-wrapper {
+  background: var(--ln-kanban-lane-glass);
+  border: 1px solid var(--ln-kanban-border);
+  border-radius: 18px;
+  box-shadow:
+    var(--elev-1, 0 12px 34px rgba(5, 8, 20, 0.42)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .kanban-plugin__lane,
+  .theme-dark .kanban-plugin__lane-form-wrapper,
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__item-content-wrapper,
+  .theme-dark .kanban-plugin__item-title-wrapper {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+  }
+}
+
+.theme-dark .kanban-plugin__lane-wrapper:nth-child(3n + 1) .kanban-plugin__lane {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--ln-kanban-neon) 8%, transparent), transparent 34%);
+}
+
+.theme-dark .kanban-plugin__lane-wrapper:nth-child(3n + 2) .kanban-plugin__lane {
+  background-image: linear-gradient(180deg, var(--ln-kanban-magenta-soft), transparent 34%);
+}
+
+.theme-dark .kanban-plugin__lane-wrapper:nth-child(3n) .kanban-plugin__lane {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--neon-violet, #8b5cf6) 12%, transparent), transparent 34%);
+}
+
+/* Subtle lane separators: low-opacity neon, no heavy grid lines. */
+.theme-dark .kanban-plugin__lane-wrapper + .kanban-plugin__lane-wrapper {
+  border-inline-start: 1px solid var(--ln-kanban-neon-soft);
+  padding-inline-start: 14px;
+}
+
+/* ── 2. Lane headers ─────────────────────────────────────────────────────── */
+
+.theme-dark .kanban-plugin__lane-header-wrapper {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ln-kanban-neon-soft);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ln-kanban-neon) 14%, transparent), transparent 72%);
+}
+
+.theme-dark .kanban-plugin__lane-title,
+.theme-dark .kanban-plugin__lane-title-text {
+  color: var(--ln-kanban-text-strong);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.theme-dark div.kanban-plugin__lane-title-count {
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--ln-kanban-rim);
+  border-radius: 999px;
+  color: var(--ln-kanban-neon);
+  min-width: 1.6em;
+  padding: 1px 8px;
+  text-align: center;
+}
+
+.theme-dark .kanban-plugin__lane-grip,
+.theme-dark .kanban-plugin__lane-collapse,
+.theme-dark .kanban-plugin__lane-settings-button > .kanban-plugin__icon {
+  color: var(--ln-kanban-text-muted);
+}
+
+.theme-dark .kanban-plugin__lane-grip:hover,
+.theme-dark .kanban-plugin__lane-collapse:hover,
+.theme-dark .kanban-plugin__lane-settings-button:hover > .kanban-plugin__icon {
+  color: var(--ln-kanban-neon);
+}
+
+/* ── 3. Cards + card text ────────────────────────────────────────────────── */
+
+.theme-dark .kanban-plugin__lane-items {
+  gap: 8px;
+  margin-inline: 6px;
+  padding: 6px;
+}
+
+.theme-dark .kanban-plugin__item {
+  background: var(--ln-kanban-card-glass);
+  border: 1px solid var(--ln-kanban-border);
+  border-radius: 14px;
+  box-shadow:
+    0 10px 24px rgba(2, 6, 16, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: var(--ln-kanban-text);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.theme-dark .kanban-plugin__item:hover,
+.theme-dark .kanban-plugin__item:focus-within {
+  border-color: var(--ln-kanban-neon);
+  box-shadow:
+    0 12px 30px rgba(2, 6, 16, 0.35),
+    0 0 0 1px var(--ln-kanban-neon-soft),
+    0 0 20px color-mix(in srgb, var(--ln-kanban-neon) 18%, transparent);
+  transform: translateY(-1px);
+}
+
+.theme-dark .kanban-plugin__item-title-wrapper,
+.theme-dark .kanban-plugin__item-content-wrapper,
+.theme-dark .kanban-plugin__item-metadata-wrapper:not(:empty) {
+  background: transparent;
+  color: var(--ln-kanban-text);
+}
+
+.theme-dark .kanban-plugin__item-title-wrapper {
+  padding: 8px 10px;
+}
+
+.theme-dark .kanban-plugin__item-title,
+.theme-dark .kanban-plugin__markdown-preview-wrapper,
+.theme-dark .kanban-plugin__markdown-preview-wrapper .markdown-preview-view,
+.theme-dark .kanban-plugin__meta-value {
+  color: var(--ln-kanban-text);
+}
+
+.theme-dark .kanban-plugin__item-title a,
+.theme-dark .kanban-plugin__markdown-preview-wrapper a {
+  color: var(--ln-kanban-neon);
+  text-decoration-color: var(--ln-kanban-neon-soft);
+}
+
+.theme-dark .kanban-plugin__item-tags .kanban-plugin__item-tag,
+.theme-dark .kanban-plugin__item-task-inline-metadata-item,
+.theme-dark .kanban-plugin__item-task-metadata-item {
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--ln-kanban-rim);
+  border-radius: 999px;
+  color: var(--ln-kanban-neon);
+}
+
+.theme-dark .kanban-plugin__item-postfix-button,
+.theme-dark .kanban-plugin__item-prefix-button,
+.theme-dark .kanban-plugin__item-edit-archive-button {
+  border-radius: 8px;
+}
+
+.theme-dark .kanban-plugin__item-postfix-button:hover,
+.theme-dark .kanban-plugin__item-prefix-button:hover,
+.theme-dark .kanban-plugin__item-edit-archive-button:hover {
+  background: color-mix(in srgb, var(--ln-kanban-neon) 12%, transparent);
+  color: var(--ln-kanban-neon);
+}
+
+/* ── 4. Drag/drop feedback ───────────────────────────────────────────────── */
+
+.theme-dark .kanban-plugin__lane-wrapper.is-dropping > .kanban-plugin__lane,
+.theme-dark .is-dropping > .kanban-plugin__lane {
+  background: var(--ln-kanban-card-glass-active);
+  border-color: var(--ln-kanban-neon);
+  outline: 2px solid var(--ln-kanban-neon);
+  outline-offset: 2px;
+  box-shadow:
+    var(--elev-1, 0 12px 34px rgba(5, 8, 20, 0.42)),
+    0 0 34px rgba(0, 240, 255, var(--lg-neon, 0.5));
+}
+
+.theme-dark .kanban-plugin__placeholder,
+.theme-dark .kanban-plugin__placeholder.kanban-plugin__lane-placeholder {
+  background: color-mix(in srgb, var(--ln-kanban-neon) 10%, transparent);
+  border: 1px dashed var(--ln-kanban-neon);
+  border-radius: 14px;
+  box-shadow: inset 0 0 18px color-mix(in srgb, var(--ln-kanban-neon) 12%, transparent);
+}
+
+.theme-dark .kanban-plugin__drag-container > .kanban-plugin__item-wrapper .kanban-plugin__item {
+  background: var(--ln-kanban-card-glass-active);
+  border-color: var(--ln-kanban-neon);
+  box-shadow:
+    var(--shadow-s, 0 4px 18px rgba(0, 0, 0, 0.35)),
+    0 0 0 2px var(--ln-kanban-neon),
+    0 0 32px rgba(0, 240, 255, var(--lg-neon, 0.5));
+  cursor: grabbing;
+}
+
+/* ── 5. Add/settings buttons and form controls ───────────────────────────── */
+
+.theme-dark button.kanban-plugin__new-item-button,
+.theme-dark button.kanban-plugin__lane-action-add,
+.theme-dark .kanban-plugin__lane button,
+.theme-dark .kanban-plugin__item button,
+.theme-dark button.kanban-plugin__confirm-action-button,
+.theme-dark button.kanban-plugin__cancel-action-button {
+  border-radius: 10px;
+  color: var(--ln-kanban-text-muted);
+}
+
+.theme-dark button.kanban-plugin__new-item-button,
+.theme-dark button.kanban-plugin__lane-action-add {
+  background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 64%, transparent);
+  border: 1px dashed var(--ln-kanban-rim);
+}
+
+.theme-dark button.kanban-plugin__new-item-button:hover,
+.theme-dark button.kanban-plugin__lane-action-add:hover,
+.theme-dark button.kanban-plugin__confirm-action-button:hover {
+  background: color-mix(in srgb, var(--ln-kanban-neon) 16%, transparent);
+  border-color: var(--ln-kanban-neon);
+  color: var(--ln-kanban-neon);
+}
+
+.theme-dark .kanban-plugin__lane-input,
+.theme-dark .kanban-plugin__item-input-wrapper,
+.theme-dark .kanban-plugin__item-form,
+.theme-dark .kanban-plugin__lane-input-wrapper {
+  background: var(--bg-inset, #15191f);
+  color: var(--ln-kanban-text);
+}
+
+.theme-dark .kanban-plugin__lane-input,
+.theme-dark .kanban-plugin__item-input-wrapper {
+  border: 1px solid var(--ln-kanban-rim);
+  border-radius: 12px;
+}
+
+.theme-dark .kanban-plugin__lane-input:focus,
+.theme-dark .kanban-plugin__item-input-wrapper:focus-within,
+.theme-dark .kanban-plugin button:focus-visible {
+  outline: 2px solid var(--ln-kanban-neon);
+  outline-offset: 2px;
+}
+
+.theme-dark .kanban-plugin__board-settings-modal .setting-item,
+.theme-dark .kanban-plugin__board-settings-modal .choices__inner,
+.theme-dark .kanban-plugin__board-settings-modal .choices__list--dropdown {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border-color: var(--ln-kanban-border);
+  color: var(--ln-kanban-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__item:hover,
+  .theme-dark .kanban-plugin__item:focus-within {
+    transition: none;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .theme-dark .kanban-plugin__lane,
+  .theme-dark .kanban-plugin__lane-form-wrapper,
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__item-content-wrapper,
+  .theme-dark .kanban-plugin__item-title-wrapper {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__lane {
+    border-color: color-mix(in srgb, var(--ln-kanban-neon) 45%, white 8%);
+  }
+}

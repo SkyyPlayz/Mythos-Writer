@@ -7,6 +7,9 @@
  * Module index:
  *   dataview-liquid-neon.css  — Dataview query tables, inline fields,
  *                               error pill, settings panels  (LN-51)
+ *   kanban-liquid-neon.css    — Kanban board/lane/card/drag/add controls
+ *                               glass + neon overrides       (LN-52)
  * ========================================================================== */
 
 @import url('./dataview-liquid-neon.css');
+@import url('./kanban-liquid-neon.css');
