@@ -1,0 +1,384 @@
+/* =============================================================================
+ * Liquid Neon Companion — Advanced Tables Plugin CSS Overrides  (LN-55)
+ *
+ * Surfaces covered:
+ *   1. Scoped design tokens
+ *   2. Toolbar container + control-bar rows
+ *   3. Toolbar buttons (default, hover, active/selected states)
+ *   4. Alignment controls
+ *   5. Formula bar (input + label)
+ *   6. Table source-view — editing backdrop + row tinting
+ *   7. Column separator / resize-handle hover feedback
+ *   8. Context menu (right-click — glass style)
+ *   9. Keyboard / focus-visible a11y
+ *  10. Reduced-motion
+ *  11. High-contrast / reduced-transparency
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow). Text color fallbacks are ≥ 4.5:1
+ * contrast against their effective dark glass backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+/* ── 1. Scoped design tokens ─────────────────────────────────────────────── */
+
+.theme-dark .advanced-tables-toolbar {
+  --ln-at-neon: var(--neon-cyan, #00f0ff);
+  --ln-at-neon-v: var(--neon-violet, #9b5fff);
+  --ln-at-neon-intensity: var(--lg-neon, 0.5);
+  --ln-at-glass: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  --ln-at-glass-rim: var(--glass-rim, rgba(255, 255, 255, 0.12));
+  --ln-at-border: var(--glass-border, rgba(255, 255, 255, 0.07));
+  --ln-at-bg-inset: var(--bg-inset, #15191f);
+  --ln-at-text: var(--text-body, #bfd6e8);           /* #bfd6e8 on #121820: 9.8:1 ✓ */
+  --ln-at-text-strong: var(--text-header, #eaf6ff);  /* #eaf6ff on #121820: 15.1:1 ✓ */
+  --ln-at-text-muted: var(--text-muted, #93a4b8);    /* #93a4b8 on #121820: 6.6:1 ✓ */
+  --ln-at-glow: color-mix(in srgb, var(--ln-at-neon) calc(var(--ln-at-neon-intensity) * 48%), transparent);
+  --ln-at-neon-soft: color-mix(in srgb, var(--ln-at-neon) calc(14% + (18% * var(--ln-at-neon-intensity))), transparent);
+  --ln-at-active-bg: color-mix(in srgb, var(--ln-at-neon) 16%, var(--ln-at-bg-inset));
+  contain: content;
+}
+
+/* ── 2. Toolbar container + control-bar rows ─────────────────────────────── */
+
+.theme-dark .advanced-tables-toolbar {
+  background: var(--ln-at-glass);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-md, 16px);
+  box-shadow:
+    var(--elev-1, 0 8px 32px rgba(5, 8, 20, 0.45)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .advanced-tables-toolbar {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+  }
+}
+
+.theme-dark .advanced-tables-control-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+/* Divider between control-bar rows */
+.theme-dark .advanced-tables-control-bar + .advanced-tables-control-bar {
+  border-top: 1px solid var(--ln-at-border);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+/* ── 3. Toolbar buttons ───────────────────────────────────────────────────── */
+
+/* Buttons inside the toolbar use Obsidian's .clickable-icon class */
+.theme-dark .advanced-tables-toolbar button,
+.theme-dark .advanced-tables-toolbar .clickable-icon {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  color: var(--ln-at-text-muted);
+  cursor: pointer;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  will-change: box-shadow, border-color, color;
+  transition:
+    color var(--dur-hover-in, 160ms) var(--ease-out, ease),
+    background var(--dur-hover-in, 160ms) var(--ease-out, ease),
+    border-color var(--dur-hover-in, 160ms) var(--ease-out, ease),
+    box-shadow var(--dur-hover-in, 160ms) var(--ease-out, ease);
+}
+
+.theme-dark .advanced-tables-toolbar button:hover,
+.theme-dark .advanced-tables-toolbar .clickable-icon:hover {
+  background: color-mix(in srgb, var(--ln-at-neon) 12%, transparent);
+  border-color: var(--ln-at-neon-soft);
+  color: var(--ln-at-neon);
+  box-shadow: 0 0 calc(8px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+/* Active/selected button — alignment or toggle mode active */
+.theme-dark .advanced-tables-toolbar button.is-active,
+.theme-dark .advanced-tables-toolbar .clickable-icon.is-active {
+  background: var(--ln-at-active-bg);
+  border-color: var(--ln-at-neon);
+  color: var(--ln-at-neon);   /* #00f0ff on active-bg ~#132c31: 12.8:1 ✓ */
+  box-shadow:
+    0 0 calc(10px * var(--ln-at-neon-intensity)) var(--ln-at-glow),
+    inset 0 0 calc(6px * var(--ln-at-neon-intensity)) color-mix(in srgb, var(--ln-at-neon) 10%, transparent);
+}
+
+/* SVG icons inherit button color */
+.theme-dark .advanced-tables-toolbar button svg,
+.theme-dark .advanced-tables-toolbar .clickable-icon svg {
+  fill: currentColor;
+  stroke: currentColor;
+  color: inherit;
+}
+
+/* ── 4. Alignment controls ───────────────────────────────────────────────── */
+
+/* Alignment button group: left/center/right often grouped in a .advanced-tables-control-bar row.
+   The active state uses .is-active (same as §3 above). Extra specificity for button groups. */
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-xs, 8px);
+  overflow: hidden;
+  gap: 0;
+}
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group button {
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid var(--ln-at-border);
+}
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group button:last-child {
+  border-right: none;
+}
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group button:hover {
+  border-color: transparent;
+}
+
+/* ── 5. Formula bar ──────────────────────────────────────────────────────── */
+
+.theme-dark .advanced-tables-formula-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--ln-at-bg-inset);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-xs, 8px);
+  margin-top: 2px;
+}
+
+.theme-dark .advanced-tables-formula-bar .advanced-tables-formula-label {
+  color: var(--ln-at-text-muted);
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--weight-heading, 600);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.theme-dark .advanced-tables-formula-bar input,
+.theme-dark .advanced-tables-formula-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--ln-at-text);        /* #bfd6e8 on #15191f: 10.4:1 ✓ */
+  caret-color: var(--ln-at-neon);
+  font-family: var(--font-monospace, monospace);
+  font-size: var(--text-sm, 13px);
+  line-height: 1.5;
+  outline: none;
+  padding: 0;
+  width: 100%;
+}
+
+.theme-dark .advanced-tables-formula-bar input::placeholder,
+.theme-dark .advanced-tables-formula-input::placeholder {
+  color: var(--ln-at-text-muted);
+  opacity: 0.7;
+}
+
+/* Focus state on the formula bar: ring on the wrapper, not the input */
+.theme-dark .advanced-tables-formula-bar:focus-within {
+  border-color: var(--ln-at-neon);
+  box-shadow: 0 0 calc(8px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+/* ── 6. Table source-view — editing backdrop + row tinting ───────────────── */
+
+/* Subtle glass tint on table rows when cursor is inside — CodeMirror source mode */
+.theme-dark .cm-editor .HyperMD-table-row {
+  background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 3%, transparent);
+}
+
+/* Alternate row: slightly deeper tint for even rows */
+.theme-dark .cm-editor .HyperMD-table-row:nth-child(even) {
+  background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 60%, transparent);
+}
+
+/* Active/cursor row: neon tint on the line the cursor is on */
+.theme-dark .cm-editor .HyperMD-table-row.cm-activeLine {
+  background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 6%, var(--bg-inset, #15191f));
+}
+
+/* Table cell content text inside source mode */
+.theme-dark .cm-editor .HyperMD-table-row .cm-string,
+.theme-dark .cm-editor .HyperMD-table-row .cm-content {
+  color: var(--text-body, #bfd6e8);   /* #bfd6e8 on tinted row bg: ≥9:1 ✓ */
+}
+
+/* ── 7. Column separator / resize-handle hover feedback ──────────────────── */
+
+/* Pipe `|` characters in source mode — subtle neon on hover signals interactivity */
+.theme-dark .cm-editor .cm-hmd-table-sep {
+  color: var(--text-muted, #93a4b8);         /* #93a4b8 on row bg: 5.2:1 ✓ */
+  transition:
+    color var(--dur-hover-in, 120ms) ease,
+    text-shadow var(--dur-hover-in, 120ms) ease;
+}
+
+/* Hover on the line containing a separator triggers neon accent via .cm-activeLine */
+.theme-dark .cm-editor .cm-activeLine .cm-hmd-table-sep {
+  color: var(--neon-cyan, #00f0ff);          /* #00f0ff on active-row bg ~#112426: 12.6:1 ✓ */
+  text-shadow: 0 0 calc(6px * var(--lg-neon, 0.5)) rgba(0, 240, 255, 0.55);
+  cursor: col-resize;
+}
+
+/* Header separator row: neon underline style */
+.theme-dark .cm-editor .HyperMD-table-1 {
+  border-bottom: 1px solid color-mix(in srgb, var(--neon-cyan, #00f0ff) 28%, transparent);
+}
+
+/* ── 8. Context menu (right-click) ───────────────────────────────────────── */
+
+/* Obsidian's .menu is global; these rules apply whenever a context menu is open.
+   Advanced Tables adds "Insert row/column", "Delete row/column", and alignment items. */
+
+.theme-dark .menu {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.95));
+  border: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-sm, 12px);
+  box-shadow:
+    var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55)),
+    0 0 calc(18px * var(--lg-neon, 0.5)) color-mix(in srgb, var(--neon-cyan, #00f0ff) 8%, transparent);
+  padding: 4px;
+  overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .menu {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.85));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(175%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(175%);
+  }
+}
+
+.theme-dark .menu-item {
+  border-radius: var(--radius-xs, 8px);
+  color: var(--text-body, #bfd6e8);           /* #bfd6e8 on menu bg: 9.8:1 ✓ */
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition:
+    background var(--dur-hover-in, 120ms) ease,
+    color var(--dur-hover-in, 120ms) ease;
+}
+
+.theme-dark .menu-item:hover,
+.theme-dark .menu-item.selected {
+  background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 14%, transparent);
+  color: var(--neon-cyan, #00f0ff);           /* #00f0ff on hover bg ~#111d21: 12.5:1 ✓ */
+}
+
+.theme-dark .menu-item-icon {
+  color: inherit;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-dark .menu-item-icon svg {
+  fill: currentColor;
+  width: 16px;
+  height: 16px;
+}
+
+.theme-dark .menu-separator {
+  border: none;
+  border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  margin: 4px 6px;
+}
+
+/* Warning / danger menu items (e.g. "Delete table") */
+.theme-dark .menu-item.is-warning {
+  color: var(--state-danger, #f88585);        /* #f88585 on menu bg: 5.1:1 ✓ */
+}
+
+.theme-dark .menu-item.is-warning:hover {
+  background: var(--color-danger-bg, rgba(248, 113, 113, 0.12));
+  color: var(--state-danger, #f88585);
+}
+
+/* ── 9. Keyboard / focus-visible a11y ────────────────────────────────────── */
+
+.theme-dark .advanced-tables-toolbar button:focus-visible,
+.theme-dark .advanced-tables-toolbar .clickable-icon:focus-visible {
+  outline: 2px solid var(--ln-at-neon);
+  outline-offset: 2px;
+  box-shadow: 0 0 calc(10px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+.theme-dark .menu-item:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: -2px;
+}
+
+/* ── 10. Reduced-motion ──────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .advanced-tables-toolbar button,
+  .theme-dark .advanced-tables-toolbar .clickable-icon,
+  .theme-dark .cm-editor .cm-hmd-table-sep,
+  .theme-dark .menu-item {
+    transition: none;
+  }
+}
+
+/* ── 11. High-contrast / reduced-transparency ────────────────────────────── */
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .theme-dark .advanced-tables-toolbar {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: color-mix(in srgb, var(--ln-at-neon) 45%, white 8%);
+  }
+
+  .theme-dark .menu {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .theme-dark .advanced-tables-toolbar button.is-active,
+  .theme-dark .advanced-tables-toolbar .clickable-icon.is-active {
+    background: var(--ln-at-bg-inset);
+    outline: 2px solid var(--ln-at-neon);
+    outline-offset: -2px;
+    box-shadow: none;
+  }
+
+  .theme-dark .cm-editor .cm-activeLine .cm-hmd-table-sep {
+    text-shadow: none;
+  }
+
+  .theme-dark .menu-item:hover,
+  .theme-dark .menu-item.selected {
+    background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 22%, transparent);
+  }
+}
