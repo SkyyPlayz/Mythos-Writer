@@ -561,7 +561,7 @@
 /* Page background tokens — overridden at runtime by applyPageBackgroundTokens().
    Defaults match PAGE_BACKGROUND_DEFAULTS (liquid-neon, opacity 65, blur 12, glow 60). */
 :root {
-  --page-bg-fill: rgba(255, 255, 255, 0.650);
+  --page-bg-fill: rgba(14, 14, 18, 0.650);
   --page-bg-blur: 12px;
   --page-bg-glow: 0.600;
   --page-bg-glow-color: rgba(0, 240, 255, 0.180); /* glow 60 * 0.3 = 0.18 */

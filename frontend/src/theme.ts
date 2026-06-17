@@ -324,7 +324,7 @@ function hexToRgba(hex: string, alpha: number): string {
 
 /** Base RGB components for each page background preset. */
 const PAGE_BG_PRESET_RGB: Record<PageBackgroundPreset, [number, number, number]> = {
-  'liquid-neon': [255, 255, 255],  // white-tinted glass
+  'liquid-neon': [14,  14,  18],   // dark glass panel (matches --glass-fill base)
   'minimal':     [14,  17,  22],   // near-invisible dark
   'paper':       [240, 228, 200],  // warm parchment
   'dark-slate':  [18,  22,  30],   // deep dark slate
