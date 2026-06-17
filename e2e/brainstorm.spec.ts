@@ -150,6 +150,15 @@ async function waitUntil(
   return false;
 }
 
+async function openBrainstormPanel(): Promise<void> {
+  const title = page.locator('.brainstorm-title');
+  if (!(await title.isVisible().catch(() => false))) {
+    await page.getByTestId('app-tab-notes').click();
+  }
+  await expect(title).toBeVisible({ timeout: 6_000 });
+  await expect(title).toContainText('Brainstorm');
+}
+
 // ─── Test lifecycle ───────────────────────────────────────────────────────────
 
 let userData: string;
@@ -227,13 +236,7 @@ test.afterAll(async () => {
 //   - After the stream ends the cursor disappears and the full response is visible.
 
 test('TC-BST-01: send message → streaming tokens appear in chat', async () => {
-  // Navigate to the Brainstorm view via the top menu bar.
-  const brainstormBtn = page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' });
-  await brainstormBtn.click();
-
-  // BrainstormPage header must render.
-  await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 6_000 });
-  await expect(page.locator('.brainstorm-title')).toContainText('Brainstorm');
+  await openBrainstormPanel();
 
   // Type a prompt into the composer.
   const textarea = page.locator('.brainstorm-input');
@@ -292,13 +295,8 @@ test('TC-BST-02: FACT tags in response populate "Detected Facts" panel', async (
 // This test does NOT require an LLM call — it only exercises the UI.
 
 test('TC-BST-04: preset chip is visible and changes label on selection', async () => {
-  // Ensure brainstorm view is active (prior tests may close it).
-  const title = page.locator('.brainstorm-title');
-  const isBrainstormVisible = await title.isVisible().catch(() => false);
-  if (!isBrainstormVisible) {
-    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
-    await expect(title).toBeVisible({ timeout: 6_000 });
-  }
+  // Ensure brainstorm panel is active (prior tests may close it).
+  await openBrainstormPanel();
 
   // The preset chip is rendered in the header via PresetSelector.
   const chip = page.locator('.preset-selector-chip');
@@ -337,13 +335,8 @@ test('TC-BST-04: preset chip is visible and changes label on selection', async (
 // Relies on TC-BST-01 having run in the same session so messages exist.
 
 test('TC-BST-05: refinement chip triggers new generation', async () => {
-  // Ensure brainstorm view is active (prior tests may close it).
-  const title = page.locator('.brainstorm-title');
-  const isBrainstormVisible = await title.isVisible().catch(() => false);
-  if (!isBrainstormVisible) {
-    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
-    await expect(title).toBeVisible({ timeout: 6_000 });
-  }
+  // Ensure brainstorm panel is active (prior tests may close it).
+  await openBrainstormPanel();
 
   // Refinement chips render below the last completed assistant message.
   const firstChip = page.locator('.refinement-chips .refinement-chip').first();
@@ -373,13 +366,8 @@ test('TC-BST-05: refinement chip triggers new generation', async () => {
 //   - The prose body contains the fact description.
 
 test('TC-BST-03: detected fact is auto-saved as an entity file with correct frontmatter', async () => {
-  // Ensure brainstorm view is active (prior tests may close it).
-  const title = page.locator('.brainstorm-title');
-  const isBrainstormVisible = await title.isVisible().catch(() => false);
-  if (!isBrainstormVisible) {
-    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
-    await expect(title).toBeVisible({ timeout: 6_000 });
-  }
+  // Ensure brainstorm panel is active (prior tests may close it).
+  await openBrainstormPanel();
 
   const factsPanel = page.locator('.brainstorm-facts-list');
 
@@ -467,9 +455,7 @@ test('TC-BST-04: sort/filter controls appear and filter operates in-memory', asy
       return list && !list.querySelector('[data-testid^="idea-card-"]');
     }, { timeout: 5_000 });
   } else {
-    // Navigate to brainstorm if not visible.
-    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
-    await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 6_000 });
+    await openBrainstormPanel();
   }
 
   // Send a message to trigger the multi-type mock stream.

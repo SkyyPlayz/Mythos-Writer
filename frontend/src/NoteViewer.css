@@ -43,6 +43,7 @@
   white-space: nowrap;
 }
 
+.note-viewer-mode,
 .note-viewer-close {
   background: none;
   border: none;
@@ -55,6 +56,8 @@
   transition: color 0.15s, background 0.15s;
 }
 
+.note-viewer-mode.active,
+.note-viewer-mode:hover,
 .note-viewer-close:hover {
   color: var(--text-primary, #e0e0e0);
   background: var(--bg-hover, #2a2a2a);
@@ -77,4 +80,33 @@
 
 .note-viewer-editor::placeholder {
   color: var(--text-secondary, #666);
+}
+
+.note-viewer-preview {
+  flex: 1;
+  padding: 20px 24px;
+  overflow: auto;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.note-viewer-preview p {
+  margin: 0 0 0.7em;
+}
+
+.note-wiki-link {
+  border: 0;
+  border-radius: 4px;
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--neon-cyan, #00e5ff);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 3px;
+}
+
+.note-wiki-link:hover,
+.note-wiki-link:focus-visible {
+  background: rgba(0, 229, 255, 0.2);
+  outline: 1px solid var(--neon-cyan, #00e5ff);
 }

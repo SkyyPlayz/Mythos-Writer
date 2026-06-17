@@ -105,6 +105,16 @@ test.describe('TabBar — tab switching and persistence', () => {
 
     const app = await launchApp(userData);
     try {
+      await app.evaluate(({ ipcMain }, { storyVaultDir, notesVaultDir }) => {
+        ipcMain.removeHandler('vault:validate-path');
+        ipcMain.handle('vault:validate-path', (_event, payload: { path?: string } | string) => {
+          const targetPath = typeof payload === 'string' ? payload : payload.path;
+          if (targetPath === storyVaultDir) return { exists: true, writable: true };
+          if (targetPath === notesVaultDir) return { exists: false, writable: false };
+          return { exists: true, writable: true };
+        });
+      }, { storyVaultDir, notesVaultDir });
+
       const page = await firstWindow(app);
       await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
 
@@ -203,6 +213,43 @@ test.describe('TabBar — tab switching and persistence', () => {
 
       // ArrowRight from story → notes, and notes becomes selected
       await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  test('tab changes are announced through a polite status region', async () => {
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+
+      const announcement = page.locator('[data-testid="app-tab-announcement"]');
+      await expect(announcement).toHaveAttribute('role', 'status');
+      await expect(announcement).toHaveAttribute('aria-live', 'polite');
+      await expect(announcement).toContainText('Story tab selected');
+
+      await page.locator('[data-testid="app-tab-notes"]').click();
+      await expect(announcement).toContainText('Notes tab selected');
+
+      await page.locator('[data-testid="app-tab-story"]').click();
+      await expect(announcement).toContainText('Story tab selected');
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  test('vault badge exposes a tab-specific accessible label', async () => {
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+
+      const badge = page.locator('[data-testid="app-vault-badge"]');
+      await expect(badge).toHaveAttribute('aria-label', /Story vault:/);
+
+      await page.locator('[data-testid="app-tab-notes"]').click();
+      await expect(badge).toHaveAttribute('aria-label', /Notes vault:/);
     } finally {
       await app.close().catch(() => undefined);
     }

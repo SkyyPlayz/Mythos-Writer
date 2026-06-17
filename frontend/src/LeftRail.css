@@ -50,68 +50,6 @@
   outline-offset: 2px;
 }
 
-/* Fixed nav zone */
-.lr-nav-zone {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 28px 6px 6px;
-  border-bottom: 1px solid #27272a;
-  flex-shrink: 0;
-}
-
-.lr-nav-icon {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  color: #71717a;
-  cursor: pointer;
-  font-size: 0.85rem;
-  text-align: left;
-  transition: color 0.15s, background 0.15s;
-  white-space: nowrap;
-  overflow: hidden;
-  position: relative;
-}
-
-.lr-nav-icon:hover {
-  color: #a1a1aa;
-  background: #27272a;
-}
-
-.lr-nav-icon--active {
-  color: #e4e4e7;
-  background: #27272a;
-  text-shadow: var(--neon-glow);
-}
-
-.lr-nav-icon--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 60%;
-  background: #7c3aed;
-  border-radius: 0 2px 2px 0;
-}
-
-.lr-nav-icon:focus-visible {
-  outline: 2px solid var(--focus-ring, #00f0ff);
-  outline-offset: -2px;
-}
-
-.lr-nav-label {
-  font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
 /* Panel zone */
 .lr-panel-zone {
   display: flex;

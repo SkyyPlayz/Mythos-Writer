@@ -5,7 +5,7 @@ import VaultNotFoundScreen from './components/VaultNotFoundScreen';
 import FloatingPanelApp from './FloatingPanelApp';
 import './App.css';
 
-type AppView =
+type AppRoute =
   | { kind: 'loading' }
   | { kind: 'wizard'; settings: AppSettings }
   | { kind: 'missing-vault'; settings: AppSettings; vaultPath?: string }
@@ -25,7 +25,7 @@ function isVaultPathValid(result: VaultValidationResult): boolean {
 
 function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [view, setView] = useState<AppView>({ kind: 'loading' });
+  const [view, setView] = useState<AppRoute>({ kind: 'loading' });
   const [wizardDismissed, setWizardDismissed] = useState(false);
 
   useEffect(() => {

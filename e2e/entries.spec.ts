@@ -1,12 +1,12 @@
 /**
  * entries.spec.ts — SKY-898 / GH-305
  *
- * E2E tests for the Entries quick-capture workflow:
- *   TC-ENT-01  Create  — type a body + submit → entry appears in list
- *   TC-ENT-02  Promote — click "Promote to Note" → markdown file written to notes vault
+ * E2E tests for the Entries quick-capture workflow in the Notes tab:
+ *   TC-ENT-01  Navigate — Notes tab exposes the Quick Entry controls
+ *   TC-ENT-01b Create   — type a raw entry + submit → markdown file written to notes vault
+ *   TC-ENT-02  Undo     — undo removes the saved entry note
  *
- * No AI streaming is involved; tests focus on the capture → promote path
- * which requires only the notesVault IPC handlers (no stream:start mock needed).
+ * The real AI stream is mocked so the capture path remains deterministic.
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/entries.spec.ts --reporter=list
@@ -26,12 +26,13 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
+const MOCK_EXPANDED_NOTE = 'Expanded entry note: a mysterious forest library that invites future scene development.';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function seedUserData(userData: string, vaultDir: string): void {
   const appSettings = {
-    apiKey: 'sk-ant-test-key-for-e2e',
+    apiKey: 'sk-ant...-e2e',
     onboardingComplete: true,
     agents: {
       writingAssistant: { enabled: false, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
@@ -61,6 +62,43 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
+async function installStreamMock(app: ElectronApplication, expandedText: string): Promise<void> {
+  await app.evaluate(
+    async ({ ipcMain }, text: string) => {
+      ipcMain.removeHandler('stream:start');
+      ipcMain.handle('stream:start', async (event) => {
+        const streamId = `entries-e2e-${Date.now()}`;
+
+        void (async () => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 20));
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('stream:token', { streamId, token: text });
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, 20));
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('stream:end', { streamId });
+          }
+        })();
+
+        return { streamId };
+      });
+    },
+    expandedText,
+  );
+}
+
+async function openQuickEntry(page: Page): Promise<void> {
+  await page.locator('[data-testid="app-tab-notes"]').click();
+  await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-testid="entries-qa-textarea"]')).toBeVisible({ timeout: 5_000 });
+}
+
+async function savedEntryFiles(): Promise<string[]> {
+  const entriesDir = path.join(vaultDir, 'Entries');
+  if (!fs.existsSync(entriesDir)) return [];
+  return fs.readdirSync(entriesDir).filter((f) => f.endsWith('.md'));
+}
+
 // ─── Test lifecycle ───────────────────────────────────────────────────────────
 
 let userData: string;
@@ -77,74 +115,60 @@ test.beforeAll(async () => {
   page = await firstWindow(app);
 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  await installStreamMock(app, MOCK_EXPANDED_NOTE);
+  await openQuickEntry(page);
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => undefined);
+  const proc = app?.process();
+  await Promise.race([
+    app?.close().catch(() => undefined) ?? Promise.resolve(),
+    new Promise<void>((r) => setTimeout(r, 5_000)),
+  ]);
+  try {
+    if (proc && !proc.killed) proc.kill('SIGKILL');
+  } catch { /* already exited */ }
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
 });
 
-// ─── TC-ENT-01: Create entry ──────────────────────────────────────────────────
+// ─── TC-ENT-01: Quick entry surface ───────────────────────────────────────────
 
-test('TC-ENT-01: navigates to Entries view and shows empty state', async () => {
-  await page.click('[data-testid="view-btn-entries"]');
-  await expect(page.locator('[data-testid="entries-panel"]')).toBeVisible({ timeout: 6_000 });
-  await expect(page.locator('[data-testid="entries-empty"]')).toBeVisible({ timeout: 4_000 });
+test('TC-ENT-01: Notes tab shows the Quick Entry surface in the Brainstorm panel', async () => {
+  await openQuickEntry(page);
+  await expect(page.locator('[data-testid="entries-qa-save-btn"]')).toBeVisible({ timeout: 4_000 });
 });
 
-test('TC-ENT-01b: creates an entry and it appears in the list', async () => {
+test('TC-ENT-01b: saves an AI-expanded quick entry to the notes vault', async () => {
   const body = 'A mysterious library appears in the forest';
 
-  await page.fill('[data-testid="entry-body-input"]', body);
-  await page.fill('[data-testid="entry-tags-input"]', 'setting, mystery');
-  await page.click('[data-testid="entry-add-btn"]');
+  await openQuickEntry(page);
+  await page.fill('[data-testid="entries-qa-textarea"]', body);
+  await page.click('[data-testid="entries-qa-save-btn"]');
 
-  // Entry should appear in list
-  const list = page.locator('[data-testid="entries-list"]');
-  await expect(list).toContainText(body, { timeout: 6_000 });
-
-  // Empty state should be gone
-  await expect(page.locator('[data-testid="entries-empty"]')).not.toBeVisible();
-
-  // Entry file should exist in vault
-  const entriesDir = path.join(vaultDir, 'Entries');
+  await expect(page.locator('[data-testid="entries-qa-toast"]')).toBeVisible({ timeout: 6_000 });
   await expect
-    .poll(() => fs.existsSync(entriesDir) && fs.readdirSync(entriesDir).length > 0, { timeout: 5_000 })
-    .toBe(true);
+    .poll(async () => (await savedEntryFiles()).length, { timeout: 5_000 })
+    .toBeGreaterThan(0);
 
-  const files = fs.readdirSync(entriesDir).filter((f) => f.endsWith('.md'));
-  expect(files.length).toBeGreaterThan(0);
-
+  const entriesDir = path.join(vaultDir, 'Entries');
+  const files = await savedEntryFiles();
   const content = fs.readFileSync(path.join(entriesDir, files[0]), 'utf8');
   expect(content).toContain('entry: true');
-  expect(content).toContain(body);
+  expect(content).toContain('source: quick-add');
+  expect(content).toContain(MOCK_EXPANDED_NOTE);
 });
 
-// ─── TC-ENT-02: Promote to Note ───────────────────────────────────────────────
+// ─── TC-ENT-02: Undo saved quick entry ─────────────────────────────────────────
 
-test('TC-ENT-02: promotes entry directly to a notes vault file', async () => {
-  // Click the "Promote to Note" button on the first entry
-  const promoteBtn = page.locator('[data-testid="entry-promote-btn"]').first();
-  await expect(promoteBtn).toBeVisible({ timeout: 4_000 });
-  await promoteBtn.click();
+test('TC-ENT-02: Undo removes the saved quick-entry note', async () => {
+  await openQuickEntry(page);
+  const undoBtn = page.locator('[data-testid="entries-qa-undo-btn"]');
+  await expect(undoBtn).toBeVisible({ timeout: 4_000 });
+  await undoBtn.click();
 
-  // Feedback message should appear
-  await expect(page.locator('[data-testid="entries-feedback"]')).toBeVisible({ timeout: 5_000 });
-
-  // A note file should be created in the notes directory
-  const notesDir = path.join(vaultDir, 'notes');
+  await expect(page.locator('[data-testid="entries-qa-toast"]')).not.toBeVisible({ timeout: 4_000 });
   await expect
-    .poll(() => fs.existsSync(notesDir) && fs.readdirSync(notesDir).filter((f) => f.endsWith('.md')).length > 0, { timeout: 6_000 })
-    .toBe(true);
-
-  const noteFiles = fs.readdirSync(notesDir).filter((f) => f.endsWith('.md'));
-  expect(noteFiles.length).toBeGreaterThan(0);
-
-  const noteContent = fs.readFileSync(path.join(notesDir, noteFiles[0]), 'utf8');
-  expect(noteContent).toContain('source: promoted-entry');
-  expect(noteContent).toContain('sourceEntry: Entries/');
-
-  // Entry in the list should show "Promoted" badge
-  await expect(page.locator('.entries-promoted-badge').first()).toBeVisible({ timeout: 5_000 });
+    .poll(async () => (await savedEntryFiles()).length, { timeout: 5_000 })
+    .toBe(0);
 });

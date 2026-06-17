@@ -136,15 +136,18 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
+async function openGraphView(): Promise<void> {
+  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('[data-testid="notes-subview-graph"]').click();
+}
+
 // ─── TC-G-01: Graph view mounts ───────────────────────────────────────────────
 //
 // Navigate to the Graph view and confirm the VaultGraphView component renders
 // (either the graph canvas or an error/empty state — both count as "mounted").
 
-test('TC-G-01: graph view mounts when Graph button is clicked', async () => {
-  const graphBtn = page.locator('.app-menu-view-btn', { hasText: 'Graph' });
-  await expect(graphBtn).toBeVisible({ timeout: 6_000 });
-  await graphBtn.click();
+test('TC-G-01: graph view mounts when Graph sub-view is selected', async () => {
+  await openGraphView();
 
   // Wait for the graph container (or the empty/error state)
   const graphRoot = page.locator('[data-testid="vault-graph-view"], .vgv-state');
@@ -160,8 +163,7 @@ test('TC-G-01: graph view mounts when Graph button is clicked', async () => {
 
 test('TC-G-02: node click navigates away from graph OR graph shows error/empty state', async () => {
   // Ensure we're on the graph view
-  const graphBtn = page.locator('.app-menu-view-btn', { hasText: 'Graph' });
-  if (await graphBtn.isVisible()) await graphBtn.click();
+  await openGraphView();
 
   // Wait briefly for graph to settle
   await page.waitForTimeout(500);

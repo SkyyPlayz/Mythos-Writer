@@ -499,8 +499,8 @@ interface AppSettings {
 /** SKY-2094 (Phase 2 #1): The two top-level app sections. */
 type AppTab = 'story' | 'notes';
 
-/** SKY-2094: Sub-view within the Story tab. Mirrors DesktopShell AppView. */
-type StorySubView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline' | 'entries';
+/** SKY-2094: Sub-view within the Story tab. */
+type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline';
 
 /** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. */
 type NotesSubView = 'editor' | 'graph' | 'entities';

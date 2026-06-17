@@ -27,10 +27,30 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
         { keys: [`${mod}+Shift+F`], action: 'Switch to Focus mode' },
         { keys: [`${mod}+Shift+E`], action: 'Switch to Edit mode' },
         { keys: [`${mod}+Shift+P`], action: 'Toggle Project Switcher' },
+        { keys: [`${mod}+1`], action: 'Switch to Story tab' },
+        { keys: [`${mod}+2`], action: 'Switch to Notes tab' },
+        { keys: [`${mod}+S`], action: 'Save active tab' },
         { keys: [`${mod}+,`], action: 'Open Settings' },
         { keys: ['?', `${mod}+/`], action: 'Open Keyboard Shortcuts help' },
         { keys: ['Escape'], action: 'Close modal / dismiss overlay' },
         { keys: [`${mod}+Shift+M`], action: 'Toggle voice input (hold for push-to-talk)' },
+      ],
+    },
+    {
+      label: 'Story tab',
+      entries: [
+        { keys: [`${mod}+E`], action: 'Toggle Edit mode' },
+        { keys: [`${mod}+Shift+F`], action: 'Switch to Focus mode' },
+        { keys: [`${mod}+K`], action: 'Open Scene Crafter' },
+        { keys: [`${mod}+T`], action: 'Open Timeline' },
+      ],
+    },
+    {
+      label: 'Notes tab',
+      entries: [
+        { keys: [`${mod}+E`], action: 'Toggle Edit / Preview' },
+        { keys: [`${mod}+G`], action: 'Open Graph sub-view' },
+        { keys: [`${mod}+B`], action: 'Toggle Brainstorm panel' },
       ],
     },
     {

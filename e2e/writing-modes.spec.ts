@@ -146,8 +146,8 @@ test('TC-WM-01: default mode is Normal — N button active, sidebars visible', a
   const nBtn = selector.locator('.writing-mode-btn', { hasText: 'N' });
   await expect(nBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
-  // Navigate to editor view so sidebars are rendered.
-  await page.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
+  // The two-tab shell opens on the Story tab by default, so sidebars are rendered.
+  await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'true', { timeout: 4_000 });
 
   // Both sidebars must be present in the DOM.
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
