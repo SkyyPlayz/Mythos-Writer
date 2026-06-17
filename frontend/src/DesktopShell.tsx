@@ -2840,6 +2840,7 @@ export default function DesktopShell() {
     ? vaultBinding.notesPath
     : vaultBinding.storyPath || activeVaultRoot;
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
+  const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : 'Story'} vault: ${activeVaultBadge}`;
 
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
@@ -2879,7 +2880,12 @@ export default function DesktopShell() {
       )}
       {/* SKY-2098: per-tab vault badge */}
       {showTitleBar && activeVaultBadge && (
-        <div className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`} aria-live="polite">
+        <div
+          className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`}
+          aria-label={activeVaultBadgeLabel}
+          aria-live="polite"
+          data-testid="app-vault-badge"
+        >
           <span className="tab-bar-vault-badge__name" title={activeVaultBadgeTitle}>
             {activeVaultBadge}
           </span>

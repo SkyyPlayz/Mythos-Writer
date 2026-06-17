@@ -17,6 +17,7 @@ export default function TabBar({ activeTab, onTabChange }: TabBarProps) {
     story: null,
     notes: null,
   });
+  const activeLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? 'Story';
 
   const setRef = useCallback(
     (id: AppTab) => (el: HTMLButtonElement | null) => {
@@ -52,6 +53,15 @@ export default function TabBar({ activeTab, onTabChange }: TabBarProps) {
 
   return (
     <div className="tab-bar" data-testid="app-tab-bar">
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="app-tab-announcement"
+      >
+        {activeLabel} tab selected
+      </div>
       <div role="tablist" aria-label="App sections" className="tab-bar__list">
         {TABS.map((tab) => (
           <button
