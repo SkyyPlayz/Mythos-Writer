@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { type TruncatePathOptions } from './utils/truncatePath';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import './OnboardingWizard.css';
@@ -9,7 +9,28 @@ import './OnboardingWizard.css';
 type WizardStep = 'step1' | 'step1b' | 'step1c' | 'step2' | 'step3';
 // SKY-906: 'default-mythos-vault' is the one-click first-run path that
 // bypasses the title/save-path form entirely.
-type StartMode = 'blank' | 'sample' | 'template' | 'default-mythos-vault';
+// SKY-2007: 'open-existing' opens a pre-existing Mythos vault parent dir.
+type StartMode = 'blank' | 'sample' | 'template' | 'default-mythos-vault' | 'open-existing';
+
+// SKY-2007: 7 inline validation states for the save-location path field.
+type PathValidationState =
+  | 'idle'             // no input yet / cleared
+  | 'validating'       // debounce pending or IPC in-flight
+  | 'valid'            // writable, no conflicts
+  | 'new-path'         // path doesn't exist yet but parent is writable
+  | 'not-writable'     // path exists but not writable
+  | 'conflict-mythos'  // Story Vault/manifest.json found at this parent
+  | 'conflict-obsidian'// .obsidian dir found
+  | 'path-too-long'    // > 200 chars on Windows
+  | 'error';           // IPC threw or other failure
+
+type SystemPaths = {
+  homeDir: string;
+  documentsDir: string;
+  desktopDir: string;
+  oneDriveDir: string | null;
+  iCloudDir: string | null;
+};
 
 // SKY-2008: genre IDs for the step1c sample picker
 type SampleGenreId = 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
@@ -73,7 +94,7 @@ type Api = {
   chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
   onboardingComplete: (payload?: {
-    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
     storyTitle?: string;
     authorName?: string;
     vaultParentPath?: string;
@@ -87,6 +108,8 @@ type Api = {
   templateDelete: (id: string) => Promise<{ ok: true } | { error: string }>;
   templateDuplicate: (id: string) => Promise<{ ok: true; id: string } | { error: string }>;
   vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
+  /** SKY-2005: returns OS-level directory paths for suggested vault locations. */
+  vaultGetSystemPaths?: () => Promise<SystemPaths>;
 };
 
 function api(): Api {
@@ -106,6 +129,107 @@ const ERR_INVALID_CHARS = 'Story titles can\'t contain these characters: / \\ : 
 const ERR_TITLE_EXISTS = (title: string) =>
   `A story called "${title}" already exists in that folder. Choose a different title or save location.`;
 const ERR_UNWRITABLE_PATH = 'Can\'t save to that folder. Please choose a different location.';
+
+// ─── Vault picker helpers (SKY-2007) ─────────────────────────────────────────
+
+/** Substitute the home directory prefix with ~ for cleaner display. */
+function tildeify(absPath: string, homeDir?: string): string {
+  if (!homeDir || !absPath.startsWith(homeDir)) return absPath;
+  return '~' + absPath.slice(homeDir.length);
+}
+
+/** Build up to 3 suggested save-location paths from OS paths, deduping against recents. */
+function buildSuggestedLocations(
+  sys: SystemPaths,
+  sep: '/' | '\\',
+  recents: readonly string[],
+): string[] {
+  const candidates: string[] = [];
+  if (sep === '\\') {
+    // Windows
+    candidates.push(`${sys.documentsDir}${sep}MythosWriter`);
+    candidates.push(`${sys.desktopDir}${sep}MythosWriter`);
+    if (sys.oneDriveDir) candidates.push(`${sys.oneDriveDir}${sep}MythosWriter`);
+  } else if (sys.iCloudDir) {
+    // macOS (iCloud present)
+    candidates.push(`${sys.documentsDir}${sep}MythosWriter`);
+    candidates.push(`${sys.desktopDir}${sep}MythosWriter`);
+    candidates.push(`${sys.iCloudDir}${sep}MythosWriter`);
+  } else {
+    // Linux
+    candidates.push(`${sys.documentsDir}${sep}MythosWriter`);
+    candidates.push(`${sys.homeDir}${sep}MythosWriter`);
+  }
+  const recentSet = new Set(recents.map((r) => r.trim()));
+  return candidates.filter((c) => !recentSet.has(c.trim())).slice(0, 3);
+}
+
+// ─── ConflictDialog (SKY-2007 §3.3.4) ────────────────────────────────────────
+
+interface ConflictDialogProps {
+  savePath: string;
+  onOpenExisting: () => void;
+  onNewFolder: () => void;
+  onCreateAlongside: (newPath: string) => void;
+  onDismiss: () => void;
+}
+
+function ConflictDialog({ savePath, onOpenExisting, onNewFolder, onCreateAlongside, onDismiss }: ConflictDialogProps) {
+  // Strip trailing number suffix so re-clicking "create alongside" increments cleanly
+  const base = savePath.replace(/\s+\d+$/, '');
+  const alongsidePath = `${base} 2`;
+
+  return (
+    <div
+      className="gs-confirm-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gs-conflict-title"
+      data-testid="gs-conflict-dialog"
+    >
+      <div className="gs-confirm">
+        <h3 className="gs-confirm__title" id="gs-conflict-title">Vault already exists here</h3>
+        <p className="gs-confirm__body">
+          A Mythos vault already exists at this location. Choose how to proceed:
+        </p>
+        <div className="gs-conflict-actions">
+          <button
+            className="btn-secondary gs-conflict-actions__btn"
+            type="button"
+            onClick={onOpenExisting}
+            data-testid="gs-conflict-open-existing"
+          >
+            Open existing vault
+          </button>
+          <button
+            className="btn-secondary gs-conflict-actions__btn"
+            type="button"
+            onClick={onNewFolder}
+            data-testid="gs-conflict-new-folder"
+          >
+            Choose a different folder
+          </button>
+          <button
+            className="btn-secondary gs-conflict-actions__btn"
+            type="button"
+            onClick={() => onCreateAlongside(alongsidePath)}
+            data-testid="gs-conflict-create-alongside"
+          >
+            Create alongside <span className="gs-conflict-alongside-path">({alongsidePath.split(/[/\\]/).pop()})</span>
+          </button>
+        </div>
+        <button
+          className="btn-ghost"
+          type="button"
+          onClick={onDismiss}
+          data-testid="gs-conflict-dismiss"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -322,9 +446,13 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   useEffect(() => {
     api().vaultGetPaths?.().then((paths) => {
-      setPathOptions({ homeDir: paths.homeDir, sep: paths.pathSeparator });
+      const opts = { homeDir: paths.homeDir, sep: paths.pathSeparator };
+      // Update the ref immediately so async handlers see the latest homeDir
+      // before the next render flushes (pathOptionsRef.current = pathOptions runs on render).
+      pathOptionsRef.current = opts;
+      setPathOptions(opts);
     }).catch(() => { /* non-fatal */ });
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Error state
   const [titleError, setTitleError] = useState('');
@@ -334,6 +462,35 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // UI state
   const [scaffolding, setScaffolding] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // SKY-2007: vault picker polish state
+  const [pathValidationState, setPathValidationState] = useState<PathValidationState>('idle');
+  const [pathValidationMsg, setPathValidationMsg] = useState('');
+  const [systemPaths, setSystemPaths] = useState<SystemPaths | null>(null);
+  const [showRecents, setShowRecents] = useState(false);
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const pathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pathInputRef = useRef<HTMLInputElement>(null);
+
+  // SKY-2007: load system path suggestions when the save-location step opens
+  useEffect(() => {
+    if (step !== 'step2') return;
+    api().vaultGetSystemPaths?.().then((sys) => {
+      setSystemPaths(sys);
+    }).catch(() => { /* non-fatal — suggestions stay hidden */ });
+  }, [step]);
+
+  // SKY-2007: derive up to 3 suggested paths, deduped against recents
+  const suggestedLocations = useMemo<string[]>(() => {
+    if (!systemPaths) return [];
+    const sep = (pathOptions.sep as '/' | '\\') ?? '/';
+    const recents = initialSettings.recentVaultParentPaths ?? [];
+    return buildSuggestedLocations(systemPaths, sep, recents);
+  }, [systemPaths, pathOptions.sep, initialSettings.recentVaultParentPaths]);
+
+  // Always-fresh ref so async handlers see the latest pathOptions without closure staleness
+  const pathOptionsRef = useRef(pathOptions);
+  pathOptionsRef.current = pathOptions;
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const templateCardTriggerRef = useRef<HTMLElement | null>(null);
@@ -552,16 +709,148 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   // ─── Step 2 actions ─────────────────────────────────────────────────────────
 
+  // SKY-2007: validate a fully-resolved path via IPC and set pathValidationState
+  const validatePathNow = useCallback(async (rawPath: string) => {
+    const opts = pathOptionsRef.current;
+    const expanded = rawPath.startsWith('~/')
+      ? (opts.homeDir ?? '') + rawPath.slice(1)
+      : rawPath.startsWith('~\\')
+      ? (opts.homeDir ?? '') + rawPath.slice(1)
+      : rawPath;
+
+    setPathValidationState('validating');
+    setPathValidationMsg('');
+    try {
+      // Parallel-check for mythos conflict (.../Story Vault/manifest.json) and obsidian conflict (.obsidian)
+      const sep = opts.sep ?? '/';
+      const [base, mythosCheck, obsidianCheck] = await Promise.all([
+        api().validatePath(expanded),
+        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
+        api().validatePath(`${expanded}${sep}.obsidian`),
+      ]);
+
+      if (!base.writable) {
+        setPathValidationState('not-writable');
+        setPathValidationMsg('This location is not writable. Choose a different folder.');
+        return;
+      }
+      if (mythosCheck.exists) {
+        setPathValidationState('conflict-mythos');
+        setPathValidationMsg('A Mythos vault already exists here.');
+        return;
+      }
+      if (obsidianCheck.exists) {
+        setPathValidationState('conflict-obsidian');
+        setPathValidationMsg('This folder is an Obsidian vault. Switch to Import to bring it in.');
+        return;
+      }
+      if (base.exists && !base.isEmpty) {
+        setPathValidationState('new-path');
+        setPathValidationMsg('');
+      } else if (!base.exists) {
+        setPathValidationState('new-path');
+        setPathValidationMsg('');
+      } else {
+        setPathValidationState('valid');
+        setPathValidationMsg('');
+      }
+    } catch {
+      setPathValidationState('error');
+      setPathValidationMsg('Could not validate this path. Check the folder and try again.');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SKY-2007: debounced path change handler — synchronous path-too-long check, then debounce IPC
+  const handleSavePathChange = useCallback((value: string) => {
+    setSavePath(value);
+    setSavePathError('');
+    if (pathDebounceRef.current) clearTimeout(pathDebounceRef.current);
+
+    // Windows path-too-long: synchronous, no IPC needed
+    const isWindows = pathOptionsRef.current.sep === '\\';
+    if (isWindows && value.length > 200) {
+      setPathValidationState('path-too-long');
+      setPathValidationMsg('Path must be 200 characters or fewer on Windows.');
+      return;
+    }
+
+    if (!value.trim()) {
+      setPathValidationState('idle');
+      setPathValidationMsg('');
+      return;
+    }
+
+    setPathValidationState('validating');
+    pathDebounceRef.current = setTimeout(() => {
+      validatePathNow(value);
+    }, 500);
+  }, [validatePathNow]); // pathOptionsRef.current.sep is always fresh via the ref
+
+  // SKY-2007: fill input from a suggestion or recent, then immediately validate
+  function handleUsePath(path: string) {
+    const display = tildeify(path, pathOptionsRef.current.homeDir);
+    setSavePath(display);
+    setSavePathError('');
+    setShowRecents(false);
+    validatePathNow(path);
+  }
+
   async function handleChangeSaveLocation() {
     try {
       const res = await api().chooseVaultFolder('Choose save location');
       if (!res.cancelled && res.path) {
-        setSavePath(res.path);
+        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
+        setSavePath(display);
         setSavePathError('');
+        validatePathNow(res.path);
       }
     } catch {
       // folder picker cancelled or failed — keep current path
     }
+  }
+
+  // SKY-2007: conflict dialog actions
+  function handleConflictOpenExisting() {
+    const expanded = savePath.startsWith('~')
+      ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
+      : savePath;
+    setShowConflictDialog(false);
+    setScaffoldError('');
+    setStep('step3');
+    setScaffolding(true);
+    api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: expanded })
+      .then((res) => {
+        if (!res.ok || res.error) {
+          setScaffoldError(res.error ?? 'Could not open this vault.');
+          setScaffolding(false);
+          return;
+        }
+        const updated: AppSettings = {
+          ...initialSettings,
+          onboardingComplete: true,
+          ...(res.firstSceneId && res.firstScenePath
+            ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+            : {}),
+        };
+        onComplete(updated);
+      })
+      .catch((e) => {
+        setScaffoldError(e instanceof Error ? e.message : 'Could not open this vault.');
+        setScaffolding(false);
+      });
+  }
+
+  function handleConflictNewFolder() {
+    setShowConflictDialog(false);
+    setTimeout(() => pathInputRef.current?.focus(), 50);
+  }
+
+  function handleConflictCreateAlongside(newPath: string) {
+    setShowConflictDialog(false);
+    const display = tildeify(newPath, pathOptionsRef.current.homeDir);
+    setSavePath(display);
+    setSavePathError('');
+    validatePathNow(newPath);
   }
 
   async function handleCreateStory() {
@@ -646,10 +935,16 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       // retry must not echo those fields — re-issuing with empty strings
       // would be rejected by the main-side validator.
       // SKY-2008: sample mode also skips the form — pass sampleGenre instead.
+      // SKY-2007: open-existing uses the saved path directly.
+      const expanded = savePath.startsWith('~')
+        ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
+        : savePath;
       const payload = startMode === 'default-mythos-vault'
         ? { startMode: 'default-mythos-vault' as const }
         : startMode === 'sample'
         ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
+        : startMode === 'open-existing'
+        ? { startMode: 'open-existing' as const, vaultParentPath: expanded }
         : {
             startMode: startMode!,
             storyTitle: storyTitle.trim(),
@@ -691,6 +986,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   function handleOverlayKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
       if (step === 'step3') return; // close disabled during scaffolding
+      if (showConflictDialog) {
+        setShowConflictDialog(false);
+        return;
+      }
       if (showCancelConfirm) {
         setShowCancelConfirm(false);
         return;
@@ -1260,41 +1559,155 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               />
             </div>
 
-            {/* Save location */}
+            {/* Save location — SKY-2007 vault picker polish */}
             <div className="gs-form__field">
-              <label className="gs-form__label">Save location</label>
-              <div className="gs-save-location">
-                <span
-                  className={`gs-save-location__path${savePathError ? ' gs-save-location__path--error' : ''}`}
-                  title={savePath}
+              <label className="gs-form__label" htmlFor="gs-save-path-input">Save location</label>
+              <div className="gs-path-row">
+                <input
+                  id="gs-save-path-input"
+                  ref={pathInputRef}
+                  className={`gs-form__input gs-path-input${
+                    pathValidationState === 'not-writable' || pathValidationState === 'path-too-long' || pathValidationState === 'error' || savePathError
+                      ? ' gs-form__input--error'
+                      : pathValidationState === 'valid' ? ' gs-form__input--valid'
+                      : ''
+                  }`}
+                  type="text"
+                  value={savePath}
+                  onChange={(e) => handleSavePathChange(e.target.value)}
                   data-testid="gs-save-path"
-                >
-                  {truncatePath(savePath, 52, pathOptions)}
-                </span>
+                  aria-label="Save location path"
+                  aria-describedby="gs-path-hint"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
                 <button
-                  className="btn-secondary gs-save-location__change"
+                  className="btn-secondary gs-path-row__browse"
                   type="button"
                   onClick={handleChangeSaveLocation}
                   data-testid="gs-change-location"
                 >
-                  Change&#x2026;
+                  Browse&#x2026;
                 </button>
               </div>
+
+              {/* Validation hint */}
               {savePathError ? (
-                <p className="gs-form__error" role="alert" data-testid="gs-path-error">{savePathError}</p>
+                <p className="gs-form__error" role="alert" id="gs-path-hint" data-testid="gs-path-error">{savePathError}</p>
+              ) : pathValidationMsg ? (
+                <p
+                  className={`gs-path-hint gs-path-hint--${
+                    pathValidationState === 'conflict-mythos' || pathValidationState === 'conflict-obsidian' ? 'warn'
+                    : pathValidationState === 'error' || pathValidationState === 'not-writable' || pathValidationState === 'path-too-long' ? 'error'
+                    : 'info'
+                  }`}
+                  id="gs-path-hint"
+                  role="alert"
+                  data-testid="gs-path-validation-hint"
+                >
+                  {pathValidationMsg}
+                  {pathValidationState === 'conflict-mythos' && (
+                    <button
+                      className="btn-link gs-path-hint__action"
+                      type="button"
+                      onClick={() => setShowConflictDialog(true)}
+                      data-testid="gs-conflict-see-options"
+                    >
+                      {' '}See options &rsaquo;
+                    </button>
+                  )}
+                  {pathValidationState === 'conflict-obsidian' && (
+                    <button
+                      className="btn-link gs-path-hint__action"
+                      type="button"
+                      onClick={() => api().onboardingComplete({ startMode: 'skip' }).catch(() => {})}
+                      data-testid="gs-switch-to-import"
+                    >
+                      {' '}Switch to Import &rsaquo;
+                    </button>
+                  )}
+                </p>
               ) : (
-                <p className="gs-form__hint">
+                <p className="gs-form__hint" id="gs-path-hint">
                   Your story files will be created here. You can move them later from File &gt; Move Story.
                 </p>
               )}
+
+              {/* Suggested locations */}
+              {suggestedLocations.length > 0 && (
+                <div className="gs-suggestions" data-testid="gs-suggestions">
+                  <span className="gs-suggestions__label">Suggested:</span>
+                  {suggestedLocations.map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      className="gs-suggestion-pill"
+                      onClick={() => handleUsePath(loc)}
+                      data-testid="gs-suggestion-pill"
+                      title={loc}
+                    >
+                      {tildeify(loc, pathOptions.homeDir)}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Recents */}
+              {(initialSettings.recentVaultParentPaths ?? []).length > 0 && (
+                <div className="gs-recents">
+                  <button
+                    type="button"
+                    className="gs-recents__toggle"
+                    aria-expanded={showRecents}
+                    onClick={() => setShowRecents((v) => !v)}
+                    data-testid="gs-recents-toggle"
+                  >
+                    {showRecents ? '▾' : '▸'} Recent locations
+                  </button>
+                  {showRecents && (
+                    <ul className="gs-recents__list" data-testid="gs-recents-list">
+                      {[...(initialSettings.recentVaultParentPaths ?? [])].reverse().map((p) => (
+                        <li key={p} className="gs-recents__item">
+                          <span className="gs-recents__path" title={p}>{tildeify(p, pathOptions.homeDir)}</span>
+                          <button
+                            type="button"
+                            className="btn-link gs-recents__use"
+                            onClick={() => handleUsePath(p)}
+                            data-testid="gs-recent-use"
+                          >
+                            Use this
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Conflict dialog (non-blocking, renders inside overlay) */}
+          {showConflictDialog && (
+            <ConflictDialog
+              savePath={savePath.startsWith('~') ? (pathOptions.homeDir ?? '') + savePath.slice(1) : savePath}
+              onOpenExisting={handleConflictOpenExisting}
+              onNewFolder={handleConflictNewFolder}
+              onCreateAlongside={handleConflictCreateAlongside}
+              onDismiss={() => setShowConflictDialog(false)}
+            />
+          )}
 
           <div className="gs-actions">
             <button
               className="btn-primary gs-actions__cta"
               type="button"
               onClick={handleCreateStory}
+              disabled={
+                pathValidationState === 'validating' ||
+                pathValidationState === 'not-writable' ||
+                pathValidationState === 'path-too-long' ||
+                pathValidationState === 'error'
+              }
               data-testid="gs-create-story"
             >
               Create Story &#x2192;
