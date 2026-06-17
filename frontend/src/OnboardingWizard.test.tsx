@@ -57,6 +57,7 @@ function makeApi(overrides: Partial<{
   templateDelete: ReturnType<typeof vi.fn>;
   templateDuplicate: ReturnType<typeof vi.fn>;
   vaultGetPaths: ReturnType<typeof vi.fn>;
+  vaultGetSystemPaths: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
@@ -67,6 +68,13 @@ function makeApi(overrides: Partial<{
     templateDelete: overrides.templateDelete ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDuplicate: overrides.templateDuplicate ?? vi.fn().mockResolvedValue({ ok: true, id: 'user:copy' }),
     vaultGetPaths: overrides.vaultGetPaths ?? vi.fn().mockResolvedValue({ homeDir: '/home/user', pathSeparator: '/' }),
+    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn().mockResolvedValue({
+      homeDir: '/home/user',
+      documentsDir: '/home/user/Documents',
+      desktopDir: '/home/user/Desktop',
+      oneDriveDir: null,
+      iCloudDir: null,
+    }),
   };
 }
 
@@ -614,13 +622,13 @@ describe('OnboardingWizard — Step 2', () => {
 
   it('shows default save path ~/Documents/MythosWriter', async () => {
     await renderAtStep2();
-    expect(screen.getByTestId('gs-save-path').textContent).toBe('~/Documents/MythosWriter');
+    expect(screen.getByTestId('gs-save-path')).toHaveValue('~/Documents/MythosWriter');
   });
 
-  it('shows "Change…" button for save location', async () => {
+  it('shows "Browse…" button for save location', async () => {
     await renderAtStep2();
     expect(screen.getByTestId('gs-change-location')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-change-location').textContent).toMatch(/Change/);
+    expect(screen.getByTestId('gs-change-location').textContent).toMatch(/Browse/);
   });
 
   it('"Create Story →" button is present', async () => {
@@ -718,14 +726,13 @@ describe('OnboardingWizard — Step 2 validation', () => {
     );
   });
 
-  it('"Change…" updates save path display', async () => {
+  it('"Browse…" updates save path display with tilde-prefixed value', async () => {
     renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-change-location'));
-    await waitFor(() => expect(screen.getByTestId('gs-save-path').textContent).toBe('~/Stories'));
-    expect(screen.getByTestId('gs-save-path')).toHaveAttribute('title', '/home/user/Stories');
+    await waitFor(() => expect(screen.getByTestId('gs-save-path')).toHaveValue('~/Stories'));
   });
 
-  it('middle-truncates long save paths while preserving the full path in the tooltip', async () => {
+  it('"Browse…" shows full tilde path in input (no truncation)', async () => {
     mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({
       path: '/home/user/Mythos/Vaults/Long Fantasy Saga With Many Books/Story Vault',
       cancelled: false,
@@ -734,20 +741,20 @@ describe('OnboardingWizard — Step 2 validation', () => {
     renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-change-location'));
 
-    await waitFor(() => expect(screen.getByTestId('gs-save-path').textContent).toBe('~/Mythos/…/Story Vault'));
-    expect(screen.getByTestId('gs-save-path')).toHaveAttribute(
-      'title',
-      '/home/user/Mythos/Vaults/Long Fantasy Saga With Many Books/Story Vault',
+    await waitFor(() =>
+      expect(screen.getByTestId('gs-save-path')).toHaveValue(
+        '~/Mythos/Vaults/Long Fantasy Saga With Many Books/Story Vault',
+      )
     );
   });
 
-  it('"Change…" cancelled keeps previous path', async () => {
+  it('"Browse…" cancelled keeps previous path', async () => {
     mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
     renderAtStep2();
-    const pathBefore = screen.getByTestId('gs-save-path').textContent;
+    const pathBefore = (screen.getByTestId('gs-save-path') as HTMLInputElement).value;
     fireEvent.click(screen.getByTestId('gs-change-location'));
     await waitFor(() => {}); // wait for async
-    expect(screen.getByTestId('gs-save-path').textContent).toBe(pathBefore);
+    expect(screen.getByTestId('gs-save-path')).toHaveValue(pathBefore);
   });
 });
 
