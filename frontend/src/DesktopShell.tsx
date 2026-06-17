@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
@@ -46,6 +46,14 @@ import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
 import DockedTabBar from './DockedTabBar';
 import SplitEditorPane from './SplitEditorPane';
+import TabBar from './TabBar';
+import {
+  tabbedShellReducer,
+  DEFAULT_TABBED_SHELL_STATE,
+  serializeTabbedShellState,
+  deserializeTabbedShellState,
+  type TabbedShellState,
+} from './tabbedShellState';
 import LayoutPicker from './LayoutPicker';
 import LayoutManagerDialog from './LayoutManagerDialog';
 import { getAllLayouts, mergeWithBuiltins, migrateV1Layout, snapshotCurrentLayout } from './WorkspaceLayoutManager';
@@ -638,6 +646,12 @@ export default function DesktopShell() {
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const splitDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
 
+  // SKY-2094 (Phase 2 #1): two-tab app shell state (Story / Notes).
+  const [tabShell, dispatchTabShell] = useReducer(tabbedShellReducer, DEFAULT_TABBED_SHELL_STATE);
+  // Keep a ref to avoid stale closures when persisting.
+  const tabShellRef = useRef<TabbedShellState>(DEFAULT_TABBED_SHELL_STATE);
+  useEffect(() => { tabShellRef.current = tabShell; }, [tabShell]);
+
   // SKY-1700 (Wave 2f): named workspace layouts
   const [workspaceLayouts, setWorkspaceLayouts] = useState<WorkspaceLayout[]>([]);
   const [activeLayoutId, setActiveLayoutId] = useState<string | null>(null);
@@ -1040,6 +1054,20 @@ export default function DesktopShell() {
         if (typeof s.activeLayout?.splitWindow?.splitRatio === 'number') {
           setSplitRatio(s.activeLayout.splitWindow.splitRatio);
         }
+        // SKY-2094: restore two-tab shell state.
+        if (s.activeLayout?.tabShell) {
+          const restored = deserializeTabbedShellState(s.activeLayout.tabShell);
+          dispatchTabShell({ type: 'SET_TAB', tab: restored.activeTab });
+          dispatchTabShell({ type: 'SET_STORY_SUBVIEW', subView: restored.storySubView });
+          dispatchTabShell({ type: 'SET_NOTES_SUBVIEW', subView: restored.notesSubView });
+          dispatchTabShell({ type: 'SET_STORY_SIDEBAR_WIDTH', width: restored.storySidebarWidth });
+          dispatchTabShell({ type: 'SET_NOTES_SIDEBAR_WIDTH', width: restored.notesSidebarWidth });
+          dispatchTabShell({ type: 'SET_STORY_SIDEBAR_COLLAPSED', collapsed: restored.storySidebarCollapsed });
+          dispatchTabShell({ type: 'SET_NOTES_SIDEBAR_COLLAPSED', collapsed: restored.notesSidebarCollapsed });
+          tabShellRef.current = restored;
+          // Sync story sub-view into the legacy view state.
+          setView(restored.storySubView);
+        }
         // SKY-1700 (Wave 2f): restore named layouts + run v1→v2 migration.
         {
           let settingsToUse = s;
@@ -1323,6 +1351,29 @@ export default function DesktopShell() {
     });
   }, []);
 
+  // SKY-2094: Persist tab shell state to AppSettings.
+  const persistTabShell = useCallback((next: TabbedShellState) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = {
+        ...prev,
+        activeLayout: {
+          ...prev.activeLayout,
+          leftSidebar: leftSidebarLayoutRef.current,
+          tabShell: serializeTabbedShellState(next),
+        },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const handleTabChange = useCallback((tab: AppTab) => {
+    dispatchTabShell({ type: 'SET_TAB', tab });
+    tabShellRef.current = { ...tabShellRef.current, activeTab: tab };
+    persistTabShell({ ...tabShellRef.current, activeTab: tab });
+  }, [persistTabShell]);
+
   // SKY-1699 (Wave 2e): Persist split ratio to AppSettings.
   const persistSplitRatio = useCallback((ratio: number) => {
     setSplitRatio(ratio);
@@ -1558,10 +1609,15 @@ export default function DesktopShell() {
   );
 
   // SKY-1698: Selecting a built-in view clears any active docked tab (they're mutually exclusive).
+  // SKY-2094: also persists story sub-view to tab shell state.
   const handleSetView = useCallback((v: AppView) => {
     setView(v);
     setActiveDockedTabId(null);
-  }, []);
+    const next = { ...tabShellRef.current, storySubView: v as StorySubView };
+    dispatchTabShell({ type: 'SET_STORY_SUBVIEW', subView: v as StorySubView });
+    tabShellRef.current = next;
+    persistTabShell(next);
+  }, [persistTabShell]);
 
   const handleFloatPanel = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
     // Remove from source sidebar.
@@ -1742,6 +1798,17 @@ export default function DesktopShell() {
         setRightSidebarUserCollapsed(prev => !prev);
         return;
       }
+      // SKY-2094: Ctrl/Cmd+1 — switch to Story tab; Ctrl/Cmd+2 — switch to Notes tab.
+      if (mod && !e.shiftKey && !e.altKey && e.key === '1') {
+        e.preventDefault();
+        handleTabChange('story');
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && e.key === '2') {
+        e.preventDefault();
+        handleTabChange('notes');
+        return;
+      }
       // SKY-1700: Ctrl+Shift+L — open layout picker (AC-W-09)
       if (mod && e.shiftKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
         e.preventDefault();
@@ -1785,7 +1852,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen]);
+  }, [setWritingMode, setShortcutsOpen, setGlobalSearchOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange]);
 
   // ─── Panel resize drag handlers ───
 
@@ -2663,6 +2730,21 @@ export default function DesktopShell() {
           onAddPanelAsNewTab={handleAddPanelAsNewTab}
         />
       )}
+      {/* SKY-2094 (Phase 2 #1): two-tab switcher — Story / Notes */}
+      {showTitleBar && (
+        <TabBar
+          activeTab={tabShell.activeTab}
+          onTabChange={handleTabChange}
+        />
+      )}
+      {/* SKY-2094: vault badge slot — content wired by Phase 2 #2/#3 refactor tickets */}
+      {showTitleBar && activeVaultRoot && (
+        <div className="tab-bar-vault-badge" aria-hidden="true">
+          <span className="tab-bar-vault-badge__name" title={activeVaultRoot}>
+            {activeVaultRoot.split(/[\\/]/).filter(Boolean).pop() ?? activeVaultRoot}
+          </span>
+        </div>
+      )}
       {showStatusOverlay && (
         <FocusModeOverlay
           wordCount={focusWordCount}
@@ -2705,6 +2787,9 @@ export default function DesktopShell() {
           onClose={() => setTemplatePickerOpen(false)}
         />
       )}
+      {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
+      {tabShell.activeTab === 'story' && (
+      <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
       {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
       <div className="shell-main-row">
       {/* SKY-1698: active docked tab shows its panels in the main area */}
@@ -3166,6 +3251,19 @@ export default function DesktopShell() {
       />}
 
       </div>{/* end shell-main-row */}
+      </div>)}{/* end app-tabpanel-story */}
+      {/* SKY-2094: Notes tabpanel — placeholder until Phase 2 #3 wires the layout */}
+      {tabShell.activeTab === 'notes' && (
+        <div
+          id="app-tabpanel-notes"
+          role="tabpanel"
+          aria-labelledby="app-tab-notes"
+          className="shell-notes-tab-placeholder"
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}
+        >
+          📁 Notes tab — full layout coming in Phase 2 #3
+        </div>
+      )}
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
       <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
       {voiceListening && (

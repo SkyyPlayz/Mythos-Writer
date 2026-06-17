@@ -463,6 +463,8 @@ interface AppSettings {
       width: number;
       panels: RightSidebarPanel[];
     };
+    /** SKY-2094 (Phase 2 #1): two-tab app shell state. */
+    tabShell?: AppTabShellState;
   };
 
   // ── SKY-1700 (Wave 2f): Named workspace layout library ──
@@ -472,6 +474,26 @@ interface AppSettings {
   activeLayoutId?: string | null;
   /** Migration flag: true once v1→v2 layout migration has run. */
   layoutMigrationDone?: boolean;
+}
+
+/** SKY-2094 (Phase 2 #1): The two top-level app sections. */
+type AppTab = 'story' | 'notes';
+
+/** SKY-2094: Sub-view within the Story tab. Mirrors DesktopShell AppView. */
+type StorySubView = 'editor' | 'brainstorm' | 'kanban' | 'graph' | 'structure' | 'timeline' | 'entries';
+
+/** SKY-2094: Sub-view within the Notes tab. */
+type NotesSubView = 'notes-browser';
+
+/** SKY-2094: Persisted two-tab app shell state. */
+interface AppTabShellState {
+  activeTab: AppTab;
+  storySubView: StorySubView;
+  notesSubView: NotesSubView;
+  storySidebarWidth: number;
+  notesSidebarWidth: number;
+  storySidebarCollapsed: boolean;
+  notesSidebarCollapsed: boolean;
 }
 
 /** SKY-1697 (Wave 2c): persisted floating panel window state. */
