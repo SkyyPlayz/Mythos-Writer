@@ -8,6 +8,7 @@ import {
   classifyIpcError,
   ipcErrorUserMessage,
   sanitizeIpcError,
+  withIpcLog,
   wrapIpcHandler,
 } from './ipcErrors.js';
 
@@ -213,5 +214,41 @@ describe('wrapIpcHandler', () => {
     });
     const result = await wrapped({}, {});
     expect(result).toEqual({ error: 'Brainstorm Agent paused: daily cap reached.' });
+  });
+});
+
+describe('withIpcLog', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('wraps a successful handler in the standard IPC envelope and logs duration', async () => {
+    let now = 100;
+    const wrapped = withIpcLog('settings:get', async () => ({ theme: 'dark' }), {
+      now: () => (now += 12),
+    });
+
+    await expect(wrapped(undefined)).resolves.toEqual({
+      ok: true,
+      data: { theme: 'dark' },
+    });
+    expect(console.info).toHaveBeenCalledWith('[ipc] channel=settings:get ok=true durationMs=12');
+  });
+
+  it('wraps thrown errors in a sanitized standard IPC envelope with a code', async () => {
+    const wrapped = withIpcLog('settings:set', async () => {
+      throw makeFsError('EACCES', 'open', '/Users/alice/private/settings.json');
+    });
+
+    await expect(wrapped(undefined)).resolves.toEqual({
+      ok: false,
+      code: IPC_ERROR_CATEGORIES.PERMISSION_DENIED,
+      message: 'Permission denied.',
+    });
   });
 });

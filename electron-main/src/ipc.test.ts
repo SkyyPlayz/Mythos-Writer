@@ -30,6 +30,12 @@ import { ipcMain } from 'electron';
 
 const mockHandle = vi.mocked(ipcMain.handle);
 
+function topFrameEvent() {
+  const frame = {};
+  Object.assign(frame, { top: frame });
+  return { senderFrame: frame };
+}
+
 // ─── IPC_CHANNELS uniqueness ──────────────────────────────────────────────────
 
 describe('IPC_CHANNELS — channel string uniqueness', () => {
@@ -103,5 +109,23 @@ describe('setupIpcMain — single-registration invariant', () => {
     // Two calls = what the crash looks like in production. This test documents
     // the failure mode so any future duplicate-registration regression is obvious.
     expect(calls).toHaveLength(2);
+  });
+
+  it('registers settings get/set/testConnection with the standard IPC envelope', async () => {
+    const handlers = {
+      [IPC_CHANNELS.SETTINGS_GET]: vi.fn(() => ({ theme: 'dark' })),
+      [IPC_CHANNELS.SETTINGS_SET]: vi.fn(() => ({ saved: true })),
+      [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: vi.fn(() => ({ ok: true, latencyMs: 4 })),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setupIpcMain(handlers as any);
+
+    for (const channel of Object.keys(handlers)) {
+      const registered = mockHandle.mock.calls.find((c) => c[0] === channel);
+      expect(registered).toBeDefined();
+      const result = await registered![1](topFrameEvent() as never, undefined);
+      expect(result).toMatchObject({ ok: true, data: expect.any(Object) });
+    }
   });
 });

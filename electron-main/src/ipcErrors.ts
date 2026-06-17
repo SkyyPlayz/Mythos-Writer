@@ -55,6 +55,10 @@ export type IpcErrorClassification =
   | { kind: 'passthrough'; message: string }
   | { kind: 'sanitized'; category: IpcErrorCategory };
 
+export type IpcEnvelope<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: IpcErrorCategory; message: string };
+
 /**
  * Inspect a caught error and decide how it should be returned to the renderer.
  * - `safe`        → SafeIpcError instance; forward `.message` as-is.
@@ -139,6 +143,53 @@ export function sanitizeIpcError(channel: string, err: unknown): { error: string
   // eslint-disable-next-line no-console
   console.error(`[ipc:error] channel=${channel} kind=${classification.kind} message=${classification.message}`);
   return { error: classification.message };
+}
+
+export function sanitizeIpcEnvelopeError(channel: string, err: unknown): IpcEnvelope<never> {
+  const classification = classifyIpcError(err);
+  const rawMessage =
+    typeof (err as { message?: unknown })?.message === 'string'
+      ? (err as Error).message
+      : String(err);
+  if (classification.kind === 'sanitized') {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[ipc:error] channel=${channel} category=${classification.category} raw=${rawMessage}`,
+    );
+    return { ok: false, code: classification.category, message: ipcErrorUserMessage(classification.category) };
+  }
+  // eslint-disable-next-line no-console
+  console.error(`[ipc:error] channel=${channel} kind=${classification.kind} message=${classification.message}`);
+  return { ok: false, code: IPC_ERROR_CATEGORIES.INTERNAL, message: classification.message };
+}
+
+interface IpcLogOptions {
+  now?: () => number;
+}
+
+export function withIpcLog<TPayload, TResult>(
+  channel: string,
+  handler: (payload: TPayload) => TResult | Promise<TResult>,
+  options: IpcLogOptions = {},
+): (payload: TPayload) => Promise<IpcEnvelope<TResult>> {
+  return async (payload: TPayload) => {
+    const now = options.now ?? Date.now;
+    const startedAt = now();
+    try {
+      const data = await handler(payload);
+      const durationMs = Math.max(0, now() - startedAt);
+      // eslint-disable-next-line no-console
+      console.info(`[ipc] channel=${channel} ok=true durationMs=${durationMs}`);
+      return { ok: true, data };
+    } catch (err) {
+      const durationMs = Math.max(0, now() - startedAt);
+      const envelope = sanitizeIpcEnvelopeError(channel, err);
+      const code = (envelope as { ok: false; code: IpcErrorCategory }).code;
+      // eslint-disable-next-line no-console
+      console.info(`[ipc] channel=${channel} ok=false code=${code} durationMs=${durationMs}`);
+      return envelope;
+    }
+  };
 }
 
 /**
