@@ -2989,13 +2989,15 @@ export default function DesktopShell() {
               />
             ) : selectedScene ? (
               <>
-                {sceneNavigating && (
-                  <SceneEditorEmptyState variant="loading" />
-                )}
                 <div
                   className="shell-editor-scene-wrap"
-                  style={sceneNavigating ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+                  style={{ position: 'relative' }}
                 >
+                  {sceneNavigating && (
+                    <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
+                      <SceneEditorEmptyState variant="loading" />
+                    </div>
+                  )}
                   <div className="scene-snapshot-toolbar">
                     <button
                       className="scene-snapshot-save"
