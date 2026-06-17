@@ -1872,7 +1872,8 @@ export interface OnboardingCompletePayload {
   /** Optional override for the Mythos Vault folder name (default-mythos-vault only).
    *  Rejected if it contains path separators or parent-traversal. */
   vaultName?: string;
-  /** Optional sample-project flavor, persisted after successful sample onboarding. */
+  /** Required for sample mode (SKY-2008): identifies which bundled genre vault to
+   *  install. Main-side validates against the allowlist and resolves the source dir. */
   sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
 }
 
