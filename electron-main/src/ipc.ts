@@ -1734,6 +1734,23 @@ export interface LiquidNeonPrefs {
   neonBorderColor?: 'cyan' | 'violet' | 'magenta';
 }
 
+// ─── Page Appearance (SKY-2097) ───────────────────────────────────────────────
+
+export type PageBackgroundPreset = 'liquid-neon' | 'minimal' | 'paper' | 'dark-slate';
+
+/** Writing-surface panel appearance settings. Absent → Liquid Neon defaults (65/12/60). */
+export interface PageBackgroundSettings {
+  preset: PageBackgroundPreset;
+  /** Panel opacity 0–100. Default 65. */
+  opacity: number;
+  /** Panel blur 0–32 px. Default 12. Active only on glass presets (liquid-neon). */
+  blur: number;
+  /** Glow intensity 0–100. Default 60. Active only on liquid-neon preset. */
+  glowIntensity: number;
+  /** When true (default), story and notes tabs share the same appearance values. */
+  applyToBothTabs: boolean;
+}
+
 export interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
@@ -1790,6 +1807,8 @@ export interface AppSettings {
   };
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
+  /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
+  pageBackground?: PageBackgroundSettings;
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;
   /** SKY-204: opt-in daily notes / journal mode. */

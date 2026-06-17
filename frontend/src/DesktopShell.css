@@ -633,6 +633,21 @@
   min-height: 0;
 }
 
+/* SKY-2095 (Phase 2 #2): Word-feel page metaphor — canvas + constrained-width page. */
+.shell-editor-scene-wrap.story-page-canvas {
+  background: var(--bg-canvas, #0b0e13);
+}
+
+.shell-editor-beta-wrap--page-mode {
+  align-self: center;
+  width: 100%;
+  max-width: var(--page-width-story, 720px);
+  box-shadow:
+    0 2px 20px rgba(0, 0, 0, 0.45),
+    0 0 0 1px color-mix(in srgb, var(--neon-cyan, #00f0ff) 15%, transparent);
+  background: var(--bg-panel, #15191f);
+}
+
 .shell-editor-beta-wrap > .block-editor {
   flex: 1;
   min-width: 0;
@@ -959,6 +974,45 @@
 
 .focus-save-ok {
   color: var(--success, #16a34a);
+}
+
+/* ─── Page Background (SKY-2097) ────────────────────────────────────────────
+   Writing-surface panel tint driven by --page-bg-* tokens.
+   applyPageBackgroundTokens() sets these at runtime from user prefs.            */
+
+.shell-editor-scene-wrap {
+  background: var(--page-bg-fill);
+  transition: background 200ms ease;
+}
+
+/* Liquid Neon only: subtle inset glow on the writing surface panel */
+[data-page-preset="liquid-neon"] .shell-editor-scene-wrap {
+  box-shadow: inset 0 0 80px var(--page-bg-glow-color);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .shell-editor-scene-wrap {
+    backdrop-filter: blur(var(--page-bg-backdrop-blur));
+    -webkit-backdrop-filter: blur(var(--page-bg-backdrop-blur));
+  }
+}
+
+/* High-contrast: force a near-opaque dark surface for legibility (WCAG 1.4.3). */
+@media (prefers-contrast: more) {
+  .shell-editor-scene-wrap {
+    background: rgba(11, 14, 19, 0.97) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Reduced motion: disable glow pulse by zeroing the glow intensity token. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --page-bg-glow: 0;
+    --page-bg-glow-color: transparent;
+  }
 }
 
 /* ─── Focus Mode element toggles (SKY-325) ─── */

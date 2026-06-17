@@ -158,6 +158,16 @@ export function migrateV1Layout(settings: AppSettings): Partial<AppSettings> {
     ],
   };
 
+  const tabShell: AppTabShellState = settings.activeLayout?.tabShell ?? {
+    activeTab: 'story',
+    storySubView: 'editor',
+    notesSubView: 'editor',
+    storySidebarWidth: 240,
+    notesSidebarWidth: settings.rightSidebarWidth ?? 300,
+    storySidebarCollapsed: settings.activeLayout?.leftSidebar?.sidebarCollapsed ?? false,
+    notesSidebarCollapsed: false,
+  };
+
   return {
     workspaceLayouts: BUILTIN_LAYOUTS,
     activeLayoutId: null,
@@ -169,6 +179,7 @@ export function migrateV1Layout(settings: AppSettings): Partial<AppSettings> {
         sidebarCollapsed: false,
       },
       rightSidebar,
+      tabShell,
     },
   };
 }

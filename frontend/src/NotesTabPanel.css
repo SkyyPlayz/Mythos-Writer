@@ -1,0 +1,317 @@
+/* SKY-2096 (Phase 2 #3): Notes tab layout — vault tree + editor + Brainstorm sidebar. */
+
+/* ── Root ────────────────────────────────────────────────────────────────────── */
+
+.notes-tab-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Sub-view toolbar ─────────────────────────────────────────────────────────── */
+
+.notes-tab-toolbar {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: var(--glass-fill-fallback);
+  border-bottom: 1px solid var(--glass-border);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .notes-tab-toolbar {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 12px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 12px)) saturate(160%);
+  }
+}
+
+.notes-subview-toggle {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.notes-subview-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.12s, color 0.12s;
+  -webkit-app-region: no-drag;
+  position: relative;
+}
+
+.notes-subview-btn:hover {
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.notes-subview-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.notes-subview-btn--active {
+  color: var(--neon-violet, var(--accent));
+  background: color-mix(in srgb, var(--neon-violet, var(--accent)) 12%, transparent);
+}
+
+.notes-subview-btn--active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--neon-violet, var(--accent));
+  border-radius: 2px 2px 0 0;
+}
+
+/* ── Main body row ───────────────────────────────────────────────────────────── */
+
+.notes-tab-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Left sidebar ────────────────────────────────────────────────────────────── */
+
+.notes-tab-sidebar-left {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  min-width: 160px;
+  max-width: 500px;
+  border-right: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+}
+
+.notes-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 10px 0 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.notes-vault-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--neon-violet, var(--accent));
+  opacity: 0.85;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-sidebar-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Collapse / expand peek buttons ─────────────────────────────────────────── */
+
+.notes-sidebar-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+
+.notes-sidebar-collapse-btn:hover {
+  background: color-mix(in srgb, var(--bg-inset) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.notes-sidebar-collapse-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.notes-sidebar-peek-btn,
+.notes-brainstorm-peek-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 100%;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.notes-sidebar-peek-btn {
+  border-right: 1px solid var(--glass-border);
+}
+
+.notes-brainstorm-peek-btn {
+  border-left: 1px solid var(--glass-border);
+}
+
+.notes-sidebar-peek-btn:hover,
+.notes-brainstorm-peek-btn:hover {
+  background: color-mix(in srgb, var(--bg-inset) 70%, transparent);
+  color: var(--text-primary);
+}
+
+.notes-sidebar-peek-btn:focus-visible,
+.notes-brainstorm-peek-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+/* ── Resize divider ──────────────────────────────────────────────────────────── */
+
+.notes-tab-divider {
+  width: 4px;
+  flex-shrink: 0;
+  background: var(--border-muted);
+  cursor: col-resize;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 10;
+}
+
+.notes-tab-divider:hover,
+.notes-tab-divider:active,
+.notes-tab-divider:focus-visible {
+  background: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.notes-tab-divider--right {
+  cursor: default;
+}
+
+.notes-tab-divider--right:hover {
+  background: var(--border-muted);
+  outline: none;
+}
+
+/* ── Center view ──────────────────────────────────────────────────────────────── */
+
+.notes-tab-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  min-width: 300px;
+}
+
+/* Editor placeholder */
+.notes-editor-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 60px;
+  color: var(--text-faint);
+}
+
+.notes-editor-placeholder-icon {
+  font-size: 2.4rem;
+  margin-bottom: 16px;
+}
+
+.notes-editor-placeholder h2 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.notes-editor-placeholder p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* Graph + entities views fill the center */
+.notes-graph-view,
+.notes-entities-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Right sidebar (Brainstorm) ──────────────────────────────────────────────── */
+
+.notes-tab-sidebar-right {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  min-width: 260px;
+  max-width: 500px;
+  background: var(--bg-surface);
+}
+
+.notes-right-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 6px 0 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.notes-right-sidebar-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.notes-right-sidebar-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}

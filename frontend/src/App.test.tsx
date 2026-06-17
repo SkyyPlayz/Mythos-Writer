@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
 const mockManifest = {
@@ -76,7 +76,7 @@ describe('App — onboarding gate (SKY-152)', () => {
     await waitFor(() => expect(screen.getByText(/loading your vault/i)).toBeInTheDocument());
   });
 
-  it('blocks app load with a missing-vault recovery screen when saved story vault is invalid', async () => {
+  it('shows recovery screen when neither vault binding is valid', async () => {
     (window as any).api = makeMockApi({
       vaultGetPaths: vi.fn().mockResolvedValue({
         storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
@@ -87,11 +87,57 @@ describe('App — onboarding gate (SKY-152)', () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: /vault not found/i })).toBeInTheDocument());
-    expect(screen.getByText('/Volumes/Cloud/Mythos/Story Vault')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /re-run setup/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /open settings/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /quit/i })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Vault not found' })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Re-run setup' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quit' })).toBeInTheDocument();
+  });
+
+  it('opens the shell when only the Notes vault is valid and shows the Story empty state', async () => {
+    (window as any).api = makeMockApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({
+        storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
+        notesVaultPath: '/Volumes/Cloud/Mythos/Notes Vault',
+      }),
+      validatePath: vi.fn(async (path: string) => (
+        path.includes('Notes Vault')
+          ? { exists: true, isEmpty: false, writable: true }
+          : { exists: false, isEmpty: true, writable: false }
+      )),
+      readManifest: vi.fn().mockRejectedValue(new Error('story vault missing')),
+      settingsSet: vi.fn().mockResolvedValue({}),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText(/start your first story to begin writing/i)).toBeInTheDocument());
+    expect(screen.getAllByText(/no story vault/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /create a new story/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue onboarding/i })).toBeInTheDocument();
+  });
+
+  it('opens the shell when only the Story vault is valid and shows the Notes empty state after switching tabs', async () => {
+    (window as any).api = makeMockApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({
+        storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
+        notesVaultPath: '/Volumes/Cloud/Mythos/Notes Vault',
+      }),
+      validatePath: vi.fn(async (path: string) => (
+        path.includes('Story Vault')
+          ? { exists: true, isEmpty: false, writable: true }
+          : { exists: false, isEmpty: true, writable: false }
+      )),
+      settingsSet: vi.fn().mockResolvedValue({}),
+    });
+
+    render(<App />);
+
+    const notesTab = await screen.findByTestId('app-tab-notes');
+    fireEvent.click(notesTab);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /no notes vault/i })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /create a notes vault/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /connect existing folder/i })).toBeInTheDocument();
   });
 });
 

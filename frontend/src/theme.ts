@@ -320,6 +320,99 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// ─── Page Background (SKY-2097) ──────────────────────────────────────────────
+
+/** Base RGB components for each page background preset. */
+const PAGE_BG_PRESET_RGB: Record<PageBackgroundPreset, [number, number, number]> = {
+  'liquid-neon': [14,  14,  18],   // dark glass panel (matches --glass-fill base)
+  'minimal':     [14,  17,  22],   // near-invisible dark
+  'paper':       [240, 228, 200],  // warm parchment
+  'dark-slate':  [18,  22,  30],   // deep dark slate
+};
+
+/** Presets that support backdrop-filter glass blur. */
+const GLASS_PRESETS = new Set<PageBackgroundPreset>(['liquid-neon']);
+
+/** Glow accent RGB per preset — used for the panel box-shadow glow effect. */
+const PAGE_BG_GLOW_RGB: Record<PageBackgroundPreset, [number, number, number]> = {
+  'liquid-neon': [0,  240, 255], // neon cyan
+  'minimal':     [0,    0,   0], // no glow
+  'paper':       [0,    0,   0], // no glow
+  'dark-slate':  [0,    0,   0], // no glow
+};
+
+export const PAGE_BACKGROUND_DEFAULTS: PageBackgroundSettings = {
+  preset: 'liquid-neon',
+  opacity: 65,
+  blur: 12,
+  glowIntensity: 60,
+  applyToBothTabs: true,
+};
+
+/**
+ * Compute a contrast ratio between the page-background panel color and the current text-body
+ * token, at the given opacity blended over a reference dark canvas (#0b0e13).
+ */
+export function pageBackgroundContrastRatio(prefs: Partial<PageBackgroundSettings> | null | undefined): number {
+  const p: PageBackgroundSettings = { ...PAGE_BACKGROUND_DEFAULTS, ...prefs };
+  const [pr, pg, pb] = PAGE_BG_PRESET_RGB[p.preset] ?? PAGE_BG_PRESET_RGB['liquid-neon'];
+  const alpha = p.opacity / 100;
+  // Blend over dark canvas (#0b0e13 = 11,14,19)
+  const canvasR = 11; const canvasG = 14; const canvasB = 19;
+  const blendedR = Math.round(pr * alpha + canvasR * (1 - alpha));
+  const blendedG = Math.round(pg * alpha + canvasG * (1 - alpha));
+  const blendedB = Math.round(pb * alpha + canvasB * (1 - alpha));
+  const bgHex = `#${blendedR.toString(16).padStart(2, '0')}${blendedG.toString(16).padStart(2, '0')}${blendedB.toString(16).padStart(2, '0')}`;
+  // Compare against default body text color
+  return contrastRatio('#bfd6e8', bgHex);
+}
+
+/**
+ * Apply writing-surface panel CSS tokens to :root.
+ * Safe to call with a partial; missing keys fall back to PAGE_BACKGROUND_DEFAULTS.
+ */
+export function applyPageBackgroundTokens(
+  prefs: Partial<PageBackgroundSettings> | null | undefined,
+): void {
+  if (typeof document === 'undefined') return;
+  const p: PageBackgroundSettings = { ...PAGE_BACKGROUND_DEFAULTS, ...prefs };
+  const root = document.documentElement;
+
+  const [r, g, b] = PAGE_BG_PRESET_RGB[p.preset] ?? PAGE_BG_PRESET_RGB['liquid-neon'];
+  const opacityFrac = (p.opacity / 100).toFixed(3);
+
+  root.style.setProperty('--page-bg-fill', `rgba(${r},${g},${b},${opacityFrac})`);
+  root.style.setProperty('--page-bg-blur', `${p.blur}px`);
+  root.style.setProperty('--page-bg-glow', (p.glowIntensity / 100).toFixed(3));
+  root.setAttribute('data-page-preset', p.preset);
+
+  // Computed glow shadow color — used directly in CSS box-shadow
+  const [gr, gg, gb] = PAGE_BG_GLOW_RGB[p.preset] ?? PAGE_BG_GLOW_RGB['liquid-neon'];
+  const glowAlpha = (p.glowIntensity / 100 * 0.3).toFixed(3);
+  root.style.setProperty('--page-bg-glow-color', `rgba(${gr},${gg},${gb},${glowAlpha})`);
+
+  // Glass backdrop-filter: only on glass presets
+  if (GLASS_PRESETS.has(p.preset)) {
+    root.style.setProperty('--page-bg-backdrop-blur', `${p.blur}px`);
+  } else {
+    root.style.setProperty('--page-bg-backdrop-blur', '0px');
+  }
+}
+
+/**
+ * Reset all page-background inline style overrides (back to tokens.css defaults).
+ */
+export function resetPageBackgroundTokens(): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  root.style.removeProperty('--page-bg-fill');
+  root.style.removeProperty('--page-bg-blur');
+  root.style.removeProperty('--page-bg-glow');
+  root.style.removeProperty('--page-bg-glow-color');
+  root.style.removeProperty('--page-bg-backdrop-blur');
+  root.removeAttribute('data-page-preset');
+}
+
 /**
  * Reset all Liquid Neon inline style overrides (back to tokens.css defaults).
  * Called when the user selects "Reset to defaults".

@@ -1,0 +1,143 @@
+/* SKY-2095 (Phase 2 #2): Story-tab top bar — sub-view toggles + vault badge + writing mode. */
+
+.story-subview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 38px;
+  flex-shrink: 0;
+  background: var(--bg-panel, #15191f);
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+/* ── Vault badge (left) ── */
+.story-subview-bar__vault {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.story-subview-bar__vault-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--neon-cyan, #00f0ff);
+  white-space: nowrap;
+}
+
+.story-subview-bar__vault-name {
+  font-size: 0.75rem;
+  color: var(--text-muted, #6c7086);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+/* ── Sub-view tabs (center) ── */
+.story-subview-bar__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  justify-content: center;
+}
+
+.story-subview-bar__tab {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted, #6c7086);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.story-subview-bar__tab:hover {
+  color: var(--text-body, #cdd6f4);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.story-subview-bar__tab--active {
+  color: var(--text-header, #e2e8f0);
+  background: var(--bg-active, rgba(255, 255, 255, 0.1));
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
+}
+
+.story-subview-bar__tab:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--neon-cyan, #00f0ff));
+  outline-offset: 2px;
+}
+
+/* ── Writing mode (right) ── */
+.story-subview-bar__modes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.story-subview-bar__mode-btn {
+  width: 26px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-muted, #6c7086);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.story-subview-bar__mode-btn:hover {
+  color: var(--text-body, #cdd6f4);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.story-subview-bar__mode-btn.active {
+  color: var(--neon-cyan, #00f0ff);
+  background: var(--accent-soft, rgba(0, 240, 255, 0.12));
+  border-color: var(--neon-cyan, #00f0ff);
+}
+
+.story-subview-bar__mode-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--neon-cyan, #00f0ff));
+  outline-offset: 2px;
+}
+
+.story-subview-bar__mode-prefs {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--text-muted, #6c7086);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.story-subview-bar__mode-prefs:hover {
+  color: var(--text-body, #cdd6f4);
+}
+
+.story-subview-bar__mode-prefs:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--neon-cyan, #00f0ff));
+  outline-offset: 2px;
+}
