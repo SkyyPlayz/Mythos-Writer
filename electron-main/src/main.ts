@@ -518,24 +518,23 @@ function getVaultIndexCacheDir(): string {
   return path.join(app.getPath('userData'), 'vault-index-cache');
 }
 
-// SKY-9 / SKY-15: first-run defaults sit side-by-side under ~/Mythos/ with
-// each vault as its own folder, per the board-accepted SKY-15 plan. Existing
-// installs keep whatever `vault-settings.json` already persisted — the
-// defaults only fire when there is no persisted root, so this is a
-// fresh-install-only change. No on-disk migration of user content.
+// SKY-2157: Default vault roots now live under app.getPath('userData') so that
+// fresh installs don't scatter folders across ~/Mythos. Existing installs are
+// unaffected — their vault-settings.json already persists their chosen paths
+// and these defaults only fire when no settings file exists yet.
 function defaultVaultRoot(): string {
-  return path.join(app.getPath('home'), 'Mythos', 'Story Vault');
+  return path.join(app.getPath('userData'), 'vaults', 'Story Vault');
 }
 
 function defaultNotesVaultRoot(): string {
-  return path.join(app.getPath('home'), 'Mythos', 'Notes Vault');
+  return path.join(app.getPath('userData'), 'vaults', 'Notes Vault');
 }
 
-// SKY-320: Obsidian-style multi-vault root. New Mythos Vaults default into
-// `~/Mythos/Vaults/<vault-name>/` so a user can have many self-contained
-// bundles side by side, each with its own Story + Notes pair.
+// SKY-320 / SKY-2157: Obsidian-style multi-vault root anchored under userData.
+// New Mythos Vaults land at `<userData>/vaults/<vault-name>/` so the app's own
+// data dir contains all vault bundles and ~/Mythos is not touched by default.
 function defaultMythosVaultsParent(): string {
-  return path.join(app.getPath('home'), 'Mythos', 'Vaults');
+  return path.join(app.getPath('userData'), 'vaults');
 }
 
 // SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
@@ -733,7 +732,7 @@ function persistBrainstormSuggestion(
 function ensureNotesVaultDir() {
   const notesVaultRoot = getNotesVaultRoot();
   // SKY-9 / SKY-15: same empty-dir trigger as ensureVaultDir so a user who
-  // pre-creates ~/Mythos/Notes Vault/ still gets the six-folder layout seeded.
+  // pre-creates the notes vault dir still gets the six-folder layout seeded.
   // Blank/imported modes skip scaffolding (the scaffold function is a no-op).
   if (!fs.existsSync(notesVaultRoot)) {
     fs.mkdirSync(notesVaultRoot, { recursive: true });

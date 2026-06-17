@@ -16,12 +16,22 @@ describe('shouldInitializeVaultStorage', () => {
     })).toBe(false);
   });
 
-  it('initializes storage for first-run onboarding even when the default roots are absent', () => {
+  it('does NOT initialize storage before onboarding completes (SKY-2157: prevents stray default dirs)', () => {
+    // Startup must NOT pre-create vault dirs before the user has chosen a setup
+    // path. The ONBOARDING_COMPLETE handler creates exactly what the user picked.
+    // Initialising here caused ~/Mythos/Story Vault + ~/Mythos/Notes Vault to
+    // appear even when the user later chose the default-mythos-vault nested layout.
     expect(shouldInitializeVaultStorage({
       onboardingComplete: false,
       storyVaultUsable: false,
       notesVaultUsable: false,
-    })).toBe(true);
+    })).toBe(false);
+
+    expect(shouldInitializeVaultStorage({
+      onboardingComplete: false,
+      storyVaultUsable: true,
+      notesVaultUsable: true,
+    })).toBe(false);
   });
 
   it('initializes storage after onboarding when both configured roots are usable', () => {
