@@ -46,32 +46,22 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install Windows cross-build dependencies (NSIS + Wine)
+      - name: Verify Windows cross-build toolchain (NSIS + Wine)
         run: |
-          # Skip apt-get if packages are already present on the runner (preferred setup).
-          # To pre-install on the runner host: sudo apt-get install -y nsis wine wine32:i386
-          HAS_NSIS=0; HAS_WINE=0
-          command -v makensis >/dev/null 2>&1 && HAS_NSIS=1 || true
-          command -v wine   >/dev/null 2>&1 && HAS_WINE=1 || true
-          if [ "$HAS_NSIS" = "1" ] && [ "$HAS_WINE" = "1" ]; then
-            echo "NSIS and Wine already installed — skipping apt-get."
-            exit 0
-          fi
-          # Fall back to apt-get. Requires passwordless sudo (NOPASSWD) on the runner.
-          # Use -n (non-interactive) so the step fails immediately with a clear error
-          # rather than hanging waiting for a terminal/password.
-          sudo -n apt-get update -qq || {
-            echo "::error::sudo apt-get requires a terminal or NOPASSWD on this runner."
-            echo "Pre-install with: sudo apt-get install -y nsis wine wine32:i386"
-            echo "Or configure: echo 'skyy ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/dpkg' | sudo tee /etc/sudoers.d/github-runner"
+          # Toolchain is pre-installed on the self-hosted runner host (Ivy + owner, SKY-2177).
+          # Working package set on this Ubuntu: nsis wine wine64 (the wine metapackage pulls
+          # 32-bit deps; wine32:i386 is NOT a valid package name here).
+          # This step only verifies presence — no sudo, no apt-get.
+          missing=()
+          command -v makensis >/dev/null 2>&1 || missing+=(makensis)
+          command -v wine     >/dev/null 2>&1 || missing+=(wine)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required toolchain on runner: ${missing[*]}"
+            echo "Pre-install on the runner host: sudo apt-get install -y nsis wine wine64"
             exit 1
-          }
-          # NSIS (makensis) compiles the installer; Wine/rcedit embeds version info and icon.
-          sudo -n apt-get install -y --no-install-recommends nsis || true
-          sudo -n dpkg --add-architecture i386 2>/dev/null || true
-          sudo -n apt-get update -qq || true
-          sudo -n apt-get install -y --no-install-recommends wine wine32:i386 2>/dev/null || \
-            sudo -n apt-get install -y --no-install-recommends wine64 2>/dev/null || true
+          fi
+          echo "makensis: $(command -v makensis) ($(makensis -VERSION 2>&1 | head -1))"
+          echo "wine:     $(command -v wine)     ($(wine --version 2>&1 | head -1))"
 
       - name: Install dependencies
         run: npm ci
