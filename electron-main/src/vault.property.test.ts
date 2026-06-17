@@ -54,6 +54,11 @@ const safeStringRecord: fc.Arbitrary<Record<string, unknown>> = fc
 // ─── Properties ──────────────────────────────────────────────────────────────
 
 describe('parseFrontmatter / serializeFrontmatter — property-based (SKY-361)', () => {
+  it('parses CRLF frontmatter delimiters from Windows checkouts', () => {
+    const { frontmatter, prose } = parseFrontmatter('---\r\ntitle: Scene\r\n---\r\nBody\r\n');
+    expect(frontmatter.title).toBe('Scene');
+    expect(prose).toBe('Body\r\n');
+  });
 
   // ── P1: Fault tolerance ──────────────────────────────────────────────────
   // parseFrontmatter must never throw, crash, or infinite-loop on any byte
