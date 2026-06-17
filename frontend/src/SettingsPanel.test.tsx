@@ -1016,3 +1016,85 @@ describe('Archive Agent settings section (AC-CC-09)', () => {
     expect(saved.archiveScanBudget).toBe(12000);
   });
 });
+
+// ── SKY-1969: keyboard-only navigation through the Settings dialog ──
+
+describe('Settings dialog keyboard navigation (SKY-1969)', () => {
+  it('dialog is findable by its accessible heading name', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('dialog', { name: /^settings$/i }));
+  });
+
+  it('every aria-labelledby attribute references an element that exists in the DOM', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const labelled = Array.from(document.querySelectorAll('[aria-labelledby]'));
+    for (const el of labelled) {
+      const ids = (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean);
+      for (const id of ids) {
+        expect(document.getElementById(id), `aria-labelledby="${id}" points to a missing element`).not.toBeNull();
+      }
+    }
+  });
+
+  it('provider select comes before API key input in tab order', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const dialog = document.querySelector('.settings-panel')!;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ).filter((el) => !(el as HTMLInputElement).disabled);
+
+    const providerSelect = screen.getByRole('combobox', { name: /ai provider/i });
+    const apiKeyInput = screen.getByLabelText(/provider api key/i);
+
+    expect(focusable.indexOf(providerSelect)).toBeGreaterThan(-1);
+    expect(focusable.indexOf(apiKeyInput)).toBeGreaterThan(-1);
+    expect(focusable.indexOf(providerSelect)).toBeLessThan(focusable.indexOf(apiKeyInput));
+  });
+
+  it('Cancel button comes before Save button in tab order', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const dialog = document.querySelector('.settings-panel')!;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ).filter((el) => !(el as HTMLInputElement).disabled);
+
+    const cancelBtn = screen.getByRole('button', { name: /cancel/i });
+    const saveBtn = screen.getByRole('button', { name: /save settings/i });
+
+    expect(focusable.indexOf(cancelBtn)).toBeLessThan(focusable.indexOf(saveBtn));
+  });
+
+  it('all interactive controls in the dialog have accessible names', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const dialog = document.querySelector('.settings-panel')!;
+    const inputs = Array.from(
+      dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        'input:not([type="radio"]):not([type="checkbox"]), select, textarea'
+      )
+    );
+
+    for (const input of inputs) {
+      const id = input.id;
+      const ariaLabel = input.getAttribute('aria-label');
+      const ariaLabelledBy = input.getAttribute('aria-labelledby');
+      const associatedLabel = id ? document.querySelector(`label[for="${id}"]`) : null;
+      const wrappingLabel = input.closest('label');
+
+      const hasAccessibleName =
+        !!ariaLabel ||
+        !!ariaLabelledBy ||
+        !!associatedLabel ||
+        (!!wrappingLabel && wrappingLabel.textContent!.trim().length > 0);
+
+      expect(hasAccessibleName, `Input with id="${id}" has no accessible name`).toBe(true);
+    }
+  });
+});

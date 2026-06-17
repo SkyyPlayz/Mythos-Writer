@@ -274,6 +274,11 @@
   cursor: pointer;
 }
 
+.settings-slider:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .settings-slider:disabled {
   opacity: 0.35;
   cursor: not-allowed;
