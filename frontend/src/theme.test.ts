@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, PAGE_BACKGROUND_DEFAULTS, pageBackgroundContrastRatio, applyPageBackgroundTokens, resetPageBackgroundTokens } from './theme';
 
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
+const notesTabCss = readFileSync(join(__dirname, 'NotesTabPanel.css'), 'utf8');
 
 describe('token contrast floor (MYT-517 UX gate)', () => {
   // The sub-muted text colour failed the 4.5:1 floor on lighter surfaces, so
@@ -361,5 +362,34 @@ describe('tokens.css page background defaults (SKY-2097)', () => {
   });
   it('declares --page-bg-glow-color default', () => {
     expect(tokensCss).toMatch(/--page-bg-glow-color:/);
+  });
+});
+
+// ─── SKY-2102: light-theme page-bg scaffolding + Notes tab page background ───
+
+describe('tokens.css light-theme page-bg scaffolding (SKY-2102)', () => {
+  it('declares [data-theme="light"] override block with page-bg tokens', () => {
+    expect(tokensCss).toMatch(/\[data-theme="light"\]/);
+  });
+  it('[data-theme="light"] block overrides --page-bg-fill with a lighter value', () => {
+    expect(tokensCss).toMatch(/\[data-theme="light"\][^{]*\{[^}]*--page-bg-fill:/s);
+  });
+  it('[data-theme="light"] block overrides --page-bg-glow-color', () => {
+    expect(tokensCss).toMatch(/\[data-theme="light"\][^{]*\{[^}]*--page-bg-glow-color:/s);
+  });
+});
+
+describe('NotesTabPanel.css page-background (SKY-2102)', () => {
+  it('notes-tab-center uses --page-bg-fill as background', () => {
+    expect(notesTabCss).toMatch(/\.notes-tab-center\b[\s\S]*?background:\s*var\(--page-bg-fill\)/);
+  });
+  it('liquid-neon preset applies ambient box-shadow to notes-tab-center', () => {
+    expect(notesTabCss).toMatch(/\[data-page-preset="liquid-neon"\]\s+\.notes-tab-center/);
+  });
+  it('notes-tab-center gets backdrop-filter with page-bg-backdrop-blur', () => {
+    expect(notesTabCss).toMatch(/backdrop-filter:\s*blur\(var\(--page-bg-backdrop-blur\)\)/);
+  });
+  it('notes-tab-center forces near-opaque surface under prefers-contrast: more', () => {
+    expect(notesTabCss).toMatch(/prefers-contrast:\s*more/);
   });
 });

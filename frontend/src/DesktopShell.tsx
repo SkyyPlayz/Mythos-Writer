@@ -682,6 +682,10 @@ export default function DesktopShell() {
   // Keep a ref to avoid stale closures when persisting.
   const tabShellRef = useRef<TabbedShellState>(DEFAULT_TABBED_SHELL_STATE);
   useEffect(() => { tabShellRef.current = tabShell; }, [tabShell]);
+  // SKY-2102: Sync active tab to :root dataset so page-bg CSS can differentiate Story vs Notes.
+  useEffect(() => {
+    document.documentElement.dataset.activeTab = tabShell.activeTab;
+  }, [tabShell.activeTab]);
 
   // SKY-1700 (Wave 2f): named workspace layouts
   const [workspaceLayouts, setWorkspaceLayouts] = useState<WorkspaceLayout[]>([]);

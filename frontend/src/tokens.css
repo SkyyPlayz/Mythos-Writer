@@ -567,3 +567,14 @@
   --page-bg-glow-color: rgba(0, 240, 255, 0.180); /* glow 60 * 0.3 = 0.18 */
   --page-bg-backdrop-blur: 12px;
 }
+
+/* SKY-2102: Liquid Neon page-background — light app theme variants.
+   Scaffolding for a future [data-theme="light"] implementation; not active in the
+   current dark-only build. Story tab: lighter glass + cool-sky glow (soft Word-feel).
+   Notes tab CSS uses color-mix to produce the softer ambient variant from this. */
+[data-theme="light"] {
+  --page-bg-fill: rgba(210, 225, 235, 0.720);       /* cool-white glass panel        */
+  --page-bg-glow: 0.300;                             /* softer overall glow           */
+  --page-bg-glow-color: rgba(0, 200, 240, 0.090);   /* muted cyan in light ambiance  */
+  --page-bg-backdrop-blur: 12px;                     /* same blur, preserves glass feel */
+}
