@@ -11,12 +11,13 @@ describe('Liquid Neon Companion Advanced Tables CSS', () => {
     expect(stylesCss).toContain("@import url('./advanced-tables-liquid-neon.css')");
   });
 
-  it('covers table container, cells, editing input, controls, and resize handles', () => {
-    expect(atCss).toContain('.table-editor-table');
-    expect(atCss).toContain('.table-editor-cell-input');
-    expect(atCss).toContain('.tablecontrols');
-    expect(atCss).toContain('.table-editor-btn');
-    expect(atCss).toContain('.table-editor-resizer');
+  it('covers toolbar, formula bar, control rows, and source-mode table elements', () => {
+    // Advanced Tables uses its own class names; source-mode uses CodeMirror classes
+    expect(atCss).toContain('.advanced-tables-toolbar');
+    expect(atCss).toContain('.advanced-tables-formula-bar');
+    expect(atCss).toContain('.advanced-tables-control-bar');
+    expect(atCss).toContain('.clickable-icon');
+    expect(atCss).toContain('.cm-hmd-table-sep');
   });
 
   it('uses glass-fill and neon-cyan tokens for backgrounds and accents', () => {
@@ -30,14 +31,15 @@ describe('Liquid Neon Companion Advanced Tables CSS', () => {
     expect(atCss).not.toContain('color: var(--lg-neon');
   });
 
-  it('uses accessible focus ring on cell input (2px solid neon)', () => {
-    expect(atCss).toMatch(/table-editor-cell-input:focus[\s\S]*box-shadow:[\s\S]*0 0 0 2px var\(--ln-at-neon\)/);
+  it('uses accessible focus ring on toolbar buttons (2px outline, neon)', () => {
+    // Toolbar buttons use focus-visible outline; formula bar uses focus-within ring on the wrapper
+    expect(atCss).toMatch(/advanced-tables-toolbar button:focus-visible[\s\S]*outline:\s*2px solid var\(--ln-at-neon\)/);
   });
 
-  it('styles context menu with inherited Liquid Neon tokens and neon hover', () => {
-    expect(atCss).toContain('.menu');
-    expect(atCss).toContain('.menu-item');
-    expect(atCss).toMatch(/\.theme-dark \.table-editor-table,\s*\.theme-dark \.tablecontrols,\s*\.theme-dark \.menu \{/);
-    expect(atCss).toMatch(/\.menu-item:hover[\s\S]*color:\s*var\(--ln-at-neon\)/);
+  it('styles context menu with Liquid Neon glass and neon hover', () => {
+    expect(atCss).toContain('.theme-dark .menu');
+    expect(atCss).toContain('.theme-dark .menu-item');
+    // Menu hover is scoped under .theme-dark .menu and uses --ln-at-neon (the scoped token)
+    expect(atCss).toMatch(/\.theme-dark \.menu \.menu-item:hover[\s\S]*color:\s*var\(--ln-at-neon/);
   });
 });

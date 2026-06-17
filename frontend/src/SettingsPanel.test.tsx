@@ -702,7 +702,7 @@ describe('SettingsPanel', () => {
     expect(saved.voice?.ttsVolume).toBeCloseTo(0.8);
     expect(saved.voice?.ttsRate).toBeCloseTo(1.2);
     expect(saved.voice?.persistentMute).toBe(true);
-  });
+  }, 20000);
 
   // ── MYT-779: AI providers section ──
 

@@ -7,8 +7,9 @@
  * card on step 1, and asserts:
  *
  *   - the wizard advances to the scaffolding step then closes
- *   - main creates `<userDataParent>/Mythos Vaults/Mythos Vault/Story Vault`
+ *   - main creates `<userData>/vaults/Mythos Vault/Story Vault`
  *     and `…/Notes Vault` with the expected SKY-15 seed layout
+ *     (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults)
  *   - vault-settings.json is rewired to the new pair (Story + Notes)
  *
  * Then drives the multi-vault switcher:
@@ -136,8 +137,9 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     // main returns ok. Wait for the wizard overlay to be gone.
     await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
 
-    // Disk: the SKY-906 bundle landed under <home>/Mythos/Vaults/Mythos Vault.
-    const mythosVaultRoot = path.join(homeOverride, 'Mythos', 'Vaults', 'Mythos Vault');
+    // Disk: the SKY-906 bundle landed under <userData>/vaults/Mythos Vault
+    // (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults).
+    const mythosVaultRoot = path.join(userData, 'vaults', 'Mythos Vault');
     const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
     const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
     expect(fs.existsSync(storyVaultPath)).toBe(true);
@@ -163,7 +165,8 @@ test('TC-SKY-906-02: re-clicking the one-click button auto-suffixes the vault na
   // "Mythos Vault 2" instead. This locks in the no-clobber guarantee that
   // the unit tests assert against the helper — exercised here through the
   // full IPC path.
-  const preexisting = path.join(homeOverride, 'Mythos', 'Vaults', 'Mythos Vault');
+  // Pre-populate inside userData/vaults — that's where defaultMythosVaultsParent() now points
+  const preexisting = path.join(userData, 'vaults', 'Mythos Vault');
   fs.mkdirSync(preexisting, { recursive: true });
   fs.writeFileSync(path.join(preexisting, 'user-data.md'), '# do not clobber\n', 'utf-8');
 
@@ -177,8 +180,8 @@ test('TC-SKY-906-02: re-clicking the one-click button auto-suffixes the vault na
 
     // The original folder must be untouched.
     expect(fs.readFileSync(path.join(preexisting, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
-    // The new bundle landed at "Mythos Vault 2".
-    const newRoot = path.join(homeOverride, 'Mythos', 'Vaults', 'Mythos Vault 2');
+    // The new bundle landed at "Mythos Vault 2" under userData/vaults.
+    const newRoot = path.join(userData, 'vaults', 'Mythos Vault 2');
     expect(fs.existsSync(path.join(newRoot, 'Story Vault'))).toBe(true);
     expect(fs.existsSync(path.join(newRoot, 'Notes Vault'))).toBe(true);
 
@@ -234,14 +237,17 @@ test('TC-SKY-906-03: vault switcher creates a 2nd vault, switches, and switches 
     await pg.locator('.prompt-modal-ok').click();
 
     // Wait until vault-settings reflects the new active vault.
+    // "Second" vault lands under userData/vaults (SKY-2157: default parent → userData).
+    const secondVaultStory = path.join(userData, 'vaults', 'Second', 'Story Vault');
+    const secondVaultNotes = path.join(userData, 'vaults', 'Second', 'Notes Vault');
     await expect.poll(
       () => readVaultSettings(userData).vaultRoot,
       { timeout: 30_000, intervals: [200, 400, 800, 1000] },
-    ).toBe(path.join(homeOverride, 'Mythos', 'Vaults', 'Second', 'Story Vault'));
+    ).toBe(secondVaultStory);
 
     let vaultSettings = readVaultSettings(userData);
-    expect(vaultSettings.vaultRoot).toBe(path.join(homeOverride, 'Mythos', 'Vaults', 'Second', 'Story Vault'));
-    expect(vaultSettings.notesVaultRoot).toBe(path.join(homeOverride, 'Mythos', 'Vaults', 'Second', 'Notes Vault'));
+    expect(vaultSettings.vaultRoot).toBe(secondVaultStory);
+    expect(vaultSettings.notesVaultRoot).toBe(secondVaultNotes);
     // Both pairs are in recent-projects.
     expect(vaultSettings.recentProjects?.length).toBeGreaterThanOrEqual(2);
     expect(vaultSettings.recentProjects?.some((p) => p.vaultRoot === firstStory)).toBe(true);
