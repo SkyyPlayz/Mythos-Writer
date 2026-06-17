@@ -54,6 +54,8 @@ interface Props {
   onEntityClick?: (entityId: string) => void;
   /** SKY-2099: called when user clicks a [[typed wiki link]]. */
   onWikiLinkClick?: (target: string) => void;
+  /** SKY-2011: called when the editor selection changes, debounced by TipTap's onSelectionUpdate. */
+  onSelectionChange?: (text: string) => void;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -84,7 +86,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, onSelectionChange }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
     scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
@@ -126,6 +128,8 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   onEntityClickRef.current = onEntityClick;
   const onWikiLinkClickRef = useRef(onWikiLinkClick);
   onWikiLinkClickRef.current = onWikiLinkClick;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
   const editorWrapRef = useRef<HTMLDivElement | null>(null);
   // SKY-130: cursor tracking refs
   const onCursorPosChangeRef = useRef(onCursorPosChange);
@@ -210,6 +214,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       const text = from === to ? '' : ed.state.doc.textBetween(from, to, ' ');
       const trimmed = text.trim();
       setSelectionText(trimmed);
+      onSelectionChangeRef.current?.(trimmed);
       if (trimmed.length > 3 && editorWrapRef.current) {
         // Position the bubble relative to the editorWrap using the native selection
         const nativeSel = window.getSelection();

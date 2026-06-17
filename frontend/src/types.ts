@@ -158,7 +158,7 @@ export interface LayoutPrefs {
   leftWidth: number;
   rightWidth: number;
   bottomHeight: number;
-  rightTab: 'notes' | 'properties' | 'ai' | 'outline';
+  rightTab: 'notes' | 'properties' | 'ai' | 'outline' | 'continuity';
   leftTab: 'stories' | 'vault' | 'entities' | 'review' | 'progress';
   writingMode?: WritingMode;
   focusPrefs?: FocusPrefs;

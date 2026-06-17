@@ -5,10 +5,11 @@ import VaultAgentPanel from './VaultAgentPanel';
 import ArchivePanel from './ArchivePanel';
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import DraftHistoryPanel from './DraftHistoryPanel';
+import ContinuityPanel from './components/ContinuityPanel/ContinuityPanel';
 import { isGettingStartedVisible, type GettingStartedItemId, type GettingStartedProgress } from './gettingStartedReducer';
 import './RightSidebar.css';
 
-type Tab = 'notes' | 'properties' | 'ai' | 'outline';
+type Tab = 'notes' | 'properties' | 'ai' | 'outline' | 'continuity';
 
 interface Props {
   activeTab: Tab;
@@ -16,6 +17,8 @@ interface Props {
   selectedScene: Scene | null;
   selectedChapter: Chapter | null;
   selectedStory: Story | null;
+  /** Current editor selection, forwarded to ContinuityPanel for auto-match. */
+  editorSelectionText?: string;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
   scanIntervalSeconds?: number;
@@ -41,6 +44,7 @@ const SIDEBAR_TABS: { id: Tab; label: string }[] = [
   { id: 'properties', label: 'Properties' },
   { id: 'ai', label: 'Assistant' },
   { id: 'outline', label: 'Outline' },
+  { id: 'continuity', label: 'Entities' },
 ];
 
 const NOTES_SAVE_DEBOUNCE_MS = 600;
@@ -399,6 +403,7 @@ export default function RightSidebar({
   onToggleGsCollapsed,
   currentSceneContent,
   onDraftRestore,
+  editorSelectionText = '',
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -487,6 +492,9 @@ export default function RightSidebar({
             selectedSceneId={selectedScene?.id ?? null}
             onSelectScene={onSelectScene}
           />
+        )}
+        {activeTab === 'continuity' && (
+          <ContinuityPanel selectionText={editorSelectionText} />
         )}
       </div>
     </div>
