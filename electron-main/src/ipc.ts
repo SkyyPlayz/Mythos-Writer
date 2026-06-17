@@ -233,6 +233,7 @@ export const IPC_CHANNELS = {
 
   // Two-vault layout (MYT-608) — Story Vault + Notes Vault path management
   VAULT_GET_PATHS: 'vault:getPaths',
+  VAULT_GET_SYSTEM_PATHS: 'vault:getSystemPaths',
   VAULT_SET_PATHS: 'vault:setPaths',
   // SKY-9: Notes-Vault-scoped file IO. The existing VAULT_* channels stay
   // bound to the Story Vault root; this is the symmetric set rooted at the
@@ -627,6 +628,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BG_PICK]: (payload: never) => Promise<BgPickResponse>;
   [IPC_CHANNELS.BG_LOAD]: (payload: BgLoadPayload) => Promise<BgLoadResponse>;
   [IPC_CHANNELS.VAULT_GET_PATHS]: (payload: never) => VaultGetPathsResponse;
+  [IPC_CHANNELS.VAULT_GET_SYSTEM_PATHS]: (payload: never) => VaultGetSystemPathsResponse;
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
   [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
   [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
@@ -1737,13 +1739,17 @@ export interface AppSettings {
   };
   onboardingComplete?: boolean;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported' | 'open-existing';
+  /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
+  recentVaultParentPaths?: string[];
+  /** SKY-2005: last sample genre selected from the onboarding sample preview. */
+  lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
   /** SKY-1188: timestamp of first completed onboarding. */
   firstLaunchAt?: string;
   /** SKY-1188: persisted post-onboarding checklist state. */
   gettingStartedProgress?: {
     firstSeenAt?: string;
-    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported';
+    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'imported' | 'open-existing';
     dismissed: boolean;
     collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
@@ -1831,7 +1837,7 @@ export interface LastOpenedScene {
  *  with no user input, seeds a first scene, and marks onboarding complete in
  *  a single round-trip. */
 export interface OnboardingCompletePayload {
-  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
   /** Required for blank / sample / template modes. Optional for default-mythos-vault
    *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;
@@ -1846,6 +1852,8 @@ export interface OnboardingCompletePayload {
   /** Optional override for the Mythos Vault folder name (default-mythos-vault only).
    *  Rejected if it contains path separators or parent-traversal. */
   vaultName?: string;
+  /** Optional sample-project flavor, persisted after successful sample onboarding. */
+  sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
 }
 
 /** SKY-627: response from the extended onboarding:complete handler. */
@@ -2922,6 +2930,14 @@ export interface VaultGetPathsResponse {
   notesVaultPath: string;
   homeDir: string;
   pathSeparator: '/' | '\\';
+}
+
+export interface VaultGetSystemPathsResponse {
+  homeDir: string;
+  documentsDir: string;
+  desktopDir: string;
+  oneDriveDir: string | null;
+  iCloudDir: string | null;
 }
 
 export type VaultSeedMode = 'default' | 'blank';

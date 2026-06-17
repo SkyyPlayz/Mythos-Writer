@@ -1,7 +1,7 @@
 export const CHECKLIST_ITEM_IDS = ['write-scene', 'add-character', 'brainstorm', 'notes-vault'] as const;
 
 export type GettingStartedItemId = (typeof CHECKLIST_ITEM_IDS)[number];
-export type OnboardingStartMode = 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault';
+export type OnboardingStartMode = 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
 
 export interface GettingStartedProgress {
   completedItems: GettingStartedItemId[];

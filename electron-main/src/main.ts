@@ -347,6 +347,7 @@ import {
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
+import { buildSystemPaths, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
 import {
   hydrateSecretsIntoSettings,
@@ -1794,9 +1795,9 @@ const handlers: IpcHandlers = {
   // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
   // and settings persistence for all start modes (blank / sample / template / skip / default-mythos-vault).
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
-    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName } = payload ?? {};
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre } = payload ?? {};
 
-    const persistSettings = (firstSceneId?: string, firstScenePath?: string) => {
+    const persistSettings = (firstSceneId?: string, firstScenePath?: string, recentParentPath?: string) => {
       const current = loadAppSettings();
       const patch: typeof current = { ...current, onboardingComplete: true };
       patch.onboardingStartMode = startMode ?? 'skip';
@@ -1805,6 +1806,9 @@ const handlers: IpcHandlers = {
         completedItems: [],
         dismissed: !startMode || startMode === 'skip',
       };
+      const recentVaultParentPaths = updateRecentVaultParentPaths(current.recentVaultParentPaths, recentParentPath);
+      if (recentVaultParentPaths) patch.recentVaultParentPaths = recentVaultParentPaths;
+      if (sampleGenre && startMode === 'sample') patch.lastSampleGenre = sampleGenre;
       if (authorName?.trim()) patch.authorName = authorName.trim();
       if (firstSceneId && firstScenePath) {
         patch.lastOpenedScene = { sceneId: firstSceneId, scenePath: firstScenePath, scrollTop: 0, cursorLine: 0 };
@@ -1884,8 +1888,32 @@ const handlers: IpcHandlers = {
       await stopNotesVaultWatcher();
       await startNotesVaultWatcher(notesVaultPathDefault, notifyNotesVaultChanged);
 
-      persistSettings(sceneId, sceneRelPath);
+      persistSettings(sceneId, sceneRelPath, parentBase);
       return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
+    }
+
+    if (startMode === 'open-existing') {
+      if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
+      try {
+        const resolvedExistingParent = vaultParentPath.trim().replace(/^~/, app.getPath('home'));
+        const existing = readExistingVaultPaths(resolvedExistingParent);
+        saveVaultSettings({
+          vaultRoot: existing.storyVaultPath,
+          notesVaultRoot: existing.notesVaultPath,
+          layoutMode: 'default',
+        });
+        addToRecentProjects(existing.storyVaultPath, existing.notesVaultPath);
+        await stopVaultWatcher();
+        await startVaultWatcher(existing.storyVaultPath, notifyVaultChanged);
+        await stopNotesVaultWatcher();
+        if (fs.existsSync(existing.notesVaultPath)) {
+          await startNotesVaultWatcher(existing.notesVaultPath, notifyNotesVaultChanged);
+        }
+        persistSettings(existing.firstSceneId, existing.firstScenePath, resolvedExistingParent);
+        return { ok: true, firstSceneId: existing.firstSceneId, firstScenePath: existing.firstScenePath };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : 'Failed to open existing vault' };
+      }
     }
 
     if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
@@ -1944,7 +1972,7 @@ const handlers: IpcHandlers = {
       await stopVaultWatcher();
       await startVaultWatcher(storyVaultPath, notifyVaultChanged);
 
-      persistSettings(sceneId, sceneRelPath);
+      persistSettings(sceneId, sceneRelPath, resolvedParent);
       return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
 
     } else if (startMode === 'sample') {
@@ -1983,7 +2011,7 @@ const handlers: IpcHandlers = {
       await startVaultWatcher(storyVaultPath, notifyVaultChanged);
 
       const firstScene = synced.stories[0]?.chapters[0]?.scenes[0] ?? synced.scenes[0];
-      persistSettings(firstScene?.id, firstScene?.path);
+      persistSettings(firstScene?.id, firstScene?.path, resolvedParent);
       return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
 
     } else if (startMode === 'template') {
@@ -2009,7 +2037,7 @@ const handlers: IpcHandlers = {
 
       const manifest = readManifest(getManifestPath());
       const firstScene = manifest.stories[0]?.chapters[0]?.scenes[0] ?? manifest.scenes[0];
-      persistSettings(firstScene?.id, firstScene?.path);
+      persistSettings(firstScene?.id, firstScene?.path, resolvedParent);
       return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
     }
 
@@ -3756,6 +3784,8 @@ const handlers: IpcHandlers = {
       pathSeparator: path.sep as '/' | '\\',
     };
   },
+
+  [IPC_CHANNELS.VAULT_GET_SYSTEM_PATHS]: () => buildSystemPaths(app),
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
     // MYT-789: gate the new vault roots behind either a registration token
