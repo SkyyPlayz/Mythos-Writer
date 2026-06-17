@@ -10,7 +10,7 @@ env:
 
 jobs:
   determine-release:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       is-beta: ${{ steps.check.outputs.is-beta }}
       version: ${{ steps.check.outputs.version }}
@@ -27,11 +27,11 @@ jobs:
           fi
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
-  # Windows build — artifacts retained for future signing gate (MYT-226).
-  # GH_TOKEN intentionally omitted; Windows publish is gated on signing.
+  # Windows build — cross-compiled from Linux via electron-builder + NSIS + Wine.
+  # Unsigned builds (no cert secret) skip signing but still produce a working installer.
   build-windows:
     needs: determine-release
-    runs-on: windows-latest
+    runs-on: self-hosted
     permissions:
       contents: write
 
@@ -43,22 +43,33 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
+
+      - name: Install Windows cross-build dependencies (NSIS + Wine)
+        run: |
+          sudo apt-get update -qq
+          # NSIS (makensis) is required to compile the NSIS installer target.
+          # Wine is used by electron-builder's rcedit to embed version info + icon in the .exe.
+          # wine32:i386 may be unavailable on some runners; fall back to wine64-only.
+          sudo apt-get install -y --no-install-recommends nsis || true
+          sudo dpkg --add-architecture i386 2>/dev/null || true
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends wine wine32:i386 2>/dev/null || \
+            sudo apt-get install -y --no-install-recommends wine64 2>/dev/null || true
 
       - name: Install dependencies
         run: npm ci
 
       - name: Decode Windows signing certificate
-        shell: pwsh
+        shell: bash
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
-            Write-Host "No Windows signing certificate configured; building unsigned installer."
+          if [ -z "${WINDOWS_CERTIFICATE_BASE64:-}" ]; then
+            echo "No Windows signing certificate configured; building unsigned installer."
             exit 0
-          }
-          $certBytes = [Convert]::FromBase64String("$env:WINDOWS_CERTIFICATE_BASE64")
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\certificate.pfx", $certBytes)
-          echo "WIN_CSC_LINK=$env:RUNNER_TEMP\certificate.pfx" >> $env:GITHUB_ENV
+          fi
+          echo "$WINDOWS_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.pfx"
+          echo "WIN_CSC_LINK=$RUNNER_TEMP/certificate.pfx" >> "$GITHUB_ENV"
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
 
@@ -75,11 +86,13 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.zip
 
-  # macOS build — artifacts retained for future signing gate (MYT-226).
+  # macOS build — optional; not a dependency of publish-release.
+  # Runs on hosted macos-latest; will be skipped when Actions minutes are exhausted.
   # GH_TOKEN intentionally omitted; macOS publish is gated on signing.
   build-mac:
     needs: determine-release
     runs-on: macos-latest
+    continue-on-error: true
     permissions:
       contents: write
 
@@ -159,7 +172,7 @@ jobs:
 
   build-linux:
     needs: [determine-release]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
 
@@ -171,7 +184,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -195,7 +208,7 @@ jobs:
 
   publish-release:
     needs: [determine-release, build-linux, build-windows]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
 

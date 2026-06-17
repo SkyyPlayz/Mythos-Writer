@@ -382,3 +382,105 @@
     background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 22%, transparent);
   }
 }
+
+/* ── 12. Rendered table editor overlay (Advanced Tables grid view) ─────────
+ *
+ * Selectors used by the Advanced Tables plugin in "table editor" preview mode:
+ *   .table-editor-table     – the rendered table container
+ *   .table-editor-cell-input – individual cell edit inputs
+ *   .tablecontrols           – the control bar below the table
+ *   .table-editor-btn        – action buttons (add row/col, etc.)
+ *   .table-editor-resizer    – column resize drag handles
+ * ========================================================================== */
+
+.theme-dark .table-editor-table,
+.theme-dark .tablecontrols,
+.theme-dark .menu {
+  --ln-at-neon: var(--neon-cyan, #00f0ff);
+  --ln-at-neon-intensity: var(--lg-neon, 0.5);
+  --ln-at-glass: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  --ln-at-border: var(--glass-border, rgba(255, 255, 255, 0.07));
+  --ln-at-glow: color-mix(in srgb, var(--ln-at-neon) calc(var(--ln-at-neon-intensity) * 48%), transparent);
+}
+
+.theme-dark .table-editor-table {
+  background: var(--ln-at-glass);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+}
+
+.theme-dark .table-editor-cell-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  color: var(--text-body, #bfd6e8);
+  font-family: var(--font-interface, inherit);
+  font-size: var(--text-sm, 13px);
+  padding: 2px 4px;
+  width: 100%;
+}
+
+.theme-dark .table-editor-cell-input:focus {
+  outline: none;
+  border-color: var(--ln-at-neon);
+  box-shadow: 0 0 0 2px var(--ln-at-neon);
+}
+
+.theme-dark .tablecontrols {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-xs, 8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+}
+
+.theme-dark .table-editor-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  color: var(--text-muted, #93a4b8);
+  cursor: pointer;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.theme-dark .table-editor-btn:hover {
+  background: color-mix(in srgb, var(--ln-at-neon) 12%, transparent);
+  border-color: var(--ln-at-neon);
+  color: var(--ln-at-neon);
+  box-shadow: 0 0 calc(8px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+.theme-dark .table-editor-resizer {
+  cursor: col-resize;
+  width: 4px;
+  background: var(--ln-at-border);
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.theme-dark .table-editor-resizer:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--ln-at-neon) 60%, transparent);
+}
+
+/* Scoped .menu-item:hover uses --ln-at-neon from the inherited token block above */
+.theme-dark .menu .menu-item:hover {
+  color: var(--ln-at-neon);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .table-editor-btn,
+  .theme-dark .table-editor-resizer {
+    transition: none;
+  }
+}
+}
