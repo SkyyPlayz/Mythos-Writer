@@ -1,6 +1,170 @@
-import { useState, useEffect, useCallback, useRef, type MouseEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type MouseEvent, type KeyboardEvent } from 'react';
 import type { Story, Chapter, Scene } from './types';
 import './VaultSidebar.css';
+
+// ─── Sort / Filter types ───
+
+export type SortKey = 'name' | 'modified' | 'created' | 'wordcount';
+export type FilterKey = 'all' | 'manuscript' | 'notes' | 'drafts';
+
+interface VaultControlsState {
+  sort: SortKey;
+  filter: FilterKey;
+  tagFilter: string | null;
+}
+
+const DEFAULT_CONTROLS: VaultControlsState = { sort: 'name', filter: 'all', tagFilter: null };
+
+function applySceneSort(scenes: Scene[], sort: SortKey): Scene[] {
+  switch (sort) {
+    case 'modified': return [...scenes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    case 'created': return [...scenes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    case 'wordcount': return [...scenes].sort((a, b) => (b.timelineMetadata?.wordCount ?? 0) - (a.timelineMetadata?.wordCount ?? 0));
+    default: return [...scenes].sort((a, b) => a.title.localeCompare(b.title));
+  }
+}
+
+function isDraftScene(scene: Scene): boolean {
+  return !scene.draftState || scene.draftState === 'in-progress';
+}
+
+// ─── VaultBrowserControls ───
+
+interface VaultBrowserControlsProps {
+  controls: VaultControlsState;
+  tags: Array<{ id: string; name: string }>;
+  onSortChange: (sort: SortKey) => void;
+  onFilterChange: (filter: FilterKey) => void;
+  onTagChange: (tag: string | null) => void;
+}
+
+function VaultBrowserControls({ controls, tags, onSortChange, onFilterChange, onTagChange }: VaultBrowserControlsProps) {
+  const [tagOpen, setTagOpen] = useState(false);
+  const tagBtnRef = useRef<HTMLButtonElement>(null);
+  const tagDropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!tagOpen) return;
+    function onMouseDown(e: globalThis.MouseEvent) {
+      if (
+        !tagDropRef.current?.contains(e.target as Node) &&
+        !tagBtnRef.current?.contains(e.target as Node)
+      ) {
+        setTagOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [tagOpen]);
+
+  const closeDropdown = useCallback(() => {
+    setTagOpen(false);
+    tagBtnRef.current?.focus();
+  }, []);
+
+  const handleTagOptionKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === 'Escape') { closeDropdown(); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        (e.currentTarget.nextElementSibling as HTMLButtonElement | null)?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = e.currentTarget.previousElementSibling as HTMLButtonElement | null;
+        if (prev) prev.focus(); else tagBtnRef.current?.focus();
+      }
+    },
+    [closeDropdown],
+  );
+
+  const activeTag = controls.tagFilter;
+
+  return (
+    <div className="vs-controls" role="toolbar" aria-label="Vault browser controls">
+      <div className="vs-controls-row">
+        <label className="vs-controls-label" htmlFor="vs-sort-select">Sort</label>
+        <select
+          id="vs-sort-select"
+          className="vs-controls-select"
+          value={controls.sort}
+          onChange={(e) => onSortChange(e.target.value as SortKey)}
+          aria-label="Sort by"
+        >
+          <option value="name">Name</option>
+          <option value="modified">Last modified</option>
+          <option value="created">Created</option>
+          <option value="wordcount">Word count</option>
+        </select>
+
+        <label className="vs-controls-label" htmlFor="vs-filter-select">Filter</label>
+        <select
+          id="vs-filter-select"
+          className="vs-controls-select"
+          value={controls.filter}
+          onChange={(e) => onFilterChange(e.target.value as FilterKey)}
+          aria-label="Filter by"
+        >
+          <option value="all">All</option>
+          <option value="manuscript">Manuscript</option>
+          <option value="notes">Notes</option>
+          <option value="drafts">Drafts</option>
+        </select>
+      </div>
+
+      <div className="vs-controls-tag-wrap">
+        <button
+          ref={tagBtnRef}
+          className={`vs-controls-tag-btn${activeTag ? ' vs-controls-tag-btn--active' : ''}`}
+          onClick={() => setTagOpen((o) => !o)}
+          onKeyDown={(e) => { if (e.key === 'Escape') closeDropdown(); }}
+          aria-haspopup="listbox"
+          aria-expanded={tagOpen}
+          aria-label={activeTag ? `Tag filter: ${activeTag}. Click to change` : 'Filter by tag'}
+        >
+          <span className="vs-controls-tag-icon" aria-hidden="true">#</span>
+          <span className="vs-controls-tag-label">{activeTag ?? 'Tag'}</span>
+          <span className="vs-controls-chevron" aria-hidden="true">{tagOpen ? '▴' : '▾'}</span>
+        </button>
+
+        {tagOpen && (
+          <div
+            ref={tagDropRef}
+            className="vs-controls-tag-drop"
+            role="listbox"
+            aria-label="Select tag filter"
+          >
+            {activeTag && (
+              <button
+                className="vs-controls-tag-option vs-controls-tag-clear"
+                role="option"
+                aria-selected={false}
+                onClick={() => { onTagChange(null); closeDropdown(); }}
+                onKeyDown={handleTagOptionKeyDown}
+              >
+                ✕ Clear filter
+              </button>
+            )}
+            {tags.length === 0 && (
+              <span className="vs-controls-tag-empty">No tags yet</span>
+            )}
+            {tags.map((tag) => (
+              <button
+                key={tag.id}
+                className={`vs-controls-tag-option${activeTag === tag.name ? ' vs-controls-tag-option--active' : ''}`}
+                role="option"
+                aria-selected={activeTag === tag.name}
+                onClick={() => { onTagChange(activeTag === tag.name ? null : tag.name); closeDropdown(); }}
+                onKeyDown={handleTagOptionKeyDown}
+              >
+                #{tag.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Shared tree types ───
 
@@ -92,6 +256,9 @@ interface StoryVaultProps {
   onCreateScene: (storyId: string, chapterId: string) => void;
   showTemplateCta?: boolean;
   onTemplateCtaClick?: () => void;
+  sort?: SortKey;
+  filter?: FilterKey;
+  taggedSceneIds?: Set<string> | null;
 }
 
 function StoryVault({
@@ -103,6 +270,9 @@ function StoryVault({
   onCreateScene,
   showTemplateCta,
   onTemplateCtaClick,
+  sort = 'name',
+  filter = 'all',
+  taggedSceneIds = null,
 }: StoryVaultProps) {
   const [open, setOpen] = useState(true);
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set());
@@ -182,6 +352,15 @@ function StoryVault({
                     .sort((a, b) => a.order - b.order)
                     .map((chapter) => {
                       const chapterExpanded = expandedChapters.has(chapter.id);
+                      const visibleScenes = applySceneSort(
+                        chapter.scenes.filter((sc) => {
+                          if (filter === 'drafts' && !isDraftScene(sc)) return false;
+                          if (taggedSceneIds !== null && !taggedSceneIds.has(sc.id)) return false;
+                          return true;
+                        }),
+                        sort,
+                      );
+                      if (visibleScenes.length === 0) return null;
                       return (
                         <div key={chapter.id} className="vs-chapter">
                           <div className="vs-item-row vs-chapter-row">
@@ -204,31 +383,29 @@ function StoryVault({
                               +
                             </button>
                           </div>
-                          {chapterExpanded && [...chapter.scenes]
-                            .sort((a, b) => a.order - b.order)
-                            .map((scene) => (
-                              <div
-                                key={scene.id}
-                                className={`vs-scene-row${selectedSceneId === scene.id ? ' vs-selected' : ''}`}
-                                style={{ paddingLeft: 36 }}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => onSelectScene(scene, chapter, story)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    onSelectScene(scene, chapter, story);
-                                  }
-                                }}
-                                aria-pressed={selectedSceneId === scene.id}
-                                aria-label={scene.title}
-                                title={scene.title}
-                              >
-                                <span className="vs-chevron" />
-                                <span className="vs-icon">📄</span>
-                                <span className="vs-name">{scene.title}</span>
-                              </div>
-                            ))}
+                          {chapterExpanded && visibleScenes.map((scene) => (
+                            <div
+                              key={scene.id}
+                              className={`vs-scene-row${selectedSceneId === scene.id ? ' vs-selected' : ''}`}
+                              style={{ paddingLeft: 36 }}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => onSelectScene(scene, chapter, story)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  onSelectScene(scene, chapter, story);
+                                }
+                              }}
+                              aria-pressed={selectedSceneId === scene.id}
+                              aria-label={scene.title}
+                              title={scene.title}
+                            >
+                              <span className="vs-chevron" />
+                              <span className="vs-icon">📄</span>
+                              <span className="vs-name">{scene.title}</span>
+                            </div>
+                          ))}
                         </div>
                       );
                     })}
@@ -931,30 +1108,100 @@ export default function VaultSidebar({
   onTemplateCtaClick,
   journalModeEnabled,
 }: VaultSidebarProps) {
+  const [controls, setControls] = useState<VaultControlsState>(DEFAULT_CONTROLS);
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
+  const [taggedSceneIds, setTaggedSceneIds] = useState<Set<string> | null>(null);
+  const [vaultRoot, setVaultRoot] = useState<string | null>(null);
+
+  // Resolve vault root for per-vault localStorage key
+  useEffect(() => {
+    window.api.getVaultRoot?.().then((r) => setVaultRoot(r.vaultRoot)).catch(() => {});
+  }, []);
+
+  // Load persisted controls once vault root is known
+  useEffect(() => {
+    if (!vaultRoot) return;
+    try {
+      const saved = localStorage.getItem(`vault-browser-controls:${vaultRoot}`);
+      if (saved) setControls(JSON.parse(saved) as VaultControlsState);
+    } catch { /* malformed JSON — use defaults */ }
+  }, [vaultRoot]);
+
+  // Persist controls on change
+  useEffect(() => {
+    if (!vaultRoot) return;
+    localStorage.setItem(`vault-browser-controls:${vaultRoot}`, JSON.stringify(controls));
+  }, [controls, vaultRoot]);
+
+  // Load available tags for the chip picker
+  useEffect(() => {
+    window.api.tagsList?.()
+      .then((r: { tags: Array<{ id: string; name: string }> }) => setTags(r.tags ?? []))
+      .catch(() => {});
+  }, []);
+
+  // Resolve scene IDs for the active tag filter
+  useEffect(() => {
+    if (!controls.tagFilter) { setTaggedSceneIds(null); return; }
+    window.api.tagsItemsForTag?.(controls.tagFilter)
+      .then((r: { items: Array<{ itemId: string; itemKind: string }> }) => {
+        setTaggedSceneIds(new Set(r.items.filter((i) => i.itemKind === 'scene').map((i) => i.itemId)));
+      })
+      .catch(() => setTaggedSceneIds(null));
+  }, [controls.tagFilter]);
+
+  const handleSortChange = useCallback((sort: SortKey) => setControls((c) => ({ ...c, sort })), []);
+  const handleFilterChange = useCallback((filter: FilterKey) => setControls((c) => ({ ...c, filter })), []);
+  const handleTagChange = useCallback((tagFilter: string | null) => {
+    setControls((c) => ({ ...c, tagFilter }));
+    onTagFilter?.(tagFilter ?? '');
+  }, [onTagFilter]);
+
+  const showStoryVault = controls.filter !== 'notes';
+  const showNotesSections = controls.filter === 'all' || controls.filter === 'notes';
+
   return (
     <div className="vault-sidebar">
-      <StoryVault
-        stories={stories}
-        selectedSceneId={selectedSceneId}
-        onSelectScene={onSelectScene}
-        onCreateStory={onCreateStory}
-        onCreateChapter={onCreateChapter}
-        onCreateScene={onCreateScene}
-        showTemplateCta={showTemplateCta}
-        onTemplateCtaClick={onTemplateCtaClick}
+      <VaultBrowserControls
+        controls={controls}
+        tags={tags}
+        onSortChange={handleSortChange}
+        onFilterChange={handleFilterChange}
+        onTagChange={handleTagChange}
       />
-      <div className="vs-divider" aria-hidden="true" />
-      {journalModeEnabled && (
+      {showStoryVault && (
         <>
-          <DailyNotesSection onOpenPath={onOpenVaultPath} />
-          <div className="vs-divider" aria-hidden="true" />
+          <StoryVault
+            stories={stories}
+            selectedSceneId={selectedSceneId}
+            onSelectScene={onSelectScene}
+            onCreateStory={onCreateStory}
+            onCreateChapter={onCreateChapter}
+            onCreateScene={onCreateScene}
+            showTemplateCta={showTemplateCta}
+            onTemplateCtaClick={onTemplateCtaClick}
+            sort={controls.sort}
+            filter={controls.filter}
+            taggedSceneIds={taggedSceneIds}
+          />
+          {showNotesSections && <div className="vs-divider" aria-hidden="true" />}
         </>
       )}
-      <NotesVault onOpenPath={onOpenVaultPath} onContextChange={onContextChange} />
-      <div className="vs-divider" aria-hidden="true" />
-      <SmartFolderSection onOpenPath={onOpenVaultPath} />
-      <div className="vs-divider" aria-hidden="true" />
-      <TagsSection onTagFilter={onTagFilter} />
+      {showNotesSections && (
+        <>
+          {journalModeEnabled && (
+            <>
+              <DailyNotesSection onOpenPath={onOpenVaultPath} />
+              <div className="vs-divider" aria-hidden="true" />
+            </>
+          )}
+          <NotesVault onOpenPath={onOpenVaultPath} onContextChange={onContextChange} />
+          <div className="vs-divider" aria-hidden="true" />
+          <SmartFolderSection onOpenPath={onOpenVaultPath} />
+          <div className="vs-divider" aria-hidden="true" />
+          <TagsSection onTagFilter={onTagFilter} />
+        </>
+      )}
     </div>
   );
 }
