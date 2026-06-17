@@ -37,6 +37,38 @@
   margin-bottom: 8px;
 }
 
+.ap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--surface-2, #1e2433);
+  border: 1px solid var(--border, #2d3748);
+  border-radius: 8px;
+}
+
+.ap-btn-scan-now {
+  color: #22d3ee;
+  border-color: rgba(34, 211, 238, 0.45);
+}
+
+.ap-btn-scan-now:hover:not(:disabled) {
+  background: rgba(34, 211, 238, 0.12);
+  border-color: #22d3ee;
+}
+
+.ap-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ap-scan-status {
+  min-height: 1em;
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+}
+
 .ap-section-title {
   font-size: 11px;
   font-weight: 600;
