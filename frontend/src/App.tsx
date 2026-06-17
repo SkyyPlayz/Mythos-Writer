@@ -48,14 +48,8 @@ function App() {
 
       try {
         const vaults = await window.api.vaultGetPaths();
-        const [storyResult, notesResult] = await Promise.all([
-          window.api.validatePath(vaults.storyVaultPath).catch(() => ({ valid: false })),
-          window.api.validatePath(vaults.notesVaultPath).catch(() => ({ valid: false })),
-        ]);
-        const storyValid = isVaultPathValid(storyResult);
-        const notesValid = isVaultPathValid(notesResult);
-
-        if (!storyValid && !notesValid) {
+        const storyResult = await window.api.validatePath(vaults.storyVaultPath).catch(() => ({ valid: false }));
+        if (!isVaultPathValid(storyResult)) {
           setView({ kind: 'missing-vault', settings: nextSettings, vaultPath: vaults.storyVaultPath });
           return;
         }
