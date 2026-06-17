@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
+import { useToast } from './hooks/useToast';
+import { Toast } from './components/Toast/Toast';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -184,8 +186,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // Guard: prevents onBlur from calling templateRename a second time after Enter already committed it
   const templateRenamedRef = useRef(false);
   // SKY-1403: export / import toast feedback
-  const [templateToast, setTemplateToast] = useState<string | null>(null);
-  const templateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast: templateToastState, showToast: showTemplateToast } = useToast(3000);
   // SKY-1405: drag-drop visual feedback state
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -240,13 +241,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   useEffect(() => {
     if (step === 'step1b') reloadTemplates();
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // SKY-1403: show a brief toast message in the template picker
-  const showTemplateToast = useCallback((msg: string) => {
-    setTemplateToast(msg);
-    if (templateToastTimerRef.current) clearTimeout(templateToastTimerRef.current);
-    templateToastTimerRef.current = setTimeout(() => setTemplateToast(null), 3000);
-  }, []);
 
   // SKY-1405: drag-drop handlers for .mythostemplate import
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -549,6 +543,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       onKeyDown={handleOverlayKeyDown}
       data-testid="gs-overlay"
     >
+      <Toast message={templateToastState?.message ?? null} level={templateToastState?.level} />
       {/* Confirm dialog */}
       {showCancelConfirm && (
         <ConfirmDialog
@@ -884,16 +879,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     &#x2B06; Import template
                   </button>
                 </div>
-                {templateToast && (
-                  <p
-                    className="gs-template-toast"
-                    role="status"
-                    aria-live="polite"
-                    data-testid="template-toast"
-                  >
-                    {templateToast}
-                  </p>
-                )}
                 <div className="gs-template-import-row">
                   <button
                     type="button"
@@ -912,16 +897,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     &#x2B06; Import template
                   </button>
                 </div>
-                {templateToast && (
-                  <p
-                    className="gs-template-toast"
-                    role="status"
-                    aria-live="polite"
-                    data-testid="template-toast"
-                  >
-                    {templateToast}
-                  </p>
-                )}
               </>
 
               {selectedTemplate && (
