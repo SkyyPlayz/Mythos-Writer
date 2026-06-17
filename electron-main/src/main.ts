@@ -270,6 +270,8 @@ import {
   writeManifest,
   defaultManifest,
   reindexVault,
+  loadVaultIndexCache,
+  saveVaultIndexCache,
   importObsidianVault,
   obsidianDryRun,
   startVaultWatcher,
@@ -297,7 +299,7 @@ import {
   readArcManifest,
   writeArcManifest,
 } from './vault.js';
-import { openManifest, ManifestMigrationError } from './manifest.js';
+import { openManifest, ManifestMigrationError, SCHEMA_VERSION } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
 import {
   createEntity,
@@ -504,6 +506,10 @@ function getPairedNotesVaultRoot(vaultRoot: string): string | undefined {
 
 function getVaultSettingsPath(): string {
   return path.join(app.getPath('userData'), 'vault-settings.json');
+}
+
+function getVaultIndexCacheDir(): string {
+  return path.join(app.getPath('userData'), 'vault-index-cache');
 }
 
 // SKY-9 / SKY-15: first-run defaults sit side-by-side under ~/Mythos/ with
@@ -958,10 +964,19 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_MANIFEST_READ]: () => {
     ensureVaultDir();
-    // Reindex on open so direct markdown edits sync back
+    // Reindex on open so direct markdown edits sync back.
+    // Warm-start: load the per-vault mtime+size cache to skip unchanged files.
+    const vaultRoot = getVaultRoot();
     const manifest = readManifest(getManifestPath());
-    const { manifest: synced } = reindexVault(getVaultRoot(), manifest);
+    const cacheDir = getVaultIndexCacheDir();
+    const cache = loadVaultIndexCache(cacheDir, vaultRoot, app.getVersion(), SCHEMA_VERSION);
+    const { manifest: synced, cacheEntries } = reindexVault(vaultRoot, manifest, cache);
     writeManifest(getManifestPath(), synced);
+    saveVaultIndexCache(cacheDir, vaultRoot, {
+      appVersion: app.getVersion(),
+      schemaVersion: SCHEMA_VERSION,
+      entries: cacheEntries,
+    });
     return synced;
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
