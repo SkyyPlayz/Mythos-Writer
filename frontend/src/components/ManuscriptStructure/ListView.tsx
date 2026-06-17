@@ -1,4 +1,5 @@
 import { useState, useCallback, type ReactElement } from 'react';
+import { FileText } from 'lucide-react';
 import type { Story, Scene, Chapter } from '../../types';
 import { StatusBadge, draftStateToStatus } from './StatusBadge';
 import type { BeatAssignments } from './BeatSheetSidebar';
@@ -117,7 +118,7 @@ export function ListView({
                 >
                   <span aria-hidden="true">{isCollapsed ? '▶' : '▼'}</span>
                 </button>
-                <span className="list-chapter__icon" aria-hidden="true">📄</span>
+                <FileText size={14} className="list-chapter__icon" aria-hidden="true" />
                 <span className="list-chapter__name">{chapter.title}</span>
                 <span className="list-chapter__meta">
                   ({sortedScenes.length} scene{sortedScenes.length !== 1 ? 's' : ''})

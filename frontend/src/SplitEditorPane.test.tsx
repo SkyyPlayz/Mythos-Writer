@@ -108,7 +108,7 @@ describe('focus indicator', () => {
 describe('empty state', () => {
   it('renders empty prompt when no scene is selected', () => {
     render(<SplitEditorPane {...defaultProps({ scene: null })} />);
-    expect(screen.getByText(/No scene selected/)).toBeDefined();
+    expect(screen.getByText(/Select a scene from your story to start writing/)).toBeDefined();
     expect(screen.queryByTestId('mock-block-editor')).toBeNull();
   });
 });

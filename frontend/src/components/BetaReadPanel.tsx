@@ -65,7 +65,7 @@ export default function BetaReadPanel({
       {error && <p className="br-error-state" role="alert">{error}</p>}
 
       {!loading && !error && comments.length === 0 && (
-        <p className="br-empty-state">No Beta-Read comments yet — run a scan when you want deeper scene feedback.</p>
+        <p className="br-empty-state">No feedback yet. Run a scan to check for narrative issues.</p>
       )}
 
       {comments.length > 0 && (

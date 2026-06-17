@@ -3,6 +3,7 @@ import type { Scene, Chapter, Story, Block, EntityEntry } from './types';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import type { AutoLinkerMode } from './AutoLinkerExtension';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import { SceneEditorEmptyState } from './SceneEditorEmptyState';
 import './SplitEditorPane.css';
 
 // ─── Compact per-pane scene selector ───
@@ -141,6 +142,8 @@ export interface SplitEditorPaneProps {
   autoLinkerEntities?: EntityEntry[];
   autoLinkerMode?: AutoLinkerMode;
   onEntityClick?: (entityId: string) => void;
+  /** When true, shows loading empty state instead of the editor. */
+  sceneLoading?: boolean;
   /** Flex grow value for split container sizing. */
   style?: CSSProperties;
 }
@@ -160,8 +163,13 @@ export default function SplitEditorPane({
   autoLinkerEntities,
   autoLinkerMode = 'suggest',
   onEntityClick,
+  sceneLoading = false,
   style,
 }: SplitEditorPaneProps) {
+  const hasAnyScenes = useMemo(
+    () => stories.some(st => st.chapters.some(ch => ch.scenes.length > 0)),
+    [stories],
+  );
   const paneLabel = `Pane ${paneNumber}`;
 
   return (
@@ -193,7 +201,7 @@ export default function SplitEditorPane({
       </div>
 
       <div className="spe-content" onClick={onFocus}>
-        {scene ? (
+        {scene && !sceneLoading ? (
           <BlockEditor
             key={scene.id}
             scene={scene}
@@ -208,9 +216,13 @@ export default function SplitEditorPane({
             onEntityClick={onEntityClick}
           />
         ) : (
-          <div className="spe-empty">
-            <p>No scene selected. Use the picker above to open a scene.</p>
-          </div>
+          <SceneEditorEmptyState
+            variant={
+              sceneLoading ? 'loading' :
+              hasAnyScenes ? 'select-scene' :
+              'no-scenes-yet'
+            }
+          />
         )}
       </div>
     </div>

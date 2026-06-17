@@ -206,15 +206,15 @@ async function renderSheet(story = STORY) {
 }
 
 describe('TimelineSpreadsheet — empty states', () => {
-  it('shows "No Story Selected" when story is null', () => {
+  it('shows "Select a story to view its timeline." when story is null', () => {
     render(<TimelineSpreadsheet story={null} />);
-    expect(screen.getByText('No Story Selected')).toBeInTheDocument();
+    expect(screen.getByText('Select a story to view its timeline.')).toBeInTheDocument();
   });
 
-  it('shows "No Scenes Yet" when API returns empty list', async () => {
+  it('shows "Create scenes in your story to see them here." when API returns empty list', async () => {
     (window as any).api.timelineGetScenes = vi.fn().mockResolvedValue({ scenes: [] });
     render(<TimelineSpreadsheet story={STORY} />);
-    await waitFor(() => expect(screen.getByText('No Scenes Yet')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Create scenes in your story to see them here.')).toBeInTheDocument());
   });
 });
 

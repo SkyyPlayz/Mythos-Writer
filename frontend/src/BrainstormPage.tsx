@@ -1704,8 +1704,8 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   <path d="M5 15.5L5.55 17.95L8 18.5L5.55 19.05L5 21.5L4.45 19.05L2 18.5L4.45 17.95L5 15.5Z"/>
                   <path d="M18 2L18.4 3.6L20 4L18.4 4.4L18 6L17.6 4.4L16 4L17.6 3.6L18 2Z"/>
                 </svg>
-                <span className="brainstorm-empty-headline">Start your brainstorm</span>
-                <span className="brainstorm-empty-desc">Ask anything about your story &mdash; characters, plot, world-building. Named facts auto-save to your vault.</span>
+                <span className="brainstorm-empty-headline">Ask about your story</span>
+                <span className="brainstorm-empty-desc">Ask about characters, settings, or plot. Facts save automatically to your vault.</span>
               </div>
             )}
             {messages.map((msg, i) => (
@@ -2207,7 +2207,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
                 </svg>
-                <span>Facts appear here as you chat.</span>
+                <span>No facts yet — mention character names or locations to build your vault.</span>
               </div>
             ) : sortOrder === 'custom' ? (
               /* Custom order: flat list with drag handles */

@@ -264,7 +264,16 @@ function StoryVault({
                                 +
                               </button>
                             </div>
-                            {chapterExp && (
+                            {chapterExp && chapter.scenes.length === 0 && (
+                              <div
+                                className="vb-scenes-empty"
+                                style={{ paddingLeft: 36 }}
+                                data-testid="vb-scenes-empty"
+                              >
+                                No scenes yet. Create one to start writing.
+                              </div>
+                            )}
+                            {chapterExp && chapter.scenes.length > 0 && (
                               <div role="group">
                                 {[...chapter.scenes]
                                   .sort((a, b) => a.order - b.order)

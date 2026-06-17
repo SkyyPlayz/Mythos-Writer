@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
+import { BookOpen, FileText } from 'lucide-react';
 import {
   ReactFlow,
   Background,
@@ -279,9 +280,8 @@ export default function StoryTimeline({ story }: Props) {
   if (!story) {
     return (
       <div className="timeline-empty">
-        <div className="timeline-empty-icon">⏳</div>
-        <h2>No Story Selected</h2>
-        <p>Select a story from the Editor view to see its timeline.</p>
+        <div className="timeline-empty-icon" aria-hidden="true"><BookOpen size={40} /></div>
+        <h2>Select a story to view its timeline.</h2>
       </div>
     );
   }
@@ -289,9 +289,8 @@ export default function StoryTimeline({ story }: Props) {
   if (items.length === 0) {
     return (
       <div className="timeline-empty">
-        <div className="timeline-empty-icon">📅</div>
-        <h2>No Scenes Yet</h2>
-        <p>Add scenes to <strong>{story.title}</strong> to populate the timeline.</p>
+        <div className="timeline-empty-icon" aria-hidden="true"><FileText size={40} /></div>
+        <h2>Create scenes in your story to see them here.</h2>
       </div>
     );
   }

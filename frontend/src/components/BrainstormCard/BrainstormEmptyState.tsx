@@ -27,7 +27,7 @@ interface Props {
 export function BrainstormEmptyState({ onSeedPrompt }: Props) {
   return (
     <div className="bs-empty-state" aria-label="Brainstorm empty state">
-      <h2 className="bs-empty-heading">Nothing here yet</h2>
+      <h2 className="bs-empty-heading">No facts yet — mention character names or locations to build your vault.</h2>
       <p className="bs-empty-sub">
         Ideas you brainstorm here are saved to your <strong>Notes Vault</strong>, not your Story Vault.
       </p>
