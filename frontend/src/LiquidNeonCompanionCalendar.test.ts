@@ -7,8 +7,10 @@ const stylesCss = readFileSync(join(pluginDir, 'styles.css'), 'utf8');
 const calendarCss = readFileSync(join(pluginDir, 'calendar-liquid-neon.css'), 'utf8');
 
 describe('Liquid Neon Companion Calendar CSS', () => {
-  it('is imported by the Obsidian plugin stylesheet', () => {
-    expect(stylesCss).toContain("@import url('./calendar-liquid-neon.css')");
+  it('is bundled into the Obsidian plugin stylesheet', () => {
+    expect(stylesCss).toContain('/* ===== Bundled from calendar-liquid-neon.css ===== */');
+    expect(stylesCss).toContain('.theme-dark .calendar td.day.today');
+    expect(stylesCss).toContain('.theme-dark .modal:has(.calendar)');
   });
 
   it('covers nav bar, day cells, today indicator, week numbers, dots, and modal', () => {

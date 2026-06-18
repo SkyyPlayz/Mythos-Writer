@@ -7,8 +7,10 @@ const stylesCss = readFileSync(join(pluginDir, 'styles.css'), 'utf8');
 const atCss = readFileSync(join(pluginDir, 'advanced-tables-liquid-neon.css'), 'utf8');
 
 describe('Liquid Neon Companion Advanced Tables CSS', () => {
-  it('is imported by the Obsidian plugin stylesheet', () => {
-    expect(stylesCss).toContain("@import url('./advanced-tables-liquid-neon.css')");
+  it('is bundled into the Obsidian plugin stylesheet', () => {
+    expect(stylesCss).toContain('/* ===== Bundled from advanced-tables-liquid-neon.css ===== */');
+    expect(stylesCss).toContain('.theme-dark .advanced-tables-toolbar');
+    expect(stylesCss).toContain('.theme-dark .table-editor-cell-input:focus');
   });
 
   it('covers toolbar, formula bar, control rows, and source-mode table elements', () => {

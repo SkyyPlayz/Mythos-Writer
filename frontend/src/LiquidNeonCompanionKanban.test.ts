@@ -7,8 +7,10 @@ const stylesCss = readFileSync(join(pluginDir, 'styles.css'), 'utf8');
 const kanbanCss = readFileSync(join(pluginDir, 'kanban-liquid-neon.css'), 'utf8');
 
 describe('Liquid Neon Companion Kanban CSS', () => {
-  it('is imported by the Obsidian plugin stylesheet', () => {
-    expect(stylesCss).toContain("@import url('./kanban-liquid-neon.css')");
+  it('is bundled into the Obsidian plugin stylesheet', () => {
+    expect(stylesCss).toContain('/* ===== Bundled from kanban-liquid-neon.css ===== */');
+    expect(stylesCss).toContain('.theme-dark .kanban-plugin__lane');
+    expect(stylesCss).toContain('.theme-dark button.kanban-plugin__new-item-button');
   });
 
   it('covers Kanban cards, lanes, drag state, add buttons, and settings dialogs', () => {
