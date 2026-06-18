@@ -195,10 +195,21 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
    * the component actually unmounts.
    */
   async function openReviewTab(): Promise<void> {
-    const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-    if (await storiesTab.isVisible()) await storiesTab.click();
-    await page.waitForTimeout(200);
-    await page.locator('.rail-tab', { hasText: 'Review' }).click();
+    if (await page.locator('.suggestion-review .sr-list').isVisible()) {
+      await page.getByRole('button', { name: /collapse suggestion review/i }).click();
+      await page.getByRole('button', { name: /expand suggestion review/i }).click();
+      await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
+      return;
+    }
+
+    const expandReview = page.getByRole('button', { name: /expand suggestion review/i });
+    if (await expandReview.isVisible()) {
+      await expandReview.click();
+    } else {
+      await page.getByRole('button', { name: /^Add panel$/ }).click();
+      await page.getByRole('option', { name: 'Suggestion Review' }).click();
+    }
+
     // Wait for the list to render (disappearance of loading spinner)
     await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
   }
@@ -517,6 +528,191 @@ test.describe('Budget cap enforcement (TC-S-04)', () => {
       fs.existsSync(targetFullPath),
       'Vault file must not be written when suggestion is over budget',
     ).toBe(false);
+  });
+});
+
+// ─── TC-S-06/07/08/09: Comprehensive Review Inbox UI coverage ────────────────
+
+// These tests cover the high-volume list, filters, detail pane, batch actions,
+// and audit status filters requested by SKY-2474. They use the real Electron app
+// and real suggestion IPC/storage paths rather than mocked renderer APIs.
+test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)', () => {
+  let userData: string;
+  let vaultDir: string;
+  let app: ElectronApplication | undefined;
+  let page: Page;
+
+  async function openReviewTab(): Promise<void> {
+    if (await page.locator('.suggestion-review .sr-list').isVisible()) {
+      await page.getByRole('button', { name: /collapse suggestion review/i }).click();
+      await page.getByRole('button', { name: /expand suggestion review/i }).click();
+      await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
+      return;
+    }
+
+    const expandReview = page.getByRole('button', { name: /expand suggestion review/i });
+    if (await expandReview.isVisible()) {
+      await expandReview.click();
+    } else {
+      await page.getByRole('button', { name: /^Add panel$/ }).click();
+      await page.getByRole('option', { name: 'Suggestion Review' }).click();
+    }
+
+    await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
+  }
+
+  async function setMinimumConfidence(value: number): Promise<void> {
+    await page.locator('input[aria-label="Minimum confidence"]').evaluate((el, nextValue) => {
+      const input = el as HTMLInputElement;
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      valueSetter?.call(input, String(nextValue));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+  }
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-ui-'));
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-ui-vault-'));
+    seedUserData(userData, vaultDir);
+    app = await launchApp(userData);
+    page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+    await page.evaluate(async () => {
+      const api = (window as any).api;
+      const agents = ['writing-assistant', 'brainstorm', 'archive'] as const;
+      const confidenceByBucket = [0.95, 0.86, 0.72, 0.61, 0.48];
+      for (let i = 0; i < 105; i++) {
+        const padded = String(i).padStart(3, '0');
+        const agent = agents[i % agents.length];
+        await api.suggestionsUpsert({
+          id: `tc-s-06-bulk-${padded}`,
+          source_agent: agent,
+          confidence: confidenceByBucket[i % confidenceByBucket.length],
+          rationale: `Bulk QA suggestion ${padded} from ${agent}`,
+          target_kind: 'vault',
+          target_path: `stories/target${padded}.md`,
+          target_anchor: null,
+          payload_json: JSON.stringify({ prose: `Proposed content for target ${padded}` }),
+          status: 'proposed',
+          created_at: new Date(Date.now() + i).toISOString(),
+          applied_at: null,
+          applied_run_id: null,
+          budget_exceeded: 0,
+        });
+      }
+
+      for (const [status, suffix] of [
+        ['accepted', 'accepted'],
+        ['rejected', 'rejected'],
+        ['ignored', 'ignored'],
+      ] as const) {
+        await api.suggestionsUpsert({
+          id: `tc-s-07-${suffix}`,
+          source_agent: 'writing-assistant',
+          confidence: 0.88,
+          rationale: `Audit ${suffix} suggestion`,
+          target_kind: 'vault',
+          target_path: `stories/audit-${suffix}.md`,
+          target_anchor: null,
+          payload_json: JSON.stringify({ prose: `Audit ${suffix} content` }),
+          status,
+          created_at: new Date().toISOString(),
+          applied_at: status === 'accepted' ? new Date().toISOString() : null,
+          applied_run_id: null,
+          budget_exceeded: 0,
+        });
+      }
+    });
+  });
+
+  test.afterAll(async () => {
+    await app?.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test('TC-S-06: renders 100+ pending suggestions within the load budget', async () => {
+    const startedAt = Date.now();
+    await openReviewTab();
+    await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 104' })).toBeVisible({
+      timeout: 8_000,
+    });
+
+    const rowCount = await page.locator('.sr-row').count();
+    expect(rowCount).toBeGreaterThanOrEqual(100);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
+  test('TC-S-07: filters by agent, confidence range, and target-path search', async () => {
+    await openReviewTab();
+
+    await page.getByRole('button', { name: /Writing Assistant, \d+ pending/ }).click();
+    await expect(page.locator('.sr-row', { hasText: 'from writing-assistant' }).first()).toBeVisible();
+    await expect(page.locator('.sr-row', { hasText: 'from brainstorm' }).first()).not.toBeVisible();
+
+    await page.locator('.sr-filter-chips').getByRole('button', { name: /^All,/ }).click();
+    await setMinimumConfidence(90);
+    await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 001' })).not.toBeVisible({
+      timeout: 1_000,
+    });
+    await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 000' })).toBeVisible();
+
+    await setMinimumConfidence(0);
+    const searchInput = page.getByRole('searchbox', { name: /search suggestions/i });
+    await searchInput.fill('target042');
+    await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 042' })).toBeVisible({
+      timeout: 2_000,
+    });
+    await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 041' })).not.toBeVisible();
+    await searchInput.press('Escape');
+  });
+
+  test('TC-S-08: opens detail pane and shows rationale, metadata, and payload preview', async () => {
+    await openReviewTab();
+    const searchInput = page.getByRole('searchbox', { name: /search suggestions/i });
+    await searchInput.fill('target042');
+    const row = page.locator('.sr-row', { hasText: 'Bulk QA suggestion 042' });
+    await expect(row).toBeVisible({ timeout: 2_000 });
+    await row.click();
+
+    const pane = page.getByRole('complementary', { name: /suggestion detail/i });
+    await expect(pane).toBeVisible();
+    await expect(pane).toContainText('Bulk QA suggestion 042');
+    await expect(pane).toContainText('Writing Assistant');
+    await expect(pane.getByText('Proposed content', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+  });
+
+  test('TC-S-09: batch reject selected rows and filter reviewed statuses', async () => {
+    await openReviewTab();
+    await page.getByRole('searchbox', { name: /search suggestions/i }).press('Escape');
+    await expect.poll(() => page.locator('.sr-row').count()).toBeGreaterThanOrEqual(100);
+
+    const initialCount = await page.locator('.sr-row').count();
+    await page.locator('.sr-row').nth(0).click({ modifiers: ['Control'] });
+    await page.locator('.sr-row').nth(1).click({ modifiers: ['Control'] });
+    await expect(page.getByText('2 selected')).toBeVisible();
+    await page.getByRole('button', { name: /reject all selected/i }).click();
+    await expect(page.getByText('2 selected')).not.toBeVisible();
+    await expect.poll(() => page.locator('.sr-row').count()).toBeLessThan(initialCount);
+
+    await page.getByRole('tab', { name: /audit trail/i }).click();
+    await page.getByRole('button', { name: /^Accepted$/ }).click();
+    await expect(page.getByText('Audit accepted suggestion')).toBeVisible();
+    await expect(page.getByText('Audit rejected suggestion')).not.toBeVisible();
+
+    await page.getByRole('button', { name: /^Rejected$/ }).click();
+    await expect(page.getByText('Audit rejected suggestion')).toBeVisible();
+    await expect(page.getByText('Audit accepted suggestion')).not.toBeVisible();
+
+    await page.getByRole('button', { name: /^Ignored$/ }).click();
+    await expect(page.getByText('Audit ignored suggestion')).toBeVisible();
+    await expect(page.getByText('Audit rejected suggestion')).not.toBeVisible();
   });
 });
 
