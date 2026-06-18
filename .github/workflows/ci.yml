@@ -456,9 +456,11 @@ jobs:
           echo "This stub keeps the CI / build-macos required check green until then."
 
   build-linux:
-    # Phase 2: packaging only runs on push to main or workflow_dispatch — not on every PR.
-    # lint/typecheck/unit are guaranteed green by the ci aggregator gating all merges to main.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # SKY-2421: job-level `if` was causing `skipped` status on PRs, which caused
+    # the `report` job (needs: [..., build-linux, ...]) to also be skipped despite
+    # `if: always()` — a known GH Actions quirk with multiple skipped upstream jobs.
+    # Fix: always run the job; gate packaging steps at step level so PRs fast-exit
+    # with `success` and push/workflow_dispatch does the full packaging.
     runs-on: self-hosted
     timeout-minutes: 40
     concurrency:
@@ -466,25 +468,36 @@ jobs:
       cancel-in-progress: true
 
     steps:
+      - name: Skip — packaging only runs on push/workflow_dispatch
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "build-linux: packaging skipped on pull_request events."
+          echo "Required check satisfied — packaging runs on push to main or workflow_dispatch only."
+
       - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request'
 
       - name: Pre-flight — clean stale AppImage temp dirs (SKY-1347)
         # APPIMAGE_EXTRACT_AND_RUN=1 in the smoke-test step leaves /tmp/appimage_extracted_*
         # dirs (~307 MB each) that accumulate across CI runs on the self-hosted runner and
         # fill the 24 GB tmpfs, causing fpm ENOSPC during deb packaging. This sweep reclaims
         # space from any prior run's leftovers before we start the build.
+        if: github.event_name != 'pull_request'
         run: find /tmp -maxdepth 1 -name 'appimage_extracted_*' -type d -exec rm -rf {} + 2>/dev/null || true
 
       - name: Set up Node.js
+        if: github.event_name != 'pull_request'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
+        if: github.event_name != 'pull_request'
         run: npm ci
 
       - name: Guard — PERSIST_PROMPTS must not be set for release builds
+        if: github.event_name != 'pull_request'
         run: |
           if [ "${PERSIST_PROMPTS:-}" = "1" ]; then
             echo "ERROR: PERSIST_PROMPTS=1 is set in the environment. This flag stores full prompt text in cleartext and must never be enabled in a release build. Unset it before packaging." >&2
@@ -501,6 +514,7 @@ jobs:
       - name: Free disk space before packaging
         # SKY-1334: runner accumulates linux-unpacked staging dirs and /tmp electron-builder
         # scratch trees from prior runs; purge them before the deb/AppImage build to avoid ENOSPC.
+        if: github.event_name != 'pull_request'
         run: |
           echo "=== Disk before cleanup ===" && df -h .
           find ~/.cache/electron-builder -mindepth 2 -maxdepth 3 \
@@ -514,6 +528,7 @@ jobs:
         # Skip rpm target: rpmbuild and fpm not fully provisioned on GabesPC yet.
         # Clear LD_LIBRARY_PATH so the runner's inherited Paperclip embedded-postgres lib path
         # does not shadow the system liblzma.so.5 and break xz/tar/dpkg-deb during packaging.
+        if: github.event_name != 'pull_request'
         env:
           LD_LIBRARY_PATH: ""
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -521,6 +536,7 @@ jobs:
 
       - name: Verify .deb artifact
         # dpkg-deb also loads liblzma, so clear LD_LIBRARY_PATH here too.
+        if: github.event_name != 'pull_request'
         env:
           LD_LIBRARY_PATH: ""
         run: |
@@ -531,6 +547,7 @@ jobs:
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
         # FUSE, so libfuse2 does not need to be installed on the self-hosted runner.
+        if: github.event_name != 'pull_request'
         run: |
           APPIMAGE=$(ls dist-electron/*.AppImage | head -1)
           chmod +x "$APPIMAGE"
@@ -548,10 +565,11 @@ jobs:
       - name: Clean AppImage temp dirs after smoke test
         # Remove the extracted AppImage dir created by APPIMAGE_EXTRACT_AND_RUN=1.
         # Runs even on failure so partial extractions don't accumulate.
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: find /tmp -maxdepth 1 -name 'appimage_extracted_*' -type d -exec rm -rf {} + 2>/dev/null || true
 
       - name: Upload Linux packages
+        if: github.event_name != 'pull_request'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -562,33 +580,44 @@ jobs:
           retention-days: 3
 
   build-windows:
-    # Phase 2: packaging only runs on push to main or workflow_dispatch — not on every PR.
-    # lint/typecheck/unit are guaranteed green by the ci aggregator gating all merges to main.
+    # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
+    # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
+    # steps are gated at step level instead.
     # SKY-2236: quota exhaustion causes instant 0-step failure; continue-on-error prevents
     # cascade-cancel of the three required checks (ci, build-linux, build-macos).
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 40
     continue-on-error: true
 
     steps:
+      - name: Skip — packaging only runs on push/workflow_dispatch
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "build-windows: packaging skipped on pull_request events."
+          echo "Required check satisfied — packaging runs on push to main or workflow_dispatch only."
+
       - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request'
 
       - name: Set up Node.js
+        if: github.event_name != 'pull_request'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
+        if: github.event_name != 'pull_request'
         run: npm ci
 
       - name: Build and package (Windows NSIS + ZIP)
+        if: github.event_name != 'pull_request'
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron && npx electron-builder --win nsis zip --publish never
 
       - name: Upload Windows packages
+        if: github.event_name != 'pull_request'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -603,8 +632,8 @@ jobs:
     # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
     # sweep for missed pings. PR-only — plain pushes to main get no ping.
     # Self-hosted only (no public/fork PR exposure per SKY-849).
-    # build-linux and build-windows are skipped on PRs (Phase 2), so always() handles their
-    # skipped result correctly — the report fires on PR completion regardless.
+    # build-linux and build-windows always run (fast no-op on PRs) so this job
+    # is never blocked by upstream skipped status (SKY-2421).
     needs: [lint, typecheck, unit, ci, build-macos, build-linux, build-windows]
     runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
