@@ -12,6 +12,7 @@ const LEFT_PANELS: { id: LeftPanelId; label: string }[] = [
   { id: 'vault-graph', label: 'Graph' },
   { id: 'review', label: 'Suggestion Review' },
   { id: 'progress', label: 'Writing Goals' },
+  { id: 'timeline', label: 'Timeline' },
 ];
 
 /** All right-sidebar panels (can be dragged into the left rail). */

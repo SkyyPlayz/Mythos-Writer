@@ -23,6 +23,7 @@ export const DOCKED_TAB_PANEL_LABELS: Record<string, string> = {
   'vault-graph': 'Graph',
   review: 'Suggestion Review',
   progress: 'Writing Goals',
+  timeline: 'Timeline',
 };
 
 const ALL_PANEL_IDS: SidebarPanelId[] = [
@@ -32,6 +33,7 @@ const ALL_PANEL_IDS: SidebarPanelId[] = [
   'vault-graph',
   'review',
   'progress',
+  'timeline',
   'writing-assistant',
   'archive-continuity',
   'scene-preview',

@@ -279,7 +279,7 @@ export default function StoryTimeline({ story }: Props) {
 
   if (!story) {
     return (
-      <div className="timeline-empty">
+      <div className="timeline-empty" data-panel="timeline">
         <div className="timeline-empty-icon" aria-hidden="true"><BookOpen size={40} /></div>
         <h2>Select a story to view its timeline.</h2>
       </div>
@@ -288,7 +288,7 @@ export default function StoryTimeline({ story }: Props) {
 
   if (items.length === 0) {
     return (
-      <div className="timeline-empty">
+      <div className="timeline-empty" data-panel="timeline">
         <div className="timeline-empty-icon" aria-hidden="true"><FileText size={40} /></div>
         <h2>Create scenes in your story to see them here.</h2>
       </div>
@@ -296,7 +296,7 @@ export default function StoryTimeline({ story }: Props) {
   }
 
   return (
-    <div className="timeline-root">
+    <div className="timeline-root" data-panel="timeline">
       <div className="timeline-toolbar">
         <span className="timeline-story-title">{story.title}</span>
         <button

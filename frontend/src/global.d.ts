@@ -567,7 +567,7 @@ interface RightSidebarPanel {
 }
 
 /** SKY-1694: Panel IDs available in the left sidebar panel zone. */
-type LeftPanelId = 'stories' | 'entities' | 'vault' | 'vault-graph' | 'review' | 'progress';
+type LeftPanelId = 'stories' | 'entities' | 'vault' | 'vault-graph' | 'review' | 'progress' | 'timeline';
 
 /** SKY-1695 (Wave 2b): Unified panel ID — any panel in either sidebar. */
 type SidebarPanelId = LeftPanelId | RightPanelId;

@@ -24,6 +24,7 @@ const PANEL_LABELS: Record<string, string> = {
   'vault-graph': 'Graph',
   review: 'Suggestion Review',
   progress: 'Writing Goals',
+  timeline: 'Timeline',
 };
 
 /** Right-sidebar-native panel IDs shown in the "Add Panel" picker. */
