@@ -127,6 +127,7 @@ test.describe('TC-OB-01: Start Blank', () => {
     });
 
     // Keep the default save location; HOME is redirected to userData by launchFreshApp.
+    // gs-save-path is an <input> — use toHaveValue(), not toHaveText().
     await expect(page.locator('[data-testid="gs-save-path"]')).toHaveValue('~/Documents/MythosWriter');
     await page.locator('[data-testid="gs-title-input"]').fill('Test Story OB-01');
     await page.locator('[data-testid="gs-create-story"]').click();
@@ -197,8 +198,10 @@ test.describe('TC-OB-02: Sample Novel', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('sample project: genre picker starts sample onboarding and DesktopShell loads', async () => {
-    // Bypass sample-project copying; main-side IPC behavior is covered by unit tests.
+  test('sample project: Story Vault + Notes Vault on disk match bundled sample, DesktopShell loads', async () => {
+    // SKY-2008: sample flow now routes through the genre picker (step1c), not step2.
+    // Mock onboarding:complete before any UI interaction so it's ready when the
+    // genre-start-btn fires the IPC call.
     await app.evaluate(({ ipcMain }) => {
       (globalThis as typeof globalThis & { __onboardingPayloads?: unknown[] }).__onboardingPayloads = [];
       ipcMain.removeHandler('onboarding:complete');
@@ -210,7 +213,11 @@ test.describe('TC-OB-02: Sample Novel', () => {
 
     await clickCustomStartingPoint(page, 'card-sample');
     await expect(page.locator('[data-testid="screen-step1c"]')).toBeVisible({ timeout: 8_000 });
+
+    // Select any genre and start — the IPC call is mocked so genre choice doesn't matter for
+    // disk assertions, which are seeded in beforeAll independently of the handler.
     await page.locator('[data-testid="genre-card-cozy-fantasy"]').click();
+    await expect(page.locator('[data-testid="genre-start-btn"]')).toBeEnabled({ timeout: 2_000 });
     await page.locator('[data-testid="genre-start-btn"]').click();
 
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
@@ -288,6 +295,7 @@ test.describe('TC-OB-03: From Template', () => {
 
     // Step 2: fill in story details
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
+    // gs-save-path is an <input> — use toHaveValue(), not toHaveText().
     await expect(page.locator('[data-testid="gs-save-path"]')).toHaveValue('~/Documents/MythosWriter');
     await page.locator('[data-testid="gs-title-input"]').fill('Template Story OB-03');
     await page.locator('[data-testid="gs-create-story"]').click();

@@ -1,0 +1,471 @@
+/* =============================================================================
+ * Liquid Neon Companion — Excalidraw Plugin CSS Overrides  (LN-53)
+ *
+ * Surfaces covered:
+ *   1. Canvas container + background   (.excalidraw-plugin, canvas wrapper)
+ *   2. Toolbar buttons + separators    (.App-toolbar, .ToolIcon)
+ *   3. Color picker / palette          (.color-picker, swatches, input)
+ *   4. Element properties panel        (.Island, inputs, sliders, labels)
+ *   5. Export / share dialogs          (.Dialog, .Modal, action buttons)
+ *   6. Context menu                    (.context-menu)
+ *   7. Layer UI wrapper + top-right    (.layer-ui__wrapper)
+ *   8. Focus ring / keyboard a11y      (:focus-visible targets)
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow). Text color fallbacks are ≥ 4.5:1
+ * contrast against their effective dark glass backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+.theme-dark .excalidraw-plugin {
+  --ln-ex-neon: var(--neon-cyan, #00f0ff);
+  --ln-ex-neon-v: var(--neon-violet, #9b5fff);
+  --ln-ex-neon-intensity: var(--lg-neon, 0.5);
+  --ln-ex-glass: var(--glass-fill-fallback, rgba(18, 18, 24, 0.92));
+  --ln-ex-glass-rim: var(--glass-rim, rgba(255, 255, 255, 0.12));
+  --ln-ex-border: var(--glass-border, rgba(255, 255, 255, 0.08));
+  --ln-ex-bg-inset: var(--bg-inset, #111520);
+  --ln-ex-text: var(--text-body, #bfd6e8);              /* #bfd6e8 on #121820: 9.8:1 ✓ */
+  --ln-ex-text-strong: var(--text-header, #eaf6ff);     /* #eaf6ff on #121820: 15.1:1 ✓ */
+  --ln-ex-text-muted: var(--text-muted, #93a4b8);       /* #93a4b8 on #121820: 6.6:1 ✓ */
+  --ln-ex-neon-soft: color-mix(in srgb, var(--ln-ex-neon) calc(14% + (20% * var(--ln-ex-neon-intensity))), transparent);
+  --ln-ex-glow: color-mix(in srgb, var(--ln-ex-neon) calc(var(--ln-ex-neon-intensity) * 40%), transparent);
+  --ln-ex-btn-active: color-mix(in srgb, var(--ln-ex-neon) calc(14% + (16% * var(--ln-ex-neon-intensity))), var(--ln-ex-glass));
+  contain: content;
+}
+
+/* ── 1. Canvas container + background ────────────────────────────────────── */
+
+.theme-dark .excalidraw-plugin .excalidraw {
+  --color-surface-primary: var(--bg-base, #0e1116);
+  --color-surface-secondary: var(--ln-ex-glass);
+  --color-surface-mid: var(--bg-inset, #111520);
+  --color-surface-lowest: var(--bg-canvas, #080a11);
+  --color-on-surface: var(--ln-ex-text);
+  --color-brand: var(--ln-ex-neon);
+  --color-brand-hover: color-mix(in srgb, var(--ln-ex-neon) 85%, white 10%);
+  --color-outline: var(--ln-ex-neon-soft);
+  --button-bg: var(--ln-ex-glass);
+  --button-hover-bg: var(--ln-ex-btn-active);
+  --input-bg: var(--ln-ex-bg-inset);
+  --input-border-color: var(--ln-ex-border);
+  --popup-bg-color: var(--ln-ex-glass);
+  --popup-shadow: 0 16px 48px rgba(5, 8, 20, 0.55), 0 0 0 1px var(--ln-ex-border);
+  --icon-fill-color: var(--ln-ex-text);
+  --icon-green-fill-color: var(--state-success, #1de9b6);
+  --font-family: var(--font-sans, "Inter", system-ui, sans-serif);
+}
+
+.theme-dark .excalidraw-plugin .excalidraw .excalidraw-canvas {
+  background:
+    radial-gradient(circle at 8% 4%, color-mix(in srgb, var(--ln-ex-neon) 10%, transparent), transparent 32%),
+    radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--neon-magenta, #ff4dff) 8%, transparent), transparent 30%),
+    var(--bg-base, #0e1116);
+}
+
+/* ── 2. Toolbar buttons + separators ─────────────────────────────────────── */
+
+.theme-dark .excalidraw-plugin .App-toolbar-container {
+  background: var(--ln-ex-glass);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-xl, 24px);
+  box-shadow:
+    var(--elev-1, 0 8px 32px rgba(5, 8, 20, 0.45)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .excalidraw-plugin .App-toolbar-container,
+  .theme-dark .excalidraw-plugin .Island,
+  .theme-dark .excalidraw-plugin .Dialog,
+  .theme-dark .excalidraw-plugin .Modal__content,
+  .theme-dark .excalidraw-plugin .context-menu {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+  }
+}
+
+.theme-dark .excalidraw-plugin .App-toolbar {
+  padding: 0 var(--space-2, 8px);
+}
+
+.theme-dark .excalidraw-plugin .ToolIcon {
+  border-radius: var(--radius-sm, 12px);
+  color: var(--ln-ex-text-muted);
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.theme-dark .excalidraw-plugin .ToolIcon:hover,
+.theme-dark .excalidraw-plugin .ToolIcon:focus-visible {
+  background: color-mix(in srgb, var(--ln-ex-neon) 14%, transparent);
+  color: var(--ln-ex-neon);
+}
+
+.theme-dark .excalidraw-plugin .ToolIcon.is-selected,
+.theme-dark .excalidraw-plugin .ToolIcon[aria-checked="true"],
+.theme-dark .excalidraw-plugin .ToolIcon.active {
+  background: var(--ln-ex-btn-active);
+  border: 1px solid var(--ln-ex-neon-soft);
+  color: var(--ln-ex-neon);
+  box-shadow: 0 0 calc(14px * var(--ln-ex-neon-intensity)) var(--ln-ex-glow);
+}
+
+.theme-dark .excalidraw-plugin .ToolIcon__icon {
+  color: inherit;
+}
+
+.theme-dark .excalidraw-plugin .ToolIcon__label {
+  color: inherit;
+  font-size: var(--text-xs, 12px);
+}
+
+.theme-dark .excalidraw-plugin .App-toolbar__divider {
+  background: var(--ln-ex-border);
+  opacity: 0.6;
+}
+
+/* ── 3. Color picker / palette ───────────────────────────────────────────── */
+
+.theme-dark .excalidraw-plugin .color-picker-container {
+  background: var(--ln-ex-glass);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-lg, 20px);
+  box-shadow:
+    var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.theme-dark .excalidraw-plugin .color-picker-label-swatch,
+.theme-dark .excalidraw-plugin .color-picker__swatch {
+  border-radius: var(--radius-sm, 12px);
+  border: 1.5px solid var(--ln-ex-border);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+  transition:
+    outline 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.theme-dark .excalidraw-plugin .color-picker-label-swatch:hover,
+.theme-dark .excalidraw-plugin .color-picker__swatch:hover {
+  outline: 2px solid var(--ln-ex-neon);
+  outline-offset: 2px;
+}
+
+.theme-dark .excalidraw-plugin .color-picker-label-swatch.active,
+.theme-dark .excalidraw-plugin .color-picker__swatch.active,
+.theme-dark .excalidraw-plugin .color-picker__swatch[aria-selected="true"] {
+  outline: 2px solid var(--ln-ex-neon);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 0 calc(12px * var(--ln-ex-neon-intensity)) var(--ln-ex-glow);
+}
+
+.theme-dark .excalidraw-plugin .color-input-container {
+  background: var(--ln-ex-bg-inset);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-sm, 12px);
+}
+
+.theme-dark .excalidraw-plugin .HexColorPicker {
+  border-radius: var(--radius-md, 16px);
+  overflow: hidden;
+  border: 1px solid var(--ln-ex-border);
+}
+
+.theme-dark .excalidraw-plugin .color-picker-hex-input {
+  background: var(--ln-ex-bg-inset);
+  color: var(--ln-ex-text);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-sm, 12px);
+  font-size: var(--text-sm, 14px);
+}
+
+.theme-dark .excalidraw-plugin .color-picker-hex-input:focus {
+  border-color: var(--ln-ex-neon);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ln-ex-neon-soft);
+}
+
+/* ── 4. Element properties panel (Island) ────────────────────────────────── */
+
+.theme-dark .excalidraw-plugin .Island {
+  background: var(--ln-ex-glass);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-xl, 24px);
+  box-shadow:
+    var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--ln-ex-text);
+}
+
+.theme-dark .excalidraw-plugin .Island .Island {
+  background: var(--ln-ex-bg-inset);
+  border-radius: var(--radius-lg, 20px);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.theme-dark .excalidraw-plugin .App-right-panel .panelColumn,
+.theme-dark .excalidraw-plugin .App-right-panel .panelRow {
+  color: var(--ln-ex-text);
+}
+
+.theme-dark .excalidraw-plugin label.control-label {
+  color: var(--ln-ex-text-muted);
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--weight-heading, 600);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.theme-dark .excalidraw-plugin input[type="number"],
+.theme-dark .excalidraw-plugin input[type="text"],
+.theme-dark .excalidraw-plugin select,
+.theme-dark .excalidraw-plugin .dropdown-select {
+  background: var(--ln-ex-bg-inset);
+  color: var(--ln-ex-text);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-sm, 12px);
+  font-size: var(--text-sm, 14px);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.theme-dark .excalidraw-plugin input[type="number"]:focus,
+.theme-dark .excalidraw-plugin input[type="text"]:focus,
+.theme-dark .excalidraw-plugin select:focus,
+.theme-dark .excalidraw-plugin .dropdown-select:focus {
+  border-color: var(--ln-ex-neon);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ln-ex-neon-soft);
+}
+
+.theme-dark .excalidraw-plugin input[type="range"] {
+  accent-color: var(--ln-ex-neon);
+}
+
+.theme-dark .excalidraw-plugin .excalidraw__body .sidebar {
+  background: var(--ln-ex-glass);
+  border-inline-end: 1px solid var(--ln-ex-border);
+}
+
+.theme-dark .excalidraw-plugin .side-panel__header {
+  color: var(--ln-ex-text-strong);
+  font-weight: var(--weight-heading, 600);
+  border-bottom: 1px solid var(--ln-ex-neon-soft);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ln-ex-neon) 12%, transparent), transparent 70%);
+}
+
+/* ── 5. Export / share dialogs ───────────────────────────────────────────── */
+
+.theme-dark .excalidraw-plugin .Dialog,
+.theme-dark .excalidraw-plugin .Modal__content {
+  background: var(--ln-ex-glass);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-xl, 24px);
+  box-shadow:
+    var(--elev-3, 0 20px 64px rgba(5, 8, 20, 0.65)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--ln-ex-text);
+}
+
+.theme-dark .excalidraw-plugin .Dialog h2,
+.theme-dark .excalidraw-plugin .Dialog__title,
+.theme-dark .excalidraw-plugin .Modal__title {
+  color: var(--ln-ex-text-strong);
+  font-weight: var(--weight-heading, 600);
+  letter-spacing: var(--tracking-heading, -0.02em);
+}
+
+.theme-dark .excalidraw-plugin .Dialog__content,
+.theme-dark .excalidraw-plugin .Modal__body {
+  color: var(--ln-ex-text);
+}
+
+.theme-dark .excalidraw-plugin .Dialog__footer,
+.theme-dark .excalidraw-plugin .Modal__footer {
+  border-top: 1px solid var(--ln-ex-border);
+  padding-top: var(--space-4, 16px);
+}
+
+.theme-dark .excalidraw-plugin button.Dialog__action,
+.theme-dark .excalidraw-plugin button.Modal__action,
+.theme-dark .excalidraw-plugin button.ExcButton {
+  background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 64%, transparent);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-md, 16px);
+  color: var(--ln-ex-text);
+  font-size: var(--text-sm, 14px);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.theme-dark .excalidraw-plugin button.Dialog__action:hover,
+.theme-dark .excalidraw-plugin button.Modal__action:hover,
+.theme-dark .excalidraw-plugin button.ExcButton:hover {
+  background: color-mix(in srgb, var(--ln-ex-neon) 16%, transparent);
+  border-color: var(--ln-ex-neon);
+  color: var(--ln-ex-neon);
+}
+
+.theme-dark .excalidraw-plugin button.Dialog__action--primary,
+.theme-dark .excalidraw-plugin button.ExcButton--primary {
+  background: color-mix(in srgb, var(--ln-ex-neon) 22%, var(--ln-ex-glass));
+  border-color: var(--ln-ex-neon-soft);
+  color: var(--ln-ex-neon);
+  box-shadow: 0 0 calc(14px * var(--ln-ex-neon-intensity)) var(--ln-ex-glow);
+}
+
+.theme-dark .excalidraw-plugin button.Dialog__action--primary:hover,
+.theme-dark .excalidraw-plugin button.ExcButton--primary:hover {
+  background: color-mix(in srgb, var(--ln-ex-neon) 32%, var(--ln-ex-glass));
+  box-shadow: 0 0 calc(22px * var(--ln-ex-neon-intensity)) var(--ln-ex-glow);
+}
+
+/* Checkbox + radio form controls inside dialogs */
+.theme-dark .excalidraw-plugin .Dialog input[type="checkbox"],
+.theme-dark .excalidraw-plugin .Dialog input[type="radio"] {
+  accent-color: var(--ln-ex-neon);
+}
+
+/* ── 6. Context menu ─────────────────────────────────────────────────────── */
+
+.theme-dark .excalidraw-plugin .context-menu {
+  background: var(--ln-ex-glass);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-lg, 20px);
+  box-shadow:
+    var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.theme-dark .excalidraw-plugin .context-menu ul {
+  padding: var(--space-2, 8px);
+}
+
+.theme-dark .excalidraw-plugin .context-menu li button {
+  color: var(--ln-ex-text);
+  border-radius: var(--radius-sm, 12px);
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.theme-dark .excalidraw-plugin .context-menu li button:hover,
+.theme-dark .excalidraw-plugin .context-menu li button:focus-visible {
+  background: color-mix(in srgb, var(--ln-ex-neon) 14%, transparent);
+  color: var(--ln-ex-neon);
+}
+
+.theme-dark .excalidraw-plugin .context-menu-separator {
+  border-color: var(--ln-ex-border);
+  opacity: 0.6;
+}
+
+/* ── 7. Layer UI wrapper + top-right controls ────────────────────────────── */
+
+.theme-dark .excalidraw-plugin .layer-ui__wrapper {
+  pointer-events: none;
+}
+
+.theme-dark .excalidraw-plugin .layer-ui__wrapper > * {
+  pointer-events: auto;
+}
+
+.theme-dark .excalidraw-plugin .layer-ui__wrapper__top-right {
+  gap: var(--space-2, 8px);
+}
+
+.theme-dark .excalidraw-plugin .library-button {
+  background: var(--ln-ex-glass);
+  border: 1px solid var(--ln-ex-border);
+  border-radius: var(--radius-lg, 20px);
+  color: var(--ln-ex-text-muted);
+  box-shadow: var(--elev-1, 0 8px 32px rgba(5, 8, 20, 0.45));
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.theme-dark .excalidraw-plugin .library-button:hover,
+.theme-dark .excalidraw-plugin .library-button:focus-visible {
+  background: var(--ln-ex-btn-active);
+  border-color: var(--ln-ex-neon);
+  color: var(--ln-ex-neon);
+  box-shadow:
+    var(--elev-1, 0 8px 32px rgba(5, 8, 20, 0.45)),
+    0 0 calc(14px * var(--ln-ex-neon-intensity)) var(--ln-ex-glow);
+}
+
+/* Tooltip */
+.theme-dark .excalidraw-plugin .Tooltip {
+  background: color-mix(in srgb, var(--bg-base, #0e1116) 94%, var(--ln-ex-neon));
+  border: 1px solid var(--ln-ex-neon-soft);
+  border-radius: var(--radius-sm, 12px);
+  color: var(--ln-ex-text-strong);
+  font-size: var(--text-xs, 12px);
+  box-shadow: 0 0 calc(10px * var(--ln-ex-neon-intensity)) var(--ln-ex-neon-soft);
+}
+
+/* ── 8. Focus ring / keyboard a11y ───────────────────────────────────────── */
+
+.theme-dark .excalidraw-plugin :focus-visible {
+  outline: 2px solid var(--ln-ex-neon);
+  outline-offset: 2px;
+}
+
+/* Suppress Excalidraw's own focus ring where we've replaced it with the neon ring above */
+.theme-dark .excalidraw-plugin .ToolIcon:focus-visible,
+.theme-dark .excalidraw-plugin .ToolIcon:focus {
+  outline: 2px solid var(--ln-ex-neon);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--ln-ex-neon-soft);
+}
+
+/* ── Reduced-motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .excalidraw-plugin .ToolIcon,
+  .theme-dark .excalidraw-plugin button.Dialog__action,
+  .theme-dark .excalidraw-plugin button.Modal__action,
+  .theme-dark .excalidraw-plugin button.ExcButton,
+  .theme-dark .excalidraw-plugin .library-button,
+  .theme-dark .excalidraw-plugin .context-menu li button {
+    transition: none;
+  }
+}
+
+/* ── High-contrast / reduced-transparency ────────────────────────────────── */
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .theme-dark .excalidraw-plugin .App-toolbar-container,
+  .theme-dark .excalidraw-plugin .Island,
+  .theme-dark .excalidraw-plugin .Dialog,
+  .theme-dark .excalidraw-plugin .Modal__content,
+  .theme-dark .excalidraw-plugin .context-menu,
+  .theme-dark .excalidraw-plugin .color-picker-container {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .theme-dark .excalidraw-plugin .ToolIcon.is-selected,
+  .theme-dark .excalidraw-plugin .ToolIcon[aria-checked="true"],
+  .theme-dark .excalidraw-plugin .ToolIcon.active {
+    border-color: color-mix(in srgb, var(--ln-ex-neon) 55%, white 12%);
+    box-shadow: none;
+  }
+
+  .theme-dark .excalidraw-plugin button.Dialog__action--primary,
+  .theme-dark .excalidraw-plugin button.ExcButton--primary {
+    box-shadow: none;
+  }
+}
