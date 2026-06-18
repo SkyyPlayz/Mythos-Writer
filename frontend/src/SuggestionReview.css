@@ -360,3 +360,194 @@
 .sr-category-sentence-structure { color: #a5f3fc; border-color: rgba( 34, 211, 238, 0.25); }
 .sr-category-style-tone         { color: #c4b5fd; border-color: rgba(167, 139, 250, 0.25); }
 .sr-category-other              { color: #a1a1aa; border-color: rgba(161, 161, 170, 0.25); }
+
+/* SKY-2458 — severity badge for continuity-issue rows */
+.sr-severity-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sr-severity-critical {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.sr-severity-high {
+  background: rgba(249, 115, 22, 0.2);
+  color: #fdba74;
+  border: 1px solid rgba(249, 115, 22, 0.35);
+}
+
+.sr-severity-medium {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fde68a;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.sr-severity-low {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Tab strip */
+.sr-tab-strip {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border, #2d3748);
+  padding-bottom: 0;
+}
+
+.sr-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #94a3b8);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sr-tab:hover {
+  color: var(--text-primary, #e2e8f0);
+}
+
+.sr-tab.active {
+  color: var(--accent, #a78bfa);
+  border-bottom-color: var(--accent, #7c3aed);
+}
+
+/* Vault filter */
+.sr-vault-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sr-vault-label {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+}
+
+.sr-vault-select {
+  flex: 1;
+  background: var(--surface-2, #1e2433);
+  border: 1px solid var(--border, #2d3748);
+  border-radius: 5px;
+  color: var(--text-primary, #e2e8f0);
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+/* Status filter strip */
+.sr-status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+/* Audit row */
+.sr-audit-row {
+  background: var(--surface-2, #1e2433);
+  border: 1px solid var(--border, #2d3748);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* Status badge in audit trail */
+.sr-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+
+.sr-status-accepted  { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+.sr-status-rejected  { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.sr-status-ignored   { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+.sr-status-proposed  { background: rgba(124, 58, 237, 0.1); color: #a78bfa; }
+.sr-status-rolled_back { background: rgba(251, 191, 36, 0.1); color: #fbbf24; }
+
+/* SKY-2457 — batch select */
+.sr-row--selected {
+  border-color: var(--accent, #7c3aed);
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.sr-select-all-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 2px;
+}
+
+.sr-select-all-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent, #7c3aed);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sr-select-all-label {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sr-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin-top: 4px;
+  background: var(--surface-2, #1e2433);
+  border: 1px solid var(--accent, #7c3aed);
+  border-radius: 8px;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.sr-batch-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-light, #a78bfa);
+  white-space: nowrap;
+  min-width: 60px;
+}
+
+.sr-batch-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sr-btn-clear {
+  color: var(--text-muted, #94a3b8);
+}
+
+.sr-btn-clear:hover {
+  color: var(--text-primary, #e2e8f0);
+  border-color: var(--text-muted, #94a3b8);
+}
