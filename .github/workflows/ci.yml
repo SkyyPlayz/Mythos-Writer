@@ -105,7 +105,7 @@ jobs:
   ci:
     needs: [lint, typecheck, unit]
     runs-on: self-hosted
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
