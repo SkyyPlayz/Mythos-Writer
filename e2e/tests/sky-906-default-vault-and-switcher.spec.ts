@@ -130,16 +130,17 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     // The wizard renders on step 1 with the new primary card. We dispatch a
     // direct click because waiting on every animation between steps is
     // brittle on headless Linux.
-    await pg.locator('[data-testid="card-default-mythos-vault"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="card-default-mythos-vault"]').click();
+    await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
+    await pg.locator('[data-testid="card-quick-start"]').click();
 
     // Wizard advances to step3 (scaffolding) then exits to DesktopShell when
     // main returns ok. Wait for the wizard overlay to be gone.
     await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
 
-    // Disk: the SKY-906 bundle landed under <userData>/vaults/Mythos Vault
+    // Disk: the SKY-906 bundle landed under <userData>/vaults/My First Vault
+    // (SKY-2220/2221: DEFAULT_MYTHOS_VAULT_NAME changed from 'Mythos Vault' to 'My First Vault').
     // (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults).
-    const mythosVaultRoot = path.join(userData, 'vaults', 'Mythos Vault');
+    const mythosVaultRoot = path.join(userData, 'vaults', 'My First Vault');
     const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
     const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
     expect(fs.existsSync(storyVaultPath)).toBe(true);
@@ -148,8 +149,8 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     expect(fs.existsSync(path.join(userData, 'vaults', 'Notes Vault'))).toBe(false);
 
     // The orchestrated path also seeds a first scene file so the editor lands
-    // on something writable. The exact scene file name uses the slug "my-first-story".
-    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'my-first-story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
+    // on something writable. The quick-start flow uses the title directly (no slug) as folder name.
+    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
 
     // vault-settings.json is rewired to the new pair and onboardingComplete=true.
     const vaultSettings = readVaultSettings(userData);
@@ -163,12 +164,12 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
 });
 
 test('TC-SKY-906-02: re-clicking the one-click button auto-suffixes the vault name to avoid collision', async () => {
-  // Pre-populate "Mythos Vault" with a user file so the helper has to pick
-  // "Mythos Vault 2" instead. This locks in the no-clobber guarantee that
+  // Pre-populate "My First Vault" with a user file so the helper has to pick
+  // "My First Vault 2" instead. This locks in the no-clobber guarantee that
   // the unit tests assert against the helper — exercised here through the
   // full IPC path.
   // Pre-populate inside userData/vaults — that's where defaultMythosVaultsParent() now points
-  const preexisting = path.join(userData, 'vaults', 'Mythos Vault');
+  const preexisting = path.join(userData, 'vaults', 'My First Vault');
   fs.mkdirSync(preexisting, { recursive: true });
   fs.writeFileSync(path.join(preexisting, 'user-data.md'), '# do not clobber\n', 'utf-8');
 
@@ -176,14 +177,14 @@ test('TC-SKY-906-02: re-clicking the one-click button auto-suffixes the vault na
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await pg.locator('[data-testid="card-default-mythos-vault"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="card-default-mythos-vault"]').click();
+    await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
+    await pg.locator('[data-testid="card-quick-start"]').click();
     await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
 
     // The original folder must be untouched.
     expect(fs.readFileSync(path.join(preexisting, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
-    // The new bundle landed at "Mythos Vault 2" under userData/vaults.
-    const newRoot = path.join(userData, 'vaults', 'Mythos Vault 2');
+    // The new bundle landed at "My First Vault 2" under userData/vaults.
+    const newRoot = path.join(userData, 'vaults', 'My First Vault 2');
     expect(fs.existsSync(path.join(newRoot, 'Story Vault'))).toBe(true);
     expect(fs.existsSync(path.join(newRoot, 'Notes Vault'))).toBe(true);
 

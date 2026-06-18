@@ -33,7 +33,7 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 interface SeedOptions {
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'default-mythos-vault' | 'skip';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'quick-start' | 'default-mythos-vault' | 'skip';
   gettingStartedProgress?: {
     completedItems: string[];
     dismissed: boolean;
