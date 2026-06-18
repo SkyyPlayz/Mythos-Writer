@@ -1535,7 +1535,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 setSelectedSampleGenre(null);
                 setOpenAccordionGenre(null);
                 setSampleError('');
-                setStep('step1b');
+                setStep('step1');
               }}
               data-testid="gs-back-step1c"
             >
