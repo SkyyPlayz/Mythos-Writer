@@ -11,8 +11,8 @@
  *   AC-SC-05  Lane management — add / rename / delete (empty + force)
  *   AC-SC-06  Card delete removes the card from the board
  *   AC-SC-07  Obsidian round-trip — serialized board.md matches format spec
- *   AC-SC-08  Brainstorm accept adds card — SKIPPED (blocked on SKY-1764)
- *   AC-SC-09  Brainstorm reject removes proposal — SKIPPED (blocked on SKY-1764)
+ *   AC-SC-08  Brainstorm accept adds card to Scene Crafter
+ *   AC-SC-09  Brainstorm reject removes proposal from list
  *   AC-SC-10  Manuscript deep link — "Go to scene" button visible for tagged card
  *   AC-SC-11  Empty board CTA shown when no cards
  *   AC-SC-12  External edit conflict alert surfaced
@@ -437,15 +437,102 @@ test('AC-SC-07: board.md round-trips through the Obsidian Kanban format spec', a
   expect(content).toContain('\n%%');
 });
 
-// ─── AC-SC-08 / AC-SC-09: Brainstorm integration — SKIPPED ──────────────────
+// ─── AC-SC-08 / AC-SC-09: Brainstorm integration ─────────────────────────────
 
-test.skip('AC-SC-08: accepting a Brainstorm proposal adds a card to Scene Crafter', async () => {
-  // Blocked on SKY-1764 (Brainstorm → Scene Crafter suggestion accept IPC).
-  // Re-enable once that PR is merged and the `sceneCrafterSuggestions` IPC is wired up.
+/**
+ * Inject a scene_crafter_card proposal into the renderer via the main process.
+ * Uses the same IPC push the brainstorm agent uses in production.
+ */
+async function injectProposal(
+  appInstance: ElectronApplication,
+  proposal: {
+    id: string;
+    title: string;
+    body: string;
+  },
+): Promise<void> {
+  await appInstance.evaluate(
+    ({ BrowserWindow }, p: { id: string; title: string; body: string }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      win.webContents.send('brainstorm:proposalQueued', {
+        proposals: [
+          {
+            id: p.id,
+            kind: 'scene_crafter_card',
+            title: p.title,
+            body: p.body,
+            destinationPath: p.title,
+            frontmatter: {},
+            sourceConversationTurnId: 'e2e-test',
+            extractionConfidence: 0.9,
+            status: 'pending',
+          },
+        ],
+      });
+    },
+    proposal,
+  );
+}
+
+test('AC-SC-08: accepting a Brainstorm proposal adds a card to Scene Crafter', async () => {
+  const PROPOSAL_ID = 'e2e-sc08-proposal';
+  const CARD_TITLE = 'HeroArrivesAtVillage';
+
+  // Navigate to Notes tab so BrainstormPage mounts with the selected story context.
+  await page.locator('[data-testid="app-tab-notes"]').click();
+  await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 8_000 });
+
+  // Inject the proposal from the main process.
+  await injectProposal(app!, { id: PROPOSAL_ID, title: CARD_TITLE, body: 'The hero rides into the village at dawn.' });
+
+  // Wait for the ProposalCard to appear.
+  const proposalRegion = page.locator('[data-testid="proposal-card-region"]');
+  await expect(proposalRegion).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator(`[data-testid="proposal-card-${PROPOSAL_ID}"]`)).toBeVisible({ timeout: 4_000 });
+
+  // Click Accept.
+  await page.locator('[data-testid="pc-confirm-btn"]').click();
+
+  // The ProposalCard should disappear (proposals list becomes empty).
+  await expect(proposalRegion).not.toBeVisible({ timeout: 4_000 });
+
+  // Navigate to Scene Crafter and reload the board from disk.
+  await reloadBoardView(page);
+
+  // Verify the new card appears on the board (Idea lane, index 0).
+  await expect(
+    page.locator(`[data-testid="scene-crafter-card-${CARD_TITLE}"]`),
+  ).toBeVisible({ timeout: 8_000 });
 });
 
-test.skip('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposal list', async () => {
-  // Blocked on SKY-1764 (Brainstorm → Scene Crafter suggestion reject IPC).
+test('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposal list', async () => {
+  const PROPOSAL_ID = 'e2e-sc09-proposal';
+  const CARD_TITLE = 'VillainRevealedAtBanquet';
+
+  // Navigate to Notes tab so BrainstormPage mounts.
+  await page.locator('[data-testid="app-tab-notes"]').click();
+  await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 8_000 });
+
+  // Inject the proposal.
+  await injectProposal(app!, { id: PROPOSAL_ID, title: CARD_TITLE, body: 'The villain unmasks at the royal banquet.' });
+
+  // Wait for the ProposalCard.
+  const proposalRegion = page.locator('[data-testid="proposal-card-region"]');
+  await expect(proposalRegion).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator(`[data-testid="proposal-card-${PROPOSAL_ID}"]`)).toBeVisible({ timeout: 4_000 });
+
+  // Click Reject.
+  await page.locator('[data-testid="pc-reject-btn"]').click();
+
+  // ProposalCard unmounts when the queue is empty.
+  await expect(proposalRegion).not.toBeVisible({ timeout: 4_000 });
+
+  // Navigate to Scene Crafter and verify no card was added.
+  await reloadBoardView(page);
+  await expect(
+    page.locator(`[data-testid="scene-crafter-card-${CARD_TITLE}"]`),
+  ).not.toBeVisible({ timeout: 4_000 });
 });
 
 // ─── AC-SC-10: Manuscript deep link ──────────────────────────────────────────
