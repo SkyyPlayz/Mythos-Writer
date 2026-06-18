@@ -112,8 +112,15 @@ jobs:
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
 
-      - name: Build Windows artifacts (NSIS + ZIP)
+      - name: Build Windows artifacts — stable channel (NSIS + ZIP)
+        if: needs.determine-release.outputs.is-beta == 'false'
         run: npx electron-vite build && npx electron-builder --win --publish never
+        env:
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+      - name: Build Windows artifacts — beta channel (NSIS + ZIP)
+        if: needs.determine-release.outputs.is-beta == 'true'
+        run: npx electron-vite build && npx electron-builder --win --publish never --config.publish.channel=beta
         env:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
@@ -122,7 +129,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
         run: |
-          gh release upload "$TAG" dist-electron/*.exe dist-electron/*.zip --clobber
+          gh release upload "$TAG" dist-electron/*.exe dist-electron/*.zip dist-electron/*.yml --clobber
 
   # macOS build — optional; not a dependency of publish-release.
   # Runs on hosted macos-latest; will be skipped when Actions minutes are exhausted.
@@ -185,7 +192,11 @@ jobs:
           else
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
-          npm run dist:mac:release
+          if [ "${{ needs.determine-release.outputs.is-beta }}" = "true" ]; then
+            npx electron-vite build && npx electron-builder --mac dmg zip --publish never --config.publish.channel=beta
+          else
+            npx electron-vite build && npx electron-builder --mac dmg zip --publish never
+          fi
         env:
           APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -200,7 +211,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
         run: |
-          gh release upload "$TAG" dist-electron/*.dmg dist-electron/*.zip --clobber
+          gh release upload "$TAG" dist-electron/*.dmg dist-electron/*.zip dist-electron/*.yml --clobber
 
   build-linux:
     needs: [determine-release, create-release]
