@@ -1017,6 +1017,424 @@ describe('Archive Agent settings section (AC-CC-09)', () => {
   });
 });
 
+// ── SKY-2440: per-agent model picker + API key settings ──
+
+describe('Per-agent provider override (SKY-2440)', () => {
+  const mockSettingsTestConnection = vi.fn();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockSettingsGet.mockResolvedValue(defaultSettings);
+    mockSettingsSet.mockResolvedValue({ saved: true });
+    mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+    mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+      Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+    );
+    mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+    mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
+    mockSettingsTestConnection.mockResolvedValue({ ok: true });
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      vaultSetPaths: mockVaultSetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      providerListModels: mockProviderListModels,
+      settingsTestConnection: mockSettingsTestConnection,
+    };
+  });
+
+  // AC-MP-04 — override toggle renders for all three agents
+  it('AC-MP-04: override toggle renders for all three agent cards', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /enable brainstorm provider override/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /enable archive provider override/i })).toBeInTheDocument();
+  });
+
+  // AC-MP-04 — override toggle is off by default
+  it('AC-MP-04: override toggles are unchecked by default', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const waToggle = screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }) as HTMLInputElement;
+    const brainstormToggle = screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }) as HTMLInputElement;
+    const archiveToggle = screen.getByRole('checkbox', { name: /enable archive provider override/i }) as HTMLInputElement;
+    expect(waToggle.checked).toBe(false);
+    expect(brainstormToggle.checked).toBe(false);
+    expect(archiveToggle.checked).toBe(false);
+  });
+
+  // AC-MP-13 — global provider hint when override is off
+  it('AC-MP-13: shows "Using global provider" hint when override is off', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    // All three agents should show the hint
+    const hints = screen.getAllByText(/using global provider/i);
+    expect(hints.length).toBeGreaterThanOrEqual(3);
+  });
+
+  // AC-MP-05 — enabling override shows the full provider form
+  it('AC-MP-05: enabling override shows provider kind, API key, and model fields', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    // The per-agent API key field should not exist yet
+    expect(screen.queryByLabelText(/api key for writingAssistant/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    // Provider kind selector, API key (Anthropic needs key), and model selector appear
+    expect(screen.getByLabelText(/provider for writingAssistant/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/api key for writingAssistant/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/model for writingAssistant/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /test provider connection for writingAssistant/i })).toBeInTheDocument();
+  });
+
+  // AC-MP-06 — disabling override hides the form
+  it('AC-MP-06: disabling override hides the provider form', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    const toggle = screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i });
+    fireEvent.click(toggle);
+    expect(screen.getByLabelText(/api key for writingAssistant/i)).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(screen.queryByLabelText(/api key for writingAssistant/i)).not.toBeInTheDocument();
+  });
+
+  // AC-MP-03 — model selector hidden when override is enabled
+  it('AC-MP-03: top-level model selector is hidden when per-agent override is enabled', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+
+    // Initially the top-level model selector is visible
+    expect(screen.getByLabelText(/writing assistant model/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    // Top-level model selector should be gone; override form's model is present instead
+    expect(screen.queryByLabelText(/writing assistant model/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/model for writingAssistant/i)).toBeInTheDocument();
+  });
+
+  // AC-MP-08 — per-agent override persists on Save (override enabled)
+  it('AC-MP-08: enabled override with API key and model is included in saved settings', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    // Type an API key
+    fireEvent.change(screen.getByLabelText(/api key for writingAssistant/i), {
+      target: { value: 'sk-ant-agent-key' },
+    });
+
+    // Anthropic is default — select opus
+    const modelSelect = screen.getByRole('combobox', { name: /model for writingAssistant/i }) as HTMLSelectElement;
+    fireEvent.change(modelSelect, { target: { value: 'claude-opus-4-7' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.provider).toBeDefined();
+    expect(saved.agents.writingAssistant.provider?.kind).toBe('anthropic');
+    expect(saved.agents.writingAssistant.provider?.apiKey).toBe('sk-ant-agent-key');
+    expect(saved.agents.writingAssistant.provider?.model).toBe('claude-opus-4-7');
+  });
+
+  // AC-MP-08 — per-agent override undefined when disabled
+  it('AC-MP-08: disabled override results in undefined provider in saved settings', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.provider).toBeUndefined();
+    expect(saved.agents.brainstorm.provider).toBeUndefined();
+    expect(saved.agents.archive.provider).toBeUndefined();
+  });
+
+  // AC-MP-09 — per-agent override restored from loaded settings
+  it('AC-MP-09: loaded settings with per-agent provider show override as enabled', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        brainstorm: {
+          ...defaultSettings.agents.brainstorm,
+          provider: { kind: 'anthropic', model: 'claude-opus-4-7', apiKey: 'sk-ant-...brainstorm' },
+        },
+      },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
+
+    const toggle = screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+
+    // Override form should be visible with the saved provider kind
+    const kindSelect = screen.getByLabelText(/provider for brainstorm/i) as HTMLSelectElement;
+    expect(kindSelect.value).toBe('anthropic');
+  });
+
+  // AC-MP-09 — restored model value
+  it('AC-MP-09: restored provider model matches saved settings', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        archive: {
+          ...defaultSettings.agents.archive,
+          provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: '' },
+        },
+      },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /model for archive/i }));
+
+    const modelSelect = screen.getByRole('combobox', { name: /model for archive/i }) as HTMLSelectElement;
+    expect(modelSelect.value).toBe('claude-haiku-4-5-20251001');
+  });
+
+  // AC-MP-07 — per-agent API key shows configured hint when key previously set
+  it('AC-MP-07: shows "Key is already configured" hint when saved API key exists', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          provider: { kind: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'sk-ant-...saved' },
+        },
+      },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    expect(screen.getByText(/key is already configured/i)).toBeInTheDocument();
+  });
+
+  // AC-MP-07 — key dirty state hides the hint
+  it('AC-MP-07: typing a new key removes the "Key is already configured" hint', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          provider: { kind: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'sk-ant-...saved' },
+        },
+      },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByText(/key is already configured/i));
+
+    fireEvent.change(screen.getByLabelText(/api key for writingAssistant/i), {
+      target: { value: 'sk-ant-newkey' },
+    });
+
+    expect(screen.queryByText(/key is already configured/i)).not.toBeInTheDocument();
+  });
+
+  // AC-MP-07 — saving without touching the key sends the masked value
+  it('AC-MP-07: saving without changing per-agent key preserves the stored masked value', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          provider: { kind: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'sk-ant-...preserved' },
+        },
+      },
+    });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.provider?.apiKey).toBe('sk-ant-...preserved');
+  });
+
+  // AC-MP-10 — test connection button calls settingsTestConnection for agent
+  it('AC-MP-10: test connection button calls settingsTestConnection with agent config', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
+    fireEvent.change(screen.getByLabelText(/api key for brainstorm/i), {
+      target: { value: 'sk-ant-testkey' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /test provider connection for brainstorm/i }));
+
+    await waitFor(() => expect(mockSettingsTestConnection).toHaveBeenCalledTimes(1));
+    expect(mockSettingsTestConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'anthropic', apiKey: 'sk-ant-testkey' }),
+    );
+  });
+
+  // AC-MP-10 — test connection success shows green status
+  it('AC-MP-10: successful test connection shows "Connection successful" status', async () => {
+    mockSettingsTestConnection.mockResolvedValueOnce({ ok: true });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
+    fireEvent.click(screen.getByRole('button', { name: /test provider connection for brainstorm/i }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/connection successful/i));
+  });
+
+  // AC-MP-10 — test connection failure shows red alert
+  it('AC-MP-10: failed test connection shows error alert', async () => {
+    mockSettingsTestConnection.mockResolvedValueOnce({ ok: false, error: 'Invalid API key' });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    fireEvent.click(screen.getByRole('button', { name: /test provider connection for writingAssistant/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert', { name: '' })).toHaveTextContent(/invalid api key/i),
+    );
+  });
+
+  // AC-MP-12 — remote endpoint security warning
+  it('AC-MP-12: shows remote endpoint warning for non-localhost base URL', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    // Switch to custom to get base URL field
+    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
+      target: { value: 'custom' },
+    });
+
+    fireEvent.change(screen.getByLabelText(/base url for writingAssistant/i), {
+      target: { value: 'https://remote.api.example.com/v1' },
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/not on localhost/i);
+  });
+
+  // AC-MP-12 — no warning for localhost base URL
+  it('AC-MP-12: no remote endpoint warning for localhost base URL', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
+      target: { value: 'ollama' },
+    });
+
+    // Default Ollama URL is localhost — no warning
+    expect(screen.queryByText(/not on localhost/i)).not.toBeInTheDocument();
+  });
+
+  // AC-MP-08 — full round-trip for all three agents with different providers
+  it('AC-MP-08: all three agent overrides are included in saved settings', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    // Enable Writing Assistant override with Anthropic Haiku
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    fireEvent.change(screen.getByRole('combobox', { name: /model for writingAssistant/i }), {
+      target: { value: 'claude-haiku-4-5-20251001' },
+    });
+
+    // Enable Archive override with Anthropic Opus
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable archive provider override/i }));
+    fireEvent.change(screen.getByRole('combobox', { name: /model for archive/i }), {
+      target: { value: 'claude-opus-4-7' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.provider?.model).toBe('claude-haiku-4-5-20251001');
+    expect(saved.agents.archive.provider?.model).toBe('claude-opus-4-7');
+    // Brainstorm override was not enabled
+    expect(saved.agents.brainstorm.provider).toBeUndefined();
+  });
+
+  // AC-MP-11 — model list fetched when override enabled with listable provider
+  it('AC-MP-11: enabling override with Ollama provider triggers providerListModels', async () => {
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['llama3', 'mistral'] });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
+      target: { value: 'ollama' },
+    });
+
+    await waitFor(() => expect(mockProviderListModels).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'ollama' }),
+    ));
+  });
+
+  // AC-MP-11 — model dropdown renders when list succeeds
+  it('AC-MP-11: shows model dropdown when providerListModels succeeds for Ollama override', async () => {
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['llama3', 'mistral', 'phi3'] });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
+      target: { value: 'ollama' },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: /model for writingAssistant/i })).toBeInTheDocument(),
+    );
+    const select = screen.getByRole('combobox', { name: /model for writingAssistant/i }) as HTMLSelectElement;
+    const opts = Array.from(select.options).map((o) => o.value);
+    expect(opts).toContain('llama3');
+    expect(opts).toContain('mistral');
+    expect(opts).toContain('phi3');
+  });
+
+  // AC-MP-11 — error hint when model listing fails for Ollama override
+  it('AC-MP-11: shows Ollama error hint when providerListModels fails for override', async () => {
+    mockProviderListModels.mockResolvedValue({ ok: false, error: 'Ollama is not running. Start it with ollama serve.' });
+
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
+      target: { value: 'ollama' },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('wa-model-list-error')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('wa-model-list-error')).toHaveTextContent(/ollama is not running/i);
+  });
+});
+
 // ── SKY-1969: keyboard-only navigation through the Settings dialog ──
 
 describe('Settings dialog keyboard navigation (SKY-1969)', () => {
