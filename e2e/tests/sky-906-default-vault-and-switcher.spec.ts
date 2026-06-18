@@ -1,20 +1,20 @@
 /**
  * sky-906-default-vault-and-switcher.spec.ts — SKY-906
  *
- * End-to-end coverage for the one-click default Mythos Vault setup and the
+ * End-to-end coverage for the Quick Start (one-click) vault setup and the
  * vault-switcher Add/Switch flow. Boots Electron with no prior vault config
- * (so the onboarding wizard appears), clicks the "Create default Mythos Vault"
- * card on step 1, and asserts:
+ * (so the onboarding wizard appears), clicks the "Quick Start" card on step 1,
+ * and asserts:
  *
  *   - the wizard advances to the scaffolding step then closes
- *   - main creates `<userData>/vaults/Mythos Vault/Story Vault`
+ *   - main creates `<userData>/vaults/My First Vault/Story Vault`
  *     and `…/Notes Vault` with the expected SKY-15 seed layout
  *     (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults)
  *   - vault-settings.json is rewired to the new pair (Story + Notes)
  *
  * Then drives the multi-vault switcher:
  *
- *   - opens the switcher, creates a second Mythos Vault via "+ Create new",
+ *   - opens the switcher, creates a second vault via "+ Create new",
  *     asserts the disk + recent-projects layout, and confirms the active
  *     project changes
  *   - switches back to the first vault and verifies vault-settings.json
@@ -137,17 +137,18 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     // main returns ok. Wait for the wizard overlay to be gone.
     await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
 
-    // Disk: the SKY-906 bundle landed under <userData>/vaults/Mythos Vault
-    // (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults).
-    const mythosVaultRoot = path.join(userData, 'vaults', 'Mythos Vault');
+    // Disk: the SKY-906 bundle landed under <userData>/vaults/My First Vault
+    // (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults;
+    //  SKY-2220: DEFAULT_MYTHOS_VAULT_NAME changed from 'Mythos Vault' to 'My First Vault').
+    const mythosVaultRoot = path.join(userData, 'vaults', 'My First Vault');
     const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
     const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
     expect(fs.existsSync(storyVaultPath)).toBe(true);
     expect(fs.existsSync(notesVaultPath)).toBe(true);
 
     // The orchestrated path also seeds a first scene file so the editor lands
-    // on something writable. The exact scene file name uses the slug "my-first-story".
-    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'my-first-story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
+    // on something writable. The story folder name is the story title verbatim ("My First Story").
+    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
 
     // vault-settings.json is rewired to the new pair and onboardingComplete=true.
     const vaultSettings = readVaultSettings(userData);
@@ -161,12 +162,12 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
 });
 
 test('TC-SKY-906-02: re-clicking the one-click button auto-suffixes the vault name to avoid collision', async () => {
-  // Pre-populate "Mythos Vault" with a user file so the helper has to pick
-  // "Mythos Vault 2" instead. This locks in the no-clobber guarantee that
+  // Pre-populate "My First Vault" with a user file so the helper has to pick
+  // "My First Vault 2" instead. This locks in the no-clobber guarantee that
   // the unit tests assert against the helper — exercised here through the
   // full IPC path.
   // Pre-populate inside userData/vaults — that's where defaultMythosVaultsParent() now points
-  const preexisting = path.join(userData, 'vaults', 'Mythos Vault');
+  const preexisting = path.join(userData, 'vaults', 'My First Vault');
   fs.mkdirSync(preexisting, { recursive: true });
   fs.writeFileSync(path.join(preexisting, 'user-data.md'), '# do not clobber\n', 'utf-8');
 
@@ -180,8 +181,8 @@ test('TC-SKY-906-02: re-clicking the one-click button auto-suffixes the vault na
 
     // The original folder must be untouched.
     expect(fs.readFileSync(path.join(preexisting, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
-    // The new bundle landed at "Mythos Vault 2" under userData/vaults.
-    const newRoot = path.join(userData, 'vaults', 'Mythos Vault 2');
+    // The new bundle landed at "My First Vault 2" under userData/vaults.
+    const newRoot = path.join(userData, 'vaults', 'My First Vault 2');
     expect(fs.existsSync(path.join(newRoot, 'Story Vault'))).toBe(true);
     expect(fs.existsSync(path.join(newRoot, 'Notes Vault'))).toBe(true);
 
