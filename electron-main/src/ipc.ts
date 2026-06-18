@@ -469,6 +469,10 @@ export const IPC_CHANNELS = {
   CONTINUITY_MATCH_SELECTION: 'continuity:matchSelection',
   CONTINUITY_SEARCH: 'continuity:search',
   CONTINUITY_READ_ENTITY: 'continuity:readEntity',
+
+  // SKY-2308: Vault manifest integrity check + orphan detection
+  VAULT_CHECK_INTEGRITY: 'vault:check-integrity',
+  VAULT_REBUILD_MANIFEST: 'vault:rebuild-manifest',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -823,6 +827,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.CONTINUITY_MATCH_SELECTION]: (payload: ContinuityMatchSelectionPayload) => ContinuityMatchSelectionResponse;
   [IPC_CHANNELS.CONTINUITY_SEARCH]: (payload: ContinuitySearchPayload) => ContinuitySearchResponse;
   [IPC_CHANNELS.CONTINUITY_READ_ENTITY]: (payload: ContinuityReadEntityPayload) => ContinuityReadEntityResponse;
+
+  // SKY-2308: Vault integrity check + manifest rebuild
+  [IPC_CHANNELS.VAULT_CHECK_INTEGRITY]: (payload: never) => Promise<VaultIntegrityReport>;
+  [IPC_CHANNELS.VAULT_REBUILD_MANIFEST]: (payload: never) => Promise<VaultRebuildManifestResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -3967,4 +3975,23 @@ export interface ContinuityReadEntityResponse {
   aliases: string[];
   type: string | null;
   excerpt: string;
+}
+
+// ─── SKY-2308: Vault integrity check + manifest rebuild ───
+
+export interface VaultIntegrityReport {
+  /** Scene/entity IDs whose `.md` file is missing on disk. */
+  orphanedManifestEntries: string[];
+  /** Vault-relative `.md` file paths not referenced in the manifest. */
+  unindexedFiles: string[];
+  /** True when the manifest schemaVersion differs from the current build. */
+  manifestSchemaMismatch: boolean;
+  /** IDs whose file exists but has no parseable `id` in frontmatter (or is unreadable). */
+  corruptedEntries: string[];
+}
+
+export interface VaultRebuildManifestResponse {
+  rebuilt: true;
+  scenesFound: number;
+  entitiesFound: number;
 }
