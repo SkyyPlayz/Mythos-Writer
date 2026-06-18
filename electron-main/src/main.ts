@@ -349,7 +349,7 @@ import {
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
-import { buildSystemPaths, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
+import { buildSystemPaths, detectLegacyVaults, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
 import {
   hydrateSecretsIntoSettings,
@@ -1726,7 +1726,14 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
-    return maskSettingsForRenderer(loadAppSettings());
+    const settings = loadAppSettings();
+    const masked = maskSettingsForRenderer(settings);
+    const legacy = detectLegacyVaults({
+      homeDir: app.getPath('home'),
+      appVersion: app.getVersion(),
+      legacyVaultDismissed: settings.legacyVaultDismissed,
+    });
+    return legacy.found ? { ...masked, legacyVaultDetected: true, legacyVaultPath: legacy.legacyRoot } : masked;
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
     const startedAt = Date.now();
@@ -1841,12 +1848,12 @@ const handlers: IpcHandlers = {
       return { ok: true };
     }
 
-    // SKY-906: one-click default Mythos Vault setup. Mirrors the SKY-320
+    // SKY-2220 / SKY-906: Quick Start / legacy one-click default Mythos Vault setup. Mirrors the SKY-320
     // vault:createDefaultMythos bundle layout, then seeds a first scene like
     // the blank mode so the editor lands on something writable rather than
     // an empty manuscript. The whole flow is bypassable from a "Skip" link if
     // the user later wants to start over.
-    if (startMode === 'default-mythos-vault') {
+    if (startMode === 'quick-start' || startMode === 'default-mythos-vault') {
       const parentBase = (vaultParentPath?.trim() && vaultParentPath.trim().length > 0)
         ? vaultParentPath.trim().replace(/^~/, app.getPath('home'))
         : defaultMythosVaultsParent();
@@ -1859,11 +1866,12 @@ const handlers: IpcHandlers = {
       saveVaultSettings({
         vaultRoot: storyVaultPathDefault,
         notesVaultRoot: notesVaultPathDefault,
-        layoutMode: 'default',
+        layoutMode: 'blank',
       });
       addToRecentProjects(storyVaultPathDefault, notesVaultPathDefault);
       ensureVaultDir();
-      ensureNotesVaultDir();
+      fs.mkdirSync(notesVaultPathDefault, { recursive: true });
+      scaffoldNotesVault(notesVaultPathDefault, 'default');
 
       // Seed a first scene so the editor opens on something writable.
       const effectiveStoryTitle = (storyTitle?.trim() || 'My First Story');
@@ -1871,10 +1879,10 @@ const handlers: IpcHandlers = {
       const storyId = crypto.randomUUID();
       const chapterId = crypto.randomUUID();
       const sceneId = crypto.randomUUID();
-      const titleSlug = toSlug(effectiveStoryTitle);
-      const storyDirPath = `Manuscript/${titleSlug}`;
-      const chapterDirPath = `Manuscript/${titleSlug}/chapter-1`;
-      const sceneRelPath = `Manuscript/${titleSlug}/chapter-1/chapter-1-scene-1.md`;
+      const storyFolderName = effectiveStoryTitle;
+      const storyDirPath = `Manuscript/${storyFolderName}`;
+      const chapterDirPath = `Manuscript/${storyFolderName}/chapter-1`;
+      const sceneRelPath = `Manuscript/${storyFolderName}/chapter-1/chapter-1-scene-1.md`;
 
       writeSceneFile(storyVaultPathDefault, sceneRelPath, {
         id: sceneId,
@@ -1884,6 +1892,10 @@ const handlers: IpcHandlers = {
         order: 0,
         prose: '',
       });
+      const outlinePath = path.join(storyVaultPathDefault, storyDirPath, 'Outline.md');
+      const synopsisPath = path.join(storyVaultPathDefault, storyDirPath, 'Synopsis.md');
+      if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, '# Outline\n\nStart with the big beats for My First Story.\n', 'utf-8');
+      if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, '# Synopsis\n\nA short pitch for My First Story.\n', 'utf-8');
 
       const scene = {
         id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath,
@@ -1935,16 +1947,21 @@ const handlers: IpcHandlers = {
       }
     }
 
-    if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
-    if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
+    if (startMode !== 'sample') {
+      if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
+      if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
+    }
 
-    const resolvedParent = vaultParentPath.trim().replace(/^~/, app.getPath('home'));
-    const storyDir = path.join(resolvedParent, storyTitle.trim());
+    const resolvedParent = startMode === 'sample'
+      ? defaultMythosVaultsParent()
+      : vaultParentPath!.trim().replace(/^~/, app.getPath('home'));
+    const storyDir = startMode === 'sample' ? '' : path.join(resolvedParent, storyTitle!.trim());
     const storyVaultPath = path.join(storyDir, 'Story Vault');
     const notesVaultPath = path.join(storyDir, 'Notes Vault');
 
     if (startMode === 'blank') {
-      const storySlugForDir = toSlug(storyTitle.trim());
+      const blankStoryTitle = storyTitle!.trim();
+      const storySlugForDir = toSlug(blankStoryTitle);
       fs.mkdirSync(path.join(storyVaultPath, 'Manuscript', storySlugForDir, 'chapter-1'), { recursive: true });
       fs.mkdirSync(notesVaultPath, { recursive: true });
 
@@ -1956,7 +1973,7 @@ const handlers: IpcHandlers = {
       const storyId = crypto.randomUUID();
       const chapterId = crypto.randomUUID();
       const sceneId = crypto.randomUUID();
-      const titleSlug = toSlug(storyTitle.trim());
+      const titleSlug = toSlug(blankStoryTitle);
       const storyDirPath = `Manuscript/${titleSlug}`;
       const chapterDirPath = `Manuscript/${titleSlug}/chapter-1`;
       const sceneRelPath = `Manuscript/${titleSlug}/chapter-1/chapter-1-scene-1.md`;
@@ -1980,7 +1997,7 @@ const handlers: IpcHandlers = {
         order: 0, scenes: [scene], createdAt: nowStr, updatedAt: nowStr,
       };
       const story = {
-        id: storyId, title: storyTitle.trim(), path: storyDirPath,
+        id: storyId, title: blankStoryTitle, path: storyDirPath,
         chapters: [chapter], createdAt: nowStr, updatedAt: nowStr,
       };
 
@@ -3822,6 +3839,12 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.VAULT_GET_SYSTEM_PATHS]: () => buildSystemPaths(app),
+
+  [IPC_CHANNELS.VAULT_DETECT_LEGACY]: () => detectLegacyVaults({
+    homeDir: app.getPath('home'),
+    appVersion: app.getVersion(),
+    legacyVaultDismissed: loadAppSettings().legacyVaultDismissed,
+  }),
 
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => {
     // MYT-789: gate the new vault roots behind either a registration token

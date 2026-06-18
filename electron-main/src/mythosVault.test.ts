@@ -88,7 +88,7 @@ describe('deriveProjectName', () => {
 
 describe('default name constant', () => {
   it('keeps the user-facing default stable so onboarding copy and tests agree', () => {
-    expect(DEFAULT_MYTHOS_VAULT_NAME).toBe('Mythos Vault');
+    expect(DEFAULT_MYTHOS_VAULT_NAME).toBe('My First Vault');
   });
 });
 
@@ -109,14 +109,14 @@ describe('scaffoldDefaultMythosVault', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates <parent>/Mythos Vault/{Story Vault, Notes Vault}', () => {
+  it('creates <parent>/My First Vault/{Story Vault, Notes Vault}', () => {
     const result = scaffoldDefaultMythosVault(tmpDir);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('typeguard');
-    expect(result.vaultName).toBe('Mythos Vault');
-    expect(result.mythosVaultRoot).toBe(path.join(tmpDir, 'Mythos Vault'));
-    expect(result.storyVaultPath).toBe(path.join(tmpDir, 'Mythos Vault', 'Story Vault'));
-    expect(result.notesVaultPath).toBe(path.join(tmpDir, 'Mythos Vault', 'Notes Vault'));
+    expect(result.vaultName).toBe('My First Vault');
+    expect(result.mythosVaultRoot).toBe(path.join(tmpDir, 'My First Vault'));
+    expect(result.storyVaultPath).toBe(path.join(tmpDir, 'My First Vault', 'Story Vault'));
+    expect(result.notesVaultPath).toBe(path.join(tmpDir, 'My First Vault', 'Notes Vault'));
     expect(fs.existsSync(result.storyVaultPath)).toBe(true);
     expect(fs.existsSync(result.notesVaultPath)).toBe(true);
     expect(fs.statSync(result.storyVaultPath).isDirectory()).toBe(true);
@@ -131,32 +131,32 @@ describe('scaffoldDefaultMythosVault', () => {
     expect(fs.existsSync(newParent)).toBe(true);
   });
 
-  it('is idempotent on re-click — second call lands at "Mythos Vault 2"', () => {
+  it('is idempotent on re-click — second call lands at "My First Vault 2"', () => {
     const first = scaffoldDefaultMythosVault(tmpDir);
     expect(first.ok).toBe(true);
     const second = scaffoldDefaultMythosVault(tmpDir);
     expect(second.ok).toBe(true);
     if (!second.ok) throw new Error('typeguard');
-    expect(second.vaultName).toBe('Mythos Vault 2');
-    expect(second.mythosVaultRoot).toBe(path.join(tmpDir, 'Mythos Vault 2'));
+    expect(second.vaultName).toBe('My First Vault 2');
+    expect(second.mythosVaultRoot).toBe(path.join(tmpDir, 'My First Vault 2'));
     expect(fs.existsSync(second.storyVaultPath)).toBe(true);
     expect(fs.existsSync(second.notesVaultPath)).toBe(true);
     // Original bundle is untouched.
-    expect(fs.existsSync(path.join(tmpDir, 'Mythos Vault', 'Story Vault'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'My First Vault', 'Story Vault'))).toBe(true);
   });
 
   it('refuses to overwrite a pre-existing non-empty Mythos Vault folder', () => {
-    const preexisting = path.join(tmpDir, 'Mythos Vault');
+    const preexisting = path.join(tmpDir, 'My First Vault');
     fs.mkdirSync(preexisting, { recursive: true });
     fs.writeFileSync(path.join(preexisting, 'user-data.md'), '# do not clobber\n', 'utf-8');
 
     // With no custom baseName, the first uncollided candidate would be
-    // "Mythos Vault 2" — which is what we expect, not a clobber of the
+    // "My First Vault 2" — which is what we expect, not a clobber of the
     // existing folder. The user's file must remain intact.
     const result = scaffoldDefaultMythosVault(tmpDir);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('typeguard');
-    expect(result.vaultName).toBe('Mythos Vault 2');
+    expect(result.vaultName).toBe('My First Vault 2');
     expect(fs.readFileSync(path.join(preexisting, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
   });
 

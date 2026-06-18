@@ -130,8 +130,8 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     // The wizard renders on step 1 with the new primary card. We dispatch a
     // direct click because waiting on every animation between steps is
     // brittle on headless Linux.
-    await pg.locator('[data-testid="card-default-mythos-vault"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="card-default-mythos-vault"]').click();
+    await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
+    await pg.locator('[data-testid="card-quick-start"]').click();
 
     // Wizard advances to step3 (scaffolding) then exits to DesktopShell when
     // main returns ok. Wait for the wizard overlay to be gone.
@@ -174,8 +174,8 @@ test('TC-SKY-906-02: re-clicking the one-click button auto-suffixes the vault na
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await pg.locator('[data-testid="card-default-mythos-vault"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="card-default-mythos-vault"]').click();
+    await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
+    await pg.locator('[data-testid="card-quick-start"]').click();
     await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
 
     // The original folder must be untouched.

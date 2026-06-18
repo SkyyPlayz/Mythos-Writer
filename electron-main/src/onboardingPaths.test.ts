@@ -4,6 +4,7 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   buildSystemPaths,
+  detectLegacyVaults,
   readExistingVaultPaths,
   updateRecentVaultParentPaths,
 } from './onboardingPaths.js';
@@ -13,7 +14,7 @@ function mkTmp(): string {
 }
 
 describe('buildSystemPaths', () => {
-  it('returns app path suggestions and detected cloud directories', () => {
+  it('returns macOS app path suggestions and detected cloud directories', () => {
     const homeDir = mkTmp();
     const desktopDir = path.join(homeDir, 'Desktop');
     const documentsDir = path.join(homeDir, 'Documents');
@@ -32,6 +33,7 @@ describe('buildSystemPaths', () => {
       },
       { ONEDRIVE: oneDriveDir },
       fs.existsSync,
+      'darwin',
     );
 
     expect(result).toEqual({
@@ -40,7 +42,60 @@ describe('buildSystemPaths', () => {
       desktopDir,
       oneDriveDir,
       iCloudDir,
+      suggestedSaveLocations: [
+        path.join(documentsDir, 'MythosWriter'),
+        path.join(desktopDir, 'MythosWriter'),
+        path.join(iCloudDir, 'MythosWriter'),
+      ],
     });
+  });
+
+  it('returns Linux suggestions without desktop/cloud paths', () => {
+    const homeDir = mkTmp();
+    const documentsDir = path.join(homeDir, 'Documents');
+    const desktopDir = path.join(homeDir, 'Desktop');
+
+    expect(buildSystemPaths(
+      {
+        getPath(name) {
+          if (name === 'home') return homeDir;
+          if (name === 'documents') return documentsDir;
+          if (name === 'desktop') return desktopDir;
+          throw new Error(`unexpected app path: ${name}`);
+        },
+      },
+      {},
+      fs.existsSync,
+      'linux',
+    ).suggestedSaveLocations).toEqual([
+      path.join(documentsDir, 'MythosWriter'),
+      path.join(homeDir, 'MythosWriter'),
+    ]);
+  });
+
+  it('returns Windows suggestions with OneDrive when detected', () => {
+    const homeDir = mkTmp();
+    const documentsDir = path.join(homeDir, 'Documents');
+    const desktopDir = path.join(homeDir, 'Desktop');
+    const oneDriveDir = path.join(homeDir, 'OneDrive');
+
+    expect(buildSystemPaths(
+      {
+        getPath(name) {
+          if (name === 'home') return homeDir;
+          if (name === 'documents') return documentsDir;
+          if (name === 'desktop') return desktopDir;
+          throw new Error(`unexpected app path: ${name}`);
+        },
+      },
+      { OneDrive: oneDriveDir },
+      fs.existsSync,
+      'win32',
+    ).suggestedSaveLocations).toEqual([
+      path.join(documentsDir, 'MythosWriter'),
+      path.join(desktopDir, 'MythosWriter'),
+      path.join(oneDriveDir, 'MythosWriter'),
+    ]);
   });
 
   it('returns null for undetected optional cloud directories', () => {
@@ -99,6 +154,49 @@ describe('readExistingVaultPaths', () => {
   it('rejects a path without a Mythos story-vault manifest', () => {
     const parent = mkTmp();
     fs.mkdirSync(path.join(parent, 'Story Vault'));
+    fs.mkdirSync(path.join(parent, 'Notes Vault'));
     expect(() => readExistingVaultPaths(parent)).toThrow('Existing vault is missing Story Vault/manifest.json');
+  });
+
+  it('rejects a path missing Notes Vault as a direct child', () => {
+    const parent = mkTmp();
+    const storyVaultPath = path.join(parent, 'Story Vault');
+    fs.mkdirSync(storyVaultPath);
+    fs.writeFileSync(path.join(storyVaultPath, 'manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      stories: [],
+      chapters: [],
+      scenes: [],
+    }));
+
+    expect(() => readExistingVaultPaths(parent)).toThrow('Existing vault is missing Notes Vault');
+  });
+});
+
+describe('detectLegacyVaults', () => {
+  it('detects ~/Mythos/Story Vault + Notes Vault when not dismissed after upgrade', () => {
+    const homeDir = mkTmp();
+    const legacyRoot = path.join(homeDir, 'Mythos');
+    fs.mkdirSync(path.join(legacyRoot, 'Story Vault'), { recursive: true });
+    fs.mkdirSync(path.join(legacyRoot, 'Notes Vault'), { recursive: true });
+    fs.writeFileSync(path.join(legacyRoot, 'Story Vault', 'manifest.json'), JSON.stringify({ schemaVersion: 1 }));
+
+    expect(detectLegacyVaults({ homeDir, appVersion: '0.2.0', legacyVaultDismissed: false })).toEqual({
+      found: true,
+      legacyRoot,
+      storyVaultPath: path.join(legacyRoot, 'Story Vault'),
+      notesVaultPath: path.join(legacyRoot, 'Notes Vault'),
+    });
+  });
+
+  it('skips detection when dismissed or still on v0.1.x', () => {
+    const homeDir = mkTmp();
+    const legacyRoot = path.join(homeDir, 'Mythos');
+    fs.mkdirSync(path.join(legacyRoot, 'Story Vault'), { recursive: true });
+    fs.mkdirSync(path.join(legacyRoot, 'Notes Vault'), { recursive: true });
+    fs.writeFileSync(path.join(legacyRoot, 'Story Vault', 'manifest.json'), JSON.stringify({ schemaVersion: 1 }));
+
+    expect(detectLegacyVaults({ homeDir, appVersion: '0.2.0', legacyVaultDismissed: true })).toEqual({ found: false });
+    expect(detectLegacyVaults({ homeDir, appVersion: '0.1.9', legacyVaultDismissed: false })).toEqual({ found: false });
   });
 });

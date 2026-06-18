@@ -378,6 +378,10 @@ interface AppSettings {
     maxAgeDays: number;
   };
   onboardingComplete?: boolean;
+  /** SKY-2220: first-upgrade legacy ~/Mythos vault recovery prompt state. */
+  legacyVaultDetected?: boolean;
+  legacyVaultDismissed?: boolean;
+  legacyVaultPath?: string;
   /** SKY-1188: post-onboarding checklist state. */
   gettingStartedProgress?: {
     completedItems?: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
@@ -386,7 +390,7 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
   /** SKY-2005: last sample genre selected from the onboarding sample preview. */
@@ -965,7 +969,9 @@ interface Window {
       desktopDir: string;
       oneDriveDir: string | null;
       iCloudDir: string | null;
+      suggestedSaveLocations?: string[];
     }>;
+    vaultDetectLegacy?: () => Promise<{ found: false } | { found: true; legacyRoot: string; storyVaultPath: string; notesVaultPath: string }>;
     // SKY-12.2: opts.seedMode controls scaffold ('default' = full SKY-15; 'blank' = bare roots only)
     // SKY-270 / MYT-789: storyVaultToken / notesVaultToken from vault:pick-folder satisfy the gate.
     vaultSetPaths: (storyVaultPath: string, notesVaultPath: string, opts?: { seedMode?: 'default' | 'blank'; storyVaultToken?: string; notesVaultToken?: string }) => Promise<{ storyVaultPath: string; notesVaultPath: string; saved: boolean }>;
@@ -988,7 +994,7 @@ interface Window {
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
+      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;
