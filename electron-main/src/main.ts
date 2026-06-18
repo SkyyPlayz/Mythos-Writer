@@ -157,6 +157,8 @@ import {
   type SceneCrafterDeleteLanePayload,
   type SceneCrafterReorderLanesPayload,
   type SceneCrafterClosePayload,
+  type SceneCrafterSuggestionAcceptPayload,
+  type SceneCrafterSuggestionRejectPayload,
 } from './ipc.js';
 import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
 import { boardRelPath } from './sceneCrafterBoard.js';
@@ -172,6 +174,10 @@ import {
   handleDeleteLane,
   handleReorderLanes,
 } from './sceneCrafterIpc.js';
+import {
+  acceptSceneCrafterCardSuggestion,
+  rejectSceneCrafterCardSuggestion,
+} from './sceneCrafterSuggestions.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot } from './validatePathUtil.js';
@@ -5043,6 +5049,28 @@ const handlers: IpcHandlers = {
   // SKY-1759: stop the board watcher when the renderer closes the scene crafter.
   [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: async (_payload: SceneCrafterClosePayload) => {
     await stopBoardWatcher();
+  },
+
+  // SKY-1764: Brainstorm → Scene Crafter suggestion accept/reject
+  [IPC_CHANNELS.SCENE_CRAFTER_SUGGESTION_ACCEPT]: (payload: SceneCrafterSuggestionAcceptPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const notesRoot = getNotesVaultRoot();
+    const result = acceptSceneCrafterCardSuggestion(
+      payload.suggestionId,
+      (slug) => handleGetBoard(notesRoot, { storyId: '', storySlug: slug }),
+      (slug, laneIndex, card) => handleAddCard(notesRoot, { storySlug: slug, laneIndex, card }),
+      payload.actor ?? 'user',
+      now,
+    );
+    return { suggestionId: payload.suggestionId, ...result };
+  },
+
+  [IPC_CHANNELS.SCENE_CRAFTER_SUGGESTION_REJECT]: (payload: SceneCrafterSuggestionRejectPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const result = rejectSceneCrafterCardSuggestion(payload.suggestionId, payload.actor ?? 'user', now);
+    return { suggestionId: payload.suggestionId, ...result };
   },
 
   // SKY-2011: Continuity Peek — entity matching, search, read

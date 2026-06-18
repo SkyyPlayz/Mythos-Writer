@@ -461,6 +461,10 @@ export const IPC_CHANNELS = {
   // Push event (main → renderer): external edit detected on board.md
   SCENE_CRAFTER_EXTERNAL_EDIT: 'scene-crafter:external-edit',
 
+  // SKY-1764: Brainstorm → Scene Crafter suggestion accept/reject
+  SCENE_CRAFTER_SUGGESTION_ACCEPT: 'scene-crafter:suggestion-accept',
+  SCENE_CRAFTER_SUGGESTION_REJECT: 'scene-crafter:suggestion-reject',
+
   // SKY-2011: Continuity Peek — entity matching, search, and read
   CONTINUITY_MATCH_SELECTION: 'continuity:matchSelection',
   CONTINUITY_SEARCH: 'continuity:search',
@@ -810,6 +814,10 @@ export interface IpcHandlers {
   // SKY-1759: Scene Crafter file-watcher — SCENE_CRAFTER_EXTERNAL_EDIT is a push-only
   // channel (webContents.send), so no handler entry is needed for it here.
   [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: (payload: SceneCrafterClosePayload) => Promise<void>;
+
+  // SKY-1764: Brainstorm → Scene Crafter suggestion accept/reject
+  [IPC_CHANNELS.SCENE_CRAFTER_SUGGESTION_ACCEPT]: (payload: SceneCrafterSuggestionAcceptPayload) => SceneCrafterSuggestionAcceptResponse;
+  [IPC_CHANNELS.SCENE_CRAFTER_SUGGESTION_REJECT]: (payload: SceneCrafterSuggestionRejectPayload) => SceneCrafterSuggestionRejectResponse;
 
   // SKY-2011: Continuity Peek
   [IPC_CHANNELS.CONTINUITY_MATCH_SELECTION]: (payload: ContinuityMatchSelectionPayload) => ContinuityMatchSelectionResponse;
@@ -3891,6 +3899,32 @@ export interface SceneCrafterClosePayload {
 /** Payload emitted on the push channel `scene-crafter:external-edit`. */
 export interface SceneCrafterExternalEditPayload {
   storySlug: string;
+}
+
+// ─── SKY-1764: Brainstorm → Scene Crafter suggestion accept/reject ───
+
+export interface SceneCrafterSuggestionAcceptPayload {
+  /** Suggestion ID (UUID from the suggestions table). */
+  suggestionId: string;
+  actor?: string;
+}
+
+export interface SceneCrafterSuggestionAcceptResponse {
+  suggestionId: string;
+  auditId: string;
+  cardPath: string;
+  laneUsed: string;
+  laneIndex: number;
+}
+
+export interface SceneCrafterSuggestionRejectPayload {
+  suggestionId: string;
+  actor?: string;
+}
+
+export interface SceneCrafterSuggestionRejectResponse {
+  suggestionId: string;
+  auditId: string;
 }
 
 // Re-export SceneCrafterBoard so callers can import it from ipc.ts instead of sceneCrafterBoard.ts.

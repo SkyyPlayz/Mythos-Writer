@@ -835,6 +835,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('scene-crafter:external-edit', handler);
   },
 
+  // SKY-1764: Brainstorm → Scene Crafter suggestion accept/reject
+  sceneCrafterSuggestionAccept: (suggestionId: string, actor?: string) =>
+    ipcRenderer.invoke('scene-crafter:suggestion-accept', { suggestionId, actor }),
+  sceneCrafterSuggestionReject: (suggestionId: string, actor?: string) =>
+    ipcRenderer.invoke('scene-crafter:suggestion-reject', { suggestionId, actor }),
+
   // SKY-2011: Continuity Peek
   continuityMatchSelection: (selectedText: string, notesVaultRoot: string) =>
     ipcRenderer.invoke('continuity:matchSelection', { selectedText, notesVaultRoot }),
