@@ -239,6 +239,9 @@ interface Props {
   onFirstSubmit?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
+  /** SKY-1764/SKY-2306: slug of the currently selected story, used to add
+   *  scene_crafter_card proposals directly to the active board. */
+  activeStorySlug?: string | null;
 }
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'error';
@@ -264,7 +267,7 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -1178,7 +1181,17 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           decision: proposal.status === 'edited_and_confirmed' ? 'edit_and_confirm' : 'confirm',
         });
       }
-      if (typeof api?.brainstormWriteNote === 'function') {
+      // SKY-1764/SKY-2306: scene_crafter_card proposals go directly onto the active
+      // Scene Crafter board rather than to the notes vault.
+      if (proposal.kind === 'scene_crafter_card') {
+        if (activeStorySlug && typeof api?.sceneCrafterAddCard === 'function') {
+          await api.sceneCrafterAddCard({
+            storySlug: activeStorySlug,
+            laneIndex: 0,
+            card: { wikilink: proposal.title, title: proposal.title, done: false },
+          });
+        }
+      } else if (typeof api?.brainstormWriteNote === 'function') {
         await api.brainstormWriteNote({
           category: proposal.kind,
           name: proposal.title,
@@ -1186,7 +1199,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         });
       }
     } catch { /* non-fatal — proposal removed from queue regardless */ }
-  }, []);
+  }, [activeStorySlug]);
 
   const handleProposalReject = useCallback((proposalId: string) => {
     setProposals((prev) => prev.filter((p) => p.id !== proposalId));
@@ -1399,7 +1412,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   ? (JSON.parse(r.payload_json) as Record<string, unknown>)
                   : {};
                 const k = payload.kind as string;
-                const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'inbox'].includes(k)
+                const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'scene_crafter_card', 'inbox'].includes(k)
                   ? (k as NoteProposalKind) : 'inbox';
                 const title = typeof payload.title === 'string' ? payload.title : '';
                 if (!title) return [];
@@ -1436,7 +1449,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         .filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object')
         .flatMap((r) => {
           const k = r.kind as string;
-          const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'inbox'].includes(k)
+          const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'scene_crafter_card', 'inbox'].includes(k)
             ? (k as NoteProposalKind) : 'inbox';
           const title = typeof r.title === 'string' ? r.title : '';
           if (!title) return [];

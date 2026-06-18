@@ -3553,6 +3553,7 @@ export default function DesktopShell() {
           }}
           onSelectEntity={handleSelectEntity}
           selectedEntityId={selectedEntity?.id ?? null}
+          activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
         />
       )}
       {ambiguousLink && (

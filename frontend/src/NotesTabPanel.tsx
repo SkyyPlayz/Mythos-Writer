@@ -52,6 +52,8 @@ export interface NotesTabPanelProps {
   onFirstSubmit?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
+  /** SKY-2306: slug of the currently selected story for scene_crafter_card acceptance. */
+  activeStorySlug?: string | null;
   // Entity browser
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId: string | null;
@@ -85,6 +87,7 @@ export default function NotesTabPanel({
   onFirstSubmit,
   onNavigateToEntity,
   onNavigateToScene,
+  activeStorySlug,
   onSelectEntity,
   selectedEntityId,
 }: NotesTabPanelProps) {
@@ -296,6 +299,7 @@ export default function NotesTabPanel({
                   onFirstSubmit={onFirstSubmit}
                   onNavigateToEntity={onNavigateToEntity}
                   onNavigateToScene={onNavigateToScene}
+                  activeStorySlug={activeStorySlug}
                 />
               </div>
             </div>
