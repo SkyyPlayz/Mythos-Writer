@@ -158,9 +158,10 @@ describe('readExistingVaultPaths', () => {
     expect(() => readExistingVaultPaths(parent)).toThrow('Existing vault is missing Story Vault/manifest.json');
   });
 
-  it('rejects a path missing Notes Vault as a direct child', () => {
+  it('scaffolds missing Notes Vault rather than rejecting', () => {
     const parent = mkTmp();
     const storyVaultPath = path.join(parent, 'Story Vault');
+    const notesVaultPath = path.join(parent, 'Notes Vault');
     fs.mkdirSync(storyVaultPath);
     fs.writeFileSync(path.join(storyVaultPath, 'manifest.json'), JSON.stringify({
       schemaVersion: 1,
@@ -169,7 +170,9 @@ describe('readExistingVaultPaths', () => {
       scenes: [],
     }));
 
-    expect(() => readExistingVaultPaths(parent)).toThrow('Existing vault is missing Notes Vault');
+    const result = readExistingVaultPaths(parent);
+    expect(fs.existsSync(notesVaultPath)).toBe(true);
+    expect(result.notesVaultPath).toBe(notesVaultPath);
   });
 });
 

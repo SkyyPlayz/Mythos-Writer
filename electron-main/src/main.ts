@@ -1879,7 +1879,7 @@ const handlers: IpcHandlers = {
       const storyId = crypto.randomUUID();
       const chapterId = crypto.randomUUID();
       const sceneId = crypto.randomUUID();
-      const storyFolderName = effectiveStoryTitle;
+      const storyFolderName = effectiveStoryTitle.replace(/[/\\:*?"<>|]/g, '-');
       const storyDirPath = `Manuscript/${storyFolderName}`;
       const chapterDirPath = `Manuscript/${storyFolderName}/chapter-1`;
       const sceneRelPath = `Manuscript/${storyFolderName}/chapter-1/chapter-1-scene-1.md`;
@@ -1894,8 +1894,8 @@ const handlers: IpcHandlers = {
       });
       const outlinePath = path.join(storyVaultPathDefault, storyDirPath, 'Outline.md');
       const synopsisPath = path.join(storyVaultPathDefault, storyDirPath, 'Synopsis.md');
-      if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, '# Outline\n\nStart with the big beats for My First Story.\n', 'utf-8');
-      if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, '# Synopsis\n\nA short pitch for My First Story.\n', 'utf-8');
+      if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, `# Outline\n\nStart with the big beats for ${effectiveStoryTitle}.\n`, 'utf-8');
+      if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, `# Synopsis\n\nA short pitch for ${effectiveStoryTitle}.\n`, 'utf-8');
 
       const scene = {
         id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath,
@@ -1955,7 +1955,7 @@ const handlers: IpcHandlers = {
     const resolvedParent = startMode === 'sample'
       ? defaultMythosVaultsParent()
       : vaultParentPath!.trim().replace(/^~/, app.getPath('home'));
-    const storyDir = startMode === 'sample' ? '' : path.join(resolvedParent, storyTitle!.trim());
+    const storyDir = startMode === 'sample' ? '' : path.join(resolvedParent, storyTitle!.trim().replace(/[/\\:*?"<>|]/g, '-'));
     const storyVaultPath = path.join(storyDir, 'Story Vault');
     const notesVaultPath = path.join(storyDir, 'Notes Vault');
 
