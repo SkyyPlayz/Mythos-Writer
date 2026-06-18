@@ -6,11 +6,12 @@ import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WizardStep = 'step1' | 'step1b' | 'step1c' | 'step2' | 'step3';
-// SKY-906: 'default-mythos-vault' is the one-click first-run path that
-// bypasses the title/save-path form entirely.
+type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3';
+// SKY-2220: 'quick-start' is the one-click first-run path that bypasses the
+// title/save-path form entirely. 'default-mythos-vault' is kept as a legacy
+// backend alias during the onboarding v2.1 transition.
 // SKY-2007: 'open-existing' opens a pre-existing Mythos vault parent dir.
-type StartMode = 'blank' | 'sample' | 'template' | 'default-mythos-vault' | 'open-existing';
+type StartMode = 'blank' | 'sample' | 'template' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
 
 // SKY-2007: 7 inline validation states for the save-location path field.
 type PathValidationState =
@@ -20,7 +21,6 @@ type PathValidationState =
   | 'new-path'         // path doesn't exist yet but parent is writable
   | 'not-writable'     // path exists but not writable
   | 'conflict-mythos'  // Story Vault/manifest.json found at this parent
-  | 'conflict-obsidian'// .obsidian dir found
   | 'path-too-long'    // > 200 chars on Windows
   | 'error';           // IPC threw or other failure
 
@@ -30,6 +30,7 @@ type SystemPaths = {
   desktopDir: string;
   oneDriveDir: string | null;
   iCloudDir: string | null;
+  suggestedSaveLocations?: string[];
 };
 
 // SKY-2008: genre IDs for the step1c sample picker
@@ -94,7 +95,7 @@ type Api = {
   chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
   onboardingComplete: (payload?: {
-    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'default-mythos-vault' | 'open-existing';
+    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
     storyTitle?: string;
     authorName?: string;
     vaultParentPath?: string;
@@ -110,6 +111,7 @@ type Api = {
   vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
   /** SKY-2005: returns OS-level directory paths for suggested vault locations. */
   vaultGetSystemPaths?: () => Promise<SystemPaths>;
+  settingsSet?: (settings: AppSettings) => Promise<{ saved: boolean; error?: string }>;
 };
 
 function api(): Api {
@@ -252,9 +254,10 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
   return (
     <button
       className="gs-card"
-      onClick={onActivate}
+      onClick={() => onActivate()}
       onKeyDown={handleKeyDown}
       data-testid={testId}
+      aria-label={`${title}: ${description}`}
       type="button"
     >
       <span className="gs-card__icon" aria-hidden="true">{icon}</span>
@@ -462,6 +465,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // UI state
   const [scaffolding, setScaffolding] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showMigrationDialog, setShowMigrationDialog] = useState(
+    Boolean(initialSettings.legacyVaultDetected && !initialSettings.legacyVaultDismissed),
+  );
 
   // SKY-2007: vault picker polish state
   const [pathValidationState, setPathValidationState] = useState<PathValidationState>('idle');
@@ -518,9 +524,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }).finally(() => setLoadingTemplates(false));
   }, []);
 
-  // Load templates when step1b mounts
+  // Load templates when the template gallery mounts
   useEffect(() => {
-    if (step === 'step1b') reloadTemplates();
+    if (step === 'step1b-inner') reloadTemplates();
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // SKY-1405: drag-drop handlers for .mythostemplate import
@@ -594,9 +600,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setTitleError('');
     setSavePathError('');
     if (startMode === 'template') {
-      setStep('step1b');
+      setStep('step1b-inner');
     } else {
-      setStep('step1');
+      setStep('step1b');
     }
   }
 
@@ -616,21 +622,17 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
 
-  // SKY-906: one-click default Mythos Vault. Bypasses the title + save-path
-  // form entirely — main creates ~/Mythos/Vaults/Mythos Vault/{Story,Notes} Vault,
-  // seeds a "My First Story" scene, and persists onboardingComplete.
-  // Re-running on a populated parent auto-suffixes ("Mythos Vault 2"), so the
-  // button is safe to re-press after a kill-and-relaunch.
-  async function handleOneClickDefaultMythosVault() {
-    // Tracks the chosen start mode so the existing step3 "Try Again" button
-    // retries the same one-click flow instead of falling through to the
-    // blank/sample/template path that depends on user-entered title state.
-    setStartMode('default-mythos-vault');
+  // SKY-2220: Quick Start. Bypasses the title + save-path form entirely —
+  // main creates the default Mythos vault bundle under app data and seeds a
+  // "My First Story" scene. The backend keeps default-mythos-vault as a
+  // compatibility alias, but new UI reports startMode=quick-start.
+  async function handleQuickStart() {
+    setStartMode('quick-start');
     setScaffoldError('');
     setStep('step3');
     setScaffolding(true);
     try {
-      const res = await api().onboardingComplete({ startMode: 'default-mythos-vault' });
+      const res = await api().onboardingComplete({ startMode: 'quick-start' });
       if (!res.ok || res.error) {
         setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
         setScaffolding(false);
@@ -639,6 +641,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       const updated: AppSettings = {
         ...initialSettings,
         onboardingComplete: true,
+        onboardingStartMode: 'quick-start',
         ...(res.firstSceneId && res.firstScenePath
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
@@ -646,6 +649,47 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       onComplete(updated);
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
+      setScaffolding(false);
+    }
+  }
+
+  function handleCreateCustom() {
+    setStartMode(null);
+    setSelectedTemplateId(null);
+    setSelectedSampleGenre(null);
+    setOpenAccordionGenre(null);
+    setSampleError('');
+    setScaffoldError('');
+    setStep('step1b');
+  }
+
+  async function handleOpenExistingVault(vaultPath?: string) {
+    setStartMode('open-existing');
+    setScaffoldError('');
+    try {
+      const picked = vaultPath?.trim()
+        ? { cancelled: false, path: vaultPath.trim() }
+        : await api().chooseVaultFolder('Open existing Mythos vault');
+      if (picked.cancelled || !picked.path) return;
+      setStep('step3');
+      setScaffolding(true);
+      const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: picked.path });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? "This folder doesn't look like a Mythos Writer vault…");
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'open-existing',
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : "This folder doesn't look like a Mythos Writer vault…");
       setScaffolding(false);
     }
   }
@@ -698,7 +742,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   function handleSelectTemplate() {
     templateCardTriggerRef.current = document.activeElement as HTMLElement;
-    setStep('step1b');
+    setStep('step1b-inner');
   }
 
   function handleSkip() {
@@ -721,12 +765,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setPathValidationState('validating');
     setPathValidationMsg('');
     try {
-      // Parallel-check for mythos conflict (.../Story Vault/manifest.json) and obsidian conflict (.obsidian)
+      // Check for an existing Mythos vault. Obsidian import is deferred and is no longer surfaced here.
       const sep = opts.sep ?? '/';
-      const [base, mythosCheck, obsidianCheck] = await Promise.all([
+      const [base, mythosCheck] = await Promise.all([
         api().validatePath(expanded),
         api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
-        api().validatePath(`${expanded}${sep}.obsidian`),
       ]);
 
       if (!base.writable) {
@@ -737,11 +780,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       if (mythosCheck.exists) {
         setPathValidationState('conflict-mythos');
         setPathValidationMsg('A Mythos vault already exists here.');
-        return;
-      }
-      if (obsidianCheck.exists) {
-        setPathValidationState('conflict-obsidian');
-        setPathValidationMsg('This folder is an Obsidian vault. Switch to Import to bring it in.');
         return;
       }
       if (base.exists && !base.isEmpty) {
@@ -939,8 +977,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       const expanded = savePath.startsWith('~')
         ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
         : savePath;
-      const payload = startMode === 'default-mythos-vault'
-        ? { startMode: 'default-mythos-vault' as const }
+      const payload = startMode === 'quick-start' || startMode === 'default-mythos-vault'
+        ? { startMode: 'quick-start' as const }
         : startMode === 'sample'
         ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
         : startMode === 'open-existing'
@@ -995,11 +1033,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         return;
       }
       // AC-6: first Esc on the template picker clears the selection; a second Esc shows cancel confirm.
-      if (step === 'step1b' && selectedTemplateId !== null) {
+      if (step === 'step1b-inner' && selectedTemplateId !== null) {
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1c' || step === 'step2') {
+      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2') {
         setShowCancelConfirm(true);
       }
     }
@@ -1031,6 +1069,53 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             onCancel?.();
           }}
         />
+      )}
+
+      {showMigrationDialog && (
+        <div
+          className="gs-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gs-migration-title"
+          data-testid="gs-migration-dialog"
+        >
+          <div className="gs-confirm">
+            <h3 className="gs-confirm__title" id="gs-migration-title">We found an older Mythos vault</h3>
+            <p className="gs-confirm__body">
+              Use your existing ~/Mythos vaults, start fresh, or hide this migration prompt permanently.
+            </p>
+            <div className="gs-confirm__actions">
+              <button
+                className="btn-primary"
+                type="button"
+                onClick={() => { setShowMigrationDialog(false); handleOpenExistingVault(initialSettings.legacyVaultPath); }}
+                data-testid="gs-migration-use"
+              >
+                Use them
+              </button>
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setShowMigrationDialog(false)}
+                data-testid="gs-migration-start-fresh"
+              >
+                Start fresh
+              </button>
+              <button
+                className="btn-ghost"
+                type="button"
+                onClick={() => {
+                  const updated = { ...initialSettings, legacyVaultDismissed: true };
+                  api().settingsSet?.(updated).catch(() => {});
+                  setShowMigrationDialog(false);
+                }}
+                data-testid="gs-migration-never"
+              >
+                Never show again
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* SKY-1399: Delete template confirm */}
@@ -1098,35 +1183,27 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           <div className="gs-cards" role="group" aria-label="Choose how to get started">
             <StartingPointCard
               icon="&#x2728;"
-              title="Create default Mythos Vault"
-              description="One click — we'll create your Mythos Vault with the standard Notes + Story Vault layout under your home folder. No path picker."
-              ctaLabel="Create vault &#x2192;"
-              onActivate={handleOneClickDefaultMythosVault}
-              testId="card-default-mythos-vault"
-            />
-            <StartingPointCard
-              icon="&#x2726;"
-              title="Blank Story"
-              description="Start with a clean slate. One empty scene, ready for your words."
+              title="Quick Start"
+              description="One click — we'll set everything up for you."
               ctaLabel="Start &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-blank"
+              onActivate={handleQuickStart}
+              testId="card-quick-start"
             />
             <StartingPointCard
-              icon="&#x1F4D6;"
-              title="Sample Novel"
-              description="Explore a pre-loaded demo project to see Mythos Writer in action."
-              ctaLabel="Load &#x2192;"
-              onActivate={handleSelectSample}
-              testId="card-sample"
+              icon="&#x270F;&#xFE0F;"
+              title="Create Custom Vault"
+              description="Pick your location, story title, and starting point."
+              ctaLabel="Customize &#x2192;"
+              onActivate={handleCreateCustom}
+              testId="card-create-custom"
             />
             <StartingPointCard
-              icon="&#x1F5C2;"
-              title="From Template"
-              description="Choose a structure: 3-act novel, short story, worldbuilding bible&#x2026;"
+              icon="&#x1F4C2;"
+              title="Open Existing Vault"
+              description="Browse for a vault on your computer or cloud storage."
               ctaLabel="Browse &#x2192;"
-              onActivate={handleSelectTemplate}
-              testId="card-template"
+              onActivate={handleOpenExistingVault}
+              testId="card-open-existing"
             />
           </div>
 
@@ -1141,8 +1218,67 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         </div>
       )}
 
-      {/* ── Step 1b: Template sub-picker ── */}
+      {/* ── Step 1b: Create Custom sub-selector ── */}
       {step === 'step1b' && (
+        <div className="gs-modal" data-testid="screen-step1b-options">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => {
+                setStartMode(null);
+                setSelectedTemplateId(null);
+                setSelectedSampleGenre(null);
+                setStep('step1');
+              }}
+              data-testid="gs-back-step1b-options"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Step 1 of 3</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-step1b-options"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Create a custom vault</h2>
+          <p className="gs-modal__subtitle">Choose what you want to start with.</p>
+          <div className="gs-cards" role="group" aria-label="Choose a custom vault starting point">
+            <StartingPointCard
+              icon="&#x1F4DD;"
+              title="Blank Slate"
+              description="Minimal vault, no pre-seeded content."
+              ctaLabel="Start blank &#x2192;"
+              onActivate={handleSelectBlank}
+              testId="card-blank"
+            />
+            <StartingPointCard
+              icon="&#x1F4DA;"
+              title="Sample Project"
+              description="Pre-loaded story and notes example."
+              ctaLabel="Preview samples &#x2192;"
+              onActivate={handleSelectSample}
+              testId="card-sample"
+            />
+            <StartingPointCard
+              icon="&#x1F4CB;"
+              title="From Template"
+              description="Choose a reusable story, notes, or worldbuilding structure."
+              ctaLabel="Browse templates &#x2192;"
+              onActivate={handleSelectTemplate}
+              testId="card-template"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 1b-inner: Template sub-picker ── */}
+      {step === 'step1b-inner' && (
         <div
           className={`gs-modal gs-modal--wide${isDragOver ? ' gs-modal--drag-over' : ''}`}
           data-testid="screen-step1b"
@@ -1155,17 +1291,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               className="btn-ghost btn-back"
               type="button"
               onClick={() => {
-                setStep('step1');
+                setStep('step1b');
                 requestAnimationFrame(() => {
-                  // React unmounts/remounts step1 on each transition, so the captured
-                  // element ref is stale. Look up the fresh element by data-testid.
-                  const trigger = templateCardTriggerRef.current;
-                  if (!trigger) return;
-                  const testId = trigger.dataset['testid'];
-                  const el = testId
-                    ? (document.querySelector(`[data-testid="${testId}"]`) as HTMLElement)
-                    : null;
-                  (el ?? trigger).focus();
+                  const el = document.querySelector('[data-testid="card-template"]') as HTMLElement | null;
+                  el?.focus();
                 });
               }}
               data-testid="gs-back-step1b"
@@ -1597,7 +1726,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               ) : pathValidationMsg ? (
                 <p
                   className={`gs-path-hint gs-path-hint--${
-                    pathValidationState === 'conflict-mythos' || pathValidationState === 'conflict-obsidian' ? 'warn'
+                    pathValidationState === 'conflict-mythos' ? 'warn'
                     : pathValidationState === 'error' || pathValidationState === 'not-writable' || pathValidationState === 'path-too-long' ? 'error'
                     : 'info'
                   }`}
@@ -1614,16 +1743,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                       data-testid="gs-conflict-see-options"
                     >
                       {' '}See options &rsaquo;
-                    </button>
-                  )}
-                  {pathValidationState === 'conflict-obsidian' && (
-                    <button
-                      className="btn-link gs-path-hint__action"
-                      type="button"
-                      onClick={() => api().onboardingComplete({ startMode: 'skip' }).catch(() => {})}
-                      data-testid="gs-switch-to-import"
-                    >
-                      {' '}Switch to Import &rsaquo;
                     </button>
                   )}
                 </p>
@@ -1724,11 +1843,21 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               <h2 className="gs-modal__title">
                 {startMode === 'sample' && selectedSampleGenre
                   ? `Loading ${GENRE_OPTIONS.find((g) => g.id === selectedSampleGenre)?.title ?? 'sample'}…`
+                  : startMode === 'quick-start' || startMode === 'default-mythos-vault'
+                  ? 'Setting up your vault…'
+                  : startMode === 'open-existing'
+                  ? 'Opening your vault…'
                   : 'Setting up your story…'}
               </h2>
               <div className="gs-spinner" aria-label="Creating story" role="status" data-testid="gs-spinner" />
               <p className="gs-modal__subtitle">
-                {startMode === 'sample' ? 'Copying sample files…' : 'Creating your folders and first scene…'}
+                {startMode === 'sample'
+                  ? 'Copying sample files…'
+                  : startMode === 'quick-start' || startMode === 'default-mythos-vault'
+                  ? 'Setting up your vault…'
+                  : startMode === 'open-existing'
+                  ? 'Validating the selected folder…'
+                  : 'Creating your folders and first scene…'}
               </p>
             </>
           ) : scaffoldError ? (

@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('api', {
   // single round-trip.
   vaultGetPaths: () => ipcRenderer.invoke('vault:getPaths', undefined),
   vaultGetSystemPaths: () => ipcRenderer.invoke('vault:getSystemPaths', undefined),
+  vaultDetectLegacy: () => ipcRenderer.invoke('vault:detectLegacyVaults', undefined),
   // SKY-12.2: opts.seedMode = 'default' | 'blank' controls scaffold behavior.
   // Defaults to 'default' (full SKY-15 layout) when absent — backwards-compatible.
   // SKY-270 / MYT-789: storyVaultToken / notesVaultToken come from vault:pick-folder.

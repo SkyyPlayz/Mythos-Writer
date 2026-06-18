@@ -10,7 +10,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export const DEFAULT_MYTHOS_VAULT_NAME = 'Mythos Vault';
+export const DEFAULT_MYTHOS_VAULT_NAME = 'My First Vault';
 
 /**
  * Reject names that would let a renderer escape the chosen parent. Anything
