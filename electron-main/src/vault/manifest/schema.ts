@@ -7,6 +7,7 @@ import type {
   SuggestionRef,
   ProvenanceEntry,
   BoardRef,
+  ManifestTimelineEntry,
 } from './types.js';
 
 export class ManifestValidationError extends Error {
@@ -79,6 +80,36 @@ function validateBoardRef(raw: unknown, idx: number): BoardRef {
   return o as unknown as BoardRef;
 }
 
+const VALID_TIMES_OF_DAY = new Set([
+  'midnight', 'dawn', 'morning', 'noon', 'afternoon', 'dusk', 'night', 'unspecified',
+]);
+
+function validateTimelineEntry(raw: unknown, idx: number): ManifestTimelineEntry {
+  const o = raw as Record<string, unknown>;
+  assertString(o.sceneId, `timeline[${idx}].sceneId`);
+  assertNumber(o.inferredDay, `timeline[${idx}].inferredDay`);
+  if (!VALID_TIMES_OF_DAY.has(o.inferredTime as string))
+    throw new ManifestValidationError(
+      `timeline[${idx}].inferredTime`,
+      `must be one of: ${[...VALID_TIMES_OF_DAY].join(', ')}`
+    );
+  const confidence = assertNumber(o.confidence, `timeline[${idx}].confidence`);
+  if (confidence < 0 || confidence > 1)
+    throw new ManifestValidationError(`timeline[${idx}].confidence`, 'must be between 0.0 and 1.0');
+  assertString(o.rawCue, `timeline[${idx}].rawCue`);
+  if (o.userOverride !== undefined) {
+    const uo = o.userOverride as Record<string, unknown>;
+    assertNumber(uo.day, `timeline[${idx}].userOverride.day`);
+    if (!VALID_TIMES_OF_DAY.has(uo.time as string))
+      throw new ManifestValidationError(
+        `timeline[${idx}].userOverride.time`,
+        `must be one of: ${[...VALID_TIMES_OF_DAY].join(', ')}`
+      );
+    assertString(uo.setAt, `timeline[${idx}].userOverride.setAt`);
+  }
+  return o as unknown as ManifestTimelineEntry;
+}
+
 /**
  * Validate that `raw` is a structurally-valid ManifestV1.
  * Throws ManifestValidationError on the first structural violation found.
@@ -98,6 +129,11 @@ export function validateManifestV1(raw: unknown): ManifestV1 {
   assertArray(o.suggestions, 'suggestions').forEach((s, i) => validateSuggestionRef(s, i));
   assertArray(o.provenance, 'provenance').forEach((p, i) => validateProvenance(p, i));
   assertArray(o.boards, 'boards').forEach((b, i) => validateBoardRef(b, i));
+
+  // timeline is optional; if present, validate each entry
+  if (o.timeline !== undefined) {
+    assertArray(o.timeline, 'timeline').forEach((t, i) => validateTimelineEntry(t, i));
+  }
 
   return o as unknown as ManifestV1;
 }

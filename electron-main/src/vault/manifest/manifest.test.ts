@@ -82,13 +82,14 @@ describe('emptyManifestV1', () => {
     expect(m.schemaVersion).toBe(1);
   });
 
-  it('has empty arrays for all collection fields', () => {
+  it('has empty arrays for all collection fields including timeline', () => {
     const m = emptyManifestV1('/vault');
     expect(m.scenes).toEqual([]);
     expect(m.entities).toEqual([]);
     expect(m.suggestions).toEqual([]);
     expect(m.provenance).toEqual([]);
     expect(m.boards).toEqual([]);
+    expect(m.timeline).toEqual([]);
   });
 
   it('sets vaultRoot to the supplied path', () => {
@@ -158,6 +159,109 @@ describe('validateManifestV1', () => {
       boards: [{ path: 'b.json', updatedAt: new Date().toISOString() }],
     };
     expect(() => validateManifestV1(m)).toThrow(/boards\[0\].id/);
+  });
+
+  // ── Timeline entries (optional field) ────────────────────────────────────
+
+  it('accepts a manifest without a timeline field (backward compat)', () => {
+    const { timeline: _, ...noTimeline } = emptyManifestV1('/v');
+    expect(() => validateManifestV1(noTimeline)).not.toThrow();
+  });
+
+  it('accepts a manifest with an empty timeline array', () => {
+    const m = { ...emptyManifestV1('/v'), timeline: [] };
+    expect(() => validateManifestV1(m)).not.toThrow();
+  });
+
+  it('accepts a valid timeline entry without userOverride', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{
+        sceneId: 'sc-1',
+        inferredDay: 2,
+        inferredTime: 'morning',
+        confidence: 0.85,
+        rawCue: 'The sun had barely risen.',
+      }],
+    };
+    expect(() => validateManifestV1(m)).not.toThrow();
+  });
+
+  it('accepts a valid timeline entry with userOverride', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{
+        sceneId: 'sc-1',
+        inferredDay: 1,
+        inferredTime: 'dawn',
+        confidence: 0.5,
+        rawCue: '',
+        userOverride: { day: 3, time: 'dusk', setAt: new Date().toISOString() },
+      }],
+    };
+    expect(() => validateManifestV1(m)).not.toThrow();
+  });
+
+  it('rejects a timeline entry with a non-string sceneId', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{ sceneId: 42, inferredDay: 1, inferredTime: 'dawn', confidence: 0.5, rawCue: '' }],
+    };
+    expect(() => validateManifestV1(m)).toThrow(/timeline\[0\].sceneId/);
+  });
+
+  it('rejects a timeline entry with an invalid inferredTime', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{ sceneId: 'sc-1', inferredDay: 1, inferredTime: 'teatime', confidence: 0.5, rawCue: '' }],
+    };
+    expect(() => validateManifestV1(m)).toThrow(/timeline\[0\].inferredTime/);
+  });
+
+  it('rejects a timeline entry with confidence outside 0–1', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{ sceneId: 'sc-1', inferredDay: 1, inferredTime: 'dawn', confidence: 1.5, rawCue: '' }],
+    };
+    expect(() => validateManifestV1(m)).toThrow(/timeline\[0\].confidence/);
+  });
+
+  it('rejects a timeline entry with a non-number confidence', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{ sceneId: 'sc-1', inferredDay: 1, inferredTime: 'dawn', confidence: 'high', rawCue: '' }],
+    };
+    expect(() => validateManifestV1(m)).toThrow(/timeline\[0\].confidence/);
+  });
+
+  it('rejects a timeline entry with an invalid userOverride.time', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{
+        sceneId: 'sc-1',
+        inferredDay: 1,
+        inferredTime: 'dawn',
+        confidence: 0.5,
+        rawCue: '',
+        userOverride: { day: 1, time: 'twilight', setAt: new Date().toISOString() },
+      }],
+    };
+    expect(() => validateManifestV1(m)).toThrow(/timeline\[0\].userOverride.time/);
+  });
+
+  it('rejects a timeline entry with a missing userOverride.setAt', () => {
+    const m = {
+      ...emptyManifestV1('/v'),
+      timeline: [{
+        sceneId: 'sc-1',
+        inferredDay: 1,
+        inferredTime: 'dawn',
+        confidence: 0.5,
+        rawCue: '',
+        userOverride: { day: 1, time: 'dawn' },
+      }],
+    };
+    expect(() => validateManifestV1(m)).toThrow(/timeline\[0\].userOverride.setAt/);
   });
 });
 
