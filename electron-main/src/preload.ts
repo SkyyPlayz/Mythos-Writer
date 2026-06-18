@@ -851,6 +851,12 @@ contextBridge.exposeInMainWorld('api', {
   continuityReadEntity: (path: string) =>
     ipcRenderer.invoke('continuity:readEntity', { path }),
 
+  // SKY-2308: Vault integrity check + manifest rebuild
+  checkVaultIntegrity: () =>
+    ipcRenderer.invoke('vault:check-integrity', undefined),
+  rebuildVaultManifest: () =>
+    ipcRenderer.invoke('vault:rebuild-manifest', undefined),
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

@@ -382,6 +382,7 @@ import {
   handleContinuitySearch,
   handleContinuityReadEntity,
 } from './continuityPeekHandlers.js';
+import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -5080,6 +5081,18 @@ const handlers: IpcHandlers = {
     handleContinuitySearch(payload),
   [IPC_CHANNELS.CONTINUITY_READ_ENTITY]: (payload: import('./ipc.js').ContinuityReadEntityPayload) =>
     handleContinuityReadEntity(payload),
+
+  // SKY-2308: Vault integrity check + manifest rebuild
+  [IPC_CHANNELS.VAULT_CHECK_INTEGRITY]: async (): Promise<import('./ipc.js').VaultIntegrityReport> => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    return checkIntegrity(manifest, getVaultRoot());
+  },
+
+  [IPC_CHANNELS.VAULT_REBUILD_MANIFEST]: async (): Promise<import('./ipc.js').VaultRebuildManifestResponse> => {
+    ensureVaultDir();
+    return rebuildVaultManifest(getVaultRoot());
+  },
 
 };
 
