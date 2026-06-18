@@ -114,6 +114,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: WSL2 power keep-alive — prevent Windows host sleep
+        # SKY-2427: GabesPC (WSL2 host) sleeps under default Windows power settings during
+        # this ~90-min job. SetThreadExecutionState prevents sleep without admin rights.
+        # Sentinel file ($TEMP/mythos-ci-keepalive.active) signals the background PS process
+        # to exit cleanly. No-op on non-WSL2 runners.
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then
+            echo "Not WSL2 — sleep prevention skipped."; exit 0
+          fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          if [ ! -x "$PS" ]; then
+            echo "powershell.exe not accessible — sleep prevention skipped."; exit 0
+          fi
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" &
+          echo "WSL2 sleep prevention started."
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -133,6 +150,16 @@ jobs:
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
+
+      - name: Stop WSL2 power keep-alive
+        if: always()
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then exit 0; fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          [ -x "$PS" ] || exit 0
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Stop 2>/dev/null || true
+          echo "WSL2 sleep prevention stopped."
 
   e2e-shard-1:
     # Shard 1: crud, brainstorm, visual-capture, writing-modes, a11y
@@ -436,6 +463,20 @@ jobs:
       - uses: actions/checkout@v4
         if: github.event_name != 'pull_request'
 
+      - name: WSL2 power keep-alive — prevent Windows host sleep
+        # SKY-2427: same sleep-prevention guard as the ci job (40-min build also at risk).
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then
+            echo "Not WSL2 — sleep prevention skipped."; exit 0
+          fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          if [ ! -x "$PS" ]; then
+            echo "powershell.exe not accessible — sleep prevention skipped."; exit 0
+          fi
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" &
+          echo "WSL2 sleep prevention started."
+
       - name: Pre-flight — clean stale AppImage temp dirs (SKY-1347)
         # APPIMAGE_EXTRACT_AND_RUN=1 in the smoke-test step leaves /tmp/appimage_extracted_*
         # dirs (~307 MB each) that accumulate across CI runs on the self-hosted runner and
@@ -537,6 +578,16 @@ jobs:
             dist-electron/*.AppImage
             dist-electron/*.deb
           retention-days: 3
+
+      - name: Stop WSL2 power keep-alive
+        if: always()
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then exit 0; fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          [ -x "$PS" ] || exit 0
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Stop 2>/dev/null || true
+          echo "WSL2 sleep prevention stopped."
 
   build-windows:
     # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
