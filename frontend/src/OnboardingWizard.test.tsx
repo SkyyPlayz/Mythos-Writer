@@ -58,6 +58,7 @@ function makeApi(overrides: Partial<{
   templateDuplicate: ReturnType<typeof vi.fn>;
   vaultGetPaths: ReturnType<typeof vi.fn>;
   vaultGetSystemPaths: ReturnType<typeof vi.fn>;
+  settingsSet: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
@@ -75,6 +76,7 @@ function makeApi(overrides: Partial<{
       oneDriveDir: null,
       iCloudDir: null,
     }),
+    settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
   };
 }
 
@@ -1221,5 +1223,57 @@ describe('OnboardingWizard — Template management (SKY-1399)', () => {
     fireEvent.click(screen.getByTestId('template-delete-cancel'));
     expect(screen.queryByTestId('template-delete-confirm-dialog')).not.toBeInTheDocument();
     expect(mockApi.templateDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
+  const LEGACY_SETTINGS: AppSettings = {
+    ...BASE_SETTINGS,
+    legacyVaultDetected: true,
+    legacyVaultDismissed: false,
+    legacyVaultPath: '/home/user/Mythos',
+  };
+
+  it('shows migration dialog when legacyVaultDetected=true and legacyVaultDismissed=false', () => {
+    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('gs-migration-dialog')).toBeInTheDocument();
+  });
+
+  it('does not show migration dialog when legacyVaultDismissed=true', () => {
+    render(<OnboardingWizard initialSettings={{ ...LEGACY_SETTINGS, legacyVaultDismissed: true }} onComplete={vi.fn()} />);
+    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not show migration dialog when legacyVaultDetected=false', () => {
+    render(<OnboardingWizard initialSettings={{ ...BASE_SETTINGS, legacyVaultDetected: false }} onComplete={vi.fn()} />);
+    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+  });
+
+  it('"Use them" dismisses dialog and opens the legacy vault path', async () => {
+    mockApi = makeApi({ chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }) });
+    (window as unknown as { api: unknown }).api = mockApi;
+    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('gs-migration-use'));
+    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
+      startMode: 'open-existing',
+      vaultParentPath: '/home/user/Mythos',
+    }));
+  });
+
+  it('"Start fresh" dismisses dialog and leaves wizard on step1', () => {
+    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('gs-migration-start-fresh'));
+    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+  });
+
+  it('"Never show again" dismisses dialog, calls settingsSet with legacyVaultDismissed=true', async () => {
+    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('gs-migration-never'));
+    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockApi.settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ legacyVaultDismissed: true }),
+    ));
   });
 });
