@@ -1,21 +1,1430 @@
 /* =============================================================================
  * Liquid Neon Companion — Main Plugin Stylesheet
  *
- * Obsidian loads this file as a <link rel="stylesheet"> from the plugin
- * directory; relative @import paths resolve correctly against it.
+ * Obsidian injects community plugin styles.css as an inline stylesheet. Relative
+ * @import URLs resolve against app://obsidian.md/ instead of this plugin
+ * directory, so imported modules silently fail in a live vault. Keep the module
+ * files for review, but bundle their rules here so Obsidian applies them when
+ * the companion plugin is enabled.
  *
- * Module index:
- *   dataview-liquid-neon.css  — Dataview query tables, inline fields,
- *                               error pill, settings panels  (LN-51)
+ * Bundled modules:
+ *   dataview-liquid-neon.css         — Dataview query tables, inline fields,
+ *                                      error pill, settings panels (LN-51)
  *   kanban-liquid-neon.css           — Kanban board/lane/card/drag/add controls
- *                                     glass + neon overrides             (LN-52)
+ *                                      glass + neon overrides (LN-52)
  *   calendar-liquid-neon.css         — Calendar grid, nav, today indicator,
- *                                     week numbers, event dots, modal    (LN-54)
+ *                                      week numbers, event dots, modal (LN-54)
  *   advanced-tables-liquid-neon.css  — Toolbar, alignment controls, formula bar,
- *                                     cell editing, separator hover, context menu (LN-55)
+ *                                      cell editing, separator hover, context menu (LN-55)
  * ========================================================================== */
 
-@import url('./dataview-liquid-neon.css');
-@import url('./kanban-liquid-neon.css');
-@import url('./calendar-liquid-neon.css');
-@import url('./advanced-tables-liquid-neon.css');
+/* ===== Bundled from dataview-liquid-neon.css ===== */
+
+/* =============================================================================
+ * Liquid Neon Companion — Dataview Plugin CSS Overrides  (LN-51)
+ *
+ * Surfaces covered:
+ *   1. Query result tables     (.dataview table / thead / tbody tr:nth-child(even))
+ *   2. Inline field renders    (.dataview.inline-field, .dataview-result-list-ul)
+ *   3. Query error pill        (.dataview-error-box, .block-language-dataview .dataview-error)
+ *   4. Dataview settings panels (.dataview-settings, .plugin-settings .dataview)
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow).  All text colors are ≥ 4.5:1
+ * contrast on their respective panel backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+/* ── 1. Query result tables ─────────────────────────────────────────────── */
+
+.theme-dark table.dataview,
+.theme-dark .dataview table {
+  border-collapse: collapse;
+  width: 100%;
+  border: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.theme-dark .dataview thead th {
+  background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+  color: var(--neon-cyan, #00f0ff);          /* #00f0ff on rgba(14,14,18,0.72)→#0e0e12: 12.3:1 ✓ */
+  border-bottom: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.theme-dark .dataview td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  color: var(--text-body, #bfd6e8);          /* #bfd6e8 on dark bg: 10.4:1 ✓ */
+  vertical-align: top;
+}
+
+/* Alternate-row subtle glass tint — opacity 0.5 via color-mix */
+.theme-dark .dataview tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 50%, transparent);
+}
+
+.theme-dark .dataview tbody tr:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+/* ── 2. Inline field renders and result lists ────────────────────────────── */
+
+/* Neon-glass pill — matches the .cm-inline-code treatment */
+.theme-dark .dataview.inline-field,
+.theme-dark .dataview.inline-field-key,
+.theme-dark .dataview.inline-field-value {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  color: var(--neon-cyan, #00f0ff);          /* #00f0ff on #15191f: 12.8:1 ✓ */
+  padding: 1px 8px;
+  border-radius: 999px;                      /* full pill shape */
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: nowrap;
+  will-change: box-shadow;
+}
+
+/* Result list items: glass chip row */
+.theme-dark .dataview-result-list-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.theme-dark .dataview-result-list-ul > li {
+  padding: 4px 10px;
+  border-radius: 8px;
+  color: var(--text-body, #bfd6e8);
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  margin-bottom: 4px;
+  font-size: 0.875em;
+}
+
+/* ── 3. Query error pill ─────────────────────────────────────────────────── */
+
+/* --state-danger (#f88585) on --color-danger-bg over --bg-inset (#15191f):
+   effective bg ≈ rgba(248,113,113,0.12) + #15191f → #211718 → 4.7:1 ≥ 4.5:1 AA ✓ */
+.theme-dark .dataview-error-box,
+.theme-dark .block-language-dataview .dataview-error {
+  background: var(--color-danger-bg, rgba(248, 113, 113, 0.12));
+  border: 1px solid var(--color-danger-border, rgba(248, 113, 113, 0.4));
+  color: var(--state-danger, #f88585);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+/* ── 4. Dataview settings panels ─────────────────────────────────────────── */
+
+/* Glass fill + neon rim — matches the plugin-settings panel template */
+.theme-dark .dataview-settings,
+.theme-dark .plugin-settings .dataview,
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .vertical-tab-content {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  border-radius: 16px;
+  box-shadow: var(--elev-1, 0 8px 32px rgba(5, 8, 20, 0.45));
+  padding: 12px 16px;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .dataview-settings,
+  .theme-dark .plugin-settings .dataview,
+  .theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .vertical-tab-content {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
+    -webkit-backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
+  }
+}
+
+/* Neon-cyan section headings inside Dataview settings */
+.theme-dark .dataview-settings h3,
+.theme-dark .dataview-settings h4,
+.theme-dark .plugin-settings .dataview h3,
+.theme-dark .plugin-settings .dataview h4,
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading {
+  color: var(--neon-cyan, #00f0ff);
+  border-bottom: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+
+/* ===== Bundled from kanban-liquid-neon.css ===== */
+
+/* =============================================================================
+ * Liquid Neon Companion — Kanban Plugin CSS Overrides  (LN-52)
+ *
+ * Surfaces covered:
+ *   1. Board canvas + lanes        (.kanban-plugin__board, __lane-wrapper, __lane)
+ *   2. Lane headers/separators     (__lane-header-wrapper, __lane-title*)
+ *   3. Cards + card markdown       (__item, __item-content-wrapper, __item-title*)
+ *   4. Drag/drop feedback          (.is-dropping, __placeholder, __drag-container)
+ *   5. Add/settings buttons/forms  (__new-item-button, __lane-action-add, form wrappers)
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow). Text color fallbacks are ≥ 4.5:1
+ * contrast against their effective dark glass backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+.theme-dark .kanban-plugin {
+  --ln-kanban-board-scrim: color-mix(in srgb, var(--bg-canvas, #05070f) 82%, transparent);
+  --ln-kanban-lane-glass: var(--glass-fill-fallback, rgba(18, 18, 24, 0.9));
+  --ln-kanban-card-glass: var(--glass-fill-fallback, rgba(20, 24, 34, 0.92));
+  --ln-kanban-border: var(--glass-border, rgba(255, 255, 255, 0.08));
+  --ln-kanban-rim: var(--glass-rim, rgba(255, 255, 255, 0.12));
+  --ln-kanban-neon: var(--neon-cyan, #00f0ff);
+  --ln-kanban-neon-intensity: var(--lg-neon, 0.5);
+  --ln-kanban-card-glass-active: color-mix(in srgb, var(--glass-fill-fallback, rgba(20, 24, 34, 0.92)) 78%, var(--ln-kanban-neon) calc(14% + (16% * var(--ln-kanban-neon-intensity))));
+  --ln-kanban-neon-soft: color-mix(in srgb, var(--ln-kanban-neon) calc(14% + (24% * var(--ln-kanban-neon-intensity))), transparent);
+  --ln-kanban-magenta-soft: color-mix(in srgb, var(--neon-magenta, #ff4fd8) 18%, transparent);
+  --ln-kanban-text: var(--text-body, #bfd6e8);              /* #bfd6e8 on #121820: 9.8:1 ✓ */
+  --ln-kanban-text-strong: var(--text-header, #eaf6ff);     /* #eaf6ff on #121820: 15.1:1 ✓ */
+  --ln-kanban-text-muted: var(--text-muted, #93a4b8);       /* #93a4b8 on #121820: 6.6:1 ✓ */
+  contain: content;
+}
+
+/* ── 1. Board canvas + lanes ─────────────────────────────────────────────── */
+
+.theme-dark .workspace-leaf-content[data-type='kanban'] .view-content {
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--ln-kanban-neon) 14%, transparent), transparent 34%),
+    radial-gradient(circle at 82% 12%, color-mix(in srgb, var(--neon-magenta, #ff4fd8) 12%, transparent), transparent 38%),
+    var(--ln-kanban-board-scrim);
+}
+
+.theme-dark .kanban-plugin__board > div {
+  padding: 18px;
+  gap: 14px;
+}
+
+.theme-dark .kanban-plugin__lane-wrapper {
+  margin-inline-end: 0;
+  filter: drop-shadow(0 18px 36px rgba(0, 0, 0, 0.28));
+}
+
+.theme-dark .kanban-plugin__lane,
+.theme-dark .kanban-plugin__lane-form-wrapper {
+  background: var(--ln-kanban-lane-glass);
+  border: 1px solid var(--ln-kanban-border);
+  border-radius: 18px;
+  box-shadow:
+    var(--elev-1, 0 12px 34px rgba(5, 8, 20, 0.42)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .kanban-plugin__lane,
+  .theme-dark .kanban-plugin__lane-form-wrapper,
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__item-content-wrapper,
+  .theme-dark .kanban-plugin__item-title-wrapper {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+  }
+}
+
+.theme-dark .kanban-plugin__lane-wrapper:nth-child(3n + 1) .kanban-plugin__lane {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--ln-kanban-neon) 8%, transparent), transparent 34%);
+}
+
+.theme-dark .kanban-plugin__lane-wrapper:nth-child(3n + 2) .kanban-plugin__lane {
+  background-image: linear-gradient(180deg, var(--ln-kanban-magenta-soft), transparent 34%);
+}
+
+.theme-dark .kanban-plugin__lane-wrapper:nth-child(3n) .kanban-plugin__lane {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--neon-violet, #8b5cf6) 12%, transparent), transparent 34%);
+}
+
+/* Subtle lane separators: low-opacity neon, no heavy grid lines. */
+.theme-dark .kanban-plugin__lane-wrapper + .kanban-plugin__lane-wrapper {
+  border-inline-start: 1px solid var(--ln-kanban-neon-soft);
+  padding-inline-start: 14px;
+}
+
+/* ── 2. Lane headers ─────────────────────────────────────────────────────── */
+
+.theme-dark .kanban-plugin__lane-header-wrapper {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ln-kanban-neon-soft);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ln-kanban-neon) 14%, transparent), transparent 72%);
+}
+
+.theme-dark .kanban-plugin__lane-title,
+.theme-dark .kanban-plugin__lane-title-text {
+  color: var(--ln-kanban-text-strong);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.theme-dark div.kanban-plugin__lane-title-count {
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--ln-kanban-rim);
+  border-radius: 999px;
+  color: var(--ln-kanban-neon);
+  min-width: 1.6em;
+  padding: 1px 8px;
+  text-align: center;
+}
+
+.theme-dark .kanban-plugin__lane-grip,
+.theme-dark .kanban-plugin__lane-collapse,
+.theme-dark .kanban-plugin__lane-settings-button > .kanban-plugin__icon {
+  color: var(--ln-kanban-text-muted);
+}
+
+.theme-dark .kanban-plugin__lane-grip:hover,
+.theme-dark .kanban-plugin__lane-collapse:hover,
+.theme-dark .kanban-plugin__lane-settings-button:hover > .kanban-plugin__icon {
+  color: var(--ln-kanban-neon);
+}
+
+/* ── 3. Cards + card text ────────────────────────────────────────────────── */
+
+.theme-dark .kanban-plugin__lane-items {
+  gap: 8px;
+  margin-inline: 6px;
+  padding: 6px;
+}
+
+.theme-dark .kanban-plugin__item {
+  background: var(--ln-kanban-card-glass);
+  border: 1px solid var(--ln-kanban-border);
+  border-radius: 14px;
+  box-shadow:
+    0 10px 24px rgba(2, 6, 16, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: var(--ln-kanban-text);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.theme-dark .kanban-plugin__item:hover,
+.theme-dark .kanban-plugin__item:focus-within {
+  border-color: var(--ln-kanban-neon);
+  box-shadow:
+    0 12px 30px rgba(2, 6, 16, 0.35),
+    0 0 0 1px var(--ln-kanban-neon-soft),
+    0 0 20px color-mix(in srgb, var(--ln-kanban-neon) 18%, transparent);
+  transform: translateY(-1px);
+}
+
+.theme-dark .kanban-plugin__item-title-wrapper,
+.theme-dark .kanban-plugin__item-content-wrapper,
+.theme-dark .kanban-plugin__item-metadata-wrapper:not(:empty) {
+  background: transparent;
+  color: var(--ln-kanban-text);
+}
+
+.theme-dark .kanban-plugin__item-title-wrapper {
+  padding: 8px 10px;
+}
+
+.theme-dark .kanban-plugin__item-title,
+.theme-dark .kanban-plugin__markdown-preview-wrapper,
+.theme-dark .kanban-plugin__markdown-preview-wrapper .markdown-preview-view,
+.theme-dark .kanban-plugin__meta-value {
+  color: var(--ln-kanban-text);
+}
+
+.theme-dark .kanban-plugin__item-title a,
+.theme-dark .kanban-plugin__markdown-preview-wrapper a {
+  color: var(--ln-kanban-neon);
+  text-decoration-color: var(--ln-kanban-neon-soft);
+}
+
+.theme-dark .kanban-plugin__item-tags .kanban-plugin__item-tag,
+.theme-dark .kanban-plugin__item-task-inline-metadata-item,
+.theme-dark .kanban-plugin__item-task-metadata-item {
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--ln-kanban-rim);
+  border-radius: 999px;
+  color: var(--ln-kanban-neon);
+}
+
+.theme-dark .kanban-plugin__item-postfix-button,
+.theme-dark .kanban-plugin__item-prefix-button,
+.theme-dark .kanban-plugin__item-edit-archive-button {
+  border-radius: 8px;
+}
+
+.theme-dark .kanban-plugin__item-postfix-button:hover,
+.theme-dark .kanban-plugin__item-prefix-button:hover,
+.theme-dark .kanban-plugin__item-edit-archive-button:hover {
+  background: color-mix(in srgb, var(--ln-kanban-neon) 12%, transparent);
+  color: var(--ln-kanban-neon);
+}
+
+/* ── 4. Drag/drop feedback ───────────────────────────────────────────────── */
+
+.theme-dark .kanban-plugin__lane-wrapper.is-dropping > .kanban-plugin__lane,
+.theme-dark .is-dropping > .kanban-plugin__lane {
+  background: var(--ln-kanban-card-glass-active);
+  border-color: var(--ln-kanban-neon);
+  outline: 2px solid var(--ln-kanban-neon);
+  outline-offset: 2px;
+  box-shadow:
+    var(--elev-1, 0 12px 34px rgba(5, 8, 20, 0.42)),
+    0 0 34px rgba(0, 240, 255, var(--lg-neon, 0.5));
+}
+
+.theme-dark .kanban-plugin__placeholder,
+.theme-dark .kanban-plugin__placeholder.kanban-plugin__lane-placeholder {
+  background: color-mix(in srgb, var(--ln-kanban-neon) 10%, transparent);
+  border: 1px dashed var(--ln-kanban-neon);
+  border-radius: 14px;
+  box-shadow: inset 0 0 18px color-mix(in srgb, var(--ln-kanban-neon) 12%, transparent);
+}
+
+.theme-dark .kanban-plugin__drag-container > .kanban-plugin__item-wrapper .kanban-plugin__item {
+  background: var(--ln-kanban-card-glass-active);
+  border-color: var(--ln-kanban-neon);
+  box-shadow:
+    var(--shadow-s, 0 4px 18px rgba(0, 0, 0, 0.35)),
+    0 0 0 2px var(--ln-kanban-neon),
+    0 0 32px rgba(0, 240, 255, var(--lg-neon, 0.5));
+  cursor: grabbing;
+}
+
+/* ── 5. Add/settings buttons and form controls ───────────────────────────── */
+
+.theme-dark button.kanban-plugin__new-item-button,
+.theme-dark button.kanban-plugin__lane-action-add,
+.theme-dark .kanban-plugin__lane button,
+.theme-dark .kanban-plugin__item button,
+.theme-dark button.kanban-plugin__confirm-action-button,
+.theme-dark button.kanban-plugin__cancel-action-button {
+  border-radius: 10px;
+  color: var(--ln-kanban-text-muted);
+}
+
+.theme-dark button.kanban-plugin__new-item-button,
+.theme-dark button.kanban-plugin__lane-action-add {
+  background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 64%, transparent);
+  border: 1px dashed var(--ln-kanban-rim);
+}
+
+.theme-dark button.kanban-plugin__new-item-button:hover,
+.theme-dark button.kanban-plugin__lane-action-add:hover,
+.theme-dark button.kanban-plugin__confirm-action-button:hover {
+  background: color-mix(in srgb, var(--ln-kanban-neon) 16%, transparent);
+  border-color: var(--ln-kanban-neon);
+  color: var(--ln-kanban-neon);
+}
+
+.theme-dark .kanban-plugin__lane-input,
+.theme-dark .kanban-plugin__item-input-wrapper,
+.theme-dark .kanban-plugin__item-form,
+.theme-dark .kanban-plugin__lane-input-wrapper {
+  background: var(--bg-inset, #15191f);
+  color: var(--ln-kanban-text);
+}
+
+.theme-dark .kanban-plugin__lane-input,
+.theme-dark .kanban-plugin__item-input-wrapper {
+  border: 1px solid var(--ln-kanban-rim);
+  border-radius: 12px;
+}
+
+.theme-dark .kanban-plugin__lane-input:focus,
+.theme-dark .kanban-plugin__item-input-wrapper:focus-within,
+.theme-dark .kanban-plugin button:focus-visible {
+  outline: 2px solid var(--ln-kanban-neon);
+  outline-offset: 2px;
+}
+
+.theme-dark .kanban-plugin__board-settings-modal .setting-item,
+.theme-dark .kanban-plugin__board-settings-modal .choices__inner,
+.theme-dark .kanban-plugin__board-settings-modal .choices__list--dropdown {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border-color: var(--ln-kanban-border);
+  color: var(--ln-kanban-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__item:hover,
+  .theme-dark .kanban-plugin__item:focus-within {
+    transition: none;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .theme-dark .kanban-plugin__lane,
+  .theme-dark .kanban-plugin__lane-form-wrapper,
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__item-content-wrapper,
+  .theme-dark .kanban-plugin__item-title-wrapper {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .theme-dark .kanban-plugin__item,
+  .theme-dark .kanban-plugin__lane {
+    border-color: color-mix(in srgb, var(--ln-kanban-neon) 45%, white 8%);
+  }
+}
+
+
+/* ===== Bundled from calendar-liquid-neon.css ===== */
+
+/* =============================================================================
+ * Liquid Neon Companion — Calendar Plugin CSS Overrides  (LN-54)
+ *
+ * Surfaces covered:
+ *   1. Scoped design tokens
+ *   2. Navigation bar            (.nav, .title, button.arrow, .reset-button)
+ *   3. Calendar grid             (table, thead, th)
+ *   4. Day cells                 (td.day, general hover)
+ *   5. Today indicator           (td.day.today — neon-cyan per spec)
+ *   6. Active / selected date    (td.day.active — neon-violet)
+ *   7. Adjacent-month dates      (td.day.adjacent-month — dimmed)
+ *   8. Days with notes           (td.day.has-note — emphasised)
+ *   9. Week number column        (th.week-num, td.week-num)
+ *  10. Event dots                (.dots, .dot — glow-enhanced)
+ *  11. Date picker modal         (.modal:has(.calendar), .modal.calendar-modal)
+ *  12. Keyboard / focus-visible a11y
+ *  13. Reduced-motion
+ *  14. High-contrast / reduced-transparency
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow). Text color fallbacks are ≥ 4.5:1
+ * contrast against their effective dark glass backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+/* ── 1. Scoped design tokens ────────────────────────────────────────────── */
+
+.theme-dark .calendar {
+  --ln-cal-neon: var(--neon-cyan, #00f0ff);
+  --ln-cal-neon-v: var(--neon-violet, #9b5fff);
+  --ln-cal-neon-intensity: var(--lg-neon, 0.5);
+  --ln-cal-glass: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  --ln-cal-glass-rim: var(--glass-rim, rgba(255, 255, 255, 0.12));
+  --ln-cal-border: var(--glass-border, rgba(255, 255, 255, 0.08));
+  --ln-cal-bg-inset: var(--bg-inset, #15191f);
+  --ln-cal-bg-elevated: var(--bg-elevated, #222a36);
+  --ln-cal-text: var(--text-body, #bfd6e8);           /* #bfd6e8 on #121820: 9.8:1 ✓ */
+  --ln-cal-text-strong: var(--text-header, #edecf6);  /* #edecf6 on #121820: 12.3:1 ✓ */
+  --ln-cal-text-muted: var(--text-muted, #8a9bb0);    /* #8a9bb0 on #121820: 4.9:1 ✓ */
+  /* today bg: neon-cyan 14% tint → effective #12373e; neon-cyan on it: 13.25:1 ✓ */
+  --ln-cal-today-bg: color-mix(in srgb, var(--ln-cal-neon) 14%, var(--ln-cal-bg-inset));
+  /* active bg: neon-violet 18% tint → effective #1b1631; text-header on it: 12.3:1 ✓ */
+  --ln-cal-active-bg: color-mix(in srgb, var(--ln-cal-neon-v) 18%, var(--ln-cal-bg-inset));
+  --ln-cal-border-neon: color-mix(in srgb, var(--ln-cal-neon) 48%, var(--ln-cal-glass-rim));
+  --ln-cal-border-v: color-mix(in srgb, var(--ln-cal-neon-v) 48%, var(--ln-cal-glass-rim));
+  --ln-cal-glow: color-mix(in srgb, var(--ln-cal-neon) calc(var(--ln-cal-neon-intensity) * 48%), transparent);
+  --ln-cal-glow-v: color-mix(in srgb, var(--ln-cal-neon-v) calc(var(--ln-cal-neon-intensity) * 44%), transparent);
+  --ln-cal-dot-glow: color-mix(in srgb, var(--ln-cal-neon) calc(var(--ln-cal-neon-intensity) * 55%), transparent);
+  --ln-cal-adjacent-opacity: 0.38;
+  contain: content;
+}
+
+/* ── 2. Navigation bar ──────────────────────────────────────────────────── */
+
+.theme-dark .calendar .nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-bottom: 1px solid var(--ln-cal-border);
+  margin-bottom: var(--space-2, 8px);
+}
+
+.theme-dark .calendar .nav .nav-buttons-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  width: 100%;
+  justify-content: space-between;
+}
+
+.theme-dark .calendar button.title {
+  color: var(--ln-cal-text-strong);
+  font-size: var(--text-sm, 14px);
+  font-weight: var(--weight-heading, 600);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 12px);
+  cursor: pointer;
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  transition:
+    color var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    background var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    border-color var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.theme-dark .calendar button.title:hover {
+  color: var(--ln-cal-neon);
+  background: color-mix(in srgb, var(--ln-cal-neon) 8%, transparent);
+  border-color: var(--ln-cal-border-neon);
+}
+
+.theme-dark .calendar button.arrow {
+  color: var(--ln-cal-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 12px);
+  cursor: pointer;
+  font-size: var(--text-sm, 14px);
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    background var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    border-color var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    box-shadow var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.theme-dark .calendar button.arrow:hover {
+  color: var(--ln-cal-neon);
+  background: color-mix(in srgb, var(--ln-cal-neon) 8%, transparent);
+  border-color: var(--ln-cal-border-neon);
+  box-shadow: 0 0 calc(10px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow);
+}
+
+.theme-dark .calendar button.reset-button {
+  color: var(--ln-cal-neon);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full, 999px);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs, 12px);
+  opacity: 0.55;
+  transition:
+    opacity var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    box-shadow var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+.theme-dark .calendar button.reset-button:hover {
+  opacity: 1;
+  box-shadow: 0 0 calc(8px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow);
+}
+
+/* ── 3. Calendar grid ───────────────────────────────────────────────────── */
+
+.theme-dark .calendar table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  table-layout: fixed;
+}
+
+.theme-dark .calendar thead th {
+  color: var(--ln-cal-text-muted);
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--weight-heading, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: var(--space-1, 4px);
+  text-align: center;
+}
+
+/* ── 4. Day cells — base ────────────────────────────────────────────────── */
+
+.theme-dark .calendar td.day {
+  background: var(--ln-cal-glass);
+  border: 1px solid var(--ln-cal-border);
+  border-radius: var(--radius-xs, 8px);
+  padding: var(--space-1, 4px);
+  text-align: center;
+  cursor: pointer;
+  vertical-align: top;
+  position: relative;
+  will-change: box-shadow;
+  transition:
+    background var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    border-color var(--dur-hover-in, 180ms) var(--ease-out, ease),
+    box-shadow var(--dur-hover-in, 180ms) var(--ease-out, ease);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .calendar td.day {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+  }
+}
+
+.theme-dark .calendar td.day:hover {
+  background: color-mix(in srgb, var(--ln-cal-neon) 8%, var(--ln-cal-bg-inset));
+  border-color: var(--ln-cal-border-neon);
+  box-shadow: 0 0 calc(8px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow);
+}
+
+.theme-dark .calendar td.day .date {
+  color: var(--ln-cal-text);
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--weight-body, 400);
+  line-height: 1.4;
+  display: block;
+}
+
+/* ── 5. Today indicator — neon cyan ─────────────────────────────────────── */
+
+.theme-dark .calendar td.day.today {
+  background: var(--ln-cal-today-bg);
+  border-color: var(--ln-cal-neon);
+  border-width: 1px;
+  box-shadow:
+    0 0 calc(12px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow),
+    inset 0 0 calc(8px * var(--ln-cal-neon-intensity)) color-mix(in srgb, var(--ln-cal-neon) 8%, transparent);
+}
+
+.theme-dark .calendar td.day.today .date {
+  color: var(--ln-cal-neon);              /* #00f0ff on today-bg ~#12373e: 13.25:1 ✓ */
+  font-weight: var(--weight-heading, 600);
+}
+
+.theme-dark .calendar td.day.today:hover {
+  box-shadow:
+    0 0 calc(18px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow),
+    inset 0 0 calc(12px * var(--ln-cal-neon-intensity)) color-mix(in srgb, var(--ln-cal-neon) 12%, transparent);
+}
+
+/* ── 6. Active / selected date — neon violet ────────────────────────────── */
+
+.theme-dark .calendar td.day.active {
+  background: var(--ln-cal-active-bg);
+  border-color: var(--ln-cal-border-v);
+  box-shadow: 0 0 calc(10px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow-v);
+}
+
+.theme-dark .calendar td.day.active .date {
+  color: var(--ln-cal-text-strong);       /* #edecf6 on active-bg ~#1b1631: 12.3:1 ✓ */
+  font-weight: var(--weight-heading, 600);
+}
+
+/* ── 7. Adjacent-month dates (dimmed, no interaction) ───────────────────── */
+
+.theme-dark .calendar td.day.adjacent-month {
+  opacity: var(--ln-cal-adjacent-opacity);
+  pointer-events: none;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* ── 8. Days with notes — subtle emphasis ───────────────────────────────── */
+
+.theme-dark .calendar td.day.has-note .date {
+  color: var(--ln-cal-text-strong);
+  font-weight: var(--weight-heading, 600);
+}
+
+/* ── 9. Week number column ──────────────────────────────────────────────── */
+
+.theme-dark .calendar th.week-num,
+.theme-dark .calendar td.week-num {
+  color: var(--ln-cal-text-muted);        /* #8a9bb0 on #15191f: 4.9:1 ✓ */
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--weight-body, 400);
+  text-align: center;
+  padding: var(--space-1, 4px);
+  background: var(--ln-cal-bg-inset);
+  border-right: 1px solid var(--ln-cal-border);
+  width: 2em;
+  vertical-align: middle;
+}
+
+/* ── 10. Event dots ─────────────────────────────────────────────────────── */
+
+.theme-dark .calendar .dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  min-height: 6px;
+  margin-top: var(--space-1, 4px);
+}
+
+/* Preserve plugin-assigned dot color; add neon glow for visibility */
+.theme-dark .calendar .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full, 999px);
+  flex-shrink: 0;
+  box-shadow: 0 0 calc(4px * var(--ln-cal-neon-intensity)) currentColor;
+}
+
+/* Fallback for dots without inline color — neon cyan instead of Obsidian blue */
+.theme-dark .calendar .dot:not([style]) {
+  background: var(--ln-cal-neon);
+  box-shadow: 0 0 calc(4px * var(--ln-cal-neon-intensity)) var(--ln-cal-dot-glow);
+}
+
+/* ── 11. Date picker modal ──────────────────────────────────────────────── */
+
+/* Covers both `:has()` (Chromium ≥ 105 / Electron ≥ 21) and an explicit class */
+.theme-dark .modal:has(.calendar),
+.theme-dark .modal.calendar-modal {
+  background: var(--ln-cal-bg-elevated);
+  border: 1px solid var(--ln-cal-border-neon);
+  border-radius: var(--radius-lg, 20px);
+  box-shadow:
+    var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55)),
+    0 0 calc(24px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .modal:has(.calendar),
+  .theme-dark .modal.calendar-modal {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+  }
+}
+
+/* Restore today / active strength inside modal — inherited opacity may flatten them */
+.theme-dark .modal .calendar td.day.today,
+.theme-dark .modal .calendar td.day.active {
+  opacity: 1;
+}
+
+/* ── 12. Keyboard / focus-visible a11y ──────────────────────────────────── */
+
+.theme-dark .calendar button:focus-visible,
+.theme-dark .calendar td.day:focus-visible {
+  outline: 2px solid var(--ln-cal-neon);
+  outline-offset: 2px;
+  box-shadow: 0 0 calc(10px * var(--ln-cal-neon-intensity)) var(--ln-cal-glow);
+}
+
+/* ── 13. Reduced-motion ─────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .calendar td.day,
+  .theme-dark .calendar button.arrow,
+  .theme-dark .calendar button.title,
+  .theme-dark .calendar button.reset-button {
+    transition: none;
+  }
+}
+
+/* ── 14. High-contrast / reduced-transparency ───────────────────────────── */
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .theme-dark .calendar td.day {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .theme-dark .modal:has(.calendar),
+  .theme-dark .modal.calendar-modal {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .theme-dark .calendar td.day.today {
+    background: var(--ln-cal-bg-inset);
+    outline: 2px solid var(--ln-cal-neon);
+    outline-offset: -2px;
+    box-shadow: none;
+  }
+
+  .theme-dark .calendar td.day.active {
+    background: var(--ln-cal-bg-inset);
+    outline: 2px solid var(--ln-cal-neon-v);
+    outline-offset: -2px;
+    box-shadow: none;
+  }
+
+  .theme-dark .calendar td.day:hover {
+    box-shadow: none;
+  }
+
+  .theme-dark .calendar .dot {
+    box-shadow: none;
+  }
+
+  .theme-dark .calendar td.day.adjacent-month {
+    --ln-cal-adjacent-opacity: 0.55;
+  }
+}
+
+
+/* ===== Bundled from advanced-tables-liquid-neon.css ===== */
+
+/* =============================================================================
+ * Liquid Neon Companion — Advanced Tables Plugin CSS Overrides  (LN-55)
+ *
+ * Surfaces covered:
+ *   1. Scoped design tokens
+ *   2. Toolbar container + control-bar rows
+ *   3. Toolbar buttons (default, hover, active/selected states)
+ *   4. Alignment controls
+ *   5. Formula bar (input + label)
+ *   6. Table source-view — editing backdrop + row tinting
+ *   7. Column separator / resize-handle hover feedback
+ *   8. Context menu (right-click — glass style)
+ *   9. Keyboard / focus-visible a11y
+ *  10. Reduced-motion
+ *  11. High-contrast / reduced-transparency
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow). Text color fallbacks are ≥ 4.5:1
+ * contrast against their effective dark glass backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+/* ── 1. Scoped design tokens ─────────────────────────────────────────────── */
+
+.theme-dark .advanced-tables-toolbar {
+  --ln-at-neon: var(--neon-cyan, #00f0ff);
+  --ln-at-neon-v: var(--neon-violet, #9b5fff);
+  --ln-at-neon-intensity: var(--lg-neon, 0.5);
+  --ln-at-glass: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  --ln-at-glass-rim: var(--glass-rim, rgba(255, 255, 255, 0.12));
+  --ln-at-border: var(--glass-border, rgba(255, 255, 255, 0.07));
+  --ln-at-bg-inset: var(--bg-inset, #15191f);
+  --ln-at-text: var(--text-body, #bfd6e8);           /* #bfd6e8 on #121820: 9.8:1 ✓ */
+  --ln-at-text-strong: var(--text-header, #eaf6ff);  /* #eaf6ff on #121820: 15.1:1 ✓ */
+  --ln-at-text-muted: var(--text-muted, #93a4b8);    /* #93a4b8 on #121820: 6.6:1 ✓ */
+  --ln-at-glow: color-mix(in srgb, var(--ln-at-neon) calc(var(--ln-at-neon-intensity) * 48%), transparent);
+  --ln-at-neon-soft: color-mix(in srgb, var(--ln-at-neon) calc(14% + (18% * var(--ln-at-neon-intensity))), transparent);
+  --ln-at-active-bg: color-mix(in srgb, var(--ln-at-neon) 16%, var(--ln-at-bg-inset));
+  contain: content;
+}
+
+/* ── 2. Toolbar container + control-bar rows ─────────────────────────────── */
+
+.theme-dark .advanced-tables-toolbar {
+  background: var(--ln-at-glass);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-md, 16px);
+  box-shadow:
+    var(--elev-1, 0 8px 32px rgba(5, 8, 20, 0.45)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .advanced-tables-toolbar {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(165%);
+  }
+}
+
+.theme-dark .advanced-tables-control-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+/* Divider between control-bar rows */
+.theme-dark .advanced-tables-control-bar + .advanced-tables-control-bar {
+  border-top: 1px solid var(--ln-at-border);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+/* ── 3. Toolbar buttons ───────────────────────────────────────────────────── */
+
+/* Buttons inside the toolbar use Obsidian's .clickable-icon class */
+.theme-dark .advanced-tables-toolbar button,
+.theme-dark .advanced-tables-toolbar .clickable-icon {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  color: var(--ln-at-text-muted);
+  cursor: pointer;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  will-change: box-shadow, border-color, color;
+  transition:
+    color var(--dur-hover-in, 160ms) var(--ease-out, ease),
+    background var(--dur-hover-in, 160ms) var(--ease-out, ease),
+    border-color var(--dur-hover-in, 160ms) var(--ease-out, ease),
+    box-shadow var(--dur-hover-in, 160ms) var(--ease-out, ease);
+}
+
+.theme-dark .advanced-tables-toolbar button:hover,
+.theme-dark .advanced-tables-toolbar .clickable-icon:hover {
+  background: color-mix(in srgb, var(--ln-at-neon) 12%, transparent);
+  border-color: var(--ln-at-neon-soft);
+  color: var(--ln-at-neon);
+  box-shadow: 0 0 calc(8px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+/* Active/selected button — alignment or toggle mode active */
+.theme-dark .advanced-tables-toolbar button.is-active,
+.theme-dark .advanced-tables-toolbar .clickable-icon.is-active {
+  background: var(--ln-at-active-bg);
+  border-color: var(--ln-at-neon);
+  color: var(--ln-at-neon);   /* #00f0ff on active-bg ~#132c31: 12.8:1 ✓ */
+  box-shadow:
+    0 0 calc(10px * var(--ln-at-neon-intensity)) var(--ln-at-glow),
+    inset 0 0 calc(6px * var(--ln-at-neon-intensity)) color-mix(in srgb, var(--ln-at-neon) 10%, transparent);
+}
+
+/* SVG icons inherit button color */
+.theme-dark .advanced-tables-toolbar button svg,
+.theme-dark .advanced-tables-toolbar .clickable-icon svg {
+  fill: currentColor;
+  stroke: currentColor;
+  color: inherit;
+}
+
+/* ── 4. Alignment controls ───────────────────────────────────────────────── */
+
+/* Alignment button group: left/center/right often grouped in a .advanced-tables-control-bar row.
+   The active state uses .is-active (same as §3 above). Extra specificity for button groups. */
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-xs, 8px);
+  overflow: hidden;
+  gap: 0;
+}
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group button {
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid var(--ln-at-border);
+}
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group button:last-child {
+  border-right: none;
+}
+
+.theme-dark .advanced-tables-toolbar .advanced-tables-toolbar-button-group button:hover {
+  border-color: transparent;
+}
+
+/* ── 5. Formula bar ──────────────────────────────────────────────────────── */
+
+.theme-dark .advanced-tables-formula-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--ln-at-bg-inset);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-xs, 8px);
+  margin-top: 2px;
+}
+
+.theme-dark .advanced-tables-formula-bar .advanced-tables-formula-label {
+  color: var(--ln-at-text-muted);
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--weight-heading, 600);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.theme-dark .advanced-tables-formula-bar input,
+.theme-dark .advanced-tables-formula-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--ln-at-text);        /* #bfd6e8 on #15191f: 10.4:1 ✓ */
+  caret-color: var(--ln-at-neon);
+  font-family: var(--font-monospace, monospace);
+  font-size: var(--text-sm, 13px);
+  line-height: 1.5;
+  outline: none;
+  padding: 0;
+  width: 100%;
+}
+
+.theme-dark .advanced-tables-formula-bar input::placeholder,
+.theme-dark .advanced-tables-formula-input::placeholder {
+  color: var(--ln-at-text-muted);
+  opacity: 0.7;
+}
+
+/* Focus state on the formula bar: ring on the wrapper, not the input */
+.theme-dark .advanced-tables-formula-bar:focus-within {
+  border-color: var(--ln-at-neon);
+  box-shadow: 0 0 calc(8px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+/* ── 6. Table source-view — editing backdrop + row tinting ───────────────── */
+
+/* Subtle glass tint on table rows when cursor is inside — CodeMirror source mode */
+.theme-dark .cm-editor .HyperMD-table-row {
+  background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 3%, transparent);
+}
+
+/* Alternate row: slightly deeper tint for even rows */
+.theme-dark .cm-editor .HyperMD-table-row:nth-child(even) {
+  background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 60%, transparent);
+}
+
+/* Active/cursor row: neon tint on the line the cursor is on */
+.theme-dark .cm-editor .HyperMD-table-row.cm-activeLine {
+  background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 6%, var(--bg-inset, #15191f));
+}
+
+/* Table cell content text inside source mode */
+.theme-dark .cm-editor .HyperMD-table-row .cm-string,
+.theme-dark .cm-editor .HyperMD-table-row .cm-content {
+  color: var(--text-body, #bfd6e8);   /* #bfd6e8 on tinted row bg: ≥9:1 ✓ */
+}
+
+/* ── 7. Column separator / resize-handle hover feedback ──────────────────── */
+
+/* Pipe `|` characters in source mode — subtle neon on hover signals interactivity */
+.theme-dark .cm-editor .cm-hmd-table-sep {
+  color: var(--text-muted, #93a4b8);         /* #93a4b8 on row bg: 5.2:1 ✓ */
+  transition:
+    color var(--dur-hover-in, 120ms) ease,
+    text-shadow var(--dur-hover-in, 120ms) ease;
+}
+
+/* Hover on the line containing a separator triggers neon accent via .cm-activeLine */
+.theme-dark .cm-editor .cm-activeLine .cm-hmd-table-sep {
+  color: var(--neon-cyan, #00f0ff);          /* #00f0ff on active-row bg ~#112426: 12.6:1 ✓ */
+  text-shadow: 0 0 calc(6px * var(--lg-neon, 0.5)) rgba(0, 240, 255, 0.55);
+  cursor: col-resize;
+}
+
+/* Header separator row: neon underline style */
+.theme-dark .cm-editor .HyperMD-table-1 {
+  border-bottom: 1px solid color-mix(in srgb, var(--neon-cyan, #00f0ff) 28%, transparent);
+}
+
+/* ── 8. Rendered table view — table-editor-* classes ────────────────────── */
+
+/* Token bridge: --ln-at-neon and friends are defined on .advanced-tables-toolbar but the
+   rendered table cells and context menus live outside it. Inherit tokens here so all
+   table-editor-* rules and .menu-item can reference --ln-at-neon without a raw fallback. */
+.theme-dark .table-editor-table,
+.theme-dark .tablecontrols,
+.theme-dark .menu {
+  --ln-at-neon: var(--neon-cyan, #00f0ff);
+  --ln-at-neon-intensity: var(--lg-neon, 0.5);
+  --ln-at-border: var(--glass-border, rgba(255, 255, 255, 0.07));
+  --ln-at-text: var(--text-body, #bfd6e8);
+}
+
+/* Rendered table container */
+.theme-dark .table-editor-table {
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+}
+
+/* Controls bar above the rendered table */
+.theme-dark .tablecontrols {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border-bottom: 1px solid var(--ln-at-border);
+}
+
+/* Cell input in rendered-mode editing */
+.theme-dark .table-editor-cell-input {
+  background: transparent;
+  color: var(--ln-at-text);
+  caret-color: var(--ln-at-neon);
+  outline: none;
+}
+
+/* 2-px neon focus ring on active cell (WCAG 2.1 SC 2.4.7) */
+.theme-dark .table-editor-cell-input:focus {
+  box-shadow: 0 0 0 2px var(--ln-at-neon);
+  border-radius: var(--radius-xs, 4px);
+}
+
+/* Table editor buttons */
+.theme-dark .table-editor-btn {
+  color: var(--ln-at-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  cursor: pointer;
+  transition:
+    color var(--dur-hover-in, 120ms) ease,
+    background var(--dur-hover-in, 120ms) ease,
+    border-color var(--dur-hover-in, 120ms) ease;
+}
+
+.theme-dark .table-editor-btn:hover {
+  color: var(--ln-at-neon);
+  background: color-mix(in srgb, var(--ln-at-neon) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ln-at-neon) 30%, transparent);
+}
+
+/* Column resize handle */
+.theme-dark .table-editor-resizer {
+  background: var(--ln-at-border);
+  transition: background var(--dur-hover-in, 120ms) ease;
+}
+
+.theme-dark .table-editor-resizer:hover {
+  background: var(--ln-at-neon);
+}
+
+/* ── 9. Context menu (right-click) ───────────────────────────────────────── */
+
+/* Obsidian's .menu is global; these rules apply whenever a context menu is open.
+   Advanced Tables adds "Insert row/column", "Delete row/column", and alignment items. */
+
+.theme-dark .menu {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.95));
+  border: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-sm, 12px);
+  box-shadow:
+    var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55)),
+    0 0 calc(18px * var(--lg-neon, 0.5)) color-mix(in srgb, var(--neon-cyan, #00f0ff) 8%, transparent);
+  padding: 4px;
+  overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .menu {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.85));
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(175%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(175%);
+  }
+}
+
+.theme-dark .menu-item {
+  border-radius: var(--radius-xs, 8px);
+  color: var(--text-body, #bfd6e8);           /* #bfd6e8 on menu bg: 9.8:1 ✓ */
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition:
+    background var(--dur-hover-in, 120ms) ease,
+    color var(--dur-hover-in, 120ms) ease;
+}
+
+.theme-dark .menu-item:hover,
+.theme-dark .menu-item.selected {
+  background: color-mix(in srgb, var(--ln-at-neon) 14%, transparent);
+  color: var(--ln-at-neon);
+}
+
+.theme-dark .menu-item-icon {
+  color: inherit;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-dark .menu-item-icon svg {
+  fill: currentColor;
+  width: 16px;
+  height: 16px;
+}
+
+.theme-dark .menu-separator {
+  border: none;
+  border-top: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  margin: 4px 6px;
+}
+
+/* Warning / danger menu items (e.g. "Delete table") */
+.theme-dark .menu-item.is-warning {
+  color: var(--state-danger, #f88585);        /* #f88585 on menu bg: 5.1:1 ✓ */
+}
+
+.theme-dark .menu-item.is-warning:hover {
+  background: var(--color-danger-bg, rgba(248, 113, 113, 0.12));
+  color: var(--state-danger, #f88585);
+}
+
+/* ── 9. Keyboard / focus-visible a11y ────────────────────────────────────── */
+
+.theme-dark .advanced-tables-toolbar button:focus-visible,
+.theme-dark .advanced-tables-toolbar .clickable-icon:focus-visible {
+  outline: 2px solid var(--ln-at-neon);
+  outline-offset: 2px;
+  box-shadow: 0 0 calc(10px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+.theme-dark .menu-item:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: -2px;
+}
+
+/* ── 10. Reduced-motion ──────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .advanced-tables-toolbar button,
+  .theme-dark .advanced-tables-toolbar .clickable-icon,
+  .theme-dark .cm-editor .cm-hmd-table-sep,
+  .theme-dark .menu-item {
+    transition: none;
+  }
+}
+
+/* ── 11. High-contrast / reduced-transparency ────────────────────────────── */
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .theme-dark .advanced-tables-toolbar {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: color-mix(in srgb, var(--ln-at-neon) 45%, white 8%);
+  }
+
+  .theme-dark .menu {
+    background: var(--bg-panel, #101722);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .theme-dark .advanced-tables-toolbar button.is-active,
+  .theme-dark .advanced-tables-toolbar .clickable-icon.is-active {
+    background: var(--ln-at-bg-inset);
+    outline: 2px solid var(--ln-at-neon);
+    outline-offset: -2px;
+    box-shadow: none;
+  }
+
+  .theme-dark .cm-editor .cm-activeLine .cm-hmd-table-sep {
+    text-shadow: none;
+  }
+
+  .theme-dark .menu-item:hover,
+  .theme-dark .menu-item.selected {
+    background: color-mix(in srgb, var(--neon-cyan, #00f0ff) 22%, transparent);
+  }
+}
+
+/* ── 12. Rendered table editor overlay (Advanced Tables grid view) ─────────
+ *
+ * Selectors used by the Advanced Tables plugin in "table editor" preview mode:
+ *   .table-editor-table     – the rendered table container
+ *   .table-editor-cell-input – individual cell edit inputs
+ *   .tablecontrols           – the control bar below the table
+ *   .table-editor-btn        – action buttons (add row/col, etc.)
+ *   .table-editor-resizer    – column resize drag handles
+ * ========================================================================== */
+
+.theme-dark .table-editor-table,
+.theme-dark .tablecontrols,
+.theme-dark .menu {
+  --ln-at-neon: var(--neon-cyan, #00f0ff);
+  --ln-at-neon-intensity: var(--lg-neon, 0.5);
+  --ln-at-glass: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  --ln-at-border: var(--glass-border, rgba(255, 255, 255, 0.07));
+  --ln-at-glow: color-mix(in srgb, var(--ln-at-neon) calc(var(--ln-at-neon-intensity) * 48%), transparent);
+}
+
+.theme-dark .table-editor-table {
+  background: var(--ln-at-glass);
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+}
+
+.theme-dark .table-editor-cell-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  color: var(--text-body, #bfd6e8);
+  font-family: var(--font-interface, inherit);
+  font-size: var(--text-sm, 13px);
+  padding: 2px 4px;
+  width: 100%;
+}
+
+.theme-dark .table-editor-cell-input:focus {
+  outline: none;
+  border-color: var(--ln-at-neon);
+  box-shadow: 0 0 0 2px var(--ln-at-neon);
+}
+
+.theme-dark .tablecontrols {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border: 1px solid var(--ln-at-border);
+  border-radius: var(--radius-xs, 8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+}
+
+.theme-dark .table-editor-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 8px);
+  color: var(--text-muted, #93a4b8);
+  cursor: pointer;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.theme-dark .table-editor-btn:hover {
+  background: color-mix(in srgb, var(--ln-at-neon) 12%, transparent);
+  border-color: var(--ln-at-neon);
+  color: var(--ln-at-neon);
+  box-shadow: 0 0 calc(8px * var(--ln-at-neon-intensity)) var(--ln-at-glow);
+}
+
+.theme-dark .table-editor-resizer {
+  cursor: col-resize;
+  width: 4px;
+  background: var(--ln-at-border);
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.theme-dark .table-editor-resizer:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--ln-at-neon) 60%, transparent);
+}
+
+/* Scoped .menu-item:hover uses --ln-at-neon from the inherited token block above */
+.theme-dark .menu .menu-item:hover {
+  color: var(--ln-at-neon);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .table-editor-btn,
+  .theme-dark .table-editor-resizer {
+    transition: none;
+  }
+}
+}
