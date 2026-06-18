@@ -67,16 +67,16 @@ Three named AI agents assist the author across these surfaces. None of them auto
 - [x] GitHub Actions CI (lint → typecheck → test → build)
 
 ### Phase 2 — Core Writing Experience
-**Status:** In progress
+**Status:** Complete <!-- SKY-2214 -->
 
 - [x] Block-based editor component built on **TipTap**, with markdown round-trip
-- [ ] **Two-vault layout**: Story Vault + Notes Vault as sibling folders under `~/Mythos/` (each independently relocatable). Notes Vault default structure: `Universes/<World>/{Characters,Locations,Factions,History,Systems,Items}/` for worldbuilding, plus `Stories/`, `Inbox/`, `Research/`, `Daily Notes/`, `Archive/` at the top level. Story Vault default: per-story → `Manuscript/` → numbered chapter folders → numbered scene files, with seeded `Outline.md` + `Synopsis.md`. Authoritative spec: [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan) (replaces the old Q4.5 example).
-- [ ] Per-chapter / per-scene file layout in the Story Vault
-- [ ] Project/vault browser sidebar
-- [ ] Save/load documents from vault
-- [ ] **Manifest.json schema (v1)** — indexes scenes, entities, suggestions, provenance, and board references. Top-level `"schemaVersion": 1`; older manifests trigger a migration script on app start.
-- [ ] Versioned drafts: snapshot on save, history view, one-click rollback
-- [ ] Basic settings panel (API key management, theme, per-agent enable/disable, Writing Assistant heartbeat interval, **Archive continuity-check heartbeat** interval)
+- [x] **Two-vault layout**: Story Vault + Notes Vault as sibling folders under `~/Mythos/` (each independently relocatable). Notes Vault default structure: `Universes/<World>/{Characters,Locations,Factions,History,Systems,Items}/` for worldbuilding, plus `Stories/`, `Inbox/`, `Research/`, `Daily Notes/`, `Archive/` at the top level. Story Vault default: per-story → `Manuscript/` → numbered chapter folders → numbered scene files, with seeded `Outline.md` + `Synopsis.md`. Authoritative spec: [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan) (replaces the old Q4.5 example). <!-- SKY-320 -->
+- [x] Per-chapter / per-scene file layout in the Story Vault <!-- SKY-10 -->
+- [x] Project/vault browser sidebar <!-- SKY-1982 -->
+- [x] Save/load documents from vault <!-- vault IPC handlers, SceneEditor.tsx -->
+- [x] **Manifest.json schema (v1)** — indexes scenes, entities, suggestions, provenance, and board references. Top-level `"schemaVersion": 1`; older manifests trigger a migration script on app start. <!-- manifest.ts, manifestValidate.ts -->
+- [x] Versioned drafts: snapshot on save, history view, one-click rollback <!-- DraftHistoryPanel.tsx, versions.ts, snapshots.ts -->
+- [x] Basic settings panel (API key management, theme, per-agent enable/disable, Writing Assistant heartbeat interval, **Archive continuity-check heartbeat** interval) <!-- SettingsPanel.tsx -->
 
 ### Phase 3 — AI-Augmented Authoring
 **Status:** Planned
