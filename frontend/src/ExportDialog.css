@@ -10,7 +10,9 @@
 .export-dialog-formats{border:none;padding:0;margin:0 0 20px 0}
 .export-dialog-formats-legend{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#6c7086);margin-bottom:10px;padding:0}
 .export-dialog-format-option{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border-radius:4px;color:var(--text-primary,#cdd6f4);font-size:.9rem}
+.export-dialog-format-option:has(input:disabled){cursor:not-allowed;color:var(--text-muted,#6c7086)}
 .export-dialog-format-option:hover{background:var(--bg-hover,#313244)}
+.export-dialog-format-note{margin-left:auto;font-size:.75rem;color:var(--text-muted,#6c7086)}
 .export-dialog-actions{display:flex;gap:8px;justify-content:flex-end}
 .export-dialog-btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:.9rem;font-weight:500;transition:background .1s}
 .export-dialog-btn:disabled{opacity:.5;cursor:not-allowed}
