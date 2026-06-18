@@ -52,6 +52,7 @@
     "test:e2e:entries": "playwright test e2e/entries.spec.ts --reporter=list",
     "test:e2e:post-onboarding": "playwright test e2e/post-onboarding.spec.ts --reporter=list",
     "test:e2e:continuity-panel": "playwright test e2e/continuity-panel.spec.ts --reporter=list",
+    "test:e2e:continuity-peek": "playwright test e2e/continuity-peek.spec.ts --reporter=list",
     "test:e2e:scene-crafter": "playwright test e2e/tests/sceneCrafter.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only"
   },

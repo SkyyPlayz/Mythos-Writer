@@ -19,9 +19,10 @@ function typeBadgeClass(type: string | null): string {
 interface Props {
   entity: EntityResult;
   onClick?: (entity: EntityResult) => void;
+  onOpenEntityNote?: (path: string) => void;
 }
 
-export default function EntityCard({ entity, onClick }: Props) {
+export default function EntityCard({ entity, onClick, onOpenEntityNote }: Props) {
   return (
     <div
       className="entity-card"
@@ -47,6 +48,17 @@ export default function EntityCard({ entity, onClick }: Props) {
       {entity.excerpt && (
         <div className="entity-card-excerpt">{entity.excerpt}</div>
       )}
+      <button
+        type="button"
+        className="entity-card-view-note"
+        aria-label={`View full note: ${entity.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenEntityNote?.(entity.path);
+        }}
+      >
+        View full note
+      </button>
     </div>
   );
 }

@@ -14,11 +14,13 @@ interface EntityResult {
 interface Props {
   /** Current editor selection text, updated in real time. Empty string = no selection. */
   selectionText: string;
+  autoFocusSearch?: boolean;
+  onOpenEntityNote?: (path: string) => void;
 }
 
 const MATCH_DEBOUNCE_MS = 200;
 
-export default function ContinuityPanel({ selectionText }: Props) {
+export default function ContinuityPanel({ selectionText, autoFocusSearch = false, onOpenEntityNote }: Props) {
   const [notesVaultRoot, setNotesVaultRoot] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [matchResult, setMatchResult] = useState<EntityResult | null | 'loading' | 'no-match'>('no-match');
@@ -28,6 +30,7 @@ export default function ContinuityPanel({ selectionText }: Props) {
   const matchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestVaultRootRef = useRef<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load notes vault root once on mount, re-read on project switch
   useEffect(() => {
@@ -50,6 +53,12 @@ export default function ContinuityPanel({ selectionText }: Props) {
     });
     return () => unsub?.();
   }, []);
+
+  useEffect(() => {
+    if (!autoFocusSearch) return;
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [autoFocusSearch]);
 
   // Selection-driven auto-match with 200ms debounce
   const runMatch = useCallback(async (text: string, vaultRoot: string) => {
@@ -116,6 +125,7 @@ export default function ContinuityPanel({ selectionText }: Props) {
     <div className="continuity-panel">
       <div className="continuity-search-row">
         <input
+          ref={searchInputRef}
           type="search"
           className="continuity-search-input"
           placeholder="Search entities…"
@@ -141,7 +151,16 @@ export default function ContinuityPanel({ selectionText }: Props) {
               <>
                 <div className="continuity-section-label">Results</div>
                 {searchResults.map((e) => (
-                  <EntityCard key={e.path} entity={e} />
+                  <EntityCard
+                    key={e.path}
+                    entity={e}
+                    onOpenEntityNote={onOpenEntityNote}
+                    onClick={(entity) => {
+                      setMatchResult(entity);
+                      setQuery('');
+                      setSearchResults([]);
+                    }}
+                  />
                 ))}
               </>
             )}
@@ -160,7 +179,7 @@ export default function ContinuityPanel({ selectionText }: Props) {
             {matchResult !== 'loading' && matchResult !== 'no-match' && matchResult !== null && (
               <>
                 <div className="continuity-section-label">Best match</div>
-                <EntityCard entity={matchResult} />
+                <EntityCard entity={matchResult} onOpenEntityNote={onOpenEntityNote} />
               </>
             )}
           </>
