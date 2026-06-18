@@ -102,7 +102,7 @@ jobs:
             frontend/coverage/
           retention-days: 3
 
-  ci:
+  build-electron:
     needs: [lint, typecheck, unit]
     runs-on: self-hosted
     timeout-minutes: 90
@@ -167,6 +167,37 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron
 
+      - name: Upload electron build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-build-${{ github.run_id }}
+          path: out/
+          retention-days: 1
+
+  e2e-shard-1:
+    # Shard 1: crud, brainstorm, visual-capture, writing-modes, a11y
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download electron build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-build-${{ github.run_id }}
+          path: out/
+
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
           if command -v Xvfb >/dev/null 2>&1; then
@@ -199,6 +230,51 @@ jobs:
       - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
 
+      - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
+        run: xvfb-run --auto-servernum npm run test:e2e:a11y
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-1
+          path: e2e-report/
+          retention-days: 3
+
+  e2e-shard-2:
+    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download electron build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-build-${{ github.run_id }}
+          path: out/
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
+
       - name: E2E — Writing Assistant tip card panel scan + note/ignore (SKY-1618)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-assistant-tips
 
@@ -207,6 +283,51 @@ jobs:
 
       - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
         run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
+
+      - name: E2E — Entity system regression create/alias/browse (SKY-220)
+        run: xvfb-run --auto-servernum npm run test:e2e:entity
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-2
+          path: e2e-report/
+          retention-days: 3
+
+  e2e-shard-3:
+    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download electron build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-build-${{ github.run_id }}
+          path: out/
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
 
       - name: E2E — Visual regression baseline comparison (MYT-771)
         run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
@@ -220,12 +341,6 @@ jobs:
           path: e2e-visual-artifacts/visual-regression/
           retention-days: 3
 
-      - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
-        run: xvfb-run --auto-servernum npm run test:e2e:a11y
-
-      - name: E2E — Entity system regression create/alias/browse (SKY-220)
-        run: xvfb-run --auto-servernum npm run test:e2e:entity
-
       - name: E2E — Entity creation edge cases (SKY-619)
         run: xvfb-run --auto-servernum npm run test:e2e:entity-creation
 
@@ -234,6 +349,48 @@ jobs:
 
       - name: E2E — Vault Graph v0 AC-GV-01..12 (SKY-1767)
         run: xvfb-run --auto-servernum npm run test:e2e:vault-graph-v0
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-3
+          path: e2e-report/
+          retention-days: 3
+
+  e2e-shard-4:
+    # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download electron build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-build-${{ github.run_id }}
+          path: out/
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
 
       - name: E2E — Entity @-mention autocomplete (SKY-616)
         run: xvfb-run --auto-servernum npm run test:e2e:entity-mention
@@ -258,58 +415,20 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
+          name: e2e-report-shard-4
           path: e2e-report/
           retention-days: 3
 
-  build-windows:
-    runs-on: windows-latest
-    timeout-minutes: 40
-    # SKY-2236: quota exhaustion causes instant 0-step failure; continue-on-error prevents
-    # cascade-cancel of the three required checks (ci, build-linux, build-macos).
-    continue-on-error: true
+  ci:
+    # Required check aggregator — succeeds only when lint, typecheck, unit,
+    # and all 4 E2E shards are green. Branch protection gates on this status context.
+    needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
+    runs-on: self-hosted
+    timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint (frontend)
-        run: npm run lint -w frontend
-
-      - name: Type-check (frontend)
-        run: npm run typecheck -w frontend
-
-      - name: Type-check (electron-main)
-        run: npm run typecheck -w electron-main
-
-      - name: Test (electron-main)
-        run: npm run test -w electron-main
-
-      - name: Test (frontend)
-        run: npm run test -w frontend
-
-      - name: Build and package (Windows NSIS + ZIP)
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run build:electron && npx electron-builder --win nsis zip --publish never
-
-      - name: Upload Windows packages
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-packages
-          path: |
-            dist-electron/*.exe
-            dist-electron/*.zip
-          retention-days: 3
+      - name: All checks passed
+        run: echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
@@ -326,6 +445,9 @@ jobs:
           echo "This stub keeps the CI / build-macos required check green until then."
 
   build-linux:
+    # Phase 2: packaging only runs on push to main or workflow_dispatch — not on every PR.
+    # lint/typecheck/unit are guaranteed green by the ci aggregator gating all merges to main.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: self-hosted
     timeout-minutes: 40
     concurrency:
@@ -350,21 +472,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Lint (frontend)
-        run: npm run lint -w frontend
-
-      - name: Type-check (frontend)
-        run: npm run typecheck -w frontend
-
-      - name: Type-check (electron-main)
-        run: npm run typecheck -w electron-main
-
-      - name: Test (electron-main)
-        run: npm run test -w electron-main
-
-      - name: Test (frontend)
-        run: npm run test -w frontend
 
       - name: Guard — PERSIST_PROMPTS must not be set for release builds
         run: |
@@ -443,11 +550,50 @@ jobs:
             dist-electron/*.deb
           retention-days: 3
 
+  build-windows:
+    # Phase 2: packaging only runs on push to main or workflow_dispatch — not on every PR.
+    # lint/typecheck/unit are guaranteed green by the ci aggregator gating all merges to main.
+    # SKY-2236: quota exhaustion causes instant 0-step failure; continue-on-error prevents
+    # cascade-cancel of the three required checks (ci, build-linux, build-macos).
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package (Windows NSIS + ZIP)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build:electron && npx electron-builder --win nsis zip --publish never
+
+      - name: Upload Windows packages
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.zip
+          retention-days: 3
+
   report:
     # Event-driven board ping. Runs after all required jobs complete on a PR.
     # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
     # sweep for missed pings. PR-only — plain pushes to main get no ping.
     # Self-hosted only (no public/fork PR exposure per SKY-849).
+    # build-linux and build-windows are skipped on PRs (Phase 2), so always() handles their
+    # skipped result correctly — the report fires on PR completion regardless.
     needs: [lint, typecheck, unit, ci, build-macos, build-linux, build-windows]
     runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
