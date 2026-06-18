@@ -126,7 +126,8 @@ test.describe('TC-OB-01: Start Blank', () => {
     });
 
     // Keep the default save location; HOME is redirected to userData by launchFreshApp.
-    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveText('~/Documents/MythosWriter');
+    // gs-save-path is an <input> — use toHaveValue(), not toHaveText().
+    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveValue('~/Documents/MythosWriter');
     await page.locator('[data-testid="gs-title-input"]').fill('Test Story OB-01');
     await page.locator('[data-testid="gs-create-story"]').click();
 
@@ -197,22 +198,22 @@ test.describe('TC-OB-02: Sample Novel', () => {
   });
 
   test('sample project: Story Vault + Notes Vault on disk match bundled sample, DesktopShell loads', async () => {
-    await clickStep1Card(page, 'card-sample');
-    await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
-
-    // Bypass path validation and sample-project copying
-    // (actual IPC handler logic is covered by unit tests).
+    // SKY-2008: sample flow now routes through the genre picker (step1c), not step2.
+    // Mock onboarding:complete before any UI interaction so it's ready when the
+    // genre-start-btn fires the IPC call.
     await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('vault:validate-path');
-      ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
-
       ipcMain.removeHandler('onboarding:complete');
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
     });
 
-    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveText('~/Documents/MythosWriter');
-    await page.locator('[data-testid="gs-title-input"]').fill(OB02_STORY_TITLE);
-    await page.locator('[data-testid="gs-create-story"]').click();
+    await clickStep1Card(page, 'card-sample');
+    await expect(page.locator('[data-testid="screen-step1c"]')).toBeVisible({ timeout: 8_000 });
+
+    // Select any genre and start — the IPC call is mocked so genre choice doesn't matter for
+    // disk assertions, which are seeded in beforeAll independently of the handler.
+    await page.locator('[data-testid="genre-card-cozy-fantasy"]').click();
+    await expect(page.locator('[data-testid="genre-start-btn"]')).toBeEnabled({ timeout: 2_000 });
+    await page.locator('[data-testid="genre-start-btn"]').click();
 
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
@@ -318,7 +319,8 @@ test.describe('TC-OB-03: From Template', () => {
 
     // Step 2: fill in story details
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveText('~/Documents/MythosWriter');
+    // gs-save-path is an <input> — use toHaveValue(), not toHaveText().
+    await expect(page.locator('[data-testid="gs-save-path"]')).toHaveValue('~/Documents/MythosWriter');
     await page.locator('[data-testid="gs-title-input"]').fill('Template Story OB-03');
     await page.locator('[data-testid="gs-create-story"]').click();
 
