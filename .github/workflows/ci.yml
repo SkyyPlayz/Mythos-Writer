@@ -103,9 +103,13 @@ jobs:
           retention-days: 3
 
   build-electron:
+    # SKY-2425: fuzz steps removed from this job — they were causing OOM-induced
+    # runner disconnects on the DOCX/EPUB step (step 8), which cancelled the whole
+    # job and prevented all 4 e2e shards from running. Fuzz coverage is retained
+    # via fuzz.yml (runs on every PR as a separate non-blocking check).
     needs: [lint, typecheck, unit]
     runs-on: self-hosted
-    timeout-minutes: 90
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -118,60 +122,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      # SKY-2301: kill any lingering jazzer processes from prior runs on this
-      # self-hosted runner before starting fuzz. Ghost jazzer processes accumulate
-      # and cause OOM that cancels the DOCX/EPUB step ~7 s in (reproduces on both
-      # run 27736846845 and re-trigger run 27758276908).
-      # NOTE: do NOT pkill Runner.Worker — that matches the GH Actions runner process
-      # itself and immediately cancels the job (observed in runs 27763206091 re-runs).
-      - name: Pre-fuzz cleanup — kill ghost jazzer processes
-        run: |
-          pkill -x jazzer 2>/dev/null || true
-          sleep 1
-
-      # SKY-361: coverage-guided fuzz run on every PR — 60 s per harness.
-      # Fuzzes parseFrontmatter (Obsidian import path) and the DOCX/EPUB inline
-      # parsers. Crashes are uploaded as artifacts so triage can start immediately.
-      # See docs/security/fuzz-triage-runbook.md for what to do when this fails.
-      - name: Fuzz — build harnesses (TypeScript → JS)
-        run: |
-          rm -rf electron-main/fuzz/dist/
-          npm run fuzz:build -w electron-main
-
-      - name: Fuzz — frontmatter parser (60 s)
-        run: |
-          mkdir -p electron-main/fuzz/crashes
-          cd electron-main
-          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js \
-            fuzz/corpus/frontmatter --sync -- \
-            -max_total_time=60 \
-            -artifact_prefix=fuzz/crashes/frontmatter- &
-          fuzz_pid=$!
-          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
-          wait "$fuzz_pid" || true
-          trap - EXIT TERM INT
-
-      - name: Fuzz — DOCX/EPUB inline parsers (60 s)
-        run: |
-          mkdir -p electron-main/fuzz/crashes
-          cd electron-main
-          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/docxInline.fuzz.js \
-            fuzz/corpus/docxInline -- \
-            -max_total_time=60 \
-            -artifact_prefix=fuzz/crashes/docxInline- &
-          fuzz_pid=$!
-          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
-          wait "$fuzz_pid" || true
-          trap - EXIT TERM INT
-
-      - name: Upload fuzz crash artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fuzz-crashes
-          path: electron-main/fuzz/crashes/
-          retention-days: 7
 
       - name: Build (electron-vite)
         env:
