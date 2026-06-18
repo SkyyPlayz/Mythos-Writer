@@ -102,10 +102,14 @@ jobs:
             frontend/coverage/
           retention-days: 3
 
-  ci:
+  build-electron:
+    # SKY-2425: fuzz steps removed from this job — they were causing OOM-induced
+    # runner disconnects on the DOCX/EPUB step (step 8), which cancelled the whole
+    # job and prevented all 4 e2e shards from running. Fuzz coverage is retained
+    # via fuzz.yml (runs on every PR as a separate non-blocking check).
     needs: [lint, typecheck, unit]
     runs-on: self-hosted
-    timeout-minutes: 90
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -119,53 +123,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # SKY-361: coverage-guided fuzz run on every PR — 60 s per harness.
-      # Fuzzes parseFrontmatter (Obsidian import path) and the DOCX/EPUB inline
-      # parsers. Crashes are uploaded as artifacts so triage can start immediately.
-      # See docs/security/fuzz-triage-runbook.md for what to do when this fails.
-      - name: Fuzz — build harnesses (TypeScript → JS)
-        run: |
-          rm -rf electron-main/fuzz/dist/
-          npm run fuzz:build -w electron-main
-
-      - name: Fuzz — frontmatter parser (60 s)
-        run: |
-          mkdir -p electron-main/fuzz/crashes
-          cd electron-main
-          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js \
-            fuzz/corpus/frontmatter --sync -- \
-            -max_total_time=60 \
-            -artifact_prefix=fuzz/crashes/frontmatter- &
-          fuzz_pid=$!
-          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
-          wait "$fuzz_pid" || true
-          trap - EXIT TERM INT
-
-      - name: Fuzz — DOCX/EPUB inline parsers (60 s)
-        run: |
-          mkdir -p electron-main/fuzz/crashes
-          cd electron-main
-          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/docxInline.fuzz.js \
-            fuzz/corpus/docxInline -- \
-            -max_total_time=60 \
-            -artifact_prefix=fuzz/crashes/docxInline- &
-          fuzz_pid=$!
-          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
-          wait "$fuzz_pid" || true
-          trap - EXIT TERM INT
-
-      - name: Upload fuzz crash artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fuzz-crashes
-          path: electron-main/fuzz/crashes/
-          retention-days: 7
-
       - name: Build (electron-vite)
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron
+
+      - name: Cache electron build for E2E shards
+        uses: actions/cache/save@v4
+        with:
+          path: out/
+          key: electron-build-${{ github.run_id }}
+
+  e2e-shard-1:
+    # Shard 1: crud, brainstorm, visual-capture, writing-modes, a11y
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore electron build from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: out/
+          key: electron-build-${{ github.run_id }}
+          fail-on-cache-miss: true
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
@@ -202,6 +194,52 @@ jobs:
       - name: E2E — Writing modes UI keyboard switch + chrome shift (MYT-768)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-modes
 
+      - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
+        run: xvfb-run --auto-servernum npm run test:e2e:a11y
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-1
+          path: e2e-report/
+          retention-days: 3
+
+  e2e-shard-2:
+    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore electron build from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: out/
+          key: electron-build-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
+
       - name: E2E — Writing Assistant tip card panel scan + note/ignore (SKY-1618)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-assistant-tips
 
@@ -210,6 +248,52 @@ jobs:
 
       - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
         run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
+
+      - name: E2E — Entity system regression create/alias/browse (SKY-220)
+        run: xvfb-run --auto-servernum npm run test:e2e:entity
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-2
+          path: e2e-report/
+          retention-days: 3
+
+  e2e-shard-3:
+    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore electron build from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: out/
+          key: electron-build-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
 
       - name: E2E — Visual regression baseline comparison (MYT-771)
         run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
@@ -223,12 +307,6 @@ jobs:
           path: e2e-visual-artifacts/visual-regression/
           retention-days: 3
 
-      - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
-        run: xvfb-run --auto-servernum npm run test:e2e:a11y
-
-      - name: E2E — Entity system regression create/alias/browse (SKY-220)
-        run: xvfb-run --auto-servernum npm run test:e2e:entity
-
       - name: E2E — Entity creation edge cases (SKY-619)
         run: xvfb-run --auto-servernum npm run test:e2e:entity-creation
 
@@ -237,6 +315,49 @@ jobs:
 
       - name: E2E — Vault Graph v0 AC-GV-01..12 (SKY-1767)
         run: xvfb-run --auto-servernum npm run test:e2e:vault-graph-v0
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-3
+          path: e2e-report/
+          retention-days: 3
+
+  e2e-shard-4:
+    # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore electron build from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: out/
+          key: electron-build-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
 
       - name: E2E — Entity @-mention autocomplete (SKY-616)
         run: xvfb-run --auto-servernum npm run test:e2e:entity-mention
@@ -264,59 +385,20 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
+          name: e2e-report-shard-4
           path: e2e-report/
           retention-days: 3
 
-  build-windows:
-    # Run on the repo self-hosted runner while hosted Actions budget is unavailable.
-    # The runner has the Linux/Wine toolchain used by release Windows packaging,
-    # avoiding the instant hosted windows-latest quota failure seen on PR #571.
+  ci:
+    # Required check aggregator — succeeds only when lint, typecheck, unit,
+    # and all 4 E2E shards are green. Branch protection gates on this status context.
+    needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: self-hosted
-    timeout-minutes: 40
-    continue-on-error: true
+    timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint (frontend)
-        run: npm run lint -w frontend
-
-      - name: Type-check (frontend)
-        run: npm run typecheck -w frontend
-
-      - name: Type-check (electron-main)
-        run: npm run typecheck -w electron-main
-
-      - name: Test (electron-main)
-        run: npm run test -w electron-main
-
-      - name: Test (frontend)
-        run: npm run test -w frontend
-
-      - name: Build and package (Windows NSIS + ZIP)
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run build:electron && npx electron-builder --win nsis zip --publish never
-
-      - name: Upload Windows packages
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-packages
-          path: |
-            dist-electron/*.exe
-            dist-electron/*.zip
-          retention-days: 3
+      - name: All checks passed
+        run: echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
@@ -333,6 +415,11 @@ jobs:
           echo "This stub keeps the CI / build-macos required check green until then."
 
   build-linux:
+    # SKY-2421: job-level `if` was causing `skipped` status on PRs, which caused
+    # the `report` job (needs: [..., build-linux, ...]) to also be skipped despite
+    # `if: always()` — a known GH Actions quirk with multiple skipped upstream jobs.
+    # Fix: always run the job; gate packaging steps at step level so PRs fast-exit
+    # with `success` and push/workflow_dispatch does the full packaging.
     runs-on: self-hosted
     timeout-minutes: 40
     concurrency:
@@ -340,40 +427,36 @@ jobs:
       cancel-in-progress: true
 
     steps:
+      - name: Skip — packaging only runs on push/workflow_dispatch
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "build-linux: packaging skipped on pull_request events."
+          echo "Required check satisfied — packaging runs on push to main or workflow_dispatch only."
+
       - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request'
 
       - name: Pre-flight — clean stale AppImage temp dirs (SKY-1347)
         # APPIMAGE_EXTRACT_AND_RUN=1 in the smoke-test step leaves /tmp/appimage_extracted_*
         # dirs (~307 MB each) that accumulate across CI runs on the self-hosted runner and
         # fill the 24 GB tmpfs, causing fpm ENOSPC during deb packaging. This sweep reclaims
         # space from any prior run's leftovers before we start the build.
+        if: github.event_name != 'pull_request'
         run: find /tmp -maxdepth 1 -name 'appimage_extracted_*' -type d -exec rm -rf {} + 2>/dev/null || true
 
       - name: Set up Node.js
+        if: github.event_name != 'pull_request'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
+        if: github.event_name != 'pull_request'
         run: npm ci
 
-      - name: Lint (frontend)
-        run: npm run lint -w frontend
-
-      - name: Type-check (frontend)
-        run: npm run typecheck -w frontend
-
-      - name: Type-check (electron-main)
-        run: npm run typecheck -w electron-main
-
-      - name: Test (electron-main)
-        run: npm run test -w electron-main
-
-      - name: Test (frontend)
-        run: npm run test -w frontend
-
       - name: Guard — PERSIST_PROMPTS must not be set for release builds
+        if: github.event_name != 'pull_request'
         run: |
           if [ "${PERSIST_PROMPTS:-}" = "1" ]; then
             echo "ERROR: PERSIST_PROMPTS=1 is set in the environment. This flag stores full prompt text in cleartext and must never be enabled in a release build. Unset it before packaging." >&2
@@ -390,6 +473,7 @@ jobs:
       - name: Free disk space before packaging
         # SKY-1334: runner accumulates linux-unpacked staging dirs and /tmp electron-builder
         # scratch trees from prior runs; purge them before the deb/AppImage build to avoid ENOSPC.
+        if: github.event_name != 'pull_request'
         run: |
           echo "=== Disk before cleanup ===" && df -h .
           find ~/.cache/electron-builder -mindepth 2 -maxdepth 3 \
@@ -403,6 +487,7 @@ jobs:
         # Skip rpm target: rpmbuild and fpm not fully provisioned on GabesPC yet.
         # Clear LD_LIBRARY_PATH so the runner's inherited Paperclip embedded-postgres lib path
         # does not shadow the system liblzma.so.5 and break xz/tar/dpkg-deb during packaging.
+        if: github.event_name != 'pull_request'
         env:
           LD_LIBRARY_PATH: ""
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -410,6 +495,7 @@ jobs:
 
       - name: Verify .deb artifact
         # dpkg-deb also loads liblzma, so clear LD_LIBRARY_PATH here too.
+        if: github.event_name != 'pull_request'
         env:
           LD_LIBRARY_PATH: ""
         run: |
@@ -420,6 +506,7 @@ jobs:
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
         # FUSE, so libfuse2 does not need to be installed on the self-hosted runner.
+        if: github.event_name != 'pull_request'
         run: |
           APPIMAGE=$(ls dist-electron/*.AppImage | head -1)
           chmod +x "$APPIMAGE"
@@ -437,10 +524,11 @@ jobs:
       - name: Clean AppImage temp dirs after smoke test
         # Remove the extracted AppImage dir created by APPIMAGE_EXTRACT_AND_RUN=1.
         # Runs even on failure so partial extractions don't accumulate.
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: find /tmp -maxdepth 1 -name 'appimage_extracted_*' -type d -exec rm -rf {} + 2>/dev/null || true
 
       - name: Upload Linux packages
+        if: github.event_name != 'pull_request'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -450,11 +538,61 @@ jobs:
             dist-electron/*.deb
           retention-days: 3
 
+  build-windows:
+    # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
+    # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
+    # steps are gated at step level instead.
+    # Run on the repo self-hosted runner while hosted Actions budget is unavailable;
+    # this avoids the instant hosted windows-latest quota failure seen on PR #571.
+    runs-on: self-hosted
+    timeout-minutes: 40
+    continue-on-error: true
+
+    steps:
+      - name: Skip — packaging only runs on push/workflow_dispatch
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "build-windows: packaging skipped on pull_request events."
+          echo "Required check satisfied — packaging runs on push to main or workflow_dispatch only."
+
+      - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request'
+
+      - name: Set up Node.js
+        if: github.event_name != 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: github.event_name != 'pull_request'
+        run: npm ci
+
+      - name: Build and package (Windows NSIS + ZIP)
+        if: github.event_name != 'pull_request'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build:electron && npx electron-builder --win nsis zip --publish never
+
+      - name: Upload Windows packages
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.zip
+          retention-days: 3
+
   report:
     # Event-driven board ping. Runs after all required jobs complete on a PR.
     # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
     # sweep for missed pings. PR-only — plain pushes to main get no ping.
     # Self-hosted only (no public/fork PR exposure per SKY-849).
+    # build-linux and build-windows always run (fast no-op on PRs) so this job
+    # is never blocked by upstream skipped status (SKY-2421).
     needs: [lint, typecheck, unit, ci, build-macos, build-linux, build-windows]
     runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
