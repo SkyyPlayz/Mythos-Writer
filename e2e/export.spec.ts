@@ -287,14 +287,16 @@ test('AC-EXQ-1: ExportDialog opens and renders Markdown, Plaintext, DOCX radio o
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   // Select the seeded story so selectedStoryId is set in AppMenuBar.
+  // Must click .nav-story-title (not .nav-story-row) — the title button calls
+  // onSelectStory with stopPropagation; the row div has no click handler.
   const storyPanel = page.locator('[data-panel-id="stories"]');
   if (await storyPanel.isVisible().catch(() => false)) {
     const collapsed = await storyPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed')).catch(() => false);
     if (collapsed) await storyPanel.locator('.lr-panel-collapse-btn').click();
   }
-  const storyRow = page.locator('.nav-story-row').first();
-  await expect(storyRow).toBeVisible({ timeout: 10_000 });
-  await storyRow.click();
+  const storyTitle = page.locator('.nav-story-title').first();
+  await expect(storyTitle).toBeVisible({ timeout: 10_000 });
+  await storyTitle.click();
 
   await openExportDialog(page);
 
