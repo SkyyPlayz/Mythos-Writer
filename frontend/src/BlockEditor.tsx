@@ -22,6 +22,8 @@ import './EntityMention.css';
 export interface BlockEditorApi {
   jumpToText: (text: string) => void;
   insertWikiLink: (link: string, anchorText: string) => void;
+  /** Return the editor's current Markdown without waiting for the debounced scene state sync. */
+  getMarkdown: () => string;
   /** Apply all current auto-linker suggestions as a single undoable transaction. */
   applyAutoLinks: () => void;
   /** Insert plain text at the current cursor position (used by voice transcript). */
@@ -271,6 +273,13 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       return result;
     };
 
+    const getMarkdown = (): string => {
+      // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = (editor.storage as any).markdown.getMarkdown() as string;
+      return raw.endsWith('\n') ? raw : `${raw}\n`;
+    };
+
     cb({
       jumpToText: (text: string) => {
         const range = findTextRange(text);
@@ -287,6 +296,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           editor.chain().focus().insertContent(link).run();
         }
       },
+      getMarkdown,
       applyAutoLinks: () => {
         const linkerState = getAutoLinkerState(editor.state);
         if (!linkerState || linkerState.mode === 'off') return;

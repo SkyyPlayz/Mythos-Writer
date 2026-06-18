@@ -731,7 +731,7 @@ export default function DesktopShell() {
 
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
-    const content = selectedScene.blocks.map(b => b.content).join('\n\n');
+    const content = editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n');
     try {
       await window.api.snapshotSave?.(selectedScene.id, content);
       setSnapshotSavedAt(new Date().toLocaleTimeString());
@@ -3287,7 +3287,7 @@ export default function DesktopShell() {
                   <SceneHistory
                     sceneId={selectedScene.id}
                     scenePath={selectedScene.path}
-                    currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                    currentContent={editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n')}
                     onRestore={handleSceneRestore}
                     onClose={() => setShowSceneHistory(false)}
                   />
