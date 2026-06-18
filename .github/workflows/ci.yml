@@ -542,9 +542,9 @@ jobs:
     # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
     # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
     # steps are gated at step level instead.
-    # SKY-2236: quota exhaustion causes instant 0-step failure; continue-on-error prevents
-    # cascade-cancel of the three required checks (ci, build-linux, build-macos).
-    runs-on: windows-latest
+    # Run on the repo self-hosted runner while hosted Actions budget is unavailable;
+    # this avoids the instant hosted windows-latest quota failure seen on PR #571.
+    runs-on: self-hosted
     timeout-minutes: 40
     continue-on-error: true
 
