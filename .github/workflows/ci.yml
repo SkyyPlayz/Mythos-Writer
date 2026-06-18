@@ -179,6 +179,9 @@ jobs:
       - name: E2E — vault CRUD (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:crud
 
+      - name: E2E — draft version history snapshot and rollback (headless)
+        run: xvfb-run --auto-servernum npm run test:e2e:draft-history
+
       - name: E2E — Brainstorm Agent streaming and vault note creation (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:brainstorm
 
