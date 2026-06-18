@@ -2,8 +2,8 @@
  * Liquid Neon Companion — Dataview Plugin CSS Overrides  (LN-51)
  *
  * Surfaces covered:
- *   1. Query result tables     (.dataview table / thead / tbody tr:nth-child(even))
- *   2. Inline field renders    (.dataview.inline-field, .dataview-result-list-ul)
+ *   1. Query result tables     (.dataview table, table.dataview.table-view-table)
+ *   2. Inline field renders    (.dataview.inline-field, .dataview-result-list-ul, ul.dataview.list-view-ul)
  *   3. Query error pill        (.dataview-error-box, .block-language-dataview .dataview-error)
  *   4. Dataview settings panels (.dataview-settings, .plugin-settings .dataview)
  *
@@ -14,6 +14,7 @@
 
 /* ── 1. Query result tables ─────────────────────────────────────────────── */
 
+.theme-dark table.dataview.table-view-table,
 .theme-dark .dataview table {
   border-collapse: collapse;
   width: 100%;
@@ -40,8 +41,10 @@
 }
 
 /* Alternate-row subtle glass tint — opacity 0.5 via color-mix */
+.theme-dark table.dataview.table-view-table > tbody > tr:nth-child(even),
 .theme-dark .dataview tbody tr:nth-child(even) {
   background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 50%, transparent);
+  background: rgba(14, 14, 18, 0.36) !important;
 }
 
 .theme-dark .dataview tbody tr:hover {
@@ -68,12 +71,14 @@
 }
 
 /* Result list items: glass chip row */
+.theme-dark ul.dataview.list-view-ul,
 .theme-dark .dataview-result-list-ul {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+.theme-dark ul.dataview.list-view-ul > li,
 .theme-dark .dataview-result-list-ul > li {
   padding: 4px 10px;
   border-radius: 8px;
@@ -103,7 +108,8 @@
 
 /* Glass fill + neon rim — matches the plugin-settings panel template */
 .theme-dark .dataview-settings,
-.theme-dark .plugin-settings .dataview {
+.theme-dark .plugin-settings .dataview,
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .vertical-tab-content {
   background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
   border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
   border-radius: 16px;
@@ -113,7 +119,8 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .theme-dark .dataview-settings,
-  .theme-dark .plugin-settings .dataview {
+  .theme-dark .plugin-settings .dataview,
+  .theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .vertical-tab-content {
     background: var(--glass-fill, rgba(14, 14, 18, 0.72));
     backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
     -webkit-backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
@@ -124,10 +131,16 @@
 .theme-dark .dataview-settings h3,
 .theme-dark .dataview-settings h4,
 .theme-dark .plugin-settings .dataview h3,
-.theme-dark .plugin-settings .dataview h4 {
+.theme-dark .plugin-settings .dataview h4,
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading {
   color: var(--neon-cyan, #00f0ff);
   border-bottom: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
   padding-bottom: 8px;
   margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading .setting-item-name {
+  color: var(--neon-cyan, #00f0ff);
   font-weight: 600;
 }
