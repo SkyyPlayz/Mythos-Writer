@@ -12,6 +12,8 @@
  *                               error pill, settings panels  (LN-51)
  *   kanban-liquid-neon.css           — Kanban board/lane/card/drag/add controls
  *                                     glass + neon overrides             (LN-52)
+ *   excalidraw-liquid-neon.css       — Excalidraw toolbar, color picker, Island
+ *                                     panels, dialogs, context menu      (LN-53)
  *   calendar-liquid-neon.css         — Calendar grid, nav, today indicator,
  *                                     week numbers, event dots, modal    (LN-54)
  *   advanced-tables-liquid-neon.css  — Toolbar, alignment controls, formula bar,
@@ -20,6 +22,7 @@
 
 @import url('./dataview-liquid-neon.css');
 @import url('./kanban-liquid-neon.css');
+@import url('./excalidraw-liquid-neon.css');
 @import url('./calendar-liquid-neon.css');
 @import url('./advanced-tables-liquid-neon.css');
 
