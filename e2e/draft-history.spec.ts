@@ -100,6 +100,21 @@ async function fillPrompt(pg: Page, response: string): Promise<void> {
   await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
+async function selectAllEditorContent(pg: Page): Promise<void> {
+  await pg.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+}
+
+async function replaceEditorContent(pg: Page, text: string): Promise<void> {
+  const editor = pg.locator('.ProseMirror');
+  await editor.click();
+  await selectAllEditorContent(pg);
+  await pg.keyboard.type(text);
+  await expect(editor).toContainText(text);
+  // BlockEditor debounces onBlocksChange by 800ms; wait for parent scene state
+  // to catch up before snapshot/restore controls read selectedScene.blocks.
+  await pg.waitForTimeout(900);
+}
+
 // ─── Suite state ──────────────────────────────────────────────────────────────
 
 let userData: string;
@@ -163,9 +178,7 @@ test('AC-DH-1: saving creates a snapshot — history panel shows at least one en
   await sceneRow.click();
   const editor = page.locator('.ProseMirror');
   await expect(editor).toBeVisible({ timeout: 8_000 });
-  await editor.click();
-  await page.keyboard.type(PROSE_V1);
-  await expect(editor).toContainText(PROSE_V1);
+  await replaceEditorContent(page, PROSE_V1);
 
   // Trigger a manual snapshot (populated into the SQLite drafts store by handleManualSnapshot)
   await page.locator('.scene-snapshot-save').click();
@@ -204,11 +217,7 @@ test('AC-DH-2: clicking history button reveals the Draft History panel', async (
 
 test('AC-DH-3: selecting a snapshot entry shows a content preview', async () => {
   // Add a second snapshot with different content
-  const editor = page.locator('.ProseMirror');
-  await editor.click();
-  await page.keyboard.selectAll();
-  await page.keyboard.type(PROSE_V2);
-  await expect(editor).toContainText(PROSE_V2);
+  await replaceEditorContent(page, PROSE_V2);
 
   await page.locator('.scene-snapshot-save').click();
   await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
@@ -238,17 +247,12 @@ test('AC-DH-3: selecting a snapshot entry shows a content preview', async () => 
 test('AC-DH-4: clicking Restore (with confirm) replaces editor content with snapshot', async () => {
   // Ensure V1 prose is saved as a distinct snapshot
   const editor = page.locator('.ProseMirror');
-  await editor.click();
-  await page.keyboard.selectAll();
-  await page.keyboard.type(PROSE_V1);
+  await replaceEditorContent(page, PROSE_V1);
   await page.locator('.scene-snapshot-save').click();
   await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
 
   // Now change editor to V2
-  await editor.click();
-  await page.keyboard.selectAll();
-  await page.keyboard.type(PROSE_V2);
-  await expect(editor).toContainText(PROSE_V2);
+  await replaceEditorContent(page, PROSE_V2);
   // Do NOT save V2 — we want current content to differ from the saved snapshot
 
   // Open history
@@ -320,18 +324,13 @@ test('AC-DH-6: history entries are listed newest-first', async () => {
   const NEWER_TEXT = 'Newer snapshot content for ordering test.';
 
   // Save older snapshot
-  const editor = page.locator('.ProseMirror');
-  await editor.click();
-  await page.keyboard.selectAll();
-  await page.keyboard.type(OLDER_TEXT);
+  await replaceEditorContent(page, OLDER_TEXT);
   await page.locator('.scene-snapshot-save').click();
   await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
 
   // Wait to guarantee distinct timestamps, then save newer snapshot
   await page.waitForTimeout(1_200);
-  await editor.click();
-  await page.keyboard.selectAll();
-  await page.keyboard.type(NEWER_TEXT);
+  await replaceEditorContent(page, NEWER_TEXT);
   await page.locator('.scene-snapshot-save').click();
   await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
 
@@ -364,6 +363,15 @@ test('AC-DH-6: history entries are listed newest-first', async () => {
 // ─── AC-DH-7: Restore button has a descriptive aria-label ─────────────────────
 
 test('AC-DH-7: the restore button has a descriptive aria-label', async () => {
+  // Ensure this test has a snapshot even if Playwright restarted the worker after
+  // an earlier failure.
+  const editor = page.locator('.ProseMirror');
+  await editor.click();
+  await selectAllEditorContent(page);
+  await page.keyboard.type('Snapshot content for restore aria-label coverage.');
+  await page.locator('.scene-snapshot-save').click();
+  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+
   await page.locator('.btn-history').click();
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel).toBeVisible({ timeout: 4_000 });
