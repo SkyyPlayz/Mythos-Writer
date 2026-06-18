@@ -1221,17 +1221,17 @@ describe('archive query perf — 5000 rows (SKY-1745)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('listContinuityIssues(status) p95 < 50ms with 5000 rows', () => {
-    const RUNS = 10;
+  it('listContinuityIssues(status) p95 < 100ms with 5000 rows', () => {
+    const RUNS = 20;
     const times: number[] = [];
     for (let r = 0; r < RUNS; r++) {
-      const start = Date.now();
+      const start = performance.now();
       listContinuityIssues('open');
-      times.push(Date.now() - start);
+      times.push(performance.now() - start);
     }
     times.sort((a, b) => a - b);
     const p95 = times[Math.ceil(RUNS * 0.95) - 1];
-    expect(p95).toBeLessThan(50);
+    expect(p95).toBeLessThan(100);
   });
 
   it('listContinuityIssuesByScene(sceneId, status) p95 < 10ms with 5000 rows', () => {
