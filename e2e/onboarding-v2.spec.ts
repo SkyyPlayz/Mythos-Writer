@@ -41,6 +41,8 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
+type ValidatePathPayload = string | { path?: string };
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 async function launchFreshApp(
@@ -268,6 +270,7 @@ test.describe('AC-OB-02/03/13/15: Genre picker UI', () => {
 
   test('AC-OB-15: Escape on step1c → cancel-confirm dialog appears', async () => {
     await navigateToStep1c(page);
+    await page.locator('[data-testid="genre-card-cozy-fantasy"]').focus();
     await page.keyboard.press('Escape');
     // Escape triggers the cancel-confirm overlay (not a direct step1 return)
     await expect(page.locator('[data-testid="gs-cancel-confirm"]')).toBeVisible({ timeout: 4_000 });
@@ -353,8 +356,10 @@ test.describe('AC-OB-05: Recents populate step2', () => {
     const toggle = page.locator('[data-testid="gs-recents-toggle"]');
     await expect(toggle).toBeVisible({ timeout: 4_000 });
 
-    // Expanding the list shows the seeded paths
-    await toggle.click();
+    // Expanding the list shows the seeded paths. Focus+Enter avoids Electron
+    // coordinate drift on this small disclosure button under xvfb.
+    await toggle.focus();
+    await page.keyboard.press('Enter');
     const recentsList = page.locator('[data-testid="gs-recents-list"]');
     await expect(recentsList).toBeVisible();
     const items = recentsList.locator('li');
@@ -439,7 +444,8 @@ test.describe('AC-OB-07: Valid empty-dir path styling', () => {
     // Mock validatePath: base → exists+empty+writable; mythos/obsidian checks → not found
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
-      ipcMain.handle('vault:validate-path', (_evt: unknown, targetPath: string) => {
+      ipcMain.handle('vault:validate-path', (_evt: unknown, payload: ValidatePathPayload) => {
+        const targetPath = typeof payload === 'string' ? payload : payload.path ?? '';
         // The wizard calls validatePath 3x: base, .../Story Vault/manifest.json, .../.obsidian
         if (targetPath.includes('manifest.json') || targetPath.includes('.obsidian')) {
           return { exists: false, isEmpty: true, writable: true };
@@ -528,9 +534,13 @@ test.describe('AC-OB-09–12: Path validation states', () => {
     // Re-mock to simulate a path that has Story Vault/manifest.json
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
-      ipcMain.handle('vault:validate-path', (_evt: unknown, targetPath: string) => {
+      ipcMain.handle('vault:validate-path', (_evt: unknown, payload: ValidatePathPayload) => {
+        const targetPath = typeof payload === 'string' ? payload : payload.path ?? '';
         if (targetPath.includes('manifest.json')) {
           return { exists: true, isEmpty: false, writable: true };
+        }
+        if (targetPath.includes('.obsidian')) {
+          return { exists: false, isEmpty: true, writable: true };
         }
         return { exists: true, isEmpty: false, writable: true };
       });
@@ -585,7 +595,11 @@ test.describe('AC-OB-11: Obsidian path shows import link', () => {
   test('AC-OB-11: path with .obsidian dir → "Switch to Import ›" link visible', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
-      ipcMain.handle('vault:validate-path', (_evt: unknown, targetPath: string) => {
+      ipcMain.handle('vault:validate-path', (_evt: unknown, payload: ValidatePathPayload) => {
+        const targetPath = typeof payload === 'string' ? payload : payload.path ?? '';
+        if (targetPath.includes('manifest.json')) {
+          return { exists: false, isEmpty: true, writable: true };
+        }
         if (targetPath.includes('.obsidian')) {
           return { exists: true, isEmpty: false, writable: true };
         }
@@ -685,7 +699,9 @@ test.describe('AC-OB-14: Recents list bounded', () => {
 
     const toggle = page.locator('[data-testid="gs-recents-toggle"]');
     await expect(toggle).toBeVisible({ timeout: 4_000 });
-    await toggle.click();
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
     const list = page.locator('[data-testid="gs-recents-list"]');
     await expect(list).toBeVisible();
@@ -708,7 +724,16 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob-v2-16-'));
     app = await launchFreshApp(userData);
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('vault:getPaths');
+      ipcMain.handle('vault:getPaths', () => ({
+        homeDir: 'C:\\Users\\TestUser',
+        pathSeparator: '\\',
+      }));
+    });
     page = await firstWindow(app);
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test.afterAll(async () => {
@@ -717,13 +742,7 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
   });
 
   test('AC-OB-16: Windows path separator + path > 200 chars → path-too-long + Create Story disabled', async () => {
-    // Mock vault:getPaths to return Windows-style separator
     await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('vault:getPaths');
-      ipcMain.handle('vault:getPaths', () => ({
-        homeDir: 'C:\\Users\\TestUser',
-        pathSeparator: '\\',
-      }));
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
     });
@@ -735,7 +754,7 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
     await page.waitForTimeout(300);
 
     // Type a 201-character Windows-style path
-    const longPath = 'C:\\Users\\TestUser\\' + 'A'.repeat(182); // total 201 chars
+    const longPath = 'C:\\Users\\TestUser\\' + 'A'.repeat(183); // total 201 chars
     const pathInput = page.locator('[data-testid="gs-save-path"]');
     await pathInput.clear();
     await pathInput.fill(longPath);
