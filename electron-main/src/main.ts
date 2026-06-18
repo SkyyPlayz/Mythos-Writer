@@ -69,6 +69,10 @@ import {
   type SuggestionsApplyPayload,
   type SuggestionsRejectPayload,
   type SuggestionsRollbackPayload,
+  type SuggestionsSearchPayload,
+  type SuggestionsIgnorePayload,
+  type SuggestionsBatchActionPayload,
+  type SuggestionsUnifiedListPayload,
   type AuditListPayload,
   type TimelineListPayload,
   type TimelineUpsertPayload,
@@ -208,6 +212,9 @@ import {
   updateSuggestionBudgetExceeded,
   getSuggestion,
   listSuggestions,
+  listSuggestionsFiltered,
+  searchSuggestionsFts,
+  listUnifiedSuggestions,
   insertAuditLog,
   listAuditLog,
   insertGenerationLog,
@@ -253,6 +260,8 @@ import {
   getContinuityIssue,
   updateContinuityIssueStatus,
   insertArchiveAuditLog,
+  insertSuggestionSnapshot,
+  getSuggestionSnapshot,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -1064,6 +1073,23 @@ const handlers: IpcHandlers = {
   // ─── Suggestions ───
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
     ensureVaultDir();
+    const hasExtendedFilters =
+      payload.confidenceMin !== undefined ||
+      payload.confidenceMax !== undefined ||
+      payload.limit !== undefined ||
+      payload.offset !== undefined;
+    if (hasExtendedFilters) {
+      return {
+        suggestions: listSuggestionsFiltered({
+          status: payload.status,
+          sourceAgent: payload.sourceAgent,
+          confidenceMin: payload.confidenceMin,
+          confidenceMax: payload.confidenceMax,
+          limit: payload.limit,
+          offset: payload.offset,
+        }),
+      };
+    }
     return { suggestions: listSuggestions(payload.status, payload.sourceAgent) };
   },
   [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => {
@@ -1171,12 +1197,21 @@ const handlers: IpcHandlers = {
     let restoredPath: string | null = null;
 
     if (applyEntry?.snapshot_path && suggestion.target_path) {
+      // File-based snapshot: restore original vault file content.
       safePath(getVaultRoot(), applyEntry.snapshot_path); // throws on path traversal
       const fullSnapshotPath = path.join(getVaultRoot(), applyEntry.snapshot_path);
       if (fs.existsSync(fullSnapshotPath)) {
         const snapshot = JSON.parse(fs.readFileSync(fullSnapshotPath, 'utf-8')) as { originalContent: string; path: string };
         writeVaultFileAtomic(getVaultRoot(), snapshot.path, snapshot.originalContent);
         restoredPath = snapshot.path;
+      }
+    } else {
+      // SQLite-based manifest snapshot: restore manifest for typed-relation rollback.
+      const manifestSnap = getSuggestionSnapshot(payload.id, 'manifest');
+      if (manifestSnap) {
+        const savedManifest = JSON.parse(manifestSnap.payload_json) as import('./ipc.js').Manifest;
+        writeManifest(getManifestPath(), savedManifest);
+        restoredPath = getManifestPath();
       }
     }
 
@@ -1190,6 +1225,103 @@ const handlers: IpcHandlers = {
       created_at: now,
     });
     return { id: payload.id, auditId, restoredPath };
+  },
+
+  [IPC_CHANNELS.SUGGESTIONS_SEARCH]: (payload: SuggestionsSearchPayload) => {
+    ensureVaultDir();
+    return searchSuggestionsFts(payload.query, {
+      sourceAgent: payload.sourceAgent,
+      status: payload.status,
+      confidenceMin: payload.confidenceMin,
+      confidenceMax: payload.confidenceMax,
+      limit: payload.limit,
+    });
+  },
+  [IPC_CHANNELS.SUGGESTIONS_IGNORE]: (payload: SuggestionsIgnorePayload) => {
+    ensureVaultDir();
+    const suggestion = getSuggestion(payload.id);
+    if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
+    const now = new Date().toISOString();
+    const auditId = crypto.randomUUID();
+    updateSuggestionStatus(payload.id, 'ignored');
+    insertAuditLog({
+      id: auditId,
+      suggestion_id: payload.id,
+      action: 'ignore',
+      snapshot_path: null,
+      actor: payload.actor ?? 'user',
+      created_at: now,
+    });
+    return { id: payload.id, status: 'ignored' as const };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: (payload: SuggestionsBatchActionPayload) => {
+    ensureVaultDir();
+    const ids = payload.ids.slice(0, 200);
+    const actor = payload.actor ?? 'user';
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of ids) {
+      try {
+        const suggestion = getSuggestion(id);
+        if (!suggestion) {
+          failed.push({ id, reason: 'not found' });
+          continue;
+        }
+        const now = new Date().toISOString();
+        const auditId = crypto.randomUUID();
+
+        if (payload.action === 'accept') {
+          const { finalStatus, snapshotPath } = autoApplyVaultWrite(suggestion, now);
+          updateSuggestionStatus(id, finalStatus, now);
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: id,
+            action: finalStatus === 'applied' ? 'apply' : 'accept',
+            snapshot_path: snapshotPath,
+            actor,
+            created_at: now,
+          });
+        } else if (payload.action === 'reject') {
+          updateSuggestionStatus(id, 'rejected');
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: id,
+            action: 'reject',
+            snapshot_path: null,
+            actor,
+            created_at: now,
+          });
+        } else {
+          updateSuggestionStatus(id, 'ignored');
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: id,
+            action: 'ignore',
+            snapshot_path: null,
+            actor,
+            created_at: now,
+          });
+        }
+        succeeded.push(id);
+      } catch (err) {
+        failed.push({ id, reason: (err as Error).message ?? 'unknown error' });
+      }
+    }
+
+    return { succeeded, failed };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_UNIFIED_LIST]: (payload: SuggestionsUnifiedListPayload) => {
+    ensureVaultDir();
+    return listUnifiedSuggestions({
+      status: payload.status,
+      sourceAgent: payload.sourceAgent,
+      kind: payload.kind,
+      confidenceMin: payload.confidenceMin,
+      confidenceMax: payload.confidenceMax,
+      limit: payload.limit,
+      offset: payload.offset,
+    });
   },
 
   // ─── Audit log ───
@@ -5628,6 +5760,8 @@ function autoApplyVaultWrite(
       // independent of IPC/Electron, and returns 'accepted' (not 'applied') when
       // neither side wrote, so a stale suggestion referencing a deleted/unknown
       // entity does not silently report success.
+      // SKY-2475: saves a manifest snapshot to suggestion_snapshots before apply
+      // so the typed-relation change can be rolled back.
       if (payloadData.kind === 'typed-relation') {
         const {
           relationType,
@@ -5638,6 +5772,14 @@ function autoApplyVaultWrite(
           return { finalStatus: 'accepted', snapshotPath: null };
         }
         const manifest = readManifest(getManifestPath());
+        // Save manifest snapshot before mutation so rollback can restore it.
+        insertSuggestionSnapshot({
+          id: crypto.randomUUID(),
+          suggestion_id: suggestion.id,
+          snapshot_kind: 'manifest',
+          payload_json: JSON.stringify(manifest),
+          created_at: now,
+        });
         const { sourceWritten, targetWritten } = applyTypedRelation(
           getVaultRoot(),
           manifest,

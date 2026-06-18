@@ -11,9 +11,44 @@ import type { SuggestionCategory } from './suggestionCategory.js';
 
 // ─── Domain types ───
 
-export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back';
+export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back' | 'ignored';
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
-export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
+export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore';
+export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link';
+export type UnifiedSuggestionStatus = 'proposed' | 'accepted' | 'applied' | 'rejected' | 'ignored' | 'rolled_back';
+
+export interface UnifiedSuggestion {
+  id: string;
+  kind: UnifiedSuggestionKind;
+  sourceAgent: string;
+  confidence: number;
+  rationale: string;
+  targetPath: string | null;
+  targetAnchor: string | null;
+  status: UnifiedSuggestionStatus;
+  createdAt: string;
+  appliedAt: string | null;
+  budgetExceeded: boolean;
+  category: string | null;
+  payloadJson: string | null;
+}
+
+export interface UnifiedSuggestionFilters {
+  status?: UnifiedSuggestionStatus;
+  sourceAgent?: string;
+  kind?: UnifiedSuggestionKind;
+  confidenceMin?: number;
+  confidenceMax?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface UnifiedSuggestionResult {
+  items: UnifiedSuggestion[];
+  totalCount: number;
+  countByAgent: Record<string, number>;
+  countByKind: Record<string, number>;
+}
 export type TimelineSource = 'explicit_marker' | 'prose';
 export type { SuggestionCategory } from './suggestionCategory.js';
 
@@ -640,6 +675,68 @@ function runMigrations(db: DatabaseSync): void {
     }
     db.exec('PRAGMA user_version = 24');
   }
+
+  if (currentVersion < 25) {
+    // SKY-2455: FTS5 virtual table for keyword search across suggestions.
+    // suggestions_fts_sync tracks which suggestions are in the FTS index so
+    // upsertSuggestion can delete+reinsert atomically on every write.
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS suggestions_fts USING fts5(
+        suggestion_id UNINDEXED,
+        rationale,
+        target_path,
+        tokenize = 'porter ascii'
+      );
+      CREATE TABLE IF NOT EXISTS suggestions_fts_sync (
+        suggestion_id TEXT PRIMARY KEY,
+        synced_at     TEXT NOT NULL
+      );
+    `);
+    // Back-fill existing suggestions into the FTS index.
+    const hasSuggestions25 = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions'"
+    ).get();
+    if (hasSuggestions25) {
+      const rows = db.prepare('SELECT id, rationale, target_path FROM suggestions').all() as Array<{
+        id: string;
+        rationale: string;
+        target_path: string | null;
+      }>;
+      const insertFts = db.prepare(
+        'INSERT INTO suggestions_fts(suggestion_id, rationale, target_path) VALUES (?, ?, ?)'
+      );
+      const insertSync = db.prepare(
+        'INSERT OR REPLACE INTO suggestions_fts_sync(suggestion_id, synced_at) VALUES (?, ?)'
+      );
+      const now = new Date().toISOString();
+      for (const row of rows) {
+        insertFts.run(row.id, row.rationale, row.target_path ?? '');
+        insertSync.run(row.id, now);
+      }
+    }
+    db.exec('PRAGMA user_version = 25');
+  }
+
+  if (currentVersion < 26) {
+    // SKY-2475/SKY-2472: Suggestion snapshots table — stores pre-apply state so
+    // suggestions can be rolled back. Two kinds:
+    //   'file'     — vault file content captured before a vault-write apply
+    //   'manifest' — full manifest JSON captured before a structural (typed-relation) apply
+    // The snapshot is referenced by suggestion_id and looked up during rollback when
+    // the file-based snapshot path is absent (typed-relation path).
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS suggestion_snapshots (
+        id             TEXT PRIMARY KEY,
+        suggestion_id  TEXT NOT NULL,
+        snapshot_kind  TEXT NOT NULL DEFAULT 'file',
+        payload_json   TEXT NOT NULL,
+        created_at     TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_suggestion_snapshots_sug
+        ON suggestion_snapshots (suggestion_id);
+    `);
+    db.exec('PRAGMA user_version = 26');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -660,7 +757,8 @@ export function setProjectSetting(key: string, value: string): void {
 // ─── Suggestions ───
 
 export function upsertSuggestion(s: DbSuggestion): void {
-  getDb()
+  const db = getDb();
+  db
     .prepare(
       `INSERT OR REPLACE INTO suggestions
          (id, source_agent, confidence, rationale, target_kind, target_path, target_anchor,
@@ -679,6 +777,20 @@ export function upsertSuggestion(s: DbSuggestion): void {
       note_kind: null,
       ...s,
     } as unknown as Record<string, SQLInputValue>);
+
+  // Keep FTS index in sync (delete + reinsert atomically).
+  const ftsSyncExists = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions_fts'"
+  ).get();
+  if (ftsSyncExists) {
+    db.prepare('DELETE FROM suggestions_fts WHERE suggestion_id = ?').run(s.id);
+    db.prepare(
+      'INSERT INTO suggestions_fts(suggestion_id, rationale, target_path) VALUES (?, ?, ?)'
+    ).run(s.id, s.rationale, s.target_path ?? '');
+    db.prepare(
+      'INSERT OR REPLACE INTO suggestions_fts_sync(suggestion_id, synced_at) VALUES (?, ?)'
+    ).run(s.id, new Date().toISOString());
+  }
 }
 
 export function updateSuggestionBudgetExceeded(id: string, exceeded: boolean): void {
@@ -728,6 +840,314 @@ export function listSuggestions(status?: SuggestionStatus, sourceAgent?: string)
       .all(sourceAgent) as unknown as DbSuggestion[];
   }
   return db.prepare('SELECT * FROM suggestions ORDER BY created_at DESC').all() as unknown as DbSuggestion[];
+}
+
+/** Extended list with confidence range + pagination. */
+export interface SuggestionsFilterOptions {
+  status?: SuggestionStatus;
+  sourceAgent?: string;
+  confidenceMin?: number;
+  confidenceMax?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export function listSuggestionsFiltered(opts: SuggestionsFilterOptions): DbSuggestion[] {
+  const db = getDb();
+  const clauses: string[] = [];
+  const params: SQLInputValue[] = [];
+
+  if (opts.status !== undefined) {
+    clauses.push('status = ?');
+    params.push(opts.status);
+  }
+  if (opts.sourceAgent !== undefined) {
+    clauses.push('source_agent = ?');
+    params.push(opts.sourceAgent);
+  }
+  if (opts.confidenceMin !== undefined) {
+    clauses.push('confidence >= ?');
+    params.push(opts.confidenceMin);
+  }
+  if (opts.confidenceMax !== undefined) {
+    clauses.push('confidence <= ?');
+    params.push(opts.confidenceMax);
+  }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const limit = Math.min(opts.limit ?? 200, 1000);
+  const offset = opts.offset ?? 0;
+
+  return db
+    .prepare(`SELECT * FROM suggestions ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .all(...params, limit, offset) as unknown as DbSuggestion[];
+}
+
+/** FTS5 full-text search across rationale + target_path. */
+export function searchSuggestionsFts(
+  query: string,
+  opts: { sourceAgent?: string; status?: SuggestionStatus; confidenceMin?: number; confidenceMax?: number; limit?: number }
+): { suggestions: DbSuggestion[]; totalCount: number } {
+  const db = getDb();
+  const limit = Math.min(opts.limit ?? 50, 1000);
+
+  // Collect suggestion_ids from FTS, preserving relevance order.
+  const ftsRows = db
+    .prepare(
+      `SELECT suggestion_id FROM suggestions_fts WHERE suggestions_fts MATCH ? ORDER BY rank LIMIT 1000`
+    )
+    .all(query) as Array<{ suggestion_id: string }>;
+
+  if (ftsRows.length === 0) return { suggestions: [], totalCount: 0 };
+
+  // Fetch matching rows from suggestions table with optional extra filters.
+  const placeholders = ftsRows.map(() => '?').join(',');
+  const ids = ftsRows.map((r) => r.suggestion_id);
+
+  const clauses: string[] = [`id IN (${placeholders})`];
+  const params: SQLInputValue[] = [...ids];
+
+  if (opts.sourceAgent !== undefined) {
+    clauses.push('source_agent = ?');
+    params.push(opts.sourceAgent);
+  }
+  if (opts.status !== undefined) {
+    clauses.push('status = ?');
+    params.push(opts.status);
+  }
+  if (opts.confidenceMin !== undefined) {
+    clauses.push('confidence >= ?');
+    params.push(opts.confidenceMin);
+  }
+  if (opts.confidenceMax !== undefined) {
+    clauses.push('confidence <= ?');
+    params.push(opts.confidenceMax);
+  }
+
+  const where = `WHERE ${clauses.join(' AND ')}`;
+  const allMatching = db
+    .prepare(`SELECT * FROM suggestions ${where}`)
+    .all(...params) as unknown as DbSuggestion[];
+
+  // Re-sort by FTS rank (order of ftsRows), then apply limit.
+  const idOrder = new Map(ftsRows.map((r, i) => [r.suggestion_id, i]));
+  allMatching.sort((a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0));
+
+  return { suggestions: allMatching.slice(0, limit), totalCount: allMatching.length };
+}
+
+/** UNION list across suggestions + continuity_issues + wiki_link_suggestions. */
+export function listUnifiedSuggestions(opts: UnifiedSuggestionFilters): UnifiedSuggestionResult {
+  const db = getDb();
+
+  // Build the UNION CTE with status normalization.
+  const unionSql = `
+    WITH unified AS (
+      SELECT
+        id,
+        'suggestion'    AS kind,
+        source_agent,
+        confidence,
+        rationale,
+        target_path,
+        target_anchor,
+        CASE status
+          WHEN 'proposed'    THEN 'proposed'
+          WHEN 'accepted'    THEN 'accepted'
+          WHEN 'applied'     THEN 'applied'
+          WHEN 'rejected'    THEN 'rejected'
+          WHEN 'ignored'     THEN 'ignored'
+          WHEN 'rolled_back' THEN 'rolled_back'
+          ELSE status
+        END AS unified_status,
+        created_at,
+        applied_at,
+        budget_exceeded,
+        category,
+        payload_json
+      FROM suggestions
+
+      UNION ALL
+
+      SELECT
+        id,
+        'continuity-issue' AS kind,
+        'archive'          AS source_agent,
+        CASE severity
+          WHEN 'critical' THEN 1.0
+          WHEN 'high'     THEN 0.75
+          WHEN 'medium'   THEN 0.5
+          WHEN 'low'      THEN 0.25
+          ELSE 0.5
+        END AS confidence,
+        rationale,
+        vault_note_path    AS target_path,
+        manuscript_excerpt AS target_anchor,
+        CASE status
+          WHEN 'open'     THEN 'proposed'
+          WHEN 'resolved' THEN 'accepted'
+          WHEN 'ignored'  THEN 'ignored'
+          ELSE 'proposed'
+        END AS unified_status,
+        created_at,
+        resolved_at AS applied_at,
+        0           AS budget_exceeded,
+        severity    AS category,
+        NULL        AS payload_json
+      FROM continuity_issues
+
+      UNION ALL
+
+      SELECT
+        id,
+        'wiki-link' AS kind,
+        'archive'   AS source_agent,
+        confidence,
+        (entity_name || ' → ' || proposed_link) AS rationale,
+        scene_id    AS target_path,
+        anchor_text AS target_anchor,
+        CASE status
+          WHEN 'proposed'  THEN 'proposed'
+          WHEN 'accepted'  THEN 'accepted'
+          WHEN 'rejected'  THEN 'rejected'
+          ELSE 'proposed'
+        END AS unified_status,
+        created_at,
+        NULL AS applied_at,
+        0    AS budget_exceeded,
+        NULL AS category,
+        NULL AS payload_json
+      FROM wiki_link_suggestions
+    )
+  `;
+
+  const filterClauses: string[] = [];
+  const filterParams: SQLInputValue[] = [];
+
+  if (opts.status !== undefined) {
+    filterClauses.push('unified_status = ?');
+    filterParams.push(opts.status);
+  }
+  if (opts.sourceAgent !== undefined) {
+    filterClauses.push('source_agent = ?');
+    filterParams.push(opts.sourceAgent);
+  }
+  if (opts.kind !== undefined) {
+    filterClauses.push('kind = ?');
+    filterParams.push(opts.kind);
+  }
+  if (opts.confidenceMin !== undefined) {
+    filterClauses.push('confidence >= ?');
+    filterParams.push(opts.confidenceMin);
+  }
+  if (opts.confidenceMax !== undefined) {
+    filterClauses.push('confidence <= ?');
+    filterParams.push(opts.confidenceMax);
+  }
+
+  const filterWhere = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';
+  const limit = Math.min(opts.limit ?? 200, 1000);
+  const offset = opts.offset ?? 0;
+
+  // Count query — totals + breakdowns (no limit/offset).
+  const countRows = db
+    .prepare(`${unionSql} SELECT kind, source_agent FROM unified ${filterWhere}`)
+    .all(...filterParams) as Array<{ kind: string; source_agent: string }>;
+
+  const totalCount = countRows.length;
+  const countByAgent: Record<string, number> = {};
+  const countByKind: Record<string, number> = {};
+  for (const row of countRows) {
+    countByAgent[row.source_agent] = (countByAgent[row.source_agent] ?? 0) + 1;
+    countByKind[row.kind] = (countByKind[row.kind] ?? 0) + 1;
+  }
+
+  // Data query — paginated.
+  const rawRows = db
+    .prepare(
+      `${unionSql} SELECT * FROM unified ${filterWhere} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    )
+    .all(...filterParams, limit, offset) as Array<{
+      id: string;
+      kind: string;
+      source_agent: string;
+      confidence: number;
+      rationale: string;
+      target_path: string | null;
+      target_anchor: string | null;
+      unified_status: string;
+      created_at: string;
+      applied_at: string | null;
+      budget_exceeded: number;
+      category: string | null;
+      payload_json: string | null;
+    }>;
+
+  const items: UnifiedSuggestion[] = rawRows.map((r) => ({
+    id: r.id,
+    kind: r.kind as UnifiedSuggestionKind,
+    sourceAgent: r.source_agent,
+    confidence: r.confidence,
+    rationale: r.rationale,
+    targetPath: r.target_path,
+    targetAnchor: r.target_anchor,
+    status: r.unified_status as UnifiedSuggestionStatus,
+    createdAt: r.created_at,
+    appliedAt: r.applied_at,
+    budgetExceeded: r.budget_exceeded === 1,
+    category: r.category,
+    payloadJson: r.payload_json,
+  }));
+
+  return { items, totalCount, countByAgent, countByKind };
+}
+
+// ─── Suggestion snapshots (SKY-2475/SKY-2472) ───
+
+export type SuggestionSnapshotKind = 'file' | 'manifest';
+
+export interface DbSuggestionSnapshot {
+  id: string;
+  suggestion_id: string;
+  snapshot_kind: SuggestionSnapshotKind;
+  /** JSON-serialized snapshot payload.
+   *  kind='file': { path: string, originalContent: string }
+   *  kind='manifest': serialized vault Manifest object */
+  payload_json: string;
+  created_at: string;
+}
+
+export function insertSuggestionSnapshot(snap: DbSuggestionSnapshot): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO suggestion_snapshots
+         (id, suggestion_id, snapshot_kind, payload_json, created_at)
+       VALUES (@id, @suggestion_id, @snapshot_kind, @payload_json, @created_at)`
+    )
+    .run(snap as unknown as Record<string, import('node:sqlite').SQLInputValue>);
+}
+
+export function getSuggestionSnapshot(
+  suggestionId: string,
+  kind?: SuggestionSnapshotKind,
+): DbSuggestionSnapshot | null {
+  const db = getDb();
+  if (kind !== undefined) {
+    return (
+      (db
+        .prepare(
+          'SELECT * FROM suggestion_snapshots WHERE suggestion_id = ? AND snapshot_kind = ? ORDER BY created_at DESC LIMIT 1',
+        )
+        .get(suggestionId, kind) as DbSuggestionSnapshot | undefined) ?? null
+    );
+  }
+  return (
+    (db
+      .prepare(
+        'SELECT * FROM suggestion_snapshots WHERE suggestion_id = ? ORDER BY created_at DESC LIMIT 1',
+      )
+      .get(suggestionId) as DbSuggestionSnapshot | undefined) ?? null
+  );
 }
 
 // ─── Audit log ───
