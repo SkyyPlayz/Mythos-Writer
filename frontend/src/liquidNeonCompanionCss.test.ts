@@ -17,6 +17,7 @@ describe('Liquid Neon Companion Dataview CSS', () => {
     expect(css).toContain('.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .vertical-tab-content');
     expect(css).toContain('.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading');
     expect(css).toContain('.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading .setting-item-name');
+    expect(css).toContain('background: rgba(14, 14, 18, 0.36) !important;');
   });
 
   it('keeps the main companion stylesheet importing all plugin CSS modules and bundles Dataview rules for live Obsidian injection', () => {
@@ -29,5 +30,6 @@ describe('Liquid Neon Companion Dataview CSS', () => {
     expect(css).toContain('Obsidian injects community plugin styles.css as an inline stylesheet');
     expect(css).toContain('.theme-dark table.dataview.table-view-table');
     expect(css).toContain('.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading .setting-item-name');
+    expect(css).toContain('background: rgba(14, 14, 18, 0.36) !important;');
   });
 });

@@ -41,8 +41,10 @@
 }
 
 /* Alternate-row subtle glass tint — opacity 0.5 via color-mix */
+.theme-dark table.dataview.table-view-table > tbody > tr:nth-child(even),
 .theme-dark .dataview tbody tr:nth-child(even) {
   background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 50%, transparent);
+  background: rgba(14, 14, 18, 0.36) !important;
 }
 
 .theme-dark .dataview tbody tr:hover {
