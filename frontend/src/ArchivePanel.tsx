@@ -83,9 +83,34 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [manualScanning, setManualScanning] = useState(false);
+  const [scanStatus, setScanStatus] = useState('');
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const onWLSuggestionsRef = useRef(onWikiLinkSuggestionsChange);
   onWLSuggestionsRef.current = onWikiLinkSuggestionsChange;
+
+  const loadArchiveItems = useCallback(async (isCancelled: () => boolean = () => false) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      if (typeof api?.suggestionsList === 'function') {
+        const result = await api.suggestionsList(undefined, 'archive');
+        if (isCancelled()) return;
+        const rows: Record<string, unknown>[] = result?.suggestions ?? [];
+        const parsed = rows.map(parseItem).filter(Boolean) as ArchiveItem[];
+        setItems(parsed);
+        setIsLive(true);
+      } else if (!isCancelled()) {
+        setItems(MOCK_ITEMS);
+        setIsLive(false);
+      }
+    } catch {
+      if (!isCancelled()) {
+        setItems(MOCK_ITEMS);
+        setIsLive(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -94,28 +119,11 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
     }
     let cancelled = false;
     setLoading(true);
-    (async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const api = (window as any).api;
-        if (typeof api?.suggestionsList === 'function') {
-          const result = await api.suggestionsList(undefined, 'archive');
-          if (cancelled) return;
-          const rows: Record<string, unknown>[] = result?.suggestions ?? [];
-          const parsed = rows.map(parseItem).filter(Boolean) as ArchiveItem[];
-          setItems(parsed);
-          setIsLive(true);
-        } else {
-          if (!cancelled) setItems(MOCK_ITEMS);
-        }
-      } catch {
-        if (!cancelled) setItems(MOCK_ITEMS);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    loadArchiveItems(() => cancelled).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
     return () => { cancelled = true; };
-  }, [scene?.id, enabled]);
+  }, [scene?.id, enabled, loadArchiveItems]);
 
   useEffect(() => {
     const proposed = items.filter((i) => i.status === 'proposed' && i.kind === 'wiki-link' && i.wikiLink);
@@ -166,6 +174,26 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
     onJumpToText(anchorText);
   }, [onJumpToText]);
 
+  const handleScanNow = useCallback(async () => {
+    if (!scene || manualScanning) return;
+    const prose = scene.blocks.map((b) => b.content).join('\n\n').trim();
+    setManualScanning(true);
+    setScanStatus('Scanning archive continuity…');
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      if (typeof api?.archiveScan === 'function') {
+        await api.archiveScan(prose, scene.path);
+      }
+      await loadArchiveItems();
+      setScanStatus('Archive scan complete.');
+    } catch {
+      setScanStatus('Archive scan failed.');
+    } finally {
+      setManualScanning(false);
+    }
+  }, [loadArchiveItems, manualScanning, scene]);
+
   if (!enabled) {
     return (
       <div className="archive-panel archive-disabled">
@@ -207,6 +235,26 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
       {!scene && (
         <div className="ap-no-scene">Select a scene to see archive suggestions.</div>
       )}
+
+      <div className="ap-toolbar" aria-label="Archive tools">
+        <button
+          type="button"
+          className="ap-btn ap-btn-scan-now"
+          onClick={handleScanNow}
+          disabled={!scene || manualScanning}
+          aria-disabled={!scene || manualScanning}
+        >
+          {manualScanning ? 'Scanning…' : 'Scan now'}
+        </button>
+        <span
+          role="status"
+          aria-label="Archive scan status"
+          aria-live="polite"
+          className="ap-scan-status"
+        >
+          {scanStatus}
+        </span>
+      </div>
 
       <section aria-label="Inconsistencies">
         <div className="ap-section-header">

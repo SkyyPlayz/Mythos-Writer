@@ -66,6 +66,7 @@ import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
+import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import './DesktopShell.css';
 
@@ -554,6 +555,7 @@ export default function DesktopShell() {
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
   const [editorSelectionText, setEditorSelectionText] = useState<string>('');
+  const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1399,6 +1401,12 @@ export default function DesktopShell() {
     persistTabShell({ ...tabShellRef.current, activeTab: tab });
   }, [persistTabShell]);
 
+  const focusContinuitySearch = useCallback(() => {
+    window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>('input[aria-label="Search entities in Notes Vault"]')?.focus();
+    }, 0);
+  }, []);
+
   // SKY-1699 (Wave 2e): Persist split ratio to AppSettings.
   const persistSplitRatio = useCallback((ratio: number) => {
     setSplitRatio(ratio);
@@ -1651,6 +1659,18 @@ export default function DesktopShell() {
     tabShellRef.current = next;
     persistTabShell(next);
   }, [persistTabShell]);
+
+  const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
+    setSelectedEntity(null);
+    setOpenedNotePath(notePath);
+    handleNotesSubViewChange('editor');
+    handleTabChange('notes');
+    setContinuityPeekOverlayOpen(false);
+    checkGettingStartedItem('notes-vault');
+  }, [checkGettingStartedItem, handleNotesSubViewChange, handleTabChange]);
 
   // SKY-2096: Notes left-sidebar width + collapsed state.
   const handleNotesSidebarWidthChange = useCallback((w: number) => {
@@ -1909,7 +1929,13 @@ export default function DesktopShell() {
       // SKY-2011: Ctrl/Cmd+Shift+K — open Continuity Peek panel
       if (mod && e.shiftKey && !e.altKey && (e.key === 'K' || e.key === 'k')) {
         e.preventDefault();
-        persistLayout({ ...layout, rightTab: 'continuity' });
+        if ((layout.writingMode ?? 'normal') === 'focus') {
+          setContinuityPeekOverlayOpen(true);
+        } else {
+          setRightSidebarUserCollapsed(false);
+          persistLayout({ ...layout, rightTab: 'continuity' });
+        }
+        focusContinuitySearch();
         return;
       }
       if (!mod || !e.shiftKey) return;
@@ -1945,7 +1971,16 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch]);
+
+  useEffect(() => {
+    if (!continuityPeekOverlayOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContinuityPeekOverlayOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [continuityPeekOverlayOpen]);
 
   // ─── Panel resize drag handlers ───
 
@@ -3376,6 +3411,7 @@ export default function DesktopShell() {
             currentSceneContent={selectedScene?.blocks.map(b => b.content).join('\n\n') ?? ''}
             onDraftRestore={handleDraftRestore}
             editorSelectionText={editorSelectionText}
+            onOpenEntityNote={handleOpenContinuityEntityNote}
           />
         </div>
       )}
@@ -3398,6 +3434,38 @@ export default function DesktopShell() {
         onFloatPanel={(id) => handleFloatPanel(id, 'right')}
         onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
       />}
+
+      {continuityPeekOverlayOpen && (
+        <div
+          className="continuity-focus-overlay-backdrop"
+          onMouseDown={() => setContinuityPeekOverlayOpen(false)}
+        >
+          <div
+            className="continuity-focus-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Continuity Peek"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="continuity-focus-overlay-header">
+              <h2 className="continuity-focus-overlay-title">Continuity Peek</h2>
+              <button
+                type="button"
+                className="continuity-focus-overlay-close"
+                aria-label="Close Continuity Peek"
+                onClick={() => setContinuityPeekOverlayOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <ContinuityPeekPanel
+              selectionText={editorSelectionText}
+              autoFocusSearch
+              onOpenEntityNote={handleOpenContinuityEntityNote}
+            />
+          </div>
+        </div>
+      )}
 
       </div>{/* end shell-main-row */}
       </div>)}{/* end app-tabpanel-story */}

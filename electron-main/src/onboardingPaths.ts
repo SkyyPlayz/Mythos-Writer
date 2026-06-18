@@ -92,7 +92,7 @@ export function readExistingVaultPaths(vaultParentPath: string): ExistingVaultPa
     throw new Error('Existing vault is missing Story Vault/manifest.json');
   }
   if (!fs.existsSync(notesVaultPath) || !fs.statSync(notesVaultPath).isDirectory()) {
-    fs.mkdirSync(notesVaultPath, { recursive: true });
+    throw new Error('Existing vault is missing Notes Vault');
   }
 
   let manifest: Manifest;

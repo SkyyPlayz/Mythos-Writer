@@ -173,10 +173,18 @@
 }
 
 /* Focus Mode overlay */
+.continuity-focus-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 499;
+  background: rgba(0, 0, 0, 0.2);
+}
+
 .continuity-focus-overlay {
   position: fixed;
   top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 280px;
   max-height: 60vh;
   background: #111113;
@@ -206,7 +214,8 @@
   text-transform: uppercase;
 }
 
-.continuity-focus-close {
+.continuity-focus-close,
+.continuity-focus-overlay-close {
   background: none;
   border: none;
   color: #71717a;
@@ -218,8 +227,25 @@
   align-items: center;
 }
 
-.continuity-focus-close:hover {
+.continuity-focus-close:hover,
+.continuity-focus-overlay-close:hover {
   color: #e4e4e7;
+}
+
+.entity-card-view-note {
+  margin-top: 10px;
+  align-self: flex-start;
+  background: rgba(103, 232, 249, 0.08);
+  border: 1px solid rgba(103, 232, 249, 0.35);
+  color: var(--accent-light, #67e8f9);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.entity-card-view-note:hover {
+  background: rgba(103, 232, 249, 0.16);
 }
 
 .continuity-focus-body {

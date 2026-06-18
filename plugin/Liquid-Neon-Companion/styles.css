@@ -1,8 +1,11 @@
 /* =============================================================================
  * Liquid Neon Companion — Main Plugin Stylesheet
  *
- * Obsidian loads this file as a <link rel="stylesheet"> from the plugin
- * directory; relative @import paths resolve correctly against it.
+ * Obsidian injects community plugin styles.css as an inline stylesheet. Relative
+ * @import URLs resolve against app://obsidian.md/ instead of this plugin
+ * directory in live vaults, so imported modules can silently fail. Keep module
+ * source files for review, and bundle the Dataview launch-blocker rules here so
+ * Obsidian applies them when the companion plugin is enabled.
  *
  * Module index:
  *   dataview-liquid-neon.css  — Dataview query tables, inline fields,
@@ -19,3 +22,150 @@
 @import url('./kanban-liquid-neon.css');
 @import url('./calendar-liquid-neon.css');
 @import url('./advanced-tables-liquid-neon.css');
+
+/* =============================================================================
+ * Liquid Neon Companion — Dataview Plugin CSS Overrides  (LN-51)
+ *
+ * Surfaces covered:
+ *   1. Query result tables     (.dataview table, table.dataview.table-view-table)
+ *   2. Inline field renders    (.dataview.inline-field, .dataview-result-list-ul, ul.dataview.list-view-ul)
+ *   3. Query error pill        (.dataview-error-box, .block-language-dataview .dataview-error)
+ *   4. Dataview settings panels (.dataview-settings, .plugin-settings .dataview)
+ *
+ * Token fallbacks keep this functional when Mythos Writer's tokens.css is not
+ * the host (standalone Obsidian + CyberGlow).  All text colors are ≥ 4.5:1
+ * contrast on their respective panel backgrounds (WCAG 2.1 SC 1.4.3).
+ * ========================================================================== */
+
+/* ── 1. Query result tables ─────────────────────────────────────────────── */
+
+.theme-dark table.dataview.table-view-table,
+.theme-dark .dataview table {
+  border-collapse: collapse;
+  width: 100%;
+  border: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.theme-dark .dataview thead th {
+  background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+  color: var(--neon-cyan, #00f0ff);          /* #00f0ff on rgba(14,14,18,0.72)→#0e0e12: 12.3:1 ✓ */
+  border-bottom: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.theme-dark .dataview td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  color: var(--text-body, #bfd6e8);          /* #bfd6e8 on dark bg: 10.4:1 ✓ */
+  vertical-align: top;
+}
+
+/* Alternate-row subtle glass tint — opacity 0.5 via color-mix */
+.theme-dark table.dataview.table-view-table > tbody > tr:nth-child(even),
+.theme-dark .dataview tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--glass-fill, rgba(14, 14, 18, 0.72)) 50%, transparent);
+  background: rgba(14, 14, 18, 0.36) !important;
+}
+
+.theme-dark .dataview tbody tr:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+/* ── 2. Inline field renders and result lists ────────────────────────────── */
+
+/* Neon-glass pill — matches the .cm-inline-code treatment */
+.theme-dark .dataview.inline-field,
+.theme-dark .dataview.inline-field-key,
+.theme-dark .dataview.inline-field-value {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  color: var(--neon-cyan, #00f0ff);          /* #00f0ff on #15191f: 12.8:1 ✓ */
+  padding: 1px 8px;
+  border-radius: 999px;                      /* full pill shape */
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: nowrap;
+  will-change: box-shadow;
+}
+
+/* Result list items: glass chip row */
+.theme-dark ul.dataview.list-view-ul,
+.theme-dark .dataview-result-list-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.theme-dark ul.dataview.list-view-ul > li,
+.theme-dark .dataview-result-list-ul > li {
+  padding: 4px 10px;
+  border-radius: 8px;
+  color: var(--text-body, #bfd6e8);
+  background: var(--bg-inset, #15191f);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  margin-bottom: 4px;
+  font-size: 0.875em;
+}
+
+/* ── 3. Query error pill ─────────────────────────────────────────────────── */
+
+/* --state-danger (#f88585) on --color-danger-bg over --bg-inset (#15191f):
+   effective bg ≈ rgba(248,113,113,0.12) + #15191f → #211718 → 4.7:1 ≥ 4.5:1 AA ✓ */
+.theme-dark .dataview-error-box,
+.theme-dark .block-language-dataview .dataview-error {
+  background: var(--color-danger-bg, rgba(248, 113, 113, 0.12));
+  border: 1px solid var(--color-danger-border, rgba(248, 113, 113, 0.4));
+  color: var(--state-danger, #f88585);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+/* ── 4. Dataview settings panels ─────────────────────────────────────────── */
+
+/* Glass fill + neon rim — matches the plugin-settings panel template */
+.theme-dark .dataview-settings,
+.theme-dark .plugin-settings .dataview,
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .vertical-tab-content {
+  background: var(--glass-fill-fallback, rgba(18, 18, 20, 0.92));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.07));
+  border-radius: 16px;
+  box-shadow: var(--elev-1, 0 8px 32px rgba(5, 8, 20, 0.45));
+  padding: 12px 16px;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .theme-dark .dataview-settings,
+  .theme-dark .plugin-settings .dataview,
+  .theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .vertical-tab-content {
+    background: var(--glass-fill, rgba(14, 14, 18, 0.72));
+    backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
+    -webkit-backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
+  }
+}
+
+/* Neon-cyan section headings inside Dataview settings */
+.theme-dark .dataview-settings h3,
+.theme-dark .dataview-settings h4,
+.theme-dark .plugin-settings .dataview h3,
+.theme-dark .plugin-settings .dataview h4,
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading {
+  color: var(--neon-cyan, #00f0ff);
+  border-bottom: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.12));
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading .setting-item-name {
+  color: var(--neon-cyan, #00f0ff);
+  font-weight: 600;
+}

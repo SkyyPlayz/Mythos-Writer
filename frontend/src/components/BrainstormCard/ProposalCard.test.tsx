@@ -56,9 +56,9 @@ describe('ProposalCard', () => {
     expect(badge).toHaveTextContent('CHARACTER');
   });
 
-  it('renders all 6 kind badges correctly', () => {
+  it('renders all 7 kind badges correctly', () => {
     const kinds: NoteProposal['kind'][] = [
-      'character', 'location', 'item', 'faction', 'scene_card', 'inbox',
+      'character', 'location', 'item', 'faction', 'scene_card', 'scene_crafter_card', 'inbox',
     ];
     const ariaLabels: Record<NoteProposal['kind'], string> = {
       character: 'Character note proposal',
@@ -66,6 +66,7 @@ describe('ProposalCard', () => {
       item: 'Item note proposal',
       faction: 'Faction note proposal',
       scene_card: 'Scene card proposal',
+      scene_crafter_card: 'Scene Crafter board card proposal',
       inbox: 'Inbox note proposal',
     };
     for (const kind of kinds) {

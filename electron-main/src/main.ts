@@ -157,6 +157,8 @@ import {
   type SceneCrafterDeleteLanePayload,
   type SceneCrafterReorderLanesPayload,
   type SceneCrafterClosePayload,
+  type SceneCrafterSuggestionAcceptPayload,
+  type SceneCrafterSuggestionRejectPayload,
 } from './ipc.js';
 import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
 import { boardRelPath } from './sceneCrafterBoard.js';
@@ -172,9 +174,18 @@ import {
   handleDeleteLane,
   handleReorderLanes,
 } from './sceneCrafterIpc.js';
+import {
+  acceptSceneCrafterCardSuggestion,
+  rejectSceneCrafterCardSuggestion,
+} from './sceneCrafterSuggestions.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot } from './validatePathUtil.js';
+import {
+  defaultMythosVaultsParentPath,
+  defaultNotesVaultRootPath,
+  defaultVaultRootPath,
+} from './defaultVaultPaths.js';
 import {
   buildAgentSystemPrompt,
 } from './agentPersona.js';
@@ -518,23 +529,23 @@ function getVaultIndexCacheDir(): string {
   return path.join(app.getPath('userData'), 'vault-index-cache');
 }
 
-// SKY-2157: Default vault roots now live under app.getPath('userData') so that
-// fresh installs don't scatter folders across ~/Mythos. Existing installs are
-// unaffected — their vault-settings.json already persists their chosen paths
-// and these defaults only fire when no settings file exists yet.
+// SKY-2157 / SKY-2204: Default vault roots live under app.getPath('userData')
+// inside the recommended Mythos Vault bundle. Existing installs are unaffected
+// — their vault-settings.json already persists their chosen paths — while fresh
+// fallback reads no longer point at flat sibling roots under `<userData>/vaults`.
 function defaultVaultRoot(): string {
-  return path.join(app.getPath('userData'), 'vaults', 'Story Vault');
+  return defaultVaultRootPath(app.getPath('userData'));
 }
 
 function defaultNotesVaultRoot(): string {
-  return path.join(app.getPath('userData'), 'vaults', 'Notes Vault');
+  return defaultNotesVaultRootPath(app.getPath('userData'));
 }
 
 // SKY-320 / SKY-2157: Obsidian-style multi-vault root anchored under userData.
 // New Mythos Vaults land at `<userData>/vaults/<vault-name>/` so the app's own
 // data dir contains all vault bundles and ~/Mythos is not touched by default.
 function defaultMythosVaultsParent(): string {
-  return path.join(app.getPath('userData'), 'vaults');
+  return defaultMythosVaultsParentPath(app.getPath('userData'));
 }
 
 // SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
@@ -1879,7 +1890,7 @@ const handlers: IpcHandlers = {
       const storyId = crypto.randomUUID();
       const chapterId = crypto.randomUUID();
       const sceneId = crypto.randomUUID();
-      const storyFolderName = effectiveStoryTitle.replace(/[/\\:*?"<>|]/g, '-');
+      const storyFolderName = effectiveStoryTitle;
       const storyDirPath = `Manuscript/${storyFolderName}`;
       const chapterDirPath = `Manuscript/${storyFolderName}/chapter-1`;
       const sceneRelPath = `Manuscript/${storyFolderName}/chapter-1/chapter-1-scene-1.md`;
@@ -1955,7 +1966,7 @@ const handlers: IpcHandlers = {
     const resolvedParent = startMode === 'sample'
       ? defaultMythosVaultsParent()
       : vaultParentPath!.trim().replace(/^~/, app.getPath('home'));
-    const storyDir = startMode === 'sample' ? '' : path.join(resolvedParent, storyTitle!.trim().replace(/[/\\:*?"<>|]/g, '-'));
+    const storyDir = startMode === 'sample' ? '' : path.join(resolvedParent, storyTitle!.trim());
     const storyVaultPath = path.join(storyDir, 'Story Vault');
     const notesVaultPath = path.join(storyDir, 'Notes Vault');
 
@@ -5038,6 +5049,28 @@ const handlers: IpcHandlers = {
   // SKY-1759: stop the board watcher when the renderer closes the scene crafter.
   [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: async (_payload: SceneCrafterClosePayload) => {
     await stopBoardWatcher();
+  },
+
+  // SKY-1764: Brainstorm → Scene Crafter suggestion accept/reject
+  [IPC_CHANNELS.SCENE_CRAFTER_SUGGESTION_ACCEPT]: (payload: SceneCrafterSuggestionAcceptPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const notesRoot = getNotesVaultRoot();
+    const result = acceptSceneCrafterCardSuggestion(
+      payload.suggestionId,
+      (slug) => handleGetBoard(notesRoot, { storyId: '', storySlug: slug }),
+      (slug, laneIndex, card) => handleAddCard(notesRoot, { storySlug: slug, laneIndex, card }),
+      payload.actor ?? 'user',
+      now,
+    );
+    return { suggestionId: payload.suggestionId, ...result };
+  },
+
+  [IPC_CHANNELS.SCENE_CRAFTER_SUGGESTION_REJECT]: (payload: SceneCrafterSuggestionRejectPayload) => {
+    ensureVaultDir();
+    const now = new Date().toISOString();
+    const result = rejectSceneCrafterCardSuggestion(payload.suggestionId, payload.actor ?? 'user', now);
+    return { suggestionId: payload.suggestionId, ...result };
   },
 
   // SKY-2011: Continuity Peek — entity matching, search, read

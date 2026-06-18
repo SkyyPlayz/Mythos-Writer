@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import type { Scene, Chapter, Story } from './types';
 import './BottomBar.css';
 
@@ -50,6 +51,35 @@ export default function BottomBar({
   // SKY-204: when a vault note is active instead of a scene, show note stats.
   const noteFileName = activeNotePath ? activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? '' : '';
   const isNoteActive = !!activeNotePath && !selectedScene;
+
+  // SKY-2305: live daily goal progress chip
+  const [goalStats, setGoalStats] = useState<{ todayWords: number; dailyGoal: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchStats = () => {
+      void window.api.goalsGetStats?.().then((s) => {
+        if (!cancelled) setGoalStats({ todayWords: s.todayWords, dailyGoal: s.dailyGoal });
+      }).catch(() => { /* non-fatal */ });
+    };
+
+    fetchStats();
+
+    window.addEventListener('scene:saved', fetchStats);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('scene:saved', fetchStats);
+    };
+  }, []);
+
+  const showGoalChip = !isNoteActive && selectedScene !== null && goalStats !== null;
+  const goalMet = showGoalChip && goalStats!.dailyGoal > 0 && goalStats!.todayWords >= goalStats!.dailyGoal;
+  const goalAriaLabel = goalStats !== null
+    ? goalStats.dailyGoal > 0
+      ? `Today: ${goalStats.todayWords.toLocaleString()} words / ${goalStats.dailyGoal.toLocaleString()} word goal`
+      : `Today: ${goalStats.todayWords.toLocaleString()} words`
+    : undefined;
 
   return (
     <div className="bottom-bar">
@@ -121,6 +151,19 @@ export default function BottomBar({
           </span>
         )}
       </div>
+
+      {showGoalChip && (
+        <span
+          className={`bottom-daily-goal${goalMet ? ' bottom-daily-goal--met' : ''}`}
+          tabIndex={0}
+          aria-label={goalAriaLabel}
+          data-testid="bottom-daily-goal"
+        >
+          {goalStats!.dailyGoal > 0
+            ? `${goalStats!.todayWords.toLocaleString()} / ${goalStats!.dailyGoal.toLocaleString()} today`
+            : `${goalStats!.todayWords.toLocaleString()} today`}
+        </span>
+      )}
 
       {isVoiceActive && (
         <div className="bottom-voice" aria-label="Voice input active" role="status">

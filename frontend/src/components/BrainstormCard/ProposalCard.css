@@ -48,6 +48,7 @@
 .pc-kind-badge--item      { background: var(--entity-item-bg); color: var(--entity-item-text); }
 .pc-kind-badge--faction   { background: var(--entity-faction-bg); color: var(--entity-faction-text); }
 .pc-kind-badge--scene_card { background: var(--entity-scene-bg); color: var(--entity-scene-text); }
+.pc-kind-badge--scene_crafter_card { background: var(--entity-scene_card-bg, var(--entity-scene-bg)); color: var(--entity-scene_card-text, var(--entity-scene-text)); }
 .pc-kind-badge--inbox     { background: var(--entity-inbox-bg); color: var(--entity-inbox-text); }
 
 .pc-queue-depth {

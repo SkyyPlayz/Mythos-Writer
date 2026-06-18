@@ -59,12 +59,14 @@ const scene: Scene = {
 const mockSuggestionsList = vi.fn();
 const mockSuggestionsAccept = vi.fn();
 const mockSuggestionsReject = vi.fn();
+const mockArchiveScan = vi.fn();
 
 function setApi(overrides: Record<string, unknown> = {}) {
   (window as unknown as { api: unknown }).api = {
     suggestionsList: mockSuggestionsList,
     suggestionsAccept: mockSuggestionsAccept,
     suggestionsReject: mockSuggestionsReject,
+    archiveScan: mockArchiveScan,
     ...overrides,
   };
 }
@@ -85,6 +87,7 @@ beforeEach(() => {
   });
   mockSuggestionsAccept.mockResolvedValue({ id: 'arc-wl-1', status: 'accepted' });
   mockSuggestionsReject.mockResolvedValue({ id: 'arc-inc-1', status: 'rejected' });
+  mockArchiveScan.mockResolvedValue({ suggestions: [], inconsistenciesFound: 0, wikiLinksFound: 0 });
   setApi();
 });
 
@@ -228,5 +231,55 @@ describe('ArchivePanel — reject / dismiss', () => {
     await waitFor(() =>
       expect(screen.queryByText('[[The Foundry]]')).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe('ArchivePanel — manual Scan now', () => {
+  it('renders a Scan now button in the archive toolbar', async () => {
+    render(<ArchivePanel {...defaultProps} />);
+
+    expect(await screen.findByRole('button', { name: /scan now/i })).toBeInTheDocument();
+  });
+
+  it('clicking Scan now calls archiveScan with the active scene prose and path', async () => {
+    render(<ArchivePanel {...defaultProps} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /scan now/i }));
+
+    await waitFor(() =>
+      expect(mockArchiveScan).toHaveBeenCalledWith('The Foundry gates swung open.', 'scene.md'),
+    );
+  });
+
+  it('disables the Scan now button with aria-disabled while the scan is running, then re-enables it', async () => {
+    let resolveScan!: (value: { suggestions: unknown[]; inconsistenciesFound: number; wikiLinksFound: number }) => void;
+    mockArchiveScan.mockReturnValue(new Promise((resolve) => { resolveScan = resolve; }));
+    render(<ArchivePanel {...defaultProps} />);
+
+    const button = await screen.findByRole('button', { name: /scan now/i });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('status', { name: /archive scan status/i })).toHaveTextContent(/scanning/i);
+
+    resolveScan({ suggestions: [], inconsistenciesFound: 0, wikiLinksFound: 0 });
+
+    await waitFor(() => expect(button).not.toBeDisabled());
+    expect(button).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it('refreshes archive suggestions after Scan now completes', async () => {
+    mockSuggestionsList
+      .mockResolvedValueOnce({ suggestions: [makeInconsistencyRow()] })
+      .mockResolvedValueOnce({ suggestions: [makeWikiLinkRow({ id: 'arc-wl-refreshed', rationale: 'Fresh scan found a new wiki-link.' })] });
+
+    render(<ArchivePanel {...defaultProps} />);
+
+    expect(await screen.findByText('The Foundry appears here but was destroyed in chapter 1.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }));
+
+    await waitFor(() => expect(screen.getByText('Fresh scan found a new wiki-link.')).toBeInTheDocument());
+    expect(mockSuggestionsList).toHaveBeenCalledTimes(2);
   });
 });

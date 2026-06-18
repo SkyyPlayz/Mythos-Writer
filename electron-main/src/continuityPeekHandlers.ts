@@ -45,6 +45,7 @@ function readEntityFile(filePath: string): { prose: string; aliases: string[]; t
 function toEntityResult(
   entry: { name: string; aliases: string[]; type: string | null; path: string },
   filePath: string,
+  notesVaultRoot: string,
 ): ContinuityEntityResult {
   const data = readEntityFile(filePath);
   const excerpt = data ? extractExcerpt(data.prose) : '';
@@ -52,7 +53,7 @@ function toEntityResult(
     name: entry.name,
     aliases: entry.aliases,
     type: entry.type,
-    path: entry.path,
+    path: path.relative(notesVaultRoot, entry.path),
     excerpt,
   };
 }
@@ -67,7 +68,7 @@ export function handleContinuityMatchSelection(
   const entry = findBestMatch(selectedText, index);
   if (!entry) return { match: null };
 
-  return { match: toEntityResult(entry, entry.path) };
+  return { match: toEntityResult(entry, entry.path, notesVaultRoot) };
 }
 
 export function handleContinuitySearch(
@@ -78,7 +79,7 @@ export function handleContinuitySearch(
 
   const index = buildEntityIndex(notesVaultRoot);
   const entries = searchEntities(query, index);
-  const results = entries.map((e) => toEntityResult(e, e.path));
+  const results = entries.map((e) => toEntityResult(e, e.path, notesVaultRoot));
   return { results };
 }
 

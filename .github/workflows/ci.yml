@@ -105,7 +105,7 @@ jobs:
   ci:
     needs: [lint, typecheck, unit]
     runs-on: self-hosted
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -181,6 +181,9 @@ jobs:
 
       - name: E2E — Brainstorm Agent streaming and vault note creation (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:brainstorm
+
+      - name: E2E — ExportDialog formats DOCX/EPUB/Markdown (SKY-2213)
+        run: xvfb-run --auto-servernum npm run test:e2e:export
 
       - name: e2e visual-capture (MYT-531 §9.2/§9.3)
         run: xvfb-run --auto-servernum npm run test:e2e:visual-capture
@@ -262,6 +265,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 40
+    # SKY-2236: quota exhaustion causes instant 0-step failure; continue-on-error prevents
+    # cascade-cancel of the three required checks (ci, build-linux, build-macos).
+    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4

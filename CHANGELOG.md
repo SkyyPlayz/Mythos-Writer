@@ -9,6 +9,52 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] — 2026-06-17
+
+### Added
+
+- **App UX overhaul — moveable, dockable, floatable panels** — Every panel is now a first-class workspace citizen. Drag panels across sidebars with ghost preview and drop zones (Wave 2b), detach any panel as a free-floating window (Wave 2c), dock panels as top-level tabs in the main shell (Wave 2d), split the manuscript view to edit two scenes side by side (Wave 2e), and save any arrangement as a named layout for instant recall (Wave 2f). Cross-tab links and tab-aware keyboard shortcuts keep every view connected. ([PR #478](https://github.com/SkyyPlayz/Mythos-Writer/pull/478), [#493](https://github.com/SkyyPlayz/Mythos-Writer/pull/493), [#497](https://github.com/SkyyPlayz/Mythos-Writer/pull/497), [#505](https://github.com/SkyyPlayz/Mythos-Writer/pull/505), [#535](https://github.com/SkyyPlayz/Mythos-Writer/pull/535))
+
+- **Vault Graph** — Interactive visualization of every entity connection in your story vault. Filter by folder, adjust link depth, search and highlight nodes, and navigate to any scene or entity in one click. Includes empty-vault, loading, and large-vault states plus full keyboard accessibility. ([SKY-1760](https://github.com/SkyyPlayz/Mythos-Writer/issues/1760)–[SKY-1765](https://github.com/SkyyPlayz/Mythos-Writer/issues/1765))
+
+- **Scene Crafter** — Full Kanban board for scene planning with drag-and-drop scene cards, keyboard-accessible drag-drop, file-watcher conflict detection, and complete IPC board-mutation channels. ([PR #492](https://github.com/SkyyPlayz/Mythos-Writer/pull/492), [#499](https://github.com/SkyyPlayz/Mythos-Writer/pull/499), [#527](https://github.com/SkyyPlayz/Mythos-Writer/pull/527))
+
+- **Continuity Peek** — A sidebar tab that surfaces entity matches in the active scene in real time, letting you spot unintended repetition without leaving the manuscript. ([PR #515](https://github.com/SkyyPlayz/Mythos-Writer/pull/515))
+
+- **Notes tab layout** — Dedicated Notes view with a vault file tree, embedded editor, Brainstorm sidebar, and toggleable sub-views. The Notes vault is now a fully first-class workspace surface. ([SKY-2096](https://github.com/SkyyPlayz/Mythos-Writer/issues/2096))
+
+- **Onboarding v2.1 — genre picker + sample vaults** — The first-run wizard now opens with a genre picker (Cozy Fantasy, Sci-Fi Noir, Mystery). Selecting a genre loads a pre-seeded sample vault with era-appropriate characters, locations, and scenes. ([PR #517](https://github.com/SkyyPlayz/Mythos-Writer/pull/517), [#521](https://github.com/SkyyPlayz/Mythos-Writer/pull/521))
+
+- **Liquid Neon Companion — four new plugin skins** — Dataview (LN-51, launch-blocker), Calendar (LN-54), Kanban, and Advanced Tables (LN-55) now render natively in the Liquid Neon palette, completing first-pass coverage of the most-used Obsidian community plugins. ([PR #523](https://github.com/SkyyPlayz/Mythos-Writer/pull/523), [#524](https://github.com/SkyyPlayz/Mythos-Writer/pull/524), [#526](https://github.com/SkyyPlayz/Mythos-Writer/pull/526), [#532](https://github.com/SkyyPlayz/Mythos-Writer/pull/532))
+
+- **Vault browser sort + filter controls** — Sort entries by name, date modified, or type; filter by entity category. ([SKY-1982](https://github.com/SkyyPlayz/Mythos-Writer/issues/1982))
+
+- **Vault picker polish** — Editable path input with inline validation, recent-vault suggestions, and a conflict dialog when two vaults share overlapping directories. ([PR #530](https://github.com/SkyyPlayz/Mythos-Writer/pull/530))
+
+- **New app icon** — Fantasy-book artwork replaces the placeholder icon across all surfaces. ([SKY-2081](https://github.com/SkyyPlayz/Mythos-Writer/issues/2081))
+
+### Changed
+
+- **Settings dialog a11y** — ARIA labels, visible focus rings, and full keyboard navigation across all settings panels. ([PR #511](https://github.com/SkyyPlayz/Mythos-Writer/pull/511))
+- **Standardized IPC error shape + breadcrumb logging** — All IPC handlers now emit a consistent `{ code, message, breadcrumbs }` error envelope. ([SKY-1970](https://github.com/SkyyPlayz/Mythos-Writer/issues/1970))
+- **Shared Toast notification component** — A unified `useToast` hook and `Toast` component replace four divergent call sites. ([PR #512](https://github.com/SkyyPlayz/Mythos-Writer/pull/512))
+- **Incremental vault-index rebuild** — The vault index skips unchanged files by mtime+size, reducing startup time on large vaults. ([SKY-1981](https://github.com/SkyyPlayz/Mythos-Writer/issues/1981))
+- **Empty-state copy refresh** — Vault Browser and Entries Panel show friendlier guidance when empty. ([SKY-1997](https://github.com/SkyyPlayz/Mythos-Writer/issues/1997))
+
+### Fixed
+
+- **Scene Crafter watcher leak** — File-watcher handles are cleaned up when the panel unmounts. ([SKY-1805](https://github.com/SkyyPlayz/Mythos-Writer/issues/1805))
+- **Settings dialog focus** — The Settings dialog recaptures focus correctly after an async load. ([SKY-1902](https://github.com/SkyyPlayz/Mythos-Writer/issues/1902))
+- **Vault routing edge cases** — Missing-vault recovery screen appears only when both vaults are absent; a missing story-vault alone shows the story-vault recovery path. ([SKY-2095](https://github.com/SkyyPlayz/Mythos-Writer/issues/2095), [SKY-2097](https://github.com/SkyyPlayz/Mythos-Writer/issues/2097))
+- **Stray vault directory creation** — The app no longer creates blank vault directories on launch; defaults now live in `userData`. ([SKY-2157](https://github.com/SkyyPlayz/Mythos-Writer/issues/2157))
+- **Liquid Neon panel preset** — Default panel color preset corrected to dark glass. ([SKY-2097](https://github.com/SkyyPlayz/Mythos-Writer/issues/2097))
+
+### Security
+
+- **`markdown-it` 14.1.0 → 14.2.0** — Patches [GHSA-6v5v-wf23-fmfq](https://github.com/advisories/GHSA-6v5v-wf23-fmfq) (ReDoS via malformed HTML). ([PR #522](https://github.com/SkyyPlayz/Mythos-Writer/pull/522))
+
+---
+
 ---
 
 ## [0.2.0] — 2026-06-10
@@ -60,6 +106,7 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Initial internal release.
 
-[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0-beta.2...HEAD
+[0.2.0-beta.2]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0...v0.2.0-beta.2
 [0.2.0]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SkyyPlayz/Mythos-Writer/releases/tag/v0.1.0
