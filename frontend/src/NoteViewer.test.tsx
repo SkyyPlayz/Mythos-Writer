@@ -25,7 +25,7 @@ describe('NoteViewer cross-tab links', () => {
     );
 
     await waitFor(() => expect(readNotesVault).toHaveBeenCalledWith('Notes/Test.md'));
-    fireEvent.click(screen.getByRole('button', { name: '[[Scene: Chapter One/Opening Scene]]' }));
+    fireEvent.click(await screen.findByRole('button', { name: '[[Scene: Chapter One/Opening Scene]]' }));
 
     expect(onWikiLinkClick).toHaveBeenCalledWith('Scene: Chapter One/Opening Scene');
   });
