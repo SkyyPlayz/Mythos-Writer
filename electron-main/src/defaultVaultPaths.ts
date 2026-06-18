@@ -1,4 +1,4 @@
-import path from 'path';
+import path from 'node:path';
 
 const DEFAULT_MYTHOS_VAULT_NAME = 'Mythos Vault';
 
