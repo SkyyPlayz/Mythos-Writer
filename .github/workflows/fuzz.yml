@@ -12,6 +12,10 @@ jobs:
     # GitHub-hosted runners currently fail before job steps materialize on this account.
     # Keep the required Fuzz check executable on the same self-hosted runner as CI.
     runs-on: self-hosted
+    # Hard cap: property tests + 2×60s fuzz + setup should finish in well under 15 min.
+    # Without this, a hung Jazzer process keeps the runner busy=true after disconnect,
+    # producing ghost-job runners that block all CI (SKY-2288).
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -35,11 +39,31 @@ jobs:
         working-directory: electron-main
 
       - name: Fuzz frontmatter parser (60s)
-        run: npm run fuzz:frontmatter
+        # Use setsid+timeout+PID trap (same pattern as ci.yml) so Jazzer is
+        # OS-killed if it overruns — prevents ghost-busy runner state (SKY-2288).
+        run: |
+          mkdir -p fuzz/crashes
+          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/frontmatter.fuzz.js \
+            fuzz/corpus/frontmatter --sync -- \
+            -max_total_time=60 \
+            -artifact_prefix=fuzz/crashes/frontmatter- &
+          fuzz_pid=$!
+          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
+          wait "$fuzz_pid" || true
+          trap - EXIT TERM INT
         working-directory: electron-main
 
       - name: Fuzz DOCX/EPUB inline parsers (60s)
-        run: npm run fuzz:docxInline
+        run: |
+          mkdir -p fuzz/crashes
+          setsid timeout --kill-after=5s 90 npx jazzer fuzz/dist/fuzz/docxInline.fuzz.js \
+            fuzz/corpus/docxInline -- \
+            -max_total_time=60 \
+            -artifact_prefix=fuzz/crashes/docxInline- &
+          fuzz_pid=$!
+          trap 'kill -TERM -- -$fuzz_pid 2>/dev/null || true; sleep 4; kill -KILL -- -$fuzz_pid 2>/dev/null || true' EXIT TERM INT
+          wait "$fuzz_pid" || true
+          trap - EXIT TERM INT
         working-directory: electron-main
 
       - name: Upload fuzz crash artifacts
