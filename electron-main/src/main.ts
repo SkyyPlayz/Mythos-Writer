@@ -69,6 +69,10 @@ import {
   type SuggestionsApplyPayload,
   type SuggestionsRejectPayload,
   type SuggestionsRollbackPayload,
+  type SuggestionsSearchPayload,
+  type SuggestionsIgnorePayload,
+  type SuggestionsBatchActionPayload,
+  type SuggestionsUnifiedListPayload,
   type AuditListPayload,
   type TimelineListPayload,
   type TimelineUpsertPayload,
@@ -208,6 +212,9 @@ import {
   updateSuggestionBudgetExceeded,
   getSuggestion,
   listSuggestions,
+  listSuggestionsFiltered,
+  searchSuggestionsFts,
+  listUnifiedSuggestions,
   insertAuditLog,
   listAuditLog,
   upsertTimelineEntry,
@@ -1064,6 +1071,23 @@ const handlers: IpcHandlers = {
   // ─── Suggestions ───
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => {
     ensureVaultDir();
+    const hasExtendedFilters =
+      payload.confidenceMin !== undefined ||
+      payload.confidenceMax !== undefined ||
+      payload.limit !== undefined ||
+      payload.offset !== undefined;
+    if (hasExtendedFilters) {
+      return {
+        suggestions: listSuggestionsFiltered({
+          status: payload.status,
+          sourceAgent: payload.sourceAgent,
+          confidenceMin: payload.confidenceMin,
+          confidenceMax: payload.confidenceMax,
+          limit: payload.limit,
+          offset: payload.offset,
+        }),
+      };
+    }
     return { suggestions: listSuggestions(payload.status, payload.sourceAgent) };
   },
   [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => {
@@ -1190,6 +1214,103 @@ const handlers: IpcHandlers = {
       created_at: now,
     });
     return { id: payload.id, auditId, restoredPath };
+  },
+
+  [IPC_CHANNELS.SUGGESTIONS_SEARCH]: (payload: SuggestionsSearchPayload) => {
+    ensureVaultDir();
+    return searchSuggestionsFts(payload.query, {
+      sourceAgent: payload.sourceAgent,
+      status: payload.status,
+      confidenceMin: payload.confidenceMin,
+      confidenceMax: payload.confidenceMax,
+      limit: payload.limit,
+    });
+  },
+  [IPC_CHANNELS.SUGGESTIONS_IGNORE]: (payload: SuggestionsIgnorePayload) => {
+    ensureVaultDir();
+    const suggestion = getSuggestion(payload.id);
+    if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
+    const now = new Date().toISOString();
+    const auditId = crypto.randomUUID();
+    updateSuggestionStatus(payload.id, 'ignored');
+    insertAuditLog({
+      id: auditId,
+      suggestion_id: payload.id,
+      action: 'ignore',
+      snapshot_path: null,
+      actor: payload.actor ?? 'user',
+      created_at: now,
+    });
+    return { id: payload.id, status: 'ignored' as const };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: (payload: SuggestionsBatchActionPayload) => {
+    ensureVaultDir();
+    const ids = payload.ids.slice(0, 200);
+    const actor = payload.actor ?? 'user';
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of ids) {
+      try {
+        const suggestion = getSuggestion(id);
+        if (!suggestion) {
+          failed.push({ id, reason: 'not found' });
+          continue;
+        }
+        const now = new Date().toISOString();
+        const auditId = crypto.randomUUID();
+
+        if (payload.action === 'accept') {
+          const { finalStatus, snapshotPath } = autoApplyVaultWrite(suggestion, now);
+          updateSuggestionStatus(id, finalStatus, now);
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: id,
+            action: finalStatus === 'applied' ? 'apply' : 'accept',
+            snapshot_path: snapshotPath,
+            actor,
+            created_at: now,
+          });
+        } else if (payload.action === 'reject') {
+          updateSuggestionStatus(id, 'rejected');
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: id,
+            action: 'reject',
+            snapshot_path: null,
+            actor,
+            created_at: now,
+          });
+        } else {
+          updateSuggestionStatus(id, 'ignored');
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: id,
+            action: 'ignore',
+            snapshot_path: null,
+            actor,
+            created_at: now,
+          });
+        }
+        succeeded.push(id);
+      } catch (err) {
+        failed.push({ id, reason: (err as Error).message ?? 'unknown error' });
+      }
+    }
+
+    return { succeeded, failed };
+  },
+  [IPC_CHANNELS.SUGGESTIONS_UNIFIED_LIST]: (payload: SuggestionsUnifiedListPayload) => {
+    ensureVaultDir();
+    return listUnifiedSuggestions({
+      status: payload.status,
+      sourceAgent: payload.sourceAgent,
+      kind: payload.kind,
+      confidenceMin: payload.confidenceMin,
+      confidenceMax: payload.confidenceMax,
+      limit: payload.limit,
+      offset: payload.offset,
+    });
   },
 
   // ─── Audit log ───

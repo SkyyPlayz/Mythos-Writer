@@ -231,6 +231,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suggestions:reject', { id, reason, actor }),
   suggestionsRollback: (id: string, actor?: string) =>
     ipcRenderer.invoke('suggestions:rollback', { id, actor }),
+  suggestionsSearch: (payload: { query: string; sourceAgent?: string; status?: string; confidenceMin?: number; confidenceMax?: number; limit?: number }) =>
+    ipcRenderer.invoke('suggestions:search', payload),
+  suggestionsIgnore: (id: string, actor?: string) =>
+    ipcRenderer.invoke('suggestions:ignore', { id, actor }),
+  suggestionsBatchAction: (payload: { ids: string[]; action: 'accept' | 'reject' | 'ignore'; actor?: string }) =>
+    ipcRenderer.invoke('suggestions:batch-action', payload),
+  suggestionsUnifiedList: (payload: { status?: string; sourceAgent?: string; kind?: string; confidenceMin?: number; confidenceMax?: number; limit?: number; offset?: number }) =>
+    ipcRenderer.invoke('suggestions:unified-list', payload),
   auditList: (suggestionId?: string) =>
     ipcRenderer.invoke('audit:list', { suggestionId }),
   provenanceUpsert: (entityId: string, entityKind: string, agentId: string, agentType: string, runId?: string | null) =>

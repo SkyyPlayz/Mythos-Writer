@@ -33,6 +33,10 @@ export const IPC_CHANNELS = {
   SUGGESTIONS_APPLY: 'suggestions:apply',
   SUGGESTIONS_REJECT: 'suggestions:reject',
   SUGGESTIONS_ROLLBACK: 'suggestions:rollback',
+  SUGGESTIONS_SEARCH: 'suggestions:search',
+  SUGGESTIONS_IGNORE: 'suggestions:ignore',
+  SUGGESTIONS_BATCH_ACTION: 'suggestions:batch-action',
+  SUGGESTIONS_UNIFIED_LIST: 'suggestions:unified-list',
 
   // Audit log
   AUDIT_LIST: 'audit:list',
@@ -603,6 +607,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => SuggestionsApplyResponse;
   [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => SuggestionsRejectResponse;
   [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => SuggestionsRollbackResponse;
+  [IPC_CHANNELS.SUGGESTIONS_SEARCH]: (payload: SuggestionsSearchPayload) => SuggestionsSearchResponse;
+  [IPC_CHANNELS.SUGGESTIONS_IGNORE]: (payload: SuggestionsIgnorePayload) => SuggestionsIgnoreResponse;
+  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: (payload: SuggestionsBatchActionPayload) => SuggestionsBatchActionResponse;
+  [IPC_CHANNELS.SUGGESTIONS_UNIFIED_LIST]: (payload: SuggestionsUnifiedListPayload) => SuggestionsUnifiedListResponse;
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => AuditListResponse;
   [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => ProvenanceUpsertResponse;
   [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => TimelineListResponse;
@@ -2047,9 +2055,11 @@ export interface TelemetryReportResponse {
 
 // ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
 
-export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back';
+export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back' | 'ignored';
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
-export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback';
+export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore';
+export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link';
+export type UnifiedSuggestionStatus = 'proposed' | 'accepted' | 'applied' | 'rejected' | 'ignored' | 'rolled_back';
 export type TimelineSource = 'explicit_marker' | 'prose';
 export interface SuggestionRow {
   id: string;
@@ -2091,9 +2101,29 @@ export interface TimelineEntryRow {
 
 // ─── Suggestions IPC payload / response types ───
 
+export interface UnifiedSuggestion {
+  id: string;
+  kind: UnifiedSuggestionKind;
+  sourceAgent: SourceAgent | string;
+  confidence: number;
+  rationale: string;
+  targetPath: string | null;
+  targetAnchor: string | null;
+  status: UnifiedSuggestionStatus;
+  createdAt: string;
+  appliedAt: string | null;
+  budgetExceeded: boolean;
+  category: string | null;
+  payloadJson: string | null;
+}
+
 export interface SuggestionsListPayload {
   status?: SuggestionStatus;
   sourceAgent?: SourceAgent | string;
+  confidenceMin?: number;
+  confidenceMax?: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface SuggestionsListResponse {
@@ -2193,6 +2223,58 @@ export interface AuditListPayload {
 
 export interface AuditListResponse {
   entries: AuditLogRow[];
+}
+
+export interface SuggestionsSearchPayload {
+  query: string;
+  sourceAgent?: SourceAgent | string;
+  status?: SuggestionStatus;
+  confidenceMin?: number;
+  confidenceMax?: number;
+  limit?: number;
+}
+
+export interface SuggestionsSearchResponse {
+  suggestions: SuggestionRow[];
+  totalCount: number;
+}
+
+export interface SuggestionsIgnorePayload {
+  id: string;
+  actor?: string;
+}
+
+export interface SuggestionsIgnoreResponse {
+  id: string;
+  status: 'ignored';
+}
+
+export interface SuggestionsBatchActionPayload {
+  ids: string[];
+  action: 'accept' | 'reject' | 'ignore';
+  actor?: string;
+}
+
+export interface SuggestionsBatchActionResponse {
+  succeeded: string[];
+  failed: Array<{ id: string; reason: string }>;
+}
+
+export interface SuggestionsUnifiedListPayload {
+  status?: UnifiedSuggestionStatus;
+  sourceAgent?: SourceAgent | string;
+  kind?: UnifiedSuggestionKind;
+  confidenceMin?: number;
+  confidenceMax?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface SuggestionsUnifiedListResponse {
+  items: UnifiedSuggestion[];
+  totalCount: number;
+  countByAgent: Record<string, number>;
+  countByKind: Record<string, number>;
 }
 
 // ─── Timeline IPC payload / response types ───

@@ -643,10 +643,10 @@ describe('world DB migration — entity tables', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('sets user_version to 24 on fresh vault', () => {
+  it('sets user_version to 25 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(24);
+    expect(row.user_version).toBe(25);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -688,12 +688,12 @@ describe('world DB migration — entity tables', () => {
     expect(row?.name).toBe('entity_fts');
   });
 
-  it('migration is idempotent — close/reopen keeps user_version at 24', () => {
+  it('migration is idempotent — close/reopen keeps user_version at 25', () => {
     openDb(tmpDir);
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(24);
+    expect(row.user_version).toBe(25);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -712,7 +712,7 @@ describe('world DB migration — entity tables', () => {
     expect(names).toContain('scene_text_hash');
   });
 
-  it('upgrading from v13 reaches v24 with all entity tables and writing_log', () => {
+  it('upgrading from v13 reaches v25 with all entity tables and writing_log', () => {
     const mythosDir = path.join(tmpDir, '.mythos');
     fs.mkdirSync(mythosDir, { recursive: true });
     const dbPath = path.join(mythosDir, 'state.db');
@@ -728,7 +728,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(24);
+    expect(row.user_version).toBe(25);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -996,11 +996,11 @@ describe('scene_snapshots / SKY-1611', () => {
     expect(getDraftSnapshotContent(listDraftSnapshots('scene-A')[0].id)).toBe('content for A');
   });
 
-  it('migration is idempotent — reopening DB keeps user_version at 24', () => {
+  it('migration is idempotent — reopening DB keeps user_version at 25', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(24);
+    expect(row.user_version).toBe(25);
   });
 });
 
@@ -1045,7 +1045,7 @@ describe('continuity_issues table', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(24);
+    expect(row.user_version).toBe(25);
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
       .all() as Array<{ name: string }>;
