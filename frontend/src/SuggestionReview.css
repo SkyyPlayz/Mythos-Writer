@@ -551,3 +551,169 @@
   color: var(--text-primary, #e2e8f0);
   border-color: var(--text-muted, #94a3b8);
 }
+
+/* SLICE-2 — confidence slider + keyword search filters */
+
+/* Make .sr-filters stack controls vertically */
+.sr-filters {
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Agent chip row inside the updated filters layout */
+.sr-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Confidence range filter group */
+.sr-confidence-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sr-confidence-filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sr-filter-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sr-confidence-values {
+  font-size: 10px;
+  color: var(--text-secondary, #cbd5e1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dual-handle range track container */
+.sr-range-container {
+  position: relative;
+  height: 18px;
+  display: flex;
+  align-items: center;
+}
+
+.sr-range-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--surface-3, #283044);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.sr-range-fill {
+  position: absolute;
+  height: 100%;
+  background: var(--accent, #7c3aed);
+  border-radius: 2px;
+}
+
+/* Both range inputs overlay the same track */
+.sr-range-input {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: none;
+  outline: none;
+}
+
+.sr-range-input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent, #7c3aed);
+  cursor: pointer;
+  pointer-events: auto;
+  border: 2px solid var(--surface-2, #1e2433);
+  transition: background 0.15s, transform 0.1s;
+}
+
+.sr-range-input::-webkit-slider-thumb:hover {
+  background: #9461ff;
+  transform: scale(1.2);
+}
+
+.sr-range-input:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--accent, #7c3aed);
+  outline-offset: 2px;
+}
+
+.sr-range-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent, #7c3aed);
+  cursor: pointer;
+  pointer-events: auto;
+  border: 2px solid var(--surface-2, #1e2433);
+  transition: background 0.15s;
+}
+
+.sr-range-input::-moz-range-track {
+  background: transparent;
+}
+
+/* Keyword search input */
+.sr-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sr-search-input {
+  width: 100%;
+  padding: 5px 8px;
+  padding-right: 28px;
+  background: var(--surface-2, #1e2433);
+  border: 1px solid var(--border, #2d3748);
+  border-radius: 6px;
+  color: var(--text-primary, #e2e8f0);
+  font-size: 11px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.sr-search-input:focus {
+  border-color: var(--accent, #7c3aed);
+}
+
+.sr-search-input::placeholder {
+  color: var(--text-muted, #475569);
+}
+
+.sr-search-clear {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.sr-search-clear:hover {
+  color: var(--text-primary, #e2e8f0);
+  background: rgba(255, 255, 255, 0.06);
+}
