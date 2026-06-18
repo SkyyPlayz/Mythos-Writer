@@ -6,6 +6,12 @@ import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 import { sanitizeIpcError, withIpcLog, IPC_ERROR_CATEGORIES } from './ipcErrors.js';
 import type { IpcEnvelope } from './ipcErrors.js';
 import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
+import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/types.js';
+export type { StoryTimeOfDay, ManifestTimelineEntry };
+import type { ManifestTimelineEntry, StoryTimeOfDay } from './vault/manifest/types.js';
+export type { ManifestTimelineEntry, StoryTimeOfDay };
+import type { ManifestTimelineEntry, StoryTimeOfDay } from './vault/manifest/types.js';
+export type { ManifestTimelineEntry, StoryTimeOfDay };
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -2202,15 +2208,21 @@ export interface TimelineListPayload {
 }
 
 export interface TimelineListResponse {
-  entries: TimelineEntryRow[];
+  entries: ManifestTimelineEntry[];
+  sceneCount: number;
+  maxDay: number;
 }
 
 export interface TimelineUpsertPayload {
-  entry: TimelineEntryRow;
+  sceneId: string;
+  day: number;
+  time: StoryTimeOfDay;
 }
 
 export interface TimelineUpsertResponse {
-  id: string;
+  ok: boolean;
+  entry?: ManifestTimelineEntry;
+  error?: string;
 }
 
 // MYT-319: Archive Agent timeline inference
@@ -2223,7 +2235,9 @@ export interface TimelineInferredScene {
   sceneId: string;
   scenePath: string;
   sceneTitle: string;
-  inferredTime: string | null;
+  /** Story-relative day number (1–N). 0 = unresolved. */
+  inferredDay: number;
+  inferredTime: StoryTimeOfDay;
   confidence: number;
   source: TimelineSource | null;
   cue: string | null;

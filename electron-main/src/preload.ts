@@ -477,11 +477,11 @@ contextBridge.exposeInMainWorld('api', {
   vaultGraphNodes: () => ipcRenderer.invoke('vault:graph:nodes', undefined),
   vaultGraphEdges: () => ipcRenderer.invoke('vault:graph:edges', undefined),
 
-  // Timeline (MYT-319) — Archive-inferred chronology
-  timelineList: (scenePath?: string) =>
-    ipcRenderer.invoke('timeline:list', { scenePath }),
-  timelineUpsert: (entry: unknown) =>
-    ipcRenderer.invoke('timeline:upsert', { entry }),
+  // Timeline v0 (SKY-2438/SKY-2463) — manifest-backed timeline
+  timelineList: () =>
+    ipcRenderer.invoke('timeline:list', {}),
+  timelineUpsert: (payload: { sceneId: string; day: number; time: string }) =>
+    ipcRenderer.invoke('timeline:upsert', payload),
   timelineInfer: (storyId: string) =>
     ipcRenderer.invoke('timeline:infer', { storyId }),
 

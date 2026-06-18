@@ -210,8 +210,6 @@ import {
   listSuggestions,
   insertAuditLog,
   listAuditLog,
-  upsertTimelineEntry,
-  listTimelineEntries,
   insertGenerationLog,
   listGenerationLog,
   countGenerationLog,
@@ -335,12 +333,14 @@ import {
 // SKY-796: timeline AI auto-population proposals
 import {
   buildProposalsForScene,
+  inferInferredDay,
   readProposalStore,
   writeProposalStore,
   mergeProposals,
   pendingForScenes,
   resolveProposalInStore,
 } from './timelineProposals.js';
+import { handleTimelineList, handleTimelineUpsert } from './timelineIpc.js';
 import {
   buildArchiveIndex,
   getArchiveIndex,
@@ -1215,15 +1215,14 @@ const handlers: IpcHandlers = {
     return { id };
   },
 
-  // ─── Timeline ───
-  [IPC_CHANNELS.TIMELINE_LIST]: (payload: TimelineListPayload) => {
+  // ─── Timeline (SKY-2463) ───
+  [IPC_CHANNELS.TIMELINE_LIST]: (_payload: TimelineListPayload) => {
     ensureVaultDir();
-    return { entries: listTimelineEntries(payload.scenePath) };
+    return handleTimelineList(getManifestPath());
   },
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => {
     ensureVaultDir();
-    upsertTimelineEntry(payload.entry);
-    return { id: payload.entry.id };
+    return handleTimelineUpsert(getManifestPath(), payload);
   },
 
   // MYT-319 — Archive Agent infers scene chronology without LLM calls
@@ -1233,7 +1232,9 @@ const handlers: IpcHandlers = {
     const story = manifest.stories.find(s => s.id === payload.storyId);
     if (!story) return { placements: [] };
 
-    // Prose patterns that hint at a specific point in time
+    // Prose patterns that hint at a date/time cue; the cue is stored for display.
+    // inferredTime is always 'unspecified' — this handler extracts date strings,
+    // not time-of-day; use the manifest timeline entries for StoryTimeOfDay values.
     const PROSE_PATTERNS: Array<{ re: RegExp; label: string }> = [
       { re: /\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December),?\s+\d{4})\b/i, label: 'date mention' },
       { re: /\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})\b/i, label: 'date mention' },
@@ -1246,7 +1247,7 @@ const handlers: IpcHandlers = {
 
     for (const chapter of story.chapters ?? []) {
       for (const scene of chapter.scenes ?? []) {
-        let inferredTime: string | null = null;
+        let inferredDay = 0;
         let confidence = 0;
         let source: 'explicit_marker' | 'prose' | null = null;
         let cue: string | null = null;
@@ -1254,37 +1255,37 @@ const handlers: IpcHandlers = {
         try {
           const { content } = readVaultFile(getVaultRoot(), scene.path);
           const fm = parseFrontmatter(content);
+          const prose = content.replace(/^---[\s\S]*?---\n?/, '');
 
-          // Frontmatter date: field → highest confidence
+          // Frontmatter date: field → highest confidence date cue; store in cue field
           const fmDate = (fm as Record<string, unknown>)['date'];
           if (fmDate && typeof fmDate === 'string' && fmDate.trim()) {
-            inferredTime = fmDate.trim();
             confidence = 0.95;
             source = 'explicit_marker';
-            cue = 'frontmatter date:';
+            cue = fmDate.trim();
           } else {
-            // Strip frontmatter block then scan prose
-            const prose = content.replace(/^---[\s\S]*?---\n?/, '');
             for (const { re, label } of PROSE_PATTERNS) {
               const m = prose.match(re);
               if (m) {
-                inferredTime = m[1] ?? m[0];
                 confidence = 0.55;
                 source = 'prose';
-                cue = label;
+                cue = `${label}: ${m[1] ?? m[0]}`;
                 break;
               }
             }
           }
+
+          inferredDay = inferInferredDay(prose);
         } catch {
-          // unreadable scene — leave nulls
+          // unreadable scene — leave defaults
         }
 
         placements.push({
           sceneId: scene.id,
           scenePath: scene.path,
           sceneTitle: scene.title,
-          inferredTime,
+          inferredDay,
+          inferredTime: 'unspecified',
           confidence,
           source,
           cue,

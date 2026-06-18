@@ -193,3 +193,56 @@ export interface Manifest {
   layout?: LayoutPrefs;
   lastOpenedSceneId?: string;
 }
+
+// ─── Timeline v0 types (SKY-2438 / SKY-2463) ────────────────────────────────
+// Mirrors electron-main/src/vault/manifest/types.ts — kept in sync manually.
+
+export type StoryTimeOfDay =
+  | 'midnight' | 'dawn' | 'morning' | 'noon'
+  | 'afternoon' | 'dusk' | 'night' | 'unspecified';
+
+export interface ManifestTimelineEntry {
+  sceneId: string;
+  inferredDay: number;
+  inferredTime: StoryTimeOfDay;
+  confidence: number;
+  rawCue: string;
+  userOverride?: {
+    day: number;
+    time: StoryTimeOfDay;
+    setAt: string;
+  };
+}
+
+export interface TimelineListResponse {
+  entries: ManifestTimelineEntry[];
+  sceneCount: number;
+  maxDay: number;
+}
+
+export interface TimelineUpsertPayload {
+  sceneId: string;
+  day: number;
+  time: StoryTimeOfDay;
+}
+
+export interface TimelineUpsertResponse {
+  ok: boolean;
+  entry?: ManifestTimelineEntry;
+  error?: string;
+}
+
+/** Display-ready representation of one scene on the visual timeline. */
+export interface TimelineDisplayItem {
+  sceneId: string;
+  sceneTitle: string;
+  chapterLabel: string;
+  isWritten: boolean;
+  accentColor: string;
+  /** userOverride.day ?? inferredDay; 0 = unspecified */
+  day: number;
+  time: StoryTimeOfDay;
+  confidence: number;
+  rawCue: string | null;
+  hasUserOverride: boolean;
+}
