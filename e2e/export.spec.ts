@@ -9,9 +9,9 @@
  *   AC-EXQ-6  Cancel closes dialog without writing any file
  *   AC-EXQ-7  Dialog shows a word count estimate matching the scope
  *
- *   AC-EXQ-2  EPUB radio present when scope=story     (skipped: requires SKY-2210)
- *   AC-EXQ-4  EPUB export writes file to disk         (skipped: requires SKY-2210)
- *   AC-EXQ-5  EPUB radio disabled for scene/chapter   (skipped: requires SKY-2210)
+ *   AC-EXQ-2  EPUB radio present when scope=story
+ *   AC-EXQ-4  EPUB export writes file to disk
+ *   AC-EXQ-5  EPUB radio disabled for scene/chapter (via VaultBrowser right-click)
  *
  * The export handlers call dialog.showSaveDialog() which cannot be driven by
  * Playwright. We override those IPC channels after launch via app.evaluate()
@@ -385,38 +385,85 @@ test('AC-EXQ-6: clicking Cancel closes ExportDialog without triggering any expor
 });
 
 // ─── AC-EXQ-2: EPUB radio present when scope=story ───────────────────────────
-// Skipped until SKY-2210 lands (EPUB option not yet added to ExportDialog).
 
-test.skip('AC-EXQ-2: ExportDialog shows EPUB radio option when scope is story [requires SKY-2210]', async () => {
+test('AC-EXQ-2: ExportDialog shows EPUB radio option when scope is story', async () => {
   await openExportDialog(page);
   const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
-  await expect(dialog.locator('label', { hasText: 'EPUB' })).toBeVisible();
+  await expect(dialog.locator('label', { hasText: 'EPUB (.epub)' })).toBeVisible();
+  // EPUB radio must be enabled for story scope.
+  await expect(dialog.locator('input[type="radio"][value="epub"]')).not.toBeDisabled();
   await dialog.locator('button[aria-label="Close"]').click();
   await dialog.waitFor({ state: 'detached', timeout: 4_000 });
 });
 
 // ─── AC-EXQ-4: EPUB export writes file ───────────────────────────────────────
-// Skipped until SKY-2210 lands.
 
-test.skip('AC-EXQ-4: selecting EPUB and clicking Export writes EPUB file [requires SKY-2210]', async () => {
+test('AC-EXQ-4: selecting EPUB and clicking Export writes EPUB file', async () => {
   await clearExportCalls(app!);
   await openExportDialog(page);
   const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
   await dialog.locator('input[type="radio"][value="epub"]').click();
+  await expect(dialog.locator('input[type="radio"][value="epub"]')).toBeChecked();
   await dialog.locator('button.export-dialog-btn-primary').click();
   await dialog.waitFor({ state: 'detached', timeout: 8_000 });
   const calls = await getExportCalls(app!);
   const epubCall = calls.find((c) => c.channel === 'export:epub');
   expect(epubCall, 'export:epub IPC must have been called').toBeTruthy();
+  expect(epubCall!.filePath, 'IPC must return a file path').toBeTruthy();
   expect(fs.existsSync(epubCall!.filePath!), 'Exported EPUB stub file must exist on disk').toBe(true);
 });
 
 // ─── AC-EXQ-5: EPUB radio disabled for scene/chapter scope ───────────────────
-// Skipped until SKY-2210 lands.
+// Opens ExportDialog via VaultBrowser right-click context menu which passes
+// the scope directly. The 'vault' panel renders VaultBrowser with onExport.
 
-test.skip('AC-EXQ-5: EPUB radio is disabled/absent when scope is scene or chapter [requires SKY-2210]', async () => {
-  // This test requires opening the ExportDialog via StoryContextMenu with
-  // scope={kind:'scene'} and scope={kind:'chapter'} and asserting the EPUB
-  // radio is absent or disabled. Implement when SKY-2210 adds the EPUB radio
-  // and context-menu export triggers.
+test('AC-EXQ-5: EPUB radio is disabled when scope is scene or chapter', async () => {
+  // Expand the vault panel (collapsed by default in the left sidebar).
+  const vaultPanel = page.locator('[data-panel-id="vault"]');
+  const vaultCollapsed = await vaultPanel.evaluate(
+    (el) => el.classList.contains('lr-panel--collapsed'),
+  ).catch(() => true);
+  if (vaultCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
+  await expect(vaultPanel.locator('.vb-tree-toggle[aria-level="1"]').first()).toBeVisible({ timeout: 6_000 });
+
+  // Expand story → chapter → scenes in VaultBrowser.
+  const storyToggle = vaultPanel.locator('.vb-tree-toggle[aria-level="1"]').first();
+  if ((await storyToggle.getAttribute('aria-expanded')) !== 'true') await storyToggle.click();
+  const chapterToggle = vaultPanel.locator('.vb-tree-toggle[aria-level="2"]').first();
+  await expect(chapterToggle).toBeVisible({ timeout: 3_000 });
+  if ((await chapterToggle.getAttribute('aria-expanded')) !== 'true') await chapterToggle.click();
+
+  // ── Scene scope ─────────────────────────────────────────────────────────────
+  const sceneRow = vaultPanel.locator(`[data-testid="vb-scene-${SCENE_ID}"]`);
+  await expect(sceneRow).toBeVisible({ timeout: 3_000 });
+  await sceneRow.click({ button: 'right' });
+
+  const ctxMenu = page.locator('[data-testid="story-context-menu"]');
+  await expect(ctxMenu).toBeVisible({ timeout: 3_000 });
+  await ctxMenu.locator('button[role="menuitem"]', { hasText: 'Export…' }).click();
+
+  const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
+  await expect(dialog).toBeVisible({ timeout: 6_000 });
+  await expect(dialog.locator('input[type="radio"][value="epub"]')).toBeDisabled();
+
+  await dialog.locator('button[aria-label="Close"]').click();
+  await dialog.waitFor({ state: 'detached', timeout: 4_000 });
+
+  // ── Chapter scope ────────────────────────────────────────────────────────────
+  const chapterItemRow = vaultPanel.locator('.vb-item-row').filter({
+    has: vaultPanel.locator('.vb-tree-toggle[aria-level="2"]'),
+  }).first();
+  await expect(chapterItemRow).toBeVisible({ timeout: 3_000 });
+  await chapterItemRow.click({ button: 'right' });
+
+  const ctxMenu2 = page.locator('[data-testid="story-context-menu"]');
+  await expect(ctxMenu2).toBeVisible({ timeout: 3_000 });
+  await ctxMenu2.locator('button[role="menuitem"]', { hasText: 'Export…' }).click();
+
+  const dialog2 = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
+  await expect(dialog2).toBeVisible({ timeout: 6_000 });
+  await expect(dialog2.locator('input[type="radio"][value="epub"]')).toBeDisabled();
+
+  await dialog2.locator('button[aria-label="Close"]').click();
+  await dialog2.waitFor({ state: 'detached', timeout: 4_000 });
 });
