@@ -37,6 +37,7 @@ interface Props {
   onToggleGsCollapsed?: () => void;
   currentSceneContent?: string;
   onDraftRestore?: (content: string) => void;
+  onOpenEntityNote?: (path: string) => void;
 }
 
 const SIDEBAR_TABS: { id: Tab; label: string }[] = [
@@ -44,7 +45,7 @@ const SIDEBAR_TABS: { id: Tab; label: string }[] = [
   { id: 'properties', label: 'Properties' },
   { id: 'ai', label: 'Assistant' },
   { id: 'outline', label: 'Outline' },
-  { id: 'continuity', label: 'Entities' },
+  { id: 'continuity', label: 'Continuity' },
 ];
 
 const NOTES_SAVE_DEBOUNCE_MS = 600;
@@ -403,6 +404,7 @@ export default function RightSidebar({
   onToggleGsCollapsed,
   currentSceneContent,
   onDraftRestore,
+  onOpenEntityNote,
   editorSelectionText = '',
 }: Props) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -494,7 +496,11 @@ export default function RightSidebar({
           />
         )}
         {activeTab === 'continuity' && (
-          <ContinuityPanel selectionText={editorSelectionText} />
+          <ContinuityPanel
+            selectionText={editorSelectionText}
+            autoFocusSearch={activeTab === 'continuity'}
+            onOpenEntityNote={onOpenEntityNote}
+          />
         )}
       </div>
     </div>
