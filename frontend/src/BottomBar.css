@@ -113,6 +113,29 @@
   border: 1px solid #166534;
 }
 
+.bottom-daily-goal {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #71717a;
+  border: 1px solid #27272a;
+  background: transparent;
+  cursor: default;
+  outline-offset: 2px;
+}
+
+.bottom-daily-goal:focus-visible {
+  outline: 2px solid var(--color-accent, #00f0ff);
+}
+
+.bottom-daily-goal--met {
+  color: var(--color-success, #4ade80);
+  border-color: var(--color-success-border, rgba(74, 222, 128, 0.4));
+  background: var(--color-success-bg, rgba(74, 222, 128, 0.12));
+}
+
 .bottom-voice {
   display: flex;
   align-items: center;
