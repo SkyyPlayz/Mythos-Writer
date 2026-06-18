@@ -119,6 +119,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # SKY-2301: kill any lingering jazzer/Runner.Worker processes from prior runs on
+      # this self-hosted runner before starting fuzz. Ghost jazzer processes accumulate
+      # and cause OOM that cancels the DOCX/EPUB step ~7 s in (reproduces on both
+      # run 27736846845 and re-trigger run 27758276908).
+      - name: Pre-fuzz cleanup — kill ghost jazzer processes
+        run: |
+          pkill -x jazzer 2>/dev/null || true
+          pkill -f Runner.Worker 2>/dev/null || true
+          sleep 1
+
       # SKY-361: coverage-guided fuzz run on every PR — 60 s per harness.
       # Fuzzes parseFrontmatter (Obsidian import path) and the DOCX/EPUB inline
       # parsers. Crashes are uploaded as artifacts so triage can start immediately.
