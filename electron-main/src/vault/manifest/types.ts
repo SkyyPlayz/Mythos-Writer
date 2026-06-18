@@ -80,6 +80,29 @@ export interface BoardRef {
   updatedAt: string;
 }
 
+// ── Timeline ─────────────────────────────────────────────────────────────────
+
+export type StoryTimeOfDay =
+  | 'midnight' | 'dawn' | 'morning' | 'noon'
+  | 'afternoon' | 'dusk' | 'night' | 'unspecified';
+
+export interface ManifestTimelineEntry {
+  sceneId: string;
+  /** Story-relative day number (1–N). 0 = unresolved. */
+  inferredDay: number;
+  inferredTime: StoryTimeOfDay;
+  /** Engine confidence 0.0–1.0. */
+  confidence: number;
+  /** The raw text cue that produced the inference. */
+  rawCue: string;
+  userOverride?: {
+    day: number;
+    time: StoryTimeOfDay;
+    /** ISO-8601 timestamp of the override. */
+    setAt: string;
+  };
+}
+
 // ── Manifest v1 ──────────────────────────────────────────────────────────────
 
 export interface ManifestV1 {
@@ -94,6 +117,8 @@ export interface ManifestV1 {
   provenance: ProvenanceEntry[];
   /** Scene Crafter board file references. */
   boards: BoardRef[];
+  /** Per-scene timeline inference results. Optional; absent on pre-timeline vaults. */
+  timeline?: ManifestTimelineEntry[];
   /** Preserved from pre-v1 manifests; may be absent on fresh vaults. */
   stories?: unknown[];
   chapters?: unknown[];

@@ -10,6 +10,7 @@ import VaultBrowser from './components/VaultBrowser';
 import SuggestionReview from './SuggestionReview';
 import ProgressDashboard from './ProgressDashboard';
 import VaultGraphView from './VaultGraphView';
+import StoryTimeline from './StoryTimeline';
 import './FloatingPanelApp.css';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ const PANEL_LABELS: Record<string, string> = {
   'vault-graph': 'Graph',
   review: 'Suggestion Review',
   progress: 'Writing Goals',
+  timeline: 'Timeline',
 };
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -155,6 +157,8 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
         return <SuggestionReview onOpenVaultPath={() => {}} />;
       case 'progress':
         return <ProgressDashboard stories={stories} />;
+      case 'timeline':
+        return <StoryTimeline story={null} />;
       default:
         return <div className="fpa-unknown-panel">Unknown panel: {panelId}</div>;
     }

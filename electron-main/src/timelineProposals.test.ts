@@ -8,6 +8,7 @@ import {
   estimateDate,
   detectCharacters,
   estimateMood,
+  inferInferredDay,
   mergeProposals,
   pendingForScenes,
   readProposalStore,
@@ -26,6 +27,30 @@ function makeTmpDir(): string {
 function cleanDir(dir: string) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
+
+// ─── inferInferredDay ───
+
+describe('inferInferredDay', () => {
+  it('returns the day number for a scene with an explicit "Day N" cue', () => {
+    expect(inferInferredDay('On Day 3 of the march, Eira reached the gate.')).toBe(3);
+  });
+
+  it('returns the day number for large day values', () => {
+    expect(inferInferredDay('Day 42 of the Siege had arrived.')).toBe(42);
+  });
+
+  it('is case-insensitive for the keyword', () => {
+    expect(inferInferredDay('day 7 of the conflict began.')).toBe(7);
+  });
+
+  it('returns 0 when no time cue is present', () => {
+    expect(inferInferredDay('Nothing happened in particular.')).toBe(0);
+  });
+
+  it('returns 0 for Day 0 (not a valid story day)', () => {
+    expect(inferInferredDay('Day 0 before the war started.')).toBe(0);
+  });
+});
 
 // ─── estimateDate ───
 

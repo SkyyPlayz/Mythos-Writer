@@ -1,0 +1,130 @@
+/* SKY-2450 — TimelineHeader: zoom toolbar above the story timeline canvas.
+ * Liquid Neon tokens only; no hardcoded hex values.
+ */
+
+/* ─── Root bar ────────────────────────────────────────────────────────────── */
+
+.tlh-root {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--color-border, #3a3a5c);
+  background: var(--color-surface, #1e1e2e);
+  flex-shrink: 0;
+}
+
+/* ─── Story title ─────────────────────────────────────────────────────────── */
+
+.tlh-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-header, #edecf6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Divider ─────────────────────────────────────────────────────────────── */
+
+.tlh-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border, #3a3a5c);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* ─── Zoom group ──────────────────────────────────────────────────────────── */
+
+.tlh-zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.tlh-zoom-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border, #3a3a5c);
+  opacity: 0.5;
+  margin: 0 0.15rem;
+}
+
+/* ─── Zoom level readout ──────────────────────────────────────────────────── */
+
+.tlh-zoom-level {
+  min-width: 3.2em;
+  text-align: center;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #8a9bb0);
+  user-select: none;
+}
+
+/* ─── Zoom buttons ────────────────────────────────────────────────────────── */
+
+.tlh-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.45rem;
+  height: 26px;
+  min-width: 26px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border, #3a3a5c);
+  background: transparent;
+  color: var(--color-text, #eee);
+  font-size: 0.8rem;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 120ms ease-out,
+    color 120ms ease-out,
+    box-shadow 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.tlh-zoom-btn:hover:not(:disabled) {
+  border-color: var(--color-accent, #00f0ff);
+  color: var(--color-accent, #00f0ff);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent, #00f0ff) 35%, transparent);
+}
+
+.tlh-zoom-btn:focus-visible {
+  outline: 2px solid var(--color-accent, #00f0ff);
+  outline-offset: 2px;
+  border-color: var(--color-accent, #00f0ff);
+}
+
+.tlh-zoom-btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, #00f0ff) 12%, transparent);
+  transition-duration: 60ms;
+}
+
+.tlh-zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* "Fit" button — slightly wider, distinct label */
+
+.tlh-zoom-btn--fit {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0 0.6rem;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Reduced motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .tlh-zoom-btn {
+    transition: none;
+  }
+}

@@ -68,6 +68,7 @@ import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
+import StoryTimeline from './StoryTimeline';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -1863,7 +1864,29 @@ export default function DesktopShell() {
       if (mod && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
         if (tabShellRef.current.activeTab === 'story') {
           e.preventDefault();
-          handleSetView('timeline');
+          // SKY-2464: Toggle 'timeline' left sidebar panel.
+          // Previously called handleSetView('timeline') to open TimelineSpreadsheet sub-view.
+          const cur = leftSidebarLayoutRef.current;
+          const existing = cur.panels.find((p) => p.id === 'timeline');
+          const isOpen = existing != null && !existing.collapsed && !cur.sidebarCollapsed;
+          if (isOpen) {
+            persistLeftSidebarLayout({
+              ...cur,
+              panels: cur.panels.map((p) => p.id === 'timeline' ? { ...p, collapsed: true } : p),
+            });
+          } else if (existing != null) {
+            persistLeftSidebarLayout({
+              ...cur,
+              sidebarCollapsed: false,
+              panels: cur.panels.map((p) => p.id === 'timeline' ? { ...p, collapsed: false } : p),
+            });
+          } else {
+            persistLeftSidebarLayout({
+              ...cur,
+              sidebarCollapsed: false,
+              panels: [...cur.panels, { id: 'timeline', collapsed: false }],
+            });
+          }
         }
         return;
       }
@@ -2596,6 +2619,8 @@ export default function DesktopShell() {
         return <SuggestionReview onOpenVaultPath={handleOpenSceneByPath} />;
       case 'progress':
         return <ProgressDashboard stories={stories} />;
+      case 'timeline':
+        return <StoryTimeline story={selectedStory} />;
       case 'writing-assistant':
         return (
           <WritingAssistantPanel

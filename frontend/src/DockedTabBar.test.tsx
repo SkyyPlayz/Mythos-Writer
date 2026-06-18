@@ -230,10 +230,10 @@ describe('DockedTabBar [+] picker', () => {
 // ── DOCKED_TAB_PANEL_LABELS export ───────────────────────────────────────────
 
 describe('DOCKED_TAB_PANEL_LABELS', () => {
-  it('covers all 9 expected panel IDs', () => {
+  it('covers all 10 expected panel IDs', () => {
     const expected: SidebarPanelId[] = [
       'stories', 'entities', 'vault', 'vault-graph', 'review',
-      'progress', 'writing-assistant', 'archive-continuity', 'scene-preview',
+      'progress', 'timeline', 'writing-assistant', 'archive-continuity', 'scene-preview',
     ];
     for (const id of expected) {
       expect(DOCKED_TAB_PANEL_LABELS[id]).toBeTruthy();

@@ -567,7 +567,7 @@ interface RightSidebarPanel {
 }
 
 /** SKY-1694: Panel IDs available in the left sidebar panel zone. */
-type LeftPanelId = 'stories' | 'entities' | 'vault' | 'vault-graph' | 'review' | 'progress';
+type LeftPanelId = 'stories' | 'entities' | 'vault' | 'vault-graph' | 'review' | 'progress' | 'timeline';
 
 /** SKY-1695 (Wave 2b): Unified panel ID — any panel in either sidebar. */
 type SidebarPanelId = LeftPanelId | RightPanelId;
@@ -899,9 +899,9 @@ interface Window {
       }>;
     }>;
 
-    // Timeline (MYT-319) — Archive-inferred chronology
-    timelineList: (scenePath?: string) => Promise<unknown>;
-    timelineUpsert: (entry: unknown) => Promise<unknown>;
+    // Timeline v0 (SKY-2438/SKY-2463) — manifest-backed timeline
+    timelineList: () => Promise<import('./types').TimelineListResponse>;
+    timelineUpsert: (payload: import('./types').TimelineUpsertPayload) => Promise<import('./types').TimelineUpsertResponse>;
     timelineInfer: (storyId: string) => Promise<unknown>;
 
     // SKY-791/SKY-794: Timeline data model + spreadsheet view
@@ -1291,6 +1291,12 @@ interface Window {
     sceneCrafterSuggestionReject: (suggestionId: string, actor?: string) => Promise<{
       suggestionId: string;
       auditId: string;
+    }>;
+
+    // SKY-2454: Persist a user-confirmed timestamp override for a scene's timeline entry
+    updateSceneTimestamp: (sceneId: string, userDay: number, userTime: string) => Promise<{
+      success: boolean;
+      error?: string;
     }>;
 
   };
