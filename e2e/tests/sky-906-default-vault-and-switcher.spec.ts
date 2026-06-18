@@ -1,20 +1,20 @@
 /**
  * sky-906-default-vault-and-switcher.spec.ts — SKY-906
  *
- * End-to-end coverage for the one-click default Mythos Vault setup and the
+ * End-to-end coverage for the Quick Start (one-click) vault setup and the
  * vault-switcher Add/Switch flow. Boots Electron with no prior vault config
- * (so the onboarding wizard appears), clicks the "Create default Mythos Vault"
- * card on step 1, and asserts:
+ * (so the onboarding wizard appears), clicks the "Quick Start" card on step 1,
+ * and asserts:
  *
  *   - the wizard advances to the scaffolding step then closes
- *   - main creates `<userData>/vaults/Mythos Vault/Story Vault`
+ *   - main creates `<userData>/vaults/My First Vault/Story Vault`
  *     and `…/Notes Vault` with the expected SKY-15 seed layout
  *     (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults)
  *   - vault-settings.json is rewired to the new pair (Story + Notes)
  *
  * Then drives the multi-vault switcher:
  *
- *   - opens the switcher, creates a second Mythos Vault via "+ Create new",
+ *   - opens the switcher, creates a second vault via "+ Create new",
  *     asserts the disk + recent-projects layout, and confirms the active
  *     project changes
  *   - switches back to the first vault and verifies vault-settings.json
@@ -138,8 +138,8 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
 
     // Disk: the SKY-906 bundle landed under <userData>/vaults/My First Vault
-    // (SKY-2220/2221: DEFAULT_MYTHOS_VAULT_NAME changed from 'Mythos Vault' to 'My First Vault').
-    // (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults).
+    // (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults;
+    //  SKY-2220/2221: DEFAULT_MYTHOS_VAULT_NAME changed from 'Mythos Vault' to 'My First Vault').
     const mythosVaultRoot = path.join(userData, 'vaults', 'My First Vault');
     const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
     const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
@@ -149,7 +149,7 @@ test('TC-SKY-906-01: one-click default vault creates the bundle and lands on the
     expect(fs.existsSync(path.join(userData, 'vaults', 'Notes Vault'))).toBe(false);
 
     // The orchestrated path also seeds a first scene file so the editor lands
-    // on something writable. The quick-start flow uses the title directly (no slug) as folder name.
+    // on something writable. The quick-start flow uses the story title directly (no slug) as folder name.
     expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
 
     // vault-settings.json is rewired to the new pair and onboardingComplete=true.

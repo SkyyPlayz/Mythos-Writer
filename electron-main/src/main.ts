@@ -1905,8 +1905,8 @@ const handlers: IpcHandlers = {
       });
       const outlinePath = path.join(storyVaultPathDefault, storyDirPath, 'Outline.md');
       const synopsisPath = path.join(storyVaultPathDefault, storyDirPath, 'Synopsis.md');
-      if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, '# Outline\n\nStart with the big beats for My First Story.\n', 'utf-8');
-      if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, '# Synopsis\n\nA short pitch for My First Story.\n', 'utf-8');
+      if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, `# Outline\n\nStart with the big beats for ${effectiveStoryTitle}.\n`, 'utf-8');
+      if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, `# Synopsis\n\nA short pitch for ${effectiveStoryTitle}.\n`, 'utf-8');
 
       const scene = {
         id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath,

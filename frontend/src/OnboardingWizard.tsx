@@ -353,7 +353,7 @@ function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onT
   const panelId = `gp-panel-${genre.id}`;
   const accordionBtnId = `gp-accordion-btn-${genre.id}`;
 
-  function handleCardKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+  function handleCardKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onSelect();
@@ -372,14 +372,13 @@ function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onT
   }
 
   return (
-    <button
+    <div
       role="radio"
       aria-checked={isSelected}
       className="gp-card"
       onClick={onSelect}
       onKeyDown={handleCardKeyDown}
       tabIndex={tabIndex}
-      type="button"
       data-testid={`genre-card-${genre.id}`}
     >
       <div className="gp-card-header">
@@ -413,7 +412,7 @@ function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onT
           <pre>{genre.contents}</pre>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -1202,7 +1201,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               title="Open Existing Vault"
               description="Browse for a vault on your computer or cloud storage."
               ctaLabel="Browse &#x2192;"
-              onActivate={handleOpenExistingVault}
+              onActivate={() => { void handleOpenExistingVault(); }}
               testId="card-open-existing"
             />
           </div>

@@ -4,7 +4,7 @@
  * E2E coverage for AC-OB-01 through AC-OB-16 from the Onboarding v2 PRD.
  *
  * Coverage map:
- *   AC-OB-01  Default Mythos Vault → editor + Getting Started panel visible
+ *   AC-OB-01  Quick Start → editor + Getting Started panel visible
  *   AC-OB-02  Sample genre picker renders; arrow keys cycle focus; Enter selects
  *   AC-OB-03  "What's Inside" accordion expands/collapses; one open at a time
  *   AC-OB-04  Sci-Fi Noir selection → DesktopShell loads with sample start mode
@@ -14,7 +14,7 @@
  *   AC-OB-08  Any completed onboarding path → Getting Started panel visible
  *   AC-OB-09  Existing vault path → conflict hint + "See options" trigger
  *   AC-OB-10  Conflict Dialog "Open existing" → vault opens
- *   AC-OB-11  Obsidian vault path → "Switch to Import ›" link visible
+ *   AC-OB-11  Obsidian inline import link is not surfaced; migration is deferred
  *   AC-OB-12  Non-writable path → red hint + "Create Story" button disabled
  *   AC-OB-13  Back from step1c → step1 with no card pre-selected
  *   AC-OB-14  Seeded ≤5 recents display correctly; list stays bounded
@@ -63,10 +63,17 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
-/** Click the step1 card with the given testId and return once the card is clicked. */
+/** Click a top-level or Create Custom sub-selector onboarding card. */
 async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-  await page.locator(`[data-testid="${cardTestId}"]`).click();
+  if (cardTestId === 'card-blank' || cardTestId === 'card-sample' || cardTestId === 'card-template') {
+    await page.locator('[data-testid="card-create-custom"]').click();
+    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator(`[data-testid="${cardTestId}"]`).click();
+    return;
+  }
+  const resolvedCardTestId = cardTestId === 'card-default-mythos-vault' ? 'card-quick-start' : cardTestId;
+  await page.locator(`[data-testid="${resolvedCardTestId}"]`).click();
 }
 
 /** Navigate from step1 to the step2 form via the blank card. */
@@ -150,14 +157,13 @@ test.describe('AC-OB-01: Default Mythos Vault', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-01: default vault card completes onboarding; DesktopShell and Getting Started panel render', async () => {
+  test('AC-OB-01: quick-start card completes onboarding; DesktopShell and Getting Started panel render', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('onboarding:complete');
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
     });
 
-    await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-    await page.locator('[data-testid="card-default-mythos-vault"]').click();
+    await clickStep1Card(page, 'card-quick-start');
 
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
     // Getting Started panel renders automatically after first onboarding
@@ -576,7 +582,9 @@ test.describe('AC-OB-09–12: Path validation states', () => {
   });
 });
 
-test.describe('AC-OB-11: Obsidian path shows import link', () => {
+// ─── AC-OB-11: Obsidian paths are deferred to migration/open-existing flow ───
+
+test.describe('AC-OB-11: Obsidian path does not surface import link inline', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -592,7 +600,7 @@ test.describe('AC-OB-11: Obsidian path shows import link', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-11: path with .obsidian dir → "Switch to Import ›" link visible', async () => {
+  test('AC-OB-11: path with .obsidian dir defers import affordance; no inline import link is shown', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', (_evt: unknown, payload: ValidatePathPayload) => {
@@ -614,11 +622,11 @@ test.describe('AC-OB-11: Obsidian path shows import link', () => {
     await pathInput.clear();
     await pathInput.fill(path.join(userData, 'obsidian-vault'));
 
-    // Obsidian conflict hint + "Switch to Import" link
-    const hint = page.locator('[data-testid="gs-path-validation-hint"]');
-    await expect(hint).toBeVisible({ timeout: 1200 });
-    await expect(hint).toContainText('Obsidian');
-    await expect(page.locator('[data-testid="gs-switch-to-import"]')).toBeVisible();
+    // Obsidian import is deferred; the inline path validator only surfaces Mythos-vault conflicts.
+    await page.waitForTimeout(800);
+    await expect(page.locator('[data-testid="gs-switch-to-import"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="gs-path-validation-hint"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="gs-create-story"]')).toBeEnabled();
   });
 });
 

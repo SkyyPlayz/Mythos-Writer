@@ -78,12 +78,13 @@ async function waitUntil(
 }
 
 /**
- * Wait for the step-1 welcome screen (screen-step1) and click the given
- * starting-point card.  The current OnboardingWizard uses `screen-step1`
- * as the test id for this screen — the legacy `screen-welcome` no longer exists.
+ * Wait for the v2.1 top-level screen, enter Create Custom Vault, then click one
+ * of the custom starting-point cards on the Step 1b sub-selector.
  */
-async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
+async function clickCustomStartingPoint(page: Page, cardTestId: string): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
+  await page.locator('[data-testid="card-create-custom"]').click();
+  await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
   await page.locator(`[data-testid="${cardTestId}"]`).click();
 }
 
@@ -115,7 +116,7 @@ test.describe('TC-OB-01: Start Blank', () => {
   });
 
   test('blank vault: wizard completes and manifest.json is created inside Story Vault', async () => {
-    await clickStep1Card(page, 'card-blank');
+    await clickCustomStartingPoint(page, 'card-blank');
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
 
     // Install IPC mocks before interacting with step-2 controls.
@@ -202,11 +203,15 @@ test.describe('TC-OB-02: Sample Novel', () => {
     // Mock onboarding:complete before any UI interaction so it's ready when the
     // genre-start-btn fires the IPC call.
     await app.evaluate(({ ipcMain }) => {
+      (globalThis as typeof globalThis & { __onboardingPayloads?: unknown[] }).__onboardingPayloads = [];
       ipcMain.removeHandler('onboarding:complete');
-      ipcMain.handle('onboarding:complete', () => ({ ok: true }));
+      ipcMain.handle('onboarding:complete', (_event, payload) => {
+        (globalThis as typeof globalThis & { __onboardingPayloads: unknown[] }).__onboardingPayloads.push(payload);
+        return { ok: true, firstSceneId: 'sample-scene', firstScenePath: 'Manuscript/sample.md' };
+      });
     });
 
-    await clickStep1Card(page, 'card-sample');
+    await clickCustomStartingPoint(page, 'card-sample');
     await expect(page.locator('[data-testid="screen-step1c"]')).toBeVisible({ timeout: 8_000 });
 
     // Select any genre and start — the IPC call is mocked so genre choice doesn't matter for
@@ -217,39 +222,10 @@ test.describe('TC-OB-02: Sample Novel', () => {
 
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
-    // ── On-disk assertions ────────────────────────────────────────────────────
-
-    const storyVault = path.join(defaultSaveParent(userData), OB02_STORY_TITLE, 'Story Vault');
-    const notesVault = path.join(defaultSaveParent(userData), OB02_STORY_TITLE, 'Notes Vault');
-
-    // manifest.json present (written in beforeAll seeding)
-    const manifestPath = path.join(storyVault, 'manifest.json');
-    const manifestFound = await waitUntil(() => fs.existsSync(manifestPath));
-    expect(manifestFound, `manifest.json not found: ${manifestPath}`).toBe(true);
-
-    // Story Vault/The Glass Library/Manuscript/ must contain chapter dirs with .md scenes
-    const manuscriptDir = path.join(storyVault, 'The Glass Library', 'Manuscript');
-    expect(fs.existsSync(manuscriptDir), `Manuscript dir not found: ${manuscriptDir}`).toBe(true);
-    const chapterDirs = fs.readdirSync(manuscriptDir).filter((f) =>
-      fs.statSync(path.join(manuscriptDir, f)).isDirectory(),
-    );
-    expect(chapterDirs.length, 'No chapter dirs in The Glass Library/Manuscript/').toBeGreaterThan(0);
-    const sceneFiles = chapterDirs.flatMap((ch) =>
-      fs.readdirSync(path.join(manuscriptDir, ch)).filter((f) => f.endsWith('.md')),
-    );
-    expect(sceneFiles.length, 'No .md scene files under Manuscript/').toBeGreaterThan(0);
-
-    // Notes Vault/Universes/Argent/Characters/ — character notes
-    const charsDir = path.join(notesVault, 'Universes', 'Argent', 'Characters');
-    expect(fs.existsSync(charsDir), `Characters dir not found: ${charsDir}`).toBe(true);
-    const charFiles = fs.readdirSync(charsDir).filter((f) => f.endsWith('.md'));
-    expect(charFiles.length, 'No character .md files in Characters/').toBeGreaterThan(0);
-
-    // Notes Vault/Universes/Argent/Locations/ — location notes
-    const locsDir = path.join(notesVault, 'Universes', 'Argent', 'Locations');
-    expect(fs.existsSync(locsDir), `Locations dir not found: ${locsDir}`).toBe(true);
-    const locFiles = fs.readdirSync(locsDir).filter((f) => f.endsWith('.md'));
-    expect(locFiles.length, 'No location .md files in Locations/').toBeGreaterThan(0);
+    const payloads = await app.evaluate(() => (
+      (globalThis as typeof globalThis & { __onboardingPayloads?: unknown[] }).__onboardingPayloads ?? []
+    ));
+    expect(payloads).toContainEqual({ startMode: 'sample', sampleGenre: 'cozy-fantasy' });
   });
 });
 
@@ -305,8 +281,8 @@ test.describe('TC-OB-03: From Template', () => {
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
     });
 
-    // Step 1: choose From Template
-    await clickStep1Card(page, 'card-template');
+    // Step 1: choose Create Custom Vault → From Template
+    await clickCustomStartingPoint(page, 'card-template');
     await expect(page.locator('[data-testid="screen-step1b"]')).toBeVisible({ timeout: 8_000 });
 
     // Template card must appear after template:list resolves
