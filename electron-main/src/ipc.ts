@@ -8,10 +8,6 @@ import type { IpcEnvelope } from './ipcErrors.js';
 import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
 import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/types.js';
 export type { StoryTimeOfDay, ManifestTimelineEntry };
-import type { ManifestTimelineEntry, StoryTimeOfDay } from './vault/manifest/types.js';
-export type { ManifestTimelineEntry, StoryTimeOfDay };
-import type { ManifestTimelineEntry, StoryTimeOfDay } from './vault/manifest/types.js';
-export type { ManifestTimelineEntry, StoryTimeOfDay };
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
