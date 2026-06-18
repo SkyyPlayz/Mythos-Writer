@@ -113,5 +113,6 @@ export function emptyManifestV1(vaultRoot: string): ManifestV1 {
     suggestions: [],
     provenance: [],
     boards: [],
+    timeline: [],
   };
 }

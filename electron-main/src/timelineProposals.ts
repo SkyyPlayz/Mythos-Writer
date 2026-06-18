@@ -44,6 +44,26 @@ export interface ProposalEngineInput {
   characters: ProposalEngineCharacter[];
 }
 
+// ─── Story-day extraction ───
+//
+// Day convention: Day 1 = the narrative anchor (the first scene that carries an
+// explicit day cue). Per-scene inference extracts "Day N" markers only and
+// returns the raw integer. Cross-scene relative ordering (converting ISO dates
+// to day offsets from the anchor) is handled by the timeline aggregator.
+
+const EXPLICIT_DAY_RE = /\bDay\s+(\d+)\b/i;
+
+/**
+ * Extract the story-day integer from an explicit "Day N" cue in prose.
+ * Returns 0 when no day marker is present or when N is not a positive integer.
+ */
+export function inferInferredDay(text: string): number {
+  const m = text.match(EXPLICIT_DAY_RE);
+  if (!m) return 0;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 // ─── Date estimation ───
 
 const DATE_PATTERNS: Array<{ re: RegExp; reasonPrefix: string; confidence: number }> = [
