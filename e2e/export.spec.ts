@@ -98,6 +98,7 @@ function seedVault(vaultDir: string): void {
     ],
     scenes: [],
     arcs: [],
+    entities: [],
     _wordCountHint: words,
   };
 
@@ -171,10 +172,11 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 async function mockExportHandlers(app: ElectronApplication, exportDir: string): Promise<void> {
   await app.evaluate(
     ({ ipcMain }, { dir }: { dir: string }) => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const fs = require('fs') as typeof import('fs');
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const path = require('path') as typeof import('path');
+      const getBuiltinModule = (process as unknown as {
+        getBuiltinModule: (id: string) => unknown;
+      }).getBuiltinModule;
+      const fs = getBuiltinModule('fs') as typeof import('fs');
+      const path = getBuiltinModule('path') as typeof import('path');
 
       (globalThis as Record<string, unknown>).__exportCalls = [];
 
@@ -450,11 +452,8 @@ test('AC-EXQ-5: EPUB radio is disabled when scope is scene or chapter', async ()
   await dialog.waitFor({ state: 'detached', timeout: 4_000 });
 
   // ── Chapter scope ────────────────────────────────────────────────────────────
-  const chapterItemRow = vaultPanel.locator('.vb-item-row').filter({
-    has: vaultPanel.locator('.vb-tree-toggle[aria-level="2"]'),
-  }).first();
-  await expect(chapterItemRow).toBeVisible({ timeout: 3_000 });
-  await chapterItemRow.click({ button: 'right' });
+  await expect(chapterToggle).toBeVisible({ timeout: 3_000 });
+  await chapterToggle.click({ button: 'right' });
 
   const ctxMenu2 = page.locator('[data-testid="story-context-menu"]');
   await expect(ctxMenu2).toBeVisible({ timeout: 3_000 });

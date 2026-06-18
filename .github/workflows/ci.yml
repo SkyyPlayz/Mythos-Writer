@@ -182,6 +182,9 @@ jobs:
       - name: E2E — Brainstorm Agent streaming and vault note creation (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:brainstorm
 
+      - name: E2E — ExportDialog formats DOCX/EPUB/Markdown (SKY-2213)
+        run: xvfb-run --auto-servernum npm run test:e2e:export
+
       - name: e2e visual-capture (MYT-531 §9.2/§9.3)
         run: xvfb-run --auto-servernum npm run test:e2e:visual-capture
 
