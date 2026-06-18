@@ -137,3 +137,8 @@
   margin-bottom: 12px;
   font-weight: 600;
 }
+
+.theme-dark .modal.mod-settings:has(.vertical-tab-nav-item[data-setting-id="dataview"].is-active) .setting-item-heading .setting-item-name {
+  color: var(--neon-cyan, #00f0ff);
+  font-weight: 600;
+}
