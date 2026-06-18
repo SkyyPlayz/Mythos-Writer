@@ -1,0 +1,234 @@
+/* SKY-2452 — TimestampEditor: inline form for adjusting a scene's timestamp.
+ *
+ * Liquid Neon token-driven; no hardcoded hex values.
+ * Transitions: 120ms ease-out per spec.
+ * Respects prefers-reduced-motion via global index.css reset.
+ */
+
+.te-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+/* ─── Field layout ─────────────────────────────────────────────────────────── */
+
+.te-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.te-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-header);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* ─── Slider + number input row ────────────────────────────────────────────── */
+
+.te-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.te-slider {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--neon-cyan) 30%, var(--surface));
+  outline: none;
+  cursor: pointer;
+  transition: background 120ms ease-out;
+}
+
+.te-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--neon-cyan);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--neon-cyan) 60%, transparent);
+  cursor: pointer;
+  transition:
+    box-shadow 120ms ease-out,
+    background 120ms ease-out;
+}
+
+.te-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--neon-cyan);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--neon-cyan) 60%, transparent);
+  cursor: pointer;
+  transition:
+    box-shadow 120ms ease-out,
+    background 120ms ease-out;
+}
+
+.te-slider:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 3px;
+}
+
+.te-slider:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--neon-cyan) 80%, transparent);
+}
+
+.te-slider:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.te-input-number {
+  width: 56px;
+  padding: 4px 6px;
+  font-size: 0.85rem;
+  color: var(--text-body);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  outline: none;
+  text-align: center;
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+  /* Remove native spinner arrows to keep styling clean. */
+  -moz-appearance: textfield;
+}
+
+.te-input-number::-webkit-outer-spin-button,
+.te-input-number::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.te-input-number:focus-visible {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--neon-cyan) 25%, transparent);
+}
+
+.te-input-number:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ─── Time of day select ────────────────────────────────────────────────────── */
+
+.te-select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 0.875rem;
+  color: var(--text-body);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.te-select:focus-visible {
+  border-color: var(--neon-violet);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--neon-violet) 25%, transparent);
+}
+
+.te-select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ─── Error message ─────────────────────────────────────────────────────────── */
+
+.te-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--neon-magenta);
+}
+
+/* ─── Action buttons ────────────────────────────────────────────────────────── */
+
+.te-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.te-btn {
+  padding: 5px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background 120ms ease-out,
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out,
+    opacity 120ms ease-out;
+  user-select: none;
+}
+
+.te-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.te-btn--primary {
+  background: color-mix(in srgb, var(--neon-cyan) 15%, var(--surface));
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.te-btn--primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--neon-cyan) 25%, var(--surface));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--neon-cyan) 40%, transparent);
+}
+
+.te-btn--primary:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+.te-btn--secondary {
+  background: transparent;
+  border-color: var(--border-default);
+  color: var(--text-muted);
+}
+
+.te-btn--secondary:not(:disabled):hover {
+  border-color: var(--text-body);
+  color: var(--text-body);
+}
+
+.te-btn--secondary:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 2px;
+}
+
+/* ─── Reduced motion ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .te-slider,
+  .te-slider::-webkit-slider-thumb,
+  .te-slider::-moz-range-thumb,
+  .te-input-number,
+  .te-select,
+  .te-btn {
+    transition: none;
+  }
+}
