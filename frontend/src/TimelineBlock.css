@@ -1,0 +1,159 @@
+/* SKY-2461 — TimelineBlock: single scene/event block for StoryTimeline canvas.
+ *
+ * Liquid Neon token-driven; no hardcoded hex values.
+ * Transitions: 120ms ease-out per spec.
+ * Respects prefers-reduced-motion via global index.css reset.
+ */
+
+.tb-root {
+  /* Accent color falls back to --neon-violet; overridden via inline style. */
+  --tb-accent: var(--neon-violet);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out,
+    opacity 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+/* ─── Size variants ───────────────────────────────────────────────────────── */
+
+.tb-root--default {
+  width: 160px;
+  min-height: 80px;
+  padding: 8px;
+}
+
+.tb-root--compact {
+  width: 120px;
+  min-height: 60px;
+  padding: 6px;
+}
+
+/* ─── Written block (isWritten=true) ──────────────────────────────────────── */
+
+.tb-root--written {
+  background: color-mix(in srgb, var(--tb-accent) 12%, var(--surface));
+  border: 1.5px solid var(--tb-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--tb-accent) 30%, transparent);
+  opacity: 1;
+}
+
+.tb-root--written:hover {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--tb-accent) 50%, transparent);
+}
+
+.tb-root--written.tb-root--selected {
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--tb-accent) 70%, transparent),
+    inset 0 0 8px color-mix(in srgb, var(--tb-accent) 20%, transparent);
+}
+
+/* ─── Planned block (isWritten=false) ─────────────────────────────────────── */
+
+.tb-root--planned {
+  background: color-mix(in srgb, var(--text-muted) 20%, var(--surface));
+  border: 1.5px solid var(--border-default);
+  box-shadow: none;
+  opacity: 0.65;
+}
+
+.tb-root--planned:hover {
+  border-color: var(--text-body);
+  opacity: 0.8;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--text-body) 20%, transparent);
+}
+
+.tb-root--planned.tb-root--selected {
+  opacity: 1;
+  border-color: var(--text-body);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--text-body) 30%, transparent);
+}
+
+/* ─── Focus ring ──────────────────────────────────────────────────────────── */
+
+.tb-root:focus-visible {
+  outline: 2px solid var(--tb-accent);
+  outline-offset: 2px;
+}
+
+.tb-root--planned:focus-visible {
+  outline-color: var(--text-muted);
+}
+
+/* ─── Confidence badge ────────────────────────────────────────────────────── */
+
+.tb-confidence-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.tb-confidence-badge--high {
+  color: var(--neon-cyan);
+}
+
+.tb-confidence-badge--low {
+  color: var(--neon-magenta);
+}
+
+/* ─── Content text ────────────────────────────────────────────────────────── */
+
+.tb-scene-name {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-body);
+  /* Leave room for the confidence badge in the top-right corner. */
+  padding-right: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-timestamp {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-chapter {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* ─── Compact size type scale adjustments ─────────────────────────────────── */
+
+.tb-root--compact .tb-scene-name {
+  font-size: 0.75rem;
+}
+
+.tb-root--compact .tb-timestamp,
+.tb-root--compact .tb-chapter {
+  font-size: 0.65rem;
+}
+
+/* ─── Reduced motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-root {
+    transition: none;
+  }
+}
