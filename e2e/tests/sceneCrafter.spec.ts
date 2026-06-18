@@ -50,7 +50,7 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
         maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
       },
       brainstorm: {
-        enabled: false, model: 'claude-sonnet-4-6', autoApply: false,
+        enabled: true, model: 'claude-sonnet-4-6', autoApply: false,
         confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
         maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
       },

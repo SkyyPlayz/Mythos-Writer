@@ -1412,7 +1412,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   ? (JSON.parse(r.payload_json) as Record<string, unknown>)
                   : {};
                 const k = payload.kind as string;
-                const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'inbox'].includes(k)
+                const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'scene_crafter_card', 'inbox'].includes(k)
                   ? (k as NoteProposalKind) : 'inbox';
                 const title = typeof payload.title === 'string' ? payload.title : '';
                 if (!title) return [];
@@ -1449,7 +1449,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         .filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object')
         .flatMap((r) => {
           const k = r.kind as string;
-          const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'inbox'].includes(k)
+          const kind: NoteProposalKind = ['character', 'location', 'item', 'faction', 'scene_card', 'scene_crafter_card', 'inbox'].includes(k)
             ? (k as NoteProposalKind) : 'inbox';
           const title = typeof r.title === 'string' ? r.title : '';
           if (!title) return [];
