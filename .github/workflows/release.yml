@@ -88,13 +88,12 @@ jobs:
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
-        continue-on-error: true
         with:
           name: windows-dist
           path: |
             dist-electron/*.exe
             dist-electron/*.zip
-          retention-days: 14
+          retention-days: 1
 
   # macOS build — optional; not a dependency of publish-release.
   # Runs on hosted macos-latest; will be skipped when Actions minutes are exhausted.
@@ -180,7 +179,7 @@ jobs:
           path: |
             dist-electron/*.dmg
             dist-electron/*.zip
-          retention-days: 14
+          retention-days: 1
 
   build-linux:
     needs: [determine-release]
@@ -212,13 +211,12 @@ jobs:
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
-        continue-on-error: true
         with:
           name: linux-dist
           path: |
             dist-electron/*.AppImage
             dist-electron/*.yml
-          retention-days: 14
+          retention-days: 1
 
   publish-release:
     needs: [determine-release, build-linux, build-windows]
