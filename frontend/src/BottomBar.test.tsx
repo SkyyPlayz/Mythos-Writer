@@ -25,11 +25,26 @@ function makeScene(overrides: Partial<Scene> = {}): Scene {
 }
 
 function makeChapter(scenes: Scene[] = []): Chapter {
-  return { id: 'ch-1', title: 'Chapter One', order: 0, scenes };
+  return {
+    id: 'ch-1',
+    title: 'Chapter One',
+    order: 0,
+    scenes,
+    path: 'chapter-one.md',
+    createdAt: '',
+    updatedAt: '',
+  };
 }
 
 function makeStory(chapters: Chapter[] = []): Story {
-  return { id: 'st-1', title: 'My Novel', chapters, path: '/vault/My Novel', createdAt: '' };
+  return {
+    id: 'st-1',
+    title: 'My Novel',
+    chapters,
+    path: '/vault/My Novel',
+    createdAt: '',
+    updatedAt: '',
+  };
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -53,7 +68,7 @@ async function renderBar(props: {
 }) {
   const scene = props.selectedScene !== undefined ? props.selectedScene : makeScene();
   const chapter = props.selectedChapter !== undefined ? props.selectedChapter : makeChapter([scene ?? makeScene()]);
-  const story = props.selectedStory !== undefined ? props.selectedStory : makeStory([chapter]);
+  const story = props.selectedStory !== undefined ? props.selectedStory : makeStory(chapter ? [chapter] : []);
 
   let view!: ReturnType<typeof render>;
   await act(async () => {
