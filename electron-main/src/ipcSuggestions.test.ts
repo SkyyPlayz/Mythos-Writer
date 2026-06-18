@@ -1,4 +1,5 @@
-// TC-DB-25-*: Suggestion Inbox DB tests — FTS migration + search/ignore/batch IPC logic.
+// TC-DB-25-* / TC-DB-26-*: Suggestion Inbox DB tests — FTS migration, search/ignore/batch IPC,
+// and suggestion_snapshots table (SKY-2475/SKY-2472).
 // All tests run against a real in-process SQLite DB (no mocks).
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -17,8 +18,11 @@ import {
   searchSuggestionsFts,
   listUnifiedSuggestions,
   insertContinuityIssue,
+  insertSuggestionSnapshot,
+  getSuggestionSnapshot,
   type DbSuggestion,
   type DbContinuityIssue,
+  type DbSuggestionSnapshot,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<DbSuggestion> = {}): DbSuggestion {
@@ -222,5 +226,81 @@ describe('TC-DB-25-6: unified-list aggregates all three source tables', () => {
       expect(item.kind).toBe('suggestion');
     }
     expect(result.countByKind['continuity-issue']).toBeUndefined();
+  });
+});
+
+// TC-DB-26-*: suggestion_snapshots table (SKY-2475 / SKY-2472)
+// Verifies that pre-apply snapshots can be inserted and retrieved by suggestion_id.
+
+function makeSnapshot(overrides: Partial<DbSuggestionSnapshot> = {}): DbSuggestionSnapshot {
+  return {
+    id: `snap-${Math.random().toString(36).slice(2, 8)}`,
+    suggestion_id: `sug-${Math.random().toString(36).slice(2, 8)}`,
+    snapshot_kind: 'file',
+    payload_json: JSON.stringify({ originalContent: 'before', path: 'scenes/ch1.md' }),
+    created_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+// TC-DB-26-1: insert + retrieve file snapshot.
+describe('TC-DB-26-1: suggestion_snapshots insert and retrieve (file kind)', () => {
+  it('stores and returns a file snapshot for a given suggestion_id', () => {
+    const snap = makeSnapshot({ snapshot_kind: 'file' });
+    insertSuggestionSnapshot(snap);
+
+    const retrieved = getSuggestionSnapshot(snap.suggestion_id);
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.id).toBe(snap.id);
+    expect(retrieved?.snapshot_kind).toBe('file');
+    expect(JSON.parse(retrieved?.payload_json ?? '{}')).toEqual({ originalContent: 'before', path: 'scenes/ch1.md' });
+  });
+});
+
+// TC-DB-26-2: insert + retrieve manifest snapshot.
+describe('TC-DB-26-2: suggestion_snapshots insert and retrieve (manifest kind)', () => {
+  it('stores and returns a manifest snapshot for a given suggestion_id', () => {
+    const fakeManifest = { schemaVersion: 1, stories: [] };
+    const snap = makeSnapshot({
+      snapshot_kind: 'manifest',
+      payload_json: JSON.stringify(fakeManifest),
+    });
+    insertSuggestionSnapshot(snap);
+
+    const retrieved = getSuggestionSnapshot(snap.suggestion_id, 'manifest');
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.snapshot_kind).toBe('manifest');
+    expect(JSON.parse(retrieved?.payload_json ?? '{}')).toMatchObject({ schemaVersion: 1 });
+  });
+});
+
+// TC-DB-26-3: kind filter returns correct snapshot type.
+describe('TC-DB-26-3: getSuggestionSnapshot kind filter', () => {
+  it('returns null when kind=manifest but only a file snapshot exists', () => {
+    const snap = makeSnapshot({ snapshot_kind: 'file' });
+    insertSuggestionSnapshot(snap);
+
+    const result = getSuggestionSnapshot(snap.suggestion_id, 'manifest');
+    expect(result).toBeNull();
+  });
+
+  it('returns file snapshot when no kind filter is specified', () => {
+    const snap = makeSnapshot({ snapshot_kind: 'file' });
+    insertSuggestionSnapshot(snap);
+
+    const result = getSuggestionSnapshot(snap.suggestion_id);
+    expect(result?.id).toBe(snap.id);
+  });
+});
+
+// TC-DB-26-4: snapshot persists independently of suggestion row.
+describe('TC-DB-26-4: snapshot row is independent of suggestion row', () => {
+  it('snapshot can be written before the suggestion exists in the DB', () => {
+    const suggestionId = 'sug-never-inserted';
+    const snap = makeSnapshot({ suggestion_id: suggestionId, snapshot_kind: 'file' });
+    // No upsertSuggestion call — snapshot table has no FK constraint.
+    insertSuggestionSnapshot(snap);
+    const retrieved = getSuggestionSnapshot(suggestionId);
+    expect(retrieved?.suggestion_id).toBe(suggestionId);
   });
 });

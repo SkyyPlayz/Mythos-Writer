@@ -219,8 +219,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('generationLog:recent', payload),
 
   // Suggestions lifecycle
-  suggestionsList: (status?: string, sourceAgent?: string) =>
-    ipcRenderer.invoke('suggestions:list', { status, sourceAgent }),
+  suggestionsList: (status?: string, sourceAgent?: string, opts?: { confidenceMin?: number; confidenceMax?: number; limit?: number; offset?: number }) =>
+    ipcRenderer.invoke('suggestions:list', { status, sourceAgent, ...opts }),
   suggestionsGet: (id: string) =>
     ipcRenderer.invoke('suggestions:get', { id }),
   suggestionsUpsert: (suggestion: unknown) =>

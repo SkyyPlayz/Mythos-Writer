@@ -716,6 +716,27 @@ function runMigrations(db: DatabaseSync): void {
     }
     db.exec('PRAGMA user_version = 25');
   }
+
+  if (currentVersion < 26) {
+    // SKY-2475/SKY-2472: Suggestion snapshots table — stores pre-apply state so
+    // suggestions can be rolled back. Two kinds:
+    //   'file'     — vault file content captured before a vault-write apply
+    //   'manifest' — full manifest JSON captured before a structural (typed-relation) apply
+    // The snapshot is referenced by suggestion_id and looked up during rollback when
+    // the file-based snapshot path is absent (typed-relation path).
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS suggestion_snapshots (
+        id             TEXT PRIMARY KEY,
+        suggestion_id  TEXT NOT NULL,
+        snapshot_kind  TEXT NOT NULL DEFAULT 'file',
+        payload_json   TEXT NOT NULL,
+        created_at     TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_suggestion_snapshots_sug
+        ON suggestion_snapshots (suggestion_id);
+    `);
+    db.exec('PRAGMA user_version = 26');
+  }
 }
 
 // ─── Project settings (key-value store for per-project state) ───
@@ -1079,6 +1100,54 @@ export function listUnifiedSuggestions(opts: UnifiedSuggestionFilters): UnifiedS
   }));
 
   return { items, totalCount, countByAgent, countByKind };
+}
+
+// ─── Suggestion snapshots (SKY-2475/SKY-2472) ───
+
+export type SuggestionSnapshotKind = 'file' | 'manifest';
+
+export interface DbSuggestionSnapshot {
+  id: string;
+  suggestion_id: string;
+  snapshot_kind: SuggestionSnapshotKind;
+  /** JSON-serialized snapshot payload.
+   *  kind='file': { path: string, originalContent: string }
+   *  kind='manifest': serialized vault Manifest object */
+  payload_json: string;
+  created_at: string;
+}
+
+export function insertSuggestionSnapshot(snap: DbSuggestionSnapshot): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO suggestion_snapshots
+         (id, suggestion_id, snapshot_kind, payload_json, created_at)
+       VALUES (@id, @suggestion_id, @snapshot_kind, @payload_json, @created_at)`
+    )
+    .run(snap as unknown as Record<string, import('node:sqlite').SQLInputValue>);
+}
+
+export function getSuggestionSnapshot(
+  suggestionId: string,
+  kind?: SuggestionSnapshotKind,
+): DbSuggestionSnapshot | null {
+  const db = getDb();
+  if (kind !== undefined) {
+    return (
+      (db
+        .prepare(
+          'SELECT * FROM suggestion_snapshots WHERE suggestion_id = ? AND snapshot_kind = ? ORDER BY created_at DESC LIMIT 1',
+        )
+        .get(suggestionId, kind) as DbSuggestionSnapshot | undefined) ?? null
+    );
+  }
+  return (
+    (db
+      .prepare(
+        'SELECT * FROM suggestion_snapshots WHERE suggestion_id = ? ORDER BY created_at DESC LIMIT 1',
+      )
+      .get(suggestionId) as DbSuggestionSnapshot | undefined) ?? null
+  );
 }
 
 // ─── Audit log ───

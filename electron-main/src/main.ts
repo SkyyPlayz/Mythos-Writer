@@ -262,6 +262,8 @@ import {
   getContinuityIssue,
   updateContinuityIssueStatus,
   insertArchiveAuditLog,
+  insertSuggestionSnapshot,
+  getSuggestionSnapshot,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -1195,12 +1197,21 @@ const handlers: IpcHandlers = {
     let restoredPath: string | null = null;
 
     if (applyEntry?.snapshot_path && suggestion.target_path) {
+      // File-based snapshot: restore original vault file content.
       safePath(getVaultRoot(), applyEntry.snapshot_path); // throws on path traversal
       const fullSnapshotPath = path.join(getVaultRoot(), applyEntry.snapshot_path);
       if (fs.existsSync(fullSnapshotPath)) {
         const snapshot = JSON.parse(fs.readFileSync(fullSnapshotPath, 'utf-8')) as { originalContent: string; path: string };
         writeVaultFileAtomic(getVaultRoot(), snapshot.path, snapshot.originalContent);
         restoredPath = snapshot.path;
+      }
+    } else {
+      // SQLite-based manifest snapshot: restore manifest for typed-relation rollback.
+      const manifestSnap = getSuggestionSnapshot(payload.id, 'manifest');
+      if (manifestSnap) {
+        const savedManifest = JSON.parse(manifestSnap.payload_json) as import('./ipc.js').Manifest;
+        writeManifest(getManifestPath(), savedManifest);
+        restoredPath = getManifestPath();
       }
     }
 
@@ -5748,6 +5759,8 @@ function autoApplyVaultWrite(
       // independent of IPC/Electron, and returns 'accepted' (not 'applied') when
       // neither side wrote, so a stale suggestion referencing a deleted/unknown
       // entity does not silently report success.
+      // SKY-2475: saves a manifest snapshot to suggestion_snapshots before apply
+      // so the typed-relation change can be rolled back.
       if (payloadData.kind === 'typed-relation') {
         const {
           relationType,
@@ -5758,6 +5771,14 @@ function autoApplyVaultWrite(
           return { finalStatus: 'accepted', snapshotPath: null };
         }
         const manifest = readManifest(getManifestPath());
+        // Save manifest snapshot before mutation so rollback can restore it.
+        insertSuggestionSnapshot({
+          id: crypto.randomUUID(),
+          suggestion_id: suggestion.id,
+          snapshot_kind: 'manifest',
+          payload_json: JSON.stringify(manifest),
+          created_at: now,
+        });
         const { sourceWritten, targetWritten } = applyTypedRelation(
           getVaultRoot(),
           manifest,
