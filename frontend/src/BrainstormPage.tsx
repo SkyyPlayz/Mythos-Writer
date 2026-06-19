@@ -19,6 +19,8 @@ import EntriesQuickAdd from './EntriesQuickAdd';
 import { PROMPT_MAX_CHARS } from './promptConstants';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
+import ContinuityPanel from './ContinuityPanel';
+import type { Scene } from './types';
 import './BrainstormPage.css';
 
 interface ContinuityIssue {
@@ -242,8 +244,15 @@ interface Props {
   /** SKY-1764/SKY-2306: slug of the currently selected story, used to add
    *  scene_crafter_card proposals directly to the active board. */
   activeStorySlug?: string | null;
+<<<<<<< HEAD
   /** Voice input is feature-flagged off by default; Settings must opt in. */
   voiceEnabled?: boolean;
+=======
+  /** SKY-2585: gate Archive Continuity panel. Defaults true (feature on). */
+  archiveContinuityEnabled?: boolean;
+  /** SKY-2585: active scene forwarded to ContinuityPanel for scene-scoped issue listing. */
+  activeScene?: Scene | null;
+>>>>>>> 46eddbf (feat(SKY-2585): mount ContinuityPanel in Brainstorm sidebar (AC-F-01))
 }
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'error';
@@ -269,7 +278,11 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+<<<<<<< HEAD
 export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false }: Props) {
+=======
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, archiveContinuityEnabled = false, activeScene = null }: Props) {
+>>>>>>> 46eddbf (feat(SKY-2585): mount ContinuityPanel in Brainstorm sidebar (AC-F-01))
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -1970,7 +1983,12 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
 
         <div className="brainstorm-facts-col">
-          {/* Continuity Issues section */}
+          {/* SKY-2585: Archive-aware ContinuityPanel (AC-F-01) */}
+          {archiveContinuityEnabled ? (
+            <div className="brainstorm-continuity-section">
+              <ContinuityPanel scene={activeScene} />
+            </div>
+          ) : (
           <div className="brainstorm-continuity-section">
             <div className="brainstorm-facts-header">
               <span className="brainstorm-facts-title">Continuity</span>
@@ -2055,6 +2073,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               })}
             </ul>
           </div>
+          )}
 
           {/* SKY-196: collapsible "Context used" panel */}
           {contextResult && (

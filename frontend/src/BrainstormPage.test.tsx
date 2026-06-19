@@ -1452,6 +1452,31 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
   });
 });
 
+describe('BrainstormPage — archive ContinuityPanel integration (SKY-2585 AC-F-01)', () => {
+  const archiveApi = {
+    archiveListContinuity: vi.fn().mockResolvedValue({ items: [] }),
+    archiveResolveContinuity: vi.fn().mockResolvedValue({ ok: true }),
+    archiveScanContinuity: vi.fn().mockResolvedValue(undefined),
+    onArchiveContScanStart: () => () => {},
+    onArchiveContScanResult: () => () => {},
+    onArchiveContScanError: () => () => {},
+    settingsGet: vi.fn().mockResolvedValue({}),
+    settingsSet: vi.fn().mockResolvedValue(undefined),
+  };
+
+  it('does not render ContinuityPanel when archiveContinuityEnabled is false (default)', () => {
+    (window as unknown as { api: unknown }).api = buildApi();
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.queryByRole('status', { name: /continuity/i })).toBeNull();
+  });
+
+  it('renders ContinuityPanel loading state when archiveContinuityEnabled is true', async () => {
+    (window as unknown as { api: unknown }).api = buildApi(archiveApi);
+    render(<BrainstormPage onClose={() => {}} archiveContinuityEnabled={true} />);
+    await waitFor(() => expect(archiveApi.archiveListContinuity).toHaveBeenCalled());
+  });
+});
+
 describe('BrainstormPage — prompt char counter', () => {
   it('shows 0 / 2,000 counter when textarea is empty', () => {
     render(<BrainstormPage onClose={() => {}} />);

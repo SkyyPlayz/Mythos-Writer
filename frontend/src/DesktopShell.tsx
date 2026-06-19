@@ -3555,6 +3555,8 @@ export default function DesktopShell() {
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}
           voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
+          archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
+          activeScene={selectedScene}
           onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
           onNavigateToEntity={(entityId) => {
             window.api.entityRead(entityId).then((entity) => {
