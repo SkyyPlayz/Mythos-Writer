@@ -865,6 +865,7 @@ export default function WritingAssistantPanel({
                   onClick={() => void handleScanNow()}
                   disabled={!scene}
                   aria-label="Start first scan"
+                  data-testid="wa-scan-now-cta"
                 >
                   Scan Now
                 </button>
