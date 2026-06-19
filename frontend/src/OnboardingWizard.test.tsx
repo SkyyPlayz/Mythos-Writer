@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
+import { installActWarningGuard } from './testActWarningGuard';
+
+installActWarningGuard();
 
 const BASE_SETTINGS: AppSettings = {
   apiKey: '',
@@ -48,6 +51,18 @@ const BUNDLED_TEMPLATES = [
   { id: 'bundled:series-bible', name: 'Series Bible', description: 'Multi-book structure with shared canon notes.', story: [], notes: [], isUserTemplate: false },
 ];
 
+function resolvedImmediately<T>(value: T): Promise<T> {
+  return {
+    then: (onFulfilled?: (value: T) => unknown) => {
+      try {
+        return Promise.resolve(onFulfilled ? onFulfilled(value) : value);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+  } as Promise<T>;
+}
+
 function makeApi(overrides: Partial<{
   onboardingComplete: ReturnType<typeof vi.fn>;
   validatePath: ReturnType<typeof vi.fn>;
@@ -64,18 +79,18 @@ function makeApi(overrides: Partial<{
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
     validatePath: overrides.validatePath ?? vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
     chooseVaultFolder: overrides.chooseVaultFolder ?? vi.fn().mockResolvedValue({ path: '/home/user/Stories', cancelled: false }),
-    templateList: overrides.templateList ?? vi.fn().mockResolvedValue({ templates: BUNDLED_TEMPLATES }),
+    templateList: overrides.templateList ?? vi.fn(() => resolvedImmediately({ templates: BUNDLED_TEMPLATES })),
     templateRename: overrides.templateRename ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDelete: overrides.templateDelete ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDuplicate: overrides.templateDuplicate ?? vi.fn().mockResolvedValue({ ok: true, id: 'user:copy' }),
-    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn().mockResolvedValue({ homeDir: '/home/user', pathSeparator: '/' }),
-    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn().mockResolvedValue({
+    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn(() => resolvedImmediately({ homeDir: '/home/user', pathSeparator: '/' })),
+    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn(() => resolvedImmediately({
       homeDir: '/home/user',
       documentsDir: '/home/user/Documents',
       desktopDir: '/home/user/Desktop',
       oneDriveDir: null,
       iCloudDir: null,
-    }),
+    })),
     settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
   };
 }

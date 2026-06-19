@@ -3,6 +3,9 @@ import { renderHook } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useSaveStatus } from './hooks/useSaveStatus';
 import SceneEditor from './SceneEditor';
+import { installActWarningGuard } from './testActWarningGuard';
+
+installActWarningGuard();
 
 // ---------------------------------------------------------------------------
 // useSaveStatus — state machine unit tests

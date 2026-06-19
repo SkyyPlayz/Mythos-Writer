@@ -814,6 +814,7 @@ describe('SettingsPanel', () => {
   });
 
   it('shows base URL field when switching to ollama', async () => {
+    mockProviderListModels.mockReturnValue(new Promise(() => {}));
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
@@ -1393,6 +1394,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-12 — remote endpoint security warning
   it('AC-MP-12: shows remote endpoint warning for non-localhost base URL', async () => {
+    mockProviderListModels.mockReturnValue(new Promise(() => {}));
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
@@ -1412,6 +1414,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-12 — no warning for localhost base URL
   it('AC-MP-12: no remote endpoint warning for localhost base URL', async () => {
+    mockProviderListModels.mockReturnValue(new Promise(() => {}));
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
