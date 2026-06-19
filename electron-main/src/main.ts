@@ -2240,6 +2240,13 @@ const handlers: IpcHandlers = {
       return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
     }
 
+    // SKY-2636: import-obsidian path — vault creation is handled by
+    // ONBOARDING_IMPORT_COMMIT; if somehow called here just mark complete.
+    if (startMode === 'import-obsidian') {
+      persistSettings();
+      return { ok: true };
+    }
+
     return { ok: false, error: `Unknown startMode: ${startMode}` };
   },
 
@@ -2302,7 +2309,7 @@ const handlers: IpcHandlers = {
       // Register notes vault root and set layoutMode:imported + onboardingComplete.
       saveVaultSettings({ notesVaultRoot: resolvedSource, layoutMode: 'imported' });
       const currentApp = loadAppSettings();
-      saveAppSettings({ ...currentApp, onboardingComplete: true, onboardingStartMode: 'open-existing' });
+      saveAppSettings({ ...currentApp, onboardingComplete: true, onboardingStartMode: 'import-obsidian' });
 
       ensureVaultDir();
       const manifest = readManifest(getManifestPath());
