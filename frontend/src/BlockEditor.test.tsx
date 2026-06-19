@@ -369,7 +369,8 @@ describe('insertWikiLink command (AC-F-11)', () => {
     });
 
     if (range) {
-      editor.view.dispatch(editor.state.tr.replaceWith(range.from, range.to, wikiNode));
+      const r = range as { from: number; to: number };
+      editor.view.dispatch(editor.state.tr.replaceWith(r.from, r.to, wikiNode));
     } else {
       editor.view.dispatch(editor.state.tr.insert(editor.state.selection.from, wikiNode));
     }
