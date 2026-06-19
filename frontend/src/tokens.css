@@ -303,6 +303,11 @@
   --color-warning-text: #fbbf24;
   --color-archive-hint: var(--neon-violet);
 
+  /* Writing Assistant Liquid Neon status tokens (AC-WA-16/17/18) */
+  --color-accent-cyan: #00f5ff;
+  --color-status-green: #39ff14;
+  --color-status-error: #ff3c3c;
+
   /* Entity-category badge tokens — fact type chips in BrainstormPage */
   --entity-char-bg: rgba(99, 102, 241, 0.20);
   --entity-char-text: #a5b4fc;
