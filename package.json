@@ -11,7 +11,8 @@
   "main": "out/main/main.js",
   "workspaces": [
     "frontend",
-    "electron-main"
+    "electron-main",
+    "shared"
   ],
   "scripts": {
     "dev": "electron-vite dev",

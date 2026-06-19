@@ -647,3 +647,185 @@ describe('Complete CRUD + rollback lifecycle (§7)', () => {
     expect(getSuggestion('no-such-suggestion')).toBeNull();
   });
 });
+
+// ─── Vault write round-trip (§8 — SKY-2555) ──────────────────────────────────
+// Tests applyVaultWrite + rollbackVaultWrite from suggestionApply.ts.
+// Uses real temp dirs; no Electron or mocks required.
+
+import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
+
+function makeVaultWriteSuggestion(vaultRoot: string, overrides: Partial<DbSuggestion> = {}): DbSuggestion {
+  return {
+    id: `vw-${++_seq}`,
+    source_agent: 'writing-assistant',
+    confidence: 0.9,
+    rationale: 'improve prose clarity',
+    target_kind: 'vault',
+    target_path: 'scenes/ch1.md',
+    target_anchor: null,
+    payload_json: JSON.stringify({ content: '# Chapter 1\n\nUpdated content.' }),
+    status: 'proposed',
+    created_at: new Date().toISOString(),
+    applied_at: null,
+    applied_run_id: null,
+    budget_exceeded: 0,
+    category: null,
+    ...overrides,
+  };
+  void vaultRoot; // vaultRoot used by caller to seed files
+}
+
+describe('Vault write round-trip (§8 — SKY-2555)', () => {
+  let tmpDir: string;
+  let vaultRoot: string;
+
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vault-rtrip-'));
+    vaultRoot = tmpDir;
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // TC-IPC-01: apply vault suggestion → vault file written, status=applied, snapshot created
+  it('TC-IPC-01: apply vault suggestion writes file and returns finalStatus=applied', () => {
+    const original = '# Chapter 1\n\nOriginal text.';
+    const scenesDir = path.join(vaultRoot, 'scenes');
+    fs.mkdirSync(scenesDir, { recursive: true });
+    fs.writeFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), original, 'utf-8');
+
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-01' });
+    upsertSuggestion(sug);
+    const now = new Date().toISOString();
+
+    const { finalStatus, snapshotPath } = applyVaultWrite(sug, vaultRoot, now);
+
+    expect(finalStatus).toBe('applied');
+    expect(snapshotPath).not.toBeNull();
+
+    // Snapshot was written to .mythos/suggestion-snapshots/
+    const fullSnap = path.join(vaultRoot, snapshotPath!);
+    expect(fs.existsSync(fullSnap)).toBe(true);
+    const snap = JSON.parse(fs.readFileSync(fullSnap, 'utf-8')) as { originalContent: string; path: string };
+    expect(snap.originalContent).toBe(original);
+    expect(snap.path).toBe('scenes/ch1.md');
+
+    // Vault file has been updated
+    const updated = fs.readFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), 'utf-8');
+    expect(updated).toContain('Updated content.');
+  });
+
+  // TC-IPC-02: reject suggestion → no file change, only DB status update
+  it('TC-IPC-02: reject suggestion leaves vault file unchanged', () => {
+    const original = '# Chapter 1\n\nDo not touch.';
+    const scenesDir = path.join(vaultRoot, 'scenes');
+    fs.mkdirSync(scenesDir, { recursive: true });
+    fs.writeFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), original, 'utf-8');
+
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-02' });
+    upsertSuggestion(sug);
+    const now = new Date().toISOString();
+
+    // Rejection: just update DB status + write audit log — no vault write
+    updateSuggestionStatus('tc-ipc-02', 'rejected');
+    insertAuditLog({
+      id: 'audit-tc02',
+      suggestion_id: 'tc-ipc-02',
+      action: 'reject',
+      snapshot_path: null,
+      actor: 'user',
+      created_at: now,
+    });
+
+    expect(getSuggestion('tc-ipc-02')!.status).toBe('rejected');
+
+    // File unchanged
+    const content = fs.readFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), 'utf-8');
+    expect(content).toBe(original);
+  });
+
+  // TC-IPC-03: apply then undo (rollback) restores original vault file content
+  it('TC-IPC-03: rollback restores original vault file content', () => {
+    const original = '# Chapter 1\n\nOriginal content before apply.';
+    const scenesDir = path.join(vaultRoot, 'scenes');
+    fs.mkdirSync(scenesDir, { recursive: true });
+    fs.writeFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), original, 'utf-8');
+
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-03' });
+    upsertSuggestion(sug);
+    const now = new Date().toISOString();
+
+    const { snapshotPath } = applyVaultWrite(sug, vaultRoot, now);
+    expect(snapshotPath).not.toBeNull();
+
+    // Confirm file was changed
+    const afterApply = fs.readFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), 'utf-8');
+    expect(afterApply).toContain('Updated content.');
+    expect(afterApply).not.toBe(original);
+
+    // Rollback
+    const restoredPath = rollbackVaultWrite(sug.id, vaultRoot, snapshotPath);
+    expect(restoredPath).toBe('scenes/ch1.md');
+
+    // File restored to original
+    const afterRollback = fs.readFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), 'utf-8');
+    expect(afterRollback).toBe(original);
+  });
+
+  // TC-IPC-04: non-vault suggestion → finalStatus=accepted, no file write
+  it('TC-IPC-04: non-vault suggestion returns accepted without file write', () => {
+    const sug: DbSuggestion = {
+      id: 'tc-ipc-04',
+      source_agent: 'archive',
+      confidence: 0.8,
+      rationale: 'advisory finding',
+      target_kind: null,
+      target_path: null,
+      target_anchor: null,
+      payload_json: null,
+      status: 'proposed',
+      created_at: new Date().toISOString(),
+      applied_at: null,
+      applied_run_id: null,
+      budget_exceeded: 0,
+      category: null,
+    };
+    upsertSuggestion(sug);
+
+    const { finalStatus, snapshotPath } = applyVaultWrite(sug, vaultRoot, new Date().toISOString());
+
+    expect(finalStatus).toBe('accepted');
+    expect(snapshotPath).toBeNull();
+    // No snapshot dir was created
+    expect(fs.existsSync(path.join(vaultRoot, '.mythos', 'suggestion-snapshots'))).toBe(false);
+  });
+
+  // TC-IPC-05: apply vault suggestion → DB status=applied + audit row via handler contract
+  it('TC-IPC-05: apply + audit log round-trip through DB layer', () => {
+    const scenesDir = path.join(vaultRoot, 'scenes');
+    fs.mkdirSync(scenesDir, { recursive: true });
+    fs.writeFileSync(path.join(vaultRoot, 'scenes', 'ch1.md'), 'original', 'utf-8');
+
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-05' });
+    upsertSuggestion(sug);
+    const now = new Date().toISOString();
+    const auditId = `audit-tc05-${++_seq}`;
+
+    const { finalStatus, snapshotPath } = applyVaultWrite(sug, vaultRoot, now);
+    updateSuggestionStatus('tc-ipc-05', finalStatus, now, 'run-test');
+    insertAuditLog({ id: auditId, suggestion_id: 'tc-ipc-05', action: 'apply', snapshot_path: snapshotPath, actor: 'user', created_at: now });
+
+    const fetched = getSuggestion('tc-ipc-05')!;
+    expect(fetched.status).toBe('applied');
+    expect(fetched.applied_run_id).toBe('run-test');
+
+    const logs = listAuditLog('tc-ipc-05');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].action).toBe('apply');
+    expect(logs[0].snapshot_path).toBe(snapshotPath);
+  });
+});
