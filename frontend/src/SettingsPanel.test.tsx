@@ -365,6 +365,69 @@ describe('SettingsPanel', () => {
     expect(document.getElementById('archive-max-tokens-day')).toBeInTheDocument();
   });
 
+  // ── SKY-2597: Brainstorm Agent voice toggle and mic selection ──
+
+  it('renders voice toggle for Brainstorm Agent (AC-BST-13)', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i })).toBeInTheDocument();
+  });
+
+  it('Brainstorm Agent voice toggle is off by default (AC-BST-12)', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const toggle = screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('mic selection is hidden when Brainstorm Agent voice is disabled (AC-BST-12)', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(screen.queryByLabelText(/brainstorm agent microphone/i)).not.toBeInTheDocument();
+  });
+
+  it('mic selection appears when Brainstorm Agent voice is enabled (AC-BST-15)', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i }));
+
+    expect(screen.getByLabelText(/brainstorm agent microphone/i)).toBeInTheDocument();
+  });
+
+  it('Brainstorm Agent voice toggle change is saved via IPC (AC-BST-13)', async () => {
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.brainstorm.voiceEnabled).toBe(true);
+  });
+
+  it('Brainstorm Agent mic selection change is saved via IPC (AC-BST-15)', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: { ...defaultSettings.agents, brainstorm: { ...defaultSettings.agents.brainstorm, voiceEnabled: true } },
+    });
+    render(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/brainstorm agent microphone/i));
+
+    fireEvent.change(screen.getByLabelText(/brainstorm agent microphone/i), {
+      target: { value: 'device-abc' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.brainstorm.micDeviceId).toBe('device-abc');
+  });
+
   // ── MYT-200 acceptance criteria ──
 
   it('archive continuity-check interval input renders', async () => {

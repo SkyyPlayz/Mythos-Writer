@@ -2294,6 +2294,53 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     onChange={(e) => setAgentField('brainstorm', 'maxTokensPerHour', Number(e.target.value))}
                   />
                 </div>
+                {/* SKY-2597: Voice toggle (AC-BST-12/13) — default off so no mic prompt on first use */}
+                <div className="settings-field settings-field-inline">
+                  <label className="settings-toggle" htmlFor="brainstorm-voice-enabled">
+                    <input
+                      id="brainstorm-voice-enabled"
+                      type="checkbox"
+                      aria-label="Enable voice input for Brainstorm Agent"
+                      checked={settings.agents.brainstorm.voiceEnabled ?? false}
+                      onChange={(e) => setAgentField('brainstorm', 'voiceEnabled', e.target.checked)}
+                    />
+                    <span className="settings-toggle-track" />
+                  </label>
+                  <span className="settings-label">Enable voice input</span>
+                </div>
+                {/* AC-BST-15: Mic selection, only visible when voice is enabled */}
+                {(settings.agents.brainstorm.voiceEnabled ?? false) && (
+                  <div className="settings-field settings-field-inline">
+                    <label className="settings-label" htmlFor="brainstorm-mic">Microphone</label>
+                    <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                      <select
+                        id="brainstorm-mic"
+                        className="settings-input settings-select settings-input-sm"
+                        style={{ flex: 1 }}
+                        value={settings.agents.brainstorm.micDeviceId ?? ''}
+                        aria-label="Brainstorm Agent microphone"
+                        onChange={(e) => {
+                          const val = e.target.value || undefined;
+                          setAgentField('brainstorm', 'micDeviceId', val);
+                        }}
+                      >
+                        <option value="">System default</option>
+                        {micDevices.map((d) => (
+                          <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="settings-btn"
+                        onClick={refreshMicDevices}
+                        aria-label="Refresh Brainstorm Agent microphone list"
+                        title="Refresh device list"
+                      >
+                        ↺
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {/* SKY-20: per-category routing memory for Blank-mode vaults.
                     Hidden in Default-mode vaults (the seeded layout fixes the
                     destination) so users don't see an empty / inert control. */}
