@@ -91,7 +91,7 @@ describe('WritingAssistantPanel', () => {
       expect(screen.getByLabelText(/writing assistant response/i)).toBeInTheDocument();
     });
     expect(screen.getByLabelText(/writing assistant response/i)).toHaveTextContent('Try adding a ticking clock.');
-    expect(screen.getByRole('button', { name: /accept suggestion/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /apply suggestion/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /reject suggestion/i })).toBeInTheDocument();
   });
 
@@ -104,11 +104,11 @@ describe('WritingAssistantPanel', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
-    await waitFor(() => screen.getByRole('button', { name: /accept suggestion/i }));
-    fireEvent.click(screen.getByRole('button', { name: /accept suggestion/i }));
+    await waitFor(() => screen.getByRole('button', { name: /apply suggestion/i }));
+    fireEvent.click(screen.getByRole('button', { name: /apply suggestion/i }));
 
-    expect(screen.getByText(/accepted/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /accept suggestion/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/^Applied/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply suggestion/i })).not.toBeInTheDocument();
   });
 
   it('marks suggestion as dismissed when Dismiss is clicked', async () => {
@@ -123,7 +123,7 @@ describe('WritingAssistantPanel', () => {
     await waitFor(() => screen.getByRole('button', { name: /reject suggestion/i }));
     fireEvent.click(screen.getByRole('button', { name: /reject suggestion/i }));
 
-    expect(screen.getByText(/dismissed/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Rejected/)).toBeInTheDocument();
   });
 
   it('passes scene context to IPC when a scene is selected', async () => {

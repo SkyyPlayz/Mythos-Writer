@@ -1,0 +1,186 @@
+/* SuggestionCard — Writing Assistant sidebar (Section 4, SKY-2560) */
+
+.wa-suggestion-card {
+  background: var(--bg-card, #16213e);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: 8px; /* --radius-md */
+  padding: 16px;      /* --spacing-md */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.25s ease;
+}
+
+.wa-suggestion-card--terminal {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Agent label row */
+.wa-card-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-card-agent-icon {
+  font-size: 0.75rem;
+  color: var(--text-muted, #718096);
+}
+
+.wa-card-agent-label {
+  font-size: 0.72rem;
+  color: var(--text-muted, #718096);
+  letter-spacing: 0.01em;
+}
+
+/* Suggestion text — 3-line clamp default */
+.wa-card-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-body, #a0aec0);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wa-card-text--expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.wa-card-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted, #718096);
+  cursor: pointer;
+  align-self: flex-start;
+  text-decoration: underline;
+}
+
+.wa-card-toggle:hover {
+  color: var(--text-body, #a0aec0);
+}
+
+.wa-card-rationale {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, #718096);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* Footer: confidence badge + actions */
+.wa-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* ─── Confidence badge ─── */
+.wa-confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-confidence-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.wa-seg {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--border-subtle, rgba(255, 255, 255, 0.1));
+  transition: background 0.1s;
+}
+
+/* Tier colors applied to filled segments */
+.wa-confidence-badge--low .wa-seg--on {
+  background: #ffaa00; /* amber */
+  box-shadow: 0 0 4px rgba(255, 170, 0, 0.5);
+}
+
+.wa-confidence-badge--medium .wa-seg--on {
+  background: #00f5ff; /* cyan */
+  box-shadow: 0 0 4px rgba(0, 245, 255, 0.4);
+}
+
+.wa-confidence-badge--high .wa-seg--on {
+  background: #39ff14; /* neon green */
+  box-shadow: 0 0 4px rgba(57, 255, 20, 0.4);
+}
+
+.wa-confidence-pct {
+  font-size: 0.72rem;
+  color: var(--text-muted, #718096);
+  min-width: 2.8ch;
+}
+
+/* ─── Action buttons ─── */
+.wa-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wa-card-btn {
+  border-radius: 4px; /* --radius-sm */
+  padding: 8px 12px;  /* --spacing-sm vertical */
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  min-height: 36px;
+}
+
+.wa-card-btn--apply {
+  background: transparent;
+  border: 1px solid #00f5ff;
+  color: #00f5ff;
+}
+
+.wa-card-btn--apply:hover {
+  background: #00f5ff;
+  color: #0d0d0d;
+  box-shadow: 0 0 8px rgba(0, 245, 255, 0.4);
+}
+
+.wa-card-btn--apply:focus-visible {
+  outline: 2px solid #00f5ff;
+  outline-offset: 2px;
+}
+
+.wa-card-btn--reject {
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
+  color: var(--text-muted, #718096);
+}
+
+.wa-card-btn--reject:hover {
+  background: rgba(255, 56, 56, 0.2); /* --color-status-error @ 20% */
+  border-color: rgba(255, 56, 56, 0.5);
+  color: #ff8080;
+}
+
+.wa-card-btn--reject:focus-visible {
+  outline: 2px solid rgba(255, 56, 56, 0.6);
+  outline-offset: 2px;
+}
+
+/* Terminal state label */
+.wa-card-decided-label {
+  font-size: 0.72rem;
+  color: var(--text-muted, #718096);
+  font-style: italic;
+}
