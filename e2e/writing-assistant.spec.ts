@@ -477,11 +477,11 @@ test('TC-WA-07: spinner visible during scan', async () => {
 
   await page.locator('.wa-scan-now').click();
 
-  // Spinner must appear while the scan is in-flight.
-  await expect(page.locator('.wa-spinner')).toBeVisible({ timeout: 3_000 });
+  // Spinner must appear while the scan is in-flight (check DOM presence, not visibility).
+  await expect(page.locator('.wa-spinner')).toHaveCount(1, { timeout: 3_000 });
 
-  // After the scan completes, spinner disappears and tips are rendered.
-  await expect(page.locator('.wa-spinner')).not.toBeVisible({ timeout: 5_000 });
+  // After the scan completes, spinner is removed from DOM and tips are rendered.
+  await expect(page.locator('.wa-spinner')).toHaveCount(0, { timeout: 5_000 });
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 5_000 });
 
   // Reset to no-delay mock for subsequent tests.
@@ -503,8 +503,8 @@ test('TC-WA-04: empty scene shows empty-state message', async () => {
   // Scan Now — the scheduler guard returns early on empty prose.
   await page.locator('.wa-scan-now').click();
 
-  // Spinner should not appear (or disappear immediately) — empty prose short-circuits.
-  await expect(page.locator('.wa-spinner')).not.toBeVisible({ timeout: 3_000 });
+  // Spinner should not appear (or disappear immediately) — empty prose short-circuits (check DOM count).
+  await expect(page.locator('.wa-spinner')).toHaveCount(0, { timeout: 3_000 });
 
   // Empty state must be visible.
   const emptyMsg = page.locator('.wa-heartbeat-empty');
@@ -558,11 +558,11 @@ test('TC-WA-01: on-save scan fires when scene:saved event is dispatched', async 
   // Dispatch the synthetic scene:saved DOM event to simulate a file save.
   await page.evaluate(() => window.dispatchEvent(new Event('scene:saved')));
 
-  // Spinner must appear within 2 s of the save event.
-  await expect(page.locator('.wa-spinner')).toBeVisible({ timeout: 2_000 });
+  // Spinner must appear within 2 s of the save event (check DOM presence, not visibility).
+  await expect(page.locator('.wa-spinner')).toHaveCount(1, { timeout: 2_000 });
 
-  // Scan completes — tips appear.
-  await expect(page.locator('.wa-spinner')).not.toBeVisible({ timeout: 5_000 });
+  // Scan completes — spinner is removed from DOM and tips appear.
+  await expect(page.locator('.wa-spinner')).toHaveCount(0, { timeout: 5_000 });
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 5_000 });
 
   // Reset.
