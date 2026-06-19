@@ -371,14 +371,14 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    expect(screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /brainstorm agent voice/i })).toBeInTheDocument();
   });
 
   it('Brainstorm Agent voice toggle is off by default (AC-BST-12)', async () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    const toggle = screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i }) as HTMLInputElement;
+    const toggle = screen.getByRole('checkbox', { name: /brainstorm agent voice/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
   });
 
@@ -393,7 +393,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /brainstorm agent voice/i }));
 
     expect(screen.getByLabelText(/brainstorm agent microphone/i)).toBeInTheDocument();
   });
@@ -402,7 +402,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input for brainstorm agent/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /brainstorm agent voice/i }));
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
@@ -411,6 +411,15 @@ describe('SettingsPanel', () => {
   });
 
   it('Brainstorm Agent mic selection change is saved via IPC (AC-BST-15)', async () => {
+    const mockEnumerate = vi.fn().mockResolvedValue([
+      { kind: 'audioinput', deviceId: 'device-abc', label: 'Test Mic', groupId: '' },
+    ]);
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { enumerateDevices: mockEnumerate },
+      writable: true,
+      configurable: true,
+    });
+
     mockSettingsGet.mockResolvedValueOnce({
       ...defaultSettings,
       agents: { ...defaultSettings.agents, brainstorm: { ...defaultSettings.agents.brainstorm, voiceEnabled: true } },
@@ -426,6 +435,8 @@ describe('SettingsPanel', () => {
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
     expect(saved.agents.brainstorm.micDeviceId).toBe('device-abc');
+
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, writable: true, configurable: true });
   });
 
   // ── MYT-200 acceptance criteria ──

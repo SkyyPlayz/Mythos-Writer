@@ -2300,7 +2300,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                     <input
                       id="brainstorm-voice-enabled"
                       type="checkbox"
-                      aria-label="Enable voice input for Brainstorm Agent"
+                      aria-label="Brainstorm Agent voice"
                       checked={settings.agents.brainstorm.voiceEnabled ?? false}
                       onChange={(e) => setAgentField('brainstorm', 'voiceEnabled', e.target.checked)}
                     />
@@ -2333,7 +2333,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                         type="button"
                         className="settings-btn"
                         onClick={refreshMicDevices}
-                        aria-label="Refresh Brainstorm Agent microphone list"
+                        aria-label="Refresh microphone device list"
                         title="Refresh device list"
                       >
                         ↺
