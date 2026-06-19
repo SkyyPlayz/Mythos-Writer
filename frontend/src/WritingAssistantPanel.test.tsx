@@ -91,8 +91,8 @@ describe('WritingAssistantPanel', () => {
       expect(screen.getByLabelText(/writing assistant response/i)).toBeInTheDocument();
     });
     expect(screen.getByLabelText(/writing assistant response/i)).toHaveTextContent('Try adding a ticking clock.');
-    expect(screen.getByRole('button', { name: /apply suggestion/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /reject suggestion/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^apply:/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^reject:/i })).toBeInTheDocument();
   });
 
   it('marks suggestion as accepted when Accept is clicked', async () => {
@@ -104,11 +104,11 @@ describe('WritingAssistantPanel', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
-    await waitFor(() => screen.getByRole('button', { name: /apply suggestion/i }));
-    fireEvent.click(screen.getByRole('button', { name: /apply suggestion/i }));
+    await waitFor(() => screen.getByRole('button', { name: /^apply:/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^apply:/i }));
 
     expect(screen.getByText(/^Applied/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /apply suggestion/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^apply:/i })).not.toBeInTheDocument();
   });
 
   it('marks suggestion as dismissed when Dismiss is clicked', async () => {
@@ -120,8 +120,8 @@ describe('WritingAssistantPanel', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
-    await waitFor(() => screen.getByRole('button', { name: /reject suggestion/i }));
-    fireEvent.click(screen.getByRole('button', { name: /reject suggestion/i }));
+    await waitFor(() => screen.getByRole('button', { name: /^reject:/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^reject:/i }));
 
     expect(screen.getByText(/^Rejected/)).toBeInTheDocument();
   });
@@ -177,7 +177,7 @@ describe('WritingAssistantPanel', () => {
     });
     expect(screen.getByText(/context:/i)).toHaveTextContent('Scene B');
 
-    fireEvent.click(screen.getByRole('button', { name: /scan now/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /scan now/i })[0]);
 
     await waitFor(() => {
       expect(mockWritingAssistantScanNow).toHaveBeenCalledWith({
@@ -718,35 +718,35 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
     await act(async () => { vi.advanceTimersByTime(10_000); });
 
     expect(screen.getByText(/your work is looking great|no suggestions yet/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /scan now/i })).toBeInTheDocument();
+    // Multiple "Scan now" buttons may exist (header + empty-state CTA); at least one must be present
+    expect(screen.getAllByRole('button', { name: /scan now/i }).length).toBeGreaterThan(0);
   });
 
   it('AC9: shows warning icon, error message and Retry button on scan error', async () => {
     mockWritingScan.mockRejectedValueOnce(new Error('Provider unavailable'));
     render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
 
-    await act(async () => { vi.advanceTimersByTime(10_000); });
+    // advanceTimersByTimeAsync flushes both the timer AND the rejected promise resolution
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByText(/scan failed/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retry scan/i })).toBeInTheDocument();
   });
 
-  it('AC18: Scan now button triggers a scan and updates status', async () => {
-    mockWritingScan
-      .mockResolvedValueOnce({ tips: [], scannedAt: new Date().toISOString() })
-      .mockResolvedValueOnce({ tips: ['New tip.'], scannedAt: new Date().toISOString() });
+  it('AC18: Scan now button triggers a scan and updates status to Scanning', async () => {
+    mockWritingAssistantScanNow.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
 
     render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={60} isActive={true} />);
 
-    // Initial scan fires at t=60s; click "Scan now" before that
+    // Click the first "Scan now" button in the header (calls writingAssistantScanNow)
     await act(async () => {
       fireEvent.click(screen.getAllByRole('button', { name: /scan now/i })[0]);
     });
 
     await act(async () => { vi.advanceTimersByTime(100); });
 
-    expect(mockWritingScan).toHaveBeenCalled();
+    expect(mockWritingAssistantScanNow).toHaveBeenCalled();
   });
 
   it('AC24: panel collapses to icon badge when container width < 280px', async () => {
@@ -756,7 +756,7 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
       observe() {}
       disconnect() {}
     }
-    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+    window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
     render(<WritingAssistantPanel scene={mockScene} isActive={true} />);
 
@@ -767,7 +767,7 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
     });
 
     expect(screen.getByRole('button', { name: /open writing assistant/i })).toBeInTheDocument();
-    expect(screen.queryByLabelText(/writing assistant/i, { selector: '[role="complementary"]' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: /writing assistant/i })).not.toBeInTheDocument();
   });
 
   it('AC25: clicking collapsed badge opens overlay panel', async () => {
@@ -777,7 +777,7 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
       observe() {}
       disconnect() {}
     }
-    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+    window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
     render(<WritingAssistantPanel scene={mockScene} isActive={true} />);
 

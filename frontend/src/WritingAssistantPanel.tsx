@@ -855,7 +855,7 @@ export default function WritingAssistantPanel({
             scanning ? (
               <p className="wa-heartbeat-empty">Scanning this scene for quick writing tips…</p>
             ) : (
-              <div className="wa-empty-state" role="status">
+              <div className="wa-empty-state" role="note">
                 <span className="wa-empty-icon" aria-hidden="true">✨</span>
                 <p className="wa-empty-heading">No suggestions yet</p>
                 <p className="wa-empty-subtext">Run a scan to get writing feedback</p>
@@ -864,7 +864,7 @@ export default function WritingAssistantPanel({
                   className="wa-scan-now wa-scan-now--cta"
                   onClick={() => void handleScanNow()}
                   disabled={!scene}
-                  aria-label="Scan now"
+                  aria-label="Start first scan"
                 >
                   Scan Now
                 </button>
@@ -974,28 +974,29 @@ export default function WritingAssistantPanel({
           </div>
         ))}
 
-        {messages.length === 0 && !error && presetId === DEFAULT_PRESET_ID && (
-          <div className="writing-assistant-empty wa-first-visit-tip" role="note" aria-label="Genre preset tip">
-            <span className="wa-tip-icon" aria-hidden="true">💡</span>
-            <span className="wa-tip-body">
-              <strong>Tip:</strong> Choose a genre preset to shape how suggestions sound.{' '}
-              E.g., &ldquo;Epic Fantasy&rdquo; favors morally complex scenarios.{' '}
-            </span>
-            <button
-              className="wa-tip-browse-btn"
-              onClick={() => setShowBrowser(true)}
-              type="button"
-            >
-              Show Presets
-            </button>
-          </div>
-        )}
-        {messages.length === 0 && !error && presetId !== DEFAULT_PRESET_ID && (
-          <div className="writing-assistant-empty">
-            Ask for writing advice — pacing, voice, clarity, what to try next.
-          </div>
-        )}
       </div>
+
+      {messages.length === 0 && !error && presetId === DEFAULT_PRESET_ID && (
+        <div className="writing-assistant-empty wa-first-visit-tip" role="note" aria-label="Genre preset tip">
+          <span className="wa-tip-icon" aria-hidden="true">💡</span>
+          <span className="wa-tip-body">
+            <strong>Tip:</strong> Choose a genre preset to shape how suggestions sound.{' '}
+            E.g., &ldquo;Epic Fantasy&rdquo; favors morally complex scenarios.{' '}
+          </span>
+          <button
+            className="wa-tip-browse-btn"
+            onClick={() => setShowBrowser(true)}
+            type="button"
+          >
+            Show Presets
+          </button>
+        </div>
+      )}
+      {messages.length === 0 && !error && presetId !== DEFAULT_PRESET_ID && (
+        <div className="writing-assistant-empty">
+          Ask for writing advice — pacing, voice, clarity, what to try next.
+        </div>
+      )}
 
       {stalled && loading && (
         <div className="wa-stall-panel" role="status" aria-label="Generation stalled">

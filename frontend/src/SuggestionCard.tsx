@@ -108,7 +108,7 @@ export function SuggestionCard({ suggestion, onApply, onReject }: SuggestionCard
               type="button"
               className="wa-card-btn wa-card-btn--apply"
               onClick={() => onApply(suggestion.id)}
-              aria-label={`Apply: ${suggestion.text.slice(0, 50)}`}
+              aria-label={`Apply: ${suggestion.text.slice(0, 80)}`}
             >
               ✓ Apply
             </button>
@@ -116,7 +116,7 @@ export function SuggestionCard({ suggestion, onApply, onReject }: SuggestionCard
               type="button"
               className="wa-card-btn wa-card-btn--reject"
               onClick={() => onReject(suggestion.id)}
-              aria-label={`Reject: ${suggestion.text.slice(0, 50)}`}
+              aria-label={`Reject: ${suggestion.text.slice(0, 80)}`}
             >
               ✕ Reject
             </button>

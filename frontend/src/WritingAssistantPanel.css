@@ -1,17 +1,155 @@
+/* AC-WA-1/2: Panel root — Liquid Neon bg, border, radius */
+.wa-panel-root {
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .writing-assistant-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-panel, #1a1a2e);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-lg, 12px);
 }
 
+/* AC-WA-2: Liquid Neon panel header */
 .writing-assistant-header,
 .wa-panel-header {
-  padding: 10px 12px 4px;
+  padding: 10px 12px 8px;
   flex-shrink: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.wa-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wa-sparkle-icon {
+  color: var(--color-accent-cyan, #00f5ff);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.wa-header-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-header, #e2e8f0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-header-context {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.wa-header-context em {
+  font-style: italic;
+}
+
+.wa-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* AC-WA-16/17/18/19: Heartbeat status bar */
+.wa-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.72rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+/* AC-WA-16: Scanning state — cyan */
+.wa-status-bar--scanning {
+  background: color-mix(in srgb, var(--color-accent-cyan, #00f5ff) 5%, transparent);
+}
+
+/* AC-WA-17: Idle state */
+.wa-status-bar--idle {
+  background: transparent;
+}
+
+/* AC-WA-18: Error state */
+.wa-status-bar--error {
+  background: color-mix(in srgb, var(--color-status-error, #ff3c3c) 8%, transparent);
+}
+
+/* AC-WA-16: Pulsing cyan dot */
+.wa-status-dot--scanning {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent-cyan, #00f5ff);
+  flex-shrink: 0;
+  animation: wa-pulse-cyan 1.2s ease-in-out infinite;
+}
+
+@keyframes wa-pulse-cyan {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+
+.wa-spinner--sm {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(0, 245, 255, 0.25);
+  border-top-color: var(--color-accent-cyan, #00f5ff);
+  border-radius: 50%;
+  animation: wa-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.wa-status-icon {
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* AC-WA-17: Green checkmark for idle */
+.wa-status-icon--idle {
+  color: var(--color-status-green, #39ff14);
+}
+
+.wa-status-text {
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* AC-WA-16: Scanning text — cyan */
+.wa-status-bar--scanning .wa-status-text {
+  color: var(--color-accent-cyan, #00f5ff);
+}
+
+/* AC-WA-17: Idle text */
+.wa-status-text--idle {
+  color: var(--color-status-green, #39ff14);
+}
+
+/* AC-WA-18: Error text */
+.wa-status-text--error {
+  color: var(--color-status-error, #ff3c3c);
 }
 
 .writing-assistant-header .writing-assistant-hint,
@@ -917,4 +1055,166 @@
 .wa-status-bar__retry:focus-visible {
   outline: 2px solid var(--focus-ring, currentColor);
   outline-offset: 2px;
+}
+
+/* ─── Panel root wrapper (AC-WA-20/21/22) ─── */
+
+.wa-panel-root {
+  display: contents;
+}
+
+/* ─── Collapsed icon bar (AC-WA-20) ─── */
+
+.wa-icon-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  height: 100%;
+  background: var(--bg-surface);
+}
+
+.wa-collapsed-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.wa-collapsed-btn:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+  border-color: var(--color-accent-cyan, #00f0ff);
+}
+
+.wa-collapsed-btn:focus-visible {
+  outline: 2px solid var(--color-accent-cyan, #00f0ff);
+  outline-offset: 2px;
+}
+
+.wa-collapsed-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--color-accent-cyan, #00f0ff);
+  color: var(--bg-dark, #0a0a0f);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* ─── Overlay mode (AC-WA-21) ─── */
+
+.wa-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+
+.writing-assistant-panel--overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  z-index: 201;
+  background: var(--bg-surface);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 600px) {
+  .writing-assistant-panel--overlay {
+    width: 100vw;
+  }
+}
+
+/* ─── Empty state (AC-WA-12/13/14) ─── */
+
+.wa-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 16px 16px;
+  text-align: center;
+}
+
+.wa-empty-icon {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 4px;
+  opacity: 0.7;
+}
+
+.wa-empty-heading {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-header, var(--text-dim));
+}
+
+.wa-empty-subtext {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.wa-scan-now--cta {
+  margin-top: 4px;
+}
+
+/* ─── Scan error state (AC-WA-15) ─── */
+
+.wa-scan-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #1f0a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  margin: 6px 12px;
+}
+
+.wa-scan-error-icon {
+  font-size: 1rem;
+  color: var(--danger, #f87171);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.wa-scan-error-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.wa-scan-error-heading {
+  margin: 0 0 2px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--danger, #f87171);
+}
+
+.wa-scan-error-desc {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
