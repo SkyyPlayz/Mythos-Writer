@@ -24,6 +24,22 @@ import type { PresetAxes, RefinementChip } from './presets';
 export const STALL_WARNING_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
 
+type WaVoiceState = 'idle' | 'listening' | 'processing' | 'error';
+
+const WA_MIC_ARIA_LABELS: Record<WaVoiceState, string> = {
+  idle: 'Start voice input',
+  listening: 'Stop voice input',
+  processing: 'Processing speech…',
+  error: 'Voice error — click to retry',
+};
+
+function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
+  if (typeof window === 'undefined') return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = window as any;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
 interface WritingAssistantSuggestion {
   id: string;
   source_agent: 'writing-assistant';
@@ -50,6 +66,8 @@ interface Props {
   isActive?: boolean;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
+  /** AC-WA-25: show STT microphone button in input area only when true. Off by default. */
+  voiceEnabled?: boolean;
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
@@ -116,6 +134,8 @@ export default function WritingAssistantPanel({
   scanIntervalSeconds = 60,
   waScanInterval,
   isActive = true,
+  onJumpToText,
+  voiceEnabled = false,
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
@@ -298,7 +318,7 @@ export default function WritingAssistantPanel({
     announce(msg);
   }, [announce, clearStreamResources, loading]);
 
-  const ask = useCallback(async (overridePrompt?: string) => {
+  const ask = useCallback(async (overridePrompt?: string, overrideAxes?: PresetAxes) => {
     const trimmed = (overridePrompt ?? prompt).trim();
     if (!trimmed || loading) return;
 
@@ -316,7 +336,8 @@ export default function WritingAssistantPanel({
     setLoading(true);
     setStalled(false);
     setError(null);
-    setActiveRefinementId(null);
+    // Don't clear the active refinement chip for refinement re-asks — keep it highlighted during streaming
+    if (!overridePrompt) setActiveRefinementId(null);
     if (!overridePrompt) setPrompt('');
     announce('Generating response…');
 
@@ -328,7 +349,7 @@ export default function WritingAssistantPanel({
       return [...base, userMsg, assistantMsg];
     });
 
-    const styleGuide = buildPresetContext(effectiveAxes);
+    const styleGuide = buildPresetContext(overrideAxes ?? effectiveAxes);
     const sceneText = scene
       ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
       : undefined;
@@ -404,12 +425,15 @@ export default function WritingAssistantPanel({
   const handleRefine = useCallback((chip: RefinementChip) => {
     const adjusted = chip.adjustAxes(effectiveAxes);
     const newOverrides = { ...presetOverrides, ...adjusted };
+    const newAxes = getEffectiveAxes(presetId, newOverrides);
     setPresetOverrides(newOverrides);
     saveSessionPreset(presetId, newOverrides);
     setActiveRefinementId(chip.id);
     const lastUserMsg = lastPromptRef.current;
     if (lastUserMsg) {
-      ask(lastUserMsg);
+      // Pass freshly computed axes directly — state update is async so ask's
+      // closure would otherwise see the stale effectiveAxes value
+      ask(lastUserMsg, newAxes);
     }
   }, [ask, effectiveAxes, presetId, presetOverrides]);
 
@@ -489,6 +513,129 @@ export default function WritingAssistantPanel({
       return next;
     });
   }, [scene, visibleTips]);
+
+  // ── AC-WA-25: STT voice input ──────────────────────────────────────────────
+  const [waVoiceState, _setWaVoiceStateRaw] = useState<WaVoiceState>('idle');
+  const waVoiceStateRef = useRef<WaVoiceState>('idle');
+  const waRecognitionRef = useRef<SpeechRecognition | null>(null);
+  const waConfirmedTextRef = useRef('');
+  const waSilenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const waSilenceStartRef = useRef<number>(0);
+
+  const setWaVoiceState = useCallback((s: WaVoiceState) => {
+    waVoiceStateRef.current = s;
+    _setWaVoiceStateRaw(s);
+  }, []);
+
+  const waClearSilenceTimer = useCallback(() => {
+    if (waSilenceTimerRef.current) {
+      clearInterval(waSilenceTimerRef.current);
+      waSilenceTimerRef.current = null;
+    }
+  }, []);
+
+  const waCommitTranscript = useCallback(() => {
+    const text = waConfirmedTextRef.current.trim();
+    if (text) {
+      setPrompt((prev) => (prev ? `${prev} ${text}` : text));
+      announce(`Transcribed: ${text}`);
+    }
+    waConfirmedTextRef.current = '';
+  }, [announce]);
+
+  const waStopRecognition = useCallback((mode: 'cancel' | 'commit') => {
+    waClearSilenceTimer();
+    const rec = waRecognitionRef.current;
+    waRecognitionRef.current = null;
+    if (rec) try { rec.abort(); } catch { /* non-fatal */ }
+    if (mode === 'cancel') waConfirmedTextRef.current = '';
+  }, [waClearSilenceTimer]);
+
+  const startWaVoice = useCallback(() => {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) {
+      window.api.sttStart?.();
+      setWaVoiceState('listening');
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new Ctor() as any;
+    waRecognitionRef.current = rec;
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    rec.onstart = () => {
+      setWaVoiceState('listening');
+      waSilenceStartRef.current = Date.now();
+      waSilenceTimerRef.current = setInterval(() => {
+        const elapsed = (Date.now() - waSilenceStartRef.current) / 1000;
+        if (elapsed >= 3) {
+          waClearSilenceTimer();
+          const r = waRecognitionRef.current;
+          waRecognitionRef.current = null;
+          if (r) try { r.abort(); } catch { /* non-fatal */ }
+          setWaVoiceState('processing');
+          setTimeout(() => {
+            waCommitTranscript();
+            setWaVoiceState('idle');
+          }, 400);
+        }
+      }, 100);
+    };
+
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      waSilenceStartRef.current = Date.now();
+      let confirmed = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const r = event.results[i];
+        if (r.isFinal) confirmed += r[0]?.transcript ?? '';
+      }
+      if (confirmed) waConfirmedTextRef.current += confirmed;
+    };
+
+    rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') return;
+      waClearSilenceTimer();
+      waRecognitionRef.current = null;
+      setWaVoiceState('error');
+      announce(`Voice error: ${event.error}`);
+    };
+
+    rec.onend = () => {
+      if (waVoiceStateRef.current === 'listening') {
+        waClearSilenceTimer();
+        waRecognitionRef.current = null;
+        setWaVoiceState('idle');
+      }
+    };
+
+    try { rec.start(); } catch { setWaVoiceState('error'); }
+  }, [announce, waClearSilenceTimer, waCommitTranscript, setWaVoiceState]);
+
+  const cancelWaVoice = useCallback(() => {
+    waStopRecognition('cancel');
+    window.api.sttStop?.();
+    setWaVoiceState('idle');
+    announce('Voice input cancelled.');
+  }, [announce, waStopRecognition, setWaVoiceState]);
+
+  const handleWaMicToggle = useCallback(() => {
+    const state = waVoiceStateRef.current;
+    if (state === 'idle') startWaVoice();
+    else if (state === 'listening') cancelWaVoice();
+    else if (state === 'error') setWaVoiceState('idle');
+    // processing: ignore clicks
+  }, [startWaVoice, cancelWaVoice, setWaVoiceState]);
+
+  useEffect(() => {
+    return () => {
+      waClearSilenceTimer();
+      const rec = waRecognitionRef.current;
+      if (rec) try { rec.abort(); } catch { /* non-fatal */ }
+      waRecognitionRef.current = null;
+    };
+  }, [waClearSilenceTimer]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   if (!enabled) {
     return (
@@ -618,6 +765,7 @@ export default function WritingAssistantPanel({
         lastScannedAt={betaReadLastScannedAt}
         onRunScan={runBetaReadScan}
         onDismiss={dismissBetaReadComment}
+        onJumpToText={onJumpToText}
       />
 
       <div className="writing-assistant-messages">
@@ -744,24 +892,39 @@ export default function WritingAssistantPanel({
           disabled={loading}
           aria-label="Writing assistant prompt"
         />
-        {loading ? (
-          <button
-            className="writing-assistant-btn wa-btn-cancel-inline"
-            onClick={cancelGeneration}
-            aria-label="Cancel generation"
-          >
-            Cancel
-          </button>
-        ) : (
-          <button
-            className="writing-assistant-btn"
-            onClick={() => ask()}
-            disabled={!prompt.trim()}
-            aria-label="Ask"
-          >
-            Ask
-          </button>
-        )}
+        <div className="wa-input-actions">
+          {/* AC-WA-25: microphone button — only shown when voice is enabled in Settings */}
+          {voiceEnabled && (
+            <button
+              type="button"
+              className={`wa-mic-btn wa-mic-btn--${waVoiceState}`}
+              onClick={handleWaMicToggle}
+              aria-label={WA_MIC_ARIA_LABELS[waVoiceState]}
+              aria-pressed={waVoiceState !== 'idle'}
+              disabled={waVoiceState === 'processing'}
+            >
+              🎤
+            </button>
+          )}
+          {loading ? (
+            <button
+              className="writing-assistant-btn wa-btn-cancel-inline"
+              onClick={cancelGeneration}
+              aria-label="Cancel generation"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              className="writing-assistant-btn"
+              onClick={() => ask()}
+              disabled={!prompt.trim()}
+              aria-label="Ask"
+            >
+              Ask
+            </button>
+          )}
+        </div>
       </div>
 
       {showEditor && (

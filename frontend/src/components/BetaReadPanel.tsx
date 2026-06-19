@@ -13,6 +13,7 @@ interface BetaReadPanelProps {
   lastScannedAt: string | null;
   onRunScan: () => Promise<void> | void;
   onDismiss: (id: string) => Promise<void> | void;
+  onJumpToText?: (text: string) => void;
 }
 
 export default function BetaReadPanel({
@@ -23,6 +24,7 @@ export default function BetaReadPanel({
   lastScannedAt,
   onRunScan,
   onDismiss,
+  onJumpToText,
 }: BetaReadPanelProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const canRun = Boolean(scene) && !loading;
@@ -71,7 +73,7 @@ export default function BetaReadPanel({
       {comments.length > 0 && (
         <div className="br-comment-list">
           {comments.map((comment) => (
-            <BetaReadCommentCard key={comment.id} comment={comment} onDismiss={onDismiss} />
+            <BetaReadCommentCard key={comment.id} comment={comment} onDismiss={onDismiss} onJumpToText={onJumpToText} />
           ))}
         </div>
       )}

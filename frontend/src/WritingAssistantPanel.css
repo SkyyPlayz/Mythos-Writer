@@ -796,11 +796,60 @@
   50% { opacity: 0.3; transform: scale(0.7); }
 }
 
+/* ─── AC-WA-25: STT microphone button ─── */
+
+.wa-input-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.wa-mic-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  color: var(--text-faint);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.wa-mic-btn:hover:not(:disabled) {
+  background: var(--bg-hover, rgba(255,255,255,0.04));
+  color: var(--text-muted);
+}
+
+.wa-mic-btn--listening {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: wa-mic-pulse 1.2s ease-in-out infinite;
+}
+
+.wa-mic-btn--processing {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wa-mic-btn--error {
+  border-color: var(--danger, #f87171);
+  color: var(--danger, #f87171);
+}
+
+@keyframes wa-mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* ─── AC-V-12: Reduced-motion stripping ─── */
 @media (prefers-reduced-motion: reduce) {
   .wa-spinner,
   .wa-cursor,
-  .wa-hear-btn--playing::after {
+  .wa-hear-btn--playing::after,
+  .wa-mic-btn--listening {
     animation: none;
   }
 }

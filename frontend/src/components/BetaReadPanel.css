@@ -79,6 +79,29 @@
   background: color-mix(in srgb, #020617 82%, transparent);
 }
 
+.br-anchor-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.br-anchor-btn:hover .br-anchor-text,
+.br-anchor-btn:focus-visible .br-anchor-text {
+  border-left-color: var(--focus-ring, #22d3ee);
+  background: color-mix(in srgb, var(--wa-cat-clarity, #22d3ee) 8%, transparent);
+}
+
+.br-anchor-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #22d3ee);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 .br-anchor-text {
   margin: 4px 0 8px;
   border-left: 3px solid var(--wa-cat-clarity, #22d3ee);
