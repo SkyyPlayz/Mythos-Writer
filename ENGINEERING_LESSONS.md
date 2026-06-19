@@ -48,6 +48,6 @@ Add `(status, created_at DESC)`, `(scene_id, status, created_at DESC)`, and `(it
 
 ## Paperclip Routine Postmortems: Verify the execution issue before blaming the routine (SKY-2742)
 
-When a stale CI-monitor routine is suspected, first check the routine's latest execution issue and agent run logs: `c8fa0c64` actually produced done issue `SKY-2190`, while FoundingEngineer `error` came from Claude Sonnet 429s (`claude_transient_upstream`), not missing CI disposition.
+When a stale CI-monitor routine is suspected, first compare the routine `status`/`lastTriggeredAt` with the latest execution issue and agent run logs: `c8fa0c64` had been archived after producing done issue `SKY-2190`, while FoundingEngineer `error` came from Claude Sonnet 429s (`claude_transient_upstream`), not missing CI disposition.
 
 ---
