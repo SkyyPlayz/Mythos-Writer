@@ -1904,7 +1904,7 @@ export interface AppSettings {
   legacyVaultDismissed?: boolean;
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
   /** SKY-2005: last sample genre selected from the onboarding sample preview. */
@@ -2109,6 +2109,10 @@ export interface OnboardingImportCommitPayload {
 export interface OnboardingImportCommitResponse {
   ok: boolean;
   error?: string;
+  /** Number of collision files renamed with (Imported) suffix (SKY-2637) */
+  renamedCount?: number;
+  /** Number of notes with broken [[wiki-links]] (SKY-2637) */
+  brokenLinkCount?: number;
 }
 
 export interface SessionSaveScenePayload {
