@@ -2641,7 +2641,7 @@ export default function DesktopShell() {
         return (
           <ContinuityPanel
             scene={activeSceneForSidebar}
-            enabled={appSettings?.agents?.archive?.enabled ?? true}
+            enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
             archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
             archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
             onCountChange={setContinuityCount}
@@ -2868,7 +2868,8 @@ export default function DesktopShell() {
   const agentFlags = {
     writingAssistant: appSettings?.agents?.writingAssistant?.enabled ?? true,
     brainstorm: appSettings?.agents?.brainstorm?.enabled ?? true,
-    archive: appSettings?.agents?.archive?.enabled ?? true,
+    // AC-S-02: archiveContinuityEnabled (master toggle) must also be true for archive panels to show
+    archive: (appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true),
   };
 
   const writingMode: WritingMode = layout.writingMode ?? 'normal';
