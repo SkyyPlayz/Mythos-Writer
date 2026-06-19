@@ -3239,6 +3239,11 @@ export type BrainstormWriteNoteResponse =
       status: 'disambiguation_needed';
       context: 'universe';
       options: string[];
+    }
+  | {
+      /** AC-BST-06: a note with this name already exists; use proposeEdit instead. */
+      status: 'existing_note_match';
+      existingPath: string;
     };
 
 export interface BrainstormResolveRoutingPayload {

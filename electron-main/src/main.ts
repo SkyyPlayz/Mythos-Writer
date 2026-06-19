@@ -429,6 +429,7 @@ import {
   resolveProposalDestination,
   writeNoteProposal,
 } from './brainstormNoteWriter.js';
+import { assertBrainstormPayloadValid } from './brainstormIpcSecurity.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
@@ -4143,6 +4144,7 @@ const handlers: IpcHandlers = {
     };
   },
   [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: import('./ipc.js').BrainstormWriteNotePayload) => {
+    assertBrainstormPayloadValid(payload);
     ensureNotesVaultDir();
     const now = new Date().toISOString();
     const root = getNotesVaultRoot();
@@ -4158,6 +4160,7 @@ const handlers: IpcHandlers = {
             activeStory: payload.activeStory,
           });
       if (resolved.status === 'disambiguation_needed') return resolved;
+      if (resolved.status === 'existing_note_match') return resolved;
 
       const proposal = { ...payload.proposal, destinationPath: resolved.destinationPath };
       const result = writeNoteProposal({
@@ -4219,6 +4222,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (
     payload: import('./ipc.js').BrainstormResolveRoutingPayload,
   ) => {
+    assertBrainstormPayloadValid(payload);
     ensureNotesVaultDir();
     const userData = app.getPath('userData');
     const root = getNotesVaultRoot();
@@ -4242,6 +4246,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.BRAINSTORM_RESET_CATEGORY_ROUTING]: (
     payload: import('./ipc.js').BrainstormResetCategoryRoutingPayload,
   ) => {
+    assertBrainstormPayloadValid(payload);
     const userData = app.getPath('userData');
     const settings = setCategoryRouting(userData, payload.category, null);
     return { notesRouting: settings.notesRouting };
@@ -4257,6 +4262,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (
     payload: import('./ipc.js').BrainstormSelectContextPayload,
   ) => {
+    assertBrainstormPayloadValid(payload);
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     const { items } = listVaultFiles(root);
@@ -5984,6 +5990,7 @@ function registerBrainstormExtractionHandlers(): void {
       IPC_CHANNELS.BRAINSTORM_EXTRACT_PROPOSALS,
       async (event, payload: import('./ipc.js').BrainstormExtractProposalsPayload) => {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        assertBrainstormPayloadValid(payload);
 
         const agentSettings = loadAppSettings().agents.brainstorm;
         if (!agentSettings.enabled) return { proposals: [] };
@@ -6099,6 +6106,7 @@ Rules:
       IPC_CHANNELS.BRAINSTORM_PROPOSALS_CONFIRM,
       (event, payload: import('./ipc.js').BrainstormProposalConfirmPayload) => {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        assertBrainstormPayloadValid(payload);
 
         const status = payload.decision === 'edit_and_confirm' ? 'applied' : 'accepted';
         try {
@@ -6130,6 +6138,7 @@ Rules:
       IPC_CHANNELS.BRAINSTORM_PROPOSALS_REJECT,
       (event, payload: import('./ipc.js').BrainstormProposalRejectPayload) => {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+        assertBrainstormPayloadValid(payload);
 
         if (payload.title) sessionRejectionLog.add(payload.title);
 
@@ -6284,6 +6293,7 @@ function registerBrainstormEnrichHandler() {
     IPC_CHANNELS.BRAINSTORM_ENRICH_ENTRY,
     wrapIpcHandler(IPC_CHANNELS.BRAINSTORM_ENRICH_ENTRY, async (event, payload: { name: string; type: string }) => {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      assertBrainstormPayloadValid(payload);
 
       const agentSettings = loadAppSettings().agents.brainstorm;
       if (!agentSettings.enabled) return { status: 'skipped' as const, reason: 'agent_disabled' };

@@ -2011,6 +2011,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                         onClick={() => !issue.resolved && toggleIssue(issue.id)}
                         disabled={issue.resolved}
                         type="button"
+                        aria-expanded={isExpanded && !issue.resolved}
                       >
                         {issue.description}
                       </button>

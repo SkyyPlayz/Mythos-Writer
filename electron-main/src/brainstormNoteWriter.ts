@@ -16,7 +16,8 @@ const WORLD_KIND_DIR: Record<WorldKind, string> = {
 
 export type ProposalDestinationResolution =
   | { status: 'resolved'; destinationPath: string; suggestedDestination?: string }
-  | { status: 'disambiguation_needed'; context: 'universe'; options: string[] };
+  | { status: 'disambiguation_needed'; context: 'universe'; options: string[] }
+  | { status: 'existing_note_match'; existingPath: string };
 
 export interface ResolveProposalDestinationArgs {
   kind: FactType;
@@ -43,6 +44,37 @@ function joinPosix(...segments: string[]): string {
     .map((segment) => segment.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
     .filter(Boolean)
     .join('/');
+}
+
+/**
+ * Walk the Notes Vault and find the first .md file whose stem matches `name`
+ * case-insensitively. Returns the vault-relative POSIX path, or null if not found.
+ * Hidden directories (leading `.`) are skipped.
+ */
+export function findNotesVaultNoteByName(notesVaultRoot: string, name: string): string | null {
+  const nameLower = name.toLowerCase();
+  function walk(absDir: string, rel: string): string | null {
+    if (!fs.existsSync(absDir)) return null;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        const found = walk(path.join(absDir, entry.name), childRel);
+        if (found !== null) return found;
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        const stem = entry.name.slice(0, -3);
+        if (stem.toLowerCase() === nameLower) return childRel;
+      }
+    }
+    return null;
+  }
+  return walk(notesVaultRoot, '');
 }
 
 function listChildDirectories(root: string, relativeDir: string): string[] {
@@ -73,6 +105,12 @@ function resolveStory(notesVaultRoot: string, activeStory?: string | null): stri
 export function resolveProposalDestination(args: ResolveProposalDestinationArgs): ProposalDestinationResolution {
   const fileName = `${sanitizeFileName(args.title)}.md`;
 
+  // AC-BST-06: check for an existing note with the same name before routing.
+  const existingPath = findNotesVaultNoteByName(args.notesVaultRoot, sanitizeFileName(args.title));
+  if (existingPath !== null) {
+    return { status: 'existing_note_match', existingPath };
+  }
+
   if (args.kind === 'inbox') {
     return { status: 'resolved', destinationPath: joinPosix('Inbox', fileName) };
   }
@@ -90,13 +128,20 @@ export function resolveProposalDestination(args: ResolveProposalDestinationArgs)
   }
 
   const universe = resolveUniverse(args.notesVaultRoot, args.activeUniverse);
+  // AC-BST-11: when universe is ambiguous (no active universe, multiple exist),
+  // fall back to Inbox with a suggested_destination hint rather than blocking on
+  // user disambiguation. The caller surfaces the hint so the user can relocate.
   if (universe.status === 'disambiguation_needed') {
-    return { status: 'disambiguation_needed', context: 'universe', options: universe.options };
+    return {
+      status: 'resolved',
+      destinationPath: joinPosix('Inbox', fileName),
+      suggestedDestination: joinPosix('Universes', '<active-universe>', WORLD_KIND_DIR[args.kind as WorldKind], fileName),
+    };
   }
 
   return {
     status: 'resolved',
-    destinationPath: joinPosix('Universes', universe.universe, WORLD_KIND_DIR[args.kind], fileName),
+    destinationPath: joinPosix('Universes', universe.universe, WORLD_KIND_DIR[args.kind as WorldKind], fileName),
   };
 }
 
