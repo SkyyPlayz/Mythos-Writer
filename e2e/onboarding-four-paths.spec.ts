@@ -760,12 +760,9 @@ test.describe('AC-OB-13: Path 4 genre picker — 3 cards with accordions', () =>
   });
 
   test('AC-OB-13: genre picker renders exactly 3 genre cards; each has expandable accordion', async () => {
-    // The existing wizard presents genre picker via step1c — navigate to it via
-    // the sample card path (step1 → step1b-options → card-sample → step1c)
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator('[data-testid="card-create-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-sample"]').click();
+    // Navigate via the new flat four-card path selector: path-selector → card-path-sample → step1c
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardSample).click();
     await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
 
     const radiogroup = page.locator(SELECTOR.genreRadiogroup);
@@ -816,10 +813,8 @@ test.describe('AC-OB-14: Path 4 genre selection → sample vault', () => {
       });
     });
 
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator('[data-testid="card-create-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-sample"]').click();
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardSample).click();
     await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
 
     await page.locator('[data-testid="genre-card-sci-fi-noir"]').click();
@@ -857,10 +852,8 @@ test.describe('AC-OB-15: Path 4 sample banner dismissed permanently', () => {
 
   test('AC-OB-15: sample banner visible after Path 4 completion; dismissing hides it permanently', async () => {
     await stubOnboardingComplete(app);
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator('[data-testid="card-create-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-sample"]').click();
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardSample).click();
     await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
 
     await page.locator('[data-testid="genre-card-cozy-fantasy"]').click();
@@ -899,10 +892,8 @@ test.describe('AC-OB-16: ConflictDialog open-existing sends correct startMode', 
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
     });
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator('[data-testid="card-create-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-blank"]').click();
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardBlank).click();
     await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
   });
 
@@ -959,10 +950,8 @@ test.describe('AC-OB-17: ConflictDialog create-alongside uses <parent> 2/', () =
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
     });
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator('[data-testid="card-create-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-blank"]').click();
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardBlank).click();
     await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
   });
 
@@ -1100,10 +1089,8 @@ test.describe('AC-OB-20: Path validation fires at most once per 400ms idle', () 
       });
     });
 
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator('[data-testid="card-create-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-blank"]').click();
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardBlank).click();
     await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
   });
 
@@ -1212,7 +1199,7 @@ test.describe('AC-OB-22: Liquid Neon CSS tokens on wizard screens', () => {
 
   test('AC-OB-22: wizard root element has --accent CSS custom property (Liquid Neon token)', async () => {
     // The wizard container should have the Liquid Neon design tokens applied.
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
 
     const hasAccentToken = await page.evaluate(() => {
       const root = document.documentElement;
@@ -1241,8 +1228,8 @@ test.describe('AC-OB-23: aria-live region always present on wizard', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-23: aria-live="polite" region is in the DOM on step1 (idle state)', async () => {
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+  test('AC-OB-23: aria-live="polite" region is in the DOM on path-selector (idle state)', async () => {
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
 
     // The aria-live region must exist in the DOM at all times — not conditionally rendered
     const liveRegions = await page.locator(SELECTOR.ariaLiveRegion).count();
@@ -1254,9 +1241,7 @@ test.describe('AC-OB-23: aria-live region always present on wizard', () => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
     });
-    await page.locator('[data-testid="card-create-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-blank"]').click();
+    await page.locator(SELECTOR.cardBlank).click();
     await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
 
     const liveRegionsStep2 = await page.locator(SELECTOR.ariaLiveRegion).count();
@@ -1299,7 +1284,7 @@ test.describe('AC-OB-24: No microphone permission prompt during onboarding', () 
 
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
 
     // Wait a moment to ensure any auto-start voice code would have fired
     await page.waitForTimeout(2_000);
@@ -1322,7 +1307,7 @@ test.describe('AC-OB-25: onboarding:import-vault:dry-run channel in preload brid
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-25-'));
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
   });
 
   test.afterAll(async () => {
