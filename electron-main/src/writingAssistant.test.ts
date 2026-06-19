@@ -21,11 +21,16 @@ import path from 'path';
 import {
   openDb,
   closeDb,
+  getDb,
   listSuggestions,
   getSuggestion,
   upsertSuggestion,
   insertGenerationLog,
+  insertBetaReadComment,
+  listBetaReadComments,
+  dismissBetaReadComment,
   type SuggestionCategory,
+  type DbBetaReadComment,
 } from './db.js';
 import { checkCallBudget } from './budget.js';
 import {
@@ -497,6 +502,126 @@ describe('Budget gating (§6)', () => {
 // ─── §7 buildWritingAssistantUserContent (SEC-6 regression) ──────────────────
 // Regression guard: vault context must be wrapped in <scene_context> delimiters.
 // An injection payload inside those tags is structurally separated from instructions.
+
+// ─── §8 tip-decision persistence ──────────────────────────────────────────────
+// Verifies that writing-assistant:tip-decision correctly updates suggestion status.
+// The handler uses getSuggestion + upsertSuggestion; this tests those primitives
+// in the same pattern the handler uses.
+
+describe('tip-decision persistence (§8)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-tipdec-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('accepted decision changes status from proposed to accepted', () => {
+    const [row] = buildScanSuggestions(['Fix the tense.'], 's1', 'ch1.md', new Date().toISOString(), nextId);
+    upsertSuggestion(row);
+
+    const existing = getSuggestion(row.id)!;
+    upsertSuggestion({ ...existing, status: 'accepted' });
+
+    expect(getSuggestion(row.id)!.status).toBe('accepted');
+  });
+
+  it('reported decision maps to rejected status', () => {
+    const [row] = buildScanSuggestions(['Overused word.'], 's2', 'ch2.md', new Date().toISOString(), nextId);
+    upsertSuggestion(row);
+
+    const existing = getSuggestion(row.id)!;
+    upsertSuggestion({ ...existing, status: 'rejected' });
+
+    expect(getSuggestion(row.id)!.status).toBe('rejected');
+  });
+
+  it('session_suppressed decision maps to rejected status', () => {
+    const [row] = buildScanSuggestions(['Weak verb.'], 's3', 'ch3.md', new Date().toISOString(), nextId);
+    upsertSuggestion(row);
+
+    const existing = getSuggestion(row.id)!;
+    upsertSuggestion({ ...existing, status: 'rejected' });
+
+    expect(getSuggestion(row.id)!.status).toBe('rejected');
+  });
+
+  it('missing tipId is a no-op (getSuggestion returns null)', () => {
+    expect(getSuggestion('nonexistent-id')).toBeNull();
+  });
+});
+
+// ─── §9 beta-read:dismiss persistence ─────────────────────────────────────────
+// Verifies that dismissBetaReadComment sets dismissed_at and the comment is
+// then excluded from active (non-dismissed) list queries.
+
+describe('beta-read dismiss persistence (§9)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-brd-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('dismissBetaReadComment sets dismissed_at on the row', () => {
+    const comment = {
+      id: nextId(),
+      scene_id: 'scene-beta',
+      anchor_text: 'walked',
+      comment_text: 'Weak verb — consider stronger alternatives.',
+      created_at: new Date().toISOString(),
+      dismissed_at: null,
+    };
+    insertBetaReadComment(comment);
+
+    // before: visible in active list
+    expect(listBetaReadComments('scene-beta').some((c) => c.id === comment.id)).toBe(true);
+
+    dismissBetaReadComment(comment.id);
+
+    // after: no longer in active list (listBetaReadComments excludes dismissed)
+    expect(listBetaReadComments('scene-beta').some((c) => c.id === comment.id)).toBe(false);
+    // but dismissed_at is set in the raw row
+    const raw = getDb()
+      .prepare('SELECT * FROM beta_read_comments WHERE id = ?')
+      .get(comment.id) as DbBetaReadComment | undefined;
+    expect(raw).toBeDefined();
+    expect(raw!.dismissed_at).not.toBeNull();
+  });
+
+  it('dismissing non-existent id is a no-op (no throw)', () => {
+    expect(() => dismissBetaReadComment('ghost-id')).not.toThrow();
+  });
+
+  it('multiple comments per scene are listed and independently dismissed', () => {
+    const sceneId = 'scene-multi';
+    const c1 = { id: nextId(), scene_id: sceneId, anchor_text: 'a', comment_text: 'C1', created_at: new Date().toISOString(), dismissed_at: null };
+    const c2 = { id: nextId(), scene_id: sceneId, anchor_text: 'b', comment_text: 'C2', created_at: new Date().toISOString(), dismissed_at: null };
+    insertBetaReadComment(c1);
+    insertBetaReadComment(c2);
+
+    dismissBetaReadComment(c1.id);
+
+    // c1 dismissed, c2 still active
+    const active = listBetaReadComments(sceneId);
+    expect(active.some((c) => c.id === c1.id)).toBe(false);
+    expect(active.some((c) => c.id === c2.id)).toBe(true);
+
+    // raw row for c1 has dismissed_at set
+    const rawC1 = getDb().prepare('SELECT * FROM beta_read_comments WHERE id = ?').get(c1.id) as unknown as DbBetaReadComment;
+    expect(rawC1.dismissed_at).not.toBeNull();
+  });
+});
 
 describe('buildWritingAssistantUserContent (§7)', () => {
   it('returns the prompt unchanged when no context is provided', () => {

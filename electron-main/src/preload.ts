@@ -367,6 +367,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('writing-assistant:cadence-change', payload),
   writingAssistantTipDecision: (payload: { tipId: string; decision: 'accepted' | 'session_suppressed' | 'reported'; sceneId?: string; scenePath?: string; sceneUpdatedAt?: string }) =>
     ipcRenderer.invoke('writing-assistant:tip-decision', payload),
+  writingAssistantSuggestionList: (payload: { sceneId?: string; scenePath?: string; status?: string }) =>
+    ipcRenderer.invoke('writing-assistant:suggestion:list', payload),
   writingAssistantScanNow: (payload: { sceneId: string; prose: string; scenePath: string }) =>
     ipcRenderer.invoke('writing-assistant:scan-now', payload),
   writingAssistantSetActiveScene: (payload: { sceneId: string | null; scenePath: string | null }) =>

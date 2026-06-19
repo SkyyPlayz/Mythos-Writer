@@ -2626,10 +2626,10 @@ export default function DesktopShell() {
         return (
           <WritingAssistantPanel
             scene={activeSceneForSidebar}
-            enabled={appSettings?.agents?.writingAssistant?.enabled ?? true}
+            enabled={appSettings?.waEnabled ?? appSettings?.agents?.writingAssistant?.enabled ?? true}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
             waScanInterval={appSettings?.waScanInterval}
-            cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
+            cadenceTrigger={appSettings?.waCadenceTrigger ?? appSettings?.agents?.writingAssistant?.cadenceTrigger}
             idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
             idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
             isActive={view === 'editor'}
@@ -2866,7 +2866,7 @@ export default function DesktopShell() {
   }
 
   const agentFlags = {
-    writingAssistant: appSettings?.agents?.writingAssistant?.enabled ?? true,
+    writingAssistant: appSettings?.waEnabled ?? appSettings?.agents?.writingAssistant?.enabled ?? true,
     brainstorm: appSettings?.agents?.brainstorm?.enabled ?? true,
     archive: appSettings?.agents?.archive?.enabled ?? true,
   };

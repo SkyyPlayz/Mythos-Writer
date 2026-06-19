@@ -1912,7 +1912,15 @@ const handlers: IpcHandlers = {
     if (telemetry && !telemetry.enabled && current.telemetry?.enabled) {
       telemetry = { enabled: false, sessionId: generateSessionId() };
     }
-    const updated = { ...reconciled, ...(telemetry !== undefined ? { telemetry } : {}) };
+    // SKY-2627: keep flat wa* fields in sync with agents.writingAssistant.* on every save.
+    const syncedWa: Pick<AppSettings, 'waEnabled' | 'waModel' | 'waCadenceTrigger' | 'waIdleHeartbeatConstantInterval' | 'waIdleDebounceSeconds'> = {
+      waEnabled: reconciled.agents.writingAssistant.enabled,
+      waModel: reconciled.waModel ?? null,
+      waCadenceTrigger: reconciled.agents.writingAssistant.cadenceTrigger ?? 'on_save',
+      waIdleHeartbeatConstantInterval: reconciled.agents.writingAssistant.idleHeartbeatConstantInterval ?? false,
+      waIdleDebounceSeconds: reconciled.agents.writingAssistant.idleDebounceSeconds ?? 30,
+    };
+    const updated = { ...reconciled, ...(telemetry !== undefined ? { telemetry } : {}), ...syncedWa };
     saveAppSettings(updated);
     // Re-configure telemetry in-process immediately.
     if (updated.telemetry) {
@@ -2403,8 +2411,29 @@ const handlers: IpcHandlers = {
     return { saved: true, waScanInterval: interval };
   },
 
-  [IPC_CHANNELS.WRITING_ASSISTANT_TIP_DECISION]: () => {
+  [IPC_CHANNELS.WRITING_ASSISTANT_TIP_DECISION]: (payload: { tipId: string; decision: 'accepted' | 'session_suppressed' | 'reported'; sceneId?: string; scenePath?: string; sceneUpdatedAt?: string }) => {
+    const existing = getSuggestion(payload.tipId);
+    if (existing) {
+      const newStatus = payload.decision === 'accepted' ? 'accepted' as const
+        : payload.decision === 'reported' ? 'rejected' as const
+        : 'rejected' as const;
+      upsertSuggestion({ ...existing, status: newStatus });
+    }
     return { saved: true };
+  },
+
+  [IPC_CHANNELS.WRITING_ASSISTANT_SUGGESTION_LIST]: (payload: { sceneId?: string; scenePath?: string; status?: string }) => {
+    const suggestions = listSuggestionsFiltered({
+      sourceAgent: 'writing-assistant',
+      status: payload.status as import('./db.js').SuggestionStatus | undefined,
+      limit: 100,
+    }).filter((s) =>
+      (!payload.scenePath || s.target_path === payload.scenePath) &&
+      (!payload.sceneId || ((): boolean => {
+        try { return (JSON.parse(s.payload_json ?? '{}') as { sceneId?: string }).sceneId === payload.sceneId; } catch { return false; }
+      })())
+    );
+    return { suggestions };
   },
 
   [IPC_CHANNELS.WRITING_ASSISTANT_SCAN_NOW]: async (payload) => {
@@ -5689,9 +5718,14 @@ const AGENT_BUDGET_DEFAULTS = {
 
 const SETTINGS_DEFAULTS: AppSettings = {
   apiKey: '',
-  waScanInterval: 60,
+  waScanInterval: 'on-save',
+  waEnabled: true,
+  waModel: null,
+  waCadenceTrigger: 'on_save',
+  waIdleHeartbeatConstantInterval: false,
+  waIdleDebounceSeconds: 30,
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: true, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
   },
@@ -5750,6 +5784,13 @@ function loadAppSettings(): AppSettings {
         base.agents.writingAssistant.cadenceTrigger = 'idle_heartbeat';
         base.agents.writingAssistant.idleHeartbeatConstantInterval = true;
       }
+      // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.
+      // waModel is intentionally NOT back-filled: null means "use global model" — the spec default.
+      const rawRecord = raw as Record<string, unknown>;
+      if (!('waEnabled' in rawRecord)) base.waEnabled = base.agents.writingAssistant.enabled;
+      if (!('waCadenceTrigger' in rawRecord)) base.waCadenceTrigger = base.agents.writingAssistant.cadenceTrigger ?? 'on_save';
+      if (!('waIdleHeartbeatConstantInterval' in rawRecord)) base.waIdleHeartbeatConstantInterval = base.agents.writingAssistant.idleHeartbeatConstantInterval ?? false;
+      if (!('waIdleDebounceSeconds' in rawRecord)) base.waIdleDebounceSeconds = base.agents.writingAssistant.idleDebounceSeconds ?? 30;
     } catch {
       base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
