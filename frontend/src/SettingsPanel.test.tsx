@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import SettingsPanel from './SettingsPanel';
 
 const defaultSettings: AppSettings = {
@@ -817,8 +817,11 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
-    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
+    });
     expect(screen.getByLabelText(/provider base url/i)).toBeInTheDocument();
+    await waitFor(() => expect(mockProviderListModels).toHaveBeenCalled());
   });
 
   it('provider kind is included in saved settings', async () => {
@@ -1399,12 +1402,16 @@ describe('Per-agent provider override (SKY-2440)', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     // Switch to custom to get base URL field
-    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
-      target: { value: 'custom' },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
+        target: { value: 'custom' },
+      });
     });
 
-    fireEvent.change(screen.getByLabelText(/base url for writingAssistant/i), {
-      target: { value: 'https://remote.api.example.com/v1' },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/base url for writingAssistant/i), {
+        target: { value: 'https://remote.api.example.com/v1' },
+      });
     });
 
     expect(screen.getByRole('alert')).toHaveTextContent(/not on localhost/i);
@@ -1416,9 +1423,12 @@ describe('Per-agent provider override (SKY-2440)', () => {
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
-    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
-      target: { value: 'ollama' },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
+        target: { value: 'ollama' },
+      });
     });
+    await waitFor(() => expect(mockProviderListModels).toHaveBeenCalled());
 
     // Default Ollama URL is localhost — no warning
     expect(screen.queryByText(/not on localhost/i)).not.toBeInTheDocument();

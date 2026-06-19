@@ -91,6 +91,14 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
 });
 
+async function renderOnboardingWizard(ui: Parameters<typeof render>[0]) {
+  let result: ReturnType<typeof render> | undefined;
+  await act(async () => {
+    result = render(ui);
+  });
+  return result as ReturnType<typeof render>;
+}
+
 function openCustomOptions() {
   fireEvent.click(screen.getByTestId('card-create-custom'));
 }
@@ -114,7 +122,7 @@ function openTemplateGallery() {
 
 describe('OnboardingWizard — Step 1', () => {
   it('renders Step 1 with correct heading and subtitle', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
@@ -122,13 +130,13 @@ describe('OnboardingWizard — Step 1', () => {
   });
 
   it('shows step indicator "Step 1 of 3"', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
     await act(async () => {});
   });
 
   it('shows three top-level starting-point cards', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
     expect(screen.getByTestId('card-create-custom')).toBeInTheDocument();
     expect(screen.getByTestId('card-open-existing')).toBeInTheDocument();
@@ -137,7 +145,7 @@ describe('OnboardingWizard — Step 1', () => {
   });
 
   it('card labels match v2.1 spec copy exactly', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick Start');
     expect(screen.getByTestId('card-create-custom')).toHaveTextContent('Create Custom Vault');
     expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open Existing Vault');
@@ -147,7 +155,7 @@ describe('OnboardingWizard — Step 1', () => {
   // SKY-2220: one-click Quick Start bypasses step2 (no title, no save path picker).
   it('clicking Quick Start calls onboardingComplete with startMode=quick-start and bypasses Step 2', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-quick-start'));
     await waitFor(() =>
       expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'quick-start' }),
@@ -168,7 +176,7 @@ describe('OnboardingWizard — Step 1', () => {
     });
     (window as unknown as { api: unknown }).api = mockApi;
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-quick-start'));
     await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
     expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
@@ -179,7 +187,7 @@ describe('OnboardingWizard — Step 1', () => {
 
   it('Open Existing Vault opens the folder picker and passes the selected path to onboardingComplete', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-open-existing'));
     await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
@@ -190,7 +198,7 @@ describe('OnboardingWizard — Step 1', () => {
   });
 
   it('Create Custom shows Blank Slate, Sample Project, and From Template choices', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openCustomOptions();
     expect(screen.getByTestId('screen-step1b-options')).toBeInTheDocument();
     expect(screen.getByTestId('card-blank')).toHaveTextContent('Blank Slate');
@@ -199,28 +207,28 @@ describe('OnboardingWizard — Step 1', () => {
   });
 
   it('shows Skip link on Step 1', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('gs-skip')).toBeInTheDocument();
     expect(screen.getByTestId('gs-skip').textContent).toMatch(/Skip/);
     await act(async () => {});
   });
 
   it('Create Custom → Blank Slate advances to Step 2', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
     await act(async () => {});
   });
 
   it('Create Custom → Sample Project advances to Step 1c (genre picker)', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openSampleFlow();
     expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
     await act(async () => {});
   });
 
   it('Create Custom → From Template advances to the template gallery', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
     // Flush the async templateList() call that fires when step1b mounts
@@ -229,21 +237,21 @@ describe('OnboardingWizard — Step 1', () => {
 
   it('Skip calls onboardingComplete with startMode=skip and fires onComplete', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('gs-skip'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'skip' }));
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 
   it('Escape on Step 1 shows cancel confirm dialog', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     await act(async () => {});
   });
 
   it('close button on Step 1 shows cancel confirm dialog', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-close-btn-step1'));
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     await act(async () => {});
@@ -254,7 +262,7 @@ describe('OnboardingWizard — Step 1', () => {
 
 describe('OnboardingWizard — Cancel confirm dialog', () => {
   it('"Keep Going" dismisses dialog and returns to wizard', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-keep-going'));
@@ -265,7 +273,7 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
 
   it('"Cancel Setup" calls onCancel without calling onboardingComplete', async () => {
     const onCancel = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     fireEvent.click(screen.getByTestId('gs-cancel-setup'));
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -274,7 +282,7 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
   });
 
   it('dialog copy matches spec exactly', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByText('Cancel setup?')).toBeInTheDocument();
     expect(screen.getByText(/Your story hasn't been created yet/)).toBeInTheDocument();
@@ -289,13 +297,13 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
 
 describe('OnboardingWizard — Step 1b (template picker)', () => {
   it('shows "Choose a template" heading', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByText('Choose a template')).toBeInTheDocument());
   });
 
   it('loads and displays bundled template cards', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByText('Novel (3-Act)')).toBeInTheDocument());
     expect(screen.getByText('Short Story')).toBeInTheDocument();
@@ -304,13 +312,13 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('shows "Use this →" CTA on each template card', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getAllByText(/Use this/)).toHaveLength(4));
   });
 
   it('Back button returns to the custom-options step', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('gs-back-step1b'));
     fireEvent.click(screen.getByTestId('gs-back-step1b'));
@@ -318,7 +326,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('selecting a template card shows preview without navigating', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -327,7 +335,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('sr-only live region announces selected template name (F-13)', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -337,7 +345,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('selected card has aria-checked=true, others false', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -346,7 +354,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('switching selection updates live region and aria-checked', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -359,7 +367,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('confirming preview advances to Step 2', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -371,7 +379,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   it('shows user templates under "Your Templates" section when present', async () => {
     const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
     mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
     expect(screen.getByText('My Template')).toBeInTheDocument();
@@ -379,7 +387,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
 
   it('shows empty hint under "Your Templates" when no custom templates saved', async () => {
     // mockApi returns BUNDLED_TEMPLATES only — no isUserTemplate entries
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
     const hint = screen.getByTestId('template-empty-hint');
@@ -393,7 +401,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
 
   // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
   it('template grid has role="radiogroup" labelled by the heading', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     const heading = screen.getByRole('heading', { name: 'Choose a template' });
@@ -403,7 +411,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('each template card has role="radio" with aria-checked=false before selection', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     const radios = screen.getAllByRole('radio');
@@ -416,7 +424,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   it('hides empty hint once a user template is present', async () => {
     const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
     mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByTestId('template-card-user:my-template')).toBeInTheDocument());
     expect(screen.queryByTestId('template-empty-hint')).not.toBeInTheDocument();
@@ -426,7 +434,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   it('user-template radiogroup is labelled by "Your Templates" heading', async () => {
     const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
     mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByText('Your Templates'));
     const groups = screen.getAllByRole('radiogroup');
@@ -438,7 +446,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   it('shows loading status with role=status and aria-live=polite while fetching', async () => {
     let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
     mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     const status = await waitFor(() => screen.getByRole('status'));
     expect(status).toHaveAttribute('aria-live', 'polite');
@@ -450,7 +458,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   // SKY-1360: F-05 — empty-state message with role=status when list resolves to 0 items
   it('shows empty-state status with role=status and aria-live=polite when list is empty', async () => {
     mockApi.templateList = vi.fn().mockResolvedValue({ templates: [] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     const status = await waitFor(() => {
       const el = screen.getByRole('status');
@@ -465,7 +473,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   it('does not render the radiogroup while loading is in progress', async () => {
     let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
     mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByRole('status'));
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
@@ -475,7 +483,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
 
   // SKY-1362: F-12 — Back arrow on step1b wrapped in aria-hidden so SR hears "Back, button"
   it('step1b Back button arrow glyph is wrapped in aria-hidden span', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('gs-back-step1b'));
     const backBtn = screen.getByTestId('gs-back-step1b');
@@ -486,7 +494,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
 
   // SKY-1412 AC-6: Esc with a selection clears it; a second Esc shows the cancel confirm
   it('Escape with a template selected clears the selection and stays on step1b', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -498,7 +506,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
   });
 
   it('Escape with no template selected shows cancel confirm on step1b', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     // no card selected — Escape should show cancel confirm
@@ -514,7 +522,7 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     const rafRef = { current: null as ((time: number) => void) | null };
     vi.stubGlobal('requestAnimationFrame', (fn: (time: number) => void) => { rafRef.current = fn; return 0; });
     try {
-      render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+      await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
       openCustomOptions();
       const templateCard = screen.getByTestId('card-template');
       templateCard.focus();
@@ -535,20 +543,20 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
 // ─── Step 1c: Genre picker (SKY-2008) ─────────────────────────────────────────
 
 describe('OnboardingWizard — Step 1c (genre picker)', () => {
-  function renderAtStep1c() {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+  async function renderAtStep1c() {
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openSampleFlow();
   }
 
   it('shows genre picker screen on Sample Novel click', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
     expect(screen.getByText('Pick a sample world')).toBeInTheDocument();
     await act(async () => {});
   });
 
   it('renders all three genre cards in a radiogroup', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     expect(screen.getByTestId('genre-radiogroup')).toBeInTheDocument();
     expect(screen.getByTestId('genre-card-cozy-fantasy')).toBeInTheDocument();
     expect(screen.getByTestId('genre-card-sci-fi-noir')).toBeInTheDocument();
@@ -557,13 +565,13 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
   });
 
   it('Start button is disabled until a genre is selected', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
     await act(async () => {});
   });
 
   it('selecting a genre enables Start button with genre title', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-mystery'));
     const startBtn = screen.getByTestId('genre-start-btn');
     expect(startBtn).not.toBeDisabled();
@@ -572,7 +580,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
   });
 
   it('genre card shows aria-checked=true when selected', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-cozy-fantasy'));
     expect(screen.getByTestId('genre-card-cozy-fantasy')).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('genre-card-sci-fi-noir')).toHaveAttribute('aria-checked', 'false');
@@ -580,7 +588,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
   });
 
   it('accordion expands on toggle and collapses others', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     const cozyBtn = screen.getByTestId('genre-accordion-btn-cozy-fantasy');
     fireEvent.click(cozyBtn);
     expect(cozyBtn).toHaveAttribute('aria-expanded', 'true');
@@ -591,7 +599,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
   });
 
   it('Back button returns to step1 and resets genre selection', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
     fireEvent.click(screen.getByTestId('gs-back-step1c'));
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
@@ -602,7 +610,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
   });
 
   it('Start triggers step3 and calls onboardingComplete with sampleGenre', async () => {
-    renderAtStep1c();
+    await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-cozy-fantasy'));
     fireEvent.click(screen.getByTestId('genre-start-btn'));
     await waitFor(() => expect(screen.getByTestId('screen-step3')).toBeInTheDocument());
@@ -613,7 +621,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
 
   it('error on onboardingComplete shows error card on step1c', async () => {
     mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Bundle not found' });
-    renderAtStep1c();
+    await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-mystery'));
     fireEvent.click(screen.getByTestId('genre-start-btn'));
     await waitFor(() => expect(screen.getByTestId('genre-sample-error')).toBeInTheDocument());
@@ -625,7 +633,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
 
 describe('OnboardingWizard — Step 2', () => {
   async function renderAtStep2() {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     await act(async () => {});
     return screen.getByTestId('screen-step2');
@@ -685,7 +693,7 @@ describe('OnboardingWizard — Step 2', () => {
   });
 
   it('Back from Step 2 (template path) returns to Step 1b', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -709,13 +717,13 @@ describe('OnboardingWizard — Step 2', () => {
 // ─── Step 2 validation ────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — Step 2 validation', () => {
-  function renderAtStep2() {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+  async function renderAtStep2() {
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
   }
 
   it('empty title on submit shows exact error copy', async () => {
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
     expect(screen.getByTestId('gs-title-error').textContent).toBe(
@@ -724,7 +732,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
   });
 
   it('empty title on blur shows error', async () => {
-    renderAtStep2();
+    await renderAtStep2();
     const input = screen.getByTestId('gs-title-input');
     fireEvent.change(input, { target: { value: '' } });
     fireEvent.blur(input);
@@ -734,7 +742,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
   it.each(['/', '\\', ':', '*', '?', '"', '<', '>', '|'])(
     'invalid char "%s" in title shows exact error copy',
     async (char) => {
-      renderAtStep2();
+      await renderAtStep2();
       const input = screen.getByTestId('gs-title-input');
       fireEvent.change(input, { target: { value: `My${char}Story` } });
       fireEvent.blur(input);
@@ -749,7 +757,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
     mockApi.validatePath = vi.fn()
       .mockResolvedValueOnce({ exists: true, isEmpty: true, writable: true }) // save path check
       .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true }); // story dir conflict
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Existing Story' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
@@ -759,7 +767,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
 
   it('unwritable path shows path error', async () => {
     mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: false });
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('gs-path-error')).toBeInTheDocument());
@@ -769,7 +777,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
   });
 
   it('"Browse…" updates save path display with tilde-prefixed value', async () => {
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-change-location'));
     await waitFor(() => expect(screen.getByTestId('gs-save-path')).toHaveValue('~/Stories'));
   });
@@ -780,7 +788,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
       cancelled: false,
     });
 
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-change-location'));
 
     await waitFor(() =>
@@ -792,7 +800,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
 
   it('"Browse…" cancelled keeps previous path', async () => {
     mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
-    renderAtStep2();
+    await renderAtStep2();
     const pathBefore = (screen.getByTestId('gs-save-path') as HTMLInputElement).value;
     fireEvent.click(screen.getByTestId('gs-change-location'));
     await waitFor(() => {}); // wait for async
@@ -807,7 +815,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
     mockApi.onboardingComplete = vi.fn().mockImplementation(
       () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 100))
     );
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -820,7 +828,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
       () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 500))
     );
     const onCancel = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -832,7 +840,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
 
   it('successful scaffold calls onComplete with onboardingComplete=true', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -842,7 +850,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
   });
 
   it('calls onboardingComplete with correct blank payload', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'The Iron Garden' } });
     fireEvent.change(screen.getByTestId('gs-author-input'), { target: { value: 'Alex Rivera' } });
@@ -857,7 +865,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
   });
 
   it('author name trimmed whitespace — empty string becomes undefined', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
     fireEvent.change(screen.getByTestId('gs-author-input'), { target: { value: '   ' } });
@@ -868,7 +876,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
   });
 
   it('calls onboardingComplete with correct sample payload', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openSampleFlow();
     // Step1c: select Sci-Fi Noir genre card
     fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
@@ -879,7 +887,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
   });
 
   it('calls onboardingComplete with correct template payload', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
     fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
@@ -894,7 +902,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
 
   it('author name persisted to returned settings', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.change(screen.getByTestId('gs-author-input'), { target: { value: 'Jane Doe' } });
@@ -911,7 +919,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
       firstSceneId: 'abc-123',
       firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md',
     });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -928,7 +936,7 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
 describe('OnboardingWizard — Step 3 error state', () => {
   it('shows error state when onboardingComplete returns error', async () => {
     mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -940,7 +948,7 @@ describe('OnboardingWizard — Step 3 error state', () => {
 
   it('shows error state when onboardingComplete throws', async () => {
     mockApi.onboardingComplete = vi.fn().mockRejectedValue(new Error('Network error'));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -952,7 +960,7 @@ describe('OnboardingWizard — Step 3 error state', () => {
       .mockResolvedValueOnce({ ok: false, error: 'Disk full' })
       .mockResolvedValueOnce({ ok: true });
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -969,7 +977,7 @@ describe('OnboardingWizard — Step 3 error state', () => {
       .mockResolvedValueOnce({ ok: false, error: 'Failed' })
       .mockResolvedValueOnce({ ok: true });
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Novel' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
@@ -985,7 +993,7 @@ describe('OnboardingWizard — Step 3 error state', () => {
 describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
   it('shows inline error when templateList rejects', async () => {
     mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByTestId('template-load-error')).toBeInTheDocument());
     expect(screen.getByTestId('template-load-error').textContent).toContain(
@@ -995,14 +1003,14 @@ describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
 
   it('error is announced as an alert for screen readers', async () => {
     mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
   });
 
   it('"Create blank story" CTA navigates to Step 2', async () => {
     mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByTestId('template-error-blank-cta')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('template-error-blank-cta'));
@@ -1014,19 +1022,19 @@ describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
 
 describe('OnboardingWizard — AC coverage', () => {
   it('AC1: wizard shown on first launch (onboardingComplete falsy)', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
     await act(async () => {});
   });
 
   it('AC2: Step 1 shows three top-level starting-point cards', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(3);
     await act(async () => {});
   });
 
   it('AC3: From Template shows template sub-picker before Step 2', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByTestId('screen-step1b')).toBeInTheDocument());
     expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
@@ -1034,7 +1042,7 @@ describe('OnboardingWizard — AC coverage', () => {
 
   it('AC16: Skip bypasses setup — no onboardingComplete call needed before skip fires', async () => {
     const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('gs-skip'));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
     // Wizard is gone — DesktopShell would render
@@ -1042,7 +1050,7 @@ describe('OnboardingWizard — AC coverage', () => {
   });
 
   it('AC17: Back on Step 2 preserves title and card selection', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Preserved Title' } });
     fireEvent.click(screen.getByTestId('gs-back-step2'));
@@ -1052,7 +1060,7 @@ describe('OnboardingWizard — AC coverage', () => {
   });
 
   it('AC18: Escape on Step 2 shows cancel confirm', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
@@ -1061,7 +1069,7 @@ describe('OnboardingWizard — AC coverage', () => {
 
   it('AC19: Cancel Setup does not call onboardingComplete', async () => {
     const onCancel = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     fireEvent.click(screen.getByTestId('gs-cancel-setup'));
     expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
@@ -1069,7 +1077,7 @@ describe('OnboardingWizard — AC coverage', () => {
   });
 
   it('AC22: all user-facing strings match spec copy', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     // Step 1 copy
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
@@ -1089,13 +1097,13 @@ describe('OnboardingWizard — AC coverage', () => {
 
 describe('OnboardingWizard — Template counter (SKY-1397)', () => {
   async function goToTemplatePicker() {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByTestId('screen-step1b')).toBeInTheDocument());
   }
 
   it('reloads templateList every time step1b is shown', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     // First visit
     openTemplateGallery();
     await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(1));
@@ -1147,7 +1155,7 @@ describe('OnboardingWizard — Template counter (SKY-1397)', () => {
 describe('OnboardingWizard — Template management (SKY-1399)', () => {
   async function goToPickerWithUserTemplate() {
     mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openTemplateGallery();
     await waitFor(() => expect(screen.getByTestId(`template-card-${USER_TEMPLATE.id}`)).toBeInTheDocument());
   }
@@ -1234,25 +1242,25 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     legacyVaultPath: '/home/user/Mythos',
   };
 
-  it('shows migration dialog when legacyVaultDetected=true and legacyVaultDismissed=false', () => {
-    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+  it('shows migration dialog when legacyVaultDetected=true and legacyVaultDismissed=false', async () => {
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('gs-migration-dialog')).toBeInTheDocument();
   });
 
-  it('does not show migration dialog when legacyVaultDismissed=true', () => {
-    render(<OnboardingWizard initialSettings={{ ...LEGACY_SETTINGS, legacyVaultDismissed: true }} onComplete={vi.fn()} />);
+  it('does not show migration dialog when legacyVaultDismissed=true', async () => {
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={{ ...LEGACY_SETTINGS, legacyVaultDismissed: true }} onComplete={vi.fn()} />);
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
   });
 
-  it('does not show migration dialog when legacyVaultDetected=false', () => {
-    render(<OnboardingWizard initialSettings={{ ...BASE_SETTINGS, legacyVaultDetected: false }} onComplete={vi.fn()} />);
+  it('does not show migration dialog when legacyVaultDetected=false', async () => {
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={{ ...BASE_SETTINGS, legacyVaultDetected: false }} onComplete={vi.fn()} />);
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
   });
 
   it('"Use them" dismisses dialog and opens the legacy vault path', async () => {
     mockApi = makeApi({ chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }) });
     (window as unknown as { api: unknown }).api = mockApi;
-    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-use'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
@@ -1261,15 +1269,15 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     }));
   });
 
-  it('"Start fresh" dismisses dialog and leaves wizard on step1', () => {
-    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+  it('"Start fresh" dismisses dialog and leaves wizard on step1', async () => {
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-start-fresh'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
   });
 
   it('"Never show again" dismisses dialog, calls settingsSet with legacyVaultDismissed=true', async () => {
-    render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
+    await renderOnboardingWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-never'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(mockApi.settingsSet).toHaveBeenCalledWith(
