@@ -700,6 +700,100 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
 });
 
 // ---------------------------------------------------------------------------
+// SKY-2623: empty state, error state, mobile collapse (AC8, AC9, AC18, AC24, AC25)
+// ---------------------------------------------------------------------------
+describe('WritingAssistantPanel — empty state, error state & mobile collapse (SKY-2623)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('AC8: shows encouraging empty state when scan returns no suggestions', async () => {
+    mockWritingScan.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+
+    expect(screen.getByText(/your work is looking great|no suggestions yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /scan now/i })).toBeInTheDocument();
+  });
+
+  it('AC9: shows warning icon, error message and Retry button on scan error', async () => {
+    mockWritingScan.mockRejectedValueOnce(new Error('Provider unavailable'));
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText(/scan failed/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry scan/i })).toBeInTheDocument();
+  });
+
+  it('AC18: Scan now button triggers a scan and updates status', async () => {
+    mockWritingScan
+      .mockResolvedValueOnce({ tips: [], scannedAt: new Date().toISOString() })
+      .mockResolvedValueOnce({ tips: ['New tip.'], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={60} isActive={true} />);
+
+    // Initial scan fires at t=60s; click "Scan now" before that
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /scan now/i })[0]);
+    });
+
+    await act(async () => { vi.advanceTimersByTime(100); });
+
+    expect(mockWritingScan).toHaveBeenCalled();
+  });
+
+  it('AC24: panel collapses to icon badge when container width < 280px', async () => {
+    let observerCallback: ResizeObserverCallback | null = null;
+    class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) { observerCallback = cb; }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+
+    render(<WritingAssistantPanel scene={mockScene} isActive={true} />);
+
+    await act(async () => {
+      observerCallback?.([
+        { contentRect: { width: 200 } } as unknown as ResizeObserverEntry,
+      ], {} as ResizeObserver);
+    });
+
+    expect(screen.getByRole('button', { name: /open writing assistant/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/writing assistant/i, { selector: '[role="complementary"]' })).not.toBeInTheDocument();
+  });
+
+  it('AC25: clicking collapsed badge opens overlay panel', async () => {
+    let observerCallback: ResizeObserverCallback | null = null;
+    class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) { observerCallback = cb; }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+
+    render(<WritingAssistantPanel scene={mockScene} isActive={true} />);
+
+    await act(async () => {
+      observerCallback?.([
+        { contentRect: { width: 200 } } as unknown as ResizeObserverEntry,
+      ], {} as ResizeObserver);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /open writing assistant/i }));
+
+    expect(screen.getByRole('complementary', { name: /writing assistant/i })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TTS playback tests (AC-V-06, AC-V-07, AC-V-08, AC-V-10, AC-V-11)
 // ---------------------------------------------------------------------------
 describe('WritingAssistantPanel — TTS voice controls', () => {

@@ -29,7 +29,7 @@ export function ConfidenceBadge({ confidence }: ConfidenceBadgeProps) {
   return (
     <span
       className={`wa-confidence-badge wa-confidence-badge--${tier}`}
-      aria-label={`${pct}% confidence — ${tier} confidence`}
+      aria-label={`Confidence: ${pct}% (${tier})`}
       role="img"
     >
       <span className="wa-confidence-bar" aria-hidden="true">
@@ -70,6 +70,7 @@ export function SuggestionCard({ suggestion, onApply, onReject }: SuggestionCard
     <article
       className={`wa-suggestion-card${isTerminal ? ' wa-suggestion-card--terminal' : ''}`}
       aria-label="Writing assistant suggestion"
+      tabIndex={0}
     >
       <div className="wa-card-agent-row">
         <span className="wa-card-agent-icon" aria-hidden="true">✦</span>
@@ -107,7 +108,7 @@ export function SuggestionCard({ suggestion, onApply, onReject }: SuggestionCard
               type="button"
               className="wa-card-btn wa-card-btn--apply"
               onClick={() => onApply(suggestion.id)}
-              aria-label="Apply suggestion"
+              aria-label={`Apply: ${suggestion.text.slice(0, 50)}`}
             >
               ✓ Apply
             </button>
@@ -115,7 +116,7 @@ export function SuggestionCard({ suggestion, onApply, onReject }: SuggestionCard
               type="button"
               className="wa-card-btn wa-card-btn--reject"
               onClick={() => onReject(suggestion.id)}
-              aria-label="Reject suggestion"
+              aria-label={`Reject: ${suggestion.text.slice(0, 50)}`}
             >
               ✕ Reject
             </button>

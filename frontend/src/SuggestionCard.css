@@ -174,7 +174,13 @@
 }
 
 .wa-card-btn--reject:focus-visible {
-  outline: 2px solid rgba(255, 56, 56, 0.6);
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* Ensure focus ring is not clipped by card overflow */
+.wa-suggestion-card:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
   outline-offset: 2px;
 }
 

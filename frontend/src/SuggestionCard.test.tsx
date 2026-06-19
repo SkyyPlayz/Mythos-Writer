@@ -96,42 +96,51 @@ describe('ConfidenceBadge (AC-WA-6)', () => {
     expect(screen.getByText('68%')).toBeInTheDocument();
   });
 
-  // Never color-alone: aria-label includes tier name
+  // AC-WA-23: aria-label format is "Confidence: XX% (tier)"
   it('includes tier name in aria-label (low)', () => {
     render(<ConfidenceBadge confidence={0.3} />);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('low confidence'));
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('(low)'));
   });
 
   it('includes tier name in aria-label (medium)', () => {
     render(<ConfidenceBadge confidence={0.6} />);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('medium confidence'));
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('(medium)'));
   });
 
   it('includes tier name in aria-label (high)', () => {
     render(<ConfidenceBadge confidence={0.9} />);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('high confidence'));
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('(high)'));
+  });
+
+  it('aria-label follows Confidence: XX% (tier) format', () => {
+    render(<ConfidenceBadge confidence={0.68} />);
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'Confidence: 68% (medium)');
   });
 });
 
 // AC-WA-7 / AC-WA-8: Apply and Reject buttons
-describe('SuggestionCard — apply/reject buttons (AC-WA-7, AC-WA-8)', () => {
+// AC-WA-23: aria-label includes first 50 chars of suggestion text
+describe('SuggestionCard — apply/reject buttons (AC-WA-7, AC-WA-8, AC-WA-23)', () => {
   it('renders "✓ Apply" and "✕ Reject" buttons for proposed suggestion', () => {
-    render(<SuggestionCard suggestion={makeSuggestion()} onApply={noop} onReject={noop} />);
-    expect(screen.getByRole('button', { name: /apply suggestion/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /reject suggestion/i })).toBeInTheDocument();
+    const suggestion = makeSuggestion();
+    render(<SuggestionCard suggestion={suggestion} onApply={noop} onReject={noop} />);
+    expect(screen.getByRole('button', { name: new RegExp(`^Apply: ${suggestion.text.slice(0, 50)}`) })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: new RegExp(`^Reject: ${suggestion.text.slice(0, 50)}`) })).toBeInTheDocument();
   });
 
   it('calls onApply with suggestion id when Apply is clicked', () => {
     const onApply = vi.fn();
-    render(<SuggestionCard suggestion={makeSuggestion({ id: 'sug-42' })} onApply={onApply} onReject={noop} />);
-    fireEvent.click(screen.getByRole('button', { name: /apply suggestion/i }));
+    const suggestion = makeSuggestion({ id: 'sug-42' });
+    render(<SuggestionCard suggestion={suggestion} onApply={onApply} onReject={noop} />);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^Apply: `) }));
     expect(onApply).toHaveBeenCalledWith('sug-42');
   });
 
   it('calls onReject with suggestion id when Reject is clicked', () => {
     const onReject = vi.fn();
-    render(<SuggestionCard suggestion={makeSuggestion({ id: 'sug-42' })} onApply={noop} onReject={onReject} />);
-    fireEvent.click(screen.getByRole('button', { name: /reject suggestion/i }));
+    const suggestion = makeSuggestion({ id: 'sug-42' });
+    render(<SuggestionCard suggestion={suggestion} onApply={noop} onReject={onReject} />);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^Reject: `) }));
     expect(onReject).toHaveBeenCalledWith('sug-42');
   });
 });
@@ -146,8 +155,8 @@ describe('SuggestionCard — terminal state accepted (AC-WA-9)', () => {
         onReject={noop}
       />,
     );
-    expect(screen.queryByRole('button', { name: /apply suggestion/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /reject suggestion/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Apply: / })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Reject: / })).not.toBeInTheDocument();
   });
 
   it('shows "Applied" label in terminal state', () => {

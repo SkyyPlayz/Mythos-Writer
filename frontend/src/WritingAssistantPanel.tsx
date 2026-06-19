@@ -157,6 +157,9 @@ export default function WritingAssistantPanel({
   const [cadenceTouched, setCadenceTouched] = useState(false);
   const [suppressedTipKeys, setSuppressedTipKeys] = useState<Set<string>>(() => new Set());
   const [reportConfirmTipId, setReportConfirmTipId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const panelRootRef = useRef<HTMLDivElement>(null);
 
   // Preset state — persisted per session via sessionStorage
   const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
@@ -184,7 +187,7 @@ export default function WritingAssistantPanel({
     : Number(cadence);
   const schedulerEnabled = enabled && cadence !== 'manual' && cadence !== 'on-save';
 
-  const { result: scheduledResult, scanning, runScan } = useWritingScheduler({
+  const { result: scheduledResult, scanning, scanError: scheduledScanError, runScan } = useWritingScheduler({
     scene,
     enabled: schedulerEnabled,
     scanIntervalSeconds: effectiveScanIntervalSeconds,
@@ -227,6 +230,29 @@ export default function WritingAssistantPanel({
       clearStreamResources();
     };
   }, [clearStreamResources]);
+
+  // Collapse when panel root width < 280px (AC-WA-20)
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return;
+    const el = panelRootRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? el.offsetWidth;
+      setCollapsed(width < 280);
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // Escape key closes overlay (AC-WA-22)
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOverlayOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [overlayOpen]);
 
   const removePendingAssistantBubble = (prev: Message[]) => {
     const updated = [...prev];
@@ -637,6 +663,8 @@ export default function WritingAssistantPanel({
   }, [waClearSilenceTimer]);
   // ──────────────────────────────────────────────────────────────────────────
 
+  const messagesRef = useRef<HTMLDivElement>(null);
+
   if (!enabled) {
     return (
       <div className="writing-assistant-panel writing-assistant-disabled">
@@ -645,8 +673,52 @@ export default function WritingAssistantPanel({
     );
   }
 
+  const handleMessagesKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const container = messagesRef.current;
+    if (!container) return;
+    const cards = Array.from(container.querySelectorAll<HTMLElement>('.wa-suggestion-card'));
+    if (cards.length === 0) return;
+    const focused = document.activeElement as HTMLElement;
+    const idx = cards.indexOf(focused);
+    if (idx === -1) return;
+    e.preventDefault();
+    const next = e.key === 'ArrowDown' ? cards[idx + 1] : cards[idx - 1];
+    next?.focus();
+  };
+
+  const pendingCount = visibleTips.length;
+
+  if (collapsed && !overlayOpen) {
+    return (
+      <div className="wa-panel-root" ref={panelRootRef}>
+        <div className="wa-icon-bar">
+          <button
+            type="button"
+            className="wa-collapsed-btn"
+            onClick={() => setOverlayOpen(true)}
+            aria-label={`Open Writing Assistant${pendingCount > 0 ? `, ${pendingCount} pending suggestions` : ''}`}
+          >
+            <span aria-hidden="true">✨</span>
+            {pendingCount > 0 && (
+              <span className="wa-collapsed-badge" aria-hidden="true">{pendingCount}</span>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="writing-assistant-panel">
+    <div className="wa-panel-root" ref={panelRootRef}>
+      {overlayOpen && (
+        <div
+          className="wa-overlay-backdrop"
+          onClick={() => setOverlayOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <div className={`writing-assistant-panel${overlayOpen ? ' writing-assistant-panel--overlay' : ''}`} role="complementary" aria-label="Writing Assistant">
       <span
         role="status"
         aria-live="polite"
@@ -656,35 +728,69 @@ export default function WritingAssistantPanel({
         {liveText}
       </span>
 
+      {/* AC-WA-1/2/3: Liquid Neon panel header */}
       <div className="wa-panel-header">
-        <p className="writing-assistant-hint">
-          {scene
-            ? <><strong>Writing Assistant</strong> — context: <em>{scene.title}</em></>
-            : <><strong>Writing Assistant</strong> — no scene selected, asking freely.</>}
-        </p>
-        <label className="wa-cadence-label">
-          <span className="wa-cadence-text">Cadence</span>
-          <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
-          <select
-            className="wa-cadence-select"
-            aria-label="Heartbeat cadence"
-            value={cadence}
-            onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
+        <span className="wa-header-left">
+          <span className="wa-sparkle-icon" aria-hidden="true">✦</span>
+          <span className="wa-header-title">
+            Writing Assistant
+            {scene && <span className="wa-header-context"> — context: <em>{scene.title}</em></span>}
+          </span>
+        </span>
+        <span className="wa-header-controls" onClick={(e) => e.stopPropagation()}>
+          <label className="wa-cadence-label">
+            <span className="wa-cadence-text">Cadence</span>
+            <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
+            <select
+              className="wa-cadence-select"
+              aria-label="Heartbeat cadence"
+              value={cadence}
+              onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
+            >
+              {CADENCE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          {/* AC-V-06: session mute toggle */}
+          <button
+            className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
+            onClick={() => tts.toggleMute(announce)}
+            aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
+            aria-pressed={tts.sessionMuted}
           >
-            {CADENCE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        {/* AC-V-06: session mute toggle */}
-        <button
-          className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
-          onClick={() => tts.toggleMute(announce)}
-          aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
-          aria-pressed={tts.sessionMuted}
-        >
-          {tts.sessionMuted ? 'Unmute' : 'Mute'}
-        </button>
+            {tts.sessionMuted ? 'Unmute' : 'Mute'}
+          </button>
+        </span>
+      </div>
+
+      {/* AC-WA-16/17/18/19: Dedicated heartbeat status bar */}
+      <div
+        className={`wa-status-bar${scanning ? ' wa-status-bar--scanning' : scheduledScanError ? ' wa-status-bar--error' : ' wa-status-bar--idle'}`}
+        aria-label="Heartbeat status"
+        aria-live="polite"
+      >
+        {scanning ? (
+          <>
+            <span className="wa-status-dot wa-status-dot--scanning" aria-hidden="true" />
+            <span className="wa-spinner wa-spinner--sm" aria-hidden="true" />
+            <span className="wa-status-text">Scanning…</span>
+          </>
+        ) : scheduledScanError ? (
+          <>
+            <span className="wa-status-icon" aria-hidden="true">⚠</span>
+            <span className="wa-status-text wa-status-text--error">{scheduledScanError}</span>
+          </>
+        ) : (
+          <>
+            <span className="wa-status-icon wa-status-icon--idle" aria-hidden="true">✓</span>
+            <span className="wa-status-text wa-status-text--idle">
+              {scheduledResult?.scannedAt
+                ? `Idle — last scan ${new Date(scheduledResult.scannedAt).toLocaleTimeString()}`
+                : 'Idle'}
+            </span>
+          </>
+        )}
       </div>
 
       <div className="wa-preset-row">
@@ -713,6 +819,7 @@ export default function WritingAssistantPanel({
             className="wa-scan-now"
             onClick={() => void handleScanNow()}
             disabled={!scene || scanning}
+            aria-label="Scan now"
           >
             Scan now
           </button>
@@ -725,11 +832,44 @@ export default function WritingAssistantPanel({
             <span className="wa-heartbeat-time">Updated {new Date(scheduledResult.scannedAt).toLocaleTimeString()}</span>
           )}
         </div>
-        <div className="wa-heartbeat-list" aria-live="polite" aria-label={visibleTips.length > 0 ? 'Writing tips' : 'Heartbeat status'}>
-          {visibleTips.length === 0 ? (
-            <p className="wa-heartbeat-empty">
-              {scanning ? 'Scanning this scene for quick writing tips…' : 'No heartbeat tips yet.'}
-            </p>
+        {scheduledScanError && (
+          <div className="wa-scan-error" role="alert">
+            <span className="wa-scan-error-icon" aria-hidden="true">⚠</span>
+            <div className="wa-scan-error-content">
+              <p className="wa-scan-error-heading">Scan failed</p>
+              <p className="wa-scan-error-desc">{scheduledScanError}</p>
+            </div>
+            <button
+              type="button"
+              className="wa-scan-now"
+              onClick={() => void handleScanNow()}
+              disabled={scanning}
+              aria-label="Retry scan"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        <div className="wa-heartbeat-list" aria-live="polite" aria-label="Writing tips">
+          {visibleTips.length === 0 && !scheduledScanError ? (
+            scanning ? (
+              <p className="wa-heartbeat-empty">Scanning this scene for quick writing tips…</p>
+            ) : (
+              <div className="wa-empty-state" role="status">
+                <span className="wa-empty-icon" aria-hidden="true">✨</span>
+                <p className="wa-empty-heading">No suggestions yet</p>
+                <p className="wa-empty-subtext">Run a scan to get writing feedback</p>
+                <button
+                  type="button"
+                  className="wa-scan-now wa-scan-now--cta"
+                  onClick={() => void handleScanNow()}
+                  disabled={!scene}
+                  aria-label="Scan now"
+                >
+                  Scan Now
+                </button>
+              </div>
+            )
           ) : (
             visibleTips.map((tip) => (
               <div key={tipSuppressKey(tip, scene)} className="wa-heartbeat-tip">
@@ -768,11 +908,17 @@ export default function WritingAssistantPanel({
         onJumpToText={onJumpToText}
       />
 
-      <div className="writing-assistant-messages">
+      <div
+        className="writing-assistant-messages"
+        role="list"
+        ref={messagesRef}
+        onKeyDown={handleMessagesKeyDown}
+      >
         {messages.map((msg, i) => (
           <div
             key={i}
             className={`wa-message wa-message-${msg.role}`}
+            role="listitem"
           >
             {msg.role === 'user' ? (
               <div className="wa-user-bubble">{msg.text}</div>
@@ -948,6 +1094,7 @@ export default function WritingAssistantPanel({
       )}
 
       {showRubric && <QualityRubric onClose={() => setShowRubric(false)} />}
+      </div>
     </div>
   );
 }
