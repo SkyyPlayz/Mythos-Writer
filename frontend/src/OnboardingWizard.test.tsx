@@ -60,6 +60,15 @@ function makeApi(overrides: Partial<{
   vaultGetSystemPaths: ReturnType<typeof vi.fn>;
   settingsSet: ReturnType<typeof vi.fn>;
 }> = {}) {
+  const defaultVaultPaths = { homeDir: '/home/user', pathSeparator: '/' };
+  const defaultSystemPaths = {
+    homeDir: '/home/user',
+    documentsDir: '/home/user/Documents',
+    desktopDir: '/home/user/Desktop',
+    oneDriveDir: null,
+    iCloudDir: null,
+  };
+
   return {
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
     validatePath: overrides.validatePath ?? vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
@@ -68,19 +77,26 @@ function makeApi(overrides: Partial<{
     templateRename: overrides.templateRename ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDelete: overrides.templateDelete ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDuplicate: overrides.templateDuplicate ?? vi.fn().mockResolvedValue({ ok: true, id: 'user:copy' }),
-    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn().mockResolvedValue({ homeDir: '/home/user', pathSeparator: '/' }),
-    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn().mockResolvedValue({
-      homeDir: '/home/user',
-      documentsDir: '/home/user/Documents',
-      desktopDir: '/home/user/Desktop',
-      oneDriveDir: null,
-      iCloudDir: null,
-    }),
+    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn().mockReturnValue(resolvedThenable(defaultVaultPaths)),
+    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn().mockReturnValue(resolvedThenable(defaultSystemPaths)),
     settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
   };
 }
 
 let mockApi: ReturnType<typeof makeApi>;
+
+function resolvedThenable<T>(value: T): Promise<T> {
+  return {
+    then: (onFulfilled?: (value: T) => unknown) => {
+      try {
+        return Promise.resolve(onFulfilled ? onFulfilled(value) : value);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+    catch: () => Promise.resolve(value),
+  } as Promise<T>;
+}
 
 const BUNDLED_TEMPLATE = { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Three-act novel', story: [{ name: 'Manuscript' }], notes: [{ name: 'Characters' }] };
 const USER_TEMPLATE    = { id: 'user:my-template',  name: 'My Template',   description: 'My saved template', story: [], notes: [], isUserTemplate: true, savedAt: '2026-06-01' };
@@ -196,6 +212,7 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('card-blank')).toHaveTextContent('Blank Slate');
     expect(screen.getByTestId('card-sample')).toHaveTextContent('Sample Project');
     expect(screen.getByTestId('card-template')).toHaveTextContent('From Template');
+    await act(async () => {});
   });
 
   it('shows Skip link on Step 1', async () => {

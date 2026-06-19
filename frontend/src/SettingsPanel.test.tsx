@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import SettingsPanel from './SettingsPanel';
 
 const defaultSettings: AppSettings = {
@@ -818,6 +818,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
+    await act(async () => {});
     expect(screen.getByLabelText(/provider base url/i)).toBeInTheDocument();
   });
 
@@ -1406,6 +1407,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
     fireEvent.change(screen.getByLabelText(/base url for writingAssistant/i), {
       target: { value: 'https://remote.api.example.com/v1' },
     });
+    await act(async () => {});
 
     expect(screen.getByRole('alert')).toHaveTextContent(/not on localhost/i);
   });
@@ -1419,6 +1421,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
     fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
       target: { value: 'ollama' },
     });
+    await act(async () => {});
 
     // Default Ollama URL is localhost — no warning
     expect(screen.queryByText(/not on localhost/i)).not.toBeInTheDocument();

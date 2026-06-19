@@ -1,4 +1,27 @@
 import '@testing-library/jest-dom';
+import { act, cleanup } from '@testing-library/react';
+import { afterEach, beforeEach, expect, vi } from 'vitest';
+
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+const originalConsoleError = console.error;
+
+beforeEach(() => {
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    originalConsoleError(...args);
+  });
+});
+
+afterEach(async () => {
+  await act(async () => {});
+
+  const actWarnings = (consoleErrorSpy.mock.calls as unknown[][]).filter((args: unknown[]) =>
+    args.some((arg: unknown) => String(arg).includes('was not wrapped in act')),
+  );
+
+  consoleErrorSpy.mockRestore();
+  cleanup();
+  expect(actWarnings).toEqual([]);
+});
 
 // jsdom's built-in localStorage is incomplete in some environments; provide a
 // full in-memory implementation so tests can call getItem/setItem/removeItem/clear.

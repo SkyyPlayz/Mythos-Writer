@@ -92,7 +92,7 @@ describe('ContinuityPanel — loading state', () => {
     mockArchiveListContinuity.mockReturnValue(new Promise((r) => { resolve = r; }));
     render(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => expect(screen.getByLabelText(/loading continuity issues/i)).toBeInTheDocument());
-    act(() => { resolve!({ items: [] }); });
+    await act(async () => { resolve!({ items: [] }); });
   });
 });
 
@@ -266,13 +266,13 @@ describe('ContinuityPanel — aria-live always in DOM', () => {
     expect(live).not.toBeNull();
   });
 
-  it('aria-live region is present during loading state', () => {
+  it('aria-live region is present during loading state', async () => {
     let resolve: (v: unknown) => void;
     mockArchiveListContinuity.mockReturnValue(new Promise((r) => { resolve = r; }));
     render(<ContinuityPanel scene={mockScene} />);
     const live = document.querySelector('[aria-live="polite"]');
     expect(live).not.toBeNull();
-    act(() => { resolve!({ items: [] }); });
+    await act(async () => { resolve!({ items: [] }); });
   });
 });
 
