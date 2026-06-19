@@ -45,3 +45,19 @@ await input.blur(); // Trigger onChange handlers
 Add `(status, created_at DESC)`, `(scene_id, status, created_at DESC)`, and `(item_id, created_at DESC)` covering indexes on archive tables; SQLite uses the rightmost key for ORDER BY elimination, turning full-scan + filesort into index-range scans and cutting p95 from ~500ms to <50ms at 5000 rows.
 
 ---
+
+## React Test Act Warnings: Fail Fast and Settle Mocked Async Work (SKY-2794)
+
+**Pattern:** Add a local `console.error` guard for `not wrapped in act` warnings in async-heavy React test files, then make mocked IPC promises settle inside `act()` or intentionally stay pending when a test only asserts synchronous UI.
+
+```typescript
+await act(async () => {
+  resolvePendingIpc({ items: [] });
+});
+```
+
+For component mount effects whose mocked APIs are only setup data, a synchronously-settling test thenable can keep the state update within Testing Library's render/event `act()` boundary. For model-list fetches unrelated to the assertion, prefer a never-resolving promise in that individual test so no unobserved async state update lands after the test ends.
+
+**Why:** Passing tests can still emit React act warnings when mocked IPC promises resolve after the assertion path. A guard turns this into a regression failure instead of noisy stderr, and explicit async settling documents which state transition the test is waiting for.
+
+---
