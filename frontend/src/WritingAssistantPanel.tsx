@@ -861,7 +861,7 @@ export default function WritingAssistantPanel({
                 <p className="wa-empty-subtext">Run a scan to get writing feedback</p>
                 <button
                   type="button"
-                  className="wa-scan-now--cta"
+                  className="wa-scan-now wa-scan-now--cta"
                   onClick={() => void handleScanNow()}
                   disabled={!scene}
                   aria-label="Start first scan"
