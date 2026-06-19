@@ -869,3 +869,217 @@ describe('WritingAssistantPanel — Beta-Read trigger detection (AC-WA-17)', () 
     expect(mockBetaReadScan).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Streaming bubble (AC-WA-09, AC-WA-10, AC-WA-13)
+// ---------------------------------------------------------------------------
+describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
+  it('AC-WA-09: Enter (no Shift) submits; Shift+Enter does not; empty prompt is a no-op', async () => {
+    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Response.' });
+
+    render(<WritingAssistantPanel scene={null} />);
+    const textarea = screen.getByLabelText(/writing assistant prompt/i);
+
+    // Empty prompt — Enter should be a no-op
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
+
+    // Shift+Enter should not submit
+    fireEvent.change(textarea, { target: { value: 'Test prompt' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
+    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
+
+    // Enter without Shift should submit
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(1));
+    expect(mockAgentWritingAssistant.mock.calls[0][0]).toBe('Test prompt');
+  });
+
+  it('AC-WA-10: streaming chunks accumulate in the assistant bubble and cursor glyph appears', async () => {
+    let emitChunk: ((chunk: string) => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockOnWritingAssistantChunk as any).mockImplementationOnce((cb: (chunk: string) => void) => {
+      emitChunk = cb;
+      return () => {};
+    });
+    // Stays pending so we can observe the streaming state
+    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Tell me a story' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    // Streaming bubble appears (empty text + cursor)
+    await waitFor(() =>
+      expect(screen.getByLabelText(/writing assistant response/i)).toBeInTheDocument(),
+    );
+    expect(document.querySelector('.wa-cursor')).toBeInTheDocument();
+
+    // Chunks accumulate in the bubble
+    act(() => { emitChunk?.('Once '); });
+    act(() => { emitChunk?.('upon '); });
+    act(() => { emitChunk?.('a time.'); });
+
+    expect(screen.getByLabelText(/writing assistant response/i)).toHaveTextContent('Once upon a time.');
+    // Cursor still present — still streaming
+    expect(document.querySelector('.wa-cursor')).toBeInTheDocument();
+  });
+
+  it('AC-WA-10: cursor glyph disappears once streaming completes', async () => {
+    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Done.' });
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Finish it' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/writing assistant response/i)).toHaveTextContent('Done.'),
+    );
+    // No cursor after streaming finishes
+    expect(document.querySelector('.wa-cursor')).not.toBeInTheDocument();
+  });
+
+  it('AC-WA-13: Cancel button replaces Ask during streaming; Ask returns after cancel', async () => {
+    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Keep going' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    // Ask button gone, Cancel appears
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('button', { name: /^ask$/i })).not.toBeInTheDocument();
+
+    // Cancel restores Ask button
+    fireEvent.click(screen.getByRole('button', { name: /cancel generation/i }));
+    expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Preset context (AC-WA-15)
+// ---------------------------------------------------------------------------
+describe('WritingAssistantPanel — preset context (AC-WA-15)', () => {
+  it('includes the active preset style guide in the request context', async () => {
+    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Some advice.' });
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'How should I write this?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalled());
+    const [, context] = mockAgentWritingAssistant.mock.calls[0];
+    // Default preset is Epic Fantasy: tone = Serious
+    expect(context).toContain('[Writing style:');
+    expect(context).toContain('Genre: Fantasy');
+    expect(context).toContain('Tone: Serious');
+  });
+
+  it('AC-WA-15: changing preset updates the context sent with the next request', async () => {
+    mockAgentWritingAssistant
+      .mockResolvedValueOnce({ text: 'Fantasy advice.' })
+      .mockResolvedValueOnce({ text: 'Romance advice.' });
+
+    render(<WritingAssistantPanel scene={null} />);
+
+    // First ask — default preset (Epic Fantasy, tone=Serious)
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Tell me about the scene.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(1));
+    const [, firstContext] = mockAgentWritingAssistant.mock.calls[0];
+    expect(firstContext).toContain('Genre: Fantasy');
+
+    // Switch to Modern Romance preset via the dropdown
+    fireEvent.click(
+      screen.getByRole('button', { name: /writing preset:.*click to change/i }),
+    );
+    const romanceItem = await screen.findByRole('option', { name: /modern romance/i });
+    fireEvent.click(romanceItem);
+
+    // Second ask — preset should now be Modern Romance
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'What next?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(2));
+    const [, secondContext] = mockAgentWritingAssistant.mock.calls[1];
+    expect(secondContext).toContain('Genre: Romance');
+    expect(secondContext).toContain('Tone: Warm');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Refinement chips (AC-WA-16)
+// ---------------------------------------------------------------------------
+describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
+  it('refinement chips appear after a completed response', async () => {
+    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Initial response.' });
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Write something.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/refinement options/i)).toBeInTheDocument(),
+    );
+    // At least the +warmer chip should be present
+    expect(screen.getByLabelText(/refine: warmer/i)).toBeInTheDocument();
+  });
+
+  it('AC-WA-16: clicking a refinement chip adjusts axes and fires a re-ask', async () => {
+    mockAgentWritingAssistant
+      .mockResolvedValueOnce({ text: 'Initial response.' })
+      .mockResolvedValueOnce({ text: 'Warmer response.' });
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Tell me about this scene.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => screen.getByLabelText(/refine: warmer/i));
+    fireEvent.click(screen.getByLabelText(/refine: warmer/i));
+
+    // Re-ask is fired with the adjusted tone in the new context
+    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(2));
+    const [reAskPrompt, reAskContext] = mockAgentWritingAssistant.mock.calls[1];
+    // Re-uses same prompt text
+    expect(reAskPrompt).toBe('Tell me about this scene.');
+    // Default Epic Fantasy has tone=serious; +warmer shifts to balanced
+    expect(reAskContext).toContain('Tone: Balanced');
+  });
+
+  it('AC-WA-16: active chip is marked aria-pressed=true after clicking', async () => {
+    mockAgentWritingAssistant
+      .mockResolvedValueOnce({ text: 'Response.' })
+      .mockResolvedValueOnce({ text: 'Shorter response.' });
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'Anything.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => screen.getByLabelText(/refine: warmer/i));
+    const warmerChip = screen.getByLabelText(/refine: warmer/i);
+    expect(warmerChip).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(warmerChip);
+    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(2));
+    expect(warmerChip).toHaveAttribute('aria-pressed', 'true');
+  });
+});
