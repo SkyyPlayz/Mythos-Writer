@@ -45,3 +45,9 @@ await input.blur(); // Trigger onChange handlers
 Add `(status, created_at DESC)`, `(scene_id, status, created_at DESC)`, and `(item_id, created_at DESC)` covering indexes on archive tables; SQLite uses the rightmost key for ORDER BY elimination, turning full-scan + filesort into index-range scans and cutting p95 from ~500ms to <50ms at 5000 rows.
 
 ---
+
+## Paperclip Routine Postmortems: Verify the execution issue before blaming the routine (SKY-2742)
+
+When a stale CI-monitor routine is suspected, first check the routine's latest execution issue and agent run logs: `c8fa0c64` actually produced done issue `SKY-2190`, while FoundingEngineer `error` came from Claude Sonnet 429s (`claude_transient_upstream`), not missing CI disposition.
+
+---
