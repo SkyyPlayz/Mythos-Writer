@@ -175,7 +175,29 @@ a.gs-footer-link:focus-visible {
   .gs-cards { grid-template-columns: 1fr; }
 }
 
+/* ─── SKY-2635: Four-card path selector grid ── */
+
+.gs-path-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  width: 100%;
+}
+
+@media (max-width: 800px) {
+  .gs-path-selector-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .gs-path-selector-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .gs-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -246,7 +268,35 @@ a.gs-footer-link:focus-visible {
   margin-top: auto;
 }
 
-/* ─── Secondary card (Import / Open Existing — AC-L-01) ── */
+.gs-card--recommended {
+  border: 2px solid var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.04);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.12);
+}
+
+.gs-card--recommended:hover {
+  border-color: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 24px rgba(0, 240, 255, 0.22);
+}
+
+.gs-card__badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--neon-cyan, #00f0ff);
+  color: var(--bg-base, #0e1116);
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+}
+
+/* ─── Skip link ── */
 
 .gs-card--secondary {
   background: var(--bg-panel);
