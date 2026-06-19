@@ -370,6 +370,7 @@ import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
 import { buildSystemPaths, detectLegacyVaults, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
+import { resolveVaultImportCollisions } from './vaultImportConflict.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
 import {
   hydrateSecretsIntoSettings,
@@ -2269,14 +2270,40 @@ const handlers: IpcHandlers = {
     return obsidianDryRun(resolvedSource, existingManifest);
   },
 
-  // SKY-2638: Path 3 — commit Obsidian vault import (registers as notes vault root)
+  // SKY-2638 / SKY-2637: Path 3 — commit Obsidian vault import.
+  // Sequence: rename collision notes → write .vault-import-log.md → register
+  // notesVaultRoot → set layoutMode:imported + onboardingComplete:true → reindex.
   [IPC_CHANNELS.ONBOARDING_IMPORT_COMMIT]: async (payload: OnboardingImportCommitPayload) => {
     const { sourcePath } = payload;
     const resolvedSource = (() => {
       try { return fs.realpathSync.native(sourcePath); } catch { return sourcePath; }
     })();
     try {
-      saveVaultSettings({ notesVaultRoot: resolvedSource });
+      // Re-run dry-run to capture the latest collision + broken-link state.
+      let existingManifest = null;
+      try {
+        if (fs.existsSync(getManifestPath())) {
+          existingManifest = readManifest(getManifestPath());
+        }
+      } catch { /* non-fatal */ }
+      const dryRun = obsidianDryRun(resolvedSource, existingManifest);
+      const brokenLinkCount = dryRun.brokenLinks.length;
+
+      // SKY-2637: rename collision files and write import log.
+      const importedAt = new Date().toISOString();
+      const { renamedFiles } = resolveVaultImportCollisions(
+        resolvedSource,
+        dryRun.nameCollisions,
+        brokenLinkCount,
+        importedAt,
+      );
+      const renamedCount = renamedFiles.filter((r) => r.ok).length;
+
+      // Register notes vault root and set layoutMode:imported + onboardingComplete.
+      saveVaultSettings({ notesVaultRoot: resolvedSource, layoutMode: 'imported' });
+      const currentApp = loadAppSettings();
+      saveAppSettings({ ...currentApp, onboardingComplete: true, onboardingStartMode: 'open-existing' });
+
       ensureVaultDir();
       const manifest = readManifest(getManifestPath());
       const { manifest: synced, scanned } = reindexVault(resolvedSource, manifest);
@@ -2285,7 +2312,8 @@ const handlers: IpcHandlers = {
       await stopNotesVaultWatcher();
       await startNotesVaultWatcher(resolvedSource, notifyVaultChanged);
       void scanned;
-      return { ok: true as const };
+
+      return { ok: true as const, renamedCount, brokenLinkCount };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }
