@@ -341,6 +341,92 @@ describe('BlockEditor markdown round-trip — extended regression (MYT-131)', ()
   });
 });
 
+// ---------------------------------------------------------------------------
+// insertWikiLink — AC-F-11 (SKY-2587)
+// Verify that the command creates a proper WikiLink node (not plain text),
+// so tiptap-markdown serialises [[target]] unescaped on save.
+// ---------------------------------------------------------------------------
+
+describe('insertWikiLink command (AC-F-11)', () => {
+  function insertWikiLinkInto(
+    editor: InstanceType<typeof Editor>,
+    link: string,
+    anchorText: string,
+  ) {
+    const target = link.replace(/^\[\[|\]\]$/g, '');
+    const wikiNode = editor.schema.nodes['wikiLink']?.create({ target });
+    if (!wikiNode) throw new Error('wikiLink node type not found in schema');
+
+    const needle = anchorText.toLowerCase();
+    let range: { from: number; to: number } | null = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (range) return false;
+      if (node.isText && node.text) {
+        const idx = node.text.toLowerCase().indexOf(needle);
+        if (idx >= 0) range = { from: pos + idx, to: pos + idx + anchorText.length };
+      }
+      return true;
+    });
+
+    if (range) {
+      editor.view.dispatch(editor.state.tr.replaceWith(range.from, range.to, wikiNode));
+    } else {
+      editor.view.dispatch(editor.state.tr.insert(editor.state.selection.from, wikiNode));
+    }
+  }
+
+  it('replaces anchor text with a WikiLink node that serialises as [[target]] unescaped', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, WikiLink, Markdown],
+      content: 'The foundry gates opened.',
+    });
+
+    insertWikiLinkInto(editor, '[[The Foundry]]', 'foundry');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const md = (editor.storage as any).markdown.getMarkdown() as string;
+    expect(md).toContain('[[The Foundry]]');
+    expect(md).not.toContain('\\[\\[');
+    // Anchor text is replaced, not left as duplicate plain text
+    expect(md).not.toContain('foundry gates');
+
+    editor.destroy();
+  });
+
+  it('falls back to cursor insertion when anchor text is absent from document', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, WikiLink, Markdown],
+      content: 'A completely different passage.',
+    });
+
+    insertWikiLinkInto(editor, '[[The Foundry]]', 'foundry');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const md = (editor.storage as any).markdown.getMarkdown() as string;
+    expect(md).toContain('[[The Foundry]]');
+    expect(md).not.toContain('\\[\\[');
+
+    editor.destroy();
+  });
+
+  it('multi-word anchor text is fully replaced by the WikiLink node', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, WikiLink, Markdown],
+      content: 'She entered the shadow realm at dawn.',
+    });
+
+    insertWikiLinkInto(editor, '[[The Shadow Realm]]', 'the shadow realm');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const md = (editor.storage as any).markdown.getMarkdown() as string;
+    expect(md).toContain('[[The Shadow Realm]]');
+    expect(md).not.toContain('\\[\\[');
+    expect(md).not.toContain('shadow realm at dawn');
+
+    editor.destroy();
+  });
+});
+
 function makeBlankScene(): Scene {
   const timestamp = '2026-06-09T00:00:00.000Z';
   return {
