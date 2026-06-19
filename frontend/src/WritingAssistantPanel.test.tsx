@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import WritingAssistantPanel, { STALL_WARNING_MS, HARD_TIMEOUT_MS } from './WritingAssistantPanel';
+import type { Scene } from './types';
 
 const mockAgentWritingAssistant = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -8,6 +9,7 @@ const mockWritingScan = vi.fn();
 const mockWritingAssistantCadenceChange = vi.fn();
 const mockWritingAssistantTipDecision = vi.fn();
 const mockWritingAssistantScanNow = vi.fn();
+const mockWritingAssistantSetActiveScene = vi.fn();
 const mockBetaReadScan = vi.fn();
 const mockBetaReadDismiss = vi.fn();
 const mockVoiceSpeak = vi.fn();
@@ -25,6 +27,7 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     writingAssistantCadenceChange: mockWritingAssistantCadenceChange,
     writingAssistantTipDecision: mockWritingAssistantTipDecision,
     writingAssistantScanNow: mockWritingAssistantScanNow,
+    writingAssistantSetActiveScene: mockWritingAssistantSetActiveScene,
     betaReadScan: mockBetaReadScan,
     betaReadDismiss: mockBetaReadDismiss,
     voiceSpeak: mockVoiceSpeak,
@@ -41,11 +44,25 @@ beforeEach(() => {
   mockWritingAssistantCadenceChange.mockResolvedValue({ saved: true, waScanInterval: 60 });
   mockWritingAssistantTipDecision.mockResolvedValue({ saved: true });
   mockWritingAssistantScanNow.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
+  mockWritingAssistantSetActiveScene.mockResolvedValue({ ok: true });
   mockBetaReadScan.mockResolvedValue({ comments: [], scannedAt: new Date().toISOString() });
   mockBetaReadDismiss.mockResolvedValue({ id: 'br-1', dismissed: true });
   mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
   (window as unknown as { api: unknown }).api = makeApi();
 });
+
+function makeScene(id: string, title: string, content: string): Scene {
+  return {
+    id,
+    title,
+    blocks: [{ id: `${id}-b1`, type: 'prose', order: 0, content, updatedAt: '' }],
+    draftState: 'in-progress',
+    order: 0,
+    path: `/${id}.md`,
+    createdAt: '',
+    updatedAt: '',
+  };
+}
 
 describe('WritingAssistantPanel', () => {
   it('renders prompt textarea and disabled Ask button initially', () => {
@@ -134,6 +151,50 @@ describe('WritingAssistantPanel', () => {
     expect(prompt).toBe('what happens next?');
     expect(context).toContain('The Heist');
     expect(context).toContain('The airship docked.');
+  });
+
+  it('pushes scene switches to the scheduler backend and Scan now uses the new scene', async () => {
+    const sceneA = makeScene('s1', 'Scene A', 'First scene prose.');
+    const sceneB = makeScene('s2', 'Scene B', 'Second scene prose.');
+
+    const { rerender } = render(<WritingAssistantPanel scene={sceneA} />);
+
+    await waitFor(() => {
+      expect(mockWritingAssistantSetActiveScene).toHaveBeenLastCalledWith({
+        sceneId: 's1',
+        scenePath: '/s1.md',
+      });
+    });
+    expect(screen.getByText(/context:/i)).toHaveTextContent('Scene A');
+
+    rerender(<WritingAssistantPanel scene={sceneB} />);
+
+    await waitFor(() => {
+      expect(mockWritingAssistantSetActiveScene).toHaveBeenLastCalledWith({
+        sceneId: 's2',
+        scenePath: '/s2.md',
+      });
+    });
+    expect(screen.getByText(/context:/i)).toHaveTextContent('Scene B');
+
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }));
+
+    await waitFor(() => {
+      expect(mockWritingAssistantScanNow).toHaveBeenCalledWith({
+        sceneId: 's2',
+        prose: 'Second scene prose.',
+        scenePath: '/s2.md',
+      });
+    });
+
+    rerender(<WritingAssistantPanel scene={null} />);
+
+    await waitFor(() => {
+      expect(mockWritingAssistantSetActiveScene).toHaveBeenLastCalledWith({
+        sceneId: null,
+        scenePath: null,
+      });
+    });
   });
 
   it('routes explicit beta-read scene requests to Beta-Read scan IPC', async () => {

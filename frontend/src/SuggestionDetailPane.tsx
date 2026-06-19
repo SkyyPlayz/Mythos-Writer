@@ -25,6 +25,7 @@ export interface UnifiedSuggestion {
   budgetExceeded: boolean;
   category: string | null;
   payloadJson: string | null;
+  preChangeSnapshot?: string | null;
 }
 
 interface AuditEntry {
@@ -204,6 +205,7 @@ export default function SuggestionDetailPane({
   const canAcceptOrReject =
     suggestion.status === 'proposed' || suggestion.status === 'ignored';
   const canRollback = suggestion.status === 'accepted' || suggestion.status === 'applied';
+  const preChangeSnapshot = suggestion.preChangeSnapshot?.trim() ? suggestion.preChangeSnapshot : null;
 
   return (
     <div
@@ -267,6 +269,15 @@ export default function SuggestionDetailPane({
                 </div>
                 <span className="sdp-confidence-pct">{confidencePct}%</span>
               </div>
+            </section>
+          )}
+
+          {preChangeSnapshot && (
+            <section className="sdp-section">
+              <details className="sdp-before-details">
+                <summary className="sdp-before-summary" role="button">Before</summary>
+                <pre className="sdp-before-pre">{preChangeSnapshot}</pre>
+              </details>
             </section>
           )}
 

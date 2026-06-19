@@ -827,6 +827,7 @@ interface Window {
       sceneUpdatedAt?: string;
     }) => Promise<{ saved: boolean }>;
     writingAssistantScanNow: (payload: { sceneId: string; prose: string; scenePath: string }) => Promise<{ tips: Array<string | WritingAssistantTip>; scannedAt: string }>;
+    writingAssistantSetActiveScene: (payload: { sceneId: string | null; scenePath: string | null }) => Promise<{ ok?: boolean }>;
     onWritingAssistantScanStart: (cb: (data: { sceneId?: string; scenePath?: string; startedAt: string }) => void) => () => void;
     onWritingAssistantScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: Array<string | WritingAssistantTip>; scannedAt: string }) => void) => () => void;
     onWritingAssistantScanError: (cb: (data: { sceneId?: string; scenePath?: string; error: string; occurredAt: string }) => void) => () => void;

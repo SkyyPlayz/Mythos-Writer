@@ -134,6 +134,7 @@ function mapDbRowToUnified(r: Record<string, unknown>): UnifiedSuggestion {
     budgetExceeded: false,
     category: (r.category ?? null) as string | null,
     payloadJson: (r.payload_json ?? null) as string | null,
+    preChangeSnapshot: (r.pre_change_snapshot ?? r.preChangeSnapshot ?? null) as string | null,
   };
 }
 

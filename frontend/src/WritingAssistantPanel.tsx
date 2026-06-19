@@ -172,6 +172,16 @@ export default function WritingAssistantPanel({
     idleDebounceSeconds,
   });
 
+  useEffect(() => {
+    window.api.writingAssistantSetActiveScene?.({
+      sceneId: scene?.id ?? null,
+      scenePath: scene?.path ?? null,
+    })?.catch(() => {
+      // Backend support may land separately; failing to record the active scene
+      // should not break the panel UI.
+    });
+  }, [scene?.id, scene?.path]);
+
   const visibleTips = useMemo(() => {
     const normalized = scheduledResult?.tips.map((tip, index) => normalizeTip(tip, index, scene)) ?? [];
     return normalized.filter((tip) => !suppressedTipKeys.has(tipSuppressKey(tip, scene)));
