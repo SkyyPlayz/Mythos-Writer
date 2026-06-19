@@ -618,7 +618,7 @@ describe('beta-read dismiss persistence (§9)', () => {
     expect(active.some((c) => c.id === c2.id)).toBe(true);
 
     // raw row for c1 has dismissed_at set
-    const rawC1 = getDb().prepare('SELECT * FROM beta_read_comments WHERE id = ?').get(c1.id) as DbBetaReadComment;
+    const rawC1 = getDb().prepare('SELECT * FROM beta_read_comments WHERE id = ?').get(c1.id) as unknown as DbBetaReadComment;
     expect(rawC1.dismissed_at).not.toBeNull();
   });
 });
