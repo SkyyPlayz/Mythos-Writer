@@ -12,18 +12,16 @@ from urllib.error import HTTPError
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from scripts.paperclip.hermes_429_watchdog import (  # noqa: E402
+from scripts.paperclip.hermes_cap_manager import (  # noqa: E402
     TARGET_ADAPTER,
     TARGET_MODEL,
+    build_revert_body,
     build_swap_body,
     detect_hermes_429,
-    run_watchdog,
-    should_swap,
-)
-from scripts.paperclip.hermes_revert_sweeper import (  # noqa: E402
-    build_revert_body,
     run_sweeper,
+    run_watchdog,
     should_revert,
+    should_swap,
 )
 
 NOW = datetime(2026, 6, 16, 18, 0, tzinfo=timezone.utc)
