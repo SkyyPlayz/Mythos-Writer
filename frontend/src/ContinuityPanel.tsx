@@ -106,7 +106,7 @@ export default function ContinuityPanel({
 
     (async () => {
       try {
-        const result = await window.api.archiveListContinuity({});
+        const result = await window.api.archiveListContinuity({ sceneId: scene?.id });
         if (cancelled) return;
         const loaded = (Array.isArray(result) ? result : result?.items ?? []) as InconsistencyItem[];
         const loadedOpenCount = loaded.filter((i) => i.status === 'open').length;

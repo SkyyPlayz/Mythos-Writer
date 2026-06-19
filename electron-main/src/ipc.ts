@@ -3023,6 +3023,8 @@ export interface ArchiveResolveContinuityPayload {
 }
 
 export interface ArchiveListContinuityPayload {
+  /** When provided, results are scoped to this scene (AC-A-09). */
+  sceneId?: string;
   filter?: { status?: string; category?: string };
 }
 

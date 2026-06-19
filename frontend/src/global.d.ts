@@ -1230,7 +1230,7 @@ interface Window {
     // SKY-1684 / SKY-1685: Archive Agent v1 — continuity scan
     archiveScanContinuity: (sceneId: string, text: string, scope?: string) => Promise<void>;
     archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean }>;
-    archiveListContinuity: (filter?: { status?: string; category?: string }) => Promise<{
+    archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) => Promise<{
       items: Array<{
         id: string;
         category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';

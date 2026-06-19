@@ -105,6 +105,20 @@ describe('ContinuityPanel — not_scanned state', () => {
     );
   });
 
+  it('passes sceneId to archiveListContinuity (AC-A-09)', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [] });
+    render(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => expect(mockArchiveListContinuity).toHaveBeenCalled());
+    expect(mockArchiveListContinuity).toHaveBeenCalledWith({ sceneId: 'sc-1' });
+  });
+
+  it('passes sceneId=undefined when scene is null', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [] });
+    render(<ContinuityPanel scene={null} />);
+    await waitFor(() => expect(mockArchiveListContinuity).toHaveBeenCalled());
+    expect(mockArchiveListContinuity).toHaveBeenCalledWith({ sceneId: undefined });
+  });
+
   it('Scan now button is disabled when scene is null', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
     render(<ContinuityPanel scene={null} />);

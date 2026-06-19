@@ -105,7 +105,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
         return (
           <ContinuityPanel
             scene={null}
-            enabled={settings?.agents?.archive?.enabled ?? true}
+            enabled={(settings?.agents?.archive?.enabled ?? true) && (settings?.archiveContinuityEnabled ?? true)}
             archiveScanScope={settings?.archiveScanScope ?? 'active_scene'}
             archiveStoryEditConsentGiven={settings?.archiveStoryEditConsentGiven ?? false}
             onCountChange={() => {}}

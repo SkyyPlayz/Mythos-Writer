@@ -289,11 +289,20 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         }
       },
       insertWikiLink: (link: string, anchorText: string) => {
+        // Extract target from [[target]] and create a proper WikiLink node so
+        // tiptap-markdown serialises it as [[target]] (not as escaped \[\[target\]\]).
+        // insertContent(string) inserts plain text which tiptap-markdown escapes.
+        const target = link.replace(/^\[\[|\]\]$/g, '');
+        const wikiNode = editor.schema.nodes['wikiLink']?.create({ target });
+        if (!wikiNode) return;
         const range = findTextRange(anchorText);
         if (range) {
-          editor.chain().setTextSelection(range).insertContent(link).run();
+          editor.view.dispatch(editor.state.tr.replaceWith(range.from, range.to, wikiNode));
         } else {
-          editor.chain().focus().insertContent(link).run();
+          editor.chain().focus().command(({ tr, dispatch }) => {
+            if (dispatch) dispatch(tr.insert(tr.selection.from, wikiNode));
+            return true;
+          }).run();
         }
       },
       getMarkdown,

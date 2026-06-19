@@ -7161,16 +7161,23 @@ function registerArchiveContinuityHandlers(): void {
     }),
   );
 
-  // archive:list-continuity — list issues with optional filter
+  // archive:list-continuity — list issues with optional filter (AC-A-09)
   ipcMain.handle(
     IPC_CHANNELS.ARCHIVE_LIST_CONTINUITY,
     wrapIpcHandler(IPC_CHANNELS.ARCHIVE_LIST_CONTINUITY, (event, payload: import('./ipc.js').ArchiveListContinuityPayload) => {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      const sceneId = payload?.sceneId;
       const filter = payload?.filter;
-      let rows = listContinuityIssues(filter?.status as import('./db.js').ContinuityIssueStatus | undefined);
+      const statusFilter = filter?.status as import('./db.js').ContinuityIssueStatus | undefined;
+      let rows = sceneId
+        ? listContinuityIssuesByScene(sceneId, statusFilter)
+        : listContinuityIssues(statusFilter);
       if (filter?.category) {
         rows = rows.filter((r) => r.category === filter.category);
       }
+      // Sort by severity descending per AC-A-09.
+      const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      rows = [...rows].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 4) - (SEVERITY_ORDER[b.severity] ?? 4));
       return { items: rows.map(dbRowToItem) };
     }),
   );

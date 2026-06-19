@@ -55,6 +55,10 @@ export interface NotesTabPanelProps {
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
   /** SKY-2306: slug of the currently selected story for scene_crafter_card acceptance. */
   activeStorySlug?: string | null;
+  /** SKY-2585: gate ContinuityPanel in Brainstorm sidebar. */
+  archiveContinuityEnabled?: boolean;
+  /** SKY-2585: active scene forwarded to ContinuityPanel for scene-scoped listing. */
+  activeScene?: Scene | null;
   // Entity browser
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId: string | null;
@@ -90,6 +94,8 @@ export default function NotesTabPanel({
   onNavigateToEntity,
   onNavigateToScene,
   activeStorySlug,
+  archiveContinuityEnabled,
+  activeScene,
   onSelectEntity,
   selectedEntityId,
 }: NotesTabPanelProps) {
@@ -303,6 +309,8 @@ export default function NotesTabPanel({
                   onNavigateToEntity={onNavigateToEntity}
                   onNavigateToScene={onNavigateToScene}
                   activeStorySlug={activeStorySlug}
+                  archiveContinuityEnabled={archiveContinuityEnabled}
+                  activeScene={activeScene}
                 />
               </div>
             </div>

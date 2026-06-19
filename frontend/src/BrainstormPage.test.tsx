@@ -948,398 +948,15 @@ describe('Mic button', () => {
   });
 });
 
-// ─── Archive: continuity issues in Brainstorm sidebar ────────────────────────
-
-function makeInconsistencySuggestion(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'cont-1',
-    source_agent: 'archive',
-    confidence: 0.92,
-    rationale: 'Elara has blonde hair in the vault but dark hair in this scene.',
-    target_kind: 'manuscript',
-    target_path: 'scenes/ch1/scene1.md',
-    target_anchor: null,
-    payload_json: JSON.stringify({
-      kind: 'inconsistency',
-      entityName: 'Elara',
-      anchorText: 'her dark hair',
-    }),
-    status: 'proposed',
-    created_at: new Date().toISOString(),
-    applied_at: null,
-    applied_run_id: null,
-    budget_exceeded: 0,
-    ...overrides,
-  };
-}
+// ─── Archive: ContinuityPanel in Brainstorm sidebar (SKY-2585/SKY-2588) ────────
 
 describe('BrainstormPage — continuity issues (Archive)', () => {
-  it('loads continuity issues from suggestionsList on mount', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    await waitFor(() => expect(mockSuggestionsList).toHaveBeenCalledWith(undefined, 'archive'));
-  });
-
-  it('renders a continuity issue as a checkbox with its description', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const checkbox = await screen.findByRole('checkbox', { name: /continuity issue: elara has blonde hair/i });
-    expect(checkbox).toBeInTheDocument();
-    expect(checkbox).not.toBeChecked();
-  });
-
-  it('renders the issue description text in the sidebar', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
+  it('shows ContinuityPanel disabled message when archiveContinuityEnabled is false', async () => {
+    render(<BrainstormPage onClose={() => {}} archiveContinuityEnabled={false} />);
     await waitFor(() =>
-      expect(
-        screen.getByText(/Elara has blonde hair in the vault but dark hair in this scene\./i),
-      ).toBeInTheDocument(),
+      expect(screen.getByText(/Archive Agent is disabled/i)).toBeInTheDocument(),
     );
   });
-
-  it('shows empty state when no continuity issues exist', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({ suggestions: [] });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    await waitFor(() =>
-      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
-    );
-  });
-
-  it('clicking "Send to Chat" on an expanded issue marks it resolved and calls suggestionsAccept', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
-    (window as unknown as { api: unknown }).api = buildApi({
-      suggestionsList: mockSuggestionsList,
-      suggestionsAccept: mockSuggestionsAccept,
-    });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    // Click the label button to expand the issue form
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-
-    // Click "Send to Chat" to resolve and call suggestionsAccept
-    const sendBtn = await screen.findByRole('button', { name: /send to chat/i });
-    fireEvent.click(sendBtn);
-
-    await waitFor(() => expect(mockSuggestionsAccept).toHaveBeenCalledWith('cont-1'));
-  });
-
-  it('renders multiple continuity issues as separate checkboxes', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [
-        makeInconsistencySuggestion({ id: 'cont-1', rationale: 'Hair colour mismatch.' }),
-        makeInconsistencySuggestion({
-          id: 'cont-2',
-          rationale: 'Eye colour mismatch.',
-          payload_json: JSON.stringify({ kind: 'inconsistency', entityName: 'Kira', anchorText: 'brown eyes' }),
-        }),
-      ],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const checkboxes = await screen.findAllByRole('checkbox', { name: /continuity issue/i });
-    expect(checkboxes).toHaveLength(2);
-  });
-
-  it('wiki-link suggestions from archive are not shown as continuity issues', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [
-        {
-          id: 'wl-1',
-          source_agent: 'archive',
-          rationale: 'Entity mention without wiki-link.',
-          payload_json: JSON.stringify({ kind: 'wiki-link', link: '[[Elara]]', anchorText: 'Elara' }),
-          status: 'proposed',
-          created_at: new Date().toISOString(),
-        },
-      ],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    await waitFor(() =>
-      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
-    );
-    expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
-  });
-
-  // ─── AC-BST-18: count badge ──────────────────────────────────────────────────
-
-  it('AC-BST-18: shows unresolved count badge when continuity issues exist', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    // Wait for issues to load, then check the badge
-    await screen.findByRole('checkbox', { name: /continuity issue/i });
-    const badge = document.querySelector('.bs-continuity-badge');
-    expect(badge).not.toBeNull();
-    expect(badge?.textContent).toBe('1');
-  });
-
-  it('AC-BST-18: badge not shown when no unresolved issues', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({ suggestions: [] });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    await waitFor(() =>
-      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
-    );
-    expect(document.querySelector('.bs-continuity-badge')).toBeNull();
-  });
-
-  // ─── AC-BST-19: expand interaction ───────────────────────────────────────────
-
-  it('AC-BST-19: clicking label button expands the issue and shows anchor text', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-
-    // Anchor text rendered as "Near: <em>"her dark hair"</em>"
-    await waitFor(() =>
-      expect(screen.getByText(/near:/i)).toBeInTheDocument(),
-    );
-    expect(screen.getByText(/her dark hair/i)).toBeInTheDocument();
-  });
-
-  it('AC-BST-19: expanded panel shows three answer-kind buttons', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-
-    await waitFor(() => expect(screen.getByRole('button', { name: /fix note/i })).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /suggest change/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /free text/i })).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: /continuity resolution note/i })).toBeInTheDocument();
-  });
-
-  it('AC-BST-19: label button has aria-expanded=false before expansion', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    expect(labelBtn).toHaveAttribute('aria-expanded', 'false');
-  });
-
-  it('AC-BST-19: label button has aria-expanded=true after expansion', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-
-    await waitFor(() => expect(labelBtn).toHaveAttribute('aria-expanded', 'true'));
-  });
-
-  it('AC-BST-19: clicking an expanded issue collapses it', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-    await waitFor(() => expect(screen.getByRole('button', { name: /fix note/i })).toBeInTheDocument());
-
-    // Second click collapses
-    fireEvent.click(labelBtn);
-    await waitFor(() => expect(screen.queryByRole('button', { name: /fix note/i })).not.toBeInTheDocument());
-  });
-
-  it('AC-BST-19: only one issue can be expanded at a time', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [
-        makeInconsistencySuggestion({ id: 'cont-1', rationale: 'Hair colour mismatch.' }),
-        makeInconsistencySuggestion({
-          id: 'cont-2',
-          rationale: 'Eye colour mismatch.',
-          payload_json: JSON.stringify({ kind: 'inconsistency', entityName: 'Kira', anchorText: 'brown eyes' }),
-        }),
-      ],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const btn1 = await screen.findByRole('button', { name: /hair colour mismatch/i });
-    const btn2 = await screen.findByRole('button', { name: /eye colour mismatch/i });
-
-    fireEvent.click(btn1);
-    await waitFor(() => expect(btn1).toHaveAttribute('aria-expanded', 'true'));
-
-    // Expanding second issue collapses first
-    fireEvent.click(btn2);
-    await waitFor(() => {
-      expect(btn1).toHaveAttribute('aria-expanded', 'false');
-      expect(btn2).toHaveAttribute('aria-expanded', 'true');
-    });
-  });
-
-  // ─── AC-BST-20: answer + resolve ──────────────────────────────────────────────
-
-  it('AC-BST-20: selecting an answer kind activates that button', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-
-    await waitFor(() => expect(screen.getByRole('button', { name: /fix note/i })).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: /suggest change/i }));
-    expect(screen.getByRole('button', { name: /suggest change/i }).className).toContain('active');
-    expect(screen.getByRole('button', { name: /fix note/i }).className).not.toContain('active');
-  });
-
-  it('AC-BST-20: submitting fills the brainstorm prompt textarea with continuity context', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
-    (window as unknown as { api: unknown }).api = buildApi({
-      suggestionsList: mockSuggestionsList,
-      suggestionsAccept: mockSuggestionsAccept,
-    });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-
-    // Fill in an answer
-    const textarea = await screen.findByRole('textbox', { name: /continuity resolution note/i });
-    fireEvent.change(textarea, { target: { value: 'Change scene to match vault.' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /send to chat/i }));
-
-    await waitFor(() => {
-      const promptTextarea = screen.getByLabelText(/brainstorm prompt/i) as HTMLTextAreaElement;
-      expect(promptTextarea.value).toContain('Elara has blonde hair in the vault but dark hair in this scene.');
-      expect(promptTextarea.value).toContain('Change scene to match vault.');
-    });
-  });
-
-  it('AC-BST-20: resolved issue has checked checkbox and is dimmed', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
-    (window as unknown as { api: unknown }).api = buildApi({
-      suggestionsList: mockSuggestionsList,
-      suggestionsAccept: mockSuggestionsAccept,
-    });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-    fireEvent.click(await screen.findByRole('button', { name: /send to chat/i }));
-
-    await waitFor(() => {
-      const checkbox = screen.getByRole('checkbox', { name: /continuity issue: elara/i });
-      expect(checkbox).toBeChecked();
-      const listItem = checkbox.closest('li');
-      expect(listItem?.className).toContain('bs-cont-item-resolved');
-    });
-  });
-
-  it('AC-BST-20: resolved issue label button is disabled and not expandable', async () => {
-    const mockSuggestionsList = vi.fn().mockResolvedValue({
-      suggestions: [makeInconsistencySuggestion()],
-    });
-    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
-    (window as unknown as { api: unknown }).api = buildApi({
-      suggestionsList: mockSuggestionsList,
-      suggestionsAccept: mockSuggestionsAccept,
-    });
-
-    render(<BrainstormPage onClose={() => {}} />);
-
-    const labelBtn = await screen.findByRole('button', {
-      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
-    });
-    fireEvent.click(labelBtn);
-    fireEvent.click(await screen.findByRole('button', { name: /send to chat/i }));
-
-    await waitFor(() => expect(labelBtn).toBeDisabled());
-    // Expand panel should not appear after resolution
-    expect(screen.queryByRole('textbox', { name: /continuity resolution note/i })).not.toBeInTheDocument();
-  });
-
   // ─── SKY-1263: Inline body preview toggle ───────────────────────────────────
 
   describe('inline body preview toggle', () => {
@@ -1449,6 +1066,31 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
       const matches = screen.getAllByText('A brave warrior');
       expect(matches.some((el) => el.classList.contains('idea-card-body'))).toBe(true);
     });
+  });
+});
+
+describe('BrainstormPage — archive ContinuityPanel integration (SKY-2585 AC-F-01)', () => {
+  const archiveApi = {
+    archiveListContinuity: vi.fn().mockResolvedValue({ items: [] }),
+    archiveResolveContinuity: vi.fn().mockResolvedValue({ ok: true }),
+    archiveScanContinuity: vi.fn().mockResolvedValue(undefined),
+    onArchiveContScanStart: () => () => {},
+    onArchiveContScanResult: () => () => {},
+    onArchiveContScanError: () => () => {},
+    settingsGet: vi.fn().mockResolvedValue({}),
+    settingsSet: vi.fn().mockResolvedValue(undefined),
+  };
+
+  it('does not render ContinuityPanel when archiveContinuityEnabled is false (default)', () => {
+    (window as unknown as { api: unknown }).api = buildApi();
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.queryByRole('status', { name: /continuity/i })).toBeNull();
+  });
+
+  it('renders ContinuityPanel loading state when archiveContinuityEnabled is true', async () => {
+    (window as unknown as { api: unknown }).api = buildApi(archiveApi);
+    render(<BrainstormPage onClose={() => {}} archiveContinuityEnabled={true} />);
+    await waitFor(() => expect(archiveApi.archiveListContinuity).toHaveBeenCalled());
   });
 });
 

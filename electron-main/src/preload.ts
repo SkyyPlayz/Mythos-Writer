@@ -794,8 +794,8 @@ contextBridge.exposeInMainWorld('api', {
   archiveResolveContinuity: (itemId: string, action: string, note?: string) =>
     ipcRenderer.invoke('archive:resolve-continuity', { itemId, action, note }),
 
-  archiveListContinuity: (filter?: { status?: string; category?: string }) =>
-    ipcRenderer.invoke('archive:list-continuity', { filter }),
+  archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) =>
+    ipcRenderer.invoke('archive:list-continuity', options),
 
   onArchiveContScanStart: (cb: (data: { sceneId: string; scope: string }) => void) => {
     const handler = (_: unknown, data: { sceneId: string; scope: string }) => cb(data);
