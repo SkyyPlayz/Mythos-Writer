@@ -18,6 +18,7 @@ from scripts.paperclip.hermes_cap_manager import (  # noqa: E402
     build_revert_body,
     build_swap_body,
     detect_hermes_429,
+    run_cap_manager,
     run_sweeper,
     run_watchdog,
     should_revert,
@@ -225,6 +226,30 @@ class HermesFailoverIntegrationTests(unittest.TestCase):
         self.assertEqual(len(revert_api.comments), 1)
         self.assertIn("Hermes Revert Sweeper", revert_api.comments[0])
         self.assertIn("FoundingEngineer → hermes_local/gpt-5.5", revert_api.comments[0])
+
+    def test_consolidated_cap_manager_orchestrates_watchdog_and_sweeper_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            instance_dir = td
+            log_dir = Path(instance_dir) / "data" / "run-logs" / COMPANY_ID
+            log_dir.mkdir(parents=True)
+            agent_log = log_dir / "agent-1"
+            agent_log.mkdir()
+            recent_log = agent_log / "run.ndjson"
+            recent_log.write_text(json.dumps({"chunk": "API call failed after 3 retries: HTTP 429: quota"}) + "\n")
+            recent_time = (NOW - timedelta(minutes=2)).timestamp()
+            recent_log.touch()
+            import os
+
+            os.utime(recent_log, (recent_time, recent_time))
+
+            api = FakePaperclipApi([hermes_agent()])
+            result = run_cap_manager(api, COMPANY_ID, NOW, instance_dir=instance_dir, parent_issue=PARENT_ISSUE, heartbeat_runner=lambda _: None)
+
+            self.assertIn("watchdog", result)
+            self.assertIn("sweeper", result)
+            self.assertEqual(len(result["watchdog"]["swapped"]), 1)
+            self.assertEqual(result["watchdog"]["swapped"][0], "FoundingEngineer → claude_local/claude-sonnet-4-6 (reverts 2026-06-16T23:15:00Z)")
+            self.assertEqual(len(result["sweeper"]["reverted"]), 0)
 
 
 if __name__ == "__main__":
