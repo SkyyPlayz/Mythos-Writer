@@ -410,7 +410,7 @@
 .wa-user-bubble {
   max-width: 85%;
   background: var(--accent-border);
-  color: #ede9fe;
+  color: var(--text, #ede9fe);
   border-radius: 12px 12px 2px 12px;
   padding: 8px 12px;
   font-size: 0.85rem;
@@ -493,15 +493,15 @@
 }
 
 .wa-status-accepted {
-  background: #052e16;
-  color: #4ade80;
-  border: 1px solid #166534;
+  background: color-mix(in srgb, var(--success, #4ade80) 12%, transparent);
+  color: var(--success, #4ade80);
+  border: 1px solid color-mix(in srgb, var(--success, #4ade80) 30%, transparent);
 }
 
 .wa-status-rejected {
-  background: #1c1917;
-  color: #a8a29e;
-  border: 1px solid #44403c;
+  background: var(--bg-muted, #1c1917);
+  color: var(--text-muted, #a8a29e);
+  border: 1px solid var(--border, #44403c);
 }
 
 /* ─── Error ─── */
@@ -509,8 +509,8 @@
 .writing-assistant-error {
   margin: 0 12px;
   padding: 8px 12px;
-  background: #1f0a0a;
-  border: 1px solid #7f1d1d;
+  background: color-mix(in srgb, var(--danger, #f87171) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger, #f87171) 30%, transparent);
   border-radius: 6px;
   color: var(--danger, #f87171);
   font-size: 0.82rem;
@@ -523,10 +523,10 @@
 .wa-stalled-warning {
   margin: 0 12px 4px;
   padding: 6px 10px;
-  background: #1c1500;
-  border: 1px solid #78350f;
+  background: color-mix(in srgb, var(--warning, #fbbf24) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #fbbf24) 30%, transparent);
   border-radius: 6px;
-  color: #fbbf24;
+  color: var(--warning, #fbbf24);
   font-size: 0.78rem;
   line-height: 1.4;
   flex-shrink: 0;
@@ -735,6 +735,13 @@
 .wa-mute-btn:hover {
   background: var(--bg-hover, rgba(255,255,255,0.04));
   color: var(--text-muted);
+}
+
+.wa-mic-btn:focus-visible,
+.wa-hear-btn:focus-visible,
+.wa-mute-btn:focus-visible {
+  outline: 2px solid var(--accent, #00f0ff);
+  outline-offset: 2px;
 }
 
 /* AC-V-11: border + text change signals muted state without relying on color alone */

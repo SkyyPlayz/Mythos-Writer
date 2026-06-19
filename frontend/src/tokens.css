@@ -248,6 +248,7 @@
   --bg-code: var(--bg-canvas);
   --bg-card: var(--bg-panel);
   --bg-detail: var(--bg-panel);
+  --bg-muted: var(--bg-inset);
   --bg-badge: var(--bg-elevated);
   --badge-bg: var(--bg-elevated);
   --bg-drag-over: var(--accent-soft);
