@@ -216,6 +216,34 @@
   text-align: right;
 }
 
+/* Before snapshot */
+.sdp-before-details {
+  border: 1px solid var(--border, #2d3748);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.45);
+  overflow: hidden;
+}
+
+.sdp-before-summary {
+  cursor: pointer;
+  padding: 7px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #cbd5e1);
+  list-style-position: inside;
+}
+
+.sdp-before-pre {
+  margin: 0;
+  padding: 9px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary, #cbd5e1);
+  border-top: 1px solid var(--border, #2d3748);
+}
+
 /* Wiki-link payload */
 .sdp-payload-wikilink {
   display: flex;

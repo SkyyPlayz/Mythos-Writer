@@ -2560,9 +2560,10 @@ export default function DesktopShell() {
     }
   }, [stories, handleSelectScene, handleSelectEntity]);
 
-  // SKY-1699: The scene that the right sidebar agents (Writing Assistant, Archive) should
-  // respond to. In split mode this tracks the focused pane; otherwise it is the selected scene.
-  const activeSceneForSidebar = splitWindowEnabled && focusedPane === 2 ? pane2Scene : selectedScene;
+  // SKY-1699: The editor context that right-sidebar agents (Writing Assistant, Archive)
+  // should respond to. In split mode this tracks the focused pane; otherwise it is the selected scene.
+  const usePane2SidebarContext = splitWindowEnabled && focusedPane === 2;
+  const activeSceneForSidebar = usePane2SidebarContext ? pane2Scene : selectedScene;
 
   // SKY-1695: Renders any sidebar panel's content. Both sidebars call this so
   // panels render correctly regardless of which sidebar they live in.
@@ -3409,9 +3410,9 @@ export default function DesktopShell() {
           <RightSidebar
             activeTab={layout.rightTab}
             onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
-            selectedScene={selectedScene}
-            selectedChapter={selectedChapter}
-            selectedStory={selectedStory}
+            selectedScene={activeSceneForSidebar}
+            selectedChapter={usePane2SidebarContext ? pane2Chapter : selectedChapter}
+            selectedStory={usePane2SidebarContext ? pane2Story : selectedStory}
             writingAssistantEnabled={agentFlags.writingAssistant}
             archiveEnabled={agentFlags.archive}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
@@ -3433,7 +3434,7 @@ export default function DesktopShell() {
                 setViewDepth('scene');
               }
             }}
-            currentSceneContent={selectedScene?.blocks.map(b => b.content).join('\n\n') ?? ''}
+            currentSceneContent={activeSceneForSidebar?.blocks.map(b => b.content).join('\n\n') ?? ''}
             onDraftRestore={handleDraftRestore}
             editorSelectionText={editorSelectionText}
             onOpenEntityNote={handleOpenContinuityEntityNote}

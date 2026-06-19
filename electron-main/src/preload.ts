@@ -369,6 +369,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('writing-assistant:tip-decision', payload),
   writingAssistantScanNow: (payload: { sceneId: string; prose: string; scenePath: string }) =>
     ipcRenderer.invoke('writing-assistant:scan-now', payload),
+  writingAssistantSetActiveScene: (payload: { sceneId: string | null; scenePath: string | null }) =>
+    ipcRenderer.invoke('writing-assistant:set-active-scene', payload),
   // Push: backend scheduler broadcasts completed scan results (MYT-236)
   onWritingScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => void) => {
     const handler = (_: unknown, data: { sceneId: string; scenePath: string; tips: string[]; scannedAt: string }) => cb(data);
