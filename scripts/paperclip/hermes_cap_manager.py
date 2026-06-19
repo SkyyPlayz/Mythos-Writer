@@ -23,6 +23,7 @@ REVERT_DELAY_S = 5 * 3600 + 15 * 60
 SCAN_WINDOW_M = 20
 PARENT_ISSUE = "42c24a87-2d8f-4e60-ba9c-eac0d7aa34b7"
 HERMES_429_PAT = "API call failed after 3 retries: HTTP 429"
+CANONICAL_ROUTINE_PREFIXES = ("hermes-cap-manager", "hermes-revert-sweeper")
 
 JsonDict = dict[str, Any]
 ApiFunc = Callable[[str, str, JsonDict | None], Any]
@@ -184,6 +185,66 @@ def _coerce_agents(payload: Any) -> list[JsonDict]:
     return list(payload or [])
 
 
+def _coerce_routines(payload: Any) -> list[JsonDict]:
+    if isinstance(payload, dict):
+        payload = payload.get("routines", payload.get("items", []))
+    return list(payload or [])
+
+
+def _canonical_routine_title(title: str) -> str | None:
+    for prefix in CANONICAL_ROUTINE_PREFIXES:
+        if title == prefix or title.startswith(f"{prefix} ") or title.startswith(f"{prefix}("):
+            return prefix
+    return None
+
+
+def run_routine_dedupe(api_call: ApiFunc, company_id: str, *, parent_issue: str = PARENT_ISSUE) -> JsonDict:
+    """Archive duplicate active cap-manager/revert-sweeper routines, keeping the oldest."""
+
+    archived: list[str] = []
+    errors: list[str] = []
+    try:
+        routines = _coerce_routines(api_call("GET", f"/companies/{company_id}/routines?status=active", None))
+    except Exception as exc:  # pragma: no cover - defensive for runtime API failures
+        return {"archived": [], "errors": [f"routine dedupe query failed: {exc}"]}
+
+    grouped: dict[str, list[JsonDict]] = {}
+    for routine in routines:
+        if routine.get("status") != "active":
+            continue
+        canonical = _canonical_routine_title(str(routine.get("title") or ""))
+        if canonical is None:
+            continue
+        grouped.setdefault(canonical, []).append(routine)
+
+    for canonical, matching in grouped.items():
+        if len(matching) <= 1:
+            continue
+        matching.sort(key=lambda item: (str(item.get("createdAt") or ""), str(item.get("id") or "")))
+        kept = matching[0]
+        kept_id = str(kept.get("id"))
+        for duplicate in matching[1:]:
+            duplicate_id = str(duplicate.get("id"))
+            try:
+                api_call("PATCH", f"/routines/{duplicate_id}", {"status": "archived"})
+                archived.append(f"{canonical}: archived duplicate {duplicate_id} (kept {kept_id})")
+            except Exception as exc:  # pragma: no cover - defensive for runtime failures
+                errors.append(f"{canonical}: failed to archive duplicate {duplicate_id}: {exc}")
+
+    if archived or errors:
+        lines = ["## Cap Manager Routine Dedupe — Warning"]
+        if archived:
+            lines += [f"\n**Archived duplicates ({len(archived)}):**", *[f"- {item}" for item in archived]]
+        if errors:
+            lines += [f"\n**Errors ({len(errors)}):**", *[f"- {item}" for item in errors]]
+        try:
+            api_call("POST", f"/issues/{parent_issue}/comments", {"body": "\n".join(lines)})
+        except Exception:
+            pass
+
+    return {"archived": archived, "errors": errors}
+
+
 def _default_heartbeat_runner(agent_id: str) -> None:
     subprocess.run(["paperclipai", "heartbeat", "run", "--agent-id", agent_id], timeout=15, check=False)
 
@@ -321,11 +382,13 @@ def run_cap_manager(
         instance_dir = os.path.expanduser("~/.paperclip/instances/default")
 
     log_dir = os.path.join(instance_dir, "data", "run-logs", company_id)
+    routine_result = run_routine_dedupe(api_call, company_id, parent_issue=parent_issue)
     affected = detect_hermes_429(log_dir, now - _dt.timedelta(minutes=scan_window_m))
     watchdog_result = run_watchdog(api_call, company_id, affected, now, parent_issue=parent_issue, heartbeat_runner=heartbeat_runner)
     sweeper_result = run_sweeper(api_call, company_id, now, parent_issue=parent_issue)
 
     return {
+        "routines": routine_result,
         "watchdog": watchdog_result,
         "sweeper": sweeper_result,
     }

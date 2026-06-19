@@ -84,15 +84,19 @@ def flatten_keys(value, prefix=""):
 
 
 class FakePaperclipApi:
-    def __init__(self, agents, fail_patch_once=False):
+    def __init__(self, agents, fail_patch_once=False, routines=None):
         self.agents = {agent["id"]: deepcopy(agent) for agent in agents}
+        self.routines = {routine["id"]: deepcopy(routine) for routine in routines or []}
         self.fail_patch_once = fail_patch_once
         self.patch_bodies = []
+        self.routine_patch_bodies = []
         self.comments = []
 
     def __call__(self, method, path, body=None):
         if method == "GET" and path == f"/companies/{COMPANY_ID}/agents":
             return list(self.agents.values())
+        if method == "GET" and path == f"/companies/{COMPANY_ID}/routines?status=active":
+            return list(self.routines.values())
         if method == "PATCH" and path.startswith("/agents/"):
             agent_id = path.rsplit("/", 1)[1]
             if self.fail_patch_once:
@@ -108,6 +112,12 @@ class FakePaperclipApi:
             self.patch_bodies.append((agent_id, deepcopy(body)))
             self.agents[agent_id].update(deepcopy(body))
             return deepcopy(self.agents[agent_id])
+        if method == "PATCH" and path.startswith("/routines/"):
+            routine_id = path.rsplit("/", 1)[1]
+            assert body is not None
+            self.routine_patch_bodies.append((routine_id, deepcopy(body)))
+            self.routines[routine_id].update(deepcopy(body))
+            return deepcopy(self.routines[routine_id])
         if method == "POST" and path == f"/issues/{PARENT_ISSUE}/comments":
             assert body is not None
             self.comments.append(body["body"])
@@ -250,6 +260,49 @@ class HermesFailoverIntegrationTests(unittest.TestCase):
             self.assertEqual(len(result["watchdog"]["swapped"]), 1)
             self.assertEqual(result["watchdog"]["swapped"][0], "FoundingEngineer → claude_local/claude-sonnet-4-6 (reverts 2026-06-16T23:15:00Z)")
             self.assertEqual(len(result["sweeper"]["reverted"]), 0)
+
+    def test_cap_manager_startup_archives_duplicate_active_routines_and_logs_warning(self):
+        routines = [
+            {
+                "id": "routine-oldest",
+                "title": "hermes-cap-manager",
+                "status": "active",
+                "createdAt": "2026-06-16T00:00:00.000Z",
+            },
+            {
+                "id": "routine-newer",
+                "title": "hermes-cap-manager",
+                "status": "active",
+                "createdAt": "2026-06-17T00:00:00.000Z",
+            },
+            {
+                "id": "routine-hourly",
+                "title": "hermes-cap-manager hourly sweep+watchdog",
+                "status": "active",
+                "createdAt": "2026-06-18T00:00:00.000Z",
+            },
+            {
+                "id": "routine-archived",
+                "title": "hermes-cap-manager",
+                "status": "archived",
+                "createdAt": "2026-06-15T00:00:00.000Z",
+            },
+        ]
+        api = FakePaperclipApi([hermes_agent(adapterType="claude_local")], routines=routines)
+
+        result = run_cap_manager(api, COMPANY_ID, NOW, instance_dir="/missing", parent_issue=PARENT_ISSUE, heartbeat_runner=lambda _: None)
+
+        self.assertEqual(api.routine_patch_bodies, [
+            ("routine-newer", {"status": "archived"}),
+            ("routine-hourly", {"status": "archived"}),
+        ])
+        self.assertEqual(result["routines"]["archived"], [
+            "hermes-cap-manager: archived duplicate routine-newer (kept routine-oldest)",
+            "hermes-cap-manager: archived duplicate routine-hourly (kept routine-oldest)",
+        ])
+        self.assertEqual(len(api.comments), 1)
+        self.assertIn("Cap Manager Routine Dedupe", api.comments[0])
+        self.assertIn("routine-newer", api.comments[0])
 
 
 if __name__ == "__main__":
