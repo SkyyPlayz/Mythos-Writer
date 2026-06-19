@@ -45,3 +45,18 @@ await input.blur(); // Trigger onChange handlers
 Add `(status, created_at DESC)`, `(scene_id, status, created_at DESC)`, and `(item_id, created_at DESC)` covering indexes on archive tables; SQLite uses the rightmost key for ORDER BY elimination, turning full-scan + filesort into index-range scans and cutting p95 from ~500ms to <50ms at 5000 rows.
 
 ---
+
+## Routine Execution Doom Loop: Routines Must Guarantee Execution Issues Have Disposition Paths (SKY-2776)
+
+**Pattern:** A routine that fires execution issues to an agent without a clear disposition path creates a doom loop. The routine never stops, issues accumulate faster than the agent can drain them, and quota pressure during backlog can push the agent to error state.
+
+**What happened:** CI-monitor routine `c8fa0c64` was configured to monitor PR #538 merge status but was not archived after the PR merged on 2026-06-17. For ~26 hours, it fired every 15 minutes, creating execution issues assigned to FoundingEngineer. When the agent tried to check CI for a closed PR, it got 404 errors. These execution issues had no valid disposition path (couldn't resolve to `done` or `blocked`), so they accumulated faster than any agent could drain them. At 2026-06-19T09:00:53Z, during this unresolvable backlog, FoundingEngineer hit Hermes 429 quota and was marked error state.
+
+**Prevention:** Before creating a routine that fires execution issues:
+1. Ensure the target (PR number, issue, resource) has a lifecycle that eventually ends (merged PR, closed issue, etc.)
+2. Guarantee the routine knows when to stop (archive itself when the target is in a terminal state)
+3. Ensure execution issues fired by the routine have a clear disposition path (can transition to `done` when success criteria are met, or `blocked` with explicit blockers if the routine can't satisfy them)
+
+**Mitigation:** Stale routines are now archived via scheduled ops tasks (e.g., SKY-2740) to prevent backlog accumulation.
+
+---
