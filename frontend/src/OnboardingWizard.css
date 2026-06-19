@@ -1011,24 +1011,44 @@
   align-items: flex-start;
   gap: 0.6rem;
   padding: 1.25rem;
-  background: var(--color-surface-alt, #181825);
-  border: 1px solid var(--color-border, #45475a);
-  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: var(--frame-width-rest) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
-  color: var(--color-text, #cdd6f4);
+  color: var(--text-body);
   font-family: inherit;
-  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  transition: border-color var(--dur-hover-in) var(--ease-out),
+              border-width var(--dur-hover-in) var(--ease-out),
+              box-shadow var(--dur-hover-in) var(--ease-out),
+              background var(--dur-hover-in) var(--ease-out);
 }
 
 .gs-card:hover {
-  border-color: var(--color-accent, #89b4fa);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border-color: var(--accent);
+  border-width: var(--frame-width-hover);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-elevated));
+  box-shadow: var(--glow-md) var(--accent);
 }
 
 .gs-card:focus-visible {
-  outline: 2px solid var(--color-accent, #89b4fa);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+  border-color: var(--accent);
+  border-width: var(--frame-width-hover);
+}
+
+.gs-card:active {
+  transform: scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-card {
+    transition: none;
+  }
+  .gs-card:active {
+    transform: none;
+  }
 }
 
 .gs-card__icon {
@@ -1038,19 +1058,21 @@
 
 .gs-card__title {
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: var(--weight-emphasis);
+  color: var(--text-header);
 }
 
 .gs-card__desc {
   font-size: 0.8125rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--text-muted);
   flex: 1;
+  line-height: var(--leading-sm);
 }
 
 .gs-card__cta {
   font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--color-accent, #89b4fa);
+  font-weight: var(--weight-heading);
+  color: var(--accent);
   margin-top: auto;
 }
 
