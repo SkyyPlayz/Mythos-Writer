@@ -855,13 +855,13 @@ export default function WritingAssistantPanel({
             scanning ? (
               <p className="wa-heartbeat-empty">Scanning this scene for quick writing tips…</p>
             ) : (
-              <div className="wa-empty-state" role="note">
+              <div className="wa-empty-state wa-heartbeat-empty" role="note">
                 <span className="wa-empty-icon" aria-hidden="true">✨</span>
                 <p className="wa-empty-heading">No suggestions yet</p>
                 <p className="wa-empty-subtext">Run a scan to get writing feedback</p>
                 <button
                   type="button"
-                  className="wa-scan-now wa-scan-now--cta"
+                  className="wa-scan-now--cta"
                   onClick={() => void handleScanNow()}
                   disabled={!scene}
                   aria-label="Start first scan"

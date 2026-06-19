@@ -73,7 +73,7 @@ import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
   leftWidth: 240,
-  rightWidth: 260,
+  rightWidth: 400,
   bottomHeight: 32,
   rightTab: 'notes',
   leftTab: 'stories',
