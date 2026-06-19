@@ -242,6 +242,8 @@ interface Props {
   /** SKY-1764/SKY-2306: slug of the currently selected story, used to add
    *  scene_crafter_card proposals directly to the active board. */
   activeStorySlug?: string | null;
+  /** Voice input is feature-flagged off by default; Settings must opt in. */
+  voiceEnabled?: boolean;
 }
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'error';
@@ -267,7 +269,7 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -1855,49 +1857,53 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             </div>
           )}
 
-          <div
-            className={`voice-transcript-strip${voiceState === 'listening' || voiceState === 'processing' ? ' voice-transcript-strip--visible' : ''}`}
-            aria-hidden="true"
-            data-testid="voice-transcript-strip"
-          >
-            <div className="voice-transcript-strip-inner">
-              {voiceTranscript.confirmed && <span className="voice-transcript-confirmed">{voiceTranscript.confirmed}</span>}
-              {voiceTranscript.interim && <span className="voice-transcript-interim"> {voiceTranscript.interim}</span>}
-              {voiceState === 'listening' && !voiceTranscript.confirmed && !voiceTranscript.interim && (
-                <span className="voice-transcript-hint">Listening…</span>
-              )}
+          {voiceEnabled && (
+            <div
+              className={`voice-transcript-strip${voiceState === 'listening' || voiceState === 'processing' ? ' voice-transcript-strip--visible' : ''}`}
+              aria-hidden="true"
+              data-testid="voice-transcript-strip"
+            >
+              <div className="voice-transcript-strip-inner">
+                {voiceTranscript.confirmed && <span className="voice-transcript-confirmed">{voiceTranscript.confirmed}</span>}
+                {voiceTranscript.interim && <span className="voice-transcript-interim"> {voiceTranscript.interim}</span>}
+                {voiceState === 'listening' && !voiceTranscript.confirmed && !voiceTranscript.interim && (
+                  <span className="voice-transcript-hint">Listening…</span>
+                )}
+              </div>
             </div>
-          </div>
+          )}
           <div className="brainstorm-input-area">
-            <div className="brainstorm-mic-container">
-              <button
-                className={`brainstorm-mic-btn brainstorm-mic-btn--${voiceState}${voiceState === 'listening' ? ' brainstorm-mic-btn-recording' : ''}`}
-                onClick={handleMicToggle}
-                aria-label={MIC_ARIA_LABELS[voiceState]}
-                aria-pressed={voiceState !== 'idle'}
-                type="button"
-                disabled={voiceState === 'processing'}
-                title={MIC_ARIA_LABELS[voiceState]}
-                data-testid="brainstorm-mic-btn"
-              >
-                {MIC_ICONS[voiceState]}
-              </button>
-              {voiceState === 'listening' && silenceSecondsLeft !== null && (
-                <>
-                  <svg className="voice-countdown-ring" aria-hidden="true" width="38" height="38" viewBox="0 0 38 38">
-                    <circle
-                      cx="19" cy="19" r={COUNTDOWN_RING_R}
-                      fill="none" stroke="var(--state-danger)"
-                      strokeWidth="2.5"
-                      strokeDasharray={COUNTDOWN_RING_C}
-                      strokeDashoffset={COUNTDOWN_RING_C * (silenceSecondsLeft / 3)}
-                      style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
-                    />
-                  </svg>
-                  <span className="voice-countdown-text" aria-hidden="true">Sending soon…</span>
-                </>
-              )}
-            </div>
+            {voiceEnabled && (
+              <div className="brainstorm-mic-container">
+                <button
+                  className={`brainstorm-mic-btn brainstorm-mic-btn--${voiceState}${voiceState === 'listening' ? ' brainstorm-mic-btn-recording' : ''}`}
+                  onClick={handleMicToggle}
+                  aria-label={MIC_ARIA_LABELS[voiceState]}
+                  aria-pressed={voiceState !== 'idle'}
+                  type="button"
+                  disabled={voiceState === 'processing'}
+                  title={MIC_ARIA_LABELS[voiceState]}
+                  data-testid="brainstorm-mic-btn"
+                >
+                  {MIC_ICONS[voiceState]}
+                </button>
+                {voiceState === 'listening' && silenceSecondsLeft !== null && (
+                  <>
+                    <svg className="voice-countdown-ring" aria-hidden="true" width="38" height="38" viewBox="0 0 38 38">
+                      <circle
+                        cx="19" cy="19" r={COUNTDOWN_RING_R}
+                        fill="none" stroke="var(--state-danger)"
+                        strokeWidth="2.5"
+                        strokeDasharray={COUNTDOWN_RING_C}
+                        strokeDashoffset={COUNTDOWN_RING_C * (silenceSecondsLeft / 3)}
+                        style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+                      />
+                    </svg>
+                    <span className="voice-countdown-text" aria-hidden="true">Sending soon…</span>
+                  </>
+                )}
+              </div>
+            )}
             <div className="brainstorm-input-wrapper">
               <textarea
                 className="brainstorm-input"

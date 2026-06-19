@@ -898,8 +898,10 @@ describe('Stalled-stream UX', () => {
 });
 
 describe('Mic button', () => {
+  const renderVoiceEnabledBrainstorm = () => render(<BrainstormPage onClose={() => {}} voiceEnabled />);
+
   it('renders a mic button for voice input', () => {
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     // New label: 'Start voice input'
     expect(screen.getByRole('button', { name: /start voice input/i })).toBeInTheDocument();
   });
@@ -907,13 +909,13 @@ describe('Mic button', () => {
   it('calls sttStart when the mic button is clicked (legacy fallback — no SpeechRecognition)', () => {
     const mockSttStart = vi.fn();
     (window as unknown as { api: unknown }).api = buildApi({ sttStart: mockSttStart });
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
     expect(mockSttStart).toHaveBeenCalled();
   });
 
   it('shows listening state when recording is active (legacy fallback)', () => {
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
     // In listening state, label changes to 'Stop voice input — listening'
     expect(screen.getByRole('button', { name: /stop voice input/i })).toBeInTheDocument();
@@ -922,7 +924,7 @@ describe('Mic button', () => {
   it('calls sttStop when the mic is active and clicked again (legacy fallback)', () => {
     const mockSttStop = vi.fn();
     (window as unknown as { api: unknown }).api = buildApi({ sttStop: mockSttStop });
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
     fireEvent.click(screen.getByRole('button', { name: /stop voice input/i }));
     expect(mockSttStop).toHaveBeenCalled();
@@ -936,7 +938,7 @@ describe('Mic button', () => {
         return () => { sttResultCb = null; };
       },
     });
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
     await waitFor(() => expect(sttResultCb).not.toBeNull());
     act(() => { sttResultCb?.('hello world'); });
@@ -2078,6 +2080,8 @@ describe('BrainstormPage — proposal queue (SKY-1485)', () => {
 });
 
 describe('Voice IO state machine (SKY-1503)', () => {
+  const renderVoiceEnabledBrainstorm = () => render(<BrainstormPage onClose={() => {}} voiceEnabled />);
+
   beforeEach(() => {
     installSpeechRecognitionMock();
     vi.stubGlobal('requestAnimationFrame', (cb: () => void) => { cb(); return 0; });
@@ -2088,15 +2092,25 @@ describe('Voice IO state machine (SKY-1503)', () => {
     vi.useRealTimers();
   });
 
-  it('AC-V-01: mic button starts in idle state with correct aria-label', () => {
+  it('AC-V-00: hides the mic button when voice is disabled by default', () => {
     render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.queryByTestId('brainstorm-mic-btn')).not.toBeInTheDocument();
+  });
+
+  it('AC-V-00: shows the mic button when voice is enabled', () => {
+    renderVoiceEnabledBrainstorm();
+    expect(screen.getByTestId('brainstorm-mic-btn')).toBeInTheDocument();
+  });
+
+  it('AC-V-01: mic button starts in idle state with correct aria-label', () => {
+    renderVoiceEnabledBrainstorm();
     const btn = screen.getByTestId('brainstorm-mic-btn');
     expect(btn.getAttribute('aria-label')).toBe('Start voice input');
     expect(btn.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('AC-V-01: mic button transitions to listening state on click', async () => {
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     const btn = screen.getByTestId('brainstorm-mic-btn');
     fireEvent.click(btn);
     // Trigger onstart callback
@@ -2106,13 +2120,13 @@ describe('Voice IO state machine (SKY-1503)', () => {
   });
 
   it('AC-V-02: transcript strip is not visible in idle state', () => {
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     const strip = screen.getByTestId('voice-transcript-strip');
     expect(strip.className).not.toContain('voice-transcript-strip--visible');
   });
 
   it('AC-V-02: transcript strip becomes visible in listening state', async () => {
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
     await act(async () => { mockRecognitionInstance?.onstart?.(); });
     const strip = screen.getByTestId('voice-transcript-strip');
@@ -2121,7 +2135,7 @@ describe('Voice IO state machine (SKY-1503)', () => {
 
   it('AC-V-03: silence countdown ring appears while listening', async () => {
     vi.useFakeTimers();
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
     await act(async () => { mockRecognitionInstance?.onstart?.(); });
     // Advance fake timers so the setInterval fires and updates silenceSecondsLeft
@@ -2131,7 +2145,7 @@ describe('Voice IO state machine (SKY-1503)', () => {
   });
 
   it('AC-V-04: Escape key cancels voice input and announces cancellation', async () => {
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
     await act(async () => { mockRecognitionInstance?.onstart?.(); });
     fireEvent.keyDown(document.body, { key: 'Escape', bubbles: true });
@@ -2158,7 +2172,7 @@ describe('Voice IO state machine (SKY-1503)', () => {
 
   it('AC-V-01: processing state renders correctly', async () => {
     vi.useFakeTimers();
-    render(<BrainstormPage onClose={() => {}} />);
+    renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
     await act(async () => { mockRecognitionInstance?.onstart?.(); });
     // Simulate auto-commit after 3s

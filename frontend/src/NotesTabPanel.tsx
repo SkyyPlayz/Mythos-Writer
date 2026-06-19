@@ -49,6 +49,7 @@ export interface NotesTabPanelProps {
   journalModeEnabled?: boolean;
   // BrainstormPage passthrough
   brainstormEnabled?: boolean;
+  voiceEnabled?: boolean;
   onFirstSubmit?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
@@ -84,6 +85,7 @@ export default function NotesTabPanel({
   onExport,
   journalModeEnabled,
   brainstormEnabled,
+  voiceEnabled = false,
   onFirstSubmit,
   onNavigateToEntity,
   onNavigateToScene,
@@ -296,6 +298,7 @@ export default function NotesTabPanel({
                 <BrainstormPage
                   onClose={() => onBrainstormCollapsedChange(true)}
                   enabled={brainstormEnabled ?? true}
+                  voiceEnabled={voiceEnabled}
                   onFirstSubmit={onFirstSubmit}
                   onNavigateToEntity={onNavigateToEntity}
                   onNavigateToScene={onNavigateToScene}
