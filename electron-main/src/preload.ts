@@ -90,6 +90,9 @@ contextBridge.exposeInMainWorld('api', {
   pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
   obsidianDryRun: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath, registrationToken }),
   obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
+  // SKY-2638: Path 3 import vault channels (no registration token — onboarding context)
+  importVaultDryRun: (sourcePath: string) => ipcRenderer.invoke('onboarding:import-vault:dry-run', { sourcePath }),
+  importVaultCommit: (sourcePath: string) => ipcRenderer.invoke('onboarding:import-vault:commit', { sourcePath }),
   loadSampleProject: () => ipcRenderer.invoke('vault:load-sample', {}),
   createBlankVault: (targetPath: string, registrationToken?: string) => ipcRenderer.invoke('vault:create-blank', { targetPath, registrationToken }),
   obsidianPickFolderByPath: (sourcePath: string) => ipcRenderer.invoke('vault:pick-folder-by-path', { sourcePath }),
