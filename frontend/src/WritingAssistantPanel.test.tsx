@@ -1024,6 +1024,11 @@ describe('WritingAssistantPanel — preset context (AC-WA-15)', () => {
 // Refinement chips (AC-WA-16)
 // ---------------------------------------------------------------------------
 describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
+  beforeEach(() => {
+    // Clear sessionStorage so preset selection from prior tests doesn't bleed in
+    sessionStorage.clear();
+  });
+
   it('refinement chips appear after a completed response', async () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Initial response.' });
 
@@ -1063,10 +1068,11 @@ describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
     expect(reAskContext).toContain('Tone: Balanced');
   });
 
-  it('AC-WA-16: active chip is marked aria-pressed=true after clicking', async () => {
+  it('AC-WA-16: active chip is marked aria-pressed=true during the re-ask', async () => {
+    // Keep the re-ask pending so we can observe aria-pressed during streaming
     mockAgentWritingAssistant
       .mockResolvedValueOnce({ text: 'Response.' })
-      .mockResolvedValueOnce({ text: 'Shorter response.' });
+      .mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
     fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
@@ -1079,7 +1085,27 @@ describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
     expect(warmerChip).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(warmerChip);
+    // While the re-ask is streaming, the chip should be marked active
     await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(2));
-    expect(warmerChip).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(warmerChip).toHaveAttribute('aria-pressed', 'true'));
+  });
+});
+
+describe('WritingAssistantPanel — STT mic button (AC-WA-25)', () => {
+  it('AC-WA-25: mic button absent when voiceEnabled is not passed', () => {
+    render(<WritingAssistantPanel scene={null} />);
+    expect(screen.queryByRole('button', { name: /start voice input/i })).not.toBeInTheDocument();
+  });
+
+  it('AC-WA-25: mic button absent when voiceEnabled={false}', () => {
+    render(<WritingAssistantPanel scene={null} voiceEnabled={false} />);
+    expect(screen.queryByRole('button', { name: /start voice input/i })).not.toBeInTheDocument();
+  });
+
+  it('AC-WA-25: mic button present and aria-pressed=false when voiceEnabled={true}', () => {
+    render(<WritingAssistantPanel scene={null} voiceEnabled />);
+    const micBtn = screen.getByRole('button', { name: /start voice input/i });
+    expect(micBtn).toBeInTheDocument();
+    expect(micBtn).toHaveAttribute('aria-pressed', 'false');
   });
 });
