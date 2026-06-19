@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { SuggestionCard } from './SuggestionCard';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
@@ -31,6 +32,7 @@ interface WritingAssistantSuggestion {
   rationale: string;
   timestamp: string;
   status: 'proposed' | 'accepted' | 'rejected';
+  decidedAt?: string;
 }
 
 interface Message {
@@ -425,10 +427,11 @@ export default function WritingAssistantPanel({
   };
 
   const applySuggestionStatus = (id: string, status: 'accepted' | 'rejected') => {
+    const decidedAt = new Date().toISOString();
     setMessages((prev) =>
       prev.map((m) =>
         m.suggestion?.id === id
-          ? { ...m, suggestion: { ...m.suggestion, status } }
+          ? { ...m, suggestion: { ...m.suggestion, status, decidedAt } }
           : m,
       ),
     );
@@ -634,57 +637,43 @@ export default function WritingAssistantPanel({
                   {msg.text}
                   {msg.streaming && <span className="wa-cursor" aria-hidden="true">&#x258c;</span>}
                 </div>
-                {!msg.streaming && msg.suggestion && msg.suggestion.status === 'proposed' && (
+                {!msg.streaming && msg.suggestion && (
                   <>
-                    <div className="wa-suggestion-actions">
-                      <button
-                        className="wa-btn wa-btn-accept"
-                        onClick={() => applySuggestionStatus(msg.suggestion!.id, 'accepted')}
-                        aria-label="Accept suggestion"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        className="wa-btn wa-btn-reject"
-                        onClick={() => applySuggestionStatus(msg.suggestion!.id, 'rejected')}
-                        aria-label="Reject suggestion"
-                      >
-                        Dismiss
-                      </button>
-                      {/* AC-V-07: per-card TTS button; one card plays at a time */}
-                      {(() => {
-                        const sid = msg.suggestion!.id;
-                        const isPlaying = tts.playingCardId === sid;
-                        return (
-                          <button
-                            className={`wa-hear-btn${isPlaying ? ' wa-hear-btn--playing' : ''}`}
-                            onClick={() => {
-                              if (isPlaying) {
-                                tts.cancelCurrent(announce);
-                              } else {
-                                tts.speakCard(msg.text, sid, announce);
-                              }
-                            }}
-                            aria-label={isPlaying ? 'Stop voice playback' : 'Hear suggestion aloud'}
-                            aria-pressed={isPlaying}
-                          >
-                            {isPlaying ? '■ Stop' : '▶ Hear'}
-                          </button>
-                        );
-                      })()}
-                    </div>
-                    <RefinementChips
-                      effectiveAxes={effectiveAxes}
-                      onRefine={handleRefine}
-                      disabled={loading}
-                      activeChipId={activeRefinementId}
+                    <SuggestionCard
+                      suggestion={msg.suggestion}
+                      onApply={(id) => applySuggestionStatus(id, 'accepted')}
+                      onReject={(id) => applySuggestionStatus(id, 'rejected')}
                     />
+                    {/* AC-V-07: per-card TTS button; one card plays at a time */}
+                    {msg.suggestion.status === 'proposed' && (() => {
+                      const sid = msg.suggestion!.id;
+                      const isPlaying = tts.playingCardId === sid;
+                      return (
+                        <button
+                          className={`wa-hear-btn${isPlaying ? ' wa-hear-btn--playing' : ''}`}
+                          onClick={() => {
+                            if (isPlaying) {
+                              tts.cancelCurrent(announce);
+                            } else {
+                              tts.speakCard(msg.text, sid, announce);
+                            }
+                          }}
+                          aria-label={isPlaying ? 'Stop voice playback' : 'Hear suggestion aloud'}
+                          aria-pressed={isPlaying}
+                        >
+                          {isPlaying ? '■ Stop' : '▶ Hear'}
+                        </button>
+                      );
+                    })()}
+                    {msg.suggestion.status === 'proposed' && (
+                      <RefinementChips
+                        effectiveAxes={effectiveAxes}
+                        onRefine={handleRefine}
+                        disabled={loading}
+                        activeChipId={activeRefinementId}
+                      />
+                    )}
                   </>
-                )}
-                {!msg.streaming && msg.suggestion && msg.suggestion.status !== 'proposed' && (
-                  <div className={`wa-suggestion-status wa-status-${msg.suggestion.status}`}>
-                    {msg.suggestion.status === 'accepted' ? 'Accepted' : 'Dismissed'}
-                  </div>
                 )}
               </div>
             )}
