@@ -107,7 +107,8 @@ describe('DockedTabBar multi-panel badge (AC-T-03)', () => {
 // ── Close popover (AC-T-06) ───────────────────────────────────────────────────
 
 describe('DockedTabBar close popover (AC-T-06)', () => {
-  it('opens close popover with "Send back to right sidebar" when × is clicked', () => {
+  it('opens close popover with "Send back to right sidebar" without DOM nesting warnings', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const tab = makeTab('t1', ['stories']);
     render(
       <DockedTabBar
@@ -117,11 +118,16 @@ describe('DockedTabBar close popover (AC-T-06)', () => {
         onTabClose={defaultProps.onTabClose}
       />,
     );
-    // The close button is a span[role="button"] with aria-label containing "Close"
     fireEvent.click(screen.getByRole('button', { name: /close story navigator tab/i }));
     expect(screen.getByRole('dialog', { name: /close tab options/i })).toBeTruthy();
     expect(screen.getByText('Send back to right sidebar')).toBeTruthy();
     expect(screen.getByText('Remove panel')).toBeTruthy();
+
+    const nestingWarnings = consoleErrorSpy.mock.calls.filter((args) =>
+      args.some((arg) => String(arg).includes('validateDOMNesting')),
+    );
+    consoleErrorSpy.mockRestore();
+    expect(nestingWarnings).toEqual([]);
   });
 
   it('calls onTabClose with "send-to-sidebar" when first option is selected', () => {

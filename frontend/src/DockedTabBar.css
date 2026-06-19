@@ -87,6 +87,9 @@
 
 /* × close button (AC-T-06) */
 .dtb-tab-close {
+  background: none;
+  border: none;
+  font: inherit;
   font-size: 0.85rem;
   line-height: 1;
   color: var(--text-muted);
@@ -98,8 +101,8 @@
   flex-shrink: 0;
 }
 
-.dtb-tab:hover .dtb-tab-close,
-.dtb-tab--active .dtb-tab-close {
+.dtb-tab-wrapper:hover .dtb-tab-close,
+.dtb-tab--active + .dtb-tab-close {
   opacity: 1;
 }
 

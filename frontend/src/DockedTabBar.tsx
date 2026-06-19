@@ -369,42 +369,35 @@ export default function DockedTabBar({
                   +{extraCount}
                 </span>
               )}
-              {/* AC-T-06: × shows popover */}
-              <span
-                className="dtb-tab-close"
-                role="button"
-                tabIndex={0}
-                aria-label={`Close ${label} tab`}
-                title="Close tab"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setClosePopoverTabId((prev) => (prev === tab.id ? null : tab.id));
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setClosePopoverTabId((prev) => (prev === tab.id ? null : tab.id));
-                  }
-                }}
-              >
-                ×
-              </span>
-
-              {closePopoverTabId === tab.id && (
-                <ClosePopover
-                  onSendToSidebar={() => {
-                    setClosePopoverTabId(null);
-                    onTabClose(tab.id, 'send-to-sidebar');
-                  }}
-                  onRemove={() => {
-                    setClosePopoverTabId(null);
-                    onTabClose(tab.id, 'remove');
-                  }}
-                  onDismiss={() => setClosePopoverTabId(null)}
-                />
-              )}
             </button>
+
+            {/* AC-T-06: × shows popover. Keep it outside the tab <button> so the popover's buttons are not nested. */}
+            <button
+              type="button"
+              className="dtb-tab-close"
+              aria-label={`Close ${label} tab`}
+              title="Close tab"
+              onClick={(e) => {
+                e.stopPropagation();
+                setClosePopoverTabId((prev) => (prev === tab.id ? null : tab.id));
+              }}
+            >
+              ×
+            </button>
+
+            {closePopoverTabId === tab.id && (
+              <ClosePopover
+                onSendToSidebar={() => {
+                  setClosePopoverTabId(null);
+                  onTabClose(tab.id, 'send-to-sidebar');
+                }}
+                onRemove={() => {
+                  setClosePopoverTabId(null);
+                  onTabClose(tab.id, 'remove');
+                }}
+                onDismiss={() => setClosePopoverTabId(null)}
+              />
+            )}
 
             {/* Slot zone after each tab */}
             <SlotZone
