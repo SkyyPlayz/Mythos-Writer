@@ -5733,7 +5733,7 @@ const SETTINGS_DEFAULTS: AppSettings = {
   waIdleHeartbeatConstantInterval: false,
   waIdleDebounceSeconds: 30,
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: true, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
+    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
   },
@@ -5899,10 +5899,10 @@ function loadAppSettings(): AppSettings {
         base.agents.writingAssistant.cadenceTrigger = 'idle_heartbeat';
         base.agents.writingAssistant.idleHeartbeatConstantInterval = true;
       }
-      // SKY-2627: back-fill flat wa* fields from agents.writingAssistant.* for existing installs
+      // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.
+      // waModel is intentionally NOT back-filled: null means "use global model" — the spec default.
       const rawRecord = raw as Record<string, unknown>;
       if (!('waEnabled' in rawRecord)) base.waEnabled = base.agents.writingAssistant.enabled;
-      if (!('waModel' in rawRecord)) base.waModel = base.agents.writingAssistant.model ?? null;
       if (!('waCadenceTrigger' in rawRecord)) base.waCadenceTrigger = base.agents.writingAssistant.cadenceTrigger ?? 'on_save';
       if (!('waIdleHeartbeatConstantInterval' in rawRecord)) base.waIdleHeartbeatConstantInterval = base.agents.writingAssistant.idleHeartbeatConstantInterval ?? false;
       if (!('waIdleDebounceSeconds' in rawRecord)) base.waIdleDebounceSeconds = base.agents.writingAssistant.idleDebounceSeconds ?? 30;
