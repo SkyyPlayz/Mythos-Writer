@@ -7,8 +7,7 @@ import './OnboardingWizard.css';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type WizardStep =
-  | 'step1'
-  | 'step1b'
+  | 'path-selector'
   | 'step1b-inner'
   | 'step1c'
   | 'step2'
@@ -269,39 +268,6 @@ function ConflictDialog({ savePath, onOpenExisting, onNewFolder, onCreateAlongsi
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-interface StartingPointCardProps {
-  icon: string;
-  title: string;
-  description: string;
-  ctaLabel: string;
-  onActivate: () => void;
-  testId: string;
-}
-
-function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId }: StartingPointCardProps) {
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onActivate();
-    }
-  };
-  return (
-    <button
-      className="gs-card"
-      onClick={() => onActivate()}
-      onKeyDown={handleKeyDown}
-      data-testid={testId}
-      aria-label={`${title}: ${description}`}
-      type="button"
-    >
-      <span className="gs-card__icon" aria-hidden="true">{icon}</span>
-      <span className="gs-card__title">{title}</span>
-      <span className="gs-card__desc">{description}</span>
-      <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
-    </button>
-  );
-}
-
 interface TemplateCardProps {
   template: TemplateItem;
   onSelect: () => void;
@@ -450,11 +416,49 @@ function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onT
   );
 }
 
+
+// ─── PathCard (path-selector step) ───────────────────────────────────────────
+
+interface PathCardProps {
+  testId: string;
+  icon: string;
+  title: string;
+  description: string;
+  isRecommended?: boolean;
+  isSelected: boolean;
+  tabIndex: number;
+  onActivate: () => void;
+}
+function PathCard({ testId, icon, title, description, isRecommended, isSelected, tabIndex, onActivate }: PathCardProps) {
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); }
+  }
+  return (
+    <button
+      role="radio"
+      aria-checked={isSelected}
+      className={`gs-card${isRecommended ? ' gs-card--recommended' : ''}`}
+      onClick={onActivate}
+      onKeyDown={handleKeyDown}
+      data-testid={testId}
+      tabIndex={tabIndex}
+      type="button"
+    >
+      {isRecommended && <span className="gs-card__badge" data-testid="badge-recommended">Recommended</span>}
+      <span className="gs-card__icon" aria-hidden="true">{icon}</span>
+      <span className="gs-card__title">{title}</span>
+      <span className="gs-card__desc">{description}</span>
+    </button>
+  );
+}
+
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 export default function OnboardingWizard({ initialSettings, onComplete, onCancel }: OnboardingWizardProps) {
-  const [step, setStep] = useState<WizardStep>('step1');
+  const [step, setStep] = useState<WizardStep>('path-selector');
   const [startMode, setStartMode] = useState<StartMode | null>(null);
+  const [selectedPath, setSelectedPath] = useState<'default' | 'blank' | 'import' | 'sample' | null>(null);
+  const [ariaLiveMessage, setAriaLiveMessage] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   // SKY-2008: step1c genre picker state
   const [selectedSampleGenre, setSelectedSampleGenre] = useState<SampleGenreId | null>(null);
@@ -538,7 +542,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   pathOptionsRef.current = pathOptions;
 
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const templateCardTriggerRef = useRef<HTMLElement | null>(null);
 
   // Auto-focus title input on step 2
   useEffect(() => {
@@ -641,7 +644,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     if (startMode === 'template') {
       setStep('step1b-inner');
     } else {
-      setStep('step1b');
+      setStep('path-selector');
     }
   }
 
@@ -660,47 +663,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
-
-  // SKY-2220: Quick Start. Bypasses the title + save-path form entirely —
-  // main creates the default Mythos vault bundle under app data and seeds a
-  // "My First Story" scene. The backend keeps default-mythos-vault as a
-  // compatibility alias, but new UI reports startMode=quick-start.
-  async function handleQuickStart() {
-    setStartMode('quick-start');
-    setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const res = await api().onboardingComplete({ startMode: 'quick-start' });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'quick-start',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(updated);
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
-      setScaffolding(false);
-    }
-  }
-
-  function handleCreateCustom() {
-    setStartMode(null);
-    setSelectedTemplateId(null);
-    setSelectedSampleGenre(null);
-    setOpenAccordionGenre(null);
-    setSampleError('');
-    setScaffoldError('');
-    setStep('step1b');
-  }
 
   async function handleOpenExistingVault(vaultPath?: string) {
     setStartMode('open-existing');
@@ -731,19 +693,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       setScaffoldError(e instanceof Error ? e.message : "This folder doesn't look like a Mythos Writer vault…");
       setScaffolding(false);
     }
-  }
-
-  function handleSelectBlank() {
-    goToStep2FromMode('blank');
-  }
-
-  function handleSelectSample() {
-    // SKY-2008: go to genre picker (step1c) instead of form (step2)
-    setStartMode('sample');
-    setSampleError('');
-    setSelectedSampleGenre(null);
-    setOpenAccordionGenre(null);
-    setStep('step1c');
   }
 
   async function handleStartSample() {
@@ -779,12 +728,36 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
-  function handleSelectTemplate() {
-    templateCardTriggerRef.current = document.activeElement as HTMLElement;
-    setStep('step1b-inner');
+  // ─── Path selector actions (flat four-card flow) ────────────────────────────
+
+  async function handlePathSelect(path: 'default' | 'blank' | 'import' | 'sample') {
+    setSelectedPath(path);
+    const labels = { default: 'Default Layout', blank: 'Blank', import: 'Import', sample: 'Sample Project' };
+    setAriaLiveMessage(`${labels[path]} selected.`);
+    if (path === 'default' || path === 'blank') {
+      setStartMode('blank');
+      setTitleError(''); setSavePathError(''); setScaffoldError('');
+      setStep('step2');
+    } else if (path === 'import') {
+      handleSelectImport();
+    } else if (path === 'sample') {
+      setStartMode('sample');
+      setSelectedSampleGenre(null); setOpenAccordionGenre(null); setSampleError('');
+      setStep('step1c');
+    }
   }
 
-  function handleSkip() {
+  function handlePathSelectorArrowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
+    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const idx = cards.indexOf(document.activeElement as HTMLElement);
+    if (idx === -1) return;
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % cards.length;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + cards.length) % cards.length;
+    if (next !== -1) { e.preventDefault(); cards[next].focus(); }
+  }
+
+    function handleSkip() {
     api().onboardingComplete({ startMode: 'skip' }).catch(() => {});
     const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
     onComplete(updated);
@@ -933,7 +906,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setPathValidationState('validating');
     pathDebounceRef.current = setTimeout(() => {
       validatePathNow(value);
-    }, 500);
+    }, 400);
   }, [validatePathNow]); // pathOptionsRef.current.sep is always fresh via the ref
 
   // SKY-2007: fill input from a suggestion or recent, then immediately validate
@@ -1149,7 +1122,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'import-picker' || step === 'import-dry-run') {
+      if (step === 'path-selector' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'import-picker' || step === 'import-dry-run') {
         setShowCancelConfirm(true);
       }
     }
@@ -1171,6 +1144,16 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       onKeyDown={handleOverlayKeyDown}
       data-testid="gs-overlay"
     >
+      {/* Always-in-DOM aria-live region — AC-OB-23 */}
+      <p
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="wizard-live-region"
+        style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
+      >
+        {ariaLiveMessage}
+      </p>
       <Toast message={templateToastState?.message ?? null} level={templateToastState?.level} />
       {/* Confirm dialog */}
       {showCancelConfirm && (
@@ -1274,9 +1257,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         );
       })()}
 
-      {/* ── Step 1: Choose your starting point ── */}
-      {step === 'step1' && (
-        <div className="gs-modal" data-testid="screen-step1">
+      {/* ── Path selector: flat four-card starting-point picker (AC-OB-01/02) ── */}
+      {step === 'path-selector' && (
+        <div className="gs-modal" data-testid="screen-path-selector">
           <div className="gs-modal__header">
             <span className="gs-step-label">Step 1 of 3</span>
             <button
@@ -1284,7 +1267,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               type="button"
               aria-label="Close setup"
               onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1"
+              data-testid="gs-close-btn-path-selector"
             >
               &#x2715;
             </button>
@@ -1292,30 +1275,49 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           <h1 className="gs-modal__title">Welcome to Mythos Writer</h1>
           <p className="gs-modal__subtitle">How would you like to begin?</p>
 
-          <div className="gs-cards" role="group" aria-label="Choose how to get started">
-            <StartingPointCard
-              icon="&#x2728;"
-              title="Quick Start"
-              description="One click — we'll set everything up for you."
-              ctaLabel="Start &#x2192;"
-              onActivate={handleQuickStart}
-              testId="card-quick-start"
+          <div
+            role="radiogroup"
+            aria-label="Choose how to get started"
+            className="gs-path-selector-grid"
+            data-testid="path-card-radiogroup"
+            onKeyDown={handlePathSelectorArrowKeys}
+          >
+            <PathCard
+              testId="card-path-default"
+              icon="&#x26A1;"
+              title="Default Layout"
+              description="Start with our recommended story structure."
+              isRecommended={true}
+              isSelected={selectedPath === 'default'}
+              tabIndex={selectedPath === null || selectedPath === 'default' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('default'); }}
             />
-            <StartingPointCard
-              icon="&#x270F;&#xFE0F;"
-              title="Create Custom Vault"
-              description="Pick your location, story title, and starting point."
-              ctaLabel="Customize &#x2192;"
-              onActivate={handleCreateCustom}
-              testId="card-create-custom"
+            <PathCard
+              testId="card-path-blank"
+              icon="&#x1F4DD;"
+              title="Blank"
+              description="Minimal vault with no pre-seeded content."
+              isSelected={selectedPath === 'blank'}
+              tabIndex={selectedPath === 'blank' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('blank'); }}
             />
-            <StartingPointCard
+            <PathCard
+              testId="card-path-import"
               icon="&#x1F4C2;"
-              title="Open Existing Vault"
-              description="Browse for a vault on your computer or cloud storage."
-              ctaLabel="Browse &#x2192;"
-              onActivate={() => { void handleOpenExistingVault(); }}
-              testId="card-open-existing"
+              title="Import"
+              description="Open an existing Mythos vault from your computer."
+              isSelected={selectedPath === 'import'}
+              tabIndex={selectedPath === 'import' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('import'); }}
+            />
+            <PathCard
+              testId="card-path-sample"
+              icon="&#x1F4DA;"
+              title="Sample Project"
+              description="Explore a pre-loaded story and notes example."
+              isSelected={selectedPath === 'sample'}
+              tabIndex={selectedPath === 'sample' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('sample'); }}
             />
           </div>
 
@@ -1327,73 +1329,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           >
             Skip &#x2014; open empty workspace
           </button>
-        </div>
-      )}
-
-      {/* ── Step 1b: Create Custom sub-selector ── */}
-      {step === 'step1b' && (
-        <div className="gs-modal" data-testid="screen-step1b-options">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => {
-                setStartMode(null);
-                setSelectedTemplateId(null);
-                setSelectedSampleGenre(null);
-                setStep('step1');
-              }}
-              data-testid="gs-back-step1b-options"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Step 1 of 3</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1b-options"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 className="gs-modal__title">Create a custom vault</h2>
-          <p className="gs-modal__subtitle">Choose what you want to start with.</p>
-          <div className="gs-cards" role="group" aria-label="Choose a custom vault starting point">
-            <StartingPointCard
-              icon="&#x1F4DD;"
-              title="Blank Slate"
-              description="Minimal vault, no pre-seeded content."
-              ctaLabel="Start blank &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-blank"
-            />
-            <StartingPointCard
-              icon="&#x1F4DA;"
-              title="Sample Project"
-              description="Pre-loaded story and notes example."
-              ctaLabel="Preview samples &#x2192;"
-              onActivate={handleSelectSample}
-              testId="card-sample"
-            />
-            <StartingPointCard
-              icon="&#x1F4CB;"
-              title="From Template"
-              description="Choose a reusable story, notes, or worldbuilding structure."
-              ctaLabel="Browse templates &#x2192;"
-              onActivate={handleSelectTemplate}
-              testId="card-template"
-            />
-            <StartingPointCard
-              icon="&#x1F4E5;"
-              title="Import Obsidian Vault"
-              description="Bring in an existing Obsidian notes vault. We'll scan it first so there are no surprises."
-              ctaLabel="Import &#x2192;"
-              onActivate={handleSelectImport}
-              testId="card-import"
-            />
-          </div>
         </div>
       )}
 
@@ -1410,13 +1345,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-ghost btn-back"
               type="button"
-              onClick={() => {
-                setStep('step1b');
-                requestAnimationFrame(() => {
-                  const el = document.querySelector('[data-testid="card-template"]') as HTMLElement | null;
-                  el?.focus();
-                });
-              }}
+              onClick={() => { setStep('path-selector'); }}
               data-testid="gs-back-step1b"
             >
               <span aria-hidden="true">&#x2190;</span> Back
@@ -1656,7 +1585,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 setSelectedSampleGenre(null);
                 setOpenAccordionGenre(null);
                 setSampleError('');
-                setStep('step1');
+                setStep('path-selector');
               }}
               data-testid="gs-back-step1c"
             >
@@ -1744,8 +1673,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-ghost btn-back"
               type="button"
-              aria-label="Back to custom vault options"
-              onClick={() => setStep('step1b')}
+              aria-label="Back to starting point selection"
+              onClick={() => setStep('path-selector')}
               data-testid="gs-back-import-picker"
             >
               <span aria-hidden="true">&#x2190;</span> Back

@@ -82,40 +82,26 @@ function makeApi(overrides: Partial<{
 
 let mockApi: ReturnType<typeof makeApi>;
 
-const BUNDLED_TEMPLATE = { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Three-act novel', story: [{ name: 'Manuscript' }], notes: [{ name: 'Characters' }] };
-const USER_TEMPLATE    = { id: 'user:my-template',  name: 'My Template',   description: 'My saved template', story: [], notes: [], isUserTemplate: true, savedAt: '2026-06-01' };
-
 beforeEach(() => {
   mockApi = makeApi();
   (window as unknown as { api: unknown }).api = mockApi;
   vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
 });
 
-function openCustomOptions() {
-  fireEvent.click(screen.getByTestId('card-create-custom'));
-}
-
 function openBlankFlow() {
-  openCustomOptions();
-  fireEvent.click(screen.getByTestId('card-blank'));
+  fireEvent.click(screen.getByTestId('card-path-blank'));
 }
 
 function openSampleFlow() {
-  openCustomOptions();
-  fireEvent.click(screen.getByTestId('card-sample'));
+  fireEvent.click(screen.getByTestId('card-path-sample'));
 }
 
-function openTemplateGallery() {
-  openCustomOptions();
-  fireEvent.click(screen.getByTestId('card-template'));
-}
+// ─── Path selector (Step 1) ───────────────────────────────────────────────────
 
-// ─── Step 1 ───────────────────────────────────────────────────────────────────
-
-describe('OnboardingWizard — Step 1', () => {
-  it('renders Step 1 with correct heading and subtitle', async () => {
+describe('OnboardingWizard — Path selector', () => {
+  it('renders path-selector screen with correct heading and subtitle', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
     await act(async () => {});
@@ -127,103 +113,57 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('shows three top-level starting-point cards', async () => {
+  it('shows all four path cards in a radiogroup', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
-    expect(screen.getByTestId('card-create-custom')).toBeInTheDocument();
-    expect(screen.getByTestId('card-open-existing')).toBeInTheDocument();
-    expect(screen.queryByTestId('card-blank')).not.toBeInTheDocument();
+    expect(screen.getByTestId('path-card-radiogroup')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-default')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-import')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-sample')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card labels match v2.1 spec copy exactly', async () => {
+  it('Default Layout card has Recommended badge', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick Start');
-    expect(screen.getByTestId('card-create-custom')).toHaveTextContent('Create Custom Vault');
-    expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open Existing Vault');
+    expect(screen.getByTestId('badge-recommended')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-default').contains(screen.getByTestId('badge-recommended'))).toBe(true);
     await act(async () => {});
   });
 
-  // SKY-2220: one-click Quick Start bypasses step2 (no title, no save path picker).
-  it('clicking Quick Start calls onboardingComplete with startMode=quick-start and bypasses Step 2', async () => {
-    const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-quick-start'));
-    await waitFor(() =>
-      expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'quick-start' }),
-    );
-    expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({
-        onboardingComplete: true,
-        lastOpenedScene: expect.objectContaining({ sceneId: 'scene-1' }),
-      }),
-    );
-    // No detour through step2/step1b — we go straight to step3 (scaffolding) and exit.
-    expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
-  });
-
-  it('shows scaffold error UI when Quick Start vault creation fails', async () => {
-    mockApi = makeApi({
-      onboardingComplete: vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' }),
-    });
-    (window as unknown as { api: unknown }).api = mockApi;
-    const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-quick-start'));
-    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
-    expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
-    expect(onComplete).not.toHaveBeenCalled();
-    // The retry affordances surface so the user isn't stranded on step3.
-    expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
-  });
-
-  it('Open Existing Vault opens the folder picker and passes the selected path to onboardingComplete', async () => {
-    const onComplete = vi.fn();
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-open-existing'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
-      startMode: 'open-existing',
-      vaultParentPath: '/home/user/Stories',
-    }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
-  });
-
-  it('Create Custom shows Blank Slate, Sample Project, and From Template choices', async () => {
+  it('card labels match spec copy', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openCustomOptions();
-    expect(screen.getByTestId('screen-step1b-options')).toBeInTheDocument();
-    expect(screen.getByTestId('card-blank')).toHaveTextContent('Blank Slate');
-    expect(screen.getByTestId('card-sample')).toHaveTextContent('Sample Project');
-    expect(screen.getByTestId('card-template')).toHaveTextContent('From Template');
-  });
-
-  it('shows Skip link on Step 1', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('gs-skip')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-skip').textContent).toMatch(/Skip/);
+    expect(screen.getByTestId('card-path-default')).toHaveTextContent('Default Layout');
+    expect(screen.getByTestId('card-path-blank')).toHaveTextContent('Blank');
+    expect(screen.getByTestId('card-path-import')).toHaveTextContent('Import');
+    expect(screen.getByTestId('card-path-sample')).toHaveTextContent('Sample Project');
     await act(async () => {});
   });
 
-  it('Create Custom → Blank Slate advances to Step 2', async () => {
+  it('Default Layout card navigates to Step 2', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-path-default'));
+    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('Blank card navigates to Step 2', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('Create Custom → Sample Project advances to Step 1c (genre picker)', async () => {
+  it('Sample Project card navigates to genre picker (step1c)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openSampleFlow();
     expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('Create Custom → From Template advances to the template gallery', async () => {
+  it('shows Skip link on path selector', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-    // Flush the async templateList() call that fires when step1b mounts
+    expect(screen.getByTestId('gs-skip')).toBeInTheDocument();
+    expect(screen.getByTestId('gs-skip').textContent).toMatch(/Skip/);
     await act(async () => {});
   });
 
@@ -235,17 +175,30 @@ describe('OnboardingWizard — Step 1', () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 
-  it('Escape on Step 1 shows cancel confirm dialog', async () => {
+  it('Escape on path selector shows cancel confirm dialog', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('close button on Step 1 shows cancel confirm dialog', async () => {
+  it('close button on path selector shows cancel confirm dialog', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('gs-close-btn-step1'));
+    fireEvent.click(screen.getByTestId('gs-close-btn-path-selector'));
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('always-in-DOM aria-live region is present on path selector', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('wizard-live-region')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('aria-live region announces path card selection', async () => {
+    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-path-blank'));
+    expect(screen.getByTestId('wizard-live-region')).toHaveTextContent('Blank selected.');
     await act(async () => {});
   });
 });
@@ -259,7 +212,7 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-keep-going'));
     expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -282,253 +235,6 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
     expect(screen.getByTestId('gs-keep-going')).toHaveTextContent('Keep Going');
     expect(screen.getByTestId('gs-cancel-setup')).toHaveTextContent('Cancel Setup');
     await act(async () => {});
-  });
-});
-
-// ─── Step 1b: Template sub-picker ─────────────────────────────────────────────
-
-describe('OnboardingWizard — Step 1b (template picker)', () => {
-  it('shows "Choose a template" heading', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Choose a template')).toBeInTheDocument());
-  });
-
-  it('loads and displays bundled template cards', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Novel (3-Act)')).toBeInTheDocument());
-    expect(screen.getByText('Short Story')).toBeInTheDocument();
-    expect(screen.getByText('World-building Bible')).toBeInTheDocument();
-    expect(screen.getByText('Series Bible')).toBeInTheDocument();
-  });
-
-  it('shows "Use this →" CTA on each template card', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getAllByText(/Use this/)).toHaveLength(4));
-  });
-
-  it('Back button returns to the custom-options step', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('gs-back-step1b'));
-    fireEvent.click(screen.getByTestId('gs-back-step1b'));
-    expect(screen.getByTestId('screen-step1b-options')).toBeInTheDocument();
-  });
-
-  it('selecting a template card shows preview without navigating', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-    expect(screen.getByTestId('template-preview')).toBeInTheDocument();
-  });
-
-  it('sr-only live region announces selected template name (F-13)', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('template-announcement')).toHaveTextContent(
-      'Preview for Novel (3-Act) is ready below.'
-    );
-  });
-
-  it('selected card has aria-checked=true, others false', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('template-card-bundled:short-story')).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('switching selection updates live region and aria-checked', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:short-story'));
-    expect(screen.getByTestId('template-announcement')).toHaveTextContent(
-      'Preview for Short Story is ready below.'
-    );
-    expect(screen.getByTestId('template-card-bundled:short-story')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('confirming preview advances to Step 2', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    await waitFor(() => screen.getByTestId('template-use-btn'));
-    fireEvent.click(screen.getByTestId('template-use-btn'));
-    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
-  });
-
-  it('shows user templates under "Your Templates" section when present', async () => {
-    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
-    expect(screen.getByText('My Template')).toBeInTheDocument();
-  });
-
-  it('shows empty hint under "Your Templates" when no custom templates saved', async () => {
-    // mockApi returns BUNDLED_TEMPLATES only — no isUserTemplate entries
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
-    const hint = screen.getByTestId('template-empty-hint');
-    expect(hint).toBeInTheDocument();
-    expect(hint).toHaveTextContent('No saved templates yet.');
-    expect(hint).not.toHaveStyle('font-style: italic');
-    const sub = screen.getByTestId('template-empty-hint-sub');
-    expect(sub).toHaveTextContent('Settings');
-    expect(sub).toHaveTextContent('Templates');
-  });
-
-  // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
-  it('template grid has role="radiogroup" labelled by the heading', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    const heading = screen.getByRole('heading', { name: 'Choose a template' });
-    expect(heading).toHaveAttribute('id', 'template-picker-heading');
-    const group = screen.getByRole('radiogroup', { name: 'Choose a template' });
-    expect(group).toBeInTheDocument();
-  });
-
-  it('each template card has role="radio" with aria-checked=false before selection', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    const radios = screen.getAllByRole('radio');
-    expect(radios.length).toBe(4);
-    radios.forEach((radio) => {
-      expect(radio).toHaveAttribute('aria-checked', 'false');
-    });
-  });
-
-  it('hides empty hint once a user template is present', async () => {
-    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('template-card-user:my-template')).toBeInTheDocument());
-    expect(screen.queryByTestId('template-empty-hint')).not.toBeInTheDocument();
-  });
-
-  // SKY-1358: user-template grid gets its own radiogroup role
-  it('user-template radiogroup is labelled by "Your Templates" heading', async () => {
-    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByText('Your Templates'));
-    const groups = screen.getAllByRole('radiogroup');
-    expect(groups.length).toBe(2);
-    expect(groups[1]).toHaveAttribute('aria-labelledby', 'template-picker-user-heading');
-  });
-
-  // SKY-1360: F-06 — loading indicator with aria-live while templateList() is in flight
-  it('shows loading status with role=status and aria-live=polite while fetching', async () => {
-    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
-    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    const status = await waitFor(() => screen.getByRole('status'));
-    expect(status).toHaveAttribute('aria-live', 'polite');
-    expect(status.textContent).toMatch(/Loading templates/);
-    // resolve the fetch so the test cleans up without act() warnings
-    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
-  });
-
-  // SKY-1360: F-05 — empty-state message with role=status when list resolves to 0 items
-  it('shows empty-state status with role=status and aria-live=polite when list is empty', async () => {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    const status = await waitFor(() => {
-      const el = screen.getByRole('status');
-      expect(el.textContent).toMatch(/No templates available/);
-      return el;
-    });
-    expect(status).toHaveAttribute('aria-live', 'polite');
-    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
-  });
-
-  // SKY-1360: no empty-grid flash — grid is not shown before fetch completes
-  it('does not render the radiogroup while loading is in progress', async () => {
-    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
-    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByRole('status'));
-    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('template-card-bundled:novel-3act')).not.toBeInTheDocument();
-    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
-  });
-
-  // SKY-1362: F-12 — Back arrow on step1b wrapped in aria-hidden so SR hears "Back, button"
-  it('step1b Back button arrow glyph is wrapped in aria-hidden span', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('gs-back-step1b'));
-    const backBtn = screen.getByTestId('gs-back-step1b');
-    const arrowSpan = backBtn.querySelector('span[aria-hidden="true"]');
-    expect(arrowSpan).toBeInTheDocument();
-    expect(arrowSpan!.textContent).toBe('\u2190');
-  });
-
-  // SKY-1412 AC-6: Esc with a selection clears it; a second Esc shows the cancel confirm
-  it('Escape with a template selected clears the selection and stays on step1b', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'true');
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'false');
-    expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-  });
-
-  it('Escape with no template selected shows cancel confirm on step1b', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    // no card selected — Escape should show cancel confirm
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
-  });
-
-  // SKY-1362: F-14 — Back from template-picker restores focus to the "From Template" card
-  it('Back from template-picker restores focus to the card that triggered navigation', async () => {
-    // Capture the rAF callback; fire it after React commits the custom-options DOM so the trigger exists.
-    // React unmounts/remounts the options screen on transition, so the implementation does a querySelector
-    // on data-testid to find the fresh element rather than using the stale captured ref.
-    const rafRef = { current: null as ((time: number) => void) | null };
-    vi.stubGlobal('requestAnimationFrame', (fn: (time: number) => void) => { rafRef.current = fn; return 0; });
-    try {
-      render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-      openCustomOptions();
-      const templateCard = screen.getByTestId('card-template');
-      templateCard.focus();
-      fireEvent.click(templateCard);
-      await waitFor(() => screen.getByTestId('gs-back-step1b'));
-      await act(async () => { fireEvent.click(screen.getByTestId('gs-back-step1b')); });
-      // React committed the custom-options step; fire rAF — implementation finds the fresh card-template
-      expect(screen.getByTestId('screen-step1b-options')).toBeInTheDocument();
-      rafRef.current?.(0);
-      // Check focus on the freshly-mounted card-template element (NOT the stale pre-nav ref)
-      expect(document.activeElement).toBe(screen.getByTestId('card-template'));
-    } finally {
-      vi.unstubAllGlobals();
-    }
   });
 });
 
@@ -590,11 +296,11 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
     await act(async () => {});
   });
 
-  it('Back button returns to step1 and resets genre selection', async () => {
+  it('Back button returns to path selector and resets genre selection', async () => {
     renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
     fireEvent.click(screen.getByTestId('gs-back-step1c'));
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     // Re-entering step1c should have no selection
     openSampleFlow();
     expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
@@ -678,30 +384,17 @@ describe('OnboardingWizard — Step 2', () => {
     expect(screen.getByTestId('gs-create-story')).toBeInTheDocument();
   });
 
-  it('Back button returns to the custom-options step', async () => {
+  it('Back button returns to path selector', async () => {
     await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-back-step2'));
-    expect(screen.getByTestId('screen-step1b-options')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
   });
 
-  it('Back from Step 2 (template path) returns to Step 1b', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    await waitFor(() => screen.getByTestId('template-use-btn'));
-    fireEvent.click(screen.getByTestId('template-use-btn'));
-    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('gs-back-step2'));
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('title value is preserved when going back from Step 2', async () => {
+  it('title value is preserved when going back from Step 2 and re-entering', async () => {
     await renderAtStep2();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Saga' } });
     fireEvent.click(screen.getByTestId('gs-back-step2'));
-    fireEvent.click(screen.getByTestId('card-blank'));
+    fireEvent.click(screen.getByTestId('card-path-blank'));
     expect(screen.getByTestId('gs-title-input')).toHaveValue('My Saga');
   });
 });
@@ -878,20 +571,6 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
     ));
   });
 
-  it('calls onboardingComplete with correct template payload', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    await waitFor(() => screen.getByTestId('template-use-btn'));
-    fireEvent.click(screen.getByTestId('template-use-btn'));
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Epic Saga' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ startMode: 'template', templateId: 'bundled:novel-3act', storyTitle: 'Epic Saga' })
-    ));
-  });
-
   it('author name persisted to returned settings', async () => {
     const onComplete = vi.fn();
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
@@ -980,56 +659,22 @@ describe('OnboardingWizard — Step 3 error state', () => {
   });
 });
 
-// ─── SKY-1353: bundled-template fetch fallback ────────────────────────────────
-
-describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
-  it('shows inline error when templateList rejects', async () => {
-    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('template-load-error')).toBeInTheDocument());
-    expect(screen.getByTestId('template-load-error').textContent).toContain(
-      "Bundled templates couldn't be loaded. You can still create a blank story."
-    );
-  });
-
-  it('error is announced as an alert for screen readers', async () => {
-    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-  });
-
-  it('"Create blank story" CTA navigates to Step 2', async () => {
-    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('template-error-blank-cta')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('template-error-blank-cta'));
-    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
-  });
-});
-
 // ─── AC coverage ──────────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — AC coverage', () => {
   it('AC1: wizard shown on first launch (onboardingComplete falsy)', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('AC2: Step 1 shows three top-level starting-point cards', async () => {
+  it('AC2: path selector shows four starting-point cards', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(3);
+    expect(screen.getByTestId('card-path-default')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-import')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-sample')).toBeInTheDocument();
     await act(async () => {});
-  });
-
-  it('AC3: From Template shows template sub-picker before Step 2', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('screen-step1b')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
   });
 
   it('AC16: Skip bypasses setup — no onboardingComplete call needed before skip fires', async () => {
@@ -1041,12 +686,13 @@ describe('OnboardingWizard — AC coverage', () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
   });
 
-  it('AC17: Back on Step 2 preserves title and card selection', async () => {
+  it('AC17: Back on Step 2 returns to path selector; title is preserved on re-entry', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Preserved Title' } });
     fireEvent.click(screen.getByTestId('gs-back-step2'));
-    fireEvent.click(screen.getByTestId('card-blank'));
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('card-path-blank'));
     expect(screen.getByTestId('gs-title-input')).toHaveValue('Preserved Title');
     await act(async () => {});
   });
@@ -1070,159 +716,18 @@ describe('OnboardingWizard — AC coverage', () => {
 
   it('AC22: all user-facing strings match spec copy', async () => {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    // Step 1 copy
+    // Path selector copy
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
-    openCustomOptions();
-    expect(screen.getByTestId('card-blank')).toHaveTextContent('Blank Slate');
-    expect(screen.getByTestId('card-sample')).toHaveTextContent('Sample Project');
-    expect(screen.getByTestId('card-template')).toHaveTextContent('From Template');
+    expect(screen.getByTestId('card-path-default')).toHaveTextContent('Default Layout');
+    expect(screen.getByTestId('card-path-blank')).toHaveTextContent('Blank');
+    expect(screen.getByTestId('card-path-import')).toHaveTextContent('Import');
+    expect(screen.getByTestId('card-path-sample')).toHaveTextContent('Sample Project');
     // Advance to Step 2 for step 2 copy
-    fireEvent.click(screen.getByTestId('card-blank'));
+    openBlankFlow();
     expect(screen.getByText("What's your story called?")).toBeInTheDocument();
     expect(screen.getByText('Create Story →', { exact: false })).toBeInTheDocument();
     await act(async () => {});
-  });
-});
-
-// ─── SKY-1397: template counter ───────────────────────────────────────────────
-
-describe('OnboardingWizard — Template counter (SKY-1397)', () => {
-  async function goToTemplatePicker() {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('screen-step1b')).toBeInTheDocument());
-  }
-
-  it('reloads templateList every time step1b is shown', async () => {
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    // First visit
-    openTemplateGallery();
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(1));
-    // Navigate back and visit again
-    fireEvent.click(screen.getByTestId('gs-back-step1b'));
-    fireEvent.click(screen.getByTestId('card-template'));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('shows "No saved templates yet" empty state when no user templates exist', async () => {
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId('template-empty-hint')).toBeInTheDocument());
-    expect(screen.getByTestId('template-empty-hint').textContent).toMatch(/No saved templates yet/);
-    expect(screen.getByTestId('template-empty-hint-sub').textContent).toMatch(/Settings/);
-  });
-
-  it('does not show count badge when there are no user templates', async () => {
-    await goToTemplatePicker();
-    await waitFor(() => screen.getByTestId('user-templates-heading'));
-    expect(screen.queryByTestId('user-template-count')).not.toBeInTheDocument();
-  });
-
-  it('shows count "(1)" in heading when one user template is present', async () => {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId('user-template-count')).toBeInTheDocument());
-    expect(screen.getByTestId('user-template-count').textContent).toContain('1');
-  });
-
-  it('shows count "(2)" and excludes bundled templates from count', async () => {
-    const user2 = { ...USER_TEMPLATE, id: 'user:second', name: 'Second Template' };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE, user2] });
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId('user-template-count')).toBeInTheDocument());
-    expect(screen.getByTestId('user-template-count').textContent).toContain('2');
-  });
-
-  it('user template cards appear in the Your Templates section', async () => {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId(`template-card-${USER_TEMPLATE.id}`)).toBeInTheDocument());
-    expect(screen.getByTestId(`template-card-${BUNDLED_TEMPLATE.id}`)).toBeInTheDocument();
-    expect(screen.getByTestId('user-templates-heading').textContent).toContain('Your Templates');
-  });
-});
-
-// ─── SKY-1399: rename / delete / duplicate ────────────────────────────────────
-
-describe('OnboardingWizard — Template management (SKY-1399)', () => {
-  async function goToPickerWithUserTemplate() {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
-    render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId(`template-card-${USER_TEMPLATE.id}`)).toBeInTheDocument());
-  }
-
-  it('shows rename/delete/duplicate action buttons for user templates', async () => {
-    await goToPickerWithUserTemplate();
-    expect(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`template-duplicate-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
-  });
-
-  it('clicking rename shows inline input pre-filled with current name', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    expect(input).toBeInTheDocument();
-    expect((input as HTMLInputElement).value).toBe(USER_TEMPLATE.name);
-  });
-
-  it('confirms rename on Enter and reloads templates', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    fireEvent.change(input, { target: { value: 'Renamed Template' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(mockApi.templateRename).toHaveBeenCalledWith(USER_TEMPLATE.id, 'Renamed Template'));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('Enter rename does not call templateRename a second time when input blurs on unmount', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    fireEvent.change(input, { target: { value: 'Renamed Template' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    fireEvent.blur(input);
-    await waitFor(() => expect(mockApi.templateRename).toHaveBeenCalledTimes(1));
-  });
-
-  it('cancels rename on Escape', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(screen.queryByTestId(`template-rename-input-${USER_TEMPLATE.id}`)).not.toBeInTheDocument();
-    expect(mockApi.templateRename).not.toHaveBeenCalled();
-  });
-
-  it('clicking duplicate calls templateDuplicate and reloads', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-duplicate-btn-${USER_TEMPLATE.id}`));
-    await waitFor(() => expect(mockApi.templateDuplicate).toHaveBeenCalledWith(USER_TEMPLATE.id));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('clicking delete shows confirm dialog', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
-    expect(screen.getByTestId('template-delete-confirm-dialog')).toBeInTheDocument();
-  });
-
-  it('confirming delete calls templateDelete and reloads', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
-    fireEvent.click(screen.getByTestId('template-delete-confirm'));
-    await waitFor(() => expect(mockApi.templateDelete).toHaveBeenCalledWith(USER_TEMPLATE.id));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('cancelling delete does not call templateDelete', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
-    fireEvent.click(screen.getByTestId('template-delete-cancel'));
-    expect(screen.queryByTestId('template-delete-confirm-dialog')).not.toBeInTheDocument();
-    expect(mockApi.templateDelete).not.toHaveBeenCalled();
   });
 });
 
@@ -1261,11 +766,11 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     }));
   });
 
-  it('"Start fresh" dismisses dialog and leaves wizard on step1', () => {
+  it('"Start fresh" dismisses dialog and leaves wizard on path-selector', () => {
     render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-start-fresh'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
   });
 
   it('"Never show again" dismisses dialog, calls settingsSet with legacyVaultDismissed=true', async () => {
