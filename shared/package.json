@@ -1,0 +1,9 @@
+{
+  "name": "@mythos-writer/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./types/suggestion": "./types/suggestion.ts"
+  }
+}
