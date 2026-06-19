@@ -130,14 +130,14 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
   // so startVoice() takes the IPC fallback path → setVoiceState('listening') immediately.
 
   it('AC-V-05: mic button has aria-pressed=false in idle state', () => {
-    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    const { container } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
     const micBtn = container.querySelector('.brainstorm-mic-btn');
     expect(micBtn).not.toBeNull();
     expect(micBtn?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('AC-V-05: mic button has aria-pressed=true while recording', () => {
-    const { getByRole } = render(<BrainstormPage onClose={() => {}} />);
+    const { getByRole } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
     // MIC_ARIA_LABELS.idle = "Start voice input" (SKY-1503)
     const micBtn = getByRole('button', { name: /start voice input/i });
     fireEvent.click(micBtn);
@@ -145,7 +145,7 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
   });
 
   it('AC-V-05: axe passes on brainstorm mic in recording state', async () => {
-    const { container, getByRole } = render(<BrainstormPage onClose={() => {}} />);
+    const { container, getByRole } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
     fireEvent.click(getByRole('button', { name: /start voice input/i }));
     const results = await axe(container);
     expect(results).toHaveNoViolations();

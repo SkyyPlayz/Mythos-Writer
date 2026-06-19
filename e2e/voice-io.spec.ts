@@ -137,13 +137,32 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 /** Navigate to Brainstorm and wait for it to load. */
 async function openBrainstorm(page: Page): Promise<void> {
-  await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+  if (await page.locator('.brainstorm-title').isVisible().catch(() => false)) return;
+
+  const legacyMenu = page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' });
+  if (await legacyMenu.count()) {
+    await legacyMenu.click();
+  } else {
+    const quickStartBrainstorm = page.getByText('Try Brainstorm', { exact: true });
+    if (await quickStartBrainstorm.isVisible().catch(() => false)) {
+      await quickStartBrainstorm.click();
+    } else {
+      await page.getByRole('tab', { name: /^Notes$/ }).click();
+      await page.getByRole('tab', { name: /Brainstorm/i }).click();
+    }
+  }
+
   await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 8_000 });
 }
 
 /** Navigate to the Editor sidebar's Assistant tab and wait for it to mount. */
 async function openAssistantPanel(page: Page): Promise<void> {
-  await page.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
+  const legacyEditorMenu = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
+  if (await legacyEditorMenu.count()) {
+    await legacyEditorMenu.click();
+  } else {
+    await page.getByRole('tab', { name: /^Story$/ }).click();
+  }
   await page.getByRole('tab', { name: 'Assistant' }).click();
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 5_000 });
 }
@@ -381,6 +400,40 @@ test('TC-V-09: Settings Voice section renders all required fields in Electron', 
   await expect(page.locator('#voice-tts-rate')).toBeAttached();
   await expect(page.locator('#voice-persistent-mute')).toBeAttached();
   await page.keyboard.press('Escape');
+});
+
+test('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility', async () => {
+  await openBrainstorm(page);
+  await expect(page.locator('[data-testid="brainstorm-mic-btn"]')).toBeVisible({ timeout: 4_000 });
+
+  const settingsBtn = page.locator(
+    '.settings-btn, button[aria-label*="Settings"], [aria-label*="settings"]',
+  ).first();
+  await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
+    await page.locator('[title*="Settings"], [title*="settings"]').first().click();
+  });
+  const voiceToggle = page.locator('#voice-enabled');
+  await expect(voiceToggle).toBeChecked({ timeout: 6_000 });
+  await page.locator('label[for="voice-enabled"] .settings-toggle-track').click();
+  await expect(voiceToggle).not.toBeChecked();
+  await page.getByRole('button', { name: /save settings/i }).click();
+  await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
+  await page.getByRole('button', { name: /^cancel$/i }).click();
+
+  await openBrainstorm(page);
+  await expect(page.locator('[data-testid="brainstorm-mic-btn"]')).toHaveCount(0);
+
+  await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
+    await page.locator('[title*="Settings"], [title*="settings"]').first().click();
+  });
+  await page.locator('label[for="voice-enabled"] .settings-toggle-track').click();
+  await expect(voiceToggle).toBeChecked();
+  await page.getByRole('button', { name: /save settings/i }).click();
+  await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
+  await page.getByRole('button', { name: /^cancel$/i }).click();
+
+  await openBrainstorm(page);
+  await expect(page.locator('[data-testid="brainstorm-mic-btn"]')).toBeVisible({ timeout: 4_000 });
 });
 
 // ─── TC-V-10e: Writing Assistant live region always in DOM ───────────────────

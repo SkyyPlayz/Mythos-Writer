@@ -3553,6 +3553,7 @@ export default function DesktopShell() {
           onExport={(scope: ExportScope) => setExportScope(scope)}
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}
+          voiceEnabled={appSettings?.voice?.enabled === true}
           onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
           onNavigateToEntity={(entityId) => {
             window.api.entityRead(entityId).then((entity) => {
