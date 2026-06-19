@@ -330,6 +330,10 @@ export const IPC_CHANNELS = {
   // the wizard never needs to send the full settings object back.
   ONBOARDING_COMPLETE: 'onboarding:complete',
 
+  // SKY-2638: Path 3 — import Obsidian vault dry-run + commit channels
+  ONBOARDING_IMPORT_DRY_RUN: 'onboarding:import-vault:dry-run',
+  ONBOARDING_IMPORT_COMMIT: 'onboarding:import-vault:commit',
+
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only). Clears vaultRoot, notesVaultRoot,
   // and onboardingComplete so the wizard re-appears on next boot.
   ONBOARDING_RESET: 'onboarding:reset',
@@ -760,6 +764,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ONBOARDING_GET_SUGGESTED_PATHS]: (payload: never) => OnboardingGetSuggestedPathsResponse;
   [IPC_CHANNELS.ONBOARDING_OPEN_EXISTING_VAULT]: (payload: OnboardingOpenExistingVaultPayload) => OnboardingOpenExistingVaultResponse;
   [IPC_CHANNELS.ONBOARDING_DETECT_MYTHOS_VAULT]: (payload: OnboardingDetectMythosVaultPayload) => OnboardingDetectMythosVaultResponse;
+  // SKY-2638: Path 3 import channels
+  [IPC_CHANNELS.ONBOARDING_IMPORT_DRY_RUN]: (payload: OnboardingImportDryRunPayload) => Promise<VaultObsidianDryRunReport>;
+  [IPC_CHANNELS.ONBOARDING_IMPORT_COMMIT]: (payload: OnboardingImportCommitPayload) => Promise<OnboardingImportCommitResponse>;
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-156: Project Templates
@@ -2086,6 +2093,21 @@ export interface ObsidianImportPreview {
 
 export interface OnboardingDryRunObsidianResponse {
   preview?: ObsidianImportPreview;
+  error?: string;
+}
+
+// ─── SKY-2638: Path 3 import vault channels ───
+
+export interface OnboardingImportDryRunPayload {
+  sourcePath: string;
+}
+
+export interface OnboardingImportCommitPayload {
+  sourcePath: string;
+}
+
+export interface OnboardingImportCommitResponse {
+  ok: boolean;
   error?: string;
 }
 

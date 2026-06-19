@@ -9,7 +9,8 @@ import './OnboardingWizard.css';
 
 // SKY-2988: custom-location + custom-template are the v0.3 Custom Setup 2-screen path
 // SKY-2990: step-import is the 3-section Import/Open picker screen
-type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'step-import';
+// SKY-2638: import-picker/scanning/dry-run/importing are the Path 3 sub-flow steps
+type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'step-import' | 'import-picker' | 'import-scanning' | 'import-dry-run' | 'import-importing';
 // SKY-2220: 'quick-start' is the one-click first-run path that bypasses the
 // title/save-path form entirely. 'default-mythos-vault' is kept as a legacy
 // backend alias during the onboarding v2.1 transition.
@@ -124,6 +125,17 @@ type Api = {
     importedStories: Array<{ filePath: string; storyId: string; storyTitle: string; sceneCount: number; firstScenePath?: string; firstSceneId?: string; warnings: string[] }>;
     errors: Array<{ filePath: string; error: string }>;
   }>;
+  // SKY-2638: Path 3 import vault channels
+  importVaultDryRun?: (sourcePath: string) => Promise<{
+    notesCount: number;
+    fatalError: string | null;
+    brokenLinks: Array<{ file: string; target: string }>;
+    nameCollisions: Array<{ name: string; file: string }>;
+    missingFrontmatter: string[];
+    restructured?: Array<{ from: string; to: string }>;
+    leftAsIs?: string[];
+  }>;
+  importVaultCommit?: (sourcePath: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
 function api(): Api {
@@ -184,6 +196,18 @@ function buildSuggestedLocations(
   }
   const recentSet = new Set(recents.map((r) => r.trim()));
   return candidates.filter((c) => !recentSet.has(c.trim())).slice(0, 3);
+}
+
+// ─── SKY-2638: Dry-run report type ───────────────────────────────────────────
+
+interface DryRunReport {
+  notesCount: number;
+  fatalError: string | null;
+  brokenLinks: Array<{ file: string; target: string }>;
+  nameCollisions: Array<{ name: string; file: string }>;
+  missingFrontmatter: string[];
+  restructured?: Array<{ from: string; to: string }>;
+  leftAsIs?: string[];
 }
 
 // ─── ConflictDialog (SKY-2007 §3.3.4) ────────────────────────────────────────
@@ -488,6 +512,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [showMigrationDialog, setShowMigrationDialog] = useState(
     Boolean(initialSettings.legacyVaultDetected && !initialSettings.legacyVaultDismissed),
   );
+
+  // SKY-2638: Path 3 import sub-flow state
+  const [importPickerPath, setImportPickerPath] = useState('');
+  const [importPickerError, setImportPickerError] = useState('');
+  const [importDryRunReport, setImportDryRunReport] = useState<DryRunReport | null>(null);
+  const [importCommitError, setImportCommitError] = useState('');
 
   // SKY-2007: vault picker polish state
   const [pathValidationState, setPathValidationState] = useState<PathValidationState>('idle');
@@ -1069,6 +1099,79 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
 
+  // ─── SKY-2638: Path 3 — Import Obsidian vault actions ────────────────────────
+
+  function handleSelectImport() {
+    setImportPickerPath('');
+    setImportPickerError('');
+    setImportDryRunReport(null);
+    setImportCommitError('');
+    setStep('import-picker');
+  }
+
+  async function handleImportPickFolder() {
+    try {
+      const result = await api().pickFolder();
+      if (result.cancelled || !result.vaultRoot) return;
+      const picked = result.vaultRoot;
+      setImportPickerPath(picked);
+      setImportPickerError('');
+      // Validate vault shape: must have .obsidian/ directory (AC-OB-07)
+      const obsidianCheck = await api().validatePath(picked + '/.obsidian');
+      if (!obsidianCheck.exists) {
+        setImportPickerError("This doesn't look like an Obsidian vault. Select a folder that contains a .obsidian/ directory or at least one .md file.");
+        return;
+      }
+      // Vault shape OK — start dry-run
+      setStep('import-scanning');
+      try {
+        const report = await api().importVaultDryRun?.(picked);
+        if (!report) {
+          setImportPickerError('Dry-run failed — no response from main process.');
+          setStep('import-picker');
+          return;
+        }
+        setImportDryRunReport(report);
+        setStep('import-dry-run');
+      } catch (e) {
+        setImportPickerError(e instanceof Error ? e.message : 'Scan failed. Try again.');
+        setStep('import-picker');
+      }
+    } catch {
+      // pickFolder cancelled or errored — stay on picker
+    }
+  }
+
+  async function handleImportCommit() {
+    if (!importPickerPath) return;
+    setImportCommitError('');
+    setStep('import-importing');
+    try {
+      const commitRes = await api().importVaultCommit?.(importPickerPath);
+      if (commitRes && !commitRes.ok) {
+        setImportCommitError(commitRes.error ?? 'Import failed.');
+        setStep('import-dry-run');
+        return;
+      }
+      // Mark onboarding complete and navigate to vault browser
+      const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: importPickerPath });
+      if (!res.ok || res.error) {
+        setImportCommitError(res.error ?? 'Import succeeded but onboarding completion failed.');
+        setStep('import-dry-run');
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'open-existing',
+      };
+      onComplete(updated);
+    } catch (e) {
+      setImportCommitError(e instanceof Error ? e.message : 'Import failed.');
+      setStep('import-dry-run');
+    }
+  }
+
   // ─── Step 2 actions ─────────────────────────────────────────────────────────
 
   // SKY-2007: validate a fully-resolved path via IPC and set pathValidationState
@@ -1354,7 +1457,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   function handleOverlayKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
-      if (step === 'step3') return; // close disabled during scaffolding
+      if (step === 'step3' || step === 'import-scanning' || step === 'import-importing') return; // close disabled during active operations
       if (showConflictDialog) {
         setShowConflictDialog(false);
         return;
@@ -1368,7 +1471,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'step-import') {
+      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'step-import' || step === 'import-picker' || step === 'import-dry-run') {
         setShowCancelConfirm(true);
       }
     }
@@ -1617,6 +1720,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               ctaLabel="Browse templates &#x2192;"
               onActivate={handleSelectTemplate}
               testId="card-template"
+            />
+            <StartingPointCard
+              icon="&#x1F4E5;"
+              title="Import Obsidian Vault"
+              description="Bring in an existing Obsidian notes vault. We'll scan it first so there are no surprises."
+              ctaLabel="Import &#x2192;"
+              onActivate={handleSelectImport}
+              testId="card-import"
             />
           </div>
         </div>
@@ -1941,6 +2052,247 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               <p className="gp-note">Sampling won&apos;t affect your own files.</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── SKY-2638: Import picker ── */}
+      {(step === 'import-picker' || step === 'import-scanning') && (
+        <div className="gs-modal" data-testid="screen-import-picker">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              aria-label="Back to custom vault options"
+              onClick={() => setStep('step1b')}
+              data-testid="gs-back-import-picker"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Import Obsidian Vault</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-import-picker"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Choose your Obsidian vault</h2>
+          <p className="gs-modal__subtitle">
+            Select the folder that contains your Obsidian vault. We&apos;ll scan it for potential issues before importing.
+          </p>
+
+          <div className="gs-form__field">
+            <label className="gs-form__label" htmlFor="import-vault-path-input">Vault folder</label>
+            <div className="gs-path-row">
+              <input
+                id="import-vault-path-input"
+                className="gs-form__input gs-path-input"
+                type="text"
+                readOnly
+                value={importPickerPath}
+                placeholder="No folder selected"
+                data-testid="import-vault-path-input"
+                aria-label="Vault folder path"
+                spellCheck={false}
+              />
+            </div>
+            {importPickerError && (
+              <p className="gs-form__error" role="alert" data-testid="import-picker-error">
+                {importPickerError}
+              </p>
+            )}
+          </div>
+
+          <div className="gs-actions">
+            {step === 'import-scanning' ? (
+              <div className="gs-spinner" aria-label="Scanning vault" role="status" data-testid="import-scanning-spinner" />
+            ) : (
+              <button
+                className="btn-primary gs-actions__cta"
+                type="button"
+                onClick={() => { void handleImportPickFolder(); }}
+                disabled={!!importPickerError && !!importPickerPath}
+                data-testid="import-vault-scan-btn"
+              >
+                {importPickerPath ? 'Rescan folder&#x2026;' : 'Browse&#x2026;'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── SKY-2638: Dry-run report ── */}
+      {step === 'import-dry-run' && importDryRunReport && (
+        <div className="gs-modal gs-modal--wide" data-testid="screen-dry-run">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              aria-label="Back to vault picker"
+              onClick={() => setStep('import-picker')}
+              data-testid="back-from-dry-run"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Scan Results</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-dry-run"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Review before importing</h2>
+
+          <div className="dry-run-report" data-testid="dry-run-report">
+            {/* Fatal error banner */}
+            {importDryRunReport.fatalError && (
+              <div className="dry-run-banner" role="alert" data-testid="dry-run-fatal-error">
+                <strong>Import blocked:</strong> {importDryRunReport.fatalError}
+              </div>
+            )}
+
+            {importCommitError && (
+              <div className="dry-run-banner" role="alert" data-testid="dry-run-commit-error">
+                {importCommitError}
+              </div>
+            )}
+
+            {/* Notes count */}
+            <div className="dry-run-stat">
+              <span className="dry-run-stat-value" data-testid="dry-run-notes-count">
+                {importDryRunReport.notesCount}
+              </span>
+              <span className="dry-run-stat-label">notes found</span>
+            </div>
+
+            {/* Broken links */}
+            {importDryRunReport.brokenLinks.length > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-broken-links">
+                <summary className="dry-run-section-title dry-run-warn">
+                  &#x26A0; {importDryRunReport.brokenLinks.length} broken link{importDryRunReport.brokenLinks.length !== 1 ? 's' : ''}
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These [[wiki-links]] point to notes that don&apos;t exist:</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.brokenLinks.slice(0, 30).map((bl, i) => (
+                      <li key={i}>
+                        <span className="dry-run-file">{bl.file}</span>
+                        {' — '}
+                        <span className="dry-run-link">{bl.target}</span>
+                      </li>
+                    ))}
+                    {importDryRunReport.brokenLinks.length > 30 && (
+                      <li className="dry-run-more">…and {importDryRunReport.brokenLinks.length - 30} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* Name collisions */}
+            {importDryRunReport.nameCollisions.length > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-name-collisions">
+                <summary className="dry-run-section-title dry-run-warn">
+                  &#x26A0; {importDryRunReport.nameCollisions.length} name collision{importDryRunReport.nameCollisions.length !== 1 ? 's' : ''}
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These notes share a name with existing entities (will be renamed with an &ldquo;Imported&rdquo; suffix):</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.nameCollisions.slice(0, 20).map((nc, i) => (
+                      <li key={i} className="dry-run-file">{nc.name} — {nc.file}</li>
+                    ))}
+                    {importDryRunReport.nameCollisions.length > 20 && (
+                      <li className="dry-run-more">…and {importDryRunReport.nameCollisions.length - 20} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* Missing frontmatter */}
+            {importDryRunReport.missingFrontmatter.length > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-missing-frontmatter">
+                <summary className="dry-run-section-title dry-run-info">
+                  &#x2139; {importDryRunReport.missingFrontmatter.length} note{importDryRunReport.missingFrontmatter.length !== 1 ? 's' : ''} missing frontmatter
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These notes will have frontmatter added automatically:</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.missingFrontmatter.slice(0, 20).map((f, i) => (
+                      <li key={i} className="dry-run-file">{f}</li>
+                    ))}
+                    {importDryRunReport.missingFrontmatter.length > 20 && (
+                      <li className="dry-run-more">…and {importDryRunReport.missingFrontmatter.length - 20} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* Restructured files */}
+            {(importDryRunReport.restructured?.length ?? 0) > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-restructured">
+                <summary className="dry-run-section-title dry-run-info">
+                  &#x1F4C1; {importDryRunReport.restructured!.length} file{importDryRunReport.restructured!.length !== 1 ? 's' : ''} will be reorganised
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These files will be moved to match the Notes Vault layout:</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.restructured!.slice(0, 20).map((r, i) => (
+                      <li key={i}>
+                        <span className="dry-run-file">{r.from}</span>
+                        {' '}&#x2192;{' '}
+                        <span className="dry-run-file">{r.to}</span>
+                      </li>
+                    ))}
+                    {importDryRunReport.restructured!.length > 20 && (
+                      <li className="dry-run-more">…and {importDryRunReport.restructured!.length - 20} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* All clear */}
+            {!importDryRunReport.fatalError &&
+              importDryRunReport.brokenLinks.length === 0 &&
+              importDryRunReport.nameCollisions.length === 0 &&
+              (importDryRunReport.restructured?.length ?? 0) === 0 && (
+                <p className="dry-run-ok">&#x2705; Everything looks good! Ready to import.</p>
+              )}
+
+            <p className="dry-run-snapshot-promise">
+              A snapshot of your vault will be created before import begins. You can roll back from Settings &rarr; Vault if needed.
+            </p>
+          </div>
+
+          <div className="gs-actions">
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={() => { void handleImportCommit(); }}
+              disabled={!!importDryRunReport.fatalError}
+              data-testid="import-vault-btn"
+            >
+              Import Vault &#x2192;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SKY-2638: Import in progress ── */}
+      {step === 'import-importing' && (
+        <div className="gs-modal" data-testid="screen-import-importing">
+          <h2 className="gs-modal__title">Importing your vault&#x2026;</h2>
+          <div className="gs-spinner" aria-label="Importing vault" role="status" data-testid="import-in-progress-spinner" />
+          <p className="gs-modal__subtitle">Registering your Obsidian vault as your Notes Vault&#x2026;</p>
         </div>
       )}
 
