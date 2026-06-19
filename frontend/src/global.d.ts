@@ -358,6 +358,16 @@ interface AppSettings {
   provider?: ProviderConfig;
   /** Sidebar heartbeat cadence: seconds, on-save, or manual. */
   waScanInterval?: number | 'on-save' | 'manual';
+  /** SKY-2627: Writing Assistant enable/disable. When false, panel shows disabled state. */
+  waEnabled?: boolean;
+  /** SKY-2627: Writing Assistant model override. null = use global provider model. */
+  waModel?: string | null;
+  /** SKY-2627: Cadence trigger flat alias. */
+  waCadenceTrigger?: 'on_save' | 'idle_heartbeat';
+  /** SKY-2627: Idle heartbeat constant interval flag. */
+  waIdleHeartbeatConstantInterval?: boolean;
+  /** SKY-2627: Idle debounce seconds. */
+  waIdleDebounceSeconds?: number;
   /** SKY-818: Selected voice-capable provider ID. Absent = use first voice-capable provider. */
   voiceProviderId?: string;
   agents: {
@@ -826,6 +836,7 @@ interface Window {
       scenePath?: string;
       sceneUpdatedAt?: string;
     }) => Promise<{ saved: boolean }>;
+    writingAssistantSuggestionList: (payload: { sceneId?: string; scenePath?: string; status?: string }) => Promise<{ suggestions: Suggestion[] }>;
     writingAssistantScanNow: (payload: { sceneId: string; prose: string; scenePath: string }) => Promise<{ tips: Array<string | WritingAssistantTip>; scannedAt: string }>;
     onWritingAssistantScanStart: (cb: (data: { sceneId?: string; scenePath?: string; startedAt: string }) => void) => () => void;
     onWritingAssistantScanResult: (cb: (data: { sceneId: string; scenePath: string; tips: Array<string | WritingAssistantTip>; scannedAt: string }) => void) => () => void;

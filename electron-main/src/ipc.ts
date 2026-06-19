@@ -170,6 +170,8 @@ export const IPC_CHANNELS = {
   WRITING_ASSISTANT_SCAN_START: 'writing-assistant:scan-start',
   WRITING_ASSISTANT_SCAN_RESULT: 'writing-assistant:scan-result',
   WRITING_ASSISTANT_SCAN_ERROR: 'writing-assistant:scan-error',
+  // Query persisted suggestions for a scene (SKY-2626)
+  WRITING_ASSISTANT_SUGGESTION_LIST: 'writing-assistant:suggestion:list',
   // Push channel: backend scheduler → renderer (MYT-236)
   WRITING_SCAN_RESULT: 'writing:scan:result',
 
@@ -622,6 +624,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.GENERATION_LOG_GET]: (payload: GenerationLogGetPayload) => GenerationLogGetResponse;
   [IPC_CHANNELS.WRITING_ASSISTANT_CADENCE_CHANGE]: (payload: WritingAssistantCadenceChangePayload) => WritingAssistantCadenceChangeResponse;
   [IPC_CHANNELS.WRITING_ASSISTANT_TIP_DECISION]: (payload: WritingAssistantTipDecisionPayload) => WritingAssistantTipDecisionResponse;
+  [IPC_CHANNELS.WRITING_ASSISTANT_SUGGESTION_LIST]: (payload: WritingAssistantSuggestionListPayload) => WritingAssistantSuggestionListResponse;
   [IPC_CHANNELS.WRITING_ASSISTANT_SCAN_NOW]: (payload: WritingScanPayload) => Promise<WritingScanResponse>;
   [IPC_CHANNELS.ARCHIVE_SCAN]: (payload: ArchiveScanPayload) => ArchiveScanResponse;
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
@@ -1796,6 +1799,16 @@ export interface AppSettings {
   provider?: ProviderSettings;
   /** Sidebar heartbeat cadence: seconds, on-save, or manual. Mirrors agents.writingAssistant.scanIntervalSeconds for numeric values. */
   waScanInterval?: number | 'on-save' | 'manual';
+  /** SKY-2627: Writing Assistant enable/disable. When false, panel shows disabled state and no scans fire. */
+  waEnabled?: boolean;
+  /** SKY-2627: Writing Assistant model override. null = use global provider model. */
+  waModel?: string | null;
+  /** SKY-2627: Cadence trigger flat alias. Mirrors agents.writingAssistant.cadenceTrigger. */
+  waCadenceTrigger?: 'on_save' | 'idle_heartbeat';
+  /** SKY-2627: Whether idle heartbeat fires at a constant interval. Mirrors agents.writingAssistant.idleHeartbeatConstantInterval. */
+  waIdleHeartbeatConstantInterval?: boolean;
+  /** SKY-2627: Idle debounce seconds before triggering a scan. Mirrors agents.writingAssistant.idleDebounceSeconds. */
+  waIdleDebounceSeconds?: number;
   agents: {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). API key stored in SecretsStore under `provider.<agentName>.apiKey`. */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
@@ -2633,6 +2646,16 @@ export interface WritingAssistantTipDecisionPayload {
 
 export interface WritingAssistantTipDecisionResponse {
   saved: boolean;
+}
+
+export interface WritingAssistantSuggestionListPayload {
+  sceneId?: string;
+  scenePath?: string;
+  status?: string;
+}
+
+export interface WritingAssistantSuggestionListResponse {
+  suggestions: import('./db.js').DbSuggestion[];
 }
 
 export interface WritingScanPayload {
