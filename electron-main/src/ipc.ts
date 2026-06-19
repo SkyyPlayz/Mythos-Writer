@@ -2094,6 +2094,10 @@ export interface ObsidianImportPreview {
 export interface OnboardingDryRunObsidianResponse {
   preview?: ObsidianImportPreview;
   error?: string;
+  /** Number of collision files renamed with (Imported) suffix (SKY-2637) */
+  renamedCount?: number;
+  /** Number of notes with broken [[wiki-links]] (SKY-2637) */
+  brokenLinkCount?: number;
 }
 
 // ─── SKY-2638: Path 3 import vault channels ───
