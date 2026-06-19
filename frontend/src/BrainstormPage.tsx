@@ -23,33 +23,6 @@ import ContinuityPanel from './ContinuityPanel';
 import type { Scene } from './types';
 import './BrainstormPage.css';
 
-interface ContinuityIssue {
-  id: string;
-  description: string;
-  anchorText: string;
-  resolved: boolean;
-}
-
-type AnswerKind = 'fix-note' | 'suggest-change' | 'free-text';
-
-interface ContinuityAnswerDraft {
-  kind: AnswerKind;
-  text: string;
-}
-
-function parseContinuityIssues(raw: Record<string, unknown>[]): ContinuityIssue[] {
-  return raw.flatMap((r) => {
-    let payload: Record<string, unknown> = {};
-    try { payload = JSON.parse(r.payload_json as string); } catch { /* skip */ }
-    if (payload.kind !== 'inconsistency') return [];
-    return [{
-      id: r.id as string,
-      description: (r.rationale as string) || '',
-      anchorText: (payload.anchorText as string) || '',
-      resolved: (r.status as string) === 'accepted',
-    }];
-  });
-}
 
 const BRAINSTORM_SYSTEM_PROMPT = `You are a creative writing assistant helping an author develop their story world. When the user mentions specific named characters, locations, items, or notable concepts, emit structured fact tags using this format:
 
@@ -298,9 +271,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [pasteWarning, setPasteWarning] = useState(false);
   const [detailDrawerIdeaId, setDetailDrawerIdeaId] = useState<string | null>(null);
   const [proposals, setProposals] = useState<NoteProposal[]>([]);
-  const [continuityIssues, setContinuityIssues] = useState<ContinuityIssue[]>([]);
-  const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
-  const [answerDrafts, setAnswerDrafts] = useState<Record<string, ContinuityAnswerDraft>>({});
   // Per-card body preview toggle: set of fact IDs that are currently expanded.
   // New facts start expanded so the user sees the extracted content immediately.
   const [expandedFactIds, setExpandedFactIds] = useState<Set<string>>(new Set());
@@ -1383,23 +1353,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     return () => document.removeEventListener('keydown', handler);
   }, [isMultiSelectMode, showDeleteConfirm, sortOrder, loading, toggleMultiSelectMode, createNewIdea, handleDeleteFocused, moveFact]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const api = (window as any).api;
-        if (typeof api?.suggestionsList === 'function') {
-          const result = await api.suggestionsList(undefined, 'archive');
-          if (cancelled) return;
-          const rows: Record<string, unknown>[] = result?.suggestions ?? [];
-          setContinuityIssues(parseContinuityIssues(rows));
-        }
-      } catch { /* non-critical */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
   // SKY-1485: load pending brainstorm proposals from DB on mount
   useEffect(() => {
     let cancelled = false;
@@ -1490,35 +1443,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const submitContinuityAnswer = useCallback(async (issueId: string) => {
-    const issue = continuityIssues.find((i) => i.id === issueId);
-    if (!issue) return;
-    const draft = answerDrafts[issueId] ?? { kind: 'free-text' as AnswerKind, text: '' };
-    const kindLabel: Record<AnswerKind, string> = {
-      'fix-note': 'Fix note',
-      'suggest-change': 'Suggest story change',
-      'free-text': 'Note',
-    };
-    const msgText = [
-      `[Continuity issue] ${issue.description}`,
-      draft.text ? `${kindLabel[draft.kind]}: ${draft.text}` : `${kindLabel[draft.kind]}`,
-    ].join('\n');
-
-    setContinuityIssues((prev) =>
-      prev.map((i) => (i.id === issueId ? { ...i, resolved: true } : i)),
-    );
-    setExpandedIssueId(null);
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api;
-      if (typeof api?.suggestionsAccept === 'function') {
-        await api.suggestionsAccept(issueId);
-      }
-    } catch { /* optimistic already applied */ }
-
-    setPrompt(msgText);
-  }, [continuityIssues, answerDrafts]);
 
   const toggleFactExpanded = useCallback((id: string) => {
     setExpandedFactIds((prev) => {
@@ -1595,29 +1519,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     dropBelowRef.current = false;
   }, []);
 
-  const toggleIssue = useCallback((id: string) => {
-    setExpandedIssueId((prev) => (prev === id ? null : id));
-  }, []);
-
   const openIdeaDetail = useCallback((ideaId: string) => {
     triggerElementRef.current = document.activeElement as HTMLElement;
     setDetailDrawerIdeaId(ideaId);
     announce('Idea detail drawer opened.');
   }, [announce]);
-
-  const setDraftKind = useCallback((issueId: string, kind: AnswerKind) => {
-    setAnswerDrafts((prev) => ({
-      ...prev,
-      [issueId]: { kind, text: prev[issueId]?.text ?? '' },
-    }));
-  }, []);
-
-  const setDraftText = useCallback((issueId: string, text: string) => {
-    setAnswerDrafts((prev) => ({
-      ...prev,
-      [issueId]: { kind: prev[issueId]?.kind ?? 'free-text', text },
-    }));
-  }, []);
 
   const detailIdea = detailDrawerIdeaId ? facts.find((fact) => fact.id === detailDrawerIdeaId) : null;
 
@@ -1976,97 +1882,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
 
         <div className="brainstorm-facts-col">
-          {/* SKY-2585: Archive-aware ContinuityPanel (AC-F-01) */}
-          {archiveContinuityEnabled ? (
-            <div className="brainstorm-continuity-section">
-              <ContinuityPanel scene={activeScene} />
-            </div>
-          ) : (
+          {/* SKY-2585/SKY-2588: ContinuityPanel always rendered; enabled prop gates disabled state */}
           <div className="brainstorm-continuity-section">
-            <div className="brainstorm-facts-header">
-              <span className="brainstorm-facts-title">Continuity</span>
-              {continuityIssues.filter((i) => !i.resolved).length > 0 && (
-                <span className="brainstorm-facts-count bs-continuity-badge">
-                  {continuityIssues.filter((i) => !i.resolved).length}
-                </span>
-              )}
-            </div>
-            <ul className="bs-continuity-list" aria-label="Continuity issues">
-              {continuityIssues.length === 0 && (
-                <li className="brainstorm-facts-empty bs-continuity-empty">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                    <polyline points="22 4 12 14.01 9 11.01"/>
-                  </svg>
-                  <span>No continuity issues.</span>
-                </li>
-              )}
-              {continuityIssues.map((issue) => {
-                const draft = answerDrafts[issue.id] ?? { kind: 'free-text' as AnswerKind, text: '' };
-                const isExpanded = expandedIssueId === issue.id;
-                return (
-                  <li
-                    key={issue.id}
-                    className={`bs-cont-item${issue.resolved ? ' bs-cont-item-resolved' : ''}`}
-                  >
-                    <label className="bs-cont-row">
-                      <input
-                        type="checkbox"
-                        className="bs-cont-checkbox"
-                        checked={issue.resolved}
-                        readOnly
-                        aria-label={`Continuity issue: ${issue.description}`}
-                      />
-                      <button
-                        className="bs-cont-label-btn"
-                        onClick={() => !issue.resolved && toggleIssue(issue.id)}
-                        disabled={issue.resolved}
-                        type="button"
-                        aria-expanded={isExpanded && !issue.resolved}
-                      >
-                        {issue.description}
-                      </button>
-                    </label>
-                    {isExpanded && !issue.resolved && (
-                      <div className="bs-cont-expand">
-                        {issue.anchorText && (
-                          <p className="bs-cont-anchor">Near: <em>&ldquo;{issue.anchorText}&rdquo;</em></p>
-                        )}
-                        <div className="bs-cont-answer-kinds">
-                          {(['fix-note', 'suggest-change', 'free-text'] as AnswerKind[]).map((k) => (
-                            <button
-                              key={k}
-                              type="button"
-                              className={`bs-cont-kind-btn${draft.kind === k ? ' active' : ''}`}
-                              onClick={() => setDraftKind(issue.id, k)}
-                            >
-                              {k === 'fix-note' ? 'Fix note' : k === 'suggest-change' ? 'Suggest change' : 'Free text'}
-                            </button>
-                          ))}
-                        </div>
-                        <textarea
-                          className="bs-cont-textarea"
-                          value={draft.text}
-                          onChange={(e) => setDraftText(issue.id, e.target.value)}
-                          placeholder="Describe your resolution…"
-                          rows={3}
-                          aria-label="Continuity resolution note"
-                        />
-                        <button
-                          type="button"
-                          className="bs-cont-submit-btn"
-                          onClick={() => void submitContinuityAnswer(issue.id)}
-                        >
-                          Send to Chat
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <ContinuityPanel scene={activeScene} enabled={archiveContinuityEnabled} />
           </div>
-          )}
 
           {/* SKY-196: collapsible "Context used" panel */}
           {contextResult && (

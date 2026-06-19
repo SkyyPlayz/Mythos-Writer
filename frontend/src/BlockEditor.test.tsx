@@ -358,19 +358,24 @@ describe('insertWikiLink command (AC-F-11)', () => {
     if (!wikiNode) throw new Error('wikiLink node type not found in schema');
 
     const needle = anchorText.toLowerCase();
-    let range: { from: number; to: number } | null = null;
+    // Use a mutable object to hold the range so TypeScript doesn't narrow the
+    // captured variable to never after the descendants callback.
+    const found: { from: number; to: number; matched: boolean } = { from: 0, to: 0, matched: false };
     editor.state.doc.descendants((node, pos) => {
-      if (range) return false;
+      if (found.matched) return false;
       if (node.isText && node.text) {
         const idx = node.text.toLowerCase().indexOf(needle);
-        if (idx >= 0) range = { from: pos + idx, to: pos + idx + anchorText.length };
+        if (idx >= 0) {
+          found.from = pos + idx;
+          found.to = pos + idx + anchorText.length;
+          found.matched = true;
+        }
       }
       return true;
     });
 
-    if (range) {
-      const r = range as { from: number; to: number };
-      editor.view.dispatch(editor.state.tr.replaceWith(r.from, r.to, wikiNode));
+    if (found.matched) {
+      editor.view.dispatch(editor.state.tr.replaceWith(found.from, found.to, wikiNode));
     } else {
       editor.view.dispatch(editor.state.tr.insert(editor.state.selection.from, wikiNode));
     }
