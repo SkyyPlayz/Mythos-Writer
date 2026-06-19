@@ -541,6 +541,31 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     expect(mockWritingScan).not.toHaveBeenCalled();
   });
 
+  it('AC-WA-26: shows disabled message when enabled=false and no scans fire', async () => {
+    render(<WritingAssistantPanel scene={mockScene} enabled={false} scanIntervalSeconds={10} isActive={true} />);
+
+    expect(screen.getByText(/writing assistant is disabled/i)).toBeInTheDocument();
+
+    await act(() => { vi.advanceTimersByTime(30_000); });
+    expect(mockWritingScan).not.toHaveBeenCalled();
+  });
+
+  it('AC-WA-08: Dismiss all button appears when 2 or more tips are visible', async () => {
+    mockWritingScan.mockResolvedValueOnce({
+      tips: [
+        { id: 'tip-1', text: 'First tip text.', category: 'clarity' },
+        { id: 'tip-2', text: 'Second tip text.', category: 'pacing' },
+      ],
+      scannedAt: new Date().toISOString(),
+    });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+
+    expect(screen.getByRole('button', { name: /dismiss all/i })).toBeInTheDocument();
+  });
+
   it('does not show tips section when scan returns empty tips', async () => {
     mockWritingScan.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
 
@@ -786,5 +811,61 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
   it('AC-V-10: live region is always in the DOM', () => {
     render(<WritingAssistantPanel scene={null} />);
     expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Beta-Read trigger detection (AC-WA-17)
+// ---------------------------------------------------------------------------
+const betaReadScene = {
+  id: 's1',
+  title: 'Chapter One',
+  blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked.', updatedAt: '' }],
+  draftState: 'in-progress' as const,
+  order: 0,
+  path: '/scene.md',
+  createdAt: '',
+  updatedAt: '',
+};
+
+describe('WritingAssistantPanel — Beta-Read trigger detection (AC-WA-17)', () => {
+  it.each([
+    { prompt: 'beta read this scene', label: 'lowercase "beta read"' },
+    { prompt: 'Beta Read this scene', label: 'title-case "Beta Read"' },
+    { prompt: 'beta-read this please', label: 'hyphenated "beta-read"' },
+    { prompt: 'DEEP REVIEW the pacing', label: 'uppercase "DEEP REVIEW"' },
+    { prompt: 'deep review my prose', label: 'lowercase "deep review"' },
+  ])('routes "$label" prompt to beta-read IPC, not writing-assistant', async ({ prompt }) => {
+    mockBetaReadScan.mockResolvedValueOnce({ comments: [], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), { target: { value: prompt } });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => expect(mockBetaReadScan).toHaveBeenCalledTimes(1));
+    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
+  });
+
+  it('dedicated Beta-Read button triggers the scan without typing a prompt', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({ comments: [], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
+
+    await waitFor(() => expect(mockBetaReadScan).toHaveBeenCalledTimes(1));
+    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
+  });
+
+  it('regular writing prompts do NOT route to beta-read IPC', async () => {
+    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Try adding a ticking clock.' });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+      target: { value: 'How can I improve the pacing of this scene?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(1));
+    expect(mockBetaReadScan).not.toHaveBeenCalled();
   });
 });

@@ -116,6 +116,7 @@ export default function WritingAssistantPanel({
   scanIntervalSeconds = 60,
   waScanInterval,
   isActive = true,
+  onJumpToText,
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
@@ -618,6 +619,7 @@ export default function WritingAssistantPanel({
         lastScannedAt={betaReadLastScannedAt}
         onRunScan={runBetaReadScan}
         onDismiss={dismissBetaReadComment}
+        onJumpToText={onJumpToText}
       />
 
       <div className="writing-assistant-messages">

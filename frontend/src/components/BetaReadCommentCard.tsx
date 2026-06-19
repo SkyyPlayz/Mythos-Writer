@@ -3,11 +3,20 @@ import { useState } from 'react';
 interface BetaReadCommentCardProps {
   comment: BetaReadComment;
   onDismiss: (id: string) => Promise<void> | void;
+  onJumpToText?: (text: string) => void;
 }
 
-export default function BetaReadCommentCard({ comment, onDismiss }: BetaReadCommentCardProps) {
+export default function BetaReadCommentCard({ comment, onDismiss, onJumpToText }: BetaReadCommentCardProps) {
   const [noted, setNoted] = useState(false);
   const [undoVisible, setUndoVisible] = useState(false);
+
+  const handleJump = () => {
+    if (onJumpToText) {
+      onJumpToText(comment.anchor_text);
+    } else {
+      console.warn('[BetaReadCommentCard] onJumpToText not wired — TipTap scroll-to-text pending FoundingEngineer confirmation');
+    }
+  };
 
   if (noted) {
     return (
@@ -32,7 +41,15 @@ export default function BetaReadCommentCard({ comment, onDismiss }: BetaReadComm
   return (
     <article className="br-comment-card" role="article" aria-label="Beta-Read comment">
       <p className="br-anchor-label">Anchor</p>
-      <blockquote className="br-anchor-text">{comment.anchor_text}</blockquote>
+      <button
+        type="button"
+        className="br-anchor-btn"
+        onClick={handleJump}
+        aria-label={`Jump to: ${comment.anchor_text}`}
+        title="Click to jump to this passage in the editor"
+      >
+        <blockquote className="br-anchor-text">{comment.anchor_text}</blockquote>
+      </button>
       <p className="br-comment-text">{comment.comment_text}</p>
       <div className="br-comment-actions">
         <button type="button" className="br-action-btn" onClick={() => setNoted(true)}>

@@ -285,6 +285,7 @@ function AiPanel({
             idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
             idleDebounceSeconds={idleDebounceSeconds}
             isActive={isPageFocused}
+            onJumpToText={onJumpToText}
           />
         )}
         {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
