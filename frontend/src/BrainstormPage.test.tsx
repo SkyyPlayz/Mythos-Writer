@@ -1091,6 +1091,255 @@ describe('BrainstormPage — continuity issues (Archive)', () => {
     expect(screen.queryByRole('checkbox', { name: /continuity issue/i })).not.toBeInTheDocument();
   });
 
+  // ─── AC-BST-18: count badge ──────────────────────────────────────────────────
+
+  it('AC-BST-18: shows unresolved count badge when continuity issues exist', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    // Wait for issues to load, then check the badge
+    await screen.findByRole('checkbox', { name: /continuity issue/i });
+    const badge = document.querySelector('.bs-continuity-badge');
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toBe('1');
+  });
+
+  it('AC-BST-18: badge not shown when no unresolved issues', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({ suggestions: [] });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/no continuity issues\./i)).toBeInTheDocument(),
+    );
+    expect(document.querySelector('.bs-continuity-badge')).toBeNull();
+  });
+
+  // ─── AC-BST-19: expand interaction ───────────────────────────────────────────
+
+  it('AC-BST-19: clicking label button expands the issue and shows anchor text', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+
+    // Anchor text rendered as "Near: <em>"her dark hair"</em>"
+    await waitFor(() =>
+      expect(screen.getByText(/near:/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/her dark hair/i)).toBeInTheDocument();
+  });
+
+  it('AC-BST-19: expanded panel shows three answer-kind buttons', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /fix note/i })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /suggest change/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /free text/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /continuity resolution note/i })).toBeInTheDocument();
+  });
+
+  it('AC-BST-19: label button has aria-expanded=false before expansion', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    expect(labelBtn).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('AC-BST-19: label button has aria-expanded=true after expansion', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+
+    await waitFor(() => expect(labelBtn).toHaveAttribute('aria-expanded', 'true'));
+  });
+
+  it('AC-BST-19: clicking an expanded issue collapses it', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+    await waitFor(() => expect(screen.getByRole('button', { name: /fix note/i })).toBeInTheDocument());
+
+    // Second click collapses
+    fireEvent.click(labelBtn);
+    await waitFor(() => expect(screen.queryByRole('button', { name: /fix note/i })).not.toBeInTheDocument());
+  });
+
+  it('AC-BST-19: only one issue can be expanded at a time', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [
+        makeInconsistencySuggestion({ id: 'cont-1', rationale: 'Hair colour mismatch.' }),
+        makeInconsistencySuggestion({
+          id: 'cont-2',
+          rationale: 'Eye colour mismatch.',
+          payload_json: JSON.stringify({ kind: 'inconsistency', entityName: 'Kira', anchorText: 'brown eyes' }),
+        }),
+      ],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const btn1 = await screen.findByRole('button', { name: /hair colour mismatch/i });
+    const btn2 = await screen.findByRole('button', { name: /eye colour mismatch/i });
+
+    fireEvent.click(btn1);
+    await waitFor(() => expect(btn1).toHaveAttribute('aria-expanded', 'true'));
+
+    // Expanding second issue collapses first
+    fireEvent.click(btn2);
+    await waitFor(() => {
+      expect(btn1).toHaveAttribute('aria-expanded', 'false');
+      expect(btn2).toHaveAttribute('aria-expanded', 'true');
+    });
+  });
+
+  // ─── AC-BST-20: answer + resolve ──────────────────────────────────────────────
+
+  it('AC-BST-20: selecting an answer kind activates that button', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ suggestionsList: mockSuggestionsList });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /fix note/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /suggest change/i }));
+    expect(screen.getByRole('button', { name: /suggest change/i }).className).toContain('active');
+    expect(screen.getByRole('button', { name: /fix note/i }).className).not.toContain('active');
+  });
+
+  it('AC-BST-20: submitting fills the brainstorm prompt textarea with continuity context', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
+    (window as unknown as { api: unknown }).api = buildApi({
+      suggestionsList: mockSuggestionsList,
+      suggestionsAccept: mockSuggestionsAccept,
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+
+    // Fill in an answer
+    const textarea = await screen.findByRole('textbox', { name: /continuity resolution note/i });
+    fireEvent.change(textarea, { target: { value: 'Change scene to match vault.' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /send to chat/i }));
+
+    await waitFor(() => {
+      const promptTextarea = screen.getByLabelText(/brainstorm prompt/i) as HTMLTextAreaElement;
+      expect(promptTextarea.value).toContain('Elara has blonde hair in the vault but dark hair in this scene.');
+      expect(promptTextarea.value).toContain('Change scene to match vault.');
+    });
+  });
+
+  it('AC-BST-20: resolved issue has checked checkbox and is dimmed', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
+    (window as unknown as { api: unknown }).api = buildApi({
+      suggestionsList: mockSuggestionsList,
+      suggestionsAccept: mockSuggestionsAccept,
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+    fireEvent.click(await screen.findByRole('button', { name: /send to chat/i }));
+
+    await waitFor(() => {
+      const checkbox = screen.getByRole('checkbox', { name: /continuity issue: elara/i });
+      expect(checkbox).toBeChecked();
+      const listItem = checkbox.closest('li');
+      expect(listItem?.className).toContain('bs-cont-item-resolved');
+    });
+  });
+
+  it('AC-BST-20: resolved issue label button is disabled and not expandable', async () => {
+    const mockSuggestionsList = vi.fn().mockResolvedValue({
+      suggestions: [makeInconsistencySuggestion()],
+    });
+    const mockSuggestionsAccept = vi.fn().mockResolvedValue({ id: 'cont-1', status: 'accepted' });
+    (window as unknown as { api: unknown }).api = buildApi({
+      suggestionsList: mockSuggestionsList,
+      suggestionsAccept: mockSuggestionsAccept,
+    });
+
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const labelBtn = await screen.findByRole('button', {
+      name: /Elara has blonde hair in the vault but dark hair in this scene\./i,
+    });
+    fireEvent.click(labelBtn);
+    fireEvent.click(await screen.findByRole('button', { name: /send to chat/i }));
+
+    await waitFor(() => expect(labelBtn).toBeDisabled());
+    // Expand panel should not appear after resolution
+    expect(screen.queryByRole('textbox', { name: /continuity resolution note/i })).not.toBeInTheDocument();
+  });
+
   // ─── SKY-1263: Inline body preview toggle ───────────────────────────────────
 
   describe('inline body preview toggle', () => {
