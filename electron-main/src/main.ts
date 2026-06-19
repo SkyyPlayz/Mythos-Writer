@@ -435,7 +435,7 @@ import { getNoteBacklinks } from './noteBacklinks.js';
 import { getGraphNodes, getGraphEdges, handleNoteFileChanged } from './vaultGraph.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
 import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
-import type { SmartFolderEntry, CustomFieldDef } from './ipc.js';
+import type { SmartFolderEntry, CustomFieldDef, OnboardingImportDryRunPayload, OnboardingImportCommitPayload } from './ipc.js';
 import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import { logWords, getWritingStats, setDailyGoal, resetStreak } from './goals.js';
 import { appendBrainstormNote } from './sceneAppendBrainstormNote.js';
@@ -2252,6 +2252,43 @@ const handlers: IpcHandlers = {
     const current = loadAppSettings();
     saveAppSettings({ ...current, onboardingComplete: false });
     return { ok: true as const };
+  },
+
+  // SKY-2638: Path 3 — import Obsidian vault dry-run (read-only scan, no registration token required)
+  [IPC_CHANNELS.ONBOARDING_IMPORT_DRY_RUN]: async (payload: OnboardingImportDryRunPayload) => {
+    const { sourcePath } = payload;
+    const resolvedSource = (() => {
+      try { return fs.realpathSync.native(sourcePath); } catch { return sourcePath; }
+    })();
+    let existingManifest = null;
+    try {
+      if (fs.existsSync(getManifestPath())) {
+        existingManifest = readManifest(getManifestPath());
+      }
+    } catch { /* non-fatal */ }
+    return obsidianDryRun(resolvedSource, existingManifest);
+  },
+
+  // SKY-2638: Path 3 — commit Obsidian vault import (registers as notes vault root)
+  [IPC_CHANNELS.ONBOARDING_IMPORT_COMMIT]: async (payload: OnboardingImportCommitPayload) => {
+    const { sourcePath } = payload;
+    const resolvedSource = (() => {
+      try { return fs.realpathSync.native(sourcePath); } catch { return sourcePath; }
+    })();
+    try {
+      saveVaultSettings({ notesVaultRoot: resolvedSource });
+      ensureVaultDir();
+      const manifest = readManifest(getManifestPath());
+      const { manifest: synced, scanned } = reindexVault(resolvedSource, manifest);
+      writeManifest(getManifestPath(), synced);
+      try { buildFullIndex(getDb(), resolvedSource, synced); } catch { /* non-fatal */ }
+      await stopNotesVaultWatcher();
+      await startNotesVaultWatcher(resolvedSource, notifyVaultChanged);
+      void scanned;
+      return { ok: true as const };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   },
 
   // SKY-130: thin write that persists only the last-opened scene + cursor position.
