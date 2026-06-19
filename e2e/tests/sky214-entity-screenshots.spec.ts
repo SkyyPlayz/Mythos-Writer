@@ -24,13 +24,8 @@ import {
   type Page,
 } from '@playwright/test';
 
-// Use the worktree build (has all 7 entity types from SKY-172)
-const WORKTREE = path.resolve(
-  __dirname,
-  '../../.paperclip/worktrees/SKY-214-docs-user-guide-entity-system-create-mention-search-browse',
-);
-const MAIN_JS = path.join(WORKTREE, 'out/main/main.js');
-const OUT_DIR = path.join(WORKTREE, 'docs/user-guide/screenshots');
+const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
+const OUT_DIR = path.resolve(__dirname, '../../docs/user-guide/screenshots');
 
 // ─── Vault seeding ────────────────────────────────────────────────────────────
 
@@ -243,9 +238,9 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app.close().catch(() => undefined);
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(path.dirname(vaultDir), { recursive: true, force: true });
+  await app?.close().catch(() => undefined);
+  if (userData) fs.rmSync(userData, { recursive: true, force: true });
+  if (vaultDir) fs.rmSync(path.dirname(vaultDir), { recursive: true, force: true });
 });
 
 test('SKY-214-01: EntityBrowser + New Entity type picker', async () => {
