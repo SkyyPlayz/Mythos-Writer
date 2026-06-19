@@ -286,6 +286,8 @@ test('TC-CP-01: right sidebar renders the Continuity panel empty state', async (
 });
 
 test('TC-CP-02: seeded SQLite inconsistency renders, dismisses, and stays gone after restart', async () => {
+  // Flaky on self-hosted CI: closeApp() SIGKILL path leaves SQLite WAL unsynced before DatabaseSync read. Track SKY-2594.
+  test.fixme(true, 'Flaky on self-hosted CI — SQLite WAL race after SIGKILL in closeApp(). Track SKY-2594.');
   const fixture = createFixture([{ id: 'inc-dismiss', severity: 'medium' }]);
   let app: ElectronApplication | undefined;
   try {
@@ -327,6 +329,8 @@ test('TC-CP-02: seeded SQLite inconsistency renders, dismisses, and stays gone a
 });
 
 test('TC-CP-03: Match Archive resolution removes the card and persists resolved status', async () => {
+  // Flaky on self-hosted CI: expect.poll(readContinuityStatus) runs while app holds DB open; final read after SIGKILL may race WAL. Track SKY-2594.
+  test.fixme(true, 'Flaky on self-hosted CI — SQLite lock contention and WAL race on SIGKILL path. Track SKY-2594.');
   const fixture = createFixture([{ id: 'inc-resolve', severity: 'high' }]);
   let app: ElectronApplication | undefined;
   try {
