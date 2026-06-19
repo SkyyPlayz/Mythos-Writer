@@ -456,6 +456,7 @@ import {
   isForeignHostLock,
   appendSyncEvent,
 } from './cloudSync.js';
+import { applyVaultSuggestion, rollbackVaultSuggestion } from './suggestionApply.js';
 const require = createRequire(import.meta.url);
 
 // ─── State ───
@@ -1194,26 +1195,17 @@ const handlers: IpcHandlers = {
     }
 
     const applyEntry = listAuditLog(payload.id).find((e) => e.action === 'apply');
-    let restoredPath: string | null = null;
-
-    if (applyEntry?.snapshot_path && suggestion.target_path) {
-      // File-based snapshot: restore original vault file content.
+    if (applyEntry?.snapshot_path) {
       safePath(getVaultRoot(), applyEntry.snapshot_path); // throws on path traversal
-      const fullSnapshotPath = path.join(getVaultRoot(), applyEntry.snapshot_path);
-      if (fs.existsSync(fullSnapshotPath)) {
-        const snapshot = JSON.parse(fs.readFileSync(fullSnapshotPath, 'utf-8')) as { originalContent: string; path: string };
-        writeVaultFileAtomic(getVaultRoot(), snapshot.path, snapshot.originalContent);
-        restoredPath = snapshot.path;
-      }
-    } else {
-      // SQLite-based manifest snapshot: restore manifest for typed-relation rollback.
-      const manifestSnap = getSuggestionSnapshot(payload.id, 'manifest');
-      if (manifestSnap) {
-        const savedManifest = JSON.parse(manifestSnap.payload_json) as import('./ipc.js').Manifest;
-        writeManifest(getManifestPath(), savedManifest);
-        restoredPath = getManifestPath();
-      }
     }
+
+    const restoredPath = rollbackVaultSuggestion(
+      getVaultRoot(),
+      getManifestPath(),
+      suggestion,
+      applyEntry?.snapshot_path ?? null,
+      (id) => getSuggestionSnapshot(id, 'manifest'),
+    );
 
     updateSuggestionStatus(payload.id, 'rolled_back');
     insertAuditLog({
@@ -5734,99 +5726,13 @@ const SETTINGS_DEFAULTS: AppSettings = {
  * Errors during vault write are silently swallowed so the suggestion DB state is always
  * consistent — the suggestion records the attempted apply; callers should not re-throw.
  */
+// Thin wrapper — delegates to applyVaultSuggestion from suggestionApply.ts.
+// Injects the module-level vault/manifest roots so callers don't need to.
 function autoApplyVaultWrite(
   suggestion: import('./db.js').DbSuggestion,
   now: string,
 ): { finalStatus: 'accepted' | 'applied'; snapshotPath: string | null } {
-  if (
-    suggestion.target_kind === 'vault' &&
-    suggestion.target_path &&
-    suggestion.payload_json
-  ) {
-    try {
-      const payloadData = JSON.parse(suggestion.payload_json) as {
-        kind?: string;
-        content?: string;
-        prose?: string;
-        relationType?: string;
-        sourceEntityId?: string;
-        sourceEntityPath?: string;
-        targetEntityId?: string;
-        targetEntityPath?: string;
-      };
-
-      // ─── Typed-relation apply (SKY-195 / SKY-901) ───
-      // Delegates to entities.applyTypedRelation so the write logic is unit-tested
-      // independent of IPC/Electron, and returns 'accepted' (not 'applied') when
-      // neither side wrote, so a stale suggestion referencing a deleted/unknown
-      // entity does not silently report success.
-      // SKY-2475: saves a manifest snapshot to suggestion_snapshots before apply
-      // so the typed-relation change can be rolled back.
-      if (payloadData.kind === 'typed-relation') {
-        const {
-          relationType,
-          sourceEntityId,
-          targetEntityId,
-        } = payloadData;
-        if (!relationType || !sourceEntityId || !targetEntityId) {
-          return { finalStatus: 'accepted', snapshotPath: null };
-        }
-        const manifest = readManifest(getManifestPath());
-        // Save manifest snapshot before mutation so rollback can restore it.
-        insertSuggestionSnapshot({
-          id: crypto.randomUUID(),
-          suggestion_id: suggestion.id,
-          snapshot_kind: 'manifest',
-          payload_json: JSON.stringify(manifest),
-          created_at: now,
-        });
-        const { sourceWritten, targetWritten } = applyTypedRelation(
-          getVaultRoot(),
-          manifest,
-          { relationType, sourceEntityId, targetEntityId },
-        );
-        writeManifest(getManifestPath(), manifest);
-        const finalStatus = sourceWritten || targetWritten ? 'applied' : 'accepted';
-        return { finalStatus, snapshotPath: null };
-      }
-
-      // ─── Standard vault-write apply ───
-      const snapshotDir = path.join(getVaultRoot(), '.mythos', 'suggestion-snapshots');
-      if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
-      const relSnapshotPath = path.join(
-        '.mythos', 'suggestion-snapshots', `${suggestion.id}.json`,
-      );
-      const fullSnapshotPath = path.join(getVaultRoot(), relSnapshotPath);
-
-      let originalContent = '';
-      try {
-        const { content: vc } = readVaultFile(getVaultRoot(), suggestion.target_path);
-        originalContent = vc;
-      } catch { /* new file — empty original */ }
-
-      fs.writeFileSync(
-        fullSnapshotPath,
-        JSON.stringify({ originalContent, path: suggestion.target_path }),
-        'utf-8',
-      );
-
-      const newContent = payloadData.content ?? payloadData.prose ?? originalContent;
-      const { prose: newProse } = parseFrontmatter(newContent);
-      mergeProvenanceFrontmatter(getVaultRoot(), suggestion.target_path, {
-        source_agent: suggestion.source_agent,
-        confidence: suggestion.confidence,
-        rationale: suggestion.rationale,
-        timestamp: now,
-        run_id: suggestion.applied_run_id ?? undefined,
-        suggestion_id: suggestion.id,
-      }, newProse);
-
-      return { finalStatus: 'applied', snapshotPath: relSnapshotPath };
-    } catch {
-      // Vault write failed — fall through to accepted without file write
-    }
-  }
-  return { finalStatus: 'accepted', snapshotPath: null };
+  return applyVaultSuggestion(getVaultRoot(), getManifestPath(), suggestion, now);
 }
 
 /** Maps source_agent DB value → settings key. Unknown agents have no budget enforcement. */
