@@ -8,10 +8,10 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import type { SuggestionCategory } from './suggestionCategory.js';
+export type { SuggestionStatus } from './shared/types/suggestion.js';
+import type { SuggestionStatus } from './shared/types/suggestion.js';
 
 // ─── Domain types ───
-
-export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back' | 'ignored';
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
 export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore';
 export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link';

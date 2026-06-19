@@ -7,24 +7,11 @@ import {
   coerceSuggestionCategory,
   type SuggestionCategory,
 } from './suggestionCategory.js';
+import type { AutoApplyPolicy, AgentBudget } from './shared/types/suggestion.js';
+export type { AutoApplyPolicy, AgentBudget } from './shared/types/suggestion.js';
 
-export interface AgentBudgetSettings {
-  autoApply: boolean;
-  confidenceThreshold: number;
-  maxTokensPerHour: number;
-  maxSuggestionsPerHour: number;
-  maxTokensPerDay: number;
-  /**
-   * SKY-908 — Per-category auto-apply allow-list. Undefined means
-   * "honour the master autoApply boolean for every category" (the pre-SKY-908
-   * default, and what users see after upgrading from a single-checkbox
-   * setting). When defined, a category whose value is `false` short-circuits
-   * to no-auto-apply regardless of confidence/budget; categories that are
-   * absent from the map fall back to `true` so a forward-compat schema does
-   * not silently disable a newly-added category.
-   */
-  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
-}
+/** Legacy alias for AutoApplyPolicy — kept for backward compat with existing callers. */
+export type AgentBudgetSettings = AutoApplyPolicy;
 
 export interface AutoApplyResult {
   shouldAutoApply: boolean;

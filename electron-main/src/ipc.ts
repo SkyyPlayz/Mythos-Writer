@@ -2055,9 +2055,10 @@ export interface TelemetryReportResponse {
   error?: string;
 }
 
-// ─── SQLite domain row types (mirrors db.ts — kept in sync manually) ───
+// ─── SQLite domain row types ───
 
-export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'applied' | 'rolled_back' | 'ignored';
+export type { SuggestionStatus } from './shared/types/suggestion.js';
+import type { SuggestionStatus } from './shared/types/suggestion.js';
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
 export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore';
 export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link';
