@@ -165,9 +165,6 @@ interface AppMenuBarProps {
   selectedStoryId?: string | null;
   activeVaultRoot: string;
   onProjectSwitched: (vaultRoot: string) => void;
-  writingMode: WritingMode;
-  onSetWritingMode: (m: WritingMode) => void;
-  onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
   onOpenTour: () => void;
@@ -183,7 +180,8 @@ interface AppMenuBarProps {
   onAddPanelAsNewTab: (panelId: SidebarPanelId) => void;
 }
 
-function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
+// SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
+function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -298,42 +296,6 @@ function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedS
         dockedPanelIds={dockedPanelIds}
         onAddPanelAsNewTab={onAddPanelAsNewTab}
       />
-      <div className="writing-mode-selector" aria-label="Writing mode">
-        <button
-          className={`writing-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('normal')}
-          aria-pressed={writingMode === 'normal'}
-          title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
-        >
-          N
-        </button>
-        <button
-          className={`writing-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('focus')}
-          aria-pressed={writingMode === 'focus'}
-          title="Focus mode — distraction-free"
-        >
-          F
-        </button>
-        {writingMode === 'focus' && (
-          <button
-            className="writing-mode-prefs-btn"
-            onClick={onOpenFocusPrefs}
-            title="Configure Focus mode panels"
-            aria-label="Focus mode preferences"
-          >
-            ⚙
-          </button>
-        )}
-        <button
-          className={`writing-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('edit')}
-          aria-pressed={writingMode === 'edit'}
-          title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
-        >
-          E
-        </button>
-      </div>
       <button
         className="app-menu-df-btn"
         onClick={onToggleDistractionFree}
@@ -2923,9 +2885,6 @@ export default function DesktopShell() {
           selectedStoryId={selectedStory?.id ?? null}
           activeVaultRoot={activeVaultRoot}
           onProjectSwitched={handleProjectSwitched}
-          writingMode={writingMode}
-          onSetWritingMode={setWritingMode}
-          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
           onOpenTour={() => setTourOpen(true)}
@@ -2973,8 +2932,18 @@ export default function DesktopShell() {
           onSaved={(s) => {
             setAppSettings(s);
             applyTheme(s.theme);
-            applyLiquidNeonTokens(s.liquidNeon);
             applyPageBackgroundTokens(s.pageBackground);
+            // SKY-2963: must load the background data URL before applying tokens,
+            // otherwise applyLiquidNeonTokens receives no bgDataUrl and resets the
+            // background to the default gradient (same pattern as initial load above).
+            const lg = s.liquidNeon;
+            if (lg?.background && lg.background !== 'default') {
+              window.api.loadBgImage?.(lg.background)
+                .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
+                .catch(() => applyLiquidNeonTokens(lg));
+            } else {
+              applyLiquidNeonTokens(lg);
+            }
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}

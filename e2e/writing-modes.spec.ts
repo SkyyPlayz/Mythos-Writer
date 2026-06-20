@@ -3,7 +3,10 @@
  *
  * E2E tests for the Writing Modes UI: Normal / Focus / Edit.
  *
- *   TC-WM-01  Default state     — N button active, both sidebars visible
+ * SKY-2964: controls were deduped from AppMenuBar; the single canonical set now
+ * lives in StorySubViewBar (data-testid="story-subview-bar") above the page.
+ *
+ *   TC-WM-01  Default state     — N button active, both sidebars visible, no dupe
  *   TC-WM-02  Ctrl+Shift+F     — Focus mode: sidebars hidden
  *   TC-WM-03  Ctrl+Shift+N     — Normal restored: sidebars visible
  *   TC-WM-04  Ctrl+Shift+E     — Edit mode: sidebars visible
@@ -137,14 +140,19 @@ test.afterAll(async () => {
 
 // ─── TC-WM-01: Default Normal mode ───────────────────────────────────────────
 
-test('TC-WM-01: default mode is Normal — N button active, sidebars visible', async () => {
-  // The writing mode selector must be visible.
-  const selector = page.locator('.writing-mode-selector');
-  await expect(selector).toBeVisible({ timeout: 8_000 });
+test('TC-WM-01: default mode is Normal — N button active, sidebars visible, no duplicate controls', async () => {
+  // SKY-2964: the single canonical writing-mode bar lives in StorySubViewBar.
+  const modeBar = page.locator('[data-testid="story-subview-bar"]');
+  await expect(modeBar).toBeVisible({ timeout: 8_000 });
 
   // N button must be aria-pressed=true by default.
-  const nBtn = selector.locator('.writing-mode-btn', { hasText: 'N' });
+  const nBtn = page.locator('[data-testid="writing-mode-normal"]');
   await expect(nBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
+
+  // SKY-2964 dedupe regression: exactly one N, F, E button must exist in the page.
+  await expect(page.locator('[data-testid="writing-mode-normal"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="writing-mode-focus"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="writing-mode-edit"]')).toHaveCount(1);
 
   // The two-tab shell opens on the Story tab by default, so sidebars are rendered.
   await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'true', { timeout: 4_000 });
@@ -159,8 +167,7 @@ test('TC-WM-01: default mode is Normal — N button active, sidebars visible', a
 test('TC-WM-02: Ctrl+Shift+F enters Focus mode and hides sidebars', async () => {
   await page.keyboard.press('Control+Shift+F');
 
-  const selector = page.locator('.writing-mode-selector');
-  const fBtn = selector.locator('.writing-mode-btn', { hasText: 'F' });
+  const fBtn = page.locator('[data-testid="writing-mode-focus"]');
   await expect(fBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
   // With default FocusPrefs (all false), sidebars must not be in the DOM.
@@ -173,8 +180,7 @@ test('TC-WM-02: Ctrl+Shift+F enters Focus mode and hides sidebars', async () => 
 test('TC-WM-03: Ctrl+Shift+N restores Normal mode and sidebars', async () => {
   await page.keyboard.press('Control+Shift+N');
 
-  const selector = page.locator('.writing-mode-selector');
-  const nBtn = selector.locator('.writing-mode-btn', { hasText: 'N' });
+  const nBtn = page.locator('[data-testid="writing-mode-normal"]');
   await expect(nBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
@@ -186,8 +192,7 @@ test('TC-WM-03: Ctrl+Shift+N restores Normal mode and sidebars', async () => {
 test('TC-WM-04: Ctrl+Shift+E enters Edit mode, sidebars still visible', async () => {
   await page.keyboard.press('Control+Shift+E');
 
-  const selector = page.locator('.writing-mode-selector');
-  const eBtn = selector.locator('.writing-mode-btn', { hasText: 'E' });
+  const eBtn = page.locator('[data-testid="writing-mode-edit"]');
   await expect(eBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
   // Edit mode keeps sidebars visible.
@@ -201,9 +206,8 @@ test('TC-WM-04: Ctrl+Shift+E enters Edit mode, sidebars still visible', async ()
 // ─── TC-WM-05: Button click switching ─────────────────────────────────────────
 
 test('TC-WM-05: clicking F button enters Focus, clicking N returns to Normal', async () => {
-  const selector = page.locator('.writing-mode-selector');
-  const fBtn = selector.locator('.writing-mode-btn', { hasText: 'F' });
-  const nBtn = selector.locator('.writing-mode-btn', { hasText: 'N' });
+  const fBtn = page.locator('[data-testid="writing-mode-focus"]');
+  const nBtn = page.locator('[data-testid="writing-mode-normal"]');
 
   await fBtn.click();
   await expect(fBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
@@ -219,22 +223,21 @@ test('TC-WM-05: clicking F button enters Focus, clicking N returns to Normal', a
 test('TC-WM-06: depth slider bar is visible in Normal, Focus, and Edit modes', async () => {
   // Only visible when a story is selected; we test that the center column exists.
   // The depth slider bar is in the center column which is always present.
-  const selector = page.locator('.writing-mode-selector');
 
   // Normal
-  const nBtn = selector.locator('.writing-mode-btn', { hasText: 'N' });
+  const nBtn = page.locator('[data-testid="writing-mode-normal"]');
   await expect(nBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
   await expect(page.locator('.shell-center-column')).toBeVisible({ timeout: 4_000 });
 
   // Focus
   await page.keyboard.press('Control+Shift+F');
-  const fBtn = selector.locator('.writing-mode-btn', { hasText: 'F' });
+  const fBtn = page.locator('[data-testid="writing-mode-focus"]');
   await expect(fBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
   await expect(page.locator('.shell-center-column')).toBeVisible({ timeout: 4_000 });
 
   // Edit
   await page.keyboard.press('Control+Shift+E');
-  const eBtn = selector.locator('.writing-mode-btn', { hasText: 'E' });
+  const eBtn = page.locator('[data-testid="writing-mode-edit"]');
   await expect(eBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
   await expect(page.locator('.shell-center-column')).toBeVisible({ timeout: 4_000 });
 
@@ -247,8 +250,7 @@ test('TC-WM-06: depth slider bar is visible in Normal, Focus, and Edit modes', a
 test('TC-WM-07: Focus mode persists in manifest across app reload', async () => {
   // Switch to Focus mode and wait long enough for the 900 ms debounce to flush.
   await page.keyboard.press('Control+Shift+F');
-  const selector = page.locator('.writing-mode-selector');
-  const fBtn = selector.locator('.writing-mode-btn', { hasText: 'F' });
+  const fBtn = page.locator('[data-testid="writing-mode-focus"]');
   await expect(fBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
   // Allow debounce to persist layout to disk.
@@ -260,8 +262,7 @@ test('TC-WM-07: Focus mode persists in manifest across app reload', async () => 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   // F must still be active after reload.
-  const selectorAfter = page.locator('.writing-mode-selector');
-  const fBtnAfter = selectorAfter.locator('.writing-mode-btn', { hasText: 'F' });
+  const fBtnAfter = page.locator('[data-testid="writing-mode-focus"]');
   await expect(fBtnAfter).toHaveAttribute('aria-pressed', 'true', { timeout: 8_000 });
 
   // Clean up: return to Normal.
