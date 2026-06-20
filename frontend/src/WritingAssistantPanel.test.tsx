@@ -601,6 +601,25 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     expect(mockWritingScan).not.toHaveBeenCalled();
   });
 
+  it('reads saved on-save cadence and scans when scene:saved is dispatched', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['Saved scene tip.'], scannedAt: new Date().toISOString() });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={30} waScanInterval="on-save" isActive={true} />);
+
+    expect(screen.getByLabelText(/heartbeat cadence/i)).toHaveValue('on-save');
+    await act(async () => {
+      window.dispatchEvent(new Event('scene:saved'));
+      await Promise.resolve();
+    });
+
+    expect(mockWritingScan).toHaveBeenCalledWith(
+      mockScene.id,
+      mockScene.blocks[0].content,
+      mockScene.path,
+    );
+    expect(screen.getByText('Saved scene tip.')).toBeInTheDocument();
+  });
+
   it('persists cadence picker changes via writing-assistant cadence IPC', async () => {
     render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={60} isActive={true} />);
 
