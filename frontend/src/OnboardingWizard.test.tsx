@@ -172,7 +172,7 @@ function assertNoLiteralColorFallbacks(css: string) {
 // ─── Step 1 ───────────────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — Step 1', () => {
-  it('keeps starting point cards on Liquid Neon glass tokens without literal color fallbacks', () => {
+  it('keeps starting point cards on Liquid Neon tokens without literal color fallbacks', () => {
     const css = readOnboardingCss();
     const cardRule = cssRule(css, '.gs-card');
     const hoverRule = cssRule(css, '.gs-card:hover');
@@ -182,19 +182,20 @@ describe('OnboardingWizard — Step 1', () => {
     const ctaRule = cssRule(css, '.gs-card__cta');
     const cardStyles = [cardRule, hoverRule, focusRule, titleRule, descRule, ctaRule].join('\n');
 
-    expect(cardRule).toContain('var(--glass-fill-fallback)');
-    expect(cardRule).toContain('var(--glass-border)');
-    expect(cardRule).toContain('var(--glass-inner-shadow)');
+    // Base card: elevated surface + subtle border + body text (glass/backdrop deferred to phase 2)
+    expect(cardRule).toContain('var(--bg-elevated)');
+    expect(cardRule).toContain('var(--border-subtle)');
     expect(cardRule).toContain('var(--text-body)');
-    expect(css).toContain('@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))');
-    expect(css).toContain('background: var(--glass-fill);');
-    expect(css).toContain('backdrop-filter: blur(var(--lg-blur))');
+    // Hover: neon glow frame
     expect(hoverRule).toContain('var(--accent)');
     expect(hoverRule).toContain('var(--glow-md)');
+    // Focus: focus-ring token (not --accent directly, for high-contrast compat)
     expect(focusRule).toContain('var(--focus-ring)');
+    // Typography hierarchy
     expect(titleRule).toContain('var(--text-header)');
     expect(descRule).toContain('var(--text-muted)');
     expect(ctaRule).toContain('var(--accent)');
+    // No raw hex / rgba / hsl in any card rule
     assertNoLiteralColorFallbacks(cardStyles);
   });
 
