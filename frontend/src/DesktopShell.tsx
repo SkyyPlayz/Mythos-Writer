@@ -509,6 +509,9 @@ export default function DesktopShell() {
   const { requestText, promptModal } = useTextPrompt();
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
+  // SKY-2966: stable ref so navigator sync callbacks don't re-subscribe on every render
+  const storiesRef = useRef<Story[]>([]);
+  storiesRef.current = stories;
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
@@ -686,6 +689,24 @@ export default function DesktopShell() {
     if (!gettingStartedProgress) return;
     persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
   }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleWaAutoApplyCategoriesChange = useCallback(
+    (categories: Partial<Record<SuggestionCategory, boolean>>) => {
+      setAppSettings((prev) => {
+        if (!prev) return prev;
+        const updated: AppSettings = {
+          ...prev,
+          agents: {
+            ...prev.agents,
+            writingAssistant: { ...prev.agents.writingAssistant, autoApplyCategories: categories },
+          },
+        };
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+    },
+    [],
+  );
 
   const handleToggleGsCollapsed = useCallback(() => {
     if (!gettingStartedProgress) return;
@@ -1218,6 +1239,7 @@ export default function DesktopShell() {
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
       await window.api.writeManifest(m);
+      window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to persist manifest:', e);
     }
@@ -1727,6 +1749,22 @@ export default function DesktopShell() {
     });
   }, []);
 
+  // SKY-2966: Report current scene to floating navigator panels whenever selection changes.
+  useEffect(() => {
+    window.api.navigatorReportScene?.(selectedScene?.id ?? null).catch(() => {});
+  }, [selectedScene]);
+
+  // SKY-2966: Refresh stories when a floating navigator panel modifies the manifest.
+  useEffect(() => {
+    if (!window.api.onNavigatorManifestChanged) return;
+    const unsub = window.api.onNavigatorManifestChanged(() => {
+      (window.api.readManifest() as Promise<Manifest>).then((m) => {
+        setStories(m?.stories ?? []);
+      }).catch(() => {});
+    });
+    return () => unsub?.();
+  }, []);
+
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
     if (mode === 'edit') {
@@ -2230,6 +2268,24 @@ export default function DesktopShell() {
     }
   }, []);
 
+  // SKY-2966: Handle scene selection requested from a floating navigator panel.
+  useEffect(() => {
+    if (!window.api.onNavigatorSceneChanged) return;
+    const unsub = window.api.onNavigatorSceneChanged(({ sceneId }) => {
+      for (const story of storiesRef.current) {
+        for (const chapter of story.chapters) {
+          const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+          if (scene) {
+            handleSelectScene(scene, chapter, story);
+            setViewDepth('scene');
+            return;
+          }
+        }
+      }
+    });
+    return () => unsub?.();
+  }, [handleSelectScene, setViewDepth]);
+
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
     if (!title?.trim()) return;
@@ -2597,6 +2653,9 @@ export default function DesktopShell() {
             isActive={view === 'editor'}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
+            autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
+            autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
+            onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
           />
         );
       case 'archive-continuity':
@@ -2629,7 +2688,7 @@ export default function DesktopShell() {
     handleOpenSceneByPath, setVaultContext, setExportScope, appSettings,
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
-    activeSceneForSidebar,
+    activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -3390,6 +3449,9 @@ export default function DesktopShell() {
             cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
             idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
             idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
+            waAutoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
+            waAutoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
+            onWaAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}

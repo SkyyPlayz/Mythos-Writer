@@ -58,6 +58,27 @@ interface Message {
   suggestion?: WritingAssistantSuggestion;
 }
 
+const SUGGESTION_CATEGORY_ORDER: SuggestionCategory[] = [
+  'punctuation', 'spelling', 'grammar', 'sentence-structure', 'style-tone', 'other',
+];
+
+const SUGGESTION_CATEGORY_LABELS: Record<SuggestionCategory, string> = {
+  punctuation: 'Punctuation',
+  spelling: 'Spelling',
+  grammar: 'Grammar',
+  'sentence-structure': 'Sentence structure',
+  'style-tone': 'Style / tone',
+  other: 'Other',
+};
+
+function isCategoryEnabled(
+  cats: Partial<Record<SuggestionCategory, boolean>> | undefined,
+  cat: SuggestionCategory,
+): boolean {
+  if (!cats) return true;
+  return cats[cat] !== false;
+}
+
 interface Props {
   scene: Scene | null;
   enabled?: boolean;
@@ -71,6 +92,9 @@ interface Props {
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
+  autoApply?: boolean;
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
 }
 
 function isBetaReadRequest(prompt: string) {
@@ -139,6 +163,9 @@ export default function WritingAssistantPanel({
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
+  autoApply = false,
+  autoApplyCategories,
+  onAutoApplyCategoriesChange,
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -515,6 +542,20 @@ export default function WritingAssistantPanel({
     await runScan(true);
   }, [runScan]);
 
+  const handleCategoryToggle = useCallback((category: SuggestionCategory) => {
+    const existing = autoApplyCategories ?? {};
+    const seeded: Partial<Record<SuggestionCategory, boolean>> = {
+      punctuation: existing.punctuation !== false,
+      spelling: existing.spelling !== false,
+      grammar: existing.grammar !== false,
+      'sentence-structure': existing['sentence-structure'] !== false,
+      'style-tone': existing['style-tone'] !== false,
+      other: existing.other !== false,
+    };
+    seeded[category] = !isCategoryEnabled(existing, category);
+    onAutoApplyCategoriesChange?.(seeded);
+  }, [autoApplyCategories, onAutoApplyCategoriesChange]);
+
   const applyTipDecision = useCallback(async (
     tipId: string,
     decision: 'noted' | 'ignored' | 'reported',
@@ -802,6 +843,32 @@ export default function WritingAssistantPanel({
           </>
         )}
       </div>
+
+      {autoApply && (
+        <div
+          className="wa-auto-apply-section"
+          role="group"
+          aria-label="Auto-apply categories"
+          data-testid="wa-auto-apply-categories"
+        >
+          <span className="wa-auto-apply-label">Auto-apply:</span>
+          {SUGGESTION_CATEGORY_ORDER.map((cat) => {
+            const on = isCategoryEnabled(autoApplyCategories, cat);
+            return (
+              <button
+                key={cat}
+                type="button"
+                className={`wa-cat-pill${on ? ' wa-cat-pill--on' : ''}`}
+                aria-pressed={on}
+                aria-label={`Auto-apply ${SUGGESTION_CATEGORY_LABELS[cat]}`}
+                onClick={() => handleCategoryToggle(cat)}
+              >
+                {SUGGESTION_CATEGORY_LABELS[cat]}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="wa-preset-row">
         <PresetSelector

@@ -67,6 +67,54 @@
   flex-shrink: 0;
 }
 
+/* SKY-2979: Per-category auto-apply pills */
+.wa-auto-apply-section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  flex-shrink: 0;
+}
+
+.wa-auto-apply-label {
+  font-size: 0.68rem;
+  color: var(--text-faint, rgba(255, 255, 255, 0.4));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.wa-cat-pill {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--text-faint, rgba(255, 255, 255, 0.35));
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.wa-cat-pill--on {
+  background: color-mix(in srgb, var(--color-accent-cyan, #00f5ff) 12%, transparent);
+  border-color: var(--color-accent-cyan, #00f5ff);
+  color: var(--color-accent-cyan, #00f5ff);
+}
+
+.wa-cat-pill:hover {
+  border-color: var(--color-accent-cyan, #00f5ff);
+  color: var(--color-accent-cyan, #00f5ff);
+}
+
+.wa-cat-pill--on:hover {
+  background: color-mix(in srgb, var(--color-accent-cyan, #00f5ff) 20%, transparent);
+}
+
 /* AC-WA-16/17/18/19: Heartbeat status bar */
 .wa-status-bar {
   display: flex;

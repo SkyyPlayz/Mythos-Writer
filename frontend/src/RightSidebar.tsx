@@ -26,6 +26,9 @@ interface Props {
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
+  waAutoApply?: boolean;
+  waAutoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  onWaAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -218,6 +221,9 @@ function AiPanel({
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
+  waAutoApply = false,
+  waAutoApplyCategories,
+  onWaAutoApplyCategoriesChange,
   isPageFocused = true,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
@@ -231,6 +237,9 @@ function AiPanel({
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
+  waAutoApply?: boolean;
+  waAutoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  onWaAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -286,6 +295,9 @@ function AiPanel({
             idleDebounceSeconds={idleDebounceSeconds}
             isActive={isPageFocused}
             onJumpToText={onJumpToText}
+            autoApply={waAutoApply}
+            autoApplyCategories={waAutoApplyCategories}
+            onAutoApplyCategoriesChange={onWaAutoApplyCategoriesChange}
           />
         )}
         {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
@@ -394,6 +406,9 @@ export default function RightSidebar({
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
+  waAutoApply = false,
+  waAutoApplyCategories,
+  onWaAutoApplyCategoriesChange,
   isPageFocused = true,
   onJumpToText,
   onInsertWikiLink,
@@ -482,6 +497,9 @@ export default function RightSidebar({
             cadenceTrigger={cadenceTrigger}
             idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
             idleDebounceSeconds={idleDebounceSeconds}
+            waAutoApply={waAutoApply}
+            waAutoApplyCategories={waAutoApplyCategories}
+            onWaAutoApplyCategoriesChange={onWaAutoApplyCategoriesChange}
             isPageFocused={isPageFocused}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}
