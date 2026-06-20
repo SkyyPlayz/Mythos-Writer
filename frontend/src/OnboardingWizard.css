@@ -243,6 +243,12 @@ a.gs-footer-link:focus-visible {
   }
 }
 
+.gs-card[aria-checked="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
+  box-shadow: var(--glow-md) var(--accent);
+}
+
 .gs-card__icon {
   font-size: 1.75rem;
   line-height: 1;
@@ -269,14 +275,14 @@ a.gs-footer-link:focus-visible {
 }
 
 .gs-card--recommended {
-  border: 2px solid var(--neon-cyan, #00f0ff);
-  background: rgba(0, 240, 255, 0.04);
-  box-shadow: 0 0 16px rgba(0, 240, 255, 0.12);
+  border: var(--frame-width-hover) solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-elevated));
+  box-shadow: var(--glow-sm) var(--accent);
 }
 
 .gs-card--recommended:hover {
-  border-color: var(--neon-cyan, #00f0ff);
-  box-shadow: 0 0 24px rgba(0, 240, 255, 0.22);
+  border-color: var(--accent);
+  box-shadow: var(--glow-md) var(--accent);
 }
 
 .gs-card__badge {
@@ -284,13 +290,13 @@ a.gs-footer-link:focus-visible {
   top: 0.75rem;
   right: 0.75rem;
   font-size: 0.65rem;
-  font-weight: 700;
+  font-weight: var(--weight-heading);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
-  background: var(--neon-cyan, #00f0ff);
-  color: var(--bg-base, #0e1116);
+  background: var(--accent);
+  color: var(--bg-base);
   pointer-events: none;
   user-select: none;
   line-height: 1;
