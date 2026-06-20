@@ -5463,6 +5463,14 @@ const handlers: IpcHandlers = {
     return { saved: true };
   },
 
+  // SKY-3033: Window chrome controls (frameless main window)
+  [IPC_CHANNELS.WINDOW_MINIMIZE]: () => { mainWindow?.minimize(); },
+  [IPC_CHANNELS.WINDOW_MAXIMIZE]: () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+    else mainWindow?.maximize();
+  },
+  [IPC_CHANNELS.WINDOW_CLOSE]: () => { mainWindow?.close(); },
+
 };
 
 // ─── Panel popout windows (SKY-1686) ───
@@ -5706,6 +5714,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     ...restoreBounds,
     title: 'Mythos Writer',
+    // SKY-3033: Custom Liquid Neon window chrome — renderer provides title bar + controls.
+    frame: false,
     webPreferences: secureWebPreferences({ preloadPath }),
   });
 

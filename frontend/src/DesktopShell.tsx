@@ -69,6 +69,7 @@ import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import StoryTimeline from './StoryTimeline';
+import WindowChrome from './components/ui/WindowChrome';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -2936,6 +2937,7 @@ export default function DesktopShell() {
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
       <UpdateBanner />
+      {showTitleBar && <WindowChrome />}
       {showTitleBar && (
         <AppMenuBar
           onOpenSettings={() => setSettingsOpen(true)}

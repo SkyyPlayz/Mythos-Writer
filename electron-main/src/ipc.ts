@@ -521,6 +521,11 @@ export const IPC_CHANNELS = {
   // SKY-3026: Outline planning surface
   OUTLINE_LOAD: 'outline:load',
   OUTLINE_SAVE: 'outline:save',
+
+  // SKY-3033: Window chrome controls (frameless main window)
+  WINDOW_MINIMIZE: 'window:minimize',
+  WINDOW_MAXIMIZE: 'window:maximize',
+  WINDOW_CLOSE: 'window:close',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -900,6 +905,11 @@ export interface IpcHandlers {
   // SKY-3026: Outline planning surface
   [IPC_CHANNELS.OUTLINE_LOAD]: (payload: OutlineLoadPayload) => OutlineData | null;
   [IPC_CHANNELS.OUTLINE_SAVE]: (payload: OutlineSavePayload) => OutlineSaveResponse;
+
+  // SKY-3033: Window chrome controls (frameless main window)
+  [IPC_CHANNELS.WINDOW_MINIMIZE]: (payload: never) => void;
+  [IPC_CHANNELS.WINDOW_MAXIMIZE]: (payload: never) => void;
+  [IPC_CHANNELS.WINDOW_CLOSE]: (payload: never) => void;
 }
 
 // ─── Payload / Response types ───

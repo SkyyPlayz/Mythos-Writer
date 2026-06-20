@@ -924,6 +924,11 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('outline:save', { storyVaultPath, data }),
   },
 
+  // SKY-3033: Window chrome controls (frameless main window)
+  windowMinimize: () => ipcRenderer.invoke('window:minimize', undefined),
+  windowMaximize: () => ipcRenderer.invoke('window:maximize', undefined),
+  windowClose: () => ipcRenderer.invoke('window:close', undefined),
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
