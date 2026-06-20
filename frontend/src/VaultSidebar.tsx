@@ -535,8 +535,8 @@ function NotesVault({ onOpenPath, onContextChange }: NotesVaultProps) {
 
   const loadTree = useCallback(async () => {
     try {
-      const result = await window.api.listVault();
-      const filtered = (result.items ?? []).filter(isNotesItem);
+      const result = await window.api.listNotesVault();
+      const filtered = (('items' in result ? result.items : undefined) ?? []).filter(isNotesItem);
       const nodes = buildTree(filtered);
       setTree(nodes);
       setExpanded((prev) => {
@@ -575,7 +575,7 @@ function NotesVault({ onOpenPath, onContextChange }: NotesVaultProps) {
     const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
     const path = `${slug || 'note'}.md`;
     try {
-      await window.api.writeVault(
+      await window.api.writeNotesVault(
         path,
         `---\ntitle: "${name.trim()}"\ncreatedAt: ${new Date().toISOString()}\n---\n\n`,
       );

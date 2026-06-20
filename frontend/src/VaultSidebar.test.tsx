@@ -47,11 +47,16 @@ const STUB_SMART_FOLDER = {
 function stubWindowApi(overrides: Record<string, unknown> = {}) {
   (window as unknown as { api: unknown }).api = {
     listVault: vi.fn().mockResolvedValue({
+      items: [],
+    }),
+    // SKY-2976 / GH#620: Notes Vault tree reads from notes vault, not story vault
+    listNotesVault: vi.fn().mockResolvedValue({
       items: [
         { path: 'Notes', name: 'Notes', isDirectory: true, modifiedAt: '' },
         { path: 'Notes/ideas.md', name: 'ideas.md', isDirectory: false, modifiedAt: '' },
       ],
     }),
+    writeNotesVault: vi.fn().mockResolvedValue({ path: 'note.md', bytes: 0 }),
     startVaultWatch: vi.fn().mockResolvedValue({}),
     onVaultFileChanged: vi.fn().mockReturnValue(() => {}),
     smartFolderList: vi.fn().mockResolvedValue({ smartFolders: [] }),
@@ -611,5 +616,25 @@ describe('VaultSidebar — WCAG 4.1.2 aria attributes (MYT-580)', () => {
       fireEvent.click(notesDir);
       expect(notesDir).toHaveAttribute('aria-label', 'Expand Notes');
     });
+  });
+});
+
+
+// ─── SKY-2976 / GH#620: Notes Vault sidebar must use notes vault APIs ───────────
+
+describe('VaultSidebar — GH#620 Notes Vault API dispatch', () => {
+  beforeEach(() => { localStorage.clear(); stubWindowApi(); vi.clearAllMocks(); });
+
+  it('loads the Notes Vault tree using listNotesVault (not listVault)', async () => {
+    renderSidebar();
+    const api = (window as unknown as { api: { listNotesVault: ReturnType<typeof vi.fn>; listVault: ReturnType<typeof vi.fn> } }).api;
+    await waitFor(() => expect(api.listNotesVault).toHaveBeenCalled());
+    expect(api.listVault).not.toHaveBeenCalled();
+  });
+
+  it('shows Notes Vault items sourced from listNotesVault', async () => {
+    const { findByRole } = renderSidebar();
+    const notesDir = await findByRole('button', { name: 'Collapse Notes' });
+    expect(notesDir).toBeInTheDocument();
   });
 });
