@@ -246,3 +246,18 @@ export interface TimelineDisplayItem {
   rawCue: string | null;
   hasUserOverride: boolean;
 }
+
+// SKY-3026: Outline planning surface
+export interface OutlineNode {
+  id: string;
+  title: string;
+  notes?: string;
+  linkedSceneId?: string;
+  children: OutlineNode[];
+}
+
+export interface OutlineData {
+  storyId: string;
+  schemaVersion: 1;
+  nodes: OutlineNode[];
+}
