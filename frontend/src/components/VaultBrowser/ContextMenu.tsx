@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { ContextMenu as LNContextMenu } from '../ui/Menu';
+import type { MenuItemDef } from '../ui/Menu';
 import type { FlatRow } from './treeUtils';
 
 interface Props {
@@ -18,82 +18,45 @@ function dirOf(row: FlatRow): string {
   return slash > 0 ? row.node.path.slice(0, slash) : '';
 }
 
-export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder, onRename }: Props) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!row) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [row, onClose]);
-
-  // Auto-focus the first menu item when the menu opens
-  useEffect(() => {
-    if (!row || !menuRef.current) return;
-    const firstItem = menuRef.current.querySelector<HTMLElement>('[role="menuitem"]');
-    firstItem?.focus();
-  }, [row]);
-
+export default function ContextMenu({
+  row,
+  x,
+  y,
+  onClose,
+  onNewNote,
+  onNewFolder,
+  onRename,
+}: Props) {
   if (!row) return null;
 
-  const dir = dirOf(row);
   const isFile = !row.node.isDirectory;
+  const dir = dirOf(row);
 
-  function handleMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
-    );
-    const idx = items.indexOf(document.activeElement as HTMLElement);
-    const next =
-      e.key === 'ArrowDown'
-        ? items[(idx + 1) % items.length]
-        : items[(idx - 1 + items.length) % items.length];
-    next?.focus();
-  }
+  const items: MenuItemDef[] = [
+    ...(isFile && onRename ? [{ id: 'rename', label: 'Rename' } as MenuItemDef] : []),
+    { id: 'new-note', label: 'New Note' },
+    { id: 'new-folder', label: 'New Folder' },
+  ];
 
-  return createPortal(
-    <div
-      ref={menuRef}
-      className="vb-context-menu"
-      style={{ position: 'fixed', top: y, left: x, zIndex: 9999 }}
-      role="menu"
+  // Menu already calls onClose() after invoking onAction; don't duplicate here.
+  const handleAction = (id: string) => {
+    if (id === 'rename' && row && onRename) {
+      onRename(row);
+    } else if (id === 'new-note') {
+      onNewNote(dir);
+    } else if (id === 'new-folder') {
+      onNewFolder(dir);
+    }
+  };
+
+  return (
+    <LNContextMenu
+      open
+      position={{ x, y }}
+      onClose={onClose}
+      onAction={handleAction}
+      items={items}
       data-testid="vb-context-menu"
-      onKeyDown={handleMenuKeyDown}
-    >
-      {isFile && onRename && (
-        <button
-          className="vb-context-item"
-          role="menuitem"
-          onClick={() => { onRename(row); onClose(); }}
-        >
-          Rename
-        </button>
-      )}
-      <button
-        className="vb-context-item"
-        role="menuitem"
-        onClick={() => { onNewNote(dir); onClose(); }}
-      >
-        New Note
-      </button>
-      <button
-        className="vb-context-item"
-        role="menuitem"
-        onClick={() => { onNewFolder(dir); onClose(); }}
-      >
-        New Folder
-      </button>
-    </div>,
-    document.body,
+    />
   );
 }

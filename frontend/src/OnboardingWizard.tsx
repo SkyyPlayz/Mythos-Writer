@@ -6,7 +6,8 @@ import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3';
+// SKY-2988: custom-location + custom-template are the v0.3 Custom Setup 2-screen path
+type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template';
 // SKY-2220: 'quick-start' is the one-click first-run path that bypasses the
 // title/save-path form entirely. 'default-mythos-vault' is kept as a legacy
 // backend alias during the onboarding v2.1 transition.
@@ -86,6 +87,8 @@ interface OnboardingWizardProps {
   initialSettings: AppSettings;
   onComplete: (settings: AppSettings) => void;
   onCancel?: () => void;
+  /** @internal Test-only prop: mount the wizard at a specific step */
+  _testInitialStep?: WizardStep;
 }
 
 // ─── Typed window.api access ──────────────────────────────────────────────────
@@ -121,6 +124,14 @@ function api(): Api {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_SAVE_PATH = '~/Documents/MythosWriter';
+
+// SKY-2988: extract last path segment as a vault display name
+function deriveVaultName(path: string): string {
+  const trimmed = path.trim().replace(/[/\\]+$/, '');
+  const parts = trimmed.split(/[/\\]/).filter(Boolean);
+  const last = parts[parts.length - 1] ?? '';
+  return last === '~' ? '' : last;
+}
 const INVALID_TITLE_RE = /[/\\:*?"<>|]/;
 const TITLE_MAX = 120;
 const AUTHOR_MAX = 80;
@@ -242,9 +253,11 @@ interface StartingPointCardProps {
   ctaLabel: string;
   onActivate: () => void;
   testId: string;
+  isSecondary?: boolean;
+  cardRef?: React.RefObject<HTMLButtonElement>;
 }
 
-function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId }: StartingPointCardProps) {
+function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId, isSecondary, cardRef }: StartingPointCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -253,7 +266,8 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
   };
   return (
     <button
-      className="gs-card"
+      ref={cardRef}
+      className={`gs-card${isSecondary ? ' gs-card--secondary' : ''}`}
       onClick={() => onActivate()}
       onKeyDown={handleKeyDown}
       data-testid={testId}
@@ -418,8 +432,8 @@ function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onT
 
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
-export default function OnboardingWizard({ initialSettings, onComplete, onCancel }: OnboardingWizardProps) {
-  const [step, setStep] = useState<WizardStep>('step1');
+export default function OnboardingWizard({ initialSettings, onComplete, onCancel, _testInitialStep }: OnboardingWizardProps) {
+  const [step, setStep] = useState<WizardStep>(_testInitialStep ?? 'step1');
   const [startMode, setStartMode] = useState<StartMode | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   // SKY-2008: step1c genre picker state
@@ -477,9 +491,22 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const pathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathInputRef = useRef<HTMLInputElement>(null);
 
+  // ─── SKY-2988: Custom Setup v0.3 state ─────────────────────────────────────
+  const [customVaultPath, setCustomVaultPath] = useState(DEFAULT_SAVE_PATH);
+  const [customVaultName, setCustomVaultName] = useState(() => deriveVaultName(DEFAULT_SAVE_PATH));
+  const [customTemplate, setCustomTemplate] = useState<'recommended' | 'blank'>('recommended');
+  const [customPathValidation, setCustomPathValidation] = useState<PathValidationState>('idle');
+  const [customPathMsg, setCustomPathMsg] = useState('');
+  const [fromCustomSetup, setFromCustomSetup] = useState(false);
+  const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customPathInputRef = useRef<HTMLInputElement>(null);
+  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
+  const vaultNameManuallyEditedRef = useRef(false);
+
   // SKY-2007: load system path suggestions when the save-location step opens
+  // SKY-2988: also load for the Custom Setup location picker
   useEffect(() => {
-    if (step !== 'step2') return;
+    if (step !== 'step2' && step !== 'custom-location') return;
     api().vaultGetSystemPaths?.().then((sys) => {
       setSystemPaths(sys);
     }).catch(() => { /* non-fatal — suggestions stay hidden */ });
@@ -500,10 +527,158 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const titleInputRef = useRef<HTMLInputElement>(null);
   const templateCardTriggerRef = useRef<HTMLElement | null>(null);
 
+  // ─── SKY-2988: Custom Setup path validators ─────────────────────────────────
+
+  const validateCustomPathNow = useCallback(async (rawPath: string) => {
+    const opts = pathOptionsRef.current;
+    const expanded = rawPath.startsWith('~/')
+      ? (opts.homeDir ?? '') + rawPath.slice(1)
+      : rawPath.startsWith('~\\')
+      ? (opts.homeDir ?? '') + rawPath.slice(1)
+      : rawPath;
+
+    setCustomPathValidation('validating');
+    setCustomPathMsg('');
+    try {
+      const sep = opts.sep ?? '/';
+      const [base, mythosCheck] = await Promise.all([
+        api().validatePath(expanded),
+        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
+      ]);
+
+      if (!base.writable) {
+        setCustomPathValidation('not-writable');
+        setCustomPathMsg('This location is not writable. Choose a different folder.');
+        return;
+      }
+      if (mythosCheck.exists) {
+        setCustomPathValidation('conflict-mythos');
+        setCustomPathMsg('A Mythos vault already exists here.');
+        return;
+      }
+      setCustomPathValidation(base.exists ? 'valid' : 'new-path');
+      setCustomPathMsg('');
+    } catch {
+      setCustomPathValidation('error');
+      setCustomPathMsg('Could not validate this path. Check the folder and try again.');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCustomPathChange = useCallback((value: string) => {
+    setCustomVaultPath(value);
+    if (!vaultNameManuallyEditedRef.current) {
+      setCustomVaultName(deriveVaultName(value));
+    }
+
+    if (customPathDebounceRef.current) clearTimeout(customPathDebounceRef.current);
+
+    const isWindows = pathOptionsRef.current.sep === '\\';
+    if (isWindows && value.length > 200) {
+      setCustomPathValidation('path-too-long');
+      setCustomPathMsg('Path must be 200 characters or fewer on Windows.');
+      return;
+    }
+
+    if (!value.trim()) {
+      setCustomPathValidation('idle');
+      setCustomPathMsg('');
+      return;
+    }
+
+    setCustomPathValidation('validating');
+    customPathDebounceRef.current = setTimeout(() => {
+      validateCustomPathNow(value);
+    }, 500);
+  }, [validateCustomPathNow]);
+
+  function handleCustomUsePath(path: string) {
+    const display = tildeify(path, pathOptionsRef.current.homeDir);
+    setCustomVaultPath(display);
+    if (!vaultNameManuallyEditedRef.current) {
+      setCustomVaultName(deriveVaultName(display));
+    }
+    validateCustomPathNow(path);
+  }
+
+  async function handleCustomBrowse() {
+    try {
+      const res = await api().chooseVaultFolder('Choose vault location');
+      if (!res.cancelled && res.path) {
+        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
+        setCustomVaultPath(display);
+        if (!vaultNameManuallyEditedRef.current) {
+          setCustomVaultName(deriveVaultName(display));
+        }
+        validateCustomPathNow(res.path);
+      }
+    } catch { /* picker cancelled or failed */ }
+  }
+
+  function handleCustomNext() {
+    if (customVaultName.trim() === '') {
+      customVaultNameInputRef.current?.focus();
+      return;
+    }
+    if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
+    setStep('custom-template');
+  }
+
+  async function handleCustomFinish() {
+    setScaffoldError('');
+    setFromCustomSetup(true);
+    setStartMode('blank');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const expanded = customVaultPath.startsWith('~/')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath.startsWith('~\\')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath;
+      // SKY-2988: BE-1 (SKY-2991) will differentiate 'recommended' from 'blank'.
+      // Until it lands, both use startMode:'blank' at the chosen path.
+      const res = await api().onboardingComplete({
+        startMode: 'blank',
+        vaultParentPath: expanded,
+        vaultName: customVaultName.trim() || deriveVaultName(expanded),
+      });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'blank',
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
+      setScaffolding(false);
+    }
+  }
+  // AC-L-05: first card gets initial focus when step1 mounts or returns
+  const quickStartRef = useRef<HTMLButtonElement>(null);
+
+  // AC-L-05: auto-focus first card when landing screen mounts or returns
+  useEffect(() => {
+    if (step === 'step1') {
+      quickStartRef.current?.focus();
+    }
+  }, [step]);
+
   // Auto-focus title input on step 2
   useEffect(() => {
     if (step === 'step2') {
       titleInputRef.current?.focus();
+    }
+    // SKY-2988: auto-focus path input on custom-location screen
+    if (step === 'custom-location') {
+      customPathInputRef.current?.focus();
     }
   }, [step]);
 
@@ -976,7 +1151,18 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       const expanded = savePath.startsWith('~')
         ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
         : savePath;
-      const payload = startMode === 'quick-start' || startMode === 'default-mythos-vault'
+      const customExpanded = customVaultPath.startsWith('~/')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath.startsWith('~\\')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath;
+      const payload = fromCustomSetup
+        ? {
+            startMode: 'blank' as const,
+            vaultParentPath: customExpanded,
+            vaultName: customVaultName.trim() || deriveVaultName(customExpanded),
+          }
+        : startMode === 'quick-start' || startMode === 'default-mythos-vault'
         ? { startMode: 'quick-start' as const }
         : startMode === 'sample'
         ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
@@ -1036,7 +1222,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2') {
+      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template') {
         setShowCancelConfirm(true);
       }
     }
@@ -1183,37 +1369,52 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <StartingPointCard
               icon="&#x2728;"
               title="Quick Start"
-              description="One click — we'll set everything up for you."
+              description="One click — we set everything up for you."
               ctaLabel="Start &#x2192;"
               onActivate={handleQuickStart}
               testId="card-quick-start"
+              cardRef={quickStartRef}
             />
             <StartingPointCard
               icon="&#x270F;&#xFE0F;"
-              title="Create Custom Vault"
-              description="Pick your location, story title, and starting point."
-              ctaLabel="Customize &#x2192;"
+              title="Custom"
+              description="Fine-grained control: pick your location and starting point."
+              ctaLabel="Set up &#x2192;"
               onActivate={handleCreateCustom}
-              testId="card-create-custom"
+              testId="card-custom"
             />
             <StartingPointCard
               icon="&#x1F4C2;"
-              title="Open Existing Vault"
-              description="Browse for a vault on your computer or cloud storage."
-              ctaLabel="Browse &#x2192;"
+              title="Import / Open Existing"
+              description="Open an existing vault, or bring in Obsidian or Word files."
+              ctaLabel="Import &#x2192;"
               onActivate={() => { void handleOpenExistingVault(); }}
-              testId="card-open-existing"
+              testId="card-import"
+              isSecondary
             />
           </div>
 
-          <button
-            className="gs-skip-link"
-            type="button"
-            onClick={handleSkip}
-            data-testid="gs-skip"
-          >
-            Skip &#x2014; open empty workspace
-          </button>
+          {/* AC-L-07/AC-L-08: footer links */}
+          <div className="gs-landing-footer">
+            <button
+              className="gs-footer-link"
+              type="button"
+              onClick={() => { void handleOpenExistingVault(); }}
+              data-testid="gs-restart-link"
+            >
+              Restart an existing project?
+            </button>
+            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
+            <a
+              className="gs-footer-link"
+              href="https://mythoswriter.com/help"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="gs-learn-more"
+            >
+              Learn more
+            </a>
+          </div>
         </div>
       )}
 
@@ -1846,6 +2047,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   ? 'Setting up your vault…'
                   : startMode === 'open-existing'
                   ? 'Opening your vault…'
+                  : fromCustomSetup
+                  ? 'Setting up your vault…'
                   : 'Setting up your story…'}
               </h2>
               <div className="gs-spinner" aria-label="Creating story" role="status" data-testid="gs-spinner" />
@@ -1856,6 +2059,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   ? 'Setting up your vault…'
                   : startMode === 'open-existing'
                   ? 'Validating the selected folder…'
+                  : fromCustomSetup
+                  ? 'Creating your vault structure…'
                   : 'Creating your folders and first scene…'}
               </p>
             </>

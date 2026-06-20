@@ -129,7 +129,7 @@ async function renderWizard(ui: ReactElement) {
 }
 
 async function openCustomOptions() {
-  fireEvent.click(screen.getByTestId('card-create-custom'));
+  fireEvent.click(screen.getByTestId('card-custom'));
   await flushAsyncEffects();
 }
 
@@ -168,20 +168,50 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('shows three top-level starting-point cards', async () => {
+  it('shows three top-level starting-point cards (SKY-2987 3-path spec)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
-    expect(screen.getByTestId('card-create-custom')).toBeInTheDocument();
-    expect(screen.getByTestId('card-open-existing')).toBeInTheDocument();
+    expect(screen.getByTestId('card-custom')).toBeInTheDocument();
+    expect(screen.getByTestId('card-import')).toBeInTheDocument();
     expect(screen.queryByTestId('card-blank')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('card-create-custom')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('card-open-existing')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card labels match v2.1 spec copy exactly', async () => {
+  it('card labels match SKY-2970 spec copy (3-path redesign)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick Start');
-    expect(screen.getByTestId('card-create-custom')).toHaveTextContent('Create Custom Vault');
-    expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open Existing Vault');
+    expect(screen.getByTestId('card-custom')).toHaveTextContent('Custom');
+    expect(screen.getByTestId('card-import')).toHaveTextContent('Import / Open Existing');
+    await act(async () => {});
+  });
+
+  it('AC-L-05: first card (Quick Start) receives focus when Step 1 mounts', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(document.activeElement).toBe(screen.getByTestId('card-quick-start'));
+    await act(async () => {});
+  });
+
+  it('AC-L-07: "Restart an existing project?" link is present on Step 1', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('gs-restart-link')).toBeInTheDocument();
+    expect(screen.getByTestId('gs-restart-link').textContent).toMatch(/Restart an existing project/);
+    await act(async () => {});
+  });
+
+  it('AC-L-08: "Learn more" link is present on Step 1', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('gs-learn-more')).toBeInTheDocument();
+    expect(screen.getByTestId('gs-learn-more').textContent).toMatch(/Learn more/);
+    await act(async () => {});
+  });
+
+  it('AC-L-01: Import card has secondary CSS modifier for visual distinction', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('card-import')).toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-quick-start')).not.toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-custom')).not.toHaveClass('gs-card--secondary');
     await act(async () => {});
   });
 
@@ -218,10 +248,22 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
   });
 
-  it('Open Existing Vault opens the folder picker and passes the selected path to onboardingComplete', async () => {
+  it('Import card opens the folder picker and passes the selected path to onboardingComplete', async () => {
     const onComplete = vi.fn();
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-open-existing'));
+    fireEvent.click(screen.getByTestId('card-import'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
+    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
+      startMode: 'open-existing',
+      vaultParentPath: '/home/user/Stories',
+    }));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
+  });
+
+  it('"Restart an existing project?" link opens the folder picker', async () => {
+    const onComplete = vi.fn();
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+    fireEvent.click(screen.getByTestId('gs-restart-link'));
     await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
       startMode: 'open-existing',
@@ -239,10 +281,9 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('card-template')).toHaveTextContent('From Template');
   });
 
-  it('shows Skip link on Step 1', async () => {
+  it('Skip link is removed from Step 1 (replaced by Restart + Learn more — SKY-2987)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('gs-skip')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-skip').textContent).toMatch(/Skip/);
+    expect(screen.queryByTestId('gs-skip')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -268,13 +309,7 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('Skip calls onboardingComplete with startMode=skip and fires onComplete', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('gs-skip'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'skip' }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
-  });
+  /* Skip button removed from landing screen in SKY-2987 — AC-L-07/L-08 replace it */
 
   it('Escape on Step 1 shows cancel confirm dialog', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
