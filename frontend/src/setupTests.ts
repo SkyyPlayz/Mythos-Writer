@@ -1,4 +1,34 @@
 import '@testing-library/jest-dom';
+import { act } from '@testing-library/react';
+import { afterEach, beforeEach } from 'vitest';
+
+let consoleError: typeof console.error;
+let actWarnings: string[] = [];
+
+beforeEach(() => {
+  actWarnings = [];
+  consoleError = console.error;
+  console.error = (...args: Parameters<typeof console.error>) => {
+    const message = args.map((arg) => String(arg)).join(' ');
+    if (message.includes('was not wrapped in act')) {
+      actWarnings.push(message);
+    }
+    consoleError(...args);
+  };
+});
+
+afterEach(async () => {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  console.error = consoleError;
+
+  if (actWarnings.length > 0) {
+    throw new Error(`Unexpected React act(...) warning(s):\n${actWarnings.join('\n---\n')}`);
+  }
+});
 
 // jsdom's built-in localStorage is incomplete in some environments; provide a
 // full in-memory implementation so tests can call getItem/setItem/removeItem/clear.

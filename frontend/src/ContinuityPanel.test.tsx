@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import ContinuityPanel from './ContinuityPanel';
 import type { InconsistencyItem } from './InconsistencyCard';
@@ -19,6 +20,20 @@ const mockOnArchiveContScanResult = vi.fn((cb: Callback) => { onResultCb = cb; r
 const mockOnArchiveContScanError = vi.fn((cb: Callback) => { onErrorCb = cb; return vi.fn(); });
 const mockSettingsGet = vi.fn();
 const mockSettingsSet = vi.fn();
+
+
+async function flushAsyncEffects() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function renderContinuity(ui: ReactElement) {
+  const result = render(ui);
+  await flushAsyncEffects();
+  return result;
+}
 
 function setApi(overrides: Record<string, unknown> = {}) {
   (window as unknown as { api: unknown }).api = {
@@ -79,7 +94,7 @@ beforeEach(() => {
 
 describe('ContinuityPanel — disabled state', () => {
   it('shows disabled message when enabled=false', async () => {
-    render(<ContinuityPanel scene={mockScene} enabled={false} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} enabled={false} />);
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(/archive agent is disabled/i),
     );
@@ -90,9 +105,12 @@ describe('ContinuityPanel — loading state', () => {
   it('shows loading spinner while archiveListContinuity is pending', async () => {
     let resolve: (v: unknown) => void;
     mockArchiveListContinuity.mockReturnValue(new Promise((r) => { resolve = r; }));
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => expect(screen.getByLabelText(/loading continuity issues/i)).toBeInTheDocument());
-    await act(async () => { resolve!({ items: [] }); });
+    await act(async () => {
+      resolve!({ items: [] });
+      await Promise.resolve();
+    });
     await waitFor(() => expect(screen.getByRole('button', { name: /scan now/i })).toBeInTheDocument());
   });
 });
@@ -100,7 +118,7 @@ describe('ContinuityPanel — loading state', () => {
 describe('ContinuityPanel — not_scanned state', () => {
   it('shows "Scan now" button when no items are loaded', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /scan now/i })).toBeInTheDocument(),
     );
@@ -108,21 +126,21 @@ describe('ContinuityPanel — not_scanned state', () => {
 
   it('passes sceneId to archiveListContinuity (AC-A-09)', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => expect(mockArchiveListContinuity).toHaveBeenCalled());
     expect(mockArchiveListContinuity).toHaveBeenCalledWith({ sceneId: 'sc-1' });
   });
 
   it('passes sceneId=undefined when scene is null', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={null} />);
+    await renderContinuity(<ContinuityPanel scene={null} />);
     await waitFor(() => expect(mockArchiveListContinuity).toHaveBeenCalled());
     expect(mockArchiveListContinuity).toHaveBeenCalledWith({ sceneId: undefined });
   });
 
   it('Scan now button is disabled when scene is null', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={null} />);
+    await renderContinuity(<ContinuityPanel scene={null} />);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /scan now/i })).toBeDisabled(),
     );
@@ -132,7 +150,7 @@ describe('ContinuityPanel — not_scanned state', () => {
 describe('ContinuityPanel — scanning state', () => {
   it('shows scanning banner when scan start event fires', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
 
     act(() => { onStartCb?.(); });
@@ -145,7 +163,7 @@ describe('ContinuityPanel — scanning state', () => {
 describe('ContinuityPanel — empty state', () => {
   it('shows "All consistent" after scan result with zero open items', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
 
     act(() => {
@@ -159,7 +177,7 @@ describe('ContinuityPanel — empty state', () => {
 describe('ContinuityPanel — partial state', () => {
   it('shows partial warning banner when partial=true', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
 
     act(() => {
@@ -173,7 +191,7 @@ describe('ContinuityPanel — partial state', () => {
 describe('ContinuityPanel — error_llm state', () => {
   it('shows provider error banner on LLM error', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
 
     act(() => { onErrorCb?.({ error: 'rate limit exceeded by provider' }); });
@@ -185,7 +203,7 @@ describe('ContinuityPanel — error_llm state', () => {
 describe('ContinuityPanel — error_vault state', () => {
   it('shows vault error banner on vault read error', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
 
     act(() => { onErrorCb?.({ error: 'could not read vault file' }); });
@@ -197,7 +215,7 @@ describe('ContinuityPanel — error_vault state', () => {
 describe('ContinuityPanel — open_issues state', () => {
   it('shows items list when items loaded from archiveListContinuity', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [makeItem()] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     // Use rationale text which is NOT wrapped in curly-quote entities
     await waitFor(() =>
       expect(screen.getByText(/Manuscript says green but vault says blue/i)).toBeInTheDocument(),
@@ -206,7 +224,7 @@ describe('ContinuityPanel — open_issues state', () => {
 
   it('renders role="list" for the issues container', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [makeItem()] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByText(/Manuscript says green but vault says blue/i));
     const lists = screen.getAllByRole('list');
     expect(lists.length).toBeGreaterThan(0);
@@ -222,7 +240,7 @@ describe('ContinuityPanel — grouped list rendering', () => {
       makeItem({ id: 'i1', severity: 'low', status: 'ignored' }),
     ];
     mockArchiveListContinuity.mockResolvedValue({ items });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
 
     await waitFor(() => screen.getByRole('region', { name: /critical issues/i }));
     expect(screen.getByRole('region', { name: /high issues/i })).toBeInTheDocument();
@@ -236,7 +254,7 @@ describe('ContinuityPanel — grouped list rendering', () => {
       makeItem({ id: 'l1', severity: 'low' }),
     ];
     mockArchiveListContinuity.mockResolvedValue({ items });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
 
     await waitFor(() => screen.getByRole('region', { name: /low issues/i }));
     // Button accessible name: "Low 1 issue" (third span has aria-label="1 issue")
@@ -250,7 +268,7 @@ describe('ContinuityPanel — grouped list rendering', () => {
       makeItem({ id: 'l1', severity: 'low' }),
     ];
     mockArchiveListContinuity.mockResolvedValue({ items });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
 
     await waitFor(() => screen.getByRole('button', { name: /low.*1 issue/i }));
     fireEvent.click(screen.getByRole('button', { name: /low.*1 issue/i }));
@@ -261,7 +279,7 @@ describe('ContinuityPanel — grouped list rendering', () => {
 describe('ContinuityPanel — aria-live always in DOM', () => {
   it('aria-live region is present even in the not_scanned state', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
     const live = document.querySelector('[aria-live="polite"]');
     expect(live).not.toBeNull();
@@ -270,10 +288,13 @@ describe('ContinuityPanel — aria-live always in DOM', () => {
   it('aria-live region is present during loading state', async () => {
     let resolve: (v: unknown) => void;
     mockArchiveListContinuity.mockReturnValue(new Promise((r) => { resolve = r; }));
-    render(<ContinuityPanel scene={mockScene} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
     const live = document.querySelector('[aria-live="polite"]');
     expect(live).not.toBeNull();
-    await act(async () => { resolve!({ items: [] }); });
+    await act(async () => {
+      resolve!({ items: [] });
+      await Promise.resolve();
+    });
     await waitFor(() => expect(screen.getByRole('button', { name: /scan now/i })).toBeInTheDocument());
   });
 });
@@ -286,14 +307,14 @@ describe('ContinuityPanel — onCountChange callback', () => {
     ];
     mockArchiveListContinuity.mockResolvedValue({ items });
     const onCountChange = vi.fn();
-    render(<ContinuityPanel scene={mockScene} onCountChange={onCountChange} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} onCountChange={onCountChange} />);
     await waitFor(() => expect(onCountChange).toHaveBeenCalledWith(2));
   });
 
   it('calls onCountChange with 0 when no open items', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
     const onCountChange = vi.fn();
-    render(<ContinuityPanel scene={mockScene} onCountChange={onCountChange} />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} onCountChange={onCountChange} />);
     await waitFor(() => expect(onCountChange).toHaveBeenCalledWith(0));
   });
 });
@@ -301,7 +322,7 @@ describe('ContinuityPanel — onCountChange callback', () => {
 describe('ContinuityPanel — Scan now triggers IPC', () => {
   it('clicking Scan now calls archiveScanContinuity with scene id and prose', async () => {
     mockArchiveListContinuity.mockResolvedValue({ items: [] });
-    render(<ContinuityPanel scene={mockScene} archiveScanScope="active_scene" />);
+    await renderContinuity(<ContinuityPanel scene={mockScene} archiveScanScope="active_scene" />);
     await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
     fireEvent.click(screen.getByRole('button', { name: /scan now/i }));
     expect(mockArchiveScanContinuity).toHaveBeenCalledWith(

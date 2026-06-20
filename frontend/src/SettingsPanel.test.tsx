@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import SettingsPanel from './SettingsPanel';
 
 const defaultSettings: AppSettings = {
@@ -25,6 +26,30 @@ const defaultVaultPaths = {
   notesVaultPath: '/home/test/Mythos/Notes Vault',
 };
 
+
+async function flushAsyncEffects() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function renderSettings(ui: ReactElement) {
+  const result = render(ui);
+  await flushAsyncEffects();
+  return result;
+}
+
+async function clickAndFlush(element: Element) {
+  fireEvent.click(element);
+  await flushAsyncEffects();
+}
+
+async function changeAndFlush(element: Element, value: string) {
+  fireEvent.change(element, { target: { value } });
+  await flushAsyncEffects();
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   mockSettingsGet.mockResolvedValue(defaultSettings);
@@ -47,7 +72,7 @@ beforeEach(() => {
 
 describe('SettingsPanel', () => {
   it('renders all sections after loading', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
     expect(screen.getAllByText(/writing assistant/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
@@ -56,7 +81,7 @@ describe('SettingsPanel', () => {
   });
 
   it('offers dark and high-contrast appearance choices and applies on change', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const dark = screen.getByRole('radio', { name: /liquid neon/i }) as HTMLInputElement;
@@ -74,7 +99,7 @@ describe('SettingsPanel', () => {
   it('loads settings from IPC on mount', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...3456' });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
 
     // Input must be empty — masked value must not appear in the writable field
@@ -90,14 +115,14 @@ describe('SettingsPanel', () => {
   // dialog once content has loaded, otherwise keyboard users stay outside the
   // dialog and Tab walks the underlying app DOM (TC-SKY-814-06 regression).
   it('moves focus into the dialog after loading completes', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     const closeButton = screen.getByRole('button', { name: /close settings/i });
     await waitFor(() => expect(document.activeElement).toBe(closeButton));
   });
 
   it('saves settings to IPC when Save is clicked', async () => {
-    render(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -109,7 +134,7 @@ describe('SettingsPanel', () => {
   });
 
   it('shows inline validation error for bad API key', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'bad-key' } });
@@ -118,7 +143,7 @@ describe('SettingsPanel', () => {
   });
 
   it('accepts a valid sk-ant- key and enables Save', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-validkey' } });
@@ -127,7 +152,7 @@ describe('SettingsPanel', () => {
   });
 
   it('allows empty API key (falls back to env var)', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     // Empty key is valid — no error
@@ -136,7 +161,7 @@ describe('SettingsPanel', () => {
   });
 
   it('calls onClose when Cancel is clicked', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
@@ -144,7 +169,7 @@ describe('SettingsPanel', () => {
   });
 
   it('calls onClose when close button is clicked', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/close settings/i));
 
     fireEvent.click(screen.getByLabelText(/close settings/i));
@@ -153,7 +178,7 @@ describe('SettingsPanel', () => {
 
   it('toggles API key visibility', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-secret' });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const input = screen.getByLabelText(/anthropic api key/i) as HTMLInputElement;
@@ -167,7 +192,7 @@ describe('SettingsPanel', () => {
   });
 
   it('persists per-agent toggle changes on save', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/enable writing assistant/i));
 
     const toggle = screen.getByRole('checkbox', { name: /enable writing assistant/i }) as HTMLInputElement;
@@ -184,7 +209,7 @@ describe('SettingsPanel', () => {
 
   it('shows error when save fails', async () => {
     mockSettingsSet.mockRejectedValueOnce(new Error('Disk full'));
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -194,7 +219,7 @@ describe('SettingsPanel', () => {
   // ── MYT-146 acceptance criteria ──
 
   it('does not show configured hint when no key is set', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     expect(screen.queryByTestId('key-configured-hint')).not.toBeInTheDocument();
   });
@@ -202,7 +227,7 @@ describe('SettingsPanel', () => {
   it('saving without touching the key sends the masked value so the backend guard preserves it', async () => {
     const masked = 'sk-ant-...9876';
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: masked });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -212,7 +237,7 @@ describe('SettingsPanel', () => {
 
   it('saving with a new key typed sends the typed value', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...9876' });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-brandnew' } });
@@ -223,7 +248,7 @@ describe('SettingsPanel', () => {
 
   it('clearing the key (type then delete all) sends empty string to clear stored key', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...9876' });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     // Make input dirty by typing, then clear it
@@ -238,7 +263,7 @@ describe('SettingsPanel', () => {
 
   it('hides configured hint once the user starts typing a new key', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...9876' });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('key-configured-hint'));
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-new' } });
@@ -248,7 +273,7 @@ describe('SettingsPanel', () => {
   // ── MYT-158: per-agent settings ──
 
   it('renders model selectors for all three agents', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing assistant model/i));
 
     expect(screen.getByLabelText(/writing assistant model/i)).toBeInTheDocument();
@@ -257,7 +282,7 @@ describe('SettingsPanel', () => {
   });
 
   it('model selectors show the haiku/sonnet/opus options', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing assistant model/i));
 
     const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
@@ -268,7 +293,7 @@ describe('SettingsPanel', () => {
   });
 
   it('model selector change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing assistant model/i));
 
     fireEvent.change(screen.getByLabelText(/writing assistant model/i), {
@@ -283,7 +308,7 @@ describe('SettingsPanel', () => {
   });
 
   it('heartbeat interval inputs render for all three agents', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(screen.getByLabelText(/heartbeat interval/i, { selector: '#wa-heartbeat' })).toBeInTheDocument();
@@ -292,7 +317,7 @@ describe('SettingsPanel', () => {
   });
 
   it('heartbeat interval change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.change(screen.getByLabelText(/heartbeat interval/i, { selector: '#brainstorm-heartbeat' }), {
@@ -307,7 +332,7 @@ describe('SettingsPanel', () => {
   });
 
   it('auto-apply threshold sliders render for all three agents', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const sliders = screen.getAllByRole('slider');
@@ -315,7 +340,7 @@ describe('SettingsPanel', () => {
   });
 
   it('auto-apply threshold slider is disabled when autoApply is off', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing assistant auto-apply threshold/i));
 
     const slider = screen.getByLabelText(/writing assistant auto-apply threshold/i) as HTMLInputElement;
@@ -323,7 +348,7 @@ describe('SettingsPanel', () => {
   });
 
   it('auto-apply threshold slider becomes enabled when autoApply is toggled on', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/auto-apply writing assistant suggestions/i));
 
     const autoApplyToggle = screen.getByRole('checkbox', { name: /auto-apply writing assistant suggestions/i });
@@ -342,7 +367,7 @@ describe('SettingsPanel', () => {
       },
     };
     mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing assistant auto-apply threshold/i));
 
     fireEvent.change(screen.getByLabelText(/writing assistant auto-apply threshold/i), {
@@ -357,7 +382,7 @@ describe('SettingsPanel', () => {
   });
 
   it('max tokens per day inputs render for all three agents', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(document.getElementById('wa-max-tokens-day')).toBeInTheDocument();
@@ -368,14 +393,14 @@ describe('SettingsPanel', () => {
   // ── SKY-2597: Brainstorm Agent voice toggle and mic selection ──
 
   it('renders voice toggle for Brainstorm Agent (AC-BST-13)', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(screen.getByRole('checkbox', { name: /brainstorm agent voice/i })).toBeInTheDocument();
   });
 
   it('Brainstorm Agent voice toggle is off by default (AC-BST-12)', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const toggle = screen.getByRole('checkbox', { name: /brainstorm agent voice/i }) as HTMLInputElement;
@@ -383,14 +408,14 @@ describe('SettingsPanel', () => {
   });
 
   it('mic selection is hidden when Brainstorm Agent voice is disabled (AC-BST-12)', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(screen.queryByLabelText(/brainstorm agent microphone/i)).not.toBeInTheDocument();
   });
 
   it('mic selection appears when Brainstorm Agent voice is enabled (AC-BST-15)', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /brainstorm agent voice/i }));
@@ -399,7 +424,7 @@ describe('SettingsPanel', () => {
   });
 
   it('Brainstorm Agent voice toggle change is saved via IPC (AC-BST-13)', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /brainstorm agent voice/i }));
@@ -424,7 +449,7 @@ describe('SettingsPanel', () => {
       ...defaultSettings,
       agents: { ...defaultSettings.agents, brainstorm: { ...defaultSettings.agents.brainstorm, voiceEnabled: true } },
     });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/brainstorm agent microphone/i));
 
     fireEvent.change(screen.getByLabelText(/brainstorm agent microphone/i), {
@@ -442,14 +467,14 @@ describe('SettingsPanel', () => {
   // ── MYT-200 acceptance criteria ──
 
   it('archive continuity-check interval input renders', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(document.getElementById('archive-interval')).toBeInTheDocument();
   });
 
   it('archive continuity-check interval change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const input = document.getElementById('archive-interval') as HTMLInputElement;
@@ -463,7 +488,7 @@ describe('SettingsPanel', () => {
   });
 
   it('max tokens per day change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const input = document.getElementById('archive-max-tokens-day') as HTMLInputElement;
@@ -477,7 +502,7 @@ describe('SettingsPanel', () => {
   });
 
   it('full settings round-trip via IPC mock', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing assistant model/i));
 
     // Change model to haiku
@@ -516,7 +541,7 @@ describe('SettingsPanel', () => {
   // ── MYT-802: keyboard focus trap ──
 
   it('traps Tab focus within the dialog — Tab from last focusable cycles to first', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const dialog = document.querySelector('.settings-panel') as HTMLElement;
@@ -538,7 +563,7 @@ describe('SettingsPanel', () => {
   });
 
   it('traps Tab focus within the dialog — Shift+Tab from first focusable cycles to last', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const dialog = document.querySelector('.settings-panel') as HTMLElement;
@@ -560,7 +585,7 @@ describe('SettingsPanel', () => {
   });
 
   it('does not trap focus for non-Tab keys', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const dialog = document.querySelector('.settings-panel') as HTMLElement;
@@ -580,7 +605,7 @@ describe('SettingsPanel', () => {
   // ── MYT-801: Escape key closes dialog ──
 
   it('closes the dialog when Escape is pressed', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -588,7 +613,7 @@ describe('SettingsPanel', () => {
   });
 
   it('does not close the main dialog when Escape is pressed while the Advanced popover is open', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     fireEvent.click(screen.getByRole('button', { name: /advanced/i }));
@@ -602,21 +627,21 @@ describe('SettingsPanel', () => {
   // ── MYT-668: voice settings ──
 
   it('renders voice section with enable toggle', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     expect(screen.getByRole('heading', { name: /^voice$/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /enable voice input/i })).toBeInTheDocument();
   });
 
   it('voice toggle is off by default', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable voice input/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
   });
 
   it('voice toggle change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
@@ -630,7 +655,7 @@ describe('SettingsPanel', () => {
   // ── AC-V-09: voice settings panel (SKY-1505) ──
 
   it('renders input language selector with auto-detect default', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/stt input language/i));
 
     const select = screen.getByLabelText(/stt input language/i) as HTMLSelectElement;
@@ -642,7 +667,7 @@ describe('SettingsPanel', () => {
   });
 
   it('input language change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/stt input language/i));
 
     fireEvent.change(screen.getByLabelText(/stt input language/i), { target: { value: 'fr-FR' } });
@@ -658,7 +683,7 @@ describe('SettingsPanel', () => {
       ...defaultSettings,
       voice: { enabled: true, cloudFallback: false, inputLanguage: 'de-DE' },
     });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/stt input language/i));
 
     const select = screen.getByLabelText(/stt input language/i) as HTMLSelectElement;
@@ -666,13 +691,13 @@ describe('SettingsPanel', () => {
   });
 
   it('renders TTS voice identifier input', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/tts voice identifier/i));
     expect(screen.getByLabelText(/tts voice identifier/i)).toBeInTheDocument();
   });
 
   it('TTS voice change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/tts voice identifier/i));
 
     fireEvent.change(screen.getByLabelText(/tts voice identifier/i), { target: { value: 'alloy' } });
@@ -684,7 +709,7 @@ describe('SettingsPanel', () => {
   });
 
   it('renders TTS volume slider defaulting to 100%', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/tts volume/i));
 
     const slider = screen.getByLabelText(/tts volume/i) as HTMLInputElement;
@@ -692,7 +717,7 @@ describe('SettingsPanel', () => {
   });
 
   it('TTS volume change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/tts volume/i));
 
     fireEvent.change(screen.getByLabelText(/tts volume/i), { target: { value: '0.6' } });
@@ -704,7 +729,7 @@ describe('SettingsPanel', () => {
   });
 
   it('renders TTS rate slider defaulting to 1.0×', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/tts speech rate/i));
 
     const slider = screen.getByLabelText(/tts speech rate/i) as HTMLInputElement;
@@ -712,7 +737,7 @@ describe('SettingsPanel', () => {
   });
 
   it('TTS rate change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/tts speech rate/i));
 
     fireEvent.change(screen.getByLabelText(/tts speech rate/i), { target: { value: '1.5' } });
@@ -724,7 +749,7 @@ describe('SettingsPanel', () => {
   });
 
   it('renders persistent mute toggle unchecked by default', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
     const toggle = screen.getByRole('checkbox', { name: /start microphone muted/i }) as HTMLInputElement;
@@ -736,7 +761,7 @@ describe('SettingsPanel', () => {
       ...defaultSettings,
       voice: { enabled: false, cloudFallback: false, persistentMute: true },
     });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
     const toggle = screen.getByRole('checkbox', { name: /start microphone muted/i }) as HTMLInputElement;
@@ -744,7 +769,7 @@ describe('SettingsPanel', () => {
   });
 
   it('persistent mute toggle change is saved via IPC', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /start microphone muted/i }));
@@ -756,7 +781,7 @@ describe('SettingsPanel', () => {
   });
 
   it('voice settings round-trip — all new fields persist together', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/stt input language/i), { timeout: 15000 });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
@@ -781,21 +806,21 @@ describe('SettingsPanel', () => {
   // ── MYT-779: AI providers section ──
 
   it('renders AI Provider section with provider selector', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     expect(screen.getByRole('heading', { name: /^provider configuration$/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /ai provider/i })).toBeInTheDocument();
   });
 
   it('defaults provider selector to Anthropic', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
     const select = screen.getByRole('combobox', { name: /ai provider/i }) as HTMLSelectElement;
     expect(select.value).toBe('anthropic');
   });
 
   it('shows all five provider options', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
     const select = screen.getByRole('combobox', { name: /ai provider/i }) as HTMLSelectElement;
     const values = Array.from(select.options).map((o) => o.value);
@@ -807,27 +832,27 @@ describe('SettingsPanel', () => {
   });
 
   it('shows API key field for cloud providers', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
     expect(screen.getByRole('textbox', { name: /default model for this provider/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/provider api key/i)).toBeInTheDocument();
   });
 
   it('shows base URL field when switching to ollama', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
-    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'ollama');
     expect(screen.getByLabelText(/provider base url/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('ollama-not-running-hint')).toBeInTheDocument());
   });
 
   it('provider kind is included in saved settings', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
-    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
+    await clickAndFlush(screen.getByRole('button', { name: /save settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -835,7 +860,7 @@ describe('SettingsPanel', () => {
   });
 
   it('renders test connection button', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('button', { name: /test provider connection/i }));
     expect(screen.getByRole('button', { name: /test provider connection/i })).toBeInTheDocument();
   });
@@ -855,7 +880,7 @@ describe('SettingsPanel', () => {
     });
     mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['llama3', 'mistral', 'phi3'] });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
 
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /model for writingAssistant/i })).toBeInTheDocument()
@@ -884,7 +909,7 @@ describe('SettingsPanel', () => {
       error: 'Ollama is not running. Start it with ollama serve.',
     });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
 
     await waitFor(() =>
       expect(screen.getByTestId('wa-model-list-error')).toHaveTextContent(/ollama is not running/i)
@@ -900,7 +925,7 @@ describe('SettingsPanel', () => {
     });
     mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['llama3', 'mistral', 'phi3'] });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /default model for this provider/i })).toBeInTheDocument()
     );
@@ -922,7 +947,7 @@ describe('SettingsPanel', () => {
       error: 'Network error — check that the provider is running and reachable.',
     });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() =>
       expect(screen.getByTestId('ollama-not-running-hint')).toBeInTheDocument()
     );
@@ -933,7 +958,7 @@ describe('SettingsPanel', () => {
 
   it('AC-2: Refresh models button triggers a new listModels call', async () => {
     mockProviderListModels.mockResolvedValue({ ok: true, models: ['llama3'] });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
@@ -950,7 +975,7 @@ describe('SettingsPanel', () => {
 
   it('AC-4: falls back to free-text input when listing fails for custom provider', async () => {
     mockProviderListModels.mockResolvedValueOnce({ ok: false, error: 'ECONNREFUSED' });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'custom' } });
@@ -962,7 +987,7 @@ describe('SettingsPanel', () => {
 
   it('AC-4: falls back to free-text input when listing returns an empty array', async () => {
     mockProviderListModels.mockResolvedValueOnce({ ok: true, models: [] });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
@@ -976,27 +1001,27 @@ describe('SettingsPanel', () => {
   // ── MYT-779: Telemetry section ──
 
   it('renders Telemetry section with opt-in toggle', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     expect(screen.getByRole('heading', { name: /^telemetry$/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /enable telemetry/i })).toBeInTheDocument();
   });
 
   it('telemetry toggle is off by default', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
   });
 
   it('shows telemetry data list', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('list', { name: /telemetry data items/i }));
     expect(screen.getByRole('list', { name: /telemetry data items/i })).toBeInTheDocument();
   });
 
   it('telemetry toggle change is included in saved settings', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable telemetry/i }));
@@ -1009,7 +1034,7 @@ describe('SettingsPanel', () => {
 
   it('telemetry restores enabled state from loaded settings', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, telemetry: { enabled: true, sessionId: 'abc' } });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
@@ -1020,20 +1045,20 @@ describe('SettingsPanel', () => {
 
 describe('Archive Agent settings section (AC-CC-09)', () => {
   it('renders the Archive Agent section heading', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('heading', { name: /archive agent/i }));
     expect(screen.getByRole('heading', { name: /archive agent/i })).toBeInTheDocument();
   });
 
   it('master toggle is enabled by default', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
     const toggle = screen.getByTestId('archive-continuity-enabled') as HTMLInputElement;
     expect(toggle.checked).toBe(true);
   });
 
   it('disabling master toggle disables sub-settings fieldset', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
     fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
     const fieldset = screen.getByTestId('archive-agent-subsettings') as HTMLFieldSetElement;
@@ -1042,7 +1067,7 @@ describe('Archive Agent settings section (AC-CC-09)', () => {
 
   it('re-enabling master toggle re-enables sub-settings fieldset', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, archiveContinuityEnabled: false });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
     fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
     const fieldset = screen.getByTestId('archive-agent-subsettings') as HTMLFieldSetElement;
@@ -1050,7 +1075,7 @@ describe('Archive Agent settings section (AC-CC-09)', () => {
   });
 
   it('persists archiveContinuityEnabled=false when saved', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
     fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -1065,7 +1090,7 @@ describe('Archive Agent settings section (AC-CC-09)', () => {
       archiveScanScope: 'full_manuscript',
       archiveScanInterval: 900,
     });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('archive-full-manuscript-warning'));
     expect(screen.getByTestId('archive-full-manuscript-warning')).toBeInTheDocument();
   });
@@ -1076,13 +1101,13 @@ describe('Archive Agent settings section (AC-CC-09)', () => {
       archiveScanScope: 'full_manuscript',
       archiveScanInterval: null,
     });
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('archive-agent-section'));
     expect(screen.queryByTestId('archive-full-manuscript-warning')).not.toBeInTheDocument();
   });
 
   it('archiveScanBudget change persists on save', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByTestId('archive-scan-budget'));
     fireEvent.change(screen.getByTestId('archive-scan-budget'), { target: { value: '12000' } });
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -1121,7 +1146,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-04 — override toggle renders for all three agents
   it('AC-MP-04: override toggle renders for all three agent cards', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i })).toBeInTheDocument();
@@ -1131,7 +1156,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-04 — override toggle is off by default
   it('AC-MP-04: override toggles are unchecked by default', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const waToggle = screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }) as HTMLInputElement;
@@ -1144,7 +1169,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-13 — global provider hint when override is off
   it('AC-MP-13: shows "Using global provider" hint when override is off', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     // All three agents should show the hint
@@ -1154,7 +1179,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-05 — enabling override shows the full provider form
   it('AC-MP-05: enabling override shows provider kind, API key, and model fields', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     // The per-agent API key field should not exist yet
@@ -1171,7 +1196,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-06 — disabling override hides the form
   it('AC-MP-06: disabling override hides the provider form', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     const toggle = screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i });
@@ -1184,7 +1209,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-03 — model selector hidden when override is enabled
   it('AC-MP-03: top-level model selector is hidden when per-agent override is enabled', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing assistant model/i));
 
     // Initially the top-level model selector is visible
@@ -1199,7 +1224,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-08 — per-agent override persists on Save (override enabled)
   it('AC-MP-08: enabled override with API key and model is included in saved settings', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
@@ -1225,7 +1250,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-08 — per-agent override undefined when disabled
   it('AC-MP-08: disabled override results in undefined provider in saved settings', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -1250,7 +1275,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
       },
     });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
 
     const toggle = screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }) as HTMLInputElement;
@@ -1274,7 +1299,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
       },
     });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /model for archive/i }));
 
     const modelSelect = screen.getByRole('combobox', { name: /model for archive/i }) as HTMLSelectElement;
@@ -1294,7 +1319,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
       },
     });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     expect(screen.getByText(/key is already configured/i)).toBeInTheDocument();
@@ -1313,7 +1338,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
       },
     });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByText(/key is already configured/i));
 
     fireEvent.change(screen.getByLabelText(/api key for writingAssistant/i), {
@@ -1336,7 +1361,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
       },
     });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -1348,7 +1373,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-10 — test connection button calls settingsTestConnection for agent
   it('AC-MP-10: test connection button calls settingsTestConnection with agent config', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
@@ -1368,7 +1393,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
   it('AC-MP-10: successful test connection shows "Connection successful" status', async () => {
     mockSettingsTestConnection.mockResolvedValueOnce({ ok: true });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }));
@@ -1381,7 +1406,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
   it('AC-MP-10: failed test connection shows error alert', async () => {
     mockSettingsTestConnection.mockResolvedValueOnce({ ok: false, error: 'Invalid API key' });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
@@ -1394,19 +1419,15 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-12 — remote endpoint security warning
   it('AC-MP-12: shows remote endpoint warning for non-localhost base URL', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    await clickAndFlush(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     // Switch to custom to get base URL field
-    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
-      target: { value: 'custom' },
-    });
+    await changeAndFlush(screen.getByLabelText(/provider for writingAssistant/i), 'custom');
 
-    fireEvent.change(screen.getByLabelText(/base url for writingAssistant/i), {
-      target: { value: 'https://remote.api.example.com/v1' },
-    });
+    await changeAndFlush(screen.getByLabelText(/base url for writingAssistant/i), 'https://remote.api.example.com/v1');
 
     expect(screen.getByRole('alert')).toHaveTextContent(/not on localhost/i);
     await waitFor(() => expect(screen.getByTestId('wa-model-list-error')).toBeInTheDocument());
@@ -1414,13 +1435,11 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-12 — no warning for localhost base URL
   it('AC-MP-12: no remote endpoint warning for localhost base URL', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
-    fireEvent.change(screen.getByLabelText(/provider for writingAssistant/i), {
-      target: { value: 'ollama' },
-    });
+    await clickAndFlush(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
+    await changeAndFlush(screen.getByLabelText(/provider for writingAssistant/i), 'ollama');
 
     // Default Ollama URL is localhost — no warning
     expect(screen.queryByText(/not on localhost/i)).not.toBeInTheDocument();
@@ -1429,7 +1448,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
   // AC-MP-08 — full round-trip for all three agents with different providers
   it('AC-MP-08: all three agent overrides are included in saved settings', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     // Enable Writing Assistant override with Anthropic Haiku
@@ -1458,7 +1477,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
   it('AC-MP-11: enabling override with Ollama provider triggers providerListModels', async () => {
     mockProviderListModels.mockResolvedValue({ ok: true, models: ['llama3', 'mistral'] });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
@@ -1475,7 +1494,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
   it('AC-MP-11: shows model dropdown when providerListModels succeeds for Ollama override', async () => {
     mockProviderListModels.mockResolvedValue({ ok: true, models: ['llama3', 'mistral', 'phi3'] });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
@@ -1497,7 +1516,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
   it('AC-MP-11: shows Ollama error hint when providerListModels fails for override', async () => {
     mockProviderListModels.mockResolvedValue({ ok: false, error: 'Ollama is not running. Start it with ollama serve.' });
 
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
@@ -1516,12 +1535,12 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
 describe('Settings dialog keyboard navigation (SKY-1969)', () => {
   it('dialog is findable by its accessible heading name', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('dialog', { name: /^settings$/i }));
   });
 
   it('every aria-labelledby attribute references an element that exists in the DOM', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const labelled = Array.from(document.querySelectorAll('[aria-labelledby]'));
@@ -1534,7 +1553,7 @@ describe('Settings dialog keyboard navigation (SKY-1969)', () => {
   });
 
   it('provider select comes before API key input in tab order', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const dialog = document.querySelector('.settings-panel')!;
@@ -1551,7 +1570,7 @@ describe('Settings dialog keyboard navigation (SKY-1969)', () => {
   });
 
   it('Cancel button comes before Save button in tab order', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const dialog = document.querySelector('.settings-panel')!;
@@ -1566,7 +1585,7 @@ describe('Settings dialog keyboard navigation (SKY-1969)', () => {
   });
 
   it('all interactive controls in the dialog have accessible names', async () => {
-    render(<SettingsPanel onClose={mockOnClose} />);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const dialog = document.querySelector('.settings-panel')!;
