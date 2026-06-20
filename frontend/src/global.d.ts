@@ -1311,6 +1311,14 @@ interface Window {
       error?: string;
     }>;
 
+    // SKY-2966: story navigator popout cross-window sync
+    navigatorSelectScene?: (sceneId: string) => Promise<void>;
+    navigatorReportScene?: (sceneId: string | null) => Promise<void>;
+    navigatorReportManifest?: () => Promise<void>;
+    onNavigatorSceneChanged?: (cb: (data: { sceneId: string }) => void) => () => void;
+    onNavigatorSceneSynced?: (cb: (data: { sceneId: string | null }) => void) => () => void;
+    onNavigatorManifestChanged?: (cb: () => void) => () => void;
+
   };
 
   // Non-standard browser speech recognition (Chromium only)

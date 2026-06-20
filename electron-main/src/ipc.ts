@@ -332,6 +332,9 @@ export const IPC_CHANNELS = {
   // and onboardingComplete so the wizard re-appears on next boot.
   ONBOARDING_RESET: 'onboarding:reset',
 
+  // SKY-2971: Word (.docx) → Story Vault importer.
+  ONBOARDING_IMPORT_DOCX: 'onboarding:importDocxToStoryVault',
+
   // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
   SESSION_SCENE_SAVE: 'session:saveScene',
 
@@ -455,6 +458,14 @@ export const IPC_CHANNELS = {
   PANEL_FLOAT_DOCK_BACK: 'panel:float-dock-back',
   PANEL_FLOAT_SET_PIN: 'panel:float-set-pin',
   PANEL_FLOAT_BOUNDS: 'panel:float-bounds',
+
+  // SKY-2966: Story navigator popout cross-window sync
+  NAVIGATOR_SELECT_SCENE: 'navigator:select-scene',
+  NAVIGATOR_REPORT_SCENE: 'navigator:report-scene',
+  NAVIGATOR_SCENE_CHANGED: 'navigator:scene-changed',
+  NAVIGATOR_SCENE_SYNCED: 'navigator:scene-synced',
+  NAVIGATOR_REPORT_MANIFEST: 'navigator:report-manifest',
+  NAVIGATOR_MANIFEST_CHANGED: 'navigator:manifest-changed',
 
   // SKY-1684: Archive Agent v1 — continuity scan IPC
   ARCHIVE_SCAN_CONTINUITY: 'archive:scan-continuity',
@@ -718,6 +729,8 @@ export interface IpcHandlers {
   // SKY-627: extended payload — orchestrates vault creation + first-scene setup
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
+  // SKY-2971: .docx importer
+  [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: (payload: OnboardingImportDocxPayload) => Promise<OnboardingImportDocxResponse>;
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-156: Project Templates
@@ -1974,6 +1987,32 @@ export interface OnboardingCompleteResponse {
   /** Relative path of the first scene within the story vault. */
   firstScenePath?: string;
   error?: string;
+}
+
+/** SKY-2971: .docx → Story Vault importer IPC types. */
+export interface OnboardingImportDocxPayload {
+  filePaths: string[];
+}
+
+export interface ImportedDocxStory {
+  filePath: string;
+  storyId: string;
+  storyTitle: string;
+  sceneCount: number;
+  firstScenePath?: string;
+  firstSceneId?: string;
+  warnings: string[];
+}
+
+export interface DocxImportError {
+  filePath: string;
+  error: string;
+}
+
+export interface OnboardingImportDocxResponse {
+  ok: boolean;
+  importedStories: ImportedDocxStory[];
+  errors: DocxImportError[];
 }
 
 export interface SessionSaveScenePayload {

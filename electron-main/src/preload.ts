@@ -45,6 +45,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
   onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
+  // SKY-2971: Word (.docx) → Story Vault importer.
+  importDocxToStoryVault: (filePaths: string[]) =>
+    ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),
 
   // SKY-9: full Notes-Vault-scoped CRUD for VaultBrowser and the
   // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault
@@ -787,6 +790,34 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_: unknown, data: { panelId: string; x: number; y: number; width: number; height: number }) => cb(data);
     ipcRenderer.on('panel:float-bounds', handler);
     return () => ipcRenderer.removeListener('panel:float-bounds', handler);
+  },
+
+  // SKY-2966: story navigator popout cross-window sync
+  navigatorSelectScene: (sceneId: string) =>
+    ipcRenderer.invoke('navigator:select-scene', { sceneId }),
+
+  navigatorReportScene: (sceneId: string | null) =>
+    ipcRenderer.invoke('navigator:report-scene', { sceneId }),
+
+  navigatorReportManifest: () =>
+    ipcRenderer.invoke('navigator:report-manifest', undefined),
+
+  onNavigatorSceneChanged: (cb: (data: { sceneId: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string }) => cb(data);
+    ipcRenderer.on('navigator:scene-changed', handler);
+    return () => ipcRenderer.removeListener('navigator:scene-changed', handler);
+  },
+
+  onNavigatorSceneSynced: (cb: (data: { sceneId: string | null }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string | null }) => cb(data);
+    ipcRenderer.on('navigator:scene-synced', handler);
+    return () => ipcRenderer.removeListener('navigator:scene-synced', handler);
+  },
+
+  onNavigatorManifestChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('navigator:manifest-changed', handler);
+    return () => ipcRenderer.removeListener('navigator:manifest-changed', handler);
   },
 
   // SKY-1684: Archive Agent v1 — continuity scan

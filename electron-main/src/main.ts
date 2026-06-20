@@ -144,6 +144,10 @@ import {
   type ContinuityCheckPayload,
   type OnboardingCompletePayload,
   type OnboardingCompleteResponse,
+  type OnboardingImportDocxPayload,
+  type OnboardingImportDocxResponse,
+  type ImportedDocxStory,
+  type DocxImportError,
   type ProviderListModelsPayload,
   type DraftsCreatePayload,
   type DraftsListPayload,
@@ -165,6 +169,7 @@ import {
   type SceneCrafterSuggestionAcceptPayload,
   type SceneCrafterSuggestionRejectPayload,
 } from './ipc.js';
+import { parseDocxBuffer } from './docxImporter.js';
 import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
 import { boardRelPath } from './sceneCrafterBoard.js';
 import {
@@ -2249,6 +2254,82 @@ const handlers: IpcHandlers = {
     const current = loadAppSettings();
     saveAppSettings({ ...current, onboardingComplete: false });
     return { ok: true as const };
+  },
+
+  // SKY-2971: Word (.docx) → Story Vault importer.
+  // Parses each .docx file with mammoth, splits on H1 (chapters) / H2 (scenes),
+  // writes scene files + manifest entries for the current vault.
+  [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: async (payload: OnboardingImportDocxPayload): Promise<OnboardingImportDocxResponse> => {
+    const { filePaths } = payload ?? {};
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      return { ok: false, importedStories: [], errors: [{ filePath: '', error: 'filePaths must be a non-empty array' }] };
+    }
+
+    const vaultRoot = getVaultRoot();
+    const manifestPath = getManifestPath();
+    const importedStories: ImportedDocxStory[] = [];
+    const errors: DocxImportError[] = [];
+
+    for (const filePath of filePaths) {
+      try {
+        if (!filePath.toLowerCase().endsWith('.docx')) {
+          errors.push({ filePath, error: 'Only .docx files are supported' });
+          continue;
+        }
+        const buffer = fs.readFileSync(filePath);
+        const baseName = path.basename(filePath, '.docx');
+        const parsed = await parseDocxBuffer(buffer, baseName);
+
+        const nowStr = new Date().toISOString();
+        const storyId = crypto.randomUUID();
+        let sceneCount = 0;
+        let firstScenePath: string | undefined;
+        let firstSceneId: string | undefined;
+
+        const storyChapters: Manifest['stories'][number]['chapters'] = [];
+        for (const ch of parsed.chapters) {
+          const chapterId = crypto.randomUUID();
+          const chapterDir = chapterVaultPath(vaultRoot, parsed.title, ch.title);
+          const chapterScenes: Manifest['stories'][number]['chapters'][number]['scenes'] = [];
+          for (const sc of ch.scenes) {
+            const sceneId = crypto.randomUUID();
+            const scenePath = sceneVaultPath(vaultRoot, chapterDir, sc.title);
+            writeSceneFile(vaultRoot, scenePath, {
+              id: sceneId,
+              title: sc.title,
+              chapterId,
+              storyId,
+              order: sc.order,
+              prose: sc.prose,
+            });
+            sceneCount++;
+            if (!firstScenePath) { firstScenePath = scenePath; firstSceneId = sceneId; }
+            chapterScenes.push({
+              id: sceneId, title: sc.title, path: scenePath,
+              order: sc.order, chapterId, storyId, blocks: [],
+              draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr,
+            });
+          }
+          storyChapters.push({
+            id: chapterId, title: ch.title, path: chapterDir,
+            order: ch.order, scenes: chapterScenes, createdAt: nowStr, updatedAt: nowStr,
+          });
+        }
+
+        const manifest = readManifest(manifestPath);
+        manifest.stories.push({
+          id: storyId, title: parsed.title, path: `Manuscript/${toSlug(parsed.title)}`,
+          chapters: storyChapters, createdAt: nowStr, updatedAt: nowStr,
+        });
+        writeManifest(manifestPath, manifest);
+
+        importedStories.push({ filePath, storyId, storyTitle: parsed.title, sceneCount, firstScenePath, firstSceneId, warnings: parsed.warnings });
+      } catch (err) {
+        errors.push({ filePath, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    return { ok: errors.length === 0, importedStories, errors };
   },
 
   // SKY-130: thin write that persists only the last-opened scene + cursor position.
@@ -5469,6 +5550,48 @@ function registerFloatingPanelHandlers(): void {
   }));
 }
 
+// ─── Navigator cross-window sync (SKY-2966) ───
+function registerNavigatorSyncHandlers(): void {
+  // Float panel → main window: user clicked a scene in the popout, navigate to it.
+  ipcMain.handle(IPC_CHANNELS.NAVIGATOR_SELECT_SCENE, wrapIpcHandler(IPC_CHANNELS.NAVIGATOR_SELECT_SCENE, (event, payload: { sceneId: string }) => {
+    if (!isFromTopFrame(event)) return;
+    const { sceneId } = payload ?? {};
+    if (!sceneId || typeof sceneId !== 'string') return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_SCENE_CHANGED, { sceneId });
+    }
+  }));
+
+  // Main window → float panels: broadcast current scene so popout highlights it.
+  ipcMain.handle(IPC_CHANNELS.NAVIGATOR_REPORT_SCENE, wrapIpcHandler(IPC_CHANNELS.NAVIGATOR_REPORT_SCENE, (event, payload: { sceneId: string | null }) => {
+    if (!isFromTopFrame(event)) return;
+    const { sceneId } = payload ?? {};
+    const senderId = event.sender?.id;
+    for (const [, state] of floatingPanelWindows) {
+      if (!state.win.isDestroyed() && state.win.webContents.id !== senderId) {
+        state.win.webContents.send(IPC_CHANNELS.NAVIGATOR_SCENE_SYNCED, { sceneId });
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id !== senderId) {
+      mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_SCENE_SYNCED, { sceneId });
+    }
+  }));
+
+  // Any window → others: manifest changed, reload stories.
+  ipcMain.handle(IPC_CHANNELS.NAVIGATOR_REPORT_MANIFEST, wrapIpcHandler(IPC_CHANNELS.NAVIGATOR_REPORT_MANIFEST, (event) => {
+    if (!isFromTopFrame(event)) return;
+    const senderId = event.sender?.id;
+    for (const [, state] of floatingPanelWindows) {
+      if (!state.win.isDestroyed() && state.win.webContents.id !== senderId) {
+        state.win.webContents.send(IPC_CHANNELS.NAVIGATOR_MANIFEST_CHANGED, {});
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id !== senderId) {
+      mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_MANIFEST_CHANGED, {});
+    }
+  }));
+}
+
 // ─── Create BrowserWindow ───
 function createWindow() {
   // electron-vite emits the preload to out/preload/preload.js, while this
@@ -7332,6 +7455,7 @@ app.whenReady().then(async () => {
   registerPresetHandlers();
   registerPanelPopoutHandler();
   registerFloatingPanelHandlers();
+  registerNavigatorSyncHandlers();
 
   if (initializeVaults) startWritingScanScheduler();
   if (initializeVaults) startArchiveContScheduler();
