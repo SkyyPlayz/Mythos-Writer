@@ -507,7 +507,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [fromCustomSetup, setFromCustomSetup] = useState(false);
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
-  const _customVaultNameInputRef = useRef<HTMLInputElement>(null);
+  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
   const vaultNameManuallyEditedRef = useRef(false);
 
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
