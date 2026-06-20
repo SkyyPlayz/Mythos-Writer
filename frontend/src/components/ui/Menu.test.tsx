@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { Menu } from './Menu';
 import type { MenuItemDef } from './Menu';
@@ -69,12 +69,12 @@ describe('Menu', () => {
         { id: 'b', label: 'Beta', separator: true },
       ];
       renderMenu({ items });
-      expect(screen.getByRole('separator')).toBeInTheDocument();
+      expect(screen.getByTestId('ln-menu-separator')).toBeInTheDocument();
     });
 
-    it('does not render separator when separator is not set', () => {
+    it('does not render separator when no item has separator flag', () => {
       renderMenu();
-      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ln-menu-separator')).not.toBeInTheDocument();
     });
   });
 
@@ -104,14 +104,6 @@ describe('Menu', () => {
   });
 
   describe('keyboard navigation', () => {
-    beforeEach(() => {
-      renderMenu();
-    });
-
-    function getMenu() {
-      return screen.getByRole('menu');
-    }
-
     it('closes on Escape and calls onClose', () => {
       const onClose = vi.fn();
       renderMenu({ onClose });
@@ -120,17 +112,19 @@ describe('Menu', () => {
     });
 
     it('moves focus to next enabled item on ArrowDown', () => {
-      const menu = getMenu();
-      const [first, second] = within(menu).getAllByRole('menuitem').filter(
-        (btn) => !btn.hasAttribute('disabled'),
-      );
-      first.focus();
+      renderMenu();
+      const menu = screen.getByRole('menu');
+      const enabled = within(menu)
+        .getAllByRole('menuitem')
+        .filter((btn) => !btn.hasAttribute('disabled'));
+      enabled[0].focus();
       fireEvent.keyDown(menu, { key: 'ArrowDown' });
-      expect(second).toHaveFocus();
+      expect(enabled[1]).toHaveFocus();
     });
 
     it('moves focus to previous enabled item on ArrowUp', () => {
-      const menu = getMenu();
+      renderMenu();
+      const menu = screen.getByRole('menu');
       const enabled = within(menu)
         .getAllByRole('menuitem')
         .filter((btn) => !btn.hasAttribute('disabled'));
@@ -140,7 +134,8 @@ describe('Menu', () => {
     });
 
     it('wraps focus from last to first on ArrowDown', () => {
-      const menu = getMenu();
+      renderMenu();
+      const menu = screen.getByRole('menu');
       const enabled = within(menu)
         .getAllByRole('menuitem')
         .filter((btn) => !btn.hasAttribute('disabled'));
@@ -150,7 +145,8 @@ describe('Menu', () => {
     });
 
     it('wraps focus from first to last on ArrowUp', () => {
-      const menu = getMenu();
+      renderMenu();
+      const menu = screen.getByRole('menu');
       const enabled = within(menu)
         .getAllByRole('menuitem')
         .filter((btn) => !btn.hasAttribute('disabled'));
@@ -160,7 +156,8 @@ describe('Menu', () => {
     });
 
     it('moves focus to first item on Home', () => {
-      const menu = getMenu();
+      renderMenu();
+      const menu = screen.getByRole('menu');
       const enabled = within(menu)
         .getAllByRole('menuitem')
         .filter((btn) => !btn.hasAttribute('disabled'));
@@ -170,7 +167,8 @@ describe('Menu', () => {
     });
 
     it('moves focus to last item on End', () => {
-      const menu = getMenu();
+      renderMenu();
+      const menu = screen.getByRole('menu');
       const enabled = within(menu)
         .getAllByRole('menuitem')
         .filter((btn) => !btn.hasAttribute('disabled'));

@@ -154,7 +154,11 @@ export function Menu({
       {items.map((item) => (
         <div key={item.id}>
           {item.separator && (
-            <div className="ln-menu-separator" role="separator" aria-hidden="true" />
+            <div
+              className="ln-menu-separator"
+              role="separator"
+              data-testid="ln-menu-separator"
+            />
           )}
           <button
             className={[
