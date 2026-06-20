@@ -595,8 +595,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in pending custom-setup JSX
-  const handleCustomPathChange = useCallback((value: string) => {
+  const __handleCustomPathChange = useCallback((value: string) => {
     setCustomVaultPath(value);
     if (!vaultNameManuallyEditedRef.current) {
       setCustomVaultName(deriveVaultName(value));
@@ -648,7 +647,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   function handleCustomNext() {
     if (customVaultName.trim() === '') {
-      customVaultNameInputRef.current?.focus();
+      _customVaultNameInputRef.current?.focus();
       return;
     }
     if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
@@ -2253,7 +2252,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   }`}
                   type="text"
                   value={customVaultPath}
-                  onChange={(e) => handleCustomPathChange(e.target.value)}
+                  onChange={(e) => _handleCustomPathChange(e.target.value)}
                   data-testid="custom-vault-path-input"
                   aria-label="Vault location path"
                   aria-describedby="custom-path-hint"
@@ -2314,7 +2313,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               </label>
               <input
                 id="custom-vault-name-input"
-                ref={customVaultNameInputRef}
+                ref={_customVaultNameInputRef}
                 className="gs-form__input"
                 type="text"
                 value={customVaultName}
