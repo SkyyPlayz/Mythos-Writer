@@ -125,7 +125,7 @@
 
 /* Destructive — danger/delete actions, magenta hover */
 .btn--destructive {
-  background: rgba(255, 77, 77, 0.12);
+  background: var(--state-danger-bg);
   color: var(--state-danger);
   border-color: var(--state-danger);
   border-width: var(--frame-width-rest);
