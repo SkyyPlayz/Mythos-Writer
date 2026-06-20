@@ -495,15 +495,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [customVaultPath, setCustomVaultPath] = useState(DEFAULT_SAVE_PATH);
   const [customVaultName, setCustomVaultName] = useState(() => deriveVaultName(DEFAULT_SAVE_PATH));
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- pending SKY-2988 custom-setup JSX
-  const [customTemplate, setCustomTemplate] = useState<'recommended' | 'blank'>('recommended');
-  const [customPathValidation, setCustomPathValidation] = useState<PathValidationState>('idle');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- customPathMsg shown in pending UI
-  const [customPathMsg, setCustomPathMsg] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setFromCustomSetup used in pending JSX
-  const [fromCustomSetup, setFromCustomSetup] = useState(false);
+  const [, setCustomPathValidation] = useState<PathValidationState>('idle');
+  const [, setCustomPathMsg] = useState('');
+  const [fromCustomSetup] = useState(false);
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
-  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
+  const vaultNameManuallyEditedRef = useRef(false);
   const vaultNameManuallyEditedRef = useRef(false);
 
   // SKY-2007: load system path suggestions when the save-location step opens
@@ -594,6 +591,77 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       validateCustomPathNow(value);
     }, 500);
   }, [validateCustomPathNow]);
+
+  function handleCustomUsePath(path: string) {
+    const display = tildeify(path, pathOptionsRef.current.homeDir);
+    setCustomVaultPath(display);
+    if (!vaultNameManuallyEditedRef.current) {
+      setCustomVaultName(deriveVaultName(display));
+    }
+    validateCustomPathNow(path);
+  }
+
+  async function handleCustomBrowse() {
+    try {
+      const res = await api().chooseVaultFolder('Choose vault location');
+      if (!res.cancelled && res.path) {
+        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
+        setCustomVaultPath(display);
+        if (!vaultNameManuallyEditedRef.current) {
+          setCustomVaultName(deriveVaultName(display));
+        }
+        validateCustomPathNow(res.path);
+      }
+    } catch { /* picker cancelled or failed */ }
+  }
+
+  function handleCustomNext() {
+    if (customVaultName.trim() === '') {
+      customVaultNameInputRef.current?.focus();
+      return;
+    }
+    if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
+    setStep('custom-template');
+  }
+
+  async function handleCustomFinish() {
+    setScaffoldError('');
+    setFromCustomSetup(true);
+    setStartMode('blank');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const expanded = customVaultPath.startsWith('~/')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath.startsWith('~\\')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath;
+      // SKY-2988: BE-1 (SKY-2991) will differentiate 'recommended' from 'blank'.
+      // Until it lands, both use startMode:'blank' at the chosen path.
+      const res = await api().onboardingComplete({
+        startMode: 'blank',
+        vaultParentPath: expanded,
+        vaultName: customVaultName.trim() || deriveVaultName(expanded),
+      });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'blank',
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
+      setScaffolding(false);
+    }
+  }
 
 
   // AC-L-05: first card gets initial focus when step1 mounts or returns
@@ -1960,6 +2028,235 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               data-testid="gs-create-story"
             >
               Create Story &#x2192;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Custom Setup: Screen 1 — Install Location (SKY-2988) ── */}
+      {step === 'custom-location' && (
+        <div className="gs-modal" data-testid="screen-custom-location">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => setStep('step1')}
+              data-testid="custom-location-back"
+            >
+              <span aria-hidden="true">&amp;#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Custom Setup · 1 of 2</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="custom-location-close"
+            >
+              &amp;#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Where should your vault live?</h2>
+
+          <div className="gs-form">
+            <div className="gs-form__field">
+              <label className="gs-form__label" htmlFor="custom-vault-path-input">
+                Vault location <span aria-hidden="true">*</span>
+              </label>
+              <div className="gs-path-row">
+                <input
+                  id="custom-vault-path-input"
+                  ref={customPathInputRef}
+                  className={`gs-form__input gs-path-input${
+                    customPathValidation === 'not-writable' || customPathValidation === 'path-too-long' || customPathValidation === 'error'
+                      ? ' gs-form__input--error'
+                      : customPathValidation === 'valid' || customPathValidation === 'new-path'
+                      ? ' gs-form__input--valid'
+                      : ''
+                  }`}
+                  type="text"
+                  value={customVaultPath}
+                  onChange={(e) => handleCustomPathChange(e.target.value)}
+                  data-testid="custom-vault-path-input"
+                  aria-label="Vault location path"
+                  aria-describedby="custom-path-hint"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  className="btn-secondary gs-path-row__browse"
+                  type="button"
+                  onClick={handleCustomBrowse}
+                  data-testid="custom-vault-browse"
+                >
+                  Browse…
+                </button>
+              </div>
+
+              {customPathMsg ? (
+                <p
+                  className={`gs-path-hint gs-path-hint--${
+                    customPathValidation === 'conflict-mythos' ? 'warn'
+                    : customPathValidation === 'error' || customPathValidation === 'not-writable' || customPathValidation === 'path-too-long' ? 'error'
+                    : 'info'
+                  }`}
+                  id="custom-path-hint"
+                  role="alert"
+                  data-testid="custom-path-validation-hint"
+                >
+                  {customPathMsg}
+                </p>
+              ) : (
+                <p className="gs-form__hint" id="custom-path-hint">
+                  Your vault files will be created here. You can move them later.
+                </p>
+              )}
+
+              {suggestedLocations.length > 0 && (
+                <div className="gs-suggestions" data-testid="custom-location-suggestions">
+                  <span className="gs-suggestions__label">Suggested:</span>
+                  {suggestedLocations.map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      className="gs-suggestion-pill"
+                      onClick={() => handleCustomUsePath(loc)}
+                      data-testid="custom-suggestion-pill"
+                      title={loc}
+                    >
+                      {tildeify(loc, pathOptions.homeDir)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="gs-form__field">
+              <label className="gs-form__label" htmlFor="custom-vault-name-input">
+                Vault name <span aria-hidden="true">*</span>
+              </label>
+              <input
+                id="custom-vault-name-input"
+                ref={customVaultNameInputRef}
+                className="gs-form__input"
+                type="text"
+                value={customVaultName}
+                maxLength={TITLE_MAX}
+                placeholder="e.g., My Writing Vault"
+                aria-required="true"
+                onChange={(e) => {
+                  vaultNameManuallyEditedRef.current = true;
+                  setCustomVaultName(e.target.value);
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCustomNext(); }}
+                data-testid="custom-vault-name-input"
+              />
+              <p className="gs-form__hint">Auto-filled from your path — edit freely.</p>
+            </div>
+          </div>
+
+          <div className="gs-actions">
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={handleCustomNext}
+              disabled={
+                customPathValidation === 'idle' ||
+                customPathValidation === 'validating' ||
+                customPathValidation === 'not-writable' ||
+                customPathValidation === 'path-too-long' ||
+                customPathValidation === 'error' ||
+                customPathValidation === 'conflict-mythos' ||
+                !customVaultName.trim()
+              }
+              data-testid="custom-location-next"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Custom Setup: Screen 2 — Template Picker (SKY-2988) ── */}
+      {step === 'custom-template' && (
+        <div className="gs-modal" data-testid="screen-custom-template">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => setStep('custom-location')}
+              data-testid="custom-template-back"
+            >
+              <span aria-hidden="true">&amp;#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Custom Setup · 2 of 2</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="custom-template-close"
+            >
+              &amp;#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Choose a starting template</h2>
+          <p className="gs-modal__subtitle">You can always change this later.</p>
+
+          <div
+            role="radiogroup"
+            aria-label="Starting template"
+            className="custom-template-options"
+            onKeyDown={handleGridArrowKeys}
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={customTemplate === 'recommended'}
+              className={`custom-template-card${customTemplate === 'recommended' ? ' custom-template-card--selected' : ''}`}
+              onClick={() => setCustomTemplate('recommended')}
+              data-testid="custom-template-recommended"
+            >
+              <span className="custom-template-card__icon" aria-hidden="true">&#x2728;</span>
+              <div className="custom-template-card__body">
+                <span className="custom-template-card__title">
+                  Recommended
+                  <span className="custom-template-card__badge">Default</span>
+                </span>
+                <span className="custom-template-card__desc">
+                  A ready-made structure with example scenes and notes to get you started.
+                </span>
+              </div>
+              <span className="custom-template-card__radio" aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
+              role="radio"
+              aria-checked={customTemplate === 'blank'}
+              className={`custom-template-card${customTemplate === 'blank' ? ' custom-template-card--selected' : ''}`}
+              onClick={() => setCustomTemplate('blank')}
+              data-testid="custom-template-blank"
+            >
+              <span className="custom-template-card__icon" aria-hidden="true">&#x1F4DD;</span>
+              <div className="custom-template-card__body">
+                <span className="custom-template-card__title">Start Blank</span>
+                <span className="custom-template-card__desc">
+                  An empty vault — pure canvas, no sample content.
+                </span>
+              </div>
+              <span className="custom-template-card__radio" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="gs-actions">
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={handleCustomFinish}
+              data-testid="custom-template-finish"
+            >
+              Finish →
             </button>
           </div>
         </div>
