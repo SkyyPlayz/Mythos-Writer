@@ -530,6 +530,13 @@ interface AppTabShellState {
   notesSidebarCollapsed: boolean;
 }
 
+/** SKY-3096 (v0.3 AppNavRail): A single item in the persistent left nav rail. */
+interface NavRailItem {
+  id: AppTab;
+  label: string;
+  icon: string;
+}
+
 /** SKY-1697 (Wave 2c): persisted floating panel window state. */
 interface FloatingPanelEntry {
   panelId: string;
