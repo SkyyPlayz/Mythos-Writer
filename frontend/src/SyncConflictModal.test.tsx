@@ -122,7 +122,7 @@ describe('SyncConflictModal', () => {
     const { container } = render(
       <SyncConflictModal resolved={[]} lockfileConflict={null} onContinue={vi.fn()} />,
     );
-    expect(container.querySelector('.scm-dialog')).not.toBeNull();
+    expect(container.querySelector('.ln-dialog')).not.toBeNull();
   });
 
   it('shows the "don\'t show again" checkbox', () => {
