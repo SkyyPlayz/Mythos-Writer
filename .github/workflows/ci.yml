@@ -681,7 +681,6 @@ jobs:
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.head_ref }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
           LINT_RESULT: ${{ needs.lint.result }}
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           UNIT_RESULT: ${{ needs.unit.result }}
