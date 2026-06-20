@@ -1315,7 +1315,7 @@ interface Window {
     navigatorSelectScene?: (sceneId: string) => Promise<void>;
     navigatorReportScene?: (sceneId: string | null) => Promise<void>;
     navigatorReportManifest?: () => Promise<void>;
-    onNavigatorSceneChanged?: (cb: (data: { sceneId: string }) => void) => () => void;
+    onNavigatorSceneChanged?: (cb: (data: { sceneId: string | null }) => void) => () => void;
     onNavigatorSceneSynced?: (cb: (data: { sceneId: string | null }) => void) => () => void;
     onNavigatorManifestChanged?: (cb: () => void) => () => void;
 
