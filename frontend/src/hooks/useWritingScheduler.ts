@@ -58,6 +58,12 @@ export function useWritingScheduler({
     sceneRef.current = scene;
   }, [scene]);
 
+  // Clear stale tips when navigating to a different scene.
+  const sceneId = scene?.id;
+  useEffect(() => {
+    setResult(null);
+  }, [sceneId]);
+
   const runScan = useCallback(async (useScanNowChannel = false) => {
     const currentScene = sceneRef.current;
     if (!currentScene || scanningRef.current) return;
