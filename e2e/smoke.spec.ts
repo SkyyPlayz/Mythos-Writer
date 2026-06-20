@@ -235,7 +235,7 @@ test('TC-03: save snapshot and verify in history panel', async () => {
   const historyBtn = toolbar.locator('.btn-history');
   await historyBtn.click();
 
-  const historyPanel = page.getByRole('dialog', { name: 'Scene History' });
+  const historyPanel = page.getByRole('dialog', { name: /Draft history|Draft History|Scene History/ });
   await expect(historyPanel).toBeVisible({ timeout: 5_000 });
 
   // At least one snapshot entry should exist
@@ -243,7 +243,7 @@ test('TC-03: save snapshot and verify in history panel', async () => {
   await expect(snapshotEntries.first()).toBeVisible({ timeout: 5_000 });
 
   // Close the panel
-  const closeBtn = historyPanel.getByRole('button', { name: 'Close history' });
+  const closeBtn = historyPanel.getByRole('button', { name: /Close draft history|Close history/ });
   if (await closeBtn.isVisible()) await closeBtn.click();
   await expect(historyPanel).not.toBeVisible({ timeout: 3_000 });
 });
