@@ -154,7 +154,8 @@ describe('useWritingScheduler', () => {
     mockWritingScan.mockResolvedValue({ tips, scannedAt });
 
     const { result, rerender } = renderHook(
-      ({ scene }) => useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+      ({ scene }: { scene: typeof mockScene }) =>
+        useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
       { initialProps: { scene: mockScene } },
     );
 
@@ -166,6 +167,25 @@ describe('useWritingScheduler', () => {
 
     expect(mockWritingScan).toHaveBeenCalledTimes(1);
     expect(result.current.result?.tips).toEqual([]);
+  });
+
+  it('clears stale scan result when the active scene changes', async () => {
+    const tips = ['Use active voice.'];
+    const scannedAt = '2026-05-23T12:00:00.000Z';
+    mockWritingScan.mockResolvedValue({ tips, scannedAt });
+
+    const { result, rerender } = renderHook(
+      ({ scene }: { scene: typeof mockScene }) =>
+        useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+      { initialProps: { scene: mockScene } },
+    );
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(result.current.result).toEqual({ tips, scannedAt });
+
+    rerender({ scene: { ...mockScene, id: 's2', path: '/stories/ch1/empty.md', blocks: [] } });
+
+    expect(result.current.result).toBeNull();
   });
 
   // AC-CAD-02: on_save mode — setInterval NOT called, writingScan called on scene:saved event

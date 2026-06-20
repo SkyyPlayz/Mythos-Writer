@@ -58,11 +58,12 @@ export function useWritingScheduler({
     sceneRef.current = scene;
   }, [scene]);
 
-  // Clear stale tips when navigating to a different scene.
-  const sceneId = scene?.id;
+  // Clear stale scan state when navigating to or updating a different scene.
   useEffect(() => {
+    scanningRef.current = false;
+    setScanning(false);
     setResult(null);
-  }, [sceneId]);
+  }, [scene?.id, scene?.path, scene?.updatedAt]);
 
   const runScan = useCallback(async (useScanNowChannel = false) => {
     const currentScene = sceneRef.current;
@@ -74,6 +75,11 @@ export function useWritingScheduler({
       return;
     }
 
+    const scanScene = {
+      id: currentScene.id,
+      path: currentScene.path,
+      updatedAt: currentScene.updatedAt,
+    };
     scanningRef.current = true;
     setScanning(true);
     try {
@@ -84,12 +90,25 @@ export function useWritingScheduler({
           scenePath: currentScene.path,
         })
         : await window.api.writingScan(currentScene.id, prose, currentScene.path);
+      const latestScene = sceneRef.current;
+      if (
+        latestScene?.id !== scanScene.id ||
+        latestScene.path !== scanScene.path ||
+        latestScene.updatedAt !== scanScene.updatedAt
+      ) return;
       setResult({ tips: response.tips, scannedAt: response.scannedAt });
     } catch {
       // Non-fatal — scheduler continues on next tick.
     } finally {
-      scanningRef.current = false;
-      setScanning(false);
+      const latestScene = sceneRef.current;
+      if (
+        latestScene?.id === scanScene.id &&
+        latestScene.path === scanScene.path &&
+        latestScene.updatedAt === scanScene.updatedAt
+      ) {
+        scanningRef.current = false;
+        setScanning(false);
+      }
     }
   }, []);
 
