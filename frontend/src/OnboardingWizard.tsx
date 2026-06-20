@@ -519,7 +519,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
   const docxFileInputRef = useRef<HTMLInputElement>(null);
   const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const vaultNameManuallyEditedRef = useRef(false);
 
   // SKY-2007: load system path suggestions when the save-location step opens
   // SKY-2988: also load for the Custom Setup location picker
