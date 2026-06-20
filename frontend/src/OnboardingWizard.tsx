@@ -501,12 +501,13 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // ─── SKY-2988: Custom Setup v0.3 state ─────────────────────────────────────
   const [customVaultPath, setCustomVaultPath] = useState(DEFAULT_SAVE_PATH);
   const [customVaultName, setCustomVaultName] = useState(() => deriveVaultName(DEFAULT_SAVE_PATH));
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- pending SKY-2988 custom-setup JSX
-  const [, setCustomPathValidation] = useState<PathValidationState>('idle');
-  const [, setCustomPathMsg] = useState('');
-  const [fromCustomSetup] = useState(false);
+  const [customTemplate, setCustomTemplate] = useState<'recommended' | 'blank'>('recommended');
+  const [customPathValidation, setCustomPathValidation] = useState<PathValidationState>('idle');
+  const [customPathMsg, setCustomPathMsg] = useState('');
+  const [fromCustomSetup, setFromCustomSetup] = useState(false);
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
+  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
   const vaultNameManuallyEditedRef = useRef(false);
 
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
