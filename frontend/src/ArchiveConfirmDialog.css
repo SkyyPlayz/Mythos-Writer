@@ -1,58 +1,7 @@
-.acd-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.acd-dialog {
-  background: var(--color-surface, #1e1e2e);
-  border: 1px solid var(--color-border, #383850);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  width: min(480px, 92vw);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.acd-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--color-border, #383850);
-}
-
-.acd-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text-primary, #cdd6f4);
-  margin: 0;
-}
-
-.acd-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-muted, #6c7086);
-  font-size: 1rem;
-  line-height: 1;
-  padding: 4px;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-}
-
-.acd-close:hover:not(:disabled) {
-  color: var(--color-text-primary, #cdd6f4);
-  background: var(--color-surface-hover, #313244);
-}
+/* Overlay, panel, header, and close-button styles are handled by the shared
+   Dialog primitive (components/ui/Dialog). Only component-specific styles live here. */
 
 .acd-body {
-  padding: 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -87,15 +36,11 @@
   color: #f38ba8;
 }
 
-.acd-footer {
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--color-border, #383850);
-}
-
 .acd-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
 }
 
 .acd-btn {
@@ -149,10 +94,6 @@
 }
 
 @media (prefers-contrast: more) {
-  .acd-dialog {
-    border: 2px solid ButtonText;
-  }
-
   .acd-btn {
     border: 2px solid ButtonText;
   }

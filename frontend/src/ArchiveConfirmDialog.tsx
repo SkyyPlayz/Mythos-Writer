@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useId } from 'react';
+import Dialog, { DialogHeader, DialogBody, DialogFooter } from './components/ui/Dialog';
 import './ArchiveConfirmDialog.css';
 
 export type ArchiveConfirmAction = 'match_archive' | 'suggest_story_change' | 'ignore';
@@ -20,6 +21,7 @@ export default function ArchiveConfirmDialog({
 }: ArchiveConfirmDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const titleId = useId();
 
   const handleAction = useCallback(async (action: ArchiveConfirmAction) => {
     setBusy(true);
@@ -39,71 +41,54 @@ export default function ArchiveConfirmDialog({
   }, [suggestionId, onResolved]);
 
   return (
-    <div
-      className="acd-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Archive continuity issue"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="acd-dialog">
-        <header className="acd-header">
-          <h2 className="acd-title">Continuity Issue Found</h2>
+    <Dialog open onClose={onClose} aria-labelledby={titleId}>
+      <DialogHeader onClose={onClose}>
+        <h2 id={titleId}>Continuity Issue Found</h2>
+      </DialogHeader>
+
+      <DialogBody className="acd-body">
+        <p className="acd-rationale">{rationale}</p>
+        {anchorText && (
+          <blockquote className="acd-anchor">
+            &ldquo;{anchorText}&rdquo;
+          </blockquote>
+        )}
+        {error && (
+          <p className="acd-error" role="alert">{error}</p>
+        )}
+      </DialogBody>
+
+      <DialogFooter>
+        <div className="acd-actions">
           <button
-            className="acd-close"
-            onClick={onClose}
+            className="acd-btn acd-btn-match"
+            onClick={() => handleAction('match_archive')}
             disabled={busy}
-            aria-label="Close dialog"
+            aria-label="Update vault to match manuscript"
+            title="Update the vault entity to reflect what the manuscript says"
           >
-            ✕
+            Match Archive to Story
           </button>
-        </header>
-
-        <div className="acd-body">
-          <p className="acd-rationale">{rationale}</p>
-          {anchorText && (
-            <blockquote className="acd-anchor">
-              &ldquo;{anchorText}&rdquo;
-            </blockquote>
-          )}
-
-          {error && (
-            <p className="acd-error" role="alert">{error}</p>
-          )}
+          <button
+            className="acd-btn acd-btn-suggest"
+            onClick={() => handleAction('suggest_story_change')}
+            disabled={busy}
+            aria-label="Create suggestion to revise manuscript"
+            title="Leave the vault unchanged and create a revision suggestion for the manuscript"
+          >
+            Suggest Story Change
+          </button>
+          <button
+            className="acd-btn acd-btn-ignore"
+            onClick={() => handleAction('ignore')}
+            disabled={busy}
+            aria-label="Ignore this finding"
+            title="Silence this finding so it does not re-surface"
+          >
+            Ignore
+          </button>
         </div>
-
-        <footer className="acd-footer">
-          <div className="acd-actions">
-            <button
-              className="acd-btn acd-btn-match"
-              onClick={() => handleAction('match_archive')}
-              disabled={busy}
-              aria-label="Update vault to match manuscript"
-              title="Update the vault entity to reflect what the manuscript says"
-            >
-              Match Archive to Story
-            </button>
-            <button
-              className="acd-btn acd-btn-suggest"
-              onClick={() => handleAction('suggest_story_change')}
-              disabled={busy}
-              aria-label="Create suggestion to revise manuscript"
-              title="Leave the vault unchanged and create a revision suggestion for the manuscript"
-            >
-              Suggest Story Change
-            </button>
-            <button
-              className="acd-btn acd-btn-ignore"
-              onClick={() => handleAction('ignore')}
-              disabled={busy}
-              aria-label="Ignore this finding"
-              title="Silence this finding so it does not re-surface"
-            >
-              Ignore
-            </button>
-          </div>
-        </footer>
-      </div>
-    </div>
+      </DialogFooter>
+    </Dialog>
   );
 }

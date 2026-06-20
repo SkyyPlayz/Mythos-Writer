@@ -25,7 +25,7 @@ describe('SyncConflictModal', () => {
 
     const dialog = screen.getByRole('dialog');
     const heading = screen.getByRole('heading', { name: /sync conflict detected/i });
-    const body = dialog.querySelector('.scm-body');
+    const body = dialog.querySelector('.ln-dialog-body');
 
     expect(dialog.getAttribute('aria-label')).toBeNull();
     expect(dialog.getAttribute('aria-labelledby')).toBe(heading.id);

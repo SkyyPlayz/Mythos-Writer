@@ -1,0 +1,132 @@
+/* Liquid Neon shared Dialog primitive — SKY-3031 */
+
+.ln-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--blur-overlay));
+  -webkit-backdrop-filter: blur(var(--blur-overlay));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+}
+
+@keyframes ln-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ln-dialog {
+  background: var(--bg-elevated);
+  box-shadow: var(--elev-3);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-default);
+  width: min(480px, 100%);
+  max-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ln-dialog-enter var(--dur-panel) var(--ease-out) both;
+}
+
+.ln-dialog--form {
+  width: min(560px, 100%);
+}
+
+/* Header */
+.ln-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  gap: var(--space-3);
+}
+
+.ln-dialog-header-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.ln-dialog-header-content :where(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: var(--weight-heading);
+  color: var(--text-header);
+  letter-spacing: var(--tracking-heading);
+}
+
+.ln-dialog-close {
+  appearance: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  transition:
+    color var(--dur-hover-in),
+    background var(--dur-hover-in);
+  flex-shrink: 0;
+}
+
+.ln-dialog-close:hover {
+  color: var(--text-header);
+  background: var(--bg-hover);
+}
+
+.ln-dialog-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Body — scrollable when content overflows */
+.ln-dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5) var(--space-6);
+}
+
+/* Footer */
+.ln-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* Reduced motion: zero the animation */
+@media (prefers-reduced-motion: reduce) {
+  .ln-dialog {
+    animation: none;
+  }
+}
+
+/* High-contrast: explicit opaque fills, solid border, no blur */
+@media (prefers-contrast: more) {
+  .ln-dialog {
+    border: 2px solid ButtonText;
+  }
+
+  .ln-dialog-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(0, 0, 0, 0.75);
+  }
+}
