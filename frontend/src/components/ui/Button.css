@@ -1,0 +1,229 @@
+/* Button — shared interactive primitive (SKY-3029) */
+
+/* ─── Base ─────────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  font-family: inherit;
+  font-weight: var(--weight-heading);
+  border-radius: var(--radius-md);
+  border: var(--frame-width-rest) solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background var(--dur-hover-in) var(--ease-out),
+    border-color var(--dur-hover-in) var(--ease-out),
+    border-width var(--dur-hover-in) var(--ease-out),
+    box-shadow var(--dur-hover-in) var(--ease-out),
+    color var(--dur-hover-in) var(--ease-out),
+    opacity var(--dur-hover-out) var(--ease-out);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.btn:active {
+  transition-duration: var(--dur-press);
+  transform: scale(0.98);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* ─── Sizes ─────────────────────────────────────────────────────────────────── */
+
+.btn--sm {
+  font-size: var(--text-xs);
+  padding: 0.3rem 0.75rem;
+  min-height: 32px;
+}
+
+.btn--md {
+  font-size: var(--text-sm);
+  padding: 0.5rem 1rem;
+  min-height: 40px;
+}
+
+.btn--lg {
+  font-size: var(--text-base);
+  padding: 0.625rem 1.25rem;
+  min-height: 48px;
+}
+
+.btn--xl {
+  font-size: var(--text-lg);
+  padding: 0.75rem 1.5rem;
+  min-height: 56px;
+}
+
+/* ─── Variants ──────────────────────────────────────────────────────────────── */
+
+/* Primary — filled cyan-tinted surface, neon-cyan border frame on hover */
+.btn--primary {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+  border-width: var(--frame-width-rest);
+}
+
+.btn--primary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+  border-color: var(--accent);
+  border-width: var(--frame-width-hover);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.btn--primary:active:not(:disabled):not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+  box-shadow: none;
+}
+
+/* Secondary — ghost with subtle border */
+.btn--secondary {
+  background: transparent;
+  color: var(--text-body);
+  border-color: var(--border-subtle);
+}
+
+.btn--secondary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  color: var(--text-header);
+}
+
+.btn--secondary:active:not(:disabled):not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
+}
+
+/* Tertiary — text-link style, no border */
+.btn--tertiary {
+  background: transparent;
+  color: var(--text-link);
+  border-color: transparent;
+  font-weight: var(--weight-body);
+}
+
+.btn--tertiary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.btn--tertiary:active:not(:disabled):not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+/* Destructive — danger/delete actions, magenta hover */
+.btn--destructive {
+  background: rgba(255, 77, 77, 0.12);
+  color: var(--state-danger);
+  border-color: var(--state-danger);
+  border-width: var(--frame-width-rest);
+}
+
+.btn--destructive:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--neon-magenta) 15%, var(--bg-elevated));
+  border-color: var(--neon-magenta);
+  border-width: var(--frame-width-hover);
+  color: var(--neon-magenta);
+  box-shadow: 0 0 8px var(--neon-magenta);
+}
+
+.btn--destructive:active:not(:disabled):not([aria-disabled="true"]) {
+  background: color-mix(in srgb, var(--neon-magenta) 22%, var(--bg-elevated));
+  box-shadow: none;
+}
+
+/* ─── Loading state ─────────────────────────────────────────────────────────── */
+
+.btn--loading {
+  pointer-events: none;
+  cursor: wait;
+  position: relative;
+}
+
+.btn__spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── High-contrast mode ────────────────────────────────────────────────────── */
+
+[data-contrast="high"] .btn--primary {
+  background: transparent;
+  border-color: var(--accent);
+  border-width: 2px;
+  box-shadow: none;
+  color: var(--accent);
+}
+
+[data-contrast="high"] .btn--primary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  box-shadow: none;
+}
+
+[data-contrast="high"] .btn--secondary {
+  border-color: var(--text-body);
+  border-width: 2px;
+}
+
+[data-contrast="high"] .btn--secondary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--text-body);
+  color: var(--bg-panel);
+  box-shadow: none;
+}
+
+[data-contrast="high"] .btn--tertiary {
+  text-decoration: underline;
+}
+
+[data-contrast="high"] .btn--destructive {
+  border-color: var(--state-danger);
+  border-width: 2px;
+}
+
+[data-contrast="high"] .btn--destructive:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--state-danger);
+  color: var(--bg-panel);
+  box-shadow: none;
+}
+
+/* ─── Reduced motion ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+
+  .btn:active {
+    transition: none;
+    transform: none;
+  }
+
+  .btn__spinner {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.6;
+  }
+}
