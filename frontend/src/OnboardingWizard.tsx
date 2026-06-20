@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { type TruncatePathOptions } from './utils/truncatePath';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
+import { Button } from './components/ui/Button';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -336,22 +337,20 @@ function ConfirmDialog({ onKeepGoing, onCancelSetup }: ConfirmDialogProps) {
           If you close now, you&apos;ll start fresh next time.
         </p>
         <div className="gs-confirm__actions">
-          <button
-            className="btn-primary"
-            type="button"
+          <Button
+            variant="primary"
             onClick={onKeepGoing}
             data-testid="gs-keep-going"
           >
             Keep Going
-          </button>
-          <button
-            className="btn-ghost btn-destructive"
-            type="button"
+          </Button>
+          <Button
+            variant="destructive"
             onClick={onCancelSetup}
             data-testid="gs-cancel-setup"
           >
             Cancel Setup
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1418,25 +1417,22 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               Use your existing ~/Mythos vaults, start fresh, or hide this migration prompt permanently.
             </p>
             <div className="gs-confirm__actions">
-              <button
-                className="btn-primary"
-                type="button"
+              <Button
+                variant="primary"
                 onClick={() => { setShowMigrationDialog(false); handleOpenExistingVault(initialSettings.legacyVaultPath); }}
                 data-testid="gs-migration-use"
               >
                 Use them
-              </button>
-              <button
-                className="btn-secondary"
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => setShowMigrationDialog(false)}
                 data-testid="gs-migration-start-fresh"
               >
                 Start fresh
-              </button>
-              <button
-                className="btn-ghost"
-                type="button"
+              </Button>
+              <Button
+                variant="tertiary"
                 onClick={() => {
                   const updated = { ...initialSettings, legacyVaultDismissed: true };
                   api().settingsSet?.(updated).catch(() => {});
@@ -1445,7 +1441,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 data-testid="gs-migration-never"
               >
                 Never show again
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1468,17 +1464,15 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 &ldquo;{tmpl?.name ?? 'This template'}&rdquo; will be permanently removed. This cannot be undone.
               </p>
               <div className="gs-confirm__actions">
-                <button
-                  className="btn-primary"
-                  type="button"
+                <Button
+                  variant="primary"
                   onClick={() => setDeletingId(null)}
                   data-testid="template-delete-cancel"
                 >
                   Keep it
-                </button>
-                <button
-                  className="btn-ghost btn-destructive"
-                  type="button"
+                </Button>
+                <Button
+                  variant="destructive"
                   data-testid="template-delete-confirm"
                   onClick={async () => {
                     await api().templateDelete(deletingId);
@@ -1488,7 +1482,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   }}
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             </div>
           </div>
