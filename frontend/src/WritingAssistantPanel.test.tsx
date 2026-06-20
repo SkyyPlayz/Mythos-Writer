@@ -613,6 +613,47 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     expect(mockWritingAssistantCadenceChange).toHaveBeenCalledWith({ waScanInterval: 300 });
   });
 
+  it('scans on scene:saved after selecting On save cadence', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['Saved scene tip.'], scannedAt: new Date().toISOString() });
+    (window as unknown as { api: unknown }).api = makeApi({
+      onWritingScanResult: vi.fn(() => vi.fn()),
+    });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={60} isActive={true} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: /heartbeat cadence/i }), {
+        target: { value: 'on-save' },
+      });
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event('scene:saved'));
+      await Promise.resolve();
+    });
+
+    expect(mockWritingScan).toHaveBeenCalledWith(
+      mockScene.id,
+      mockScene.blocks[0].content,
+      mockScene.path,
+    );
+  });
+
+  it('clears heartbeat tips when the selected scene changes', async () => {
+    const nextScene = makeScene('s2', 'Quiet Alley', 'Rain rattled against the awning.');
+    mockWritingScan.mockResolvedValue({ tips: ['Old scene tip.'], scannedAt: new Date().toISOString() });
+
+    const { rerender } = render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(screen.getByText('Old scene tip.')).toBeInTheDocument();
+
+    rerender(<WritingAssistantPanel scene={nextScene} scanIntervalSeconds={10} isActive={true} />);
+
+    expect(screen.queryByText('Old scene tip.')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/heartbeat status/i)).toBeInTheDocument();
+  });
+
   it('emits tip decision payloads for Note it and Ignore actions', async () => {
     mockWritingScan.mockResolvedValueOnce({
       tips: [{
