@@ -591,37 +591,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }, 500);
   }, [validateCustomPathNow]);
 
-  function handleCustomUsePath(path: string) {
-    const display = tildeify(path, pathOptionsRef.current.homeDir);
-    setCustomVaultPath(display);
-    if (!vaultNameManuallyEditedRef.current) {
-      setCustomVaultName(deriveVaultName(display));
-    }
-    validateCustomPathNow(path);
-  }
-
-  async function handleCustomBrowse() {
-    try {
-      const res = await api().chooseVaultFolder('Choose vault location');
-      if (!res.cancelled && res.path) {
-        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
-        setCustomVaultPath(display);
-        if (!vaultNameManuallyEditedRef.current) {
-          setCustomVaultName(deriveVaultName(display));
-        }
-        validateCustomPathNow(res.path);
-      }
-    } catch { /* picker cancelled or failed */ }
-  }
-
-  function handleCustomNext() {
-    if (customVaultName.trim() === '') {
-      customVaultNameInputRef.current?.focus();
-      return;
-    }
-    if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
-    setStep('custom-template');
-  }
 
   // AC-L-05: first card gets initial focus when step1 mounts or returns
   const quickStartRef = useRef<HTMLButtonElement>(null);
