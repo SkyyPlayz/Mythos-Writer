@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ReactElement } from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -151,9 +153,59 @@ async function openTemplateGallery() {
   await flushAsyncEffects();
 }
 
+function readOnboardingCss() {
+  return readFileSync(resolve(process.cwd(), 'src/OnboardingWizard.css'), 'utf-8');
+}
+
+function cssRule(css: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = css.match(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'm'));
+  return match?.groups?.body ?? '';
+}
+
+function assertNoLiteralColorFallbacks(css: string) {
+  expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  expect(css).not.toMatch(/rgba?\(/i);
+  expect(css).not.toMatch(/hsla?\(/i);
+}
+
 // ─── Step 1 ───────────────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — Step 1', () => {
+  it('keeps starting point cards on Liquid Neon tokens without literal color fallbacks', () => {
+    const css = readOnboardingCss();
+    const cardRule = cssRule(css, '.gs-card');
+    const hoverRule = cssRule(css, '.gs-card:hover');
+    const focusRule = cssRule(css, '.gs-card:focus-visible');
+    const titleRule = cssRule(css, '.gs-card__title');
+    const descRule = cssRule(css, '.gs-card__desc');
+    const ctaRule = cssRule(css, '.gs-card__cta');
+    const cardStyles = [cardRule, hoverRule, focusRule, titleRule, descRule, ctaRule].join('\n');
+
+    // Base card: elevated surface + subtle border + body text (glass/backdrop deferred to phase 2)
+    expect(cardRule).toContain('var(--bg-elevated)');
+    expect(cardRule).toContain('var(--border-subtle)');
+    expect(cardRule).toContain('var(--text-body)');
+    // Hover: neon glow frame
+    expect(hoverRule).toContain('var(--accent)');
+    expect(hoverRule).toContain('var(--glow-md)');
+    // Focus: focus-ring token (not --accent directly, for high-contrast compat)
+    expect(focusRule).toContain('var(--focus-ring)');
+    // Typography hierarchy
+    expect(titleRule).toContain('var(--text-header)');
+    expect(descRule).toContain('var(--text-muted)');
+    expect(ctaRule).toContain('var(--accent)');
+    // No raw hex / rgba / hsl in any card rule
+    assertNoLiteralColorFallbacks(cardStyles);
+  });
+
+  it('turns off card transitions and press transforms for reduced motion users', () => {
+    const css = readOnboardingCss();
+
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.gs-card\s*\{[\s\S]*transition:\s*none/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.gs-card:active\s*\{[\s\S]*transform:\s*none/);
+  });
+
   it('renders Step 1 with correct heading and subtitle', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
