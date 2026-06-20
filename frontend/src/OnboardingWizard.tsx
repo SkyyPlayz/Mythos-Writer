@@ -623,44 +623,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setStep('custom-template');
   }
 
-  async function handleCustomFinish() {
-    setScaffoldError('');
-    setFromCustomSetup(true);
-    setStartMode('blank');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const expanded = customVaultPath.startsWith('~/')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath.startsWith('~\\')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath;
-      // SKY-2988: BE-1 (SKY-2991) will differentiate 'recommended' from 'blank'.
-      // Until it lands, both use startMode:'blank' at the chosen path.
-      const res = await api().onboardingComplete({
-        startMode: 'blank',
-        vaultParentPath: expanded,
-        vaultName: customVaultName.trim() || deriveVaultName(expanded),
-      });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'blank',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(updated);
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
-      setScaffolding(false);
-    }
-  }
   // AC-L-05: first card gets initial focus when step1 mounts or returns
   const quickStartRef = useRef<HTMLButtonElement>(null);
 
@@ -919,11 +881,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setStep('step1b-inner');
   }
 
-  function handleSkip() {
-    api().onboardingComplete({ startMode: 'skip' }).catch(() => {});
-    const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
-    onComplete(updated);
-  }
 
   // ─── Step 2 actions ─────────────────────────────────────────────────────────
 
