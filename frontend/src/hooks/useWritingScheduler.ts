@@ -58,6 +58,12 @@ export function useWritingScheduler({
     sceneRef.current = scene;
   }, [scene]);
 
+  useEffect(() => {
+    scanningRef.current = false;
+    setScanning(false);
+    setResult(null);
+  }, [scene?.id, scene?.path, scene?.updatedAt]);
+
   const runScan = useCallback(async (useScanNowChannel = false) => {
     const currentScene = sceneRef.current;
     if (!currentScene || scanningRef.current) return;
@@ -65,6 +71,11 @@ export function useWritingScheduler({
     const prose = currentScene.blocks.map((b) => b.content).join('\n\n').trim();
     if (!prose) return;
 
+    const scanScene = {
+      id: currentScene.id,
+      path: currentScene.path,
+      updatedAt: currentScene.updatedAt,
+    };
     scanningRef.current = true;
     setScanning(true);
     try {
@@ -75,12 +86,25 @@ export function useWritingScheduler({
           scenePath: currentScene.path,
         })
         : await window.api.writingScan(currentScene.id, prose, currentScene.path);
+      const latestScene = sceneRef.current;
+      if (
+        latestScene?.id !== scanScene.id ||
+        latestScene.path !== scanScene.path ||
+        latestScene.updatedAt !== scanScene.updatedAt
+      ) return;
       setResult({ tips: response.tips, scannedAt: response.scannedAt });
     } catch {
       // Non-fatal — scheduler continues on next tick.
     } finally {
-      scanningRef.current = false;
-      setScanning(false);
+      const latestScene = sceneRef.current;
+      if (
+        latestScene?.id === scanScene.id &&
+        latestScene.path === scanScene.path &&
+        latestScene.updatedAt === scanScene.updatedAt
+      ) {
+        scanningRef.current = false;
+        setScanning(false);
+      }
     }
   }, []);
 
