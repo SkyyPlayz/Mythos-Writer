@@ -500,6 +500,10 @@ test('TC-WA-04: empty scene shows empty-state message', async () => {
   await openScene(page, 'Empty Scene');
   await openAssistantTab(page);
 
+  // Wait for any stale tips from the previous test to clear after the scene change.
+  // The scheduler's useEffect clears results asynchronously when sceneId changes.
+  await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(0, { timeout: 5_000 });
+
   // Scan Now — the scheduler guard returns early on empty prose.
   await page.locator('.wa-scan-now').click();
 
@@ -554,6 +558,11 @@ test('TC-WA-01: on-save scan fires when scene:saved event is dispatched', async 
   // Switch cadence to On save.
   const cadenceSelect = page.locator('.wa-cadence-select');
   await cadenceSelect.selectOption('on-save');
+  await expect(cadenceSelect).toHaveValue('on-save');
+
+  // React 18 (createRoot) defers useEffect until after browser paint.
+  // Two rAF passes get past the paint so the 'scene:saved' listener is registered.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 
   // Dispatch the synthetic scene:saved DOM event to simulate a file save.
   await page.evaluate(() => window.dispatchEvent(new Event('scene:saved')));
