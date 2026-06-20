@@ -1346,6 +1346,7 @@ interface Window {
     // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.
     isPackaged?: boolean;
 
+
   };
 
   // Non-standard browser speech recognition (Chromium only)
