@@ -1619,14 +1619,10 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/MyVault' },
       });
-      // Advance past the 500ms debounce, then flush the async validatePath Promise inside act
-      await act(async () => {
-        vi.advanceTimersByTime(600);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      // Direct assertion — no waitFor (waitFor.setInterval is faked and would hang)
+      // validateCustomPathNow calls Promise.all with 2 validatePath Promises; vi.runAllTimersAsync
+      // flushes the debounce + all pending async work so we can assert directly.
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await act(async () => { await vi.runAllTimersAsync(); });
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1644,12 +1640,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/NewVault' },
       });
-      await act(async () => {
-        vi.advanceTimersByTime(600);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await act(async () => { await vi.runAllTimersAsync(); });
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1667,12 +1659,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/root/protected' },
       });
-      await act(async () => {
-        vi.advanceTimersByTime(600);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await act(async () => { await vi.runAllTimersAsync(); });
       expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
     } finally {
@@ -1823,7 +1811,7 @@ describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
     );
-    fireEvent.keyDown(document.body, { key: 'Escape' });
+    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     await act(async () => {});
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
   });
