@@ -819,6 +819,7 @@ describe('SettingsPanel', () => {
 
     fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
     expect(screen.getByLabelText(/provider base url/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('ollama-not-running-hint')).toBeInTheDocument());
   });
 
   it('provider kind is included in saved settings', async () => {
@@ -1408,6 +1409,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
     });
 
     expect(screen.getByRole('alert')).toHaveTextContent(/not on localhost/i);
+    await waitFor(() => expect(screen.getByTestId('wa-model-list-error')).toBeInTheDocument());
   });
 
   // AC-MP-12 — no warning for localhost base URL
@@ -1422,6 +1424,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
     // Default Ollama URL is localhost — no warning
     expect(screen.queryByText(/not on localhost/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('wa-model-list-error')).toBeInTheDocument());
   });
 
   // AC-MP-08 — full round-trip for all three agents with different providers

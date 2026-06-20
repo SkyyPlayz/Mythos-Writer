@@ -410,6 +410,9 @@ jobs:
       - name: E2E — Onboarding v2 AC-OB-01..16 (SKY-2009)
         run: xvfb-run --auto-servernum npm run test:e2e:onboarding-v2
 
+      - name: E2E — Writing Assistant panel AC-WA-01..27 (SKY-2633)
+        run: xvfb-run --auto-servernum npm run test:e2e:writing-assistant
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true

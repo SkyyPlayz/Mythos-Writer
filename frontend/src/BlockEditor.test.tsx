@@ -8,6 +8,9 @@ import { Markdown } from 'tiptap-markdown';
 import BlockEditor from './BlockEditor';
 import type { Scene } from './types';
 import { WikiLink } from './WikiLinkExtension';
+import { installActWarningGuard } from './testActWarningGuard';
+
+installActWarningGuard();
 
 // ---------------------------------------------------------------------------
 // Helpers

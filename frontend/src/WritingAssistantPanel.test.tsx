@@ -613,6 +613,47 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     expect(mockWritingAssistantCadenceChange).toHaveBeenCalledWith({ waScanInterval: 300 });
   });
 
+  it('scans on scene:saved after selecting On save cadence', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['Saved scene tip.'], scannedAt: new Date().toISOString() });
+    (window as unknown as { api: unknown }).api = makeApi({
+      onWritingScanResult: vi.fn(() => vi.fn()),
+    });
+
+    render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={60} isActive={true} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: /heartbeat cadence/i }), {
+        target: { value: 'on-save' },
+      });
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event('scene:saved'));
+      await Promise.resolve();
+    });
+
+    expect(mockWritingScan).toHaveBeenCalledWith(
+      mockScene.id,
+      mockScene.blocks[0].content,
+      mockScene.path,
+    );
+  });
+
+  it('clears heartbeat tips when the selected scene changes', async () => {
+    const nextScene = makeScene('s2', 'Quiet Alley', 'Rain rattled against the awning.');
+    mockWritingScan.mockResolvedValue({ tips: ['Old scene tip.'], scannedAt: new Date().toISOString() });
+
+    const { rerender } = render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(screen.getByText('Old scene tip.')).toBeInTheDocument();
+
+    rerender(<WritingAssistantPanel scene={nextScene} scanIntervalSeconds={10} isActive={true} />);
+
+    expect(screen.queryByText('Old scene tip.')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/heartbeat status/i)).toBeInTheDocument();
+  });
+
   it('emits tip decision payloads for Note it and Ignore actions', async () => {
     mockWritingScan.mockResolvedValueOnce({
       tips: [{
@@ -696,6 +737,76 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     rerender(<WritingAssistantPanel scene={sceneAt2} scanIntervalSeconds={10} isActive={true} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(screen.getByText(tip.text)).toBeInTheDocument();
+  });
+
+  it('clears prior scan tips when navigating to a different scene', async () => {
+    const scene2 = {
+      id: 's2',
+      title: 'Second Scene',
+      blocks: [{ id: 'b2', type: 'prose' as const, order: 0, content: 'New scene content.', updatedAt: '' }],
+      draftState: 'in-progress' as const,
+      order: 1,
+      path: '/stories/ch1/scene2.md',
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    mockWritingScan.mockResolvedValueOnce({
+      tips: ['Tip from first scene.'],
+      scannedAt: new Date().toISOString(),
+    });
+
+    const { rerender } = render(
+      <WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />,
+    );
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(screen.getByText('Tip from first scene.')).toBeInTheDocument();
+
+    // Navigate to second scene — stale tips must clear immediately
+    await act(async () => {
+      rerender(<WritingAssistantPanel scene={scene2} scanIntervalSeconds={10} isActive={true} />);
+    });
+    expect(screen.queryByText('Tip from first scene.')).not.toBeInTheDocument();
+  });
+
+  it('does not persist stale scanning indicator after scene change mid-flight', async () => {
+    let resolveHeld!: (value: { tips: string[]; scannedAt: string }) => void;
+    const heldScan = new Promise<{ tips: string[]; scannedAt: string }>((res) => {
+      resolveHeld = res;
+    });
+    mockWritingScan.mockReturnValueOnce(heldScan);
+
+    const scene2 = {
+      id: 's2',
+      title: 'Second Scene',
+      blocks: [{ id: 'b2', type: 'prose' as const, order: 0, content: 'New scene content.', updatedAt: '' }],
+      draftState: 'in-progress' as const,
+      order: 1,
+      path: '/stories/ch1/scene2.md',
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    const { rerender } = render(
+      <WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />,
+    );
+
+    // Trigger scan; hold it in-flight
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+
+    // Navigate away — stale scanning state must clear
+    await act(async () => {
+      rerender(<WritingAssistantPanel scene={scene2} scanIntervalSeconds={10} isActive={true} />);
+    });
+    expect(document.querySelector('.wa-spinner')).toBeNull();
+
+    // Resolve the held scan — stale guard must prevent any UI update
+    await act(async () => {
+      resolveHeld({ tips: ['stale tip'], scannedAt: new Date().toISOString() });
+    });
+    expect(document.querySelector('.wa-spinner')).toBeNull();
+    expect(screen.queryByText('stale tip')).not.toBeInTheDocument();
   });
 });
 

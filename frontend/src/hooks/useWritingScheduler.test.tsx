@@ -143,6 +143,51 @@ describe('useWritingScheduler', () => {
     expect(result.current.result).toEqual({ tips, scannedAt });
   });
 
+  it('clears stale tips when manually scanning an empty scene', async () => {
+    const emptyScene = {
+      ...mockScene,
+      id: 's-empty',
+      blocks: [{ id: 'b-empty', type: 'prose' as const, order: 0, content: '   ', updatedAt: '' }],
+    };
+    const tips = ['Use active voice.'];
+    const scannedAt = '2026-05-23T12:00:00.000Z';
+    mockWritingScan.mockResolvedValue({ tips, scannedAt });
+
+    const { result, rerender } = renderHook(
+      ({ scene }: { scene: typeof mockScene }) =>
+        useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+      { initialProps: { scene: mockScene } },
+    );
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(result.current.result).toEqual({ tips, scannedAt });
+
+    rerender({ scene: emptyScene });
+    await act(async () => { await result.current.runScan(true); });
+
+    expect(mockWritingScan).toHaveBeenCalledTimes(1);
+    expect(result.current.result?.tips).toEqual([]);
+  });
+
+  it('clears stale scan result when the active scene changes', async () => {
+    const tips = ['Use active voice.'];
+    const scannedAt = '2026-05-23T12:00:00.000Z';
+    mockWritingScan.mockResolvedValue({ tips, scannedAt });
+
+    const { result, rerender } = renderHook(
+      ({ scene }: { scene: typeof mockScene }) =>
+        useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+      { initialProps: { scene: mockScene } },
+    );
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(result.current.result).toEqual({ tips, scannedAt });
+
+    rerender({ scene: { ...mockScene, id: 's2', path: '/stories/ch1/empty.md', blocks: [] } });
+
+    expect(result.current.result).toBeNull();
+  });
+
   // AC-CAD-02: on_save mode — setInterval NOT called, writingScan called on scene:saved event
   it('AC-CAD-02: on_save mode does not use setInterval and fires on scene:saved event', async () => {
     const mockOnWritingScanResult = vi.fn();
@@ -276,5 +321,42 @@ describe('useWritingScheduler', () => {
     // Second tick succeeds
     await act(async () => { vi.advanceTimersByTime(10_000); });
     expect(result.current.result?.tips).toEqual(['Recovered tip.']);
+  });
+
+  it('discards stale scan result and clears scanning state on scene change mid-flight', async () => {
+    let resolveFirst!: (value: { tips: string[]; scannedAt: string }) => void;
+    const firstScanHold = new Promise<{ tips: string[]; scannedAt: string }>((res) => {
+      resolveFirst = res;
+    });
+    mockWritingScan.mockReturnValueOnce(firstScanHold);
+
+    const scene2 = {
+      ...mockScene,
+      id: 's2',
+      path: '/stories/ch1/scene2.md',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    };
+
+    const { result, rerender } = renderHook(
+      ({ scene }: { scene: typeof mockScene | typeof scene2 }) =>
+        useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+      { initialProps: { scene: mockScene } },
+    );
+
+    // Trigger scan on scene1 — hold it in-flight
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+
+    // Switch to scene2 while scan is in-flight
+    await act(async () => { rerender({ scene: scene2 }); });
+
+    // Scene-change effect must immediately clear scanning state
+    expect(result.current.scanning).toBe(false);
+    expect(result.current.result).toBeNull();
+
+    // Resolve the stale scan — stale guard must discard the result
+    await act(async () => {
+      resolveFirst({ tips: ['stale tip'], scannedAt: '2026-01-01T10:00:00.000Z' });
+    });
+    expect(result.current.result).toBeNull();
   });
 });

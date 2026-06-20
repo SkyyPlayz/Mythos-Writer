@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
 
@@ -48,6 +48,15 @@ const BUNDLED_TEMPLATES = [
   { id: 'bundled:series-bible', name: 'Series Bible', description: 'Multi-book structure with shared canon notes.', story: [], notes: [], isUserTemplate: false },
 ];
 
+function resolvedInEffect<T>(value: T): Promise<T> {
+  return {
+    then(onFulfilled?: (resolvedValue: T) => unknown) {
+      onFulfilled?.(value);
+      return { catch: () => undefined };
+    },
+  } as unknown as Promise<T>;
+}
+
 function makeApi(overrides: Partial<{
   onboardingComplete: ReturnType<typeof vi.fn>;
   validatePath: ReturnType<typeof vi.fn>;
@@ -68,19 +77,20 @@ function makeApi(overrides: Partial<{
     templateRename: overrides.templateRename ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDelete: overrides.templateDelete ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDuplicate: overrides.templateDuplicate ?? vi.fn().mockResolvedValue({ ok: true, id: 'user:copy' }),
-    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn().mockResolvedValue({ homeDir: '/home/user', pathSeparator: '/' }),
-    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn().mockResolvedValue({
+    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn(() => resolvedInEffect({ homeDir: '/home/user', pathSeparator: '/' })),
+    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn(() => resolvedInEffect({
       homeDir: '/home/user',
       documentsDir: '/home/user/Documents',
       desktopDir: '/home/user/Desktop',
       oneDriveDir: null,
       iCloudDir: null,
-    }),
+    })),
     settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
   };
 }
 
 let mockApi: ReturnType<typeof makeApi>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 const BUNDLED_TEMPLATE = { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Three-act novel', story: [{ name: 'Manuscript' }], notes: [{ name: 'Characters' }] };
 const USER_TEMPLATE    = { id: 'user:my-template',  name: 'My Template',   description: 'My saved template', story: [], notes: [], isUserTemplate: true, savedAt: '2026-06-01' };
@@ -89,6 +99,19 @@ beforeEach(() => {
   mockApi = makeApi();
   (window as unknown as { api: unknown }).api = mockApi;
   vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  const actWarnings = consoleErrorSpy.mock.calls.filter((call: unknown[]) => {
+    const [message] = call;
+    return typeof message === 'string' && message.includes('not wrapped in act');
+  });
+  try {
+    expect(actWarnings).toEqual([]);
+  } finally {
+    consoleErrorSpy.mockRestore();
+  }
 });
 
 function openCustomOptions() {

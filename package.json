@@ -1,6 +1,6 @@
 {
   "name": "mythos-writer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AI-powered desktop notes and writing app",
   "homepage": "https://github.com/SkyyPlayz/Mythos-Writer",
   "author": {
@@ -11,7 +11,8 @@
   "main": "out/main/main.js",
   "workspaces": [
     "frontend",
-    "electron-main"
+    "electron-main",
+    "shared"
   ],
   "scripts": {
     "dev": "electron-vite dev",
@@ -58,6 +59,7 @@
     "test:e2e:continuity-panel": "playwright test e2e/continuity-panel.spec.ts --reporter=list",
     "test:e2e:continuity-peek": "playwright test e2e/continuity-peek.spec.ts --reporter=list",
     "test:e2e:scene-crafter": "playwright test e2e/tests/sceneCrafter.spec.ts --reporter=list",
+    "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only"
   },
   "devDependencies": {

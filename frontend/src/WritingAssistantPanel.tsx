@@ -185,14 +185,15 @@ export default function WritingAssistantPanel({
   const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'
     ? initialScanIntervalSeconds
     : Number(cadence);
-  const schedulerEnabled = enabled && cadence !== 'manual' && cadence !== 'on-save';
+  const effectiveCadenceTrigger = cadence === 'on-save' ? 'on_save' : cadenceTrigger;
+  const schedulerEnabled = enabled && cadence !== 'manual';
 
   const { result: scheduledResult, scanning, scanError: scheduledScanError, runScan } = useWritingScheduler({
     scene,
     enabled: schedulerEnabled,
     scanIntervalSeconds: effectiveScanIntervalSeconds,
     isActive,
-    cadenceTrigger,
+    cadenceTrigger: effectiveCadenceTrigger,
     idleHeartbeatConstantInterval,
     idleDebounceSeconds,
   });
@@ -206,6 +207,15 @@ export default function WritingAssistantPanel({
       // should not break the panel UI.
     });
   }, [scene?.id, scene?.path]);
+
+  // When the user selects 'on-save' cadence, the interval scheduler is disabled.
+  // Register the scene:saved listener directly so saves still trigger scans.
+  useEffect(() => {
+    if (cadence !== 'on-save') return;
+    const handleSaved = () => { void runScan(); };
+    window.addEventListener('scene:saved', handleSaved);
+    return () => window.removeEventListener('scene:saved', handleSaved);
+  }, [cadence, runScan]);
 
   const visibleTips = useMemo(() => {
     const normalized = scheduledResult?.tips.map((tip, index) => normalizeTip(tip, index, scene)) ?? [];
