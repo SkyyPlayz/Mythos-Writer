@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'react';
+import { PanelHeader } from './components/ui/PanelChrome';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
 import { ProposalCard } from './components/BrainstormCard/ProposalCard';
@@ -1565,44 +1566,49 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
 
       <Toast message={toastState?.message ?? null} level={toastState?.level} />
 
-      <div className="brainstorm-header">
-        <button className="brainstorm-back-btn" onClick={onClose} aria-label="Close brainstorm">
-          ← Back
-        </button>
-        <div className="brainstorm-header-text">
-          <div className="brainstorm-title">Brainstorm Agent</div>
-          <div className="brainstorm-subtitle">Talk through your story — facts auto-extract to your vault</div>
-        </div>
-        <div className="brainstorm-header-preset">
-          <PresetSelector
-            activePresetId={presetId}
-            onSelect={(id) => { setPresetId(id); setPresetOverrides({}); saveSessionPreset(id, {}); }}
-            onCustomize={() => setShowPresetEditor(true)}
-            compact
-          />
-        </div>
-        <div className="brainstorm-header-actions">
-          {messages.length > 0 && (
-            <button
-              className="brainstorm-download-btn"
-              onClick={handleDownload}
-              aria-label="Download session as markdown"
-              type="button"
-              title="Download session as Markdown"
-            >
-              Download
-            </button>
-          )}
-          <button
-            className="brainstorm-new-session-btn"
-            onClick={handleNewSession}
-            aria-label="New session"
-            type="button"
-          >
-            New Session
+      <PanelHeader
+        className="brainstorm-header"
+        icon={
+          <button className="brainstorm-back-btn" onClick={onClose} aria-label="Close brainstorm">
+            ← Back
           </button>
-        </div>
-      </div>
+        }
+        title="Brainstorm Agent"
+        subtitle="Talk through your story — facts auto-extract to your vault"
+        actions={
+          <>
+            <div className="brainstorm-header-preset">
+              <PresetSelector
+                activePresetId={presetId}
+                onSelect={(id) => { setPresetId(id); setPresetOverrides({}); saveSessionPreset(id, {}); }}
+                onCustomize={() => setShowPresetEditor(true)}
+                compact
+              />
+            </div>
+            <div className="brainstorm-header-actions">
+              {messages.length > 0 && (
+                <button
+                  className="brainstorm-download-btn"
+                  onClick={handleDownload}
+                  aria-label="Download session as markdown"
+                  type="button"
+                  title="Download session as Markdown"
+                >
+                  Download
+                </button>
+              )}
+              <button
+                className="brainstorm-new-session-btn"
+                onClick={handleNewSession}
+                aria-label="New session"
+                type="button"
+              >
+                New Session
+              </button>
+            </div>
+          </>
+        }
+      />
       {showRecoveryBanner && (
         <div className="brainstorm-recovery-banner" role="status">
           <span>Recovered your previous brainstorm draft from this browser.</span>

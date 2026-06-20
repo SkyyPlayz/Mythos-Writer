@@ -49,14 +49,11 @@
 }
 
 /* Header */
+/* Layout from PanelChrome (.pc-header); override spacing and background only */
 .brainstorm-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
   padding: 12px 20px;
+  gap: 16px;
   background: var(--bg-bar);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
 }
 
 .brainstorm-back-btn {
@@ -80,25 +77,6 @@
 .brainstorm-back-btn:focus-visible {
   outline: 2px solid var(--focus-ring, #00f0ff);
   outline-offset: 2px;
-}
-
-.brainstorm-header-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.brainstorm-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.brainstorm-subtitle {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin: 0;
 }
 
 /* Body: two-column layout */
@@ -643,7 +621,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
   flex-shrink: 0;
 }
 

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { PanelHeader } from './components/ui/PanelChrome';
 import { SuggestionCard } from './SuggestionCard';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
@@ -780,40 +781,43 @@ export default function WritingAssistantPanel({
       </span>
 
       {/* AC-WA-1/2/3: Liquid Neon panel header */}
-      <div className="wa-panel-header">
-        <span className="wa-header-left">
-          <span className="wa-sparkle-icon" aria-hidden="true">✦</span>
-          <span className="wa-header-title">
+      <PanelHeader
+        className="wa-panel-header"
+        icon={<span className="wa-sparkle-icon" aria-hidden="true">✦</span>}
+        title={
+          <>
             Writing Assistant
             {scene && <span className="wa-header-context"> — context: <em>{scene.title}</em></span>}
-          </span>
-        </span>
-        <span className="wa-header-controls" onClick={(e) => e.stopPropagation()}>
-          <label className="wa-cadence-label">
-            <span className="wa-cadence-text">Cadence</span>
-            <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
-            <select
-              className="wa-cadence-select"
-              aria-label="Heartbeat cadence"
-              value={cadence}
-              onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
+          </>
+        }
+        actions={
+          <span className="wa-header-controls" onClick={(e) => e.stopPropagation()}>
+            <label className="wa-cadence-label">
+              <span className="wa-cadence-text">Cadence</span>
+              <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
+              <select
+                className="wa-cadence-select"
+                aria-label="Heartbeat cadence"
+                value={cadence}
+                onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
+              >
+                {CADENCE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            {/* AC-V-06: session mute toggle */}
+            <button
+              className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
+              onClick={() => tts.toggleMute(announce)}
+              aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
+              aria-pressed={tts.sessionMuted}
             >
-              {CADENCE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          {/* AC-V-06: session mute toggle */}
-          <button
-            className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
-            onClick={() => tts.toggleMute(announce)}
-            aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
-            aria-pressed={tts.sessionMuted}
-          >
-            {tts.sessionMuted ? 'Unmute' : 'Mute'}
-          </button>
-        </span>
-      </div>
+              {tts.sessionMuted ? 'Unmute' : 'Mute'}
+            </button>
+          </span>
+        }
+      />
 
       {/* AC-WA-16/17/18/19: Dedicated heartbeat status bar */}
       <div
