@@ -1,0 +1,378 @@
+/* SKY-3027: Outline Planning Panel */
+
+.opl-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ─── Header ──────────────────────────────────────────────────────────────── */
+
+.opl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-bottom: 1px solid var(--border-default, #27272a);
+  flex-shrink: 0;
+}
+
+.opl-header-title {
+  font-size: var(--text-xs, 12px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #71717a);
+}
+
+.opl-add-root-btn {
+  background: none;
+  border: 1px solid var(--border-default, #27272a);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted, #71717a);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 8px;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.opl-add-root-btn:hover {
+  color: var(--accent-light, #a78bfa);
+  border-color: var(--accent, #7c3aed);
+}
+
+/* ─── Empty state ─────────────────────────────────────────────────────────── */
+
+.opl-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 32px 20px;
+  text-align: center;
+  gap: 16px;
+}
+
+.opl-empty-prompt {
+  font-size: var(--text-sm, 14px);
+  color: var(--text-muted, #71717a);
+  margin: 0;
+}
+
+.opl-empty-start-btn {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #7c3aed) 30%, transparent);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--accent-light, #a78bfa);
+  cursor: pointer;
+  font-size: var(--text-sm, 14px);
+  font-weight: 500;
+  padding: 8px 20px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.opl-empty-start-btn:hover {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 22%, transparent);
+  border-color: var(--accent, #7c3aed);
+}
+
+/* ─── Tree ────────────────────────────────────────────────────────────────── */
+
+.opl-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-1, 4px) 0;
+}
+
+/* ─── Node wrapper (handles depth indent + drop indicators) ───────────────── */
+
+.opl-node-wrapper {
+  position: relative;
+  padding-left: calc(var(--opl-depth, 0) * 16px + 8px);
+}
+
+.opl-node-wrapper.opl-dragging {
+  opacity: 0.4;
+}
+
+.opl-node-wrapper.opl-drop-before::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(var(--opl-depth, 0) * 16px + 8px);
+  right: 0;
+  height: 2px;
+  background: var(--accent, #7c3aed);
+  box-shadow: 0 0 6px var(--accent, #7c3aed);
+  border-radius: 1px;
+  z-index: 2;
+}
+
+.opl-node-wrapper.opl-drop-after::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--opl-depth, 0) * 16px + 8px);
+  right: 0;
+  height: 2px;
+  background: var(--accent, #7c3aed);
+  box-shadow: 0 0 6px var(--accent, #7c3aed);
+  border-radius: 1px;
+  z-index: 2;
+}
+
+/* ─── Node row ────────────────────────────────────────────────────────────── */
+
+.opl-node-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
+  transition: background 0.1s, border-color 0.1s;
+  cursor: pointer;
+  min-height: 28px;
+}
+
+.opl-node-row:hover {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 6%, transparent);
+}
+
+.opl-node-row.opl-node-active {
+  border-left-color: var(--accent, #7c3aed);
+  background: color-mix(in srgb, var(--accent, #7c3aed) 10%, transparent);
+}
+
+/* ─── Drag handle ─────────────────────────────────────────────────────────── */
+
+.opl-drag-handle {
+  color: var(--text-muted, #52525b);
+  cursor: grab;
+  font-size: 0.85rem;
+  padding: 0 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.opl-node-row:hover .opl-drag-handle {
+  opacity: 1;
+}
+
+/* ─── Fold button ─────────────────────────────────────────────────────────── */
+
+.opl-fold-btn {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--text-muted, #71717a);
+  flex-shrink: 0;
+  width: 22px;
+  justify-content: center;
+  border-radius: 3px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.opl-fold-btn:hover {
+  color: var(--accent-light, #a78bfa);
+  background: color-mix(in srgb, var(--accent, #7c3aed) 10%, transparent);
+}
+
+.opl-fold-spacer {
+  display: inline-block;
+  width: 22px;
+  flex-shrink: 0;
+}
+
+.opl-fold-chevron {
+  font-style: normal;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.15s;
+  display: inline-block;
+  transform: rotate(90deg);
+}
+
+.opl-fold-chevron.collapsed {
+  transform: rotate(0deg);
+}
+
+.opl-child-count {
+  font-size: 0.6rem;
+  color: var(--text-muted, #71717a);
+  font-weight: 600;
+}
+
+/* ─── Title input ─────────────────────────────────────────────────────────── */
+
+.opl-title-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-body, #d4d4d8);
+  font-size: var(--text-sm, 14px);
+  padding: 2px 4px;
+  min-width: 0;
+}
+
+.opl-title-input::placeholder {
+  color: var(--text-muted, #52525b);
+}
+
+.opl-title-input:focus {
+  color: #e4e4e7;
+}
+
+/* ─── Link button + picker ────────────────────────────────────────────────── */
+
+.opl-link-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.opl-link-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.opl-node-row:hover .opl-link-btn,
+.opl-link-btn.opl-link-btn-active {
+  opacity: 1;
+}
+
+.opl-link-btn:hover {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent);
+}
+
+/* Picker positioned as sibling to trigger (not inside button) */
+.opl-link-picker {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 100;
+  background: #18181b;
+  border: 1px solid var(--border-default, #27272a);
+  border-radius: var(--radius-sm, 6px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 200px;
+  max-width: 260px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.opl-link-option {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 12px;
+  cursor: pointer;
+  gap: 2px;
+  transition: background 0.08s;
+}
+
+.opl-link-option:hover {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent);
+}
+
+.opl-link-option.opl-link-selected {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 16%, transparent);
+  color: var(--accent-light, #a78bfa);
+}
+
+.opl-link-option.opl-link-unlink {
+  color: var(--text-muted, #71717a);
+  font-size: var(--text-xs, 12px);
+  border-bottom: 1px solid var(--border-default, #27272a);
+  margin-bottom: 4px;
+}
+
+.opl-link-option.opl-link-unlink:hover {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.opl-link-chapter {
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted, #71717a);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.opl-link-scene-title {
+  font-size: var(--text-sm, 14px);
+  color: var(--text-body, #d4d4d8);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.opl-link-empty {
+  padding: 8px 12px;
+  font-size: var(--text-sm, 14px);
+  color: var(--text-muted, #71717a);
+  text-align: center;
+}
+
+/* ─── Scene chip (linked scene badge) ────────────────────────────────────── */
+
+.opl-scene-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #7c3aed) 30%, transparent);
+  border-radius: 12px;
+  color: var(--accent-light, #a78bfa);
+  cursor: pointer;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  padding: 2px 10px 2px 6px;
+  margin: 0 0 4px;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent, #7c3aed) 40%, transparent);
+}
+
+.opl-scene-chip:hover {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 22%, transparent);
+  border-color: var(--accent, #7c3aed);
+}
+
+.opl-scene-chip-icon {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+
+/* ─── Reduced-motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .opl-fold-chevron,
+  .opl-node-row,
+  .opl-drag-handle,
+  .opl-link-btn,
+  .opl-scene-chip {
+    transition: none;
+  }
+}
