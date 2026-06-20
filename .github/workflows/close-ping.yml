@@ -1,0 +1,36 @@
+name: Close CI Ping
+
+# Fires when a PR is merged or closed (without merge). Resolves any open
+# Paperclip board ping created by the `report` job in ci.yml, eliminating
+# the token-waste loop where GHM re-evaluates stale pings (SKY-3005).
+# Also closes stale auto-fix issues for abandoned PRs (SKY-3006).
+#
+# Kept separate from ci.yml so a closed PR never triggers the full CI suite
+# (lint, typecheck, unit, 4 E2E shards) just to close a ping.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  close-ping:
+    # Self-hosted only — mirrors the `report` job's runner policy (no public/fork
+    # PR exposure; paperclipai CLI is only available on the self-hosted runner).
+    runs-on: self-hosted
+    steps:
+      - name: Checkout (for scripts/notify-board.sh)
+        uses: actions/checkout@v4
+
+      - name: Close stale CI ping and fix-request issues
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ACTION: closed
+          PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
+          PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
+          PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
+          PAPERCLIP_FE_AGENT_ID: b2f91d8c-36c6-4397-a5fc-a7cb61d6a64d
+        run: bash scripts/notify-board.sh

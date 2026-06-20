@@ -423,15 +423,27 @@ jobs:
           retention-days: 3
 
   ci:
-    # Required check aggregator — succeeds only when lint, typecheck, unit,
-    # and all 4 E2E shards are green. Branch protection gates on this status context.
+    # Required check aggregator — always runs (if: always()) so branch protection
+    # gets a definitive pass/fail rather than a "pending" indefinite skipped state
+    # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
+    # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
     needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: self-hosted
+    if: always()
     timeout-minutes: 5
 
     steps:
       - name: All checks passed
-        run: echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
+        run: |
+          results="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
+          echo "Upstream results: $results"
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "Required job outcome '$r' — expected 'success'. CI aggregator: FAILED."
+              exit 1
+            fi
+          done
+          echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
@@ -650,7 +662,9 @@ jobs:
     # Self-hosted only (no public/fork PR exposure per SKY-849).
     # build-linux and build-windows always run (fast no-op on PRs) so this job
     # is never blocked by upstream skipped status (SKY-2421).
-    needs: [lint, typecheck, unit, ci, build-macos, build-linux, build-windows]
+    # build-electron is included so BUILD_ELECTRON_RESULT is accessible for
+    # auto-fix stage detection (SKY-3006); it is already transitively needed.
+    needs: [lint, typecheck, unit, build-electron, ci, build-macos, build-linux, build-windows]
     runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
     permissions:
@@ -670,6 +684,7 @@ jobs:
           LINT_RESULT: ${{ needs.lint.result }}
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           UNIT_RESULT: ${{ needs.unit.result }}
+          BUILD_ELECTRON_RESULT: ${{ needs.build-electron.result }}
           CI_RESULT: ${{ needs.ci.result }}
           BUILD_LINUX_RESULT: ${{ needs.build-linux.result }}
           BUILD_MACOS_RESULT: ${{ needs.build-macos.result }}
@@ -677,4 +692,5 @@ jobs:
           PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
           PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
           PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
+          PAPERCLIP_FE_AGENT_ID: b2f91d8c-36c6-4397-a5fc-a7cb61d6a64d
         run: bash scripts/notify-board.sh
