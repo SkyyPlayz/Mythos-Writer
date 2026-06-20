@@ -500,15 +500,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [customVaultPath, setCustomVaultPath] = useState(DEFAULT_SAVE_PATH);
   const [customVaultName, setCustomVaultName] = useState(() => deriveVaultName(DEFAULT_SAVE_PATH));
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- pending SKY-2988 custom-setup JSX
-  const [customTemplate, setCustomTemplate] = useState<'recommended' | 'blank'>('recommended');
-  const [customPathValidation, setCustomPathValidation] = useState<PathValidationState>('idle');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- customPathMsg shown in pending UI
-  const [customPathMsg, setCustomPathMsg] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setFromCustomSetup used in pending JSX
-  const [fromCustomSetup, setFromCustomSetup] = useState(false);
+  const [, setCustomPathValidation] = useState<PathValidationState>('idle');
+  const [, setCustomPathMsg] = useState('');
+  const [fromCustomSetup] = useState(false);
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
-  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
+  const vaultNameManuallyEditedRef = useRef(false);
   const vaultNameManuallyEditedRef = useRef(false);
 
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
@@ -611,6 +608,77 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       validateCustomPathNow(value);
     }, 500);
   }, [validateCustomPathNow]);
+
+  function handleCustomUsePath(path: string) {
+    const display = tildeify(path, pathOptionsRef.current.homeDir);
+    setCustomVaultPath(display);
+    if (!vaultNameManuallyEditedRef.current) {
+      setCustomVaultName(deriveVaultName(display));
+    }
+    validateCustomPathNow(path);
+  }
+
+  async function handleCustomBrowse() {
+    try {
+      const res = await api().chooseVaultFolder('Choose vault location');
+      if (!res.cancelled && res.path) {
+        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
+        setCustomVaultPath(display);
+        if (!vaultNameManuallyEditedRef.current) {
+          setCustomVaultName(deriveVaultName(display));
+        }
+        validateCustomPathNow(res.path);
+      }
+    } catch { /* picker cancelled or failed */ }
+  }
+
+  function handleCustomNext() {
+    if (customVaultName.trim() === '') {
+      customVaultNameInputRef.current?.focus();
+      return;
+    }
+    if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
+    setStep('custom-template');
+  }
+
+  async function handleCustomFinish() {
+    setScaffoldError('');
+    setFromCustomSetup(true);
+    setStartMode('blank');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const expanded = customVaultPath.startsWith('~/')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath.startsWith('~\\')
+        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
+        : customVaultPath;
+      // SKY-2988: BE-1 (SKY-2991) will differentiate 'recommended' from 'blank'.
+      // Until it lands, both use startMode:'blank' at the chosen path.
+      const res = await api().onboardingComplete({
+        startMode: 'blank',
+        vaultParentPath: expanded,
+        vaultName: customVaultName.trim() || deriveVaultName(expanded),
+      });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'blank',
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
+      setScaffolding(false);
+    }
+  }
 
 
   async function handleCustomFinish() {
