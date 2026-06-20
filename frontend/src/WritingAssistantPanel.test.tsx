@@ -1445,3 +1445,98 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
     expect(() => fireEvent.click(pill)).not.toThrow();
   });
 });
+
+describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
+  it('category toggles hidden when autoApply is false', () => {
+    render(<WritingAssistantPanel scene={null} autoApply={false} />);
+    expect(screen.queryByTestId('wa-auto-apply-categories')).not.toBeInTheDocument();
+  });
+
+  it('category toggles hidden when autoApply is not passed', () => {
+    render(<WritingAssistantPanel scene={null} />);
+    expect(screen.queryByTestId('wa-auto-apply-categories')).not.toBeInTheDocument();
+  });
+
+  it('category toggle section shown when autoApply is true', () => {
+    render(<WritingAssistantPanel scene={null} autoApply />);
+    expect(screen.getByTestId('wa-auto-apply-categories')).toBeInTheDocument();
+  });
+
+  it('all 6 category pills rendered with correct labels', () => {
+    render(<WritingAssistantPanel scene={null} autoApply />);
+    const labels = [
+      'Punctuation', 'Spelling', 'Grammar', 'Sentence structure', 'Style / tone', 'Other',
+    ];
+    for (const label of labels) {
+      expect(
+        screen.getByRole('button', { name: new RegExp(`auto-apply ${label}`, 'i') }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('all category pills default to on (aria-pressed=true) when autoApplyCategories is undefined', () => {
+    render(<WritingAssistantPanel scene={null} autoApply />);
+    const pills = screen.getAllByRole('button', { name: /auto-apply/i });
+    expect(pills.length).toBe(6);
+    for (const pill of pills) {
+      expect(pill).toHaveAttribute('aria-pressed', 'true');
+    }
+  });
+
+  it('a category explicitly set to false renders as off (aria-pressed=false)', () => {
+    render(
+      <WritingAssistantPanel
+        scene={null}
+        autoApply
+        autoApplyCategories={{ spelling: false }}
+      />,
+    );
+    const spellingPill = screen.getByRole('button', { name: /auto-apply spelling/i });
+    expect(spellingPill).toHaveAttribute('aria-pressed', 'false');
+    const grammarPill = screen.getByRole('button', { name: /auto-apply grammar/i });
+    expect(grammarPill).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clicking a pill calls onAutoApplyCategoriesChange with the toggled map', () => {
+    const onChange = vi.fn();
+    render(
+      <WritingAssistantPanel
+        scene={null}
+        autoApply
+        autoApplyCategories={{}}
+        onAutoApplyCategoriesChange={onChange}
+      />,
+    );
+    const spellingPill = screen.getByRole('button', { name: /auto-apply spelling/i });
+    fireEvent.click(spellingPill);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const [result] = onChange.mock.calls[0] as [Record<string, boolean>];
+    expect(result.spelling).toBe(false);
+    expect(result.grammar).toBe(true);
+    expect(result.punctuation).toBe(true);
+  });
+
+  it('clicking a disabled pill re-enables it and calls onChange', () => {
+    const onChange = vi.fn();
+    render(
+      <WritingAssistantPanel
+        scene={null}
+        autoApply
+        autoApplyCategories={{ grammar: false }}
+        onAutoApplyCategoriesChange={onChange}
+      />,
+    );
+    const grammarPill = screen.getByRole('button', { name: /auto-apply grammar/i });
+    expect(grammarPill).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(grammarPill);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const [result] = onChange.mock.calls[0] as [Record<string, boolean>];
+    expect(result.grammar).toBe(true);
+  });
+
+  it('toggling does not throw when no handler is provided', () => {
+    render(<WritingAssistantPanel scene={null} autoApply autoApplyCategories={{}} />);
+    const pill = screen.getByRole('button', { name: /auto-apply spelling/i });
+    expect(() => fireEvent.click(pill)).not.toThrow();
+  });
+});
