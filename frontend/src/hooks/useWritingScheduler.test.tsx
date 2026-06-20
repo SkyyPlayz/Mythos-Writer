@@ -143,6 +143,24 @@ describe('useWritingScheduler', () => {
     expect(result.current.result).toEqual({ tips, scannedAt });
   });
 
+  it('clears stale scan results when the active scene changes', async () => {
+    const sceneB = { ...mockScene, id: 's2', title: 'Next Scene', path: '/stories/ch1/scene2.md' };
+    const scannedAt = '2026-05-23T12:00:00.000Z';
+    mockWritingScan.mockResolvedValue({ tips: ['Use active voice.'], scannedAt });
+
+    const { result, rerender } = renderHook(
+      ({ scene }) => useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+      { initialProps: { scene: mockScene } },
+    );
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(result.current.result).toEqual({ tips: ['Use active voice.'], scannedAt });
+
+    rerender({ scene: sceneB });
+
+    expect(result.current.result).toBeNull();
+  });
+
   // AC-CAD-02: on_save mode — setInterval NOT called, writingScan called on scene:saved event
   it('AC-CAD-02: on_save mode does not use setInterval and fires on scene:saved event', async () => {
     const mockOnWritingScanResult = vi.fn();

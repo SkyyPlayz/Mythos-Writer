@@ -182,14 +182,15 @@ export default function WritingAssistantPanel({
   const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'
     ? initialScanIntervalSeconds
     : Number(cadence);
-  const schedulerEnabled = enabled && cadence !== 'manual' && cadence !== 'on-save';
+  const schedulerEnabled = enabled && cadence !== 'manual';
+  const schedulerCadenceTrigger = cadence === 'on-save' ? 'on_save' : cadenceTrigger;
 
   const { result: scheduledResult, scanning, runScan } = useWritingScheduler({
     scene,
     enabled: schedulerEnabled,
     scanIntervalSeconds: effectiveScanIntervalSeconds,
     isActive,
-    cadenceTrigger,
+    cadenceTrigger: schedulerCadenceTrigger,
     idleHeartbeatConstantInterval,
     idleDebounceSeconds,
   });

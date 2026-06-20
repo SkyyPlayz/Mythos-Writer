@@ -197,6 +197,26 @@ describe('WritingAssistantPanel', () => {
     });
   });
 
+  it('fires a scan on scene:saved after the panel cadence is changed to On save', async () => {
+    const scene = makeScene('s1', 'Scene A', 'First scene prose.');
+    mockWritingScan.mockResolvedValueOnce({ tips: ['Save-triggered tip.'], scannedAt: '2026-05-23T12:00:00.000Z' });
+
+    render(<WritingAssistantPanel scene={scene} />);
+
+    fireEvent.change(screen.getByLabelText(/heartbeat cadence/i), { target: { value: 'on-save' } });
+
+    await waitFor(() => {
+      expect(mockWritingAssistantCadenceChange).toHaveBeenCalledWith({ waScanInterval: 'on-save' });
+    });
+
+    fireEvent(window, new Event('scene:saved'));
+
+    await waitFor(() => {
+      expect(mockWritingScan).toHaveBeenCalledWith('s1', 'First scene prose.', '/s1.md');
+    });
+    expect(await screen.findByText('Save-triggered tip.')).toBeInTheDocument();
+  });
+
   it('routes explicit beta-read scene requests to Beta-Read scan IPC', async () => {
     mockBetaReadScan.mockResolvedValueOnce({
       comments: [

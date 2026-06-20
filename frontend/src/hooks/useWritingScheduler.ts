@@ -58,6 +58,10 @@ export function useWritingScheduler({
     sceneRef.current = scene;
   }, [scene]);
 
+  useEffect(() => {
+    setResult(null);
+  }, [scene?.id]);
+
   const runScan = useCallback(async (useScanNowChannel = false) => {
     const currentScene = sceneRef.current;
     if (!currentScene || scanningRef.current) return;
