@@ -1115,14 +1115,7 @@ describe('OnboardingWizard — AC coverage', () => {
     expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
   });
 
-  it('AC16: Skip bypasses setup — no onboardingComplete call needed before skip fires', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('gs-skip'));
-    await waitFor(() => expect(onComplete).toHaveBeenCalled());
-    // Wizard is gone — DesktopShell would render
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
-  });
+  /* AC16: Skip button removed from landing screen in SKY-2987; Restart link replaced it */
 
   it('AC17: Back on Step 2 preserves title and card selection', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
