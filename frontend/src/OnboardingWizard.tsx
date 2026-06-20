@@ -520,7 +520,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
   const docxFileInputRef = useRef<HTMLInputElement>(null);
   const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const vaultNameManuallyEditedRef = useRef(false);
 
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
   const [importMwPath, setImportMwPath] = useState('');
