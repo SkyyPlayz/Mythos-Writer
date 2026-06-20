@@ -1610,7 +1610,11 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
   });
 
   it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: true });
+    // validateCustomPathNow calls validatePath twice via Promise.all:
+    // first for the base path (should exist+writable), second for Story Vault manifest (should not exist)
+    mockApi.validatePath = vi.fn()
+      .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true })  // existing dir
+      .mockResolvedValueOnce({ exists: false, isEmpty: true, writable: true }); // no manifest
     vi.useFakeTimers();
     try {
       await renderWizard(
@@ -1619,8 +1623,6 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/MyVault' },
       });
-      // validateCustomPathNow calls Promise.all with 2 validatePath Promises; vi.runAllTimersAsync
-      // flushes the debounce + all pending async work so we can assert directly.
       await act(async () => { vi.advanceTimersByTime(600); });
       await act(async () => { await vi.runAllTimersAsync(); });
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
