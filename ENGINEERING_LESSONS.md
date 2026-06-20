@@ -45,3 +45,9 @@ await input.blur(); // Trigger onChange handlers
 Add `(status, created_at DESC)`, `(scene_id, status, created_at DESC)`, and `(item_id, created_at DESC)` covering indexes on archive tables; SQLite uses the rightmost key for ORDER BY elimination, turning full-scan + filesort into index-range scans and cutting p95 from ~500ms to <50ms at 5000 rows.
 
 ---
+
+---
+
+## Button-in-Button DOM Nesting: Popovers Triggered from Tab Buttons Must Render as Siblings (SKY-2792)
+
+Placing a popover trigger (`<span role="button">`) or its content (`ClosePopover`) inside a `<button>` creates invalid HTML and React emits `validateDOMNesting` warnings — even when tests pass. Fix: make the trigger a sibling `<button>` inside the wrapper `<div>`, and render the popover at the same level. Catch regressions by spying on `console.error` in the affected test and asserting no `validateDOMNesting` call occurs.
