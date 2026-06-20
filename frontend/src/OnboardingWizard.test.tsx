@@ -201,6 +201,13 @@ describe('OnboardingWizard — Step 1', () => {
     assertNoLiteralColorFallbacks(cardStyles);
   });
 
+  it('turns off card transitions and press transforms for reduced motion users', () => {
+    const css = readOnboardingCss();
+
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.gs-card\s*\{[\s\S]*transition:\s*none/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.gs-card:active\s*\{[\s\S]*transform:\s*none/);
+  });
+
   it('renders Step 1 with correct heading and subtitle', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
