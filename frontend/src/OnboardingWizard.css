@@ -893,10 +893,11 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
   display: flex;
-  align-items: center;
+  align-items: flex-start;  /* SKY-2967: was center; flex-start enables overflow-y scrolling */
   justify-content: center;
   z-index: 1000;
   padding: 1rem;
+  overflow-y: auto;  /* SKY-2967: modal scrollable at small viewports — no maximize needed */
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -919,6 +920,7 @@
   flex-direction: column;
   gap: 1.5rem;
   animation: gs-modal-in 180ms ease-out;
+  margin-block: auto;  /* SKY-2967: re-centers vertically when overlay has spare height */
 }
 
 .gs-modal--wide {
