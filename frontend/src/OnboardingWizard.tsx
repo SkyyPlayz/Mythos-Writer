@@ -582,8 +582,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in pending custom-setup JSX
-  const handleCustomPathChange = useCallback((value: string) => {
+  const __handleCustomPathChange = useCallback((value: string) => {
     setCustomVaultPath(value);
     if (!vaultNameManuallyEditedRef.current) {
       setCustomVaultName(deriveVaultName(value));
@@ -635,7 +634,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   function handleCustomNext() {
     if (customVaultName.trim() === '') {
-      customVaultNameInputRef.current?.focus();
+      _customVaultNameInputRef.current?.focus();
       return;
     }
     if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
@@ -2194,7 +2193,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={() => setStep('step1')}
               data-testid="custom-location-back"
             >
-              <span aria-hidden="true">&amp;#x2190;</span> Back
+              <span aria-hidden="true">&#x2190;</span> Back
             </button>
             <span className="gs-step-label">Custom Setup · 1 of 2</span>
             <button
@@ -2204,7 +2203,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={() => setShowCancelConfirm(true)}
               data-testid="custom-location-close"
             >
-              &amp;#x2715;
+              &#x2715;
             </button>
           </div>
           <h2 className="gs-modal__title">Where should your vault live?</h2>
@@ -2227,7 +2226,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   }`}
                   type="text"
                   value={customVaultPath}
-                  onChange={(e) => handleCustomPathChange(e.target.value)}
+                  onChange={(e) => _handleCustomPathChange(e.target.value)}
                   data-testid="custom-vault-path-input"
                   aria-label="Vault location path"
                   aria-describedby="custom-path-hint"
@@ -2288,7 +2287,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               </label>
               <input
                 id="custom-vault-name-input"
-                ref={customVaultNameInputRef}
+                ref={_customVaultNameInputRef}
                 className="gs-form__input"
                 type="text"
                 value={customVaultName}
@@ -2322,7 +2321,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               }
               data-testid="custom-location-next"
             >
-              Next →
+              Next &#x2192;
             </button>
           </div>
         </div>
@@ -2338,7 +2337,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={() => setStep('custom-location')}
               data-testid="custom-template-back"
             >
-              <span aria-hidden="true">&amp;#x2190;</span> Back
+              <span aria-hidden="true">&#x2190;</span> Back
             </button>
             <span className="gs-step-label">Custom Setup · 2 of 2</span>
             <button
@@ -2348,7 +2347,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={() => setShowCancelConfirm(true)}
               data-testid="custom-template-close"
             >
-              &amp;#x2715;
+              &#x2715;
             </button>
           </div>
           <h2 className="gs-modal__title">Choose a starting template</h2>
@@ -2407,7 +2406,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={handleCustomFinish}
               data-testid="custom-template-finish"
             >
-              Finish →
+              Finish &#x2192;
             </button>
           </div>
         </div>
