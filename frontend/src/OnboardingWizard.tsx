@@ -7,7 +7,8 @@ import './OnboardingWizard.css';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 // SKY-2988: custom-location + custom-template are the v0.3 Custom Setup 2-screen path
-type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template';
+// SKY-2990: step-import is the 3-section Import/Open picker screen
+type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'step-import';
 // SKY-2220: 'quick-start' is the one-click first-run path that bypasses the
 // title/save-path form entirely. 'default-mythos-vault' is kept as a legacy
 // backend alias during the onboarding v2.1 transition.
@@ -115,6 +116,11 @@ type Api = {
   /** SKY-2005: returns OS-level directory paths for suggested vault locations. */
   vaultGetSystemPaths?: () => Promise<SystemPaths>;
   settingsSet?: (settings: AppSettings) => Promise<{ saved: boolean; error?: string }>;
+  importDocxToStoryVault?: (filePaths: string[]) => Promise<{
+    ok: boolean;
+    importedStories: Array<{ filePath: string; storyId: string; storyTitle: string; sceneCount: number; firstScenePath?: string; firstSceneId?: string; warnings: string[] }>;
+    errors: Array<{ filePath: string; error: string }>;
+  }>;
 };
 
 function api(): Api {
@@ -501,6 +507,18 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
   const vaultNameManuallyEditedRef = useRef(false);
+
+  // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
+  const [importMwPath, setImportMwPath] = useState('');
+  const [importMwValidation, setImportMwValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const [importMwMsg, setImportMwMsg] = useState('');
+  const [importObsNotesPath, setImportObsNotesPath] = useState('');
+  const [importObsStoryPath, setImportObsStoryPath] = useState('');
+  const [importDocxFiles, setImportDocxFiles] = useState<File[]>([]);
+  const [importRunning, setImportRunning] = useState(false);
+  const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
+  const docxFileInputRef = useRef<HTMLInputElement>(null);
+  const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vaultNameManuallyEditedRef = useRef(false);
 
   // SKY-2007: load system path suggestions when the save-location step opens
@@ -871,6 +889,135 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
+  // ─── SKY-2990: Import / Open screen handlers ────────────────────────────────
+
+  function resetImportState() {
+    setImportMwPath('');
+    setImportMwValidation('idle');
+    setImportMwMsg('');
+    setImportObsNotesPath('');
+    setImportObsStoryPath('');
+    setImportDocxFiles([]);
+    setImportErrorModal(null);
+    if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
+  }
+
+  async function validateImportMwPath(raw: string) {
+    try {
+      const result = await api().validatePath(raw);
+      if (!result.exists) {
+        setImportMwValidation('invalid');
+        setImportMwMsg('Folder not found.');
+      } else if (!result.writable) {
+        setImportMwValidation('invalid');
+        setImportMwMsg('Folder is not accessible.');
+      } else {
+        setImportMwValidation('valid');
+        setImportMwMsg('Folder looks good.');
+      }
+    } catch {
+      setImportMwValidation('invalid');
+      setImportMwMsg('Could not check this path.');
+    }
+  }
+
+  function handleImportMwPathChange(value: string) {
+    setImportMwPath(value);
+    if (!value.trim()) {
+      setImportMwValidation('idle');
+      setImportMwMsg('');
+      return;
+    }
+    setImportMwValidation('validating');
+    setImportMwMsg('Checking…');
+    if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
+    importMwDebounceRef.current = setTimeout(() => { void validateImportMwPath(value); }, 400);
+  }
+
+  async function handleImportMwBrowse() {
+    const picked = await api().chooseVaultFolder('Open existing Mythos vault');
+    if (picked.cancelled || !picked.path) return;
+    setImportMwPath(picked.path);
+    void validateImportMwPath(picked.path);
+  }
+
+  async function handleImportObsBrowse(slot: 'notes' | 'story') {
+    const title = slot === 'notes' ? 'Select Obsidian notes folder' : 'Select Obsidian story folder';
+    const picked = await api().chooseVaultFolder(title);
+    if (picked.cancelled || !picked.path) return;
+    if (slot === 'notes') setImportObsNotesPath(picked.path);
+    else setImportObsStoryPath(picked.path);
+  }
+
+  function handleDocxFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setImportDocxFiles((prev) => {
+      const existing = new Set(prev.map((f) => f.name));
+      return [...prev, ...files.filter((f) => !existing.has(f.name))];
+    });
+    e.target.value = '';
+  }
+
+  function handleRemoveDocxFile(index: number) {
+    setImportDocxFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleImportOrOpen() {
+    setImportRunning(true);
+    try {
+      if (importMwPath.trim()) {
+        const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: importMwPath.trim() });
+        if (!res.ok || res.error) {
+          setImportErrorModal({
+            title: "Can't open vault",
+            message: res.error ?? "This folder doesn't look like a Mythos Writer vault. Check the path and try again.",
+          });
+          return;
+        }
+        const updated: AppSettings = {
+          ...initialSettings,
+          onboardingComplete: true,
+          onboardingStartMode: 'open-existing',
+          ...(res.firstSceneId && res.firstScenePath
+            ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+            : {}),
+        };
+        onComplete(updated);
+        return;
+      }
+      if (importObsNotesPath || importObsStoryPath) {
+        setImportErrorModal({
+          title: 'Obsidian import coming soon',
+          message: 'Full Obsidian vault import is on the way. Stay tuned for updates!',
+        });
+        return;
+      }
+      if (importDocxFiles.length > 0) {
+        const filePaths = importDocxFiles.map((f) => (f as File & { path?: string }).path ?? f.name);
+        const res = await api().importDocxToStoryVault?.(filePaths);
+        if (!res || !res.ok || res.errors?.length) {
+          const detail = res?.errors?.map((e) => `${e.filePath}: ${e.error}`).join('\n') ?? '';
+          setImportErrorModal({
+            title: 'Import failed',
+            message: detail || 'Some files could not be imported.',
+          });
+          return;
+        }
+        onComplete({ ...initialSettings, onboardingComplete: true });
+        return;
+      }
+    } catch (e) {
+      setImportErrorModal({
+        title: 'Something went wrong',
+        message: e instanceof Error ? e.message : 'An unexpected error occurred.',
+      });
+    } finally {
+      setImportRunning(false);
+    }
+  }
+
+
   function handleSelectBlank() {
     goToStep2FromMode('blank');
   }
@@ -1220,7 +1367,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template') {
+      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'step-import') {
         setShowCancelConfirm(true);
       }
     }
@@ -1230,6 +1377,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const userTemplates = templates.filter((t) => t.isUserTemplate);
   const hasBundledSelection = bundledTemplates.some((t) => t.id === selectedTemplateId);
   const hasUserSelection = userTemplates.some((t) => t.id === selectedTemplateId);
+
+  const importHasInput = Boolean(
+    importMwPath.trim() || importObsNotesPath || importObsStoryPath || importDocxFiles.length > 0,
+  );
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -1386,7 +1537,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               title="Import / Open Existing"
               description="Open an existing vault, or bring in Obsidian or Word files."
               ctaLabel="Import &#x2192;"
-              onActivate={() => { void handleOpenExistingVault(); }}
+              onActivate={() => { resetImportState(); setStep('step-import'); }}
               testId="card-import"
               isSecondary
             />
@@ -1397,7 +1548,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="gs-footer-link"
               type="button"
-              onClick={() => { void handleOpenExistingVault(); }}
+              onClick={() => { resetImportState(); setStep('step-import'); }}
               data-testid="gs-restart-link"
             >
               Restart an existing project?
@@ -2319,6 +2470,198 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ) : null}
         </div>
       )}
+
+      {/* ── Import / Open ── */}
+      {step === 'step-import' && (
+        <div className="gs-modal gs-modal--import" data-testid="screen-step-import">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => { resetImportState(); setStep('step1'); }}
+              data-testid="gs-back-step-import"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-step-import"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Import / Open</h2>
+          <p className="gs-modal__subtitle">Fill in at least one section, then click Import / Open.</p>
+
+          {/* Section 1: Open MW vault */}
+          <section className="import-section" aria-label="Open Mythos Writer vault" data-testid="import-section-mw">
+            <h3 className="import-section__title">Open Mythos Writer vault</h3>
+            <div className="import-field-row">
+              <input
+                type="text"
+                className="import-field-row__input"
+                placeholder="Path to vault folder…"
+                value={importMwPath}
+                onChange={(e) => handleImportMwPathChange(e.target.value)}
+                aria-label="Vault folder path"
+                data-testid="import-mw-path"
+              />
+              <button
+                type="button"
+                className="btn-secondary import-field-row__browse"
+                onClick={() => { void handleImportMwBrowse(); }}
+                data-testid="import-mw-browse"
+              >
+                Browse…
+              </button>
+            </div>
+            {importMwMsg && (
+              <p
+                className={`import-validation import-validation--${importMwValidation}`}
+                data-testid="import-mw-msg"
+                role="status"
+              >
+                {importMwMsg}
+              </p>
+            )}
+          </section>
+
+          {/* Section 2: Import Obsidian */}
+          <section className="import-section" aria-label="Import from Obsidian" data-testid="import-section-obs">
+            <h3 className="import-section__title">Import from Obsidian</h3>
+            <div className="import-slot">
+              <span className="import-slot__label">Notes vault</span>
+              <div className="import-field-row">
+                <input
+                  type="text"
+                  className="import-field-row__input"
+                  placeholder="Obsidian notes folder…"
+                  value={importObsNotesPath}
+                  readOnly
+                  aria-label="Obsidian notes vault folder"
+                  data-testid="import-obs-notes-path"
+                />
+                <button
+                  type="button"
+                  className="btn-secondary import-field-row__browse"
+                  onClick={() => { void handleImportObsBrowse('notes'); }}
+                  data-testid="import-obs-notes-browse"
+                >
+                  Browse…
+                </button>
+              </div>
+            </div>
+            <div className="import-slot">
+              <span className="import-slot__label">Story vault</span>
+              <div className="import-field-row">
+                <input
+                  type="text"
+                  className="import-field-row__input"
+                  placeholder="Obsidian story folder…"
+                  value={importObsStoryPath}
+                  readOnly
+                  aria-label="Obsidian story vault folder"
+                  data-testid="import-obs-story-path"
+                />
+                <button
+                  type="button"
+                  className="btn-secondary import-field-row__browse"
+                  onClick={() => { void handleImportObsBrowse('story'); }}
+                  data-testid="import-obs-story-browse"
+                >
+                  Browse…
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 3: Word docs */}
+          <section className="import-section" aria-label="Import Word documents" data-testid="import-section-docx">
+            <h3 className="import-section__title">Import Word documents (.docx)</h3>
+            <button
+              type="button"
+              className="btn-secondary import-section__file-btn"
+              onClick={() => docxFileInputRef.current?.click()}
+              data-testid="import-docx-browse"
+            >
+              Add .docx files…
+            </button>
+            <input
+              ref={docxFileInputRef}
+              type="file"
+              multiple
+              accept=".docx"
+              style={{ display: 'none' }}
+              onChange={handleDocxFileChange}
+              data-testid="import-docx-input"
+              aria-label="Select Word documents to import"
+            />
+            {importDocxFiles.length > 0 && (
+              <ul className="import-docx-list" aria-label="Selected Word documents">
+                {importDocxFiles.map((f, i) => (
+                  <li key={`${f.name}-${i}`} className="import-docx-list__item">
+                    <span className="import-docx-list__name">{f.name}</span>
+                    <button
+                      type="button"
+                      className="btn-ghost import-docx-list__remove"
+                      aria-label={`Remove ${f.name}`}
+                      onClick={() => handleRemoveDocxFile(i)}
+                      data-testid={`import-docx-remove-${i}`}
+                    >
+                      &#x2715;
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <p className="import-tip" data-testid="import-tip">
+            Tip: fill in one section above, then click Import / Open.
+          </p>
+          <div className="import-actions">
+            <button
+              type="button"
+              className="btn-primary import-actions__submit"
+              disabled={!importHasInput || importRunning}
+              onClick={() => { void handleImportOrOpen(); }}
+              data-testid="import-action-btn"
+            >
+              {importRunning ? 'Importing…' : 'Import / Open →'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Import error modal */}
+      {importErrorModal && (
+        <div
+          className="gs-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="import-error-title"
+          data-testid="import-error-modal"
+        >
+          <div className="gs-confirm">
+            <h3 className="gs-confirm__title" id="import-error-title">{importErrorModal.title}</h3>
+            <p className="gs-confirm__body">{importErrorModal.message}</p>
+            <div className="gs-confirm__actions">
+              <button
+                className="btn-primary"
+                type="button"
+                onClick={() => setImportErrorModal(null)}
+                data-testid="import-error-dismiss"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -69,6 +69,7 @@ function makeApi(overrides: Partial<{
   vaultGetPaths: ReturnType<typeof vi.fn>;
   vaultGetSystemPaths: ReturnType<typeof vi.fn>;
   settingsSet: ReturnType<typeof vi.fn>;
+  importDocxToStoryVault: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
@@ -87,6 +88,7 @@ function makeApi(overrides: Partial<{
       iCloudDir: null,
     })),
     settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
+    importDocxToStoryVault: overrides.importDocxToStoryVault ?? vi.fn().mockResolvedValue({ ok: true, importedStories: [], errors: [] }),
   };
 }
 
@@ -248,28 +250,21 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
   });
 
-  it('Import card opens the folder picker and passes the selected path to onboardingComplete', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+  it('Import card navigates to the import / open screen (SKY-2990)', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
-      startMode: 'open-existing',
-      vaultParentPath: '/home/user/Stories',
-    }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
+    expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
+    await act(async () => {});
   });
 
-  it('"Restart an existing project?" link opens the folder picker', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+  it('"Restart an existing project?" link navigates to the import / open screen (SKY-2990)', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-restart-link'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
-      startMode: 'open-existing',
-      vaultParentPath: '/home/user/Stories',
-    }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
+    await act(async () => {});
   });
 
   it('Create Custom shows Blank Slate, Sample Project, and From Template choices', async () => {
@@ -1351,5 +1346,195 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     await waitFor(() => expect(mockApi.settingsSet).toHaveBeenCalledWith(
       expect.objectContaining({ legacyVaultDismissed: true }),
     ));
+  });
+});
+
+// ─── Import / Open screen (SKY-2990) ───────────────────────────────────────────
+
+describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
+  it('AC-I-01: card-import navigates to import screen', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-import'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-I-01b: gs-restart-link navigates to import screen', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('gs-restart-link'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    await act(async () => {});
+  });
+
+  it('AC-I-02: import screen has all three sections', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    expect(screen.getByTestId('import-section-mw')).toBeInTheDocument();
+    expect(screen.getByTestId('import-section-obs')).toBeInTheDocument();
+    expect(screen.getByTestId('import-section-docx')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-I-03: Import/Open button disabled until a field is filled', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-I-04: Import/Open button enabled after MW path is typed', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
+    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-I-05: MW Browse button calls chooseVaultFolder and fills in path', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-mw-browse'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
+    await waitFor(() => expect(screen.getByTestId('import-mw-path')).toHaveValue('/home/user/Stories'));
+    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-I-06: Obsidian notes Browse sets the notes path display', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/ObsNotes', cancelled: false });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Select Obsidian notes folder'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/home/user/ObsNotes'));
+    await act(async () => {});
+  });
+
+  it('AC-I-07: Obsidian story Browse sets the story path display', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/ObsStory', cancelled: false });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-obs-story-browse'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Select Obsidian story folder'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-story-path')).toHaveValue('/home/user/ObsStory'));
+    await act(async () => {});
+  });
+
+  it('AC-I-08: tip text is shown', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    expect(screen.getByTestId('import-tip')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-I-09: MW Browse cancelled leaves path empty and button disabled', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-mw-browse'));
+    await act(async () => {});
+    expect(screen.getByTestId('import-mw-path')).toHaveValue('');
+    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
+  });
+
+  it('AC-I-10: Import MW vault calls onboardingComplete with open-existing startMode', async () => {
+    const onComplete = vi.fn();
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
+      startMode: 'open-existing',
+      vaultParentPath: '/home/user/MyVault',
+    }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+  });
+
+  it('AC-I-11: MW import failure shows error modal, does not call onComplete', async () => {
+    const onComplete = vi.fn();
+    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Not a Mythos vault' });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/Bad' } });
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
+    expect(screen.getByTestId('import-error-modal')).toHaveTextContent('Not a Mythos vault');
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('AC-E-01: error modal dismiss hides the modal', async () => {
+    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Fail' });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/bad' } });
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('import-error-dismiss'));
+    expect(screen.queryByTestId('import-error-modal')).not.toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-E-02: Obsidian import stub shows "coming soon" modal', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/obs/notes', cancelled: false });
+    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes'));
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
+    expect(screen.getByTestId('import-error-modal')).toHaveTextContent('coming soon');
+    await act(async () => {});
+  });
+
+  it('AC-E-03: Word import calls importDocxToStoryVault and fires onComplete', async () => {
+    const onComplete = vi.fn();
+    const importDocxMock = vi.fn().mockResolvedValue({
+      ok: true,
+      importedStories: [{ filePath: '/docs/story.docx', storyId: 's1', storyTitle: 'Story', sceneCount: 2, warnings: [] }],
+      errors: [],
+    });
+    (window as unknown as { api: unknown }).api = { ...mockApi, importDocxToStoryVault: importDocxMock };
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    const fileInput = screen.getByTestId('import-docx-input');
+    const file = new File(['content'], 'story.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput);
+    await waitFor(() => expect(screen.getByText('story.docx')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(importDocxMock).toHaveBeenCalled());
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+  });
+
+  it('AC-E-04: Back button on import screen returns to step1', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('gs-back-step-import'));
+    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
+    await act(async () => {});
+  });
+
+  it('AC-E-05: Escape on import screen shows cancel confirm', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
+    await waitFor(() => expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument());
+    await act(async () => {});
   });
 });
