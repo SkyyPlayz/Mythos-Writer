@@ -501,9 +501,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // ─── SKY-2988: Custom Setup v0.3 state ─────────────────────────────────────
   const [customVaultPath, setCustomVaultPath] = useState(DEFAULT_SAVE_PATH);
   const [customVaultName, setCustomVaultName] = useState(() => deriveVaultName(DEFAULT_SAVE_PATH));
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- pending SKY-2988 custom-setup JSX
   const [customTemplate, setCustomTemplate] = useState<'recommended' | 'blank'>('recommended');
   const [customPathValidation, setCustomPathValidation] = useState<PathValidationState>('idle');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- customPathMsg shown in pending UI
   const [customPathMsg, setCustomPathMsg] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setFromCustomSetup used in pending JSX
   const [fromCustomSetup, setFromCustomSetup] = useState(false);
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
@@ -583,6 +586,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in pending custom-setup JSX
   const handleCustomPathChange = useCallback((value: string) => {
     setCustomVaultPath(value);
     if (!vaultNameManuallyEditedRef.current) {
