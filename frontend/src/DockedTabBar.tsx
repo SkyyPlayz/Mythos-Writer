@@ -390,21 +390,23 @@ export default function DockedTabBar({
               >
                 ×
               </span>
-
-              {closePopoverTabId === tab.id && (
-                <ClosePopover
-                  onSendToSidebar={() => {
-                    setClosePopoverTabId(null);
-                    onTabClose(tab.id, 'send-to-sidebar');
-                  }}
-                  onRemove={() => {
-                    setClosePopoverTabId(null);
-                    onTabClose(tab.id, 'remove');
-                  }}
-                  onDismiss={() => setClosePopoverTabId(null)}
-                />
-              )}
             </button>
+
+            {/* ClosePopover is a sibling of <button>, not a child, to avoid
+                nested-button DOM nesting violation (validateDOMNesting). */}
+            {closePopoverTabId === tab.id && (
+              <ClosePopover
+                onSendToSidebar={() => {
+                  setClosePopoverTabId(null);
+                  onTabClose(tab.id, 'send-to-sidebar');
+                }}
+                onRemove={() => {
+                  setClosePopoverTabId(null);
+                  onTabClose(tab.id, 'remove');
+                }}
+                onDismiss={() => setClosePopoverTabId(null)}
+              />
+            )}
 
             {/* Slot zone after each tab */}
             <SlotZone

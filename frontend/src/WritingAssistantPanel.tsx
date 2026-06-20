@@ -204,6 +204,15 @@ export default function WritingAssistantPanel({
     });
   }, [scene?.id, scene?.path]);
 
+  // When the user selects 'on-save' cadence, the interval scheduler is disabled.
+  // Register the scene:saved listener directly so saves still trigger scans.
+  useEffect(() => {
+    if (cadence !== 'on-save') return;
+    const handleSaved = () => { void runScan(); };
+    window.addEventListener('scene:saved', handleSaved);
+    return () => window.removeEventListener('scene:saved', handleSaved);
+  }, [cadence, runScan]);
+
   const visibleTips = useMemo(() => {
     const normalized = scheduledResult?.tips.map((tip, index) => normalizeTip(tip, index, scene)) ?? [];
     return normalized.filter((tip) => !suppressedTipKeys.has(tipSuppressKey(tip, scene)));
