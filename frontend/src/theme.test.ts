@@ -4,6 +4,7 @@ import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRat
 
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
 const notesTabCss = readFileSync(join(__dirname, 'NotesTabPanel.css'), 'utf8');
+const desktopShellCss = readFileSync(join(__dirname, 'DesktopShell.css'), 'utf8');
 
 describe('token contrast floor (MYT-517 UX gate)', () => {
   // The sub-muted text colour failed the 4.5:1 floor on lighter surfaces, so
@@ -391,5 +392,65 @@ describe('NotesTabPanel.css page-background (SKY-2102)', () => {
   });
   it('notes-tab-center forces near-opaque surface under prefers-contrast: more', () => {
     expect(notesTabCss).toMatch(/prefers-contrast:\s*more/);
+  });
+});
+
+// ─── SKY-2962: background scrim (Light↔Dark slider) wiring ───────────────────
+
+describe('applyLiquidNeonTokens scrim (SKY-2962)', () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = '';
+  });
+
+  afterEach(() => {
+    resetLiquidNeonTokens();
+  });
+
+  it('sets --bg-scrim-alpha to a non-zero value when bgMode=image and bgDataUrl is provided', () => {
+    applyLiquidNeonTokens(
+      { ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 40 },
+      'data:image/png;base64,abc',
+    );
+    const alpha = parseFloat(
+      document.documentElement.style.getPropertyValue('--bg-scrim-alpha'),
+    );
+    expect(alpha).toBeGreaterThan(0);
+  });
+
+  it('scrim alpha increases as bgScrim increases', () => {
+    const bgDataUrl = 'data:image/png;base64,abc';
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 0 }, bgDataUrl);
+    const low = parseFloat(document.documentElement.style.getPropertyValue('--bg-scrim-alpha'));
+
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 100 }, bgDataUrl);
+    const high = parseFloat(document.documentElement.style.getPropertyValue('--bg-scrim-alpha'));
+
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it('sets --bg-scrim-alpha to 0 in color mode (no scrim on gradient background)', () => {
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'color' });
+    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
+  });
+
+  it('sets --bg-scrim-alpha to 0 when bgMode=image but no bgDataUrl is supplied', () => {
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 80 });
+    // Without bgDataUrl the image branch is skipped; falls through to default → scrim 0.
+    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
+  });
+});
+
+describe('DesktopShell.css scrim wiring (SKY-2962)', () => {
+  it('background-image layer includes a linear-gradient using --bg-scrim-alpha', () => {
+    expect(desktopShellCss).toMatch(/background-image[\s\S]*linear-gradient[\s\S]*--bg-scrim-alpha/);
+  });
+
+  it('scrim gradient precedes the wallpaper layer (bg-app-image)', () => {
+    const bgImageBlock = desktopShellCss.match(/background-image[\s\S]*?;/)?.[0] ?? '';
+    const scrimIdx = bgImageBlock.indexOf('--bg-scrim-alpha');
+    const wallpaperIdx = bgImageBlock.indexOf('--bg-app-image');
+    expect(scrimIdx).toBeGreaterThanOrEqual(0);
+    expect(wallpaperIdx).toBeGreaterThanOrEqual(0);
+    expect(scrimIdx).toBeLessThan(wallpaperIdx);
   });
 });
