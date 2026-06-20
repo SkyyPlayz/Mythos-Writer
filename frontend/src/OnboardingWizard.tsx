@@ -506,6 +506,18 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
   const vaultNameManuallyEditedRef = useRef(false);
+
+  // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
+  const [importMwPath, setImportMwPath] = useState('');
+  const [importMwValidation, setImportMwValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const [importMwMsg, setImportMwMsg] = useState('');
+  const [importObsNotesPath, setImportObsNotesPath] = useState('');
+  const [importObsStoryPath, setImportObsStoryPath] = useState('');
+  const [importDocxFiles, setImportDocxFiles] = useState<File[]>([]);
+  const [importRunning, setImportRunning] = useState(false);
+  const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
+  const docxFileInputRef = useRef<HTMLInputElement>(null);
+  const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vaultNameManuallyEditedRef = useRef(false);
 
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
