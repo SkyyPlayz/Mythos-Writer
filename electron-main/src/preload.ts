@@ -127,6 +127,8 @@ contextBridge.exposeInMainWorld('api', {
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
   appQuit: () => ipcRenderer.invoke('app:quit', undefined),
+  // SKY-2969: prompt user to keep or delete vaults before uninstalling
+  cleanUninstall: () => ipcRenderer.invoke('app:cleanUninstall', undefined),
 
   // Versioning — per-scene snapshots
   snapshotSave: (sceneId: string, content: string, label?: string) =>

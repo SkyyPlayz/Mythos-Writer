@@ -64,6 +64,8 @@ export const IPC_CHANNELS = {
   // App lifecycle
   APP_READY: 'app:ready',
   APP_QUIT: 'app:quit',
+  // SKY-2969: uninstaller vault-cleanup choice
+  APP_CLEAN_UNINSTALL: 'app:cleanUninstall',
 
   // AI agents
   AI_BRAINSTORMER: 'ai:brainstormer',
@@ -703,6 +705,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
   [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
   [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
+  // SKY-2969: uninstaller vault-cleanup choice
+  [IPC_CHANNELS.APP_CLEAN_UNINSTALL]: (payload: never) => Promise<CleanUninstallResponse>;
   [IPC_CHANNELS.BRAINSTORM_GET_SETTINGS]: (payload: never) => BrainstormGetSettingsResponse;
   [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: BrainstormWriteNotePayload) => BrainstormWriteNoteResponse;
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
@@ -3230,6 +3234,18 @@ export interface RestoreAppDataResponse {
   /** True when the caller must re-call with confirmed: true to proceed. */
   requiresConfirmation?: boolean;
   cancelled?: boolean;
+}
+
+// SKY-2969: Uninstaller vault-cleanup choice
+export interface CleanUninstallResponse {
+  /** True when the user clicked the keep-vaults button (no deletion performed). */
+  cancelled: boolean;
+  /** Absolute paths that were successfully deleted. */
+  deleted: string[];
+  /** Paths that could not be deleted (message per path). */
+  errors: string[];
+  /** Vault paths outside the default location that were NOT auto-deleted. */
+  customPathsWarning: string[];
 }
 
 // ─── Brainstorm Agent routing (SKY-20) ───

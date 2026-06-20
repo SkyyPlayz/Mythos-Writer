@@ -117,6 +117,7 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  type CleanUninstallResponse,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
   type SettingsTestConnectionPayload,
@@ -408,6 +409,7 @@ import {
 } from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
+import { cleanUninstall } from './uninstallHelper.js';
 import {
   loadBrainstormSettings,
   setCategoryRouting,
@@ -4368,6 +4370,39 @@ const handlers: IpcHandlers = {
       ensureVaultDir();
     }
   },
+  // SKY-2969: Uninstaller vault-cleanup choice
+  [IPC_CHANNELS.APP_CLEAN_UNINSTALL]: async (): Promise<CleanUninstallResponse> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const { response } = await dialog.showMessageBox(win!, {
+      type: 'warning',
+      buttons: ['Keep My Vaults', 'Delete Everything'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Uninstall Mythos Writer',
+      message: 'What should happen to your story and notes files?',
+      detail:
+        'Your vaults contain your manuscript, notes, and entities.\n\n' +
+        '"Keep My Vaults" leaves your files on disk.\n' +
+        '"Delete Everything" permanently removes all vault data from the default location.\n\n' +
+        'Vaults stored in custom locations will not be removed automatically.',
+    });
+    if (response === 0) {
+      return { cancelled: true, deleted: [], errors: [], customPathsWarning: [] };
+    }
+    closeDb();
+    try {
+      const result = cleanUninstall({
+        storyVaultRoot: getVaultRoot(),
+        notesVaultRoot: getNotesVaultRoot(),
+        userDataPath: app.getPath('userData'),
+      });
+      return { cancelled: false, ...result };
+    } finally {
+      // Re-open the DB only if the vault still exists (user may not uninstall immediately).
+      try { ensureVaultDir(); } catch { /* non-fatal */ }
+    }
+  },
+
   // SKY-156: Project Templates
   [IPC_CHANNELS.TEMPLATE_LIST]: (): import('./ipc.js').TemplateListResponse => {
     try {
