@@ -107,7 +107,9 @@ describe('Menu', () => {
     it('closes on Escape and calls onClose', () => {
       const onClose = vi.fn();
       renderMenu({ onClose });
-      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+      // beforeEach also rendered a menu; use the last one (the one with our spy)
+      const menus = screen.getAllByRole('menu');
+      fireEvent.keyDown(menus[menus.length - 1], { key: 'Escape' });
       expect(onClose).toHaveBeenCalledOnce();
     });
 
@@ -180,7 +182,9 @@ describe('Menu', () => {
     it('calls onClose on Tab', () => {
       const onClose = vi.fn();
       renderMenu({ onClose });
-      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' });
+      // beforeEach also rendered a menu; use the last one (the one with our spy)
+      const menus = screen.getAllByRole('menu');
+      fireEvent.keyDown(menus[menus.length - 1], { key: 'Tab' });
       expect(onClose).toHaveBeenCalledOnce();
     });
   });
