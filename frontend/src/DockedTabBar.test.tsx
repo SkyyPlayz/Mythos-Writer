@@ -155,6 +155,22 @@ describe('DockedTabBar close popover (AC-T-06)', () => {
     fireEvent.click(screen.getByText('Remove panel'));
     expect(onTabClose).toHaveBeenCalledWith('t1', 'remove');
   });
+
+  it('close popover dialog is not a descendant of the tab button (no nested-button violation)', () => {
+    const tab = makeTab('t1', ['stories']);
+    render(
+      <DockedTabBar
+        {...defaultProps}
+        dockedTabs={[tab]}
+        activeDockedTabId={'t1'}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /close story navigator tab/i }));
+    const dialog = screen.getByRole('dialog', { name: /close tab options/i });
+    const tabButton = screen.getByRole('button', { name: 'Story Navigator panel tab' });
+    // The popover dialog must not be inside the tab button — nested buttons are invalid HTML
+    expect(tabButton.contains(dialog)).toBe(false);
+  });
 });
 
 // ── Tab selection ─────────────────────────────────────────────────────────────
