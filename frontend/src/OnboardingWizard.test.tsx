@@ -1540,9 +1540,13 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
 });
 
 
+
 // ─── Custom Setup path (SKY-2988) ────────────────────────────────────────────
 
 describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)', () => {
+  // Safety net: always restore real timers even if a test times out
+  afterEach(() => { vi.useRealTimers(); });
+
   it('AC-C-01: renders custom-location screen with all required elements', async () => {
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
@@ -1615,8 +1619,15 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/MyVault' },
       });
-      await act(async () => { vi.advanceTimersByTime(600); });
-      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+      // Advance past the 500ms debounce, then flush the async validatePath Promise inside act
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      // Direct assertion — no waitFor (waitFor.setInterval is faked and would hang)
+      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
       await act(async () => {});
@@ -1633,8 +1644,13 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/NewVault' },
       });
-      await act(async () => { vi.advanceTimersByTime(600); });
-      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
       await act(async () => {});
@@ -1651,8 +1667,13 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/root/protected' },
       });
-      await act(async () => { vi.advanceTimersByTime(600); });
-      await waitFor(() => expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument());
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1667,9 +1688,12 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
     );
     fireEvent.click(screen.getByTestId('custom-vault-browse'));
-    await waitFor(() =>
-      expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe('~/WritingVault'),
-    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe('~/WritingVault');
     expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('WritingVault');
   });
 
@@ -1680,7 +1704,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
     );
     const pathBefore = (screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value;
     fireEvent.click(screen.getByTestId('custom-vault-browse'));
-    await act(async () => {});
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(pathBefore);
   });
 
@@ -1698,7 +1722,12 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
     );
     const pills = await screen.findAllByTestId('custom-suggestion-pill');
     fireEvent.click(pills[0]);
-    await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
   });
 
   it('AC-C-06: Back button returns to step1', async () => {
@@ -1706,7 +1735,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
     );
     fireEvent.click(screen.getByTestId('custom-location-back'));
-    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
+    await act(async () => {});
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
   });
 
   it('AC-C-06: Next advances to custom-template when path is valid', async () => {
@@ -1715,14 +1745,23 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
     );
+    // Use Browse to get a valid path (immediate validation, no debounce)
     fireEvent.click(screen.getByTestId('custom-vault-browse'));
-    await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('custom-location-next'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument());
+    await act(async () => {});
+    expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
   });
 });
 
 describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
   it('AC-C-07: renders custom-template screen with both radio cards', async () => {
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
@@ -1749,9 +1788,9 @@ describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
     );
     fireEvent.click(screen.getByTestId('custom-template-blank'));
+    await act(async () => {});
     expect(screen.getByTestId('custom-template-blank')).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('custom-template-recommended')).toHaveAttribute('aria-checked', 'false');
-    await act(async () => {});
   });
 
   it('AC-C-10: Finish calls onboardingComplete with startMode=blank and vault info', async () => {
@@ -1759,9 +1798,13 @@ describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
     );
     fireEvent.click(screen.getByTestId('custom-template-finish'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
       expect.objectContaining({ startMode: 'blank' }),
-    ));
+    );
   });
 
   it('AC-C-11: Back returns to custom-location preserving vault path state', async () => {
@@ -1769,7 +1812,8 @@ describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
     );
     fireEvent.click(screen.getByTestId('custom-template-back'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument());
+    await act(async () => {});
+    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
     expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(
       '~/Documents/MythosWriter',
     );
@@ -1780,7 +1824,7 @@ describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
     );
     fireEvent.keyDown(document.body, { key: 'Escape' });
-    await waitFor(() => expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument());
     await act(async () => {});
+    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
   });
 });
