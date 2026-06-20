@@ -146,6 +146,13 @@ import {
   type OnboardingCompleteResponse,
   type OnboardingImportDocxPayload,
   type OnboardingImportDocxResponse,
+  type OnboardingImportObsidianPayload,
+  type OnboardingImportObsidianResponse,
+  type OnboardingDryRunObsidianPayload,
+  type OnboardingDryRunObsidianResponse,
+  type OnboardingValidatePathPayload,
+  type OnboardingOpenExistingVaultPayload,
+  type OnboardingDetectMythosVaultPayload,
   type ImportedDocxStory,
   type DocxImportError,
   type ProviderListModelsPayload,
@@ -168,8 +175,13 @@ import {
   type SceneCrafterClosePayload,
   type SceneCrafterSuggestionAcceptPayload,
   type SceneCrafterSuggestionRejectPayload,
+  type OutlineLoadPayload,
+  type OutlineSavePayload,
+  type OutlineSaveResponse,
 } from './ipc.js';
+import { loadOutline, saveOutline } from './outline.js';
 import { parseDocxBuffer } from './docxImporter.js';
+import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
 import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
 import { boardRelPath } from './sceneCrafterBoard.js';
 import {
@@ -190,7 +202,7 @@ import {
 } from './sceneCrafterSuggestions.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
-import { isExistingUsableVaultRoot } from './validatePathUtil.js';
+import { isExistingUsableVaultRoot, validatePathForVault } from './validatePathUtil.js';
 import {
   defaultMythosVaultsParentPath,
   defaultNotesVaultRootPath,
@@ -375,7 +387,7 @@ import {
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
-import { buildSystemPaths, detectLegacyVaults, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
+import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
 import {
   hydrateSecretsIntoSettings,
@@ -2330,6 +2342,84 @@ const handlers: IpcHandlers = {
     }
 
     return { ok: errors.length === 0, importedStories, errors };
+  },
+
+  // SKY-2993: Obsidian vault importer — importObsidianVault + dryRunObsidianImport
+
+  [IPC_CHANNELS.ONBOARDING_IMPORT_OBSIDIAN]: async (payload: OnboardingImportObsidianPayload): Promise<OnboardingImportObsidianResponse> => {
+    const { srcPath, targetVaultKind } = payload ?? {};
+    if (typeof srcPath !== 'string' || !srcPath.trim()) {
+      return { ok: false, error: 'srcPath must be a non-empty string' };
+    }
+    if (targetVaultKind !== 'notes' && targetVaultKind !== 'story') {
+      return { ok: false, error: 'targetVaultKind must be "notes" or "story"' };
+    }
+    const targetRoot = targetVaultKind === 'notes' ? getNotesVaultRoot() : getVaultRoot();
+    const result = importObsidianToVaultDir(srcPath, targetRoot);
+    return {
+      ok: result.ok,
+      targetPath: result.targetPath,
+      error: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+    };
+  },
+
+  [IPC_CHANNELS.ONBOARDING_DRY_RUN_OBSIDIAN]: async (payload: OnboardingDryRunObsidianPayload): Promise<OnboardingDryRunObsidianResponse> => {
+    const { srcPath, targetVaultKind } = payload ?? {};
+    if (typeof srcPath !== 'string' || !srcPath.trim()) {
+      return { error: 'srcPath must be a non-empty string' };
+    }
+    if (targetVaultKind !== 'notes' && targetVaultKind !== 'story') {
+      return { error: 'targetVaultKind must be "notes" or "story"' };
+    }
+    const preview = dryRunObsidianImport(srcPath);
+    if ('error' in preview) return { error: preview.error };
+    return { preview };
+  },
+
+  // SKY-2991: onboarding v2 path validation + vault discovery handlers
+
+  [IPC_CHANNELS.ONBOARDING_VALIDATE_PATH]: (payload: OnboardingValidatePathPayload) => {
+    const raw = payload?.path ?? '';
+    const homeDir = app.getPath('home');
+    const resolved = raw === '~' ? homeDir : raw.startsWith('~/') ? path.join(homeDir, raw.slice(2)) : raw;
+    const base = validatePathForVault(resolved, homeDir);
+    const result: import('./ipc.js').OnboardingValidatePathResponse = { ...base };
+    if (resolved && path.isAbsolute(resolved)) {
+      result.conflictMythos = detectMythosVaultAt(resolved);
+      if (process.platform === 'win32') {
+        result.pathTooLong = resolved.length > 200;
+      }
+    }
+    return result;
+  },
+
+  [IPC_CHANNELS.ONBOARDING_GET_SUGGESTED_PATHS]: () => {
+    const { homeDir, documentsDir, desktopDir, oneDriveDir, iCloudDir } = buildSystemPaths(app);
+    return { homeDir, documentsDir, desktopDir, oneDriveDir, iCloudDir };
+  },
+
+  [IPC_CHANNELS.ONBOARDING_OPEN_EXISTING_VAULT]: (payload: OnboardingOpenExistingVaultPayload) => {
+    const raw = payload?.path ?? '';
+    const homeDir = app.getPath('home');
+    const resolved = raw === '~' ? homeDir : raw.startsWith('~/') ? path.join(homeDir, raw.slice(2)) : raw;
+    try {
+      const { storyVaultPath } = readExistingVaultPaths(resolved);
+      return { ok: true, vaultRoot: storyVaultPath };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+
+  [IPC_CHANNELS.ONBOARDING_DETECT_MYTHOS_VAULT]: (payload: OnboardingDetectMythosVaultPayload) => {
+    const raw = payload?.path ?? '';
+    const homeDir = app.getPath('home');
+    const resolved = raw === '~' ? homeDir : raw.startsWith('~/') ? path.join(homeDir, raw.slice(2)) : raw;
+    try {
+      readExistingVaultPaths(resolved);
+      return { isValid: true };
+    } catch (e) {
+      return { isValid: false, error: e instanceof Error ? e.message : String(e) };
+    }
   },
 
   // SKY-130: thin write that persists only the last-opened scene + cursor position.
@@ -5362,6 +5452,15 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_REBUILD_MANIFEST]: async (): Promise<import('./ipc.js').VaultRebuildManifestResponse> => {
     ensureVaultDir();
     return rebuildVaultManifest(getVaultRoot());
+  },
+
+  // SKY-3026: Outline planning surface
+  [IPC_CHANNELS.OUTLINE_LOAD]: (payload: OutlineLoadPayload) => {
+    return loadOutline(payload.storyVaultPath);
+  },
+  [IPC_CHANNELS.OUTLINE_SAVE]: (payload: OutlineSavePayload): OutlineSaveResponse => {
+    saveOutline(payload.storyVaultPath, payload.data);
+    return { saved: true };
   },
 
 };

@@ -8,6 +8,8 @@ import type { IpcEnvelope } from './ipcErrors.js';
 import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
 import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/types.js';
 export type { StoryTimeOfDay, ManifestTimelineEntry };
+import type { OutlineNode, OutlineData } from './outline.js';
+export type { OutlineNode, OutlineData };
 
 // Re-export canonical payload/policy types from @mythos-writer/shared.
 // SuggestionStatus and SuggestionCategory are also defined inline below (backward compat).
@@ -335,6 +337,16 @@ export const IPC_CHANNELS = {
   // SKY-2971: Word (.docx) → Story Vault importer.
   ONBOARDING_IMPORT_DOCX: 'onboarding:importDocxToStoryVault',
 
+  // SKY-2993: Obsidian vault import.
+  ONBOARDING_IMPORT_OBSIDIAN: 'onboarding:importObsidianVault',
+  ONBOARDING_DRY_RUN_OBSIDIAN: 'onboarding:dryRunObsidianImport',
+
+  // SKY-2991: onboarding v2 path validation + vault discovery handlers
+  ONBOARDING_VALIDATE_PATH: 'onboarding:validatePath',
+  ONBOARDING_GET_SUGGESTED_PATHS: 'onboarding:getSuggestedPaths',
+  ONBOARDING_OPEN_EXISTING_VAULT: 'onboarding:openExistingVault',
+  ONBOARDING_DETECT_MYTHOS_VAULT: 'onboarding:detectMythosVault',
+
   // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
   SESSION_SCENE_SAVE: 'session:saveScene',
 
@@ -505,6 +517,10 @@ export const IPC_CHANNELS = {
   // SKY-2308: Vault manifest integrity check + orphan detection
   VAULT_CHECK_INTEGRITY: 'vault:check-integrity',
   VAULT_REBUILD_MANIFEST: 'vault:rebuild-manifest',
+
+  // SKY-3026: Outline planning surface
+  OUTLINE_LOAD: 'outline:load',
+  OUTLINE_SAVE: 'outline:save',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -731,6 +747,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
   // SKY-2971: .docx importer
   [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: (payload: OnboardingImportDocxPayload) => Promise<OnboardingImportDocxResponse>;
+  // SKY-2993: Obsidian vault importer
+  [IPC_CHANNELS.ONBOARDING_IMPORT_OBSIDIAN]: (payload: OnboardingImportObsidianPayload) => Promise<OnboardingImportObsidianResponse>;
+  [IPC_CHANNELS.ONBOARDING_DRY_RUN_OBSIDIAN]: (payload: OnboardingDryRunObsidianPayload) => Promise<OnboardingDryRunObsidianResponse>;
+  // SKY-2991: onboarding v2 path validation + vault discovery
+  [IPC_CHANNELS.ONBOARDING_VALIDATE_PATH]: (payload: OnboardingValidatePathPayload) => OnboardingValidatePathResponse;
+  [IPC_CHANNELS.ONBOARDING_GET_SUGGESTED_PATHS]: (payload: never) => OnboardingGetSuggestedPathsResponse;
+  [IPC_CHANNELS.ONBOARDING_OPEN_EXISTING_VAULT]: (payload: OnboardingOpenExistingVaultPayload) => OnboardingOpenExistingVaultResponse;
+  [IPC_CHANNELS.ONBOARDING_DETECT_MYTHOS_VAULT]: (payload: OnboardingDetectMythosVaultPayload) => OnboardingDetectMythosVaultResponse;
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-156: Project Templates
@@ -872,6 +896,10 @@ export interface IpcHandlers {
   // SKY-2308: Vault integrity check + manifest rebuild
   [IPC_CHANNELS.VAULT_CHECK_INTEGRITY]: (payload: never) => Promise<VaultIntegrityReport>;
   [IPC_CHANNELS.VAULT_REBUILD_MANIFEST]: (payload: never) => Promise<VaultRebuildManifestResponse>;
+
+  // SKY-3026: Outline planning surface
+  [IPC_CHANNELS.OUTLINE_LOAD]: (payload: OutlineLoadPayload) => OutlineData | null;
+  [IPC_CHANNELS.OUTLINE_SAVE]: (payload: OutlineSavePayload) => OutlineSaveResponse;
 }
 
 // ─── Payload / Response types ───
@@ -2015,6 +2043,38 @@ export interface OnboardingImportDocxResponse {
   errors: DocxImportError[];
 }
 
+/** SKY-2993: Obsidian vault importer IPC types. */
+export type ObsidianTargetVaultKind = 'notes' | 'story';
+
+export interface OnboardingImportObsidianPayload {
+  srcPath: string;
+  targetVaultKind: ObsidianTargetVaultKind;
+}
+
+export interface OnboardingImportObsidianResponse {
+  ok: boolean;
+  targetPath?: string;
+  error?: string;
+}
+
+export interface OnboardingDryRunObsidianPayload {
+  srcPath: string;
+  targetVaultKind: ObsidianTargetVaultKind;
+}
+
+export interface ObsidianImportPreview {
+  markdownCount: number;
+  attachmentCount: number;
+  totalFiles: number;
+  topLevelFolders: string[];
+  sampleFiles: string[];
+}
+
+export interface OnboardingDryRunObsidianResponse {
+  preview?: ObsidianImportPreview;
+  error?: string;
+}
+
 export interface SessionSaveScenePayload {
   sceneId: string;
   scenePath: string;
@@ -2966,6 +3026,49 @@ export interface VaultLoadSampleTwoVaultPayload {
 export interface VaultLoadSampleTwoVaultResponse {
   storyVaultPath: string;
   notesVaultPath: string;
+  error?: string;
+}
+
+// ─── SKY-2991: onboarding v2 path/vault IPC types ───
+
+export interface OnboardingValidatePathPayload {
+  path: string;
+}
+
+export interface OnboardingValidatePathResponse {
+  exists: boolean;
+  isEmpty: boolean;
+  writable: boolean;
+  /** True when the path already contains a Mythos two-vault layout. */
+  conflictMythos?: boolean;
+  /** True on Windows when the resolved path exceeds 200 characters. */
+  pathTooLong?: boolean;
+}
+
+export interface OnboardingGetSuggestedPathsResponse {
+  homeDir: string;
+  documentsDir: string;
+  desktopDir: string;
+  oneDriveDir: string | null;
+  iCloudDir: string | null;
+}
+
+export interface OnboardingOpenExistingVaultPayload {
+  path: string;
+}
+
+export interface OnboardingOpenExistingVaultResponse {
+  ok: boolean;
+  vaultRoot?: string;
+  error?: string;
+}
+
+export interface OnboardingDetectMythosVaultPayload {
+  path: string;
+}
+
+export interface OnboardingDetectMythosVaultResponse {
+  isValid: boolean;
   error?: string;
 }
 
@@ -4184,3 +4287,9 @@ export interface VaultRebuildManifestResponse {
   scenesFound: number;
   entitiesFound: number;
 }
+
+// SKY-3026: Outline planning surface
+export interface OutlineLoadPayload { storyVaultPath: string; }
+export type OutlineLoadResponse = OutlineData | null;
+export interface OutlineSavePayload { storyVaultPath: string; data: OutlineData; }
+export interface OutlineSaveResponse { saved: boolean; }

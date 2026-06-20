@@ -48,6 +48,20 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-2971: Word (.docx) → Story Vault importer.
   importDocxToStoryVault: (filePaths: string[]) =>
     ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),
+  // SKY-2993: Obsidian vault importer.
+  importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') =>
+    ipcRenderer.invoke('onboarding:importObsidianVault', { srcPath, targetVaultKind }),
+  dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') =>
+    ipcRenderer.invoke('onboarding:dryRunObsidianImport', { srcPath, targetVaultKind }),
+  // SKY-2991: onboarding v2 path validation + vault discovery
+  onboardingValidatePath: (p: string) =>
+    ipcRenderer.invoke('onboarding:validatePath', { path: p }),
+  onboardingGetSuggestedPaths: () =>
+    ipcRenderer.invoke('onboarding:getSuggestedPaths', undefined),
+  onboardingOpenExistingVault: (p: string) =>
+    ipcRenderer.invoke('onboarding:openExistingVault', { path: p }),
+  onboardingDetectMythosVault: (p: string) =>
+    ipcRenderer.invoke('onboarding:detectMythosVault', { path: p }),
 
   // SKY-9: full Notes-Vault-scoped CRUD for VaultBrowser and the
   // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault
@@ -901,6 +915,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:check-integrity', undefined),
   rebuildVaultManifest: () =>
     ipcRenderer.invoke('vault:rebuild-manifest', undefined),
+
+  // SKY-3026: Outline planning surface
+  outline: {
+    load: (storyVaultPath: string) =>
+      ipcRenderer.invoke('outline:load', { storyVaultPath }),
+    save: (storyVaultPath: string, data: unknown) =>
+      ipcRenderer.invoke('outline:save', { storyVaultPath, data }),
+  },
 
 });
 
