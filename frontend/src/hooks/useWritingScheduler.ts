@@ -70,7 +70,10 @@ export function useWritingScheduler({
     if (!currentScene || scanningRef.current) return;
 
     const prose = currentScene.blocks.map((b) => b.content).join('\n\n').trim();
-    if (!prose) return;
+    if (!prose) {
+      setResult({ tips: [], scannedAt: new Date().toISOString() });
+      return;
+    }
 
     const scanScene = {
       id: currentScene.id,

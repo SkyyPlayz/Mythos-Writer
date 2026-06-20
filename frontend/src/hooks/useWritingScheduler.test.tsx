@@ -143,6 +143,32 @@ describe('useWritingScheduler', () => {
     expect(result.current.result).toEqual({ tips, scannedAt });
   });
 
+  it('clears stale tips when manually scanning an empty scene', async () => {
+    const emptyScene = {
+      ...mockScene,
+      id: 's-empty',
+      blocks: [{ id: 'b-empty', type: 'prose' as const, order: 0, content: '   ', updatedAt: '' }],
+    };
+    const tips = ['Use active voice.'];
+    const scannedAt = '2026-05-23T12:00:00.000Z';
+    mockWritingScan.mockResolvedValue({ tips, scannedAt });
+
+    const { result, rerender } = renderHook(
+      ({ scene }: { scene: typeof mockScene }) =>
+        useWritingScheduler({ scene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+      { initialProps: { scene: mockScene } },
+    );
+
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(result.current.result).toEqual({ tips, scannedAt });
+
+    rerender({ scene: emptyScene });
+    await act(async () => { await result.current.runScan(true); });
+
+    expect(mockWritingScan).toHaveBeenCalledTimes(1);
+    expect(result.current.result?.tips).toEqual([]);
+  });
+
   it('clears stale scan result when the active scene changes', async () => {
     const tips = ['Use active voice.'];
     const scannedAt = '2026-05-23T12:00:00.000Z';
