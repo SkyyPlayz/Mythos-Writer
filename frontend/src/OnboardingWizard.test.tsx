@@ -466,19 +466,21 @@ describe('OnboardingWizard — Step 2', () => {
     fireEvent.click(screen.getByTestId('gs-back-step2'));
     fireEvent.click(screen.getByTestId('card-path-blank'));
     expect(screen.getByTestId('gs-title-input')).toHaveValue('My Saga');
+    await act(async () => {});
   });
 });
 
 // ─── Step 2 validation ────────────────────────────────────────────────────────
 
 describe('OnboardingWizard — Step 2 validation', () => {
-  function renderAtStep2() {
+  async function renderAtStep2() {
     render(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     openBlankFlow();
+    await act(async () => {});
   }
 
   it('empty title on submit shows exact error copy', async () => {
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
     expect(screen.getByTestId('gs-title-error').textContent).toBe(
@@ -487,7 +489,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
   });
 
   it('empty title on blur shows error', async () => {
-    renderAtStep2();
+    await renderAtStep2();
     const input = screen.getByTestId('gs-title-input');
     fireEvent.change(input, { target: { value: '' } });
     fireEvent.blur(input);
@@ -497,7 +499,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
   it.each(['/', '\\', ':', '*', '?', '"', '<', '>', '|'])(
     'invalid char "%s" in title shows exact error copy',
     async (char) => {
-      renderAtStep2();
+      await renderAtStep2();
       const input = screen.getByTestId('gs-title-input');
       fireEvent.change(input, { target: { value: `My${char}Story` } });
       fireEvent.blur(input);
@@ -512,7 +514,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
     mockApi.validatePath = vi.fn()
       .mockResolvedValueOnce({ exists: true, isEmpty: true, writable: true }) // save path check
       .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true }); // story dir conflict
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Existing Story' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
@@ -545,7 +547,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
 
   it('unwritable path shows path error', async () => {
     mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: false });
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('gs-path-error')).toBeInTheDocument());
@@ -555,7 +557,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
   });
 
   it('"Browse…" updates save path display with tilde-prefixed value', async () => {
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-change-location'));
     await waitFor(() => expect(screen.getByTestId('gs-save-path')).toHaveValue('~/Stories'));
   });
@@ -566,7 +568,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
       cancelled: false,
     });
 
-    renderAtStep2();
+    await renderAtStep2();
     fireEvent.click(screen.getByTestId('gs-change-location'));
 
     await waitFor(() =>
@@ -578,7 +580,7 @@ describe('OnboardingWizard — Step 2 validation', () => {
 
   it('"Browse…" cancelled keeps previous path', async () => {
     mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
-    renderAtStep2();
+    await renderAtStep2();
     const pathBefore = (screen.getByTestId('gs-save-path') as HTMLInputElement).value;
     fireEvent.click(screen.getByTestId('gs-change-location'));
     await waitFor(() => {}); // wait for async
@@ -832,19 +834,22 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     legacyVaultPath: '/home/user/Mythos',
   };
 
-  it('shows migration dialog when legacyVaultDetected=true and legacyVaultDismissed=false', () => {
+  it('shows migration dialog when legacyVaultDetected=true and legacyVaultDismissed=false', async () => {
     render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('gs-migration-dialog')).toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('does not show migration dialog when legacyVaultDismissed=true', () => {
+  it('does not show migration dialog when legacyVaultDismissed=true', async () => {
     render(<OnboardingWizard initialSettings={{ ...LEGACY_SETTINGS, legacyVaultDismissed: true }} onComplete={vi.fn()} />);
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('does not show migration dialog when legacyVaultDetected=false', () => {
+  it('does not show migration dialog when legacyVaultDetected=false', async () => {
     render(<OnboardingWizard initialSettings={{ ...BASE_SETTINGS, legacyVaultDetected: false }} onComplete={vi.fn()} />);
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+    await act(async () => {});
   });
 
   it('"Use them" dismisses dialog and opens the legacy vault path', async () => {
@@ -859,11 +864,12 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     }));
   });
 
-  it('"Start fresh" dismisses dialog and leaves wizard on path-selector', () => {
+  it('"Start fresh" dismisses dialog and leaves wizard on path-selector', async () => {
     render(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-start-fresh'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
     expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    await act(async () => {});
   });
 
   it('"Never show again" dismisses dialog, calls settingsSet with legacyVaultDismissed=true', async () => {
