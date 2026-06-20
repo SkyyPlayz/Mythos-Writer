@@ -835,7 +835,7 @@ export default function WritingAssistantPanel({
           </button>
           {scanning && (
             <span className="wa-heartbeat-scanning">
-              <span className="wa-spinner" aria-hidden="true" /> Scanning
+              <span className="wa-inline-spinner" aria-hidden="true" /> Scanning
             </span>
           )}
           {scheduledResult?.scannedAt && (
@@ -867,11 +867,13 @@ export default function WritingAssistantPanel({
             ) : (
               <div className="wa-empty-state wa-heartbeat-empty" role="note">
                 <span className="wa-empty-icon" aria-hidden="true">✨</span>
-                <p className="wa-empty-heading">No suggestions yet</p>
-                <p className="wa-empty-subtext">Run a scan to get writing feedback</p>
+                <p className="wa-empty-heading">{scheduledResult ? 'No heartbeat tips — no suggestions yet' : 'No suggestions yet'}</p>
+                <p className="wa-empty-subtext">
+                  {scheduledResult ? 'This scene has no heartbeat tips right now.' : 'Run a scan to get writing feedback'}
+                </p>
                 <button
                   type="button"
-                  className="wa-scan-now wa-scan-now--cta"
+                  className="wa-scan-now-cta wa-scan-now--cta"
                   onClick={() => void handleScanNow()}
                   disabled={!scene}
                   aria-label="Start first scan"

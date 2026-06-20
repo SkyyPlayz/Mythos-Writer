@@ -279,7 +279,8 @@
   color: var(--text-muted);
 }
 
-.wa-spinner {
+.wa-spinner,
+.wa-inline-spinner {
   display: inline-block;
   width: 10px;
   height: 10px;
@@ -992,6 +993,7 @@
 /* ─── AC-V-12: Reduced-motion stripping ─── */
 @media (prefers-reduced-motion: reduce) {
   .wa-spinner,
+  .wa-inline-spinner,
   .wa-cursor,
   .wa-hear-btn--playing::after,
   .wa-mic-btn--listening {
