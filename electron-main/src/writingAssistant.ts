@@ -10,22 +10,69 @@ const VALID_CATEGORIES: ReadonlySet<string> = new Set<SuggestionCategory>([
 ]);
 
 /**
+ * Extract the first syntactically balanced JSON array from `text`, respecting
+ * quoted strings and nested delimiters.
+ *
+ * Unlike a greedy regex such as `/\[[\s\S]*\]/`, this scanner finds the matching
+ * `]` for each candidate `[` by counting depth and skipping string contents.
+ * It tries each `[` left-to-right until one produces a valid JSON array.
+ *
+ * Fixes GH #638 / SKY-2965: the prior greedy regex consumed bracketed prose
+ * (e.g. "[example]:\n[\"tip\"]") as if it were syntax, causing JSON.parse to
+ * fail and the array to be silently discarded.
+ */
+export function extractFirstJsonArray(text: string): unknown[] | null {
+  const len = text.length;
+  let i = 0;
+
+  while (i < len) {
+    const start = text.indexOf('[', i);
+    if (start === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let end = -1;
+
+    for (let j = start; j < len; j++) {
+      const ch = text[j];
+
+      if (escaped) { escaped = false; continue; }
+      if (ch === '\\' && inString) { escaped = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+
+      if (ch === '[') {
+        depth++;
+      } else if (ch === ']') {
+        depth--;
+        if (depth === 0) { end = j; break; }
+      }
+    }
+
+    if (end !== -1) {
+      try {
+        const parsed: unknown = JSON.parse(text.slice(start, end + 1));
+        if (Array.isArray(parsed)) return parsed as unknown[];
+      } catch { /* not valid JSON — try next `[` */ }
+    }
+
+    i = start + 1;
+  }
+
+  return null;
+}
+
+/**
  * Parse a JSON-array LLM response for writing tips (plain string format).
- * Falls back to splitting on newlines if JSON parsing fails.
+ * Falls back to splitting on newlines if no valid JSON array is found.
  * Returns at most `limit` tips.
  */
 export function parseScanTips(text: string, limit = 5): string[] {
-  let tips: string[] = [];
-  try {
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed)) tips = parsed.map(String).filter(Boolean);
-    }
-  } catch { /* fallback below */ }
-  if (tips.length === 0) {
-    tips = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  }
+  const parsed = extractFirstJsonArray(text);
+  const tips = parsed !== null
+    ? (parsed as unknown[]).map(String).filter(Boolean)
+    : text.split('\n').map((l) => l.trim()).filter(Boolean);
   return tips.slice(0, limit);
 }
 
@@ -38,23 +85,21 @@ export function parseScanTipsStructured(
   text: string,
   limit = 5,
 ): { tip: string; category: SuggestionCategory | null }[] {
-  try {
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed)) {
-        const structured = parsed
-          .filter((item) => item && typeof item === 'object' && typeof item.tip === 'string' && item.tip)
-          .map((item) => ({
-            tip: String(item.tip),
-            category: VALID_CATEGORIES.has(String(item.category))
-              ? (item.category as SuggestionCategory)
-              : null,
-          }));
-        if (structured.length > 0) return structured.slice(0, limit);
-      }
-    }
-  } catch { /* fallback below */ }
+  const parsed = extractFirstJsonArray(text);
+  if (parsed !== null) {
+    const structured = (parsed as unknown[])
+      .filter((item) => item && typeof item === 'object' && typeof (item as Record<string, unknown>).tip === 'string' && (item as Record<string, unknown>).tip)
+      .map((item) => {
+        const obj = item as Record<string, unknown>;
+        return {
+          tip: String(obj.tip),
+          category: VALID_CATEGORIES.has(String(obj.category))
+            ? (obj.category as SuggestionCategory)
+            : null,
+        };
+      });
+    if (structured.length > 0) return structured.slice(0, limit);
+  }
   return parseScanTips(text, limit).map((tip) => ({ tip, category: null }));
 }
 
