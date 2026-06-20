@@ -1000,3 +1000,58 @@ describe('StoryVault ARIA tree roles', () => {
   });
 });
 
+// ─── SKY-2976: lockScope hides the vault scope selector ───────────────────────
+
+describe('VaultBrowser lockScope', () => {
+  it('hides the scope selector bar when lockScope is true', async () => {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
+    expect(screen.queryByTestId('vb-scope-story')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('vb-scope-notes')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('vb-scope-both')).not.toBeInTheDocument();
+  });
+
+  it('shows only the Notes Vault when lockScope + initialScope="notes"', async () => {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-notes-vault')).toBeInTheDocument());
+    expect(screen.queryByTestId('vb-story-vault')).not.toBeInTheDocument();
+  });
+
+  it('keeps the scope selector visible when lockScope is false (default)', async () => {
+    render(<VaultBrowser {...baseProps} />);
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
+    expect(screen.getByTestId('vb-scope-story')).toBeInTheDocument();
+    expect(screen.getByTestId('vb-scope-notes')).toBeInTheDocument();
+    expect(screen.getByTestId('vb-scope-both')).toBeInTheDocument();
+  });
+});
+
+// ─── SKY-2976: moveNotesVault used for rename (not moveVault) ─────────────────
+
+describe('NotesVault rename uses moveNotesVault', () => {
+  it('calls moveNotesVault when renaming a note', async () => {
+    const mockMoveNotesVault = vi.fn().mockResolvedValue({ fromPath: 'note.md', toPath: 'renamed.md' });
+    (window as unknown as { api: unknown }).api = {
+      ...((window as unknown as { api: Record<string, unknown> }).api),
+      moveNotesVault: mockMoveNotesVault,
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+
+    mockListNotesVault.mockResolvedValue({
+      items: [{ path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' }],
+    });
+
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+
+    // Trigger double-click to start rename
+    fireEvent.doubleClick(screen.getByTestId('vb-row-note.md'));
+
+    const input = await screen.findByLabelText('Rename');
+    fireEvent.change(input, { target: { value: 'renamed' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(mockMoveNotesVault).toHaveBeenCalledWith('note.md', 'renamed.md'));
+  });
+});
+

@@ -45,7 +45,6 @@ export default function NoteViewer({ path, previewMode = false, onPreviewModeCha
   const [error, setError] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef(content);
-  const sourceRef = useRef<'notes' | 'story'>('notes');
   contentRef.current = content;
 
   const fileName = path.split('/').pop() ?? path;
@@ -54,16 +53,8 @@ export default function NoteViewer({ path, previewMode = false, onPreviewModeCha
     setLoading(true);
     setError(null);
     window.api.readNotesVault(path)
-      .then(async (r) => {
-        if ('error' in r) {
-          const fallback = await window.api.readVault(path);
-          sourceRef.current = 'story';
-          return fallback;
-        }
-        sourceRef.current = 'notes';
-        return r;
-      })
       .then((r) => {
+        if ('error' in r) throw new Error(r.error);
         setContent(r.content);
         const wc = countWords(r.content);
         onWordCountChange?.(wc);
@@ -75,12 +66,8 @@ export default function NoteViewer({ path, previewMode = false, onPreviewModeCha
   const saveContent = useCallback(async (text: string) => {
     setSaving(true);
     try {
-      if (sourceRef.current === 'story') {
-        await window.api.writeVault(path, text);
-      } else {
-        const r = await window.api.writeNotesVault(path, text);
-        if ('error' in r) throw new Error(r.error);
-      }
+      const r = await window.api.writeNotesVault(path, text);
+      if ('error' in r) throw new Error(r.error);
       setSavedAt(new Date().toLocaleTimeString());
     } catch {
       // non-fatal; user sees no save indicator

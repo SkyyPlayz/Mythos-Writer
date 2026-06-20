@@ -494,9 +494,10 @@ interface NotesVaultProps {
   activeTag: string | null;
   onTagFilter: (tag: string | null) => void;
   iconMap?: Record<string, string>;
+  onMove?: (fromPath: string, targetRow: FlatRow) => void;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove }: NotesVaultProps) {
   const allNotesItems = items.filter(isNotesItem);
   const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
 
@@ -569,9 +570,11 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   );
 
   const handleStartRename = useCallback((row: FlatRow) => {
-    if (row.node.isDirectory || !row.node.name.endsWith('.md')) return;
+    if (row.node.isDirectory) return;
     setEditingPath(row.node.path);
-    setEditValue(row.node.name.slice(0, -3));
+    const name = row.node.name;
+    const lastDot = name.lastIndexOf('.');
+    setEditValue(lastDot > 0 ? name.slice(0, lastDot) : name);
     setEditError(null);
   }, []);
 
@@ -582,12 +585,15 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     const trimmed = editValue.trim();
     const slash = editingPath.lastIndexOf('/');
     const dir = slash > 0 ? editingPath.slice(0, slash + 1) : '';
-    const newPath = dir + trimmed + '.md';
+    const origName = editingPath.split('/').pop()!;
+    const lastDot = origName.lastIndexOf('.');
+    const ext = lastDot > 0 ? origName.slice(lastDot) : '';
+    const newPath = dir + trimmed + ext;
     if (newPath === editingPath) { setEditingPath(null); return; }
     const pathExists = notesItems.some((item) => item.path === newPath);
     if (pathExists) { setEditError('A file with that name already exists'); return; }
     try {
-      await window.api.moveVault(editingPath, newPath);
+      await window.api.moveNotesVault(editingPath, newPath);
       setEditingPath(null);
       setEditError(null);
       onReload();
@@ -673,6 +679,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           onRenameCommit={handleRenameCommit}
           onRenameCancel={handleRenameCancel}
           iconMap={iconMap}
+          onMove={onMove}
         />
       )}
       <ContextMenu
@@ -715,6 +722,8 @@ export interface VaultBrowserProps {
   journalModeEnabled?: boolean;
   /** SKY-2096: initial vault scope selection. Defaults to 'both'. */
   initialScope?: 'story' | 'notes' | 'both';
+  /** SKY-2976: when true, hides the scope selector and locks to initialScope. */
+  lockScope?: boolean;
 }
 
 // SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
@@ -786,6 +795,7 @@ export default function VaultBrowser({
   onExport,
   journalModeEnabled,
   initialScope = 'both',
+  lockScope = false,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -806,37 +816,57 @@ export default function VaultBrowser({
     if (result && 'error' in result) throw new Error((result as { error: string }).error);
   }, []);
 
+  const handleMove = useCallback(async (fromPath: string, targetRow: FlatRow) => {
+    const targetDir = targetRow.node.isDirectory
+      ? targetRow.node.path
+      : (() => {
+          const slash = targetRow.node.path.lastIndexOf('/');
+          return slash > 0 ? targetRow.node.path.slice(0, slash) : '';
+        })();
+    const fileName = fromPath.split('/').pop()!;
+    const toPath = targetDir ? `${targetDir}/${fileName}` : fileName;
+    if (toPath === fromPath) return;
+    try {
+      await window.api.moveNotesVault(fromPath, toPath);
+      notesReload();
+    } catch (e) {
+      console.error('Move failed:', e);
+    }
+  }, [notesReload]);
+
   return (
     <div className="vault-browser" data-testid="vault-browser">
       {journalModeEnabled && (
         <DailyNotesBanner onOpenFile={onOpenFile} />
       )}
-      <div className="vb-scope-bar" role="group" aria-label="Vault scope">
-        <button
-          className={`vb-scope-btn${scope === 'story' ? ' vb-scope-active' : ''}`}
-          onClick={() => setScope('story')}
-          aria-pressed={scope === 'story'}
-          data-testid="vb-scope-story"
-        >
-          Story
-        </button>
-        <button
-          className={`vb-scope-btn${scope === 'notes' ? ' vb-scope-active' : ''}`}
-          onClick={() => setScope('notes')}
-          aria-pressed={scope === 'notes'}
-          data-testid="vb-scope-notes"
-        >
-          Notes
-        </button>
-        <button
-          className={`vb-scope-btn${scope === 'both' ? ' vb-scope-active' : ''}`}
-          onClick={() => setScope('both')}
-          aria-pressed={scope === 'both'}
-          data-testid="vb-scope-both"
-        >
-          Both
-        </button>
-      </div>
+      {!lockScope && (
+        <div className="vb-scope-bar" role="group" aria-label="Vault scope">
+          <button
+            className={`vb-scope-btn${scope === 'story' ? ' vb-scope-active' : ''}`}
+            onClick={() => setScope('story')}
+            aria-pressed={scope === 'story'}
+            data-testid="vb-scope-story"
+          >
+            Story
+          </button>
+          <button
+            className={`vb-scope-btn${scope === 'notes' ? ' vb-scope-active' : ''}`}
+            onClick={() => setScope('notes')}
+            aria-pressed={scope === 'notes'}
+            data-testid="vb-scope-notes"
+          >
+            Notes
+          </button>
+          <button
+            className={`vb-scope-btn${scope === 'both' ? ' vb-scope-active' : ''}`}
+            onClick={() => setScope('both')}
+            aria-pressed={scope === 'both'}
+            data-testid="vb-scope-both"
+          >
+            Both
+          </button>
+        </div>
+      )}
 
       <div className="vb-content">
         {showStory && (
@@ -849,7 +879,7 @@ export default function VaultBrowser({
               onCreateChapter={onCreateChapter}
               onCreateScene={onCreateScene}
               onRenameScene={handleRenameScene}
-            onExport={onExport}
+              onExport={onExport}
             />
           </div>
         )}
@@ -869,6 +899,7 @@ export default function VaultBrowser({
                 activeTag={activeTag}
                 onTagFilter={setActiveTag}
                 iconMap={notesIconMap}
+                onMove={handleMove}
               />
             )}
           </div>

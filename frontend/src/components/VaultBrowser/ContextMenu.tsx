@@ -45,7 +45,7 @@ export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder
   if (!row) return null;
 
   const dir = dirOf(row);
-  const isMd = !row.node.isDirectory && row.node.name.endsWith('.md');
+  const isFile = !row.node.isDirectory;
 
   function handleMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -70,7 +70,7 @@ export default function ContextMenu({ row, x, y, onClose, onNewNote, onNewFolder
       data-testid="vb-context-menu"
       onKeyDown={handleMenuKeyDown}
     >
-      {isMd && onRename && (
+      {isFile && onRename && (
         <button
           className="vb-context-item"
           role="menuitem"

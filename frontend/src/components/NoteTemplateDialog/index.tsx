@@ -53,17 +53,13 @@ export default function NoteTemplateDialog({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstFieldRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
 
-  // Load templates once
+  // Load templates once; blank is always the default (per SKY-2976)
   useEffect(() => {
     if (!open) return;
     window.api.noteTemplateList().then(({ templates: tpls }) => {
       setTemplates(tpls);
-      // Default to first template
-      if (tpls.length > 0) setSelectedId(tpls[0].id);
     }).catch(() => {
-      // If IPC fails, fall back to blank-only mode
       setTemplates([]);
-      setSelectedId('__blank__');
     });
   }, [open]);
 
@@ -146,7 +142,7 @@ export default function NoteTemplateDialog({
 
       let content: string;
       if (!selectedTemplate) {
-        content = `---\ntitle: "${noteTitle}"\ncreatedAt: ${new Date().toISOString()}\n---\n\n`;
+        content = '';
       } else {
         content = resolveBody(selectedTemplate.body, values);
       }
