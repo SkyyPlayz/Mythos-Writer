@@ -423,15 +423,27 @@ jobs:
           retention-days: 3
 
   ci:
-    # Required check aggregator — succeeds only when lint, typecheck, unit,
-    # and all 4 E2E shards are green. Branch protection gates on this status context.
+    # Required check aggregator — always runs (if: always()) so branch protection
+    # gets a definitive pass/fail rather than a "pending" indefinite skipped state
+    # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
+    # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
     needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: self-hosted
+    if: always()
     timeout-minutes: 5
 
     steps:
       - name: All checks passed
-        run: echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
+        run: |
+          results="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
+          echo "Upstream results: $results"
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "Required job outcome '$r' — expected 'success'. CI aggregator: FAILED."
+              exit 1
+            fi
+          done
+          echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
 
   build-macos:
     # Stub: GitHub-hosted macOS runners require paid Actions minutes not yet provisioned.
