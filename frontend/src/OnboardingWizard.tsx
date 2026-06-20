@@ -505,7 +505,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [fromCustomSetup, setFromCustomSetup] = useState(false);
   const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customPathInputRef = useRef<HTMLInputElement>(null);
-  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
+  const _customVaultNameInputRef = useRef<HTMLInputElement>(null);
   const vaultNameManuallyEditedRef = useRef(false);
 
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
@@ -593,7 +593,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const __handleCustomPathChange = useCallback((value: string) => {
+  const _handleCustomPathChange = useCallback((value: string) => {
     setCustomVaultPath(value);
     if (!vaultNameManuallyEditedRef.current) {
       setCustomVaultName(deriveVaultName(value));
