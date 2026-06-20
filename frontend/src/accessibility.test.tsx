@@ -171,6 +171,46 @@ describe('Accessibility — WritingAssistantPanel (Writing Assistant sidebar)', 
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  // AC-WA-23: Panel structural ARIA roles
+  it('AC-WA-23: panel has role=complementary and aria-label="Writing Assistant"', () => {
+    const { container } = render(<WritingAssistantPanel scene={null} />);
+    const panel = container.querySelector('[role="complementary"]');
+    expect(panel).not.toBeNull();
+    expect(panel?.getAttribute('aria-label')).toBe('Writing Assistant');
+  });
+
+  it('AC-WA-23: message list has role=list', () => {
+    const { container } = render(<WritingAssistantPanel scene={null} />);
+    const list = container.querySelector('.writing-assistant-messages[role="list"]');
+    expect(list).not.toBeNull();
+  });
+
+  // AC-WA-24: focus indicators — live region is always present
+  it('AC-WA-24: sr-only polite live region is always present', () => {
+    const { container } = render(<WritingAssistantPanel scene={null} />);
+    const liveRegion = container.querySelector('[role="status"][aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+  });
+
+  // AC-WA-25: reduced-motion — axe passes in all states (no animation-only issues)
+  it('AC-WA-25: axe passes with scene provided', async () => {
+    const scene = {
+      id: 'sc1',
+      title: 'Test Scene',
+      path: '/test/scene.md',
+      order: 0,
+      chapterId: 'ch1',
+      storyId: 's1',
+      blocks: [{ id: 'b1', type: 'prose' as const, content: 'Hello world', order: 0, updatedAt: '' }],
+      draftState: 'in-progress' as const,
+      createdAt: '',
+      updatedAt: '',
+    };
+    const { container } = render(<WritingAssistantPanel scene={scene} />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

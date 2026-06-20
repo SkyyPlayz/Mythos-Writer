@@ -46,9 +46,10 @@ export function useWritingScheduler({
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
-}): { result: ScheduledScanResult | null; scanning: boolean; runScan: (useScanNowChannel?: boolean) => Promise<void> } {
+}): { result: ScheduledScanResult | null; scanning: boolean; scanError: string | null; runScan: (useScanNowChannel?: boolean) => Promise<void> } {
   const [result, setResult] = useState<ScheduledScanResult | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   // Refs so the interval callback always sees the latest scene without restarting the timer.
   const sceneRef = useRef(scene);
@@ -96,9 +97,11 @@ export function useWritingScheduler({
         latestScene.path !== scanScene.path ||
         latestScene.updatedAt !== scanScene.updatedAt
       ) return;
+      setScanError(null);
       setResult({ tips: response.tips, scannedAt: response.scannedAt });
-    } catch {
-      // Non-fatal — scheduler continues on next tick.
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setScanError(msg || 'Scan failed. Please retry.');
     } finally {
       const latestScene = sceneRef.current;
       if (
@@ -168,5 +171,5 @@ export function useWritingScheduler({
     return () => clearInterval(id);
   }, [enabled, isActive, scanIntervalSeconds, runScan, cadenceTrigger, idleHeartbeatConstantInterval]);
 
-  return { result, scanning, runScan };
+  return { result, scanning, scanError, runScan };
 }

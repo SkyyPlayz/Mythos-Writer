@@ -48,3 +48,12 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock, writabl
 
 // jsdom does not implement scrollIntoView; stub it so components that call it don't throw.
 Element.prototype.scrollIntoView = () => {};
+
+// jsdom does not implement ResizeObserver; stub it so components that use it don't throw.
+// Tests that need to exercise resize callbacks should override this with vi.stubGlobal.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(window, 'ResizeObserver', { value: ResizeObserverStub, writable: true, configurable: true });
