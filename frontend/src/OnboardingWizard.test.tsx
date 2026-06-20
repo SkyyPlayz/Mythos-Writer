@@ -1538,3 +1538,249 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     await act(async () => {});
   });
 });
+
+
+// ─── Custom Setup path (SKY-2988) ────────────────────────────────────────────
+
+describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)', () => {
+  it('AC-C-01: renders custom-location screen with all required elements', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-vault-path-input')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-vault-browse')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-vault-name-input')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-location-next')).toBeInTheDocument();
+    expect(screen.getByText('Custom Setup · 1 of 2')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-C-01: Next button is initially disabled (default path not yet validated)', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    expect(screen.getByTestId('custom-location-next')).toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-C-03: vault name is auto-derived from the default path', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('MythosWriter');
+    await act(async () => {});
+  });
+
+  it('AC-C-03: typing in the path field auto-updates vault name', async () => {
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/Projects/MyNovel' },
+      });
+      expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('MyNovel');
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-03: manual vault name edit prevents auto-update on subsequent path changes', async () => {
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-name-input'), { target: { value: 'My Custom Name' } });
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/SomethingElse' },
+      });
+      expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('My Custom Name');
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: true });
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/MyVault' },
+      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-02: new-path (non-existent but valid parent) enables Next button', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/NewVault' },
+      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-02: not-writable path keeps Next disabled and shows validation hint', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: false });
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/root/protected' },
+      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await waitFor(() => expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument());
+      expect(screen.getByTestId('custom-location-next')).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-04: Browse button opens folder picker and updates path + vault name', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/WritingVault', cancelled: false });
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-vault-browse'));
+    await waitFor(() =>
+      expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe('~/WritingVault'),
+    );
+    expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('WritingVault');
+  });
+
+  it('AC-C-04: Browse cancelled keeps existing path', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    const pathBefore = (screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value;
+    fireEvent.click(screen.getByTestId('custom-vault-browse'));
+    await act(async () => {});
+    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(pathBefore);
+  });
+
+  it('AC-C-05: suggestion pill updates path and triggers immediate validation', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    mockApi.vaultGetSystemPaths = vi.fn(() => resolvedInEffect({
+      homeDir: '/home/user',
+      documentsDir: '/home/user/Documents',
+      desktopDir: '/home/user/Desktop',
+      oneDriveDir: null,
+      iCloudDir: null,
+    }));
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    const pills = await screen.findAllByTestId('custom-suggestion-pill');
+    fireEvent.click(pills[0]);
+    await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+  });
+
+  it('AC-C-06: Back button returns to step1', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-location-back'));
+    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
+  });
+
+  it('AC-C-06: Next advances to custom-template when path is valid', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/MyVault', cancelled: false });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-vault-browse'));
+    await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('custom-location-next'));
+    await waitFor(() => expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument());
+  });
+});
+
+describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)', () => {
+  it('AC-C-07: renders custom-template screen with both radio cards', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-template-recommended')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-template-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-template-finish')).toBeInTheDocument();
+    expect(screen.getByText('Custom Setup · 2 of 2')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-C-07: Recommended card is selected by default', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    expect(screen.getByTestId('custom-template-recommended')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('custom-template-blank')).toHaveAttribute('aria-checked', 'false');
+    await act(async () => {});
+  });
+
+  it('AC-C-08: clicking Start Blank card selects it and deselects Recommended', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-template-blank'));
+    expect(screen.getByTestId('custom-template-blank')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('custom-template-recommended')).toHaveAttribute('aria-checked', 'false');
+    await act(async () => {});
+  });
+
+  it('AC-C-10: Finish calls onboardingComplete with startMode=blank and vault info', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-template-finish'));
+    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ startMode: 'blank' }),
+    ));
+  });
+
+  it('AC-C-11: Back returns to custom-location preserving vault path state', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-template-back'));
+    await waitFor(() => expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument());
+    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(
+      '~/Documents/MythosWriter',
+    );
+  });
+
+  it('AC-C-11: Escape on custom-template shows cancel confirm', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument());
+    await act(async () => {});
+  });
+});
