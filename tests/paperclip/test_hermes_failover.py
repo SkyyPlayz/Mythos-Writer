@@ -19,6 +19,7 @@ from scripts.paperclip.hermes_cap_manager import (  # noqa: E402
     build_swap_body,
     detect_hermes_429,
     run_cap_manager,
+    run_routine_dedupe,
     run_sweeper,
     run_watchdog,
     should_revert,
@@ -84,8 +85,9 @@ def flatten_keys(value, prefix=""):
 
 
 class FakePaperclipApi:
-    def __init__(self, agents, fail_patch_once=False):
+    def __init__(self, agents, routines=None, fail_patch_once=False):
         self.agents = {agent["id"]: deepcopy(agent) for agent in agents}
+        self.routines = {routine["id"]: deepcopy(routine) for routine in (routines or [])}
         self.fail_patch_once = fail_patch_once
         self.patch_bodies = []
         self.comments = []
@@ -93,6 +95,8 @@ class FakePaperclipApi:
     def __call__(self, method, path, body=None):
         if method == "GET" and path == f"/companies/{COMPANY_ID}/agents":
             return list(self.agents.values())
+        if method == "GET" and path == f"/companies/{COMPANY_ID}/routines?status=active":
+            return list(self.routines.values())
         if method == "PATCH" and path.startswith("/agents/"):
             agent_id = path.rsplit("/", 1)[1]
             if self.fail_patch_once:
@@ -108,6 +112,12 @@ class FakePaperclipApi:
             self.patch_bodies.append((agent_id, deepcopy(body)))
             self.agents[agent_id].update(deepcopy(body))
             return deepcopy(self.agents[agent_id])
+        if method == "PATCH" and path.startswith("/routines/"):
+            routine_id = path.rsplit("/", 1)[1]
+            assert body is not None
+            self.patch_bodies.append((routine_id, deepcopy(body)))
+            self.routines[routine_id].update(deepcopy(body))
+            return deepcopy(self.routines[routine_id])
         if method == "POST" and path == f"/issues/{PARENT_ISSUE}/comments":
             assert body is not None
             self.comments.append(body["body"])
@@ -227,6 +237,68 @@ class HermesFailoverIntegrationTests(unittest.TestCase):
         self.assertIn("Hermes Revert Sweeper", revert_api.comments[0])
         self.assertIn("FoundingEngineer → hermes_local/gpt-5.5", revert_api.comments[0])
 
+    def test_cap_manager_startup_archives_duplicate_active_routines_and_logs_warning(self):
+        routines = [
+            {
+                "id": "routine-1",
+                "title": "hermes-cap-manager",
+                "status": "active",
+                "createdAt": "2026-06-16T10:00:00Z",
+            },
+            {
+                "id": "routine-2",
+                "title": "hermes-cap-manager v2",
+                "status": "active",
+                "createdAt": "2026-06-16T12:00:00Z",
+            },
+            {
+                "id": "routine-3",
+                "title": "hermes-revert-sweeper",
+                "status": "active",
+                "createdAt": "2026-06-16T11:00:00Z",
+            },
+            {
+                "id": "routine-4",
+                "title": "hermes-revert-sweeper (old)",
+                "status": "active",
+                "createdAt": "2026-06-16T09:00:00Z",
+            },
+        ]
+        api = FakePaperclipApi([], routines=routines)
+
+        result = run_routine_dedupe(api, COMPANY_ID, parent_issue=PARENT_ISSUE)
+
+        self.assertEqual(len(result["archived"]), 2)
+        self.assertEqual(result["archived"][0], "hermes-cap-manager: archived duplicate routine-2 (kept routine-1)")
+        self.assertEqual(result["archived"][1], "hermes-revert-sweeper: archived duplicate routine-3 (kept routine-4)")
+        self.assertEqual(len(api.comments), 1)
+        self.assertIn("Cap Manager Routine Dedupe", api.comments[0])
+        self.assertEqual(api.routines["routine-2"]["status"], "archived")
+        self.assertEqual(api.routines["routine-3"]["status"], "archived")
+
+    def test_routine_dedupe_idempotent_when_no_duplicates_exist(self):
+        routines = [
+            {
+                "id": "routine-1",
+                "title": "hermes-cap-manager",
+                "status": "active",
+                "createdAt": "2026-06-16T10:00:00Z",
+            },
+            {
+                "id": "routine-5",
+                "title": "some-other-routine",
+                "status": "active",
+                "createdAt": "2026-06-16T11:00:00Z",
+            },
+        ]
+        api = FakePaperclipApi([], routines=routines)
+
+        result = run_routine_dedupe(api, COMPANY_ID, parent_issue=PARENT_ISSUE)
+
+        self.assertEqual(len(result["archived"]), 0)
+        self.assertEqual(len(result["errors"]), 0)
+        self.assertEqual(len(api.comments), 0)
+
     def test_consolidated_cap_manager_orchestrates_watchdog_and_sweeper_passes(self):
         with tempfile.TemporaryDirectory() as td:
             instance_dir = td
@@ -242,11 +314,27 @@ class HermesFailoverIntegrationTests(unittest.TestCase):
 
             os.utime(recent_log, (recent_time, recent_time))
 
-            api = FakePaperclipApi([hermes_agent()])
+            routines = [
+                {
+                    "id": "routine-1",
+                    "title": "hermes-cap-manager",
+                    "status": "active",
+                    "createdAt": "2026-06-16T10:00:00Z",
+                },
+                {
+                    "id": "routine-2",
+                    "title": "hermes-cap-manager v2",
+                    "status": "active",
+                    "createdAt": "2026-06-16T12:00:00Z",
+                },
+            ]
+            api = FakePaperclipApi([hermes_agent()], routines=routines)
             result = run_cap_manager(api, COMPANY_ID, NOW, instance_dir=instance_dir, parent_issue=PARENT_ISSUE, heartbeat_runner=lambda _: None)
 
+            self.assertIn("routines", result)
             self.assertIn("watchdog", result)
             self.assertIn("sweeper", result)
+            self.assertEqual(len(result["routines"]["archived"]), 1)
             self.assertEqual(len(result["watchdog"]["swapped"]), 1)
             self.assertEqual(result["watchdog"]["swapped"][0], "FoundingEngineer → claude_local/claude-sonnet-4-6 (reverts 2026-06-16T23:15:00Z)")
             self.assertEqual(len(result["sweeper"]["reverted"]), 0)
