@@ -110,8 +110,8 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 }
 
 async function completeDefaultLayout(pg: Page, storyTitle: string, saveParent: string): Promise<void> {
-  await pg.locator('[data-testid="card-path-default"]').waitFor({ timeout: 30_000 });
-  await pg.locator('[data-testid="card-path-default"]').click();
+  await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
+  await pg.locator('[data-testid="card-quick-start"]').click();
   await pg.locator('[data-testid="screen-step2"]').waitFor({ timeout: 10_000 });
   await pg.locator('[data-testid="gs-title-input"]').fill(storyTitle);
   await pg.locator('[data-testid="gs-save-path"]').fill(saveParent);
@@ -173,8 +173,8 @@ test('TC-SKY-906-02: default layout blocks an existing story directory without c
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await pg.locator('[data-testid="card-path-default"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="card-path-default"]').click();
+    await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
+    await pg.locator('[data-testid="card-quick-start"]').click();
     await pg.locator('[data-testid="screen-step2"]').waitFor({ timeout: 30_000 });
     await pg.locator('[data-testid="gs-title-input"]').fill('Existing Story');
     await pg.locator('[data-testid="gs-save-path"]').fill(saveParent);
