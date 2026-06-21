@@ -131,12 +131,11 @@ jobs:
         run: |
           gh release upload "$TAG" dist-electron/*.exe dist-electron/*.zip dist-electron/*.yml --clobber
 
-  # macOS build — optional; not a dependency of publish-release.
-  # Runs on hosted macos-latest; will be skipped when Actions minutes are exhausted.
+  # macOS build — authoritative for ship cut; blocks publish-release.
+  # Runs on hosted macos-latest. A failed mac build fails the release visibly.
   build-mac:
     needs: [determine-release, create-release]
     runs-on: macos-latest
-    continue-on-error: true
     permissions:
       contents: write
 
@@ -249,7 +248,7 @@ jobs:
           gh release upload "$TAG" dist-electron/*.AppImage dist-electron/*.yml --clobber
 
   publish-release:
-    needs: [determine-release, build-linux, build-windows]
+    needs: [determine-release, build-linux, build-windows, build-mac]
     runs-on: self-hosted
     permissions:
       contents: write
