@@ -581,13 +581,17 @@ export default function AeonLaneView({
   const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
   const selectedIds: Set<string> = selectedIdsProp ?? internalSelectedIds;
   // Refs keep the selection bridge stable so callbacks don't need it in their deps.
+  const internalSelectedIdsRef = useRef(internalSelectedIds);
+  internalSelectedIdsRef.current = internalSelectedIds;
   const selectedIdsPropsRef = useRef(selectedIdsProp);
   selectedIdsPropsRef.current = selectedIdsProp;
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
-  const setSelectedIds = useCallback((ids: Set<string>) => {
-    if (selectedIdsPropsRef.current === undefined) setInternalSelectedIds(ids);
-    onSelectionChangeRef.current?.(ids);
+  const setSelectedIds = useCallback((ids: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    const prev = selectedIdsPropsRef.current ?? internalSelectedIdsRef.current;
+    const resolved = typeof ids === 'function' ? ids(prev) : ids;
+    if (selectedIdsPropsRef.current === undefined) setInternalSelectedIds(resolved);
+    onSelectionChangeRef.current?.(resolved);
   }, []);
 
   // ─── Interaction state ───
