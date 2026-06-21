@@ -374,58 +374,98 @@ function FocusModeOverlay({ wordCount, readingMinutes, saveState }: FocusModeOve
   );
 }
 
-// ─── Chapter doc view ───
+// ─── Chapter continuous view (SKY-3211 C2) — per-scene editable bands ───
 
-interface ChapterDocViewProps {
-  chapter: Chapter;
-  selectedSceneId: string | null;
-  onSelectScene: (scene: Scene) => void;
+interface SceneEditorBandProps {
+  scene: Scene;
+  index: number;
+  isActive: boolean;
+  bandRef: React.RefObject<HTMLDivElement | null>;
+  onBlocksChange: (sceneId: string, blocks: Block[]) => void;
+  onDraftStateChange: (sceneId: string, state: DraftState) => void;
+  onFocus: (scene: Scene) => void;
 }
 
-function ChapterDocView({ chapter, selectedSceneId, onSelectScene }: ChapterDocViewProps) {
+function SceneEditorBand({ scene, index, isActive, bandRef, onBlocksChange, onDraftStateChange, onFocus }: SceneEditorBandProps) {
+  const handleBlocksChange = useCallback(
+    (blocks: Block[]) => onBlocksChange(scene.id, blocks),
+    [scene.id, onBlocksChange],
+  );
+  const handleDraftStateChange = useCallback(
+    (state: DraftState) => onDraftStateChange(scene.id, state),
+    [scene.id, onDraftStateChange],
+  );
+  const handleFocus = useCallback(() => onFocus(scene), [scene, onFocus]);
+
+  return (
+    <section
+      ref={bandRef}
+      className={`chapter-continuous-scene${isActive ? ' active' : ''}`}
+      aria-label={`Scene ${index + 1}: ${scene.title}`}
+      data-scene-id={scene.id}
+    >
+      <header className="chapter-continuous-scene-header">
+        <h3 className="chapter-continuous-scene-title">{scene.title}</h3>
+        <span className="chapter-continuous-scene-index" aria-hidden="true">Scene {index + 1}</span>
+      </header>
+      <div
+        className="chapter-continuous-scene-editor"
+        role="region"
+        aria-label={`Editor: ${scene.title}`}
+        onFocusCapture={handleFocus}
+      >
+        <BlockEditor
+          key={scene.id}
+          scene={scene}
+          onBlocksChange={handleBlocksChange}
+          onDraftStateChange={handleDraftStateChange}
+        />
+      </div>
+    </section>
+  );
+}
+
+interface ChapterContinuousViewProps {
+  chapter: Chapter;
+  selectedSceneId: string | null;
+  onBlocksChange: (sceneId: string, blocks: Block[]) => void;
+  onDraftStateChange: (sceneId: string, state: DraftState) => void;
+  onSceneFocus: (scene: Scene) => void;
+}
+
+function ChapterContinuousView({ chapter, selectedSceneId, onBlocksChange, onDraftStateChange, onSceneFocus }: ChapterContinuousViewProps) {
   const sortedScenes = useMemo(
     () => [...chapter.scenes].sort((a, b) => a.order - b.order),
     [chapter.scenes],
   );
-  const selectedRef = useRef<HTMLDivElement | null>(null);
+  const activeRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selectedSceneId]);
 
   return (
-    <div className="chapter-doc-view">
-      <div className="chapter-doc-header">{chapter.title}</div>
-      <div className="chapter-doc-scenes">
+    <div className="chapter-continuous-view" aria-label={`Chapter: ${chapter.title}`}>
+      <header className="chapter-continuous-header">
+        <h2 className="chapter-continuous-title">{chapter.title}</h2>
+      </header>
+      <div className="chapter-continuous-scenes">
         {sortedScenes.length === 0 ? (
-          <div className="chapter-doc-empty">No scenes in this chapter yet.</div>
+          <p className="chapter-continuous-empty" role="status">No scenes in this chapter yet.</p>
         ) : (
-          sortedScenes.map((scene) => {
+          sortedScenes.map((scene, index) => {
             const isActive = scene.id === selectedSceneId;
-            const bodyText = scene.blocks
-              .slice()
-              .sort((a, b) => a.order - b.order)
-              .map((b) => b.content)
-              .join('\n\n')
-              .trim();
             return (
-              <div
+              <SceneEditorBand
                 key={scene.id}
-                ref={isActive ? selectedRef : null}
-                className={`chapter-doc-scene${isActive ? ' active' : ''}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelectScene(scene)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSelectScene(scene); } }}
-                aria-pressed={isActive}
-              >
-                <div className="chapter-doc-scene-title">{scene.title}</div>
-                {bodyText && (
-                  <div className="chapter-doc-scene-excerpt">
-                    {bodyText.slice(0, 300)}{bodyText.length > 300 ? '…' : ''}
-                  </div>
-                )}
-              </div>
+                scene={scene}
+                index={index}
+                isActive={isActive}
+                bandRef={isActive ? activeRef : { current: null }}
+                onBlocksChange={onBlocksChange}
+                onDraftStateChange={onDraftStateChange}
+                onFocus={onSceneFocus}
+              />
             );
           })
         )}
@@ -2277,6 +2317,56 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
 
+  // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
+  // Writes only the affected scene's file; never touches siblings (AC-C-3).
+  const handleChapterSceneBlocksChange = useCallback((sceneId: string, blocks: Block[]) => {
+    if (!selectedChapter || !selectedStory) return;
+    const scene = selectedChapter.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+    const updatedScene: Scene = { ...scene, blocks, updatedAt: now() };
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== selectedChapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== sceneId ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+    window.api.snapshotSave?.(sceneId, blocks.map((b) => b.content).join('\n\n')).catch(() => {});
+  }, [selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
+  // SKY-3211 C2: Chapter continuous view — per-scene draft state change handler.
+  const handleChapterSceneDraftStateChange = useCallback((sceneId: string, state: DraftState) => {
+    if (!selectedChapter || !selectedStory) return;
+    const scene = selectedChapter.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+    const updatedScene: Scene = { ...scene, draftState: state, updatedAt: now() };
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== selectedChapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== sceneId ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+  }, [selectedChapter, selectedStory, stories, updateManifest]);
+
+  // SKY-3211 C2: Focusing a scene band in chapter view selects it (for sidebar context).
+  const handleChapterSceneFocus = useCallback((scene: Scene) => {
+    if (selectedChapter && selectedStory && scene.id !== selectedScene?.id) {
+      handleSelectScene(scene, selectedChapter, selectedStory);
+    }
+  }, [selectedChapter, selectedStory, selectedScene, handleSelectScene]);
+
   const createStory = useCallback(async () => {
     const title = await requestText('Story title:');
     if (!title?.trim()) return;
@@ -3318,15 +3408,12 @@ export default function DesktopShell() {
                 }}
               />
             ) : viewDepth === 'chapter' && selectedChapter ? (
-              <ChapterDocView
+              <ChapterContinuousView
                 chapter={selectedChapter}
                 selectedSceneId={selectedScene?.id ?? null}
-                onSelectScene={(sc) => {
-                  if (selectedStory) {
-                    handleSelectScene(sc, selectedChapter, selectedStory);
-                    setViewDepth('scene');
-                  }
-                }}
+                onBlocksChange={handleChapterSceneBlocksChange}
+                onDraftStateChange={handleChapterSceneDraftStateChange}
+                onSceneFocus={handleChapterSceneFocus}
               />
             ) : selectedScene ? (
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
