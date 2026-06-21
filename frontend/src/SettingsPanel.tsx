@@ -213,6 +213,17 @@ const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
 
 const LG_DEFAULTS: LiquidNeonPrefs = LIQUID_NEON_DEFAULTS;
 
+// SKY-3218: Default nav-rail configuration.
+const NAV_RAIL_DEFAULTS: NavRailConfig = {
+  items: [
+    { id: 'story', enabled: true, label: 'Story', icon: '✍', order: 0 },
+    { id: 'notes', enabled: true, label: 'Notes', icon: '📝', order: 1 },
+  ],
+  collapsedDefault: false,
+  showLabels: true,
+  showIcons: true,
+};
+
 const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku' },
   { value: 'claude-sonnet-4-6', label: 'claude-sonnet' },
@@ -911,6 +922,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [bgPreviewUrl, setBgPreviewUrl] = useState<string | null>(null);
   const [bgPickBusy, setBgPickBusy] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  // SKY-3218: nav-rail config state
+  const [navConfig, setNavConfig] = useState<NavRailConfig>({ ...NAV_RAIL_DEFAULTS, items: NAV_RAIL_DEFAULTS.items.map((i) => ({ ...i })) });
 
   useEffect(() => {
     window.api.settingsGet().then((s) => {
@@ -951,6 +964,16 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
       if (s.pageBackground) setPageBg({ ...PAGE_BACKGROUND_DEFAULTS, ...s.pageBackground });
+      // SKY-3218: Load saved navConfig, merging with defaults so new items survive upgrades.
+      if (s.navConfig) {
+        const savedItems = s.navConfig.items ?? [];
+        const mergedItems: NavRailItemConfig[] = NAV_RAIL_DEFAULTS.items.map((def) => {
+          const saved = savedItems.find((i) => i.id === def.id);
+          return saved ? { ...def, ...saved } : { ...def };
+        });
+        mergedItems.sort((a, b) => a.order - b.order);
+        setNavConfig({ ...NAV_RAIL_DEFAULTS, ...s.navConfig, items: mergedItems });
+      }
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -1122,6 +1145,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         provider,
         liquidNeon: lg,
         pageBackground: pageBg,
+        navConfig,
         telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
         agents: {
           ...settings.agents,
@@ -1140,7 +1164,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, onSaved, buildAgentProviderConfig]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -3209,6 +3233,109 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 <span className="settings-label">Apply to both tabs</span>
               </label>
               <p className="settings-hint">When off, page appearance applies to the active tab only (tab-specific theming lands in a future release).</p>
+            </div>
+          </section>
+
+          {/* ── Nav-bar configuration (SKY-3218) ── */}
+          <section className="settings-section" aria-labelledby="section-nav-config" data-settings-cat="appearance">
+            <h3 className="settings-section-title" id="section-nav-config">Nav-bar</h3>
+            <p className="settings-hint">Choose which sections appear in the nav rail and their order.</p>
+
+            <div className="settings-field">
+              <span className="settings-label">Sections</span>
+              <ul className="nav-config-item-list" aria-label="Nav-bar sections">
+                {navConfig.items.map((item, index) => (
+                  <li key={item.id} className="nav-config-item">
+                    <label className="settings-toggle nav-config-item-toggle" aria-label={`Enable ${item.label}`}>
+                      <input
+                        type="checkbox"
+                        checked={item.enabled}
+                        onChange={(e) => {
+                          setNavConfig((prev) => ({
+                            ...prev,
+                            items: prev.items.map((it) =>
+                              it.id === item.id ? { ...it, enabled: e.target.checked } : it,
+                            ),
+                          }));
+                          setSavedOk(false);
+                        }}
+                      />
+                      <span className="settings-toggle-track" />
+                    </label>
+                    <span className="nav-config-item-icon" aria-hidden="true">{item.icon}</span>
+                    <span className="nav-config-item-label">{item.label}</span>
+                    <div className="nav-config-item-reorder">
+                      <button
+                        type="button"
+                        className="nav-config-reorder-btn"
+                        aria-label={`Move ${item.label} up`}
+                        disabled={index === 0}
+                        onClick={() => {
+                          setNavConfig((prev) => {
+                            const next = [...prev.items];
+                            [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                            return { ...prev, items: next.map((it, i) => ({ ...it, order: i })) };
+                          });
+                          setSavedOk(false);
+                        }}
+                      >▲</button>
+                      <button
+                        type="button"
+                        className="nav-config-reorder-btn"
+                        aria-label={`Move ${item.label} down`}
+                        disabled={index === navConfig.items.length - 1}
+                        onClick={() => {
+                          setNavConfig((prev) => {
+                            const next = [...prev.items];
+                            [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                            return { ...prev, items: next.map((it, i) => ({ ...it, order: i })) };
+                          });
+                          setSavedOk(false);
+                        }}
+                      >▼</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="settings-field settings-field-inline">
+              <span className="settings-label">Start collapsed</span>
+              <label className="settings-toggle" htmlFor="nav-collapsed-default">
+                <input
+                  id="nav-collapsed-default"
+                  type="checkbox"
+                  checked={navConfig.collapsedDefault}
+                  onChange={(e) => { setNavConfig((p) => ({ ...p, collapsedDefault: e.target.checked })); setSavedOk(false); }}
+                />
+                <span className="settings-toggle-track" />
+              </label>
+            </div>
+
+            <div className="settings-field settings-field-inline">
+              <span className="settings-label">Show labels</span>
+              <label className="settings-toggle" htmlFor="nav-show-labels">
+                <input
+                  id="nav-show-labels"
+                  type="checkbox"
+                  checked={navConfig.showLabels}
+                  onChange={(e) => { setNavConfig((p) => ({ ...p, showLabels: e.target.checked })); setSavedOk(false); }}
+                />
+                <span className="settings-toggle-track" />
+              </label>
+            </div>
+
+            <div className="settings-field settings-field-inline">
+              <span className="settings-label">Show icons</span>
+              <label className="settings-toggle" htmlFor="nav-show-icons">
+                <input
+                  id="nav-show-icons"
+                  type="checkbox"
+                  checked={navConfig.showIcons}
+                  onChange={(e) => { setNavConfig((p) => ({ ...p, showIcons: e.target.checked })); setSavedOk(false); }}
+                />
+                <span className="settings-toggle-track" />
+              </label>
             </div>
           </section>
 
