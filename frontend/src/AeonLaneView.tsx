@@ -636,7 +636,7 @@ export default function AeonLaneView({
       })
       .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [story, api]);
+  }, [story, api, setSelectedIds]);
 
   // rAF-throttled scroll handler for windowing
   const handleScroll = useCallback(() => {
@@ -723,7 +723,7 @@ export default function AeonLaneView({
         setDetail({ scene: clickedScene, anchorRect: rect });
       }
     }
-  }, [selectedIds, scenes]);
+  }, [selectedIds, scenes, setSelectedIds]);
 
   const handleDoubleClickScene = useCallback((id: string) => {
     setDetail(null);

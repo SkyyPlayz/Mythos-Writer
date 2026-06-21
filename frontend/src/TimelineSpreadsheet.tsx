@@ -334,7 +334,7 @@ export default function TimelineSpreadsheet({
       })
       .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [story, api]);
+  }, [story, api, setSelectedIds]);
 
   // ─── SKY-796: proposal index + actions ───
 
@@ -456,7 +456,7 @@ export default function TimelineSpreadsheet({
       setSelectedIds(new Set([sceneId]));
       setFocusedSceneId(sceneId);
     }
-  }, [editingCell]);
+  }, [editingCell, setSelectedIds]);
 
   // scenesRef keeps the latest scenes array reachable from stable callbacks (keyboard
   // handlers, undo/redo) without re-binding them on every state change.
@@ -634,7 +634,7 @@ export default function TimelineSpreadsheet({
     } finally {
       setSaving(new Set());
     }
-  }, [selectedIds, bulkField, bulkValue, scenes, api, pushUndo]);
+  }, [selectedIds, bulkField, bulkValue, scenes, api, pushUndo, setSelectedIds]);
 
   // ─── SKY-795 §4: keyboard nav, delete, duplicate, undo/redo ───
 
@@ -660,7 +660,7 @@ export default function TimelineSpreadsheet({
     } finally {
       setSaving(new Set());
     }
-  }, [api, pushUndo]);
+  }, [api, pushUndo, setSelectedIds]);
 
   /** Clone selected scenes into the same chapter and copy their timeline metadata. */
   const duplicateSelected = useCallback(async (ids: string[]) => {
@@ -829,6 +829,7 @@ export default function TimelineSpreadsheet({
     duplicateSelected,
     undo,
     redo,
+    setSelectedIds,
   ]);
 
   // Scroll the keyboard-focused row into view whenever it changes.
@@ -866,7 +867,7 @@ export default function TimelineSpreadsheet({
           break;
       }
     },
-    [onOpenScene, removeFromTimeline, duplicateSelected, startEdit],
+    [onOpenScene, removeFromTimeline, duplicateSelected, startEdit, setSelectedIds],
   );
 
   // The "active" detail-card scene: prefer hover, fall back to keyboard-focused
