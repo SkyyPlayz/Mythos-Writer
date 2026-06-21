@@ -4,7 +4,7 @@
 //
 // SVG+HTML, additive to existing spreadsheet timeline. 500-scene × 10-arc
 // perf gate: only renders cards in the current horizontal viewport + buffer.
-import { useState, useCallback, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import type { Story } from './types';
 import './AeonLaneView.css';
 
