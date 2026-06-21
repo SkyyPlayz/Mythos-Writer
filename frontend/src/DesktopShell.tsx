@@ -8,6 +8,8 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
+import AppNavRail from './AppNavRail';
+import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
@@ -814,6 +816,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
+  // SKY-3177: AppNavRail collapse state + account modal
+  const [navRailCollapsed, setNavRailCollapsed] = useState(false);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   // SKY-3207 (B4): top bar hidden state
   const [topBarHidden, setTopBarHidden] = useState(false);
@@ -2307,8 +2312,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         e.preventDefault();
         if ((layout.writingMode ?? 'normal') === 'focus') {
           setContinuityPeekOverlayOpen(true);
-        } else if (!grsVisible) {
+        } else {
           handleGrsVisibilityChange(true);
+          persistLayout({ ...layout, rightTab: 'continuity' });
         }
         focusContinuitySearch();
         return;
@@ -3385,6 +3391,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
   const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : 'Story'} vault: ${activeVaultBadge}`;
 
+  const NAV_ITEMS: NavRailItem[] = [
+    { id: 'story', label: 'Story', icon: '📖' },
+    { id: 'notes', label: 'Notes', icon: '📝' },
+  ];
+
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
@@ -3487,6 +3498,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onClose={() => setTemplatePickerOpen(false)}
         />
       )}
+      {/* SKY-3177: shell-body — persistent AppNavRail + tabpanel content side by side */}
+      <div className="shell-body">
+      <AppNavRail
+        activeSection={tabShell.activeTab}
+        onSectionChange={handleTabChange}
+        onOpenAccount={() => setAccountModalOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        navItems={NAV_ITEMS}
+        collapsed={navRailCollapsed}
+        onToggleCollapsed={() => setNavRailCollapsed((prev) => !prev)}
+      />
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
@@ -4147,6 +4169,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         </div>
       )}
+      </div>{/* end shell-body */}
       {ambiguousLink && (
         <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">
           <div className="cross-tab-link-modal__card">
@@ -4207,6 +4230,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onDuplicate={handleLayoutDuplicate}
         />
       )}
+      <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
     </div>
     </PanelDragProvider>
   );

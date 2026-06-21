@@ -272,6 +272,15 @@
   min-width: 0;
 }
 
+/* SKY-3177: shell-body — always-mounted AppNavRail + tabpanel content row */
+.shell-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Main panels row */
 /* SKY-1686: row wrapper that hosts view content + global right sidebar */
 .shell-main-row {
