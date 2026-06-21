@@ -154,7 +154,7 @@ GITHUB_RUN_ID="${GITHUB_RUN_ID:-}"
 
 echo "PR #${PR_NUMBER} conclusion=${CONCLUSION} (lint=${LINT_RESULT}, typecheck=${TYPECHECK_RESULT}, unit=${UNIT_RESULT}, build-electron=${BUILD_ELECTRON_RESULT}, ci=${CI_RESULT}, build-linux=${BUILD_LINUX_RESULT}, build-macos=${BUILD_MACOS_RESULT})"
 
-TITLE="PR #${PR_NUMBER} CI ${CONCLUSION} — evaluate merge gate"
+TITLE="PR #${PR_NUMBER} CI ${CONCLUSION} — merge gate (green = sign-off req, NOT merge)"
 DESC_FILE=$(mktemp)
 LIST_FILE=$(mktemp)
 trap 'rm -f "$DESC_FILE" "$LIST_FILE"' EXIT
@@ -177,7 +177,7 @@ Per-job results:
 - \`build-linux\`: ${BUILD_LINUX_RESULT}
 - \`build-macos\`: ${BUILD_MACOS_RESULT}
 
-Action: evaluate merge gate (squash if all required green + reviewed + clean; escalate via Ivy on red/conflict/high-risk).
+Action: evaluate merge gate. **GREEN ≠ merge.** If all required checks are green + reviewed + clean: PR is merge-READY — do NOT merge. Post it as ready-for-sign-off and open a `request_confirmation` routed to Ivy; wait for recorded owner sign-off before any merge (chain: agent → CEO → Ivy → Skyy, SKY-3009). Only merge after sign-off is recorded. On red/conflict/high-risk: escalate via Ivy. No auto-merge on green under any path.
 EOF
 
 # Dedup: look for an already-open ping issue for this PR. The CLI's --match
