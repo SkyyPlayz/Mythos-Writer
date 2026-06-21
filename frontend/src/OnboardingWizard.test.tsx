@@ -1677,9 +1677,10 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => { vi.advanceTimersByTime(600); });
       await act(async () => { await vi.runAllTimersAsync(); });
-      // Flush microtasks so Promise.all-driven setState from validateCustomPathNow is applied
-      await act(async () => { await Promise.resolve(); });
-      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+      // Restore real timers before waitFor so its internal polling setTimeout works;
+      // the debounce has already fired so no fake-timer-driven code remains.
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
     } finally {
       vi.useRealTimers();
       await act(async () => {});
@@ -1698,9 +1699,9 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => { vi.advanceTimersByTime(600); });
       await act(async () => { await vi.runAllTimersAsync(); });
-      // Flush microtasks so Promise.all-driven setState from validateCustomPathNow is applied
-      await act(async () => { await Promise.resolve(); });
-      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+      // Restore real timers before waitFor so its internal polling setTimeout works.
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
     } finally {
       vi.useRealTimers();
       await act(async () => {});
@@ -1719,9 +1720,9 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => { vi.advanceTimersByTime(600); });
       await act(async () => { await vi.runAllTimersAsync(); });
-      // Flush microtasks so Promise.all-driven setState from validateCustomPathNow is applied
-      await act(async () => { await Promise.resolve(); });
-      expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
+      // Restore real timers before waitFor so its internal polling setTimeout works.
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument());
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
     } finally {
       vi.useRealTimers();
