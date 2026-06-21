@@ -124,7 +124,7 @@ async function selectStory(pg: Page, title: string): Promise<void> {
 
 /** Navigate to the Scene Crafter (Board) view via the toolbar. */
 async function openBoardView(pg: Page): Promise<void> {
-  await pg.locator('[data-testid="app-tab-story"]').click();
+  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   await pg.locator('[data-testid="story-subview-kanban"]').click();
   // Wait for the lanes container, which is only rendered once the board has fully loaded.
   // (The loading state renders .scene-crafter-page but not .scene-crafter-lanes.)
@@ -137,7 +137,7 @@ async function openBoardView(pg: Page): Promise<void> {
  * Use this instead of page.reload() — reload clears React story-selection state.
  */
 async function reloadBoardView(pg: Page): Promise<void> {
-  await pg.locator('[data-testid="app-tab-story"]').click();
+  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   await pg.locator('[data-testid="story-subview-editor"]').click();
   await openBoardView(pg);
 }
@@ -480,7 +480,7 @@ test('AC-SC-08: accepting a Brainstorm proposal adds a card to Scene Crafter', a
   const CARD_TITLE = 'HeroArrivesAtVillage';
 
   // Navigate to Notes tab so BrainstormPage mounts with the selected story context.
-  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
   await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 8_000 });
 
   // Inject the proposal from the main process.
@@ -511,7 +511,7 @@ test('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposal lis
   const CARD_TITLE = 'VillainRevealedAtBanquet';
 
   // Navigate to Notes tab so BrainstormPage mounts.
-  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
   await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 8_000 });
 
   // Inject the proposal.
@@ -631,7 +631,7 @@ test.skip('AC-SC-13: I/O error during board save surfaces the write-error banner
 
 test('AC-SC-14: each story has an independent board that does not share cards', async () => {
   // Navigate to Editor first so the sidebar nav-add-btn is accessible.
-  await page.locator('[data-testid="app-tab-story"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   await page.locator('[data-testid="story-subview-editor"]').click();
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 6_000 });
 
