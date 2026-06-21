@@ -2803,67 +2803,7 @@ export default function DesktopShell() {
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
   ]);
 
-  const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
-    if (!selectedStory || !selectedScene) return;
-    const allScenes: { scene: Scene; chapter: Chapter }[] = [];
-    for (const ch of [...selectedStory.chapters].sort((a, b) => a.order - b.order)) {
-      for (const sc of [...ch.scenes].sort((a, b) => a.order - b.order)) {
-        allScenes.push({ scene: sc, chapter: ch });
-      }
-    }
-    const idx = allScenes.findIndex((s) => s.scene.id === selectedScene.id);
-    const nextIdx = direction === 'prev' ? idx - 1 : idx + 1;
-    if (nextIdx >= 0 && nextIdx < allScenes.length) {
-      const { scene, chapter } = allScenes[nextIdx];
-      handleSelectScene(scene, chapter, selectedStory);
-    }
-  }, [selectedStory, selectedScene, handleSelectScene]);
-
-  // ─── Header depth slider navigation (MYT-378) ───
-
-  const depthCanPrev = useMemo(() => {
-    if (!selectedStory) return false;
-    if (viewDepth === 'scene') {
-      if (!selectedChapter || !selectedScene) return false;
-      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
-      return sorted.findIndex((s) => s.id === selectedScene.id) > 0;
-    }
-    if (viewDepth === 'chapter') {
-      if (!selectedChapter) return false;
-      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
-      return sorted.findIndex((c) => c.id === selectedChapter.id) > 0;
-    }
-    return stories.findIndex((s) => s.id === selectedStory.id) > 0;
-  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories]);
-
-  const depthCanNext = useMemo(() => {
-    if (!selectedStory) return false;
-    if (viewDepth === 'scene') {
-      if (!selectedChapter || !selectedScene) return false;
-      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
-      return idx >= 0 && idx < sorted.length - 1;
-    }
-    if (viewDepth === 'chapter') {
-      if (!selectedChapter) return false;
-      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
-      return idx >= 0 && idx < sorted.length - 1;
-    }
-    const idx = stories.findIndex((s) => s.id === selectedStory.id);
-    return idx >= 0 && idx < stories.length - 1;
-  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories]);
-
-  const depthContextLabel = useMemo(() => {
-    if (!selectedStory) return '';
-    if (viewDepth === 'scene' && selectedChapter && selectedScene) {
-      return `${selectedChapter.title} › ${selectedScene.title}`;
-    }
-    if (viewDepth === 'chapter' && selectedChapter) {
-      return `${selectedStory.title} › ${selectedChapter.title}`;
-    }
-    return selectedStory.title;
-  }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
+  // ─── Unified step handler (AC-C-4: one stepScene handler) ────────────────
 
   // §6: empty state — depth=scene but selected chapter has no scenes
   const depthIsEmpty = useMemo(
@@ -2871,93 +2811,31 @@ export default function DesktopShell() {
     [viewDepth, selectedChapter],
   );
 
-  const handleDepthPrev = useCallback(() => {
-    if (!selectedStory) return;
-    if (viewDepth === 'scene') {
-      if (!selectedChapter || !selectedScene) return;
-      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
-      if (idx > 0) handleSelectScene(sorted[idx - 1], selectedChapter, selectedStory);
-    } else if (viewDepth === 'chapter') {
-      if (!selectedChapter) return;
-      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
-      if (idx > 0) {
-        const prev = sorted[idx - 1];
-        const firstScene = [...prev.scenes].sort((a, b) => a.order - b.order)[0];
-        if (firstScene) {
-          handleSelectScene(firstScene, prev, selectedStory);
-        } else {
-          setSelectedScene(null);
-          setSelectedChapter(prev);
-          setSelectedEntity(null);
-        }
-      }
-    } else {
-      const idx = stories.findIndex((s) => s.id === selectedStory.id);
-      if (idx > 0) {
-        const prev = stories[idx - 1];
-        const firstCh = [...prev.chapters].sort((a, b) => a.order - b.order)[0];
-        const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
-        if (firstSc && firstCh) {
-          handleSelectScene(firstSc, firstCh, prev);
-        } else if (firstCh) {
-          setSelectedScene(null);
-          setSelectedChapter(firstCh);
-          setSelectedStory(prev);
-          setSelectedEntity(null);
-        } else {
-          setSelectedScene(null);
-          setSelectedChapter(null);
-          setSelectedStory(prev);
-          setSelectedEntity(null);
-        }
-      }
-    }
-  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
+  const { canPrev: depthCanPrev, canNext: depthCanNext, contextLabel: depthContextLabel } = useMemo(
+    () => computeStepState(viewDepth, selectedScene, selectedChapter, selectedStory, stories),
+    [viewDepth, selectedScene, selectedChapter, selectedStory, stories],
+  );
 
-  const handleDepthNext = useCallback(() => {
-    if (!selectedStory) return;
-    if (viewDepth === 'scene') {
-      if (!selectedChapter || !selectedScene) return;
-      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
-      if (idx >= 0 && idx < sorted.length - 1) handleSelectScene(sorted[idx + 1], selectedChapter, selectedStory);
-    } else if (viewDepth === 'chapter') {
-      if (!selectedChapter) return;
-      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
-      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
-      if (idx >= 0 && idx < sorted.length - 1) {
-        const next = sorted[idx + 1];
-        const firstScene = [...next.scenes].sort((a, b) => a.order - b.order)[0];
-        if (firstScene) {
-          handleSelectScene(firstScene, next, selectedStory);
-        } else {
-          setSelectedScene(null);
-          setSelectedChapter(next);
-          setSelectedEntity(null);
-        }
-      }
+  /**
+   * Single handler for all prev/next navigation (DepthSlider arrows, on-canvas
+   * edge arrows, BottomBar arrows, and Ctrl/Cmd+Alt+←→ keyboard shortcut).
+   * Delegates pure logic to stepScene(); applies the resulting target to state.
+   */
+  const handleStep = useCallback((direction: 'prev' | 'next') => {
+    const target = stepScene({ direction, depth: viewDepth, selectedScene, selectedChapter, selectedStory, stories });
+    if (!target) return;
+    if (target.scene && target.chapter) {
+      handleSelectScene(target.scene, target.chapter, target.story);
+    } else if (target.chapter) {
+      setSelectedScene(null);
+      setSelectedChapter(target.chapter);
+      setSelectedStory(target.story);
+      setSelectedEntity(null);
     } else {
-      const idx = stories.findIndex((s) => s.id === selectedStory.id);
-      if (idx >= 0 && idx < stories.length - 1) {
-        const next = stories[idx + 1];
-        const firstCh = [...next.chapters].sort((a, b) => a.order - b.order)[0];
-        const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
-        if (firstSc && firstCh) {
-          handleSelectScene(firstSc, firstCh, next);
-        } else if (firstCh) {
-          setSelectedScene(null);
-          setSelectedChapter(firstCh);
-          setSelectedStory(next);
-          setSelectedEntity(null);
-        } else {
-          setSelectedScene(null);
-          setSelectedChapter(null);
-          setSelectedStory(next);
-          setSelectedEntity(null);
-        }
-      }
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(target.story);
+      setSelectedEntity(null);
     }
   }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
 
