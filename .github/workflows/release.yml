@@ -234,11 +234,19 @@ jobs:
         run: npm ci
 
       - name: Build Linux AppImage — stable channel
+        # Clear LD_LIBRARY_PATH so the runner's inherited Paperclip embedded-postgres lib path
+        # does not shadow the system liblzma.so.5 and break xz/tar during AppImage packaging.
         if: needs.determine-release.outputs.is-beta == 'false'
+        env:
+          LD_LIBRARY_PATH: ""
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npx electron-vite build && npx electron-builder --linux AppImage --publish never
 
       - name: Build Linux AppImage — beta channel
         if: needs.determine-release.outputs.is-beta == 'true'
+        env:
+          LD_LIBRARY_PATH: ""
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npx electron-vite build && npx electron-builder --linux AppImage --publish never --config.publish.channel=beta
 
       - name: Upload Linux artifacts to release
