@@ -151,12 +151,12 @@ async function waitUntil(
 }
 
 async function openBrainstormPanel(): Promise<void> {
-  const title = page.locator('.brainstorm-title');
-  if (!(await title.isVisible().catch(() => false))) {
+  const panel = page.getByTestId('notes-brainstorm-panel');
+  if (!(await panel.isVisible().catch(() => false))) {
     await page.getByTestId('app-tab-notes').click();
   }
-  await expect(title).toBeVisible({ timeout: 6_000 });
-  await expect(title).toContainText('Brainstorm');
+  await expect(panel).toBeVisible({ timeout: 6_000 });
+  await expect(panel.getByRole('button', { name: 'New session' })).toBeVisible();
 }
 
 // ─── Test lifecycle ───────────────────────────────────────────────────────────
