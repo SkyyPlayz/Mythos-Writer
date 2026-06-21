@@ -380,13 +380,12 @@ interface SceneEditorBandProps {
   scene: Scene;
   index: number;
   isActive: boolean;
-  bandRef: React.RefObject<HTMLDivElement | null>;
   onBlocksChange: (sceneId: string, blocks: Block[]) => void;
   onDraftStateChange: (sceneId: string, state: DraftState) => void;
   onFocus: (scene: Scene) => void;
 }
 
-function SceneEditorBand({ scene, index, isActive, bandRef, onBlocksChange, onDraftStateChange, onFocus }: SceneEditorBandProps) {
+function SceneEditorBand({ scene, index, isActive, onBlocksChange, onDraftStateChange, onFocus }: SceneEditorBandProps) {
   const handleBlocksChange = useCallback(
     (blocks: Block[]) => onBlocksChange(scene.id, blocks),
     [scene.id, onBlocksChange],
@@ -399,7 +398,6 @@ function SceneEditorBand({ scene, index, isActive, bandRef, onBlocksChange, onDr
 
   return (
     <section
-      ref={bandRef}
       className={`chapter-continuous-scene${isActive ? ' active' : ''}`}
       aria-label={`Scene ${index + 1}: ${scene.title}`}
       data-scene-id={scene.id}
@@ -438,10 +436,12 @@ function ChapterContinuousView({ chapter, selectedSceneId, onBlocksChange, onDra
     () => [...chapter.scenes].sort((a, b) => a.order - b.order),
     [chapter.scenes],
   );
-  const activeRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (!selectedSceneId || !containerRef.current) return;
+    const el = containerRef.current.querySelector<HTMLElement>(`[data-scene-id="${selectedSceneId}"]`);
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selectedSceneId]);
 
   return (
@@ -449,7 +449,7 @@ function ChapterContinuousView({ chapter, selectedSceneId, onBlocksChange, onDra
       <header className="chapter-continuous-header">
         <h2 className="chapter-continuous-title">{chapter.title}</h2>
       </header>
-      <div className="chapter-continuous-scenes">
+      <div className="chapter-continuous-scenes" ref={containerRef}>
         {sortedScenes.length === 0 ? (
           <p className="chapter-continuous-empty" role="status">No scenes in this chapter yet.</p>
         ) : (
@@ -461,7 +461,6 @@ function ChapterContinuousView({ chapter, selectedSceneId, onBlocksChange, onDra
                 scene={scene}
                 index={index}
                 isActive={isActive}
-                bandRef={isActive ? activeRef : { current: null }}
                 onBlocksChange={onBlocksChange}
                 onDraftStateChange={onDraftStateChange}
                 onFocus={onSceneFocus}
