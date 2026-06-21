@@ -1,0 +1,140 @@
+/* SKY-3097 (v0.3): WorkspaceTabBar - Obsidian-style draggable/closeable tabs */
+
+.wtb-root {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  -webkit-app-region: no-drag;
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+
+.wtb-tab-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.wtb-tab-slot--drop-target .wtb-tab {
+  border-left: 2px solid var(--neon-cyan);
+  box-shadow: inset 2px 0 6px color-mix(in srgb, var(--neon-cyan) 20%, transparent);
+}
+
+.wtb-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 26px 0 10px;
+  height: 100%;
+  min-width: 80px;
+  max-width: 180px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms, color 100ms, border-color 100ms;
+  -webkit-app-region: no-drag;
+}
+
+.wtb-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+/* AC-LN-10: active tab - --accent bottom border + --bg-surface background */
+.wtb-tab--active {
+  background: var(--bg-surface);
+  border-bottom-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.wtb-tab:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.wtb-tab-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.wtb-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtb-tab-close {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 1px 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms, color 120ms, background 120ms;
+  flex-shrink: 0;
+}
+
+.wtb-tab-slot:hover .wtb-tab-close,
+.wtb-tab-slot--active .wtb-tab-close {
+  opacity: 1;
+}
+
+.wtb-tab-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.wtb-tab-close:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+.wtb-empty {
+  flex: 1;
+  min-width: 0;
+}
+
+.wtb-new-tab-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 6px;
+  margin: auto 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+  -webkit-app-region: no-drag;
+}
+
+.wtb-new-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.wtb-new-tab-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}

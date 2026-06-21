@@ -556,6 +556,22 @@ interface DockedTab {
   panels: SidebarPanelId[];
 }
 
+/** SKY-3097 (v0.3): Content kind for a workspace tab. */
+type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph';
+
+/** SKY-3097 (v0.3): A tab in the Obsidian-style WorkspaceTabBar. */
+interface WorkspaceTab {
+  /** Stable UUID. */
+  id: string;
+  kind: WorkspaceTabKind;
+  title: string;
+  /** Emoji or icon character displayed in the tab. */
+  icon: string;
+  /** Vault-relative path for editor tabs. */
+  docPath?: string;
+  storyId?: string;
+}
+
 /** SKY-1700 (Wave 2f): A saved named workspace layout. */
 interface WorkspaceLayout {
   /** Stable UUID. */
