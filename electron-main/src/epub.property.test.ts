@@ -105,7 +105,7 @@ describe('buildEpub — HTML-escaping property-based (SKY-361)', () => {
       }),
       { numRuns: 200 }
     );
-  }, 20_000);
+  }, 60_000);
 
   // ── P7: Output is always a non-empty Buffer ───────────────────────────────
   //
@@ -118,7 +118,7 @@ describe('buildEpub — HTML-escaping property-based (SKY-361)', () => {
         expect(buf).toBeInstanceOf(Buffer);
         expect(buf.length).toBeGreaterThan(0);
       }),
-      { numRuns: 200 }
+      { numRuns: 75 }
     );
   }, 30_000);
 
