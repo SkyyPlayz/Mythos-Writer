@@ -9,23 +9,23 @@
 
 .ap-loading {
   font-size: 12px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   text-align: center;
   padding: 24px 0;
 }
 
 .ap-mock-banner {
   font-size: 11px;
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: var(--state-warning);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: 6px;
   padding: 5px 8px;
 }
 
 .ap-no-scene {
   font-size: 12px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   text-align: center;
   padding: 12px 0 4px;
 }
@@ -43,19 +43,19 @@
   gap: 8px;
   justify-content: space-between;
   padding: 8px 10px;
-  background: var(--surface-2, #1e2433);
-  border: 1px solid var(--border, #2d3748);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .ap-btn-scan-now {
-  color: #22d3ee;
-  border-color: rgba(34, 211, 238, 0.45);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .ap-btn-scan-now:hover:not(:disabled) {
-  background: rgba(34, 211, 238, 0.12);
-  border-color: #22d3ee;
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .ap-btn:disabled {
@@ -66,7 +66,7 @@
 .ap-scan-status {
   min-height: 1em;
   font-size: 11px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
 }
 
 .ap-section-title {
@@ -74,7 +74,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -86,18 +86,18 @@
   height: 16px;
   padding: 0 5px;
   border-radius: 8px;
-  background: var(--accent, #7c3aed);
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-on-accent);
   font-size: 10px;
   font-weight: 700;
 }
 
 .ap-empty-section {
   font-size: 11px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   padding: 8px 10px;
-  background: var(--surface-2, #1e2433);
-  border: 1px dashed var(--border, #2d3748);
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
   border-radius: 6px;
 }
 
@@ -111,8 +111,8 @@
 }
 
 .ap-card {
-  background: var(--surface-2, #1e2433);
-  border: 1px solid var(--border, #2d3748);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
   display: flex;
@@ -121,36 +121,36 @@
 }
 
 .ap-card-inconsistency {
-  border-left: 3px solid #f97316;
+  border-left: 3px solid var(--state-warning);
 }
 
 .ap-card-wikilink {
-  border-left: 3px solid #818cf8;
+  border-left: 3px solid var(--accent-violet);
 }
 
 .ap-card-link-text {
   font-family: monospace;
   font-size: 13px;
   font-weight: 600;
-  color: #818cf8;
+  color: var(--accent-violet);
   margin: 0;
 }
 
 .ap-card-description {
   font-size: 12px;
-  color: var(--text-secondary, #cbd5e1);
+  color: var(--text-body);
   margin: 0;
   line-height: 1.5;
 }
 
 .ap-card-anchor {
   font-size: 11px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   margin: 0;
 }
 
 .ap-card-anchor em {
-  color: var(--text-secondary, #cbd5e1);
+  color: var(--text-body);
   font-style: italic;
 }
 
@@ -165,50 +165,52 @@
   font-size: 11px;
   font-weight: 500;
   border-radius: 5px;
-  border: 1px solid var(--border, #2d3748);
+  border: 1px solid var(--border);
   background: transparent;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background var(--dur-hover-in) var(--ease-standard),
+              border-color var(--dur-hover-in) var(--ease-standard),
+              color var(--dur-hover-in) var(--ease-standard);
 }
 
 .ap-btn-jump {
-  color: #60a5fa;
-  border-color: rgba(96, 165, 250, 0.4);
+  color: var(--text-link);
+  border-color: color-mix(in srgb, var(--text-link) 40%, transparent);
 }
 
 .ap-btn-jump:hover {
-  background: rgba(96, 165, 250, 0.12);
-  border-color: #60a5fa;
+  background: color-mix(in srgb, var(--text-link) 12%, transparent);
+  border-color: var(--text-link);
 }
 
 .ap-btn-accept {
-  color: #4ade80;
-  border-color: rgba(74, 222, 128, 0.4);
+  color: var(--accent-success);
+  border-color: color-mix(in srgb, var(--accent-success) 40%, transparent);
 }
 
 .ap-btn-accept:hover {
-  background: rgba(74, 222, 128, 0.12);
-  border-color: #4ade80;
+  background: color-mix(in srgb, var(--accent-success) 12%, transparent);
+  border-color: var(--accent-success);
 }
 
 .ap-btn-reject {
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--state-danger);
+  border-color: color-mix(in srgb, var(--state-danger) 40%, transparent);
 }
 
 .ap-btn-reject:hover {
-  background: rgba(248, 113, 113, 0.12);
-  border-color: #f87171;
+  background: color-mix(in srgb, var(--state-danger) 12%, transparent);
+  border-color: var(--state-danger);
 }
 
 .ap-btn-resolve {
-  color: #f97316;
-  border-color: rgba(249, 115, 22, 0.4);
+  color: var(--state-warning);
+  border-color: color-mix(in srgb, var(--state-warning) 40%, transparent);
 }
 
 .ap-btn-resolve:hover {
-  background: rgba(249, 115, 22, 0.12);
-  border-color: #f97316;
+  background: color-mix(in srgb, var(--state-warning) 12%, transparent);
+  border-color: var(--state-warning);
 }
 
 .archive-disabled {
@@ -220,6 +222,12 @@
 
 .archive-disabled-msg {
   font-size: 12px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-btn {
+    transition: none;
+  }
 }
