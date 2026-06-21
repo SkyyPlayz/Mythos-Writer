@@ -879,9 +879,15 @@ export default function DesktopShell() {
     setVoiceActive(true);
     setVoiceListening(true);
 
-    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    // SKY-3189 (G3): Web Speech requires Google's servers which are absent in packaged Electron builds.
+    // Block it in packaged mode so it never presents as working-but-silently-failing.
+    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined =
+      window.api?.isPackaged ? undefined : (window.SpeechRecognition ?? window.webkitSpeechRecognition);
     if (!SpeechRecognitionCtor) {
-      showVoiceToast('Web Speech API not available.');
+      const msg = window.api?.isPackaged
+        ? 'Voice STT not configured — set up a provider in Settings → Voice.'
+        : 'Web Speech API not available.';
+      showVoiceToast(msg);
       voiceSessionRef.current = null;
       setVoiceActive(false);
       window.api.voiceStop(sessionId).catch(() => {});

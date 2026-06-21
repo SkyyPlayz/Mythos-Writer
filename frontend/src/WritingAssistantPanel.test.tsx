@@ -1313,6 +1313,22 @@ describe('WritingAssistantPanel — STT mic button (AC-WA-25)', () => {
     expect(micBtn).toBeInTheDocument();
     expect(micBtn).toHaveAttribute('aria-pressed', 'false');
   });
+
+  it('SKY-3189: blocks Web Speech in packaged mode and falls through to sttStart IPC path', () => {
+    const mockSttStart = vi.fn();
+    let webSpeechConstructed = false;
+    class MockRecognition {
+      constructor() { webSpeechConstructed = true; }
+      start() {}
+    }
+    (window as unknown as { api: unknown }).api = makeApi({ sttStart: mockSttStart, isPackaged: true });
+    (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition = MockRecognition;
+    render(<WritingAssistantPanel scene={null} voiceEnabled />);
+    fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
+    expect(mockSttStart).toHaveBeenCalled();
+    expect(webSpeechConstructed).toBe(false);
+    delete (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition;
+  });
 });
 
 describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {

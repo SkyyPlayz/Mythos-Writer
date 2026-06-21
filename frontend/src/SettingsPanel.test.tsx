@@ -652,6 +652,31 @@ describe('SettingsPanel', () => {
     expect(saved.voice?.enabled).toBe(true);
   });
 
+  it('SKY-3189: shows packaged-mode notice when voice is enabled in a packaged build', async () => {
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      vaultSetPaths: mockVaultSetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      providerListModels: mockProviderListModels,
+      isPackaged: true,
+    };
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/web speech.*not.*packaged/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('SKY-3189: does not show packaged-mode notice when not packaged', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
+    expect(screen.queryByText(/web speech.*not.*packaged/i)).not.toBeInTheDocument();
+  });
+
   // ── AC-V-09: voice settings panel (SKY-1505) ──
 
   it('renders input language selector with auto-detect default', async () => {
