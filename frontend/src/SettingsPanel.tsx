@@ -6,6 +6,7 @@ import { detectCloudProvider } from './lib/cloudSync';
 import { SUGGESTION_CATEGORY_LABELS } from './types';
 import VaultSyncBadge from './components/VaultSyncBadge';
 import MoveVaultWizard from './MoveVaultWizard';
+import { SETTINGS_CATEGORIES, SECTION_TO_CATEGORY, type SettingsCategoryId } from './settingsCategories';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -806,6 +807,18 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  // SKY-3215: category sub-nav
+  const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>('general');
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && hash in SECTION_TO_CATEGORY) {
+      setActiveCategory(SECTION_TO_CATEGORY[hash]);
+      setTimeout(() => {
+        document.getElementById(hash)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }, 80);
+    }
+  }, []);
   const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
 
   // SKY-9: Vault paths state. `vaults` mirrors the persisted Story Vault +
@@ -1496,10 +1509,29 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
-        <div className="settings-body">
+        <div className="settings-layout">
+        <nav className="settings-cat-nav" aria-label="Settings categories">
+          <ul className="settings-cat-nav-list" role="list">
+            {SETTINGS_CATEGORIES.map((cat) => (
+              <li key={cat.id}>
+                <button
+                  type="button"
+                  className={`settings-cat-nav-btn${activeCategory === cat.id ? ' settings-cat-nav-btn--active' : ''}`}
+                  aria-current={activeCategory === cat.id ? 'page' : undefined}
+                  onClick={() => setActiveCategory(cat.id)}
+                  data-testid={`settings-cat-${cat.id}`}
+                >
+                  {cat.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="settings-body" data-active-cat={activeCategory}>
 
           {/* ── AI Providers ── */}
-          <section className="settings-section provider-settings-section" aria-labelledby="section-providers">
+          <section className="settings-section provider-settings-section" aria-labelledby="section-providers" data-settings-cat="agents">
             <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
             {activeProviderSupportsVoice && (
               <span
@@ -1661,7 +1693,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── API Key ── */}
-          <section className="settings-section" aria-labelledby="section-api-key">
+          <section className="settings-section" aria-labelledby="section-api-key" data-settings-cat="general">
             <h3 className="settings-section-title" id="section-api-key">API Key</h3>
             <div className="settings-field">
               <label className="settings-label" htmlFor="api-key-input">Anthropic API Key</label>
@@ -1698,7 +1730,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Account / Vault status (SKY-1112) ── */}
-          <section className="settings-section settings-account-section" aria-labelledby="section-account">
+          <section className="settings-section settings-account-section" aria-labelledby="section-account" data-settings-cat="vaults">
             <h3 className="settings-section-title" id="section-account">Account</h3>
             <div className="settings-vault-card" aria-label="Current Story Vault">
               <div className="settings-vault-card-header">
@@ -1727,7 +1759,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Vault paths (SKY-9) ── */}
-          <section className="settings-section" aria-labelledby="section-vault-paths">
+          <section className="settings-section" aria-labelledby="section-vault-paths" data-settings-cat="vaults">
             <h3 className="settings-section-title" id="section-vault-paths">Vault paths</h3>
             <div className="settings-field">
               <label className="settings-label" htmlFor="story-vault-path-input">Story Vault</label>
@@ -1866,7 +1898,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── SKY-2308: Vault health ── */}
-          <section className="settings-section" aria-labelledby="section-vault-health">
+          <section className="settings-section" aria-labelledby="section-vault-health" data-settings-cat="vaults">
             <h3 className="settings-section-title" id="section-vault-health">Vault health</h3>
             <p className="settings-hint">Check whether the vault manifest matches the files on disk. Use this after moving files outside the app or recovering from a crash.</p>
             <div className="settings-input-row">
@@ -1929,7 +1961,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Agents ── */}
-          <section className="settings-section" aria-labelledby="section-agents">
+          <section className="settings-section" aria-labelledby="section-agents" data-settings-cat="agents">
             <h3 className="settings-section-title" id="section-agents">Agents</h3>
 
             <div className="settings-agent-card">
@@ -2506,7 +2538,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Auto Linker (SKY-192) ── */}
-          <section className="settings-section" aria-labelledby="section-autolinker">
+          <section className="settings-section" aria-labelledby="section-autolinker" data-settings-cat="general">
             <h3 className="settings-section-title" id="section-autolinker">Auto Linker</h3>
             <div className="settings-field">
               <label className="settings-label">Entity mention mode</label>
@@ -2541,7 +2573,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Journal Mode (SKY-204) ── */}
-          <section className="settings-section" aria-labelledby="section-journal">
+          <section className="settings-section" aria-labelledby="section-journal" data-settings-cat="general">
             <h3 className="settings-section-title" id="section-journal">Journal Mode</h3>
             <div className="settings-field">
               <label className="settings-checkbox-label">
@@ -2586,7 +2618,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Scene Fields (SKY-207) ── */}
-          <section className="settings-section" aria-labelledby="section-scene-fields">
+          <section className="settings-section" aria-labelledby="section-scene-fields" data-settings-cat="general">
             <h3 className="settings-section-title" id="section-scene-fields">Scene Fields</h3>
             <p className="settings-hint">
               Define custom frontmatter fields — mood, tension, weather, POV, etc. — that appear in the scene
@@ -2702,7 +2734,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Snapshots ── */}
-          <section className="settings-section" aria-labelledby="section-snapshots">
+          <section className="settings-section" aria-labelledby="section-snapshots" data-settings-cat="vaults">
             <h3 className="settings-section-title" id="section-snapshots">Snapshots</h3>
             <div className="settings-agent-fields">
               <div className="settings-field settings-field-inline">
@@ -2756,7 +2788,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Version History ── */}
-          <section className="settings-section" aria-labelledby="section-versions">
+          <section className="settings-section" aria-labelledby="section-versions" data-settings-cat="vaults">
             <h3 className="settings-section-title" id="section-versions">Version History</h3>
             <div className="settings-agent-fields">
               <div className="settings-field settings-field-inline">
@@ -2796,7 +2828,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Archive Agent ── */}
-          <section className="settings-section" aria-labelledby="section-archive-agent" data-testid="archive-agent-section">
+          <section className="settings-section" aria-labelledby="section-archive-agent" data-testid="archive-agent-section" data-settings-cat="agents">
             <h3 className="settings-section-title" id="section-archive-agent">Archive Agent</h3>
 
             {/* Master toggle */}
@@ -2958,7 +2990,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Updates ── */}
-          <section className="settings-section" aria-labelledby="section-updates">
+          <section className="settings-section" aria-labelledby="section-updates" data-settings-cat="general">
             <h3 className="settings-section-title" id="section-updates">Updates</h3>
             <div className="settings-field">
               <label className="settings-label">Update Channel</label>
@@ -2984,7 +3016,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Appearance ── */}
-          <section className="settings-section" aria-labelledby="section-theme">
+          <section className="settings-section" aria-labelledby="section-theme" data-settings-cat="appearance">
             <h3 className="settings-section-title" id="section-theme">Appearance</h3>
 
             {/* Theme mode */}
@@ -3079,7 +3111,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Page Appearance (SKY-2097) ── */}
-          <section className="settings-section" aria-labelledby="section-page-appearance">
+          <section className="settings-section" aria-labelledby="section-page-appearance" data-settings-cat="appearance">
             <h3 className="settings-section-title" id="section-page-appearance">Page Appearance</h3>
             <p className="settings-hint">Controls the visual style of the writing surface panel.</p>
 
@@ -3214,7 +3246,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
           {/* ── Focus Mode (SKY-325) ── */}
           {onFocusPrefsChange && (
-            <section className="settings-section" aria-labelledby="section-focus-mode">
+            <section className="settings-section" aria-labelledby="section-focus-mode" data-settings-cat="appearance">
               <h3 className="settings-section-title" id="section-focus-mode">Focus Mode</h3>
               <p className="settings-hint">Choose which UI elements stay visible in Focus Mode and Distraction-Free mode. Changes apply immediately.</p>
               {(
@@ -3259,7 +3291,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           )}
 
           {/* ── Voice ── */}
-          <section className="settings-section" aria-labelledby="section-voice">
+          <section className="settings-section" aria-labelledby="section-voice" data-settings-cat="agents">
             <h3 className="settings-section-title" id="section-voice">Voice</h3>
             <div className="settings-field">
               <div className="settings-agent-header">
@@ -3551,7 +3583,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
           {/* ── Telemetry ── */}
-          <section className="settings-section" aria-labelledby="section-telemetry">
+          <section className="settings-section" aria-labelledby="section-telemetry" data-settings-cat="general">
             <h3 className="settings-section-title" id="section-telemetry">Telemetry</h3>
             <div className="settings-field">
               <div className="settings-agent-header">
@@ -3578,6 +3610,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
 
         </div>
+        </div>{/* end settings-layout */}
 
         <div className="settings-footer">
           {saveError && <p className="settings-error-msg" role="alert">{saveError}</p>}
