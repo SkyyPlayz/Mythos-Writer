@@ -103,7 +103,7 @@ async function navigateToGraph(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 
   // Navigate away to reset state — use the Story Timeline sub-view (exists in every fixture).
-  await page.locator('[data-testid="app-tab-story"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   const timelineBtn = page.locator('[data-testid="story-subview-timeline"]');
   if (await timelineBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await timelineBtn.click();
@@ -111,7 +111,7 @@ async function navigateToGraph(page: Page): Promise<void> {
   }
 
   // Graph now lives under the Notes tab's Graph sub-view.
-  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
   await page.locator('[data-testid="notes-subview-graph"]').click();
   await expect(page.locator('[data-testid="vault-graph-view"], [data-testid="vault-graph-empty"]')).toBeVisible({ timeout: 15_000 });
 }
