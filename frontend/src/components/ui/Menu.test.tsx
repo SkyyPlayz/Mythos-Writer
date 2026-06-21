@@ -215,8 +215,11 @@ describe('Menu', () => {
 
 describe('Menu — Liquid Neon a11y CSS', () => {
   it('menu item focus ring uses --focus-ring token', () => {
-    const m = MENU_CSS.match(/\.ln-menu-item:focus-visible[^{]*\{([^}]*)\}/);
-    expect(m?.[1] ?? '').toContain('var(--focus-ring)');
+    // Two focus-visible rules exist: a combined hover+focus-visible block and a
+    // standalone block with the box-shadow focus ring. Check any of them.
+    const rules = MENU_CSS.match(/[^}]*\.ln-menu-item:focus-visible[^}]*\}/g) ?? [];
+    const hasRing = rules.some((r) => r.includes('var(--focus-ring)'));
+    expect(hasRing).toBe(true);
   });
 
   it('reduced-motion block removes menu open animation', () => {
@@ -227,12 +230,13 @@ describe('Menu — Liquid Neon a11y CSS', () => {
     expect(m?.[1] ?? '').toContain('animation: none');
   });
 
-  it('high-contrast block exists and uses opaque background without glow', () => {
+  it('high-contrast block exists and explicitly resets glow on menu', () => {
     expect(MENU_CSS).toContain('[data-contrast="high"]');
     const m = MENU_CSS.match(/\[data-contrast="high"\]\s*\.ln-menu\s*\{([^}]*)\}/);
     const block = m?.[1] ?? '';
     expect(block).toContain('border-color');
-    expect(block).not.toContain('box-shadow');
+    // box-shadow: none is the correct reset — ensures no glow in high-contrast mode
+    expect(block).toContain('box-shadow: none');
   });
 
   it('high-contrast hover inverts colors without glow', () => {
