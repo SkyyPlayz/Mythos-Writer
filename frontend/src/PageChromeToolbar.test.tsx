@@ -48,7 +48,7 @@ describe('PageChromeToolbar', () => {
   it('calls onPrefsChange when margin slider changes', () => {
     const onChange = vi.fn();
     render(<PageChromeToolbar prefs={defaultPrefs} onPrefsChange={onChange} />);
-    const slider = screen.getByLabelText(/margins/i);
+    const slider = screen.getByRole('slider', { name: /margins/i });
     fireEvent.change(slider, { target: { value: '60' } });
     expect(onChange).toHaveBeenCalledTimes(1);
     const updated: StoryPagePrefs = onChange.mock.calls[0][0];
@@ -59,7 +59,7 @@ describe('PageChromeToolbar', () => {
   it('calls onPrefsChange when font size slider changes', () => {
     const onChange = vi.fn();
     render(<PageChromeToolbar prefs={defaultPrefs} onPrefsChange={onChange} />);
-    const slider = screen.getByLabelText(/font size/i);
+    const slider = screen.getByRole('slider', { name: /font size/i });
     fireEvent.change(slider, { target: { value: '18' } });
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange.mock.calls[0][0].fontSizePx).toBe(18);
