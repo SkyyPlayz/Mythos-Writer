@@ -162,7 +162,7 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   e2e-shard-1:
-    # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y
+    # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y, voice-io
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -226,6 +226,9 @@ jobs:
 
       - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
         run: xvfb-run --auto-servernum npm run test:e2e:a11y
+
+      - name: E2E — Voice IO pipeline + a11y (SKY-3192)
+        run: xvfb-run --auto-servernum npm run test:e2e:voice-io
 
       - name: Upload E2E report on failure
         if: failure()
