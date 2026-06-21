@@ -71,6 +71,10 @@ import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import StoryTimeline from './StoryTimeline';
 import AeonLaneView from './AeonLaneView';
+import OutlinePlanningPanel from './OutlinePlanningPanel';
+import SceneNotesPanel from './SceneNotesPanel';
+import ScenePropertiesPanel from './ScenePropertiesPanel';
+import TrackTimeline from './TrackTimeline';
 import WindowChrome from './components/ui/WindowChrome';
 import BrainstormPage from './BrainstormPage';
 import './DesktopShell.css';
@@ -730,7 +734,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
-  const [timelineMode, setTimelineMode] = useState<'spreadsheet' | 'aeon'>('spreadsheet');
+  const [timelineMode, setTimelineMode] = useState<'spreadsheet' | 'aeon' | 'track'>('spreadsheet');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -3400,11 +3404,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             >
               AEON
             </button>
+            <button
+              className={`shell-timeline-mode-btn${timelineMode === 'track' ? ' shell-timeline-mode-btn--active' : ''}`}
+              onClick={() => setTimelineMode('track')}
+              aria-pressed={timelineMode === 'track'}
+              title="AEON Track — zoomable SVG canvas with time axis and gap indicators"
+            >
+              AEON Track
+            </button>
           </div>
-          {timelineMode === 'spreadsheet' ? (
-            <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
-          ) : (
+          {timelineMode === 'aeon' ? (
             <AeonLaneView story={selectedStory} onOpenScene={handleOpenSceneById} />
+          ) : timelineMode === 'track' ? (
+            <TrackTimeline story={selectedStory} />
+          ) : (
+            <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
           )}
         </div>
       )}
