@@ -154,7 +154,7 @@ GITHUB_RUN_ID="${GITHUB_RUN_ID:-}"
 
 echo "PR #${PR_NUMBER} conclusion=${CONCLUSION} (lint=${LINT_RESULT}, typecheck=${TYPECHECK_RESULT}, unit=${UNIT_RESULT}, build-electron=${BUILD_ELECTRON_RESULT}, ci=${CI_RESULT}, build-linux=${BUILD_LINUX_RESULT}, build-macos=${BUILD_MACOS_RESULT})"
 
-TITLE="PR #${PR_NUMBER} CI ${CONCLUSION} — evaluate merge gate"
+TITLE="PR #${PR_NUMBER} CI ${CONCLUSION} — merge gate (green = sign-off req, NOT merge)"
 DESC_FILE=$(mktemp)
 LIST_FILE=$(mktemp)
 trap 'rm -f "$DESC_FILE" "$LIST_FILE"' EXIT
@@ -177,7 +177,7 @@ Per-job results:
 - \`build-linux\`: ${BUILD_LINUX_RESULT}
 - \`build-macos\`: ${BUILD_MACOS_RESULT}
 
-Action: evaluate merge gate (squash if all required green + reviewed + clean; escalate via Ivy on red/conflict/high-risk).
+Action: evaluate merge gate. **GREEN ≠ merge.** If all required checks are green + reviewed + clean: PR is merge-READY — do NOT merge. Post it as ready-for-sign-off and open a `request_confirmation` routed to Ivy; wait for recorded owner sign-off before any merge (chain: agent → CEO → Ivy → Skyy, SKY-3009). Only merge after sign-off is recorded. On red/conflict/high-risk: escalate via Ivy. No auto-merge on green under any path.
 EOF
 
 # Dedup: look for an already-open ping issue for this PR. The CLI's --match
@@ -343,11 +343,11 @@ else
 2. Identify root causes — look for shared patterns across ALL failures in the stage
 3. Apply fixes (git commit + push to feature branch)
 4. Poll: gh run list --branch ${BRANCH:-?} --limit 1 (30s interval, inline while loop)
-5. Green → mark this issue done; comment on PR issue that branch is green
+5. Green → mark this issue done; comment on PR issue that branch is green. Do NOT merge — a fixed-to-green PR stops at the sign-off gate (SKY-3109); GHM posts it ready-for-sign-off and routes a request_confirmation to Ivy. Never auto-merge from the fix loop.
 6. Red   → add retry comment here; if retry_count > 3 OR same failures twice → escalate
 \`\`\`
 
-**CRITICAL:** Commits go to \`${BRANCH:-?}\` only — NEVER to \`main\`.
+**CRITICAL:** Commits go to \`${BRANCH:-?}\` only — NEVER to \`main\`. Reaching green does NOT authorize a merge — owner sign-off via Ivy is still required (SKY-3109).
 
 **Escalation path:** After 3 retries or identical failures × 2, create \`request_confirmation\`
 on the PR issue with: full log excerpts, list of attempted fixes, recommendation.
