@@ -250,7 +250,7 @@ async function openTimeline(pg: Page, sceneTitle: string): Promise<void> {
   await sceneRow.click();
 
   // Switch to the Timeline sub-view in the Story tab.
-  await pg.locator('[data-testid="app-tab-story"]').click();
+  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   const timelineBtn = pg.locator('[data-testid="story-subview-timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
@@ -470,7 +470,7 @@ test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete remov
   // Use a generous timeout: the component must remount and complete its async
   // IPC load (timelineGetScenes) before the root div renders — 4 s was too
   // tight on loaded CI runners.
-  await page.locator('[data-testid="app-tab-story"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   await page.locator('[data-testid="story-subview-timeline"]').click();
   await expect(root).toBeVisible({ timeout: 8_000 });
   // Confirm at least one scene row is in the DOM (data loaded) before Tab.
