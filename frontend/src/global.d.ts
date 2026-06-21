@@ -508,6 +508,8 @@ interface AppSettings {
   activeLayoutId?: string | null;
   /** Migration flag: true once v1→v2 layout migration has run. */
   layoutMigrationDone?: boolean;
+  /** SKY-3218: Nav-bar configuration. Absent → NAV_RAIL_DEFAULTS applied at runtime. */
+  navConfig?: NavRailConfig;
 }
 
 /** SKY-2094 (Phase 2 #1): The two top-level app sections. */
@@ -535,6 +537,24 @@ interface NavRailItem {
   id: AppTab;
   label: string;
   icon: string;
+}
+
+/** SKY-3218: Nav-rail item with user-configurable visibility and order. */
+interface NavRailItemConfig {
+  id: AppTab;
+  enabled: boolean;
+  label: string;
+  icon: string;
+  order: number;
+}
+
+/** SKY-3218: User-configurable nav-bar state persisted in AppSettings. */
+interface NavRailConfig {
+  items: NavRailItemConfig[];
+  /** When true, the nav rail starts collapsed on app launch. Default false. */
+  collapsedDefault: boolean;
+  showLabels: boolean;
+  showIcons: boolean;
 }
 
 /** SKY-1697 (Wave 2c): persisted floating panel window state. */
