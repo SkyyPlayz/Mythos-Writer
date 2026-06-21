@@ -1841,6 +1841,20 @@ export interface LiquidNeonPrefs {
   neonBorderColor?: 'cyan' | 'violet' | 'magenta';
 }
 
+// ─── Story Page Chrome (SKY-3206) ──────────────────────────────────────────────
+
+export type StoryPageSizePreset = 'letter' | 'a4' | 'a5' | 'manuscript' | 'custom';
+
+export interface StoryPagePrefs {
+  sizePreset: StoryPageSizePreset;
+  customWidthPx?: number;
+  marginVertPx: number;
+  marginHorizPx: number;
+  fontFamily: 'serif' | 'sans' | 'mono';
+  fontSizePx: number;
+  lineHeight: number;
+}
+
 // ─── Page Appearance (SKY-2097) ───────────────────────────────────────────────
 
 export type PageBackgroundPreset = 'liquid-neon' | 'minimal' | 'paper' | 'dark-slate';
@@ -1879,7 +1893,7 @@ export interface AppSettings {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). API key stored in SecretsStore under `provider.<agentName>.apiKey`. */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
   };
   theme: 'dark' | 'high-contrast';
   snapshots?: {
@@ -1930,6 +1944,8 @@ export interface AppSettings {
   liquidNeon?: LiquidNeonPrefs;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
+  /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
+  storyPagePrefsMap?: Record<string, StoryPagePrefs>;
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;
   /** SKY-204: opt-in daily notes / journal mode. */

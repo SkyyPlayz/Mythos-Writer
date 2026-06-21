@@ -31,7 +31,8 @@ export interface SceneCrafterCardSuggestionTarget {
 /** Stored in `payload_json` of the suggestions row. */
 export interface SceneCrafterCardSuggestionData {
   kind: 'scene_crafter_card';
-  source: 'brainstorm';
+  /** 'archive' when emitted by the Archive agent; 'brainstorm' for legacy brainstorm proposals. */
+  source: 'brainstorm' | 'archive';
   confidence: number;
   rationale: string;
   timestamp: string;
@@ -61,7 +62,7 @@ export function createSceneCrafterCardSuggestion(
   const suggestionData: SceneCrafterCardSuggestionData = { ...data, status: 'proposed' };
   upsertSuggestion({
     id,
-    source_agent: 'brainstorm',
+    source_agent: data.source,
     confidence: data.confidence,
     rationale: data.rationale,
     target_kind: null,
