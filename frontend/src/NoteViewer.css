@@ -95,6 +95,36 @@
   margin: 0 0 0.7em;
 }
 
+/* Tiptap editor area (edit mode) */
+.note-viewer-tiptap {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px;
+}
+
+.note-tiptap-content .ProseMirror {
+  outline: none;
+  min-height: 60vh;
+  color: var(--text-primary, #e0e0e0);
+  font-family: var(--font-mono, 'Courier New', monospace);
+  font-size: 14px;
+  line-height: 1.7;
+  caret-color: var(--accent-dim, #a78bfa);
+}
+
+.note-tiptap-content .ProseMirror u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.note-tiptap-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: 'Start writing\2026';
+  color: var(--text-muted, #52525b);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
 .note-wiki-link {
   border: 0;
   border-radius: 4px;

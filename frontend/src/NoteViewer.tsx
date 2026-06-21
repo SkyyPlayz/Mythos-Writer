@@ -1,6 +1,12 @@
 // SKY-204: Markdown note viewer/editor for daily notes and vault notes.
+// SKY-3205: Rich-text edit mode via Tiptap + FormatToolbar (underline, headings, etc.)
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { Markdown } from 'tiptap-markdown';
+import { WikiLink } from './WikiLinkExtension';
 import { countWords } from './wordStats';
+import FormatToolbar from './FormatToolbar';
 import './NoteViewer.css';
 
 interface Props {
@@ -38,30 +44,17 @@ function renderWikiLinkedText(text: string, onWikiLinkClick?: (target: string) =
 }
 
 export default function NoteViewer({ path, previewMode = false, onPreviewModeChange, onWikiLinkClick, onWordCountChange, onClose }: Props) {
-  const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Preview mode only: rendered markdown string (not backed by editor state)
+  const [previewContent, setPreviewContent] = useState('');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const contentRef = useRef(content);
-  contentRef.current = content;
+  // Track loaded path to detect path changes vs initial mount
+  const loadedPathRef = useRef<string | null>(null);
 
   const fileName = path.split('/').pop() ?? path;
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    window.api.readNotesVault(path)
-      .then((r) => {
-        if ('error' in r) throw new Error(r.error);
-        setContent(r.content);
-        const wc = countWords(r.content);
-        onWordCountChange?.(wc);
-      })
-      .catch(() => setError('Could not load note.'))
-      .finally(() => setLoading(false));
-  }, [path, onWordCountChange]);
 
   const saveContent = useCallback(async (text: string) => {
     setSaving(true);
@@ -70,37 +63,98 @@ export default function NoteViewer({ path, previewMode = false, onPreviewModeCha
       if ('error' in r) throw new Error(r.error);
       setSavedAt(new Date().toLocaleTimeString());
     } catch {
-      // non-fatal; user sees no save indicator
+      // non-fatal; save indicator simply doesn't update
     } finally {
       setSaving(false);
     }
   }, [path]);
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const text = e.target.value;
-    setContent(text);
-    onWordCountChange?.(countWords(text));
+  // Tiptap editor — StarterKit (includes Underline) + Markdown (lossless round-trip)
+  const editor = useEditor({
+    extensions: [StarterKit, WikiLink, Markdown],
+    content: '',
+    editable: !previewMode,
+    onUpdate({ editor: ed }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = (ed.storage as any).markdown.getMarkdown() as string;
+      const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
+      onWordCountChange?.(countWords(markdown));
+      setSavedAt(null);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => saveContent(markdown), 800);
+    },
+  });
+
+  // Sync editable flag when previewMode changes
+  useEffect(() => {
+    editor?.setEditable(!previewMode);
+  }, [editor, previewMode]);
+
+  // Load / reload note when path changes
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
     setSavedAt(null);
+    loadedPathRef.current = path;
 
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveContent(text), 800);
-  }, [saveContent, onWordCountChange]);
+    window.api.readNotesVault(path)
+      .then((r) => {
+        if (loadedPathRef.current !== path) return; // stale
+        if ('error' in r) throw new Error(r.error);
+        const markdown = r.content;
+        setPreviewContent(markdown);
+        if (editor) {
+          // setContent re-parses the markdown without destroying the editor.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (editor.commands as any).setContent(markdown);
+        }
+        onWordCountChange?.(countWords(markdown));
+      })
+      .catch(() => setError('Could not load note.'))
+      .finally(() => {
+        if (loadedPathRef.current === path) setLoading(false);
+      });
+  // editor is stable for the component's lifetime (no key remount here)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, onWordCountChange]);
 
-  // Flush on unmount and when the app-level Save shortcut is pressed.
+  // If editor is ready but content wasn't loaded yet (initial mount race),
+  // also set content once the editor becomes available.
+  useEffect(() => {
+    if (!editor || loading || error || loadedPathRef.current !== path) return;
+    // Content was set during the load effect; nothing more to do.
+  }, [editor, loading, error, path]);
+
+  // Flush on unmount and on app-level Ctrl+S
   useEffect(() => {
     const handleManualSave = () => {
+      if (!editor) return;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveContent(contentRef.current);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = (editor.storage as any).markdown.getMarkdown() as string;
+      const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
+      saveContent(markdown);
     };
     window.addEventListener('mythos:save-note', handleManualSave);
     return () => {
       window.removeEventListener('mythos:save-note', handleManualSave);
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
-        saveContent(contentRef.current);
+        if (editor) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw = (editor.storage as any).markdown.getMarkdown() as string;
+          const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
+          saveContent(markdown);
+        }
       }
     };
-  }, [saveContent]);
+  }, [editor, saveContent]);
+
+  // Destroy editor on unmount
+  useEffect(() => {
+    return () => { editor?.destroy(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) {
     return (
@@ -151,20 +205,19 @@ export default function NoteViewer({ path, previewMode = false, onPreviewModeCha
           </button>
         )}
       </div>
+
+      {!previewMode && <FormatToolbar editor={editor} />}
+
       {previewMode ? (
         <div className="note-viewer-preview" data-testid="note-viewer-preview">
-          {content.split('\n').map((line, index) => (
+          {previewContent.split('\n').map((line, index) => (
             <p key={index}>{renderWikiLinkedText(line, onWikiLinkClick)}</p>
           ))}
         </div>
       ) : (
-        <textarea
-          className="note-viewer-editor"
-          value={content}
-          onChange={handleChange}
-          aria-label={`Edit note: ${fileName}`}
-          spellCheck
-        />
+        <div className="note-viewer-tiptap">
+          <EditorContent editor={editor} className="note-tiptap-content" />
+        </div>
       )}
     </div>
   );
