@@ -197,7 +197,8 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
     // The depth slider track has a "Chapter" button — find it within the depth slider
     const depthChapterBtn = page.getByTestId('depth-slider').getByRole('button', { name: /^chapter$/i });
     await depthChapterBtn.click();
-    await expect(page.locator('.chapter-doc-view')).toBeVisible({ timeout: 4_000 });
+    // SKY-3211: ChapterDocView was replaced with ChapterContinuousView (per-scene editable bands)
+    await expect(page.locator('.chapter-continuous-view')).toBeVisible({ timeout: 4_000 });
   });
 
   // ─── TC-DS-03 ─────────────────────────────────────────────────────────────
