@@ -264,6 +264,37 @@
   position: relative;
 }
 
+/* ─── Full Book preview (SKY-3213 C4) ─── */
+.shell-book { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.full-book-preview-wrap { flex: 1; overflow-y: auto; background: var(--bg-base); scrollbar-color: var(--glass-rim) transparent; }
+.full-book-preview { max-width: 720px; margin: 0 auto; padding: 48px 32px 96px; }
+.full-book-preview__book-header { margin-bottom: 48px; padding-bottom: 24px; border-bottom: 2px solid var(--glass-rim); }
+.full-book-preview__story-title { font-size: 2rem; font-weight: 800; color: var(--text-header); margin: 0 0 8px; line-height: 1.2; }
+.full-book-preview__story-title:focus { outline: none; }
+.full-book-preview__readonly-badge { display: inline-block; font-size: 0.75rem; padding: 2px 10px; border-radius: 12px; background: var(--glass-fill); border: 1px solid var(--glass-rim); color: var(--text-muted); margin-bottom: 12px; }
+.full-book-preview__synopsis { font-size: 0.95rem; color: var(--text-muted); font-style: italic; margin: 12px 0 0; line-height: 1.6; }
+.full-book-preview__chapter { margin-bottom: 64px; }
+.full-book-preview__chapter-title { font-size: 1.5rem; font-weight: 700; color: var(--text-header); margin: 0 0 24px; padding-bottom: 12px; border-bottom: 1px solid var(--glass-rim); line-height: 1.3; }
+.full-book-preview__scene { margin-bottom: 32px; }
+.full-book-preview__scene-title { font-size: 1.05rem; font-weight: 600; color: var(--text-body); margin: 0 0 12px; opacity: 0.8; }
+.full-book-preview__scene-body { display: flex; flex-direction: column; gap: 12px; }
+.full-book-preview__block { font-family: Georgia, 'Times New Roman', serif; font-size: 1rem; line-height: 1.8; color: var(--text-body); margin: 0; }
+.full-book-preview__scene-sep { text-align: center; color: var(--text-muted); margin: 20px 0; letter-spacing: 0.3em; font-size: 0.85rem; }
+.full-book-preview__no-content { color: var(--text-muted); font-style: italic; font-size: 0.9rem; }
+.full-book-preview__chapter-nav { display: flex; align-items: center; gap: 12px; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--glass-rim); }
+.full-book-preview__nav-btn { background: transparent; border: 1px solid var(--glass-rim); color: var(--text-muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: background 0.15s, color 0.15s; }
+.full-book-preview__nav-btn:hover { background: var(--glass-fill); color: var(--text-body); }
+.full-book-preview__nav-btn:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
+.full-book-preview__nav-pos { color: var(--text-muted); font-size: 0.85rem; flex: 1; text-align: center; }
+.full-book-preview__footer { text-align: center; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--glass-rim); }
+.full-book-preview__back-top { background: transparent; border: 1px solid var(--glass-rim); color: var(--text-muted); padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: background 0.15s, color 0.15s; }
+.full-book-preview__back-top:hover { background: var(--glass-fill); color: var(--text-body); }
+.full-book-preview__back-top:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
+.full-book-preview-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 64px 32px; color: var(--text-muted); }
+.full-book-preview-empty__icon { font-size: 3rem; line-height: 1; }
+.full-book-preview-empty__title { font-size: 1.1rem; font-weight: 600; color: var(--text-body); margin: 0; }
+.full-book-preview-empty__hint { font-size: 0.9rem; color: var(--text-muted); margin: 0; text-align: center; max-width: 360px; }
+
 .shell-entries {
   flex: 1;
   overflow: hidden;

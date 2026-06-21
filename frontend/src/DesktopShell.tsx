@@ -483,6 +483,192 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
   );
 }
 
+// ─── Full Book preview (SKY-3213 C4) — preview-only continuous prose ───
+// Preview-only because C5 (virtualization) has not yet landed.
+
+interface FullBookPreviewViewProps {
+  story: Story | null;
+}
+
+function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLHeadingElement | null>(null);
+
+  useEffect(() => {
+    headerRef.current?.focus({ preventScroll: true });
+  }, [story?.id]);
+
+  const chapters = useMemo(
+    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
+    [story],
+  );
+
+  const chapterSections = useMemo(
+    () =>
+      chapters.map((ch) => ({
+        chapter: ch,
+        scenes: [...ch.scenes]
+          .sort((a, b) => a.order - b.order)
+          .filter((sc) => sc.blocks.some((b) => b.content.trim())),
+      })),
+    [chapters],
+  );
+
+  const totalChapters = chapterSections.length;
+
+  const scrollToChapter = useCallback(
+    (idx: number) => {
+      if (!scrollRef.current || totalChapters === 0) return;
+      const wrapped = ((idx % totalChapters) + totalChapters) % totalChapters;
+      const el = scrollRef.current.querySelector<HTMLElement>(
+        `[data-chapter-idx="${wrapped}"]`,
+      );
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el?.focus({ preventScroll: true });
+    },
+    [totalChapters],
+  );
+
+  if (!story) {
+    return (
+      <div className="full-book-preview-empty" role="status" aria-live="polite">
+        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
+        <p className="full-book-preview-empty__title">No story selected</p>
+        <p className="full-book-preview-empty__hint">Select a story from the Editor view to read the full book.</p>
+      </div>
+    );
+  }
+
+  if (chapters.length === 0) {
+    return (
+      <div className="full-book-preview-empty" role="status">
+        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
+        <p className="full-book-preview-empty__title">{story.title}</p>
+        <p className="full-book-preview-empty__hint">No chapters yet. Add chapters and scenes in the Editor view.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={scrollRef}
+      className="full-book-preview-wrap"
+      role="document"
+      aria-label={`Full book preview: ${story.title}`}
+    >
+      <div className="full-book-preview">
+        <header className="full-book-preview__book-header">
+          <h1
+            ref={headerRef}
+            className="full-book-preview__story-title"
+            tabIndex={-1}
+          >
+            {story.title}
+          </h1>
+          <span className="full-book-preview__readonly-badge" role="note">
+            Preview — read only
+          </span>
+          {story.synopsis && (
+            <p className="full-book-preview__synopsis">{story.synopsis}</p>
+          )}
+        </header>
+
+        {chapterSections.map(({ chapter, scenes }, idx) => (
+          <section
+            key={chapter.id}
+            className="full-book-preview__chapter"
+            aria-labelledby={`fbp-ch-${chapter.id}`}
+            tabIndex={-1}
+            data-chapter-idx={idx}
+          >
+            <h2
+              className="full-book-preview__chapter-title"
+              id={`fbp-ch-${chapter.id}`}
+            >
+              {chapter.title}
+            </h2>
+            {scenes.length === 0 ? (
+              <p className="full-book-preview__no-content">
+                — no written scenes in this chapter —
+              </p>
+            ) : (
+              scenes.map((scene, si) => {
+                const sortedBlocks = [...scene.blocks]
+                  .sort((a, b) => a.order - b.order)
+                  .filter((b) => b.content.trim());
+                return (
+                  <article
+                    key={scene.id}
+                    className="full-book-preview__scene"
+                    aria-labelledby={`fbp-sc-${scene.id}`}
+                  >
+                    <h3
+                      className="full-book-preview__scene-title"
+                      id={`fbp-sc-${scene.id}`}
+                    >
+                      {scene.title}
+                    </h3>
+                    <div className="full-book-preview__scene-body">
+                      {sortedBlocks.map((block) => (
+                        <p
+                          key={block.id}
+                          className={`full-book-preview__block full-book-preview__block--${block.type}`}
+                        >
+                          {block.content}
+                        </p>
+                      ))}
+                    </div>
+                    {si < scenes.length - 1 && (
+                      <div
+                        className="full-book-preview__scene-sep"
+                        aria-hidden="true"
+                      >
+                        ✦ ✦ ✦
+                      </div>
+                    )}
+                  </article>
+                );
+              })
+            )}
+            <nav
+              className="full-book-preview__chapter-nav"
+              aria-label={`Navigate chapters (${idx + 1} of ${totalChapters})`}
+            >
+              <button
+                className="full-book-preview__nav-btn"
+                onClick={() => scrollToChapter(idx - 1)}
+                aria-label="Previous chapter (wraps to last)"
+              >
+                ← Prev
+              </button>
+              <span className="full-book-preview__nav-pos" aria-hidden="true">
+                {idx + 1} / {totalChapters}
+              </span>
+              <button
+                className="full-book-preview__nav-btn"
+                onClick={() => scrollToChapter(idx + 1)}
+                aria-label="Next chapter (wraps to first)"
+              >
+                Next →
+              </button>
+            </nav>
+          </section>
+        ))}
+
+        <footer className="full-book-preview__footer">
+          <button
+            className="full-book-preview__back-top"
+            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            aria-label="Back to top of book"
+          >
+            ↑ Back to top
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────
 
 /** Match a KeyboardEvent against a shortcut string like 'ctrl+shift+v' or 'alt+v'. */
@@ -3098,6 +3284,11 @@ export default function DesktopShell() {
             onCreateChapter={createChapter}
             vaultRoot={activeVaultRoot}
           />
+        </div>
+      )}
+      {activeDockedTabId === null && view === 'book' && (
+        <div className="shell-book">
+          <FullBookPreviewView story={selectedStory ?? null} />
         </div>
       )}
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">

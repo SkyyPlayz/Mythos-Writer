@@ -514,7 +514,7 @@ interface AppSettings {
 type AppTab = 'story' | 'notes';
 
 /** SKY-2094: Sub-view within the Story tab. */
-type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline';
+type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline' | 'book';
 
 /** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. */
 type NotesSubView = 'editor' | 'graph' | 'entities';
