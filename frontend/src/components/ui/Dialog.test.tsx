@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import Dialog, { DialogHeader, DialogBody, DialogFooter } from './Dialog';
+
+const DIALOG_CSS = readFileSync(resolve(process.cwd(), 'src/components/ui/Dialog.css'), 'utf-8');
 
 function BasicDialog({
   open = true,
@@ -208,5 +212,59 @@ describe('Dialog', () => {
       );
       expect(document.querySelector('.ln-dialog-footer.custom-footer')).not.toBeNull();
     });
+  });
+});
+
+// ─── Liquid Neon a11y — CSS regression ───────────────────────────────────────
+
+describe('Dialog — Liquid Neon a11y CSS', () => {
+  it('close button focus ring uses --focus-ring token', () => {
+    const m = DIALOG_CSS.match(/\.ln-dialog-close:focus-visible\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--focus-ring)');
+  });
+
+  it('reduced-motion block removes dialog entrance animation', () => {
+    expect(DIALOG_CSS).toContain('@media (prefers-reduced-motion');
+    const m = DIALOG_CSS.match(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\{([\s\S]*?)\}\s*\}/,
+    );
+    expect(m?.[1] ?? '').toContain('animation: none');
+  });
+
+  it('high-contrast block uses solid border and removes box-shadow', () => {
+    expect(DIALOG_CSS).toContain('[data-contrast="high"]');
+    const m = DIALOG_CSS.match(/\[data-contrast="high"\]\s*\.ln-dialog\s*\{([^}]*)\}/);
+    const block = m?.[1] ?? '';
+    expect(block).toContain('border');
+    expect(block).toContain('box-shadow: none');
+  });
+
+  it('high-contrast overlay disables backdrop-filter', () => {
+    const m = DIALOG_CSS.match(
+      /\[data-contrast="high"\]\s*\.ln-dialog-overlay\s*\{([^}]*)\}/,
+    );
+    expect(m?.[1] ?? '').toContain('backdrop-filter: none');
+  });
+
+  it('dialog autofocuses the first focusable element on open', () => {
+    render(
+      <Dialog open onClose={vi.fn()}>
+        <DialogHeader onClose={vi.fn()}>
+          <h2>Title</h2>
+        </DialogHeader>
+        <DialogFooter>
+          <button>OK</button>
+        </DialogFooter>
+      </Dialog>,
+    );
+    const closeBtn = document.querySelector<HTMLButtonElement>('.ln-dialog-close');
+    expect(closeBtn).not.toBeNull();
+    expect(closeBtn).toHaveFocus();
+  });
+
+  it('dialog has aria-modal="true" and role="dialog"', () => {
+    render(<Dialog open onClose={vi.fn()}><p>x</p></Dialog>);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
   });
 });

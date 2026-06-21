@@ -143,3 +143,15 @@
     background: rgba(0, 0, 0, 0.75);
   }
 }
+
+/* App-level high-contrast toggle — mirror OS rule so both paths are covered */
+[data-contrast="high"] .ln-dialog {
+  border: 2px solid var(--border-strong);
+  box-shadow: none;
+}
+
+[data-contrast="high"] .ln-dialog-overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(0, 0, 0, 0.85);
+}
