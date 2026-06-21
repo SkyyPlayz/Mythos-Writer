@@ -320,7 +320,7 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
       <button
         className="app-menu-gear-btn"
         onClick={onOpenSettings}
-        aria-label="Open settings"
+        aria-label="Settings"
         title="Settings"
       >
         ⚙
