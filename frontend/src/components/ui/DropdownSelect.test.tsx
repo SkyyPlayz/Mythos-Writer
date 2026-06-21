@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DropdownSelect } from './DropdownSelect';
 import type { SelectOption } from './DropdownSelect';
+
+const SELECT_CSS = readFileSync(resolve(process.cwd(), 'src/components/ui/DropdownSelect.css'), 'utf-8');
 
 const OPTIONS: SelectOption[] = [
   { value: 'apple', label: 'Apple' },
@@ -206,5 +210,42 @@ describe('DropdownSelect', () => {
       // cherry should remain focused (no next enabled option after cherry)
       expect(screen.getByTestId('select-option-cherry')).toHaveFocus();
     });
+  });
+});
+
+// ─── Liquid Neon a11y — CSS regression ───────────────────────────────────────
+
+describe('DropdownSelect — Liquid Neon a11y CSS', () => {
+  it('trigger focus ring uses --focus-ring token', () => {
+    const m = SELECT_CSS.match(/\.ln-select-trigger:focus-visible[^{]*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--focus-ring)');
+  });
+
+  it('reduced-motion block removes listbox open animation', () => {
+    expect(SELECT_CSS).toContain('@media (prefers-reduced-motion');
+    const m = SELECT_CSS.match(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\{([\s\S]*?)\}\s*\}/,
+    );
+    expect(m?.[1] ?? '').toContain('animation: none');
+  });
+
+  it('high-contrast block uses solid border on trigger', () => {
+    expect(SELECT_CSS).toContain('[data-contrast="high"]');
+    const m = SELECT_CSS.match(
+      /\[data-contrast="high"\]\s*\.ln-select-trigger\s*\{([^}]*)\}/,
+    );
+    expect(m?.[1] ?? '').toContain('border-color');
+  });
+
+  it('trigger has role="combobox" and aria-haspopup="listbox"', () => {
+    renderSelect();
+    const trigger = screen.getByRole('combobox');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
+  });
+
+  it('selected option has aria-selected="true"', () => {
+    renderSelect({ value: 'apple' });
+    fireEvent.click(screen.getByRole('combobox'));
+    expect(screen.getByTestId('select-option-apple')).toHaveAttribute('aria-selected', 'true');
   });
 });

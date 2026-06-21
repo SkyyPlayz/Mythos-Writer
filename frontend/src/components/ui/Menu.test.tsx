@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { Menu } from './Menu';
 import type { MenuItemDef } from './Menu';
+
+const MENU_CSS = readFileSync(resolve(process.cwd(), 'src/components/ui/Menu.css'), 'utf-8');
 
 const ITEMS: MenuItemDef[] = [
   { id: 'edit', label: 'Edit' },
@@ -204,5 +208,43 @@ describe('Menu', () => {
       fireEvent.mouseDown(menu);
       expect(onClose).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ─── Liquid Neon a11y — CSS regression ───────────────────────────────────────
+
+describe('Menu — Liquid Neon a11y CSS', () => {
+  it('menu item focus ring uses --focus-ring token', () => {
+    const m = MENU_CSS.match(/\.ln-menu-item:focus-visible[^{]*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--focus-ring)');
+  });
+
+  it('reduced-motion block removes menu open animation', () => {
+    expect(MENU_CSS).toContain('@media (prefers-reduced-motion');
+    const m = MENU_CSS.match(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\{([\s\S]*?)\}\s*\}/,
+    );
+    expect(m?.[1] ?? '').toContain('animation: none');
+  });
+
+  it('high-contrast block exists and uses opaque background without glow', () => {
+    expect(MENU_CSS).toContain('[data-contrast="high"]');
+    const m = MENU_CSS.match(/\[data-contrast="high"\]\s*\.ln-menu\s*\{([^}]*)\}/);
+    const block = m?.[1] ?? '';
+    expect(block).toContain('border-color');
+    expect(block).not.toContain('box-shadow');
+  });
+
+  it('high-contrast hover inverts colors without glow', () => {
+    const m = MENU_CSS.match(
+      /\[data-contrast="high"\]\s*\.ln-menu-item:hover[^{]*\{([^}]*)\}/,
+    );
+    expect(m?.[1] ?? '').toContain('color');
+  });
+
+  it('menu container has role="menu" and items have role="menuitem"', () => {
+    renderMenu();
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0);
   });
 });

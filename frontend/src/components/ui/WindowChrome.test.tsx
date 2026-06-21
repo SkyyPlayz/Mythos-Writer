@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import WindowChrome from './WindowChrome';
+
+const WC_CSS = readFileSync(resolve(process.cwd(), 'src/components/ui/WindowChrome.css'), 'utf-8');
 
 const mockWindowMinimize = vi.fn();
 const mockWindowMaximize = vi.fn();
@@ -111,5 +115,34 @@ describe('WindowChrome', () => {
       await act(async () => { render(<WindowChrome />); });
       expect(screen.getByRole('banner')).toBeInTheDocument();
     });
+  });
+});
+
+// ─── Liquid Neon a11y — CSS regression ───────────────────────────────────────
+
+describe('WindowChrome — Liquid Neon a11y CSS', () => {
+  it('control button focus ring uses --focus-ring token', () => {
+    const m = WC_CSS.match(/\.wc-btn:focus-visible\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--focus-ring)');
+  });
+
+  it('high-contrast block adds solid border to control buttons', () => {
+    expect(WC_CSS).toContain('[data-contrast="high"]');
+    const m = WC_CSS.match(/\[data-contrast="high"\]\s*\.wc-btn\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('border');
+  });
+
+  it('control buttons have accessible aria-labels', async () => {
+    stubApi('linux');
+    await act(async () => { render(<WindowChrome />); });
+    expect(screen.getByRole('button', { name: /close window/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /minimize window/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /maximize window/i })).toBeInTheDocument();
+  });
+
+  it('window chrome bar has role="banner" with aria-label', async () => {
+    stubApi('linux');
+    await act(async () => { render(<WindowChrome />); });
+    expect(screen.getByRole('banner', { name: /window chrome/i })).toBeInTheDocument();
   });
 });
