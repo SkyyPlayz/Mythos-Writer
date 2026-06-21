@@ -433,10 +433,47 @@ describe('applyLiquidNeonTokens scrim (SKY-2962)', () => {
     expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
   });
 
-  it('sets --bg-scrim-alpha to 0 when bgMode=image but no bgDataUrl is supplied', () => {
+  it('does not set --bg-scrim-alpha when bgMode=image but no bgDataUrl (preserves existing value)', () => {
     applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 80 });
-    // Without bgDataUrl the image branch is skipped; falls through to default → scrim 0.
-    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
+    // SKY-3219: bgMode='image' + no data URL → preserve pass; neither bg-app-image nor scrim is reset.
+    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('');
+  });
+});
+
+describe('applyLiquidNeonTokens background-image preservation (SKY-3219 / GH#612)', () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = '';
+  });
+
+  afterEach(() => {
+    resetLiquidNeonTokens();
+  });
+
+  it('GH#612: does not reset --bg-app-image when bgMode=image but no data URL', () => {
+    const previousUrl = 'url("/existing/wallpaper.jpg")';
+    document.documentElement.style.setProperty('--bg-app-image', previousUrl);
+
+    // Call with bgMode='image' but null data URL (e.g. save before loadBgImage resolves)
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', background: '/some/path.png' }, null);
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(previousUrl);
+  });
+
+  it('GH#612: does not reset --bg-app-image in legacy path (no bgMode) when data URL absent', () => {
+    const previousUrl = 'url("/existing/legacy-wallpaper.jpg")';
+    document.documentElement.style.setProperty('--bg-app-image', previousUrl);
+
+    // Legacy: background set but bgMode not stored (falls to else branch)
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: undefined as unknown as 'color', background: '/legacy/path.jpg' }, null);
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(previousUrl);
+  });
+
+  it('GH#612: applies bgDataUrl in legacy path when data URL is present', () => {
+    const dataUrl = 'data:image/jpeg;base64,abc123';
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: undefined as unknown as 'color', background: '/legacy/path.jpg' }, dataUrl);
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(`url("${dataUrl}")`);
   });
 });
 
