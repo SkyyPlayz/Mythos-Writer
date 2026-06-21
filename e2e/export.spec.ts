@@ -411,7 +411,7 @@ test('AC-EXQ-4: selecting EPUB and clicking Export writes EPUB file', async () =
   const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
   await dialog.locator('input[type="radio"][value="epub"]').click();
   await expect(dialog.locator('input[type="radio"][value="epub"]')).toBeChecked();
-  await dialog.getByRole('button', { name: 'Export…' }).click();
+  await dialog.getByRole('button', { name: /^Export/ }).click();
   await dialog.waitFor({ state: 'detached', timeout: 8_000 });
   const calls = await getExportCalls(app!);
   const epubCall = calls.find((c) => c.channel === 'export:epub');
