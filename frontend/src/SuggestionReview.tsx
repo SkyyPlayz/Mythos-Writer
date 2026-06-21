@@ -131,7 +131,7 @@ function mapDbRowToUnified(r: Record<string, unknown>): UnifiedSuggestion {
     createdAt: (r.created_at ?? r.createdAt ?? new Date().toISOString()) as string,
     status: (r.status ?? 'proposed') as UnifiedSuggestion['status'],
     appliedAt: null,
-    budgetExceeded: false,
+    budgetExceeded: Boolean(r.budget_exceeded),
     category: (r.category ?? null) as string | null,
     payloadJson: (r.payload_json ?? null) as string | null,
     preChangeSnapshot: (r.pre_change_snapshot ?? r.preChangeSnapshot ?? null) as string | null,

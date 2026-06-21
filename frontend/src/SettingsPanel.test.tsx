@@ -381,6 +381,54 @@ describe('SettingsPanel', () => {
     expect(saved.agents.writingAssistant.confidenceThreshold).toBeCloseTo(0.6);
   });
 
+  it('per-category toggles are hidden when Writing Assistant autoApply is off', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(document.querySelector('[data-testid="wa-category-toggles"]')).not.toBeInTheDocument();
+  });
+
+  it('per-category toggles appear when Writing Assistant autoApply is enabled', async () => {
+    const settingsWithAutoApply = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(document.querySelector('[data-testid="wa-category-toggles"]')).toBeInTheDocument();
+  });
+
+  it('toggling a per-category switch saves the updated autoApplyCategories via IPC', async () => {
+    const settingsWithAutoApply = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const spellingToggle = screen.getByRole('checkbox', {
+      name: /writing assistant auto-apply spelling/i,
+    }) as HTMLInputElement;
+    expect(spellingToggle.checked).toBe(true);
+
+    await act(async () => { fireEvent.click(spellingToggle); });
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.autoApplyCategories?.spelling).toBe(false);
+  });
+
   it('max tokens per day inputs render for all three agents', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));

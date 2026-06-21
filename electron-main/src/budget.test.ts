@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { openDb, closeDb, upsertSuggestion, insertGenerationLog } from './db.js';
-import { evaluateAutoApply, checkCallBudget, type AgentBudgetSettings } from './budget.js';
+import { evaluateAutoApply, checkCallBudget, HARD_EXCLUDED_PAYLOAD_KINDS, type AgentBudgetSettings } from './budget.js';
 import type { DatabaseSync } from 'node:sqlite';
 
 const BASE_SETTINGS: AgentBudgetSettings = {
@@ -236,6 +236,42 @@ describe('evaluateAutoApply', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'no-such-cat' as any);
     expect(result.shouldAutoApply).toBe(false);
+  });
+
+  // ─── [BUILD-GATE] scene_crafter_card hard-exclusion ───
+
+  it('[BUILD-GATE] scene_crafter_card never auto-applies at confidence 1.0 with unlimited budget', () => {
+    const unlimitedSettings: AgentBudgetSettings = {
+      autoApply: true,
+      confidenceThreshold: 0,
+      maxSuggestionsPerHour: Number.MAX_SAFE_INTEGER,
+      maxTokensPerHour: Number.MAX_SAFE_INTEGER,
+      maxTokensPerDay: Number.MAX_SAFE_INTEGER,
+    };
+    const result = evaluateAutoApply(1.0, 'brainstorm', unlimitedSettings, db, null, 'scene_crafter_card');
+    expect(result.shouldAutoApply).toBe(false);
+    expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('[BUILD-GATE] scene_crafter_card blocked even with permissive per-category settings', () => {
+    const permissiveSettings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        punctuation: true,
+        spelling: true,
+        grammar: true,
+        'sentence-structure': true,
+        'style-tone': true,
+        other: true,
+      },
+    };
+    const result = evaluateAutoApply(0.99, 'archive', permissiveSettings, db, 'other', 'scene_crafter_card');
+    expect(result.shouldAutoApply).toBe(false);
+    expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('[BUILD-GATE] HARD_EXCLUDED_PAYLOAD_KINDS contains scene_crafter_card', () => {
+    expect(HARD_EXCLUDED_PAYLOAD_KINDS.has('scene_crafter_card')).toBe(true);
   });
 });
 
