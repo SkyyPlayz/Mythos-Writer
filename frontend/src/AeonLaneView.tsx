@@ -562,14 +562,28 @@ function TimeAxisStrip({ axis, totalWidthPx }: { axis: TimeAxis; totalWidthPx: n
 interface Props {
   story: Story | null;
   onOpenScene?: (sceneId: string) => void;
+  /** F5 — when provided with onSelectionChange, tracks selection externally. */
+  selectedIds?: Set<string>;
+  /** F5 — called when the selection changes. */
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
-export default function AeonLaneView({ story, onOpenScene }: Props) {
+export default function AeonLaneView({
+  story,
+  onOpenScene,
+  selectedIds: selectedIdsProp,
+  onSelectionChange,
+}: Props) {
   const [scenes, setScenes] = useState<AeonScene[]>([]);
   const [arcs, setArcs] = useState<AeonArc[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIds: Set<string> = selectedIdsProp ?? internalSelectedIds;
+  const setSelectedIds = (ids: Set<string>) => {
+    if (selectedIdsProp === undefined) setInternalSelectedIds(ids);
+    onSelectionChange?.(ids);
+  };
 
   // ─── Interaction state ───
   const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
@@ -588,7 +602,8 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
     if (!story) {
       setScenes([]);
       setArcs([]);
-      setSelectedIds(new Set());
+      if (selectedIdsProp === undefined) setInternalSelectedIds(new Set());
+      onSelectionChange?.(new Set());
       setDetail(null);
       setContextMenu(null);
       setHoverInfo(null);

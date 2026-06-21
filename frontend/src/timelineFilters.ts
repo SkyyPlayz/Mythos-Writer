@@ -1,9 +1,18 @@
 // SKY-795: Pure helpers for timeline filtering, arc focus, and entity tabs.
 // Kept side-effect free so they're trivial to unit-test and reuse from any view.
+// SKY-3185: TimelineViewMode + TimelineGroupBy for shared view switcher + grouping.
 
 import type { SpreadsheetScene } from './TimelineSpreadsheet';
 
 export type EntityTab = 'all' | 'character' | 'arc' | 'location';
+
+/** F5 — which view is active in the timeline panel. */
+export type TimelineViewMode = 'spreadsheet' | 'track';
+
+/** F5 — how scenes are grouped across both timeline views. */
+export type TimelineGroupBy = 'none' | 'arc' | 'chapter' | 'character' | 'location';
+
+export const VALID_TIMELINE_GROUP_BYS: TimelineGroupBy[] = ['none', 'arc', 'chapter', 'character', 'location'];
 
 export interface TimelineFilters {
   entityTab: EntityTab;
@@ -71,8 +80,8 @@ export function isSceneHidden(scene: SpreadsheetScene, filters: TimelineFilters)
 export function chronologicalSceneIds(scenes: SpreadsheetScene[]): string[] {
   return [...scenes]
     .sort((a, b) => {
-      const ad = a.date || '￿'; // undated scenes sort last
-      const bd = b.date || '￿';
+      const ad = a.date || '\uFFFF'; // undated scenes sort last
+      const bd = b.date || '\uFFFF';
       if (ad !== bd) return ad.localeCompare(bd);
       return a.title.localeCompare(b.title);
     })
