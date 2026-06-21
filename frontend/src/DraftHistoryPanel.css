@@ -114,7 +114,7 @@
 }
 
 .draft-history-btn--delete:hover {
-  color: #e05050;
+  color: var(--state-danger);
 }
 
 .draft-history-label-edit {
