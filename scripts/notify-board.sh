@@ -343,11 +343,11 @@ else
 2. Identify root causes — look for shared patterns across ALL failures in the stage
 3. Apply fixes (git commit + push to feature branch)
 4. Poll: gh run list --branch ${BRANCH:-?} --limit 1 (30s interval, inline while loop)
-5. Green → mark this issue done; comment on PR issue that branch is green
+5. Green → mark this issue done; comment on PR issue that branch is green. Do NOT merge — a fixed-to-green PR stops at the sign-off gate (SKY-3109); GHM posts it ready-for-sign-off and routes a request_confirmation to Ivy. Never auto-merge from the fix loop.
 6. Red   → add retry comment here; if retry_count > 3 OR same failures twice → escalate
 \`\`\`
 
-**CRITICAL:** Commits go to \`${BRANCH:-?}\` only — NEVER to \`main\`.
+**CRITICAL:** Commits go to \`${BRANCH:-?}\` only — NEVER to \`main\`. Reaching green does NOT authorize a merge — owner sign-off via Ivy is still required (SKY-3109).
 
 **Escalation path:** After 3 retries or identical failures × 2, create \`request_confirmation\`
 on the PR issue with: full log excerpts, list of attempted fixes, recommendation.
