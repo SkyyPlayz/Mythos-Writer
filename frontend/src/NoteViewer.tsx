@@ -86,6 +86,9 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, fileName }: RichEd
   const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guard so the initial load does not fire onChange with the same content.
   const initializedRef = useRef(false);
+  // Guard to skip onSelectionUpdate state setters until the component is mounted,
+  // preventing React act() warnings from TipTap's internal initialization.
+  const editorMountedRef = useRef(false);
 
   useEffect(() => {
     window.api.entityList().then(({ entities: list }) => setEntities(list)).catch(() => {});
@@ -94,7 +97,8 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, fileName }: RichEd
   useEffect(() => { setMentionSelectedIndex(0); }, [mentionState.query]);
 
   const syncMentionState = useCallback((editor: ReturnType<typeof useEditor>) => {
-    if (!editor) return;
+    // Skip pre-mount to prevent act() warnings from TipTap initialization events.
+    if (!editor || !editorMountedRef.current) return;
     const ps = mentionPickerKey.getState(editor.state) ?? INACTIVE_MENTION;
     if (ps.active && ps.from !== mentionSuppressedFromRef.current) setMentionSuppressed(false);
     setMentionState(ps);
@@ -119,8 +123,12 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, fileName }: RichEd
   // Mark as initialized after the first render cycle.
   useEffect(() => {
     if (editor) {
+      editorMountedRef.current = true;
       const timer = setTimeout(() => { initializedRef.current = true; }, 0);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        editorMountedRef.current = false;
+      };
     }
   }, [editor]);
 
@@ -229,7 +237,6 @@ function FidelityWarning({ features, onEditInSource, onOpenRichAnyway }: Fidelit
           <button
             className="note-fidelity-btn note-fidelity-btn--primary"
             onClick={onEditInSource}
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
           >
             Edit in Source (safe)
