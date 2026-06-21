@@ -120,7 +120,9 @@ jobs:
 
       - name: Build Windows artifacts — beta channel (NSIS + ZIP)
         if: needs.determine-release.outputs.is-beta == 'true'
-        run: npx electron-vite build && npx electron-builder --win --publish never --config.publish.channel=beta
+        # releaseType=prerelease: bakes correct value into app-update.yml so the updater
+        # searches GitHub pre-releases (where beta cuts land) via the beta.yml feed.
+        run: npx electron-vite build && npx electron-builder --win --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
         env:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
@@ -193,7 +195,9 @@ jobs:
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
           if [ "${{ needs.determine-release.outputs.is-beta }}" = "true" ]; then
-            npx electron-vite build && npx electron-builder --mac dmg zip --publish never --config.publish.channel=beta
+            # releaseType=prerelease: bakes correct value into app-update.yml so the updater
+            # searches GitHub pre-releases (where beta cuts land) via the beta-mac.yml feed.
+            npx electron-vite build && npx electron-builder --mac dmg zip --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
           else
             npx electron-vite build && npx electron-builder --mac dmg zip --publish never
           fi
@@ -244,10 +248,12 @@ jobs:
 
       - name: Build Linux AppImage — beta channel
         if: needs.determine-release.outputs.is-beta == 'true'
+        # releaseType=prerelease: bakes correct value into app-update.yml so the updater
+        # searches GitHub pre-releases (where beta cuts land) via the beta-linux.yml feed.
         env:
           LD_LIBRARY_PATH: ""
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npx electron-vite build && npx electron-builder --linux AppImage --publish never --config.publish.channel=beta
+        run: npx electron-vite build && npx electron-builder --linux AppImage --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
 
       - name: Upload Linux artifacts to release
         env:

@@ -24,6 +24,7 @@ vi.mock('electron', () => ({
 
 const mockAutoUpdater = {
   channel: 'latest' as string,
+  allowPrerelease: false,
   autoDownload: false,
   autoInstallOnAppQuit: false,
   checkForUpdates: vi.fn(),
@@ -48,6 +49,7 @@ function normalizeReleaseNotes(
 /** Mirror of applyUpdateChannel from main.ts */
 function applyUpdateChannel(updateChannel: 'stable' | 'beta') {
   mockAutoUpdater.channel = updateChannel === 'beta' ? 'beta' : 'latest';
+  mockAutoUpdater.allowPrerelease = updateChannel === 'beta';
 }
 
 /** Mirror of the app:checkForUpdate handler logic from main.ts */
@@ -94,6 +96,7 @@ function handleInstallUpdate(opts: { enabled: boolean; updateDownloaded: boolean
 describe('auto-updater channel selection', () => {
   beforeEach(() => {
     mockAutoUpdater.channel = 'latest';
+    mockAutoUpdater.allowPrerelease = false;
   });
 
   it('stable channel maps to autoUpdater.channel = "latest"', () => {
@@ -110,6 +113,18 @@ describe('auto-updater channel selection', () => {
     // Simulate a future corrupt settings value
     applyUpdateChannel('stable');
     expect(mockAutoUpdater.channel).not.toBe('beta');
+  });
+
+  it('beta channel sets allowPrerelease = true so GitHub pre-releases are searched', () => {
+    // Beta cuts are created as GitHub pre-releases; without allowPrerelease=true the
+    // GitHub provider skips them even when channel='beta'.
+    applyUpdateChannel('beta');
+    expect(mockAutoUpdater.allowPrerelease).toBe(true);
+  });
+
+  it('stable channel sets allowPrerelease = false', () => {
+    applyUpdateChannel('stable');
+    expect(mockAutoUpdater.allowPrerelease).toBe(false);
   });
 });
 
