@@ -584,6 +584,47 @@ export default function DesktopShell() {
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
+
+  // ─── SKY-3207 (B4): Hideable top bar ───
+  const [topBarHidden, setTopBarHiddenRaw] = useState(false);
+  // Transient peek state when the user hovers the thin reveal strip
+  const [topBarPeekVisible, setTopBarPeekVisible] = useState(false);
+
+  const setTopBarHidden = useCallback((hidden: boolean) => {
+    setTopBarHiddenRaw(hidden);
+    if (!hidden) setTopBarPeekVisible(false);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, topBarHidden: hidden };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const toggleTopBar = useCallback(() => {
+    setTopBarHiddenRaw((prev) => {
+      const next = !prev;
+      if (!next) setTopBarPeekVisible(false);
+      setAppSettings((settings) => {
+        if (!settings) return settings;
+        const updated = { ...settings, topBarHidden: next };
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+      return next;
+    });
+  }, []);
+
+  // Part C integration: listen for programmatic hide/show requests dispatched via useTopBarVisibility()
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { hidden } = (e as CustomEvent<{ hidden: boolean }>).detail;
+      setTopBarHidden(hidden);
+    };
+    window.addEventListener(TOPBAR_HIDE_EVENT, handler);
+    return () => window.removeEventListener(TOPBAR_HIDE_EVENT, handler);
+  }, [setTopBarHidden]);
+
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
   // ─── SKY-3207 (B4): Hideable top bar ───
