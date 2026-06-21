@@ -153,7 +153,7 @@ async function waitUntil(
 async function openBrainstormPanel(): Promise<void> {
   const panel = page.getByTestId('notes-brainstorm-panel');
   if (!(await panel.isVisible().catch(() => false))) {
-    await page.getByTestId('app-tab-notes').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
   }
   await expect(panel).toBeVisible({ timeout: 6_000 });
   await expect(panel.getByRole('button', { name: 'New session' })).toBeVisible();
