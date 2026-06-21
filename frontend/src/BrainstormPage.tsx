@@ -227,6 +227,9 @@ interface Props {
   activeScene?: Scene | null;
   /** SKY-3623: compact mode — hides the facts column for narrow sidebar contexts (~300-340px). */
   compact?: boolean;
+  /** SKY-3201: pre-fill the prompt with this text on first mount (Notes/Story Assist context seeding).
+   *  Overrides any saved draft. User still must press Send to submit. */
+  seedPrompt?: string;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -240,7 +243,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -363,8 +366,12 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     [visibleTypes],
   );
 
-  // Restore draft from localStorage on mount
+  // Restore draft from localStorage on mount. seedPrompt takes priority — skip draft restore when provided.
   useEffect(() => {
+    if (seedPrompt) {
+      setPrompt(seedPrompt);
+      return;
+    }
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {

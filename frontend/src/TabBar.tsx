@@ -1,4 +1,5 @@
-// SKY-2094 (Phase 2 #1): Top-level two-tab switcher — Story / Notes.
+// SKY-2094 (Phase 2 #1): Top-level tab switcher — Story / Notes / Brainstorm.
+// SKY-3201: 'brainstorm' added as standalone workspace tab.
 import { useRef, useCallback } from 'react';
 import './TabBar.css';
 
